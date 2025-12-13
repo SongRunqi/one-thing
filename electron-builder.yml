@@ -1,0 +1,31 @@
+appId: com.aichat.app
+productName: AI Chat
+directories:
+  buildResources: public
+  output: release
+files:
+  - dist/renderer
+  - dist/main/index.js
+  - package.json
+  - node_modules
+
+win:
+  target:
+    - nsis
+    - portable
+
+mac:
+  target:
+    - dmg
+    - zip
+
+linux:
+  target:
+    - AppImage
+    - deb
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
