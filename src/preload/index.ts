@@ -12,6 +12,9 @@ const electronAPI = {
   generateTitle: (message: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GENERATE_TITLE, { message }),
 
+  editAndResend: (sessionId: string, messageId: string, newContent: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.EDIT_AND_RESEND, { sessionId, messageId, newContent }),
+
   // Session methods
   getSessions: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SESSIONS),

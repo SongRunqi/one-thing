@@ -95,17 +95,20 @@
                 branch: session.depth > 0,
                 'has-branches': session.hasBranches,
                 collapsed: session.isCollapsed,
-                'last-child': session.isLastChild
+                'last-child': session.isLastChild,
+                hidden: session.isHidden
               }
             ]"
             :style="{ paddingLeft: `${12 + session.depth * 20}px` }"
             @click="handleSessionClickWithToggle(session)"
             @contextmenu.prevent="openContextMenu($event, session)"
           >
-            <!-- Tree line connector for child sessions -->
-            <div v-if="session.depth > 0" class="tree-connector">
-              <div class="tree-line-vertical" :class="{ 'last-child': session.isLastChild }"></div>
-              <div class="tree-line-horizontal"></div>
+            <!-- Branch indicator for child sessions -->
+            <div v-if="session.depth > 0" class="branch-indicator">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 3v12"/>
+                <path d="M18 9a3 3 0 01-3 3H9"/>
+              </svg>
             </div>
             <!-- Expand/Collapse chevron for sessions with branches -->
             <div
@@ -135,8 +138,8 @@
             </div>
             <div class="session-meta">
               <!-- Show branch count badge when collapsed -->
-              <span v-if="session.hasBranches && session.isCollapsed" class="branch-count">
-                {{ session.branchCount }}
+              <span v-if="session.hasBranches && session.isCollapsed" class="branch-count" :title="`${session.branchCount} branch${session.branchCount > 1 ? 'es' : ''}`">
+                +{{ session.branchCount }}
               </span>
               <span class="session-time">{{ formatRelativeTime(session.updatedAt) }}</span>
               <div class="session-actions">
@@ -151,12 +154,15 @@
                   </svg>
                 </button>
                 <button
-                  class="session-action-btn danger"
-                  title="Delete"
+                  :class="['session-action-btn', 'danger', { 'confirm-delete': pendingDeleteId === session.id }]"
+                  :title="pendingDeleteId === session.id ? 'Click again to confirm' : 'Delete'"
                   @click.stop="deleteSessionById(session.id)"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <svg v-if="pendingDeleteId !== session.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                  </svg>
+                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 13l4 4L19 7"/>
                   </svg>
                 </button>
               </div>
@@ -241,7 +247,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import type { ChatSession } from '@/types'
 
@@ -275,13 +281,51 @@ const contextMenu = ref({
 const editingSessionId = ref<string | null>(null)
 const editingName = ref('')
 
+// Delete confirmation state - stores session ID pending deletion
+const pendingDeleteId = ref<string | null>(null)
+let deleteConfirmTimer: ReturnType<typeof setTimeout> | null = null
+
 // Collapsed parent sessions state (stores parent session IDs that are collapsed)
 const collapsedParents = ref<Set<string>>(new Set())
+
+// Track if initial collapse has been done
+const initialCollapseApplied = ref(false)
+
+// Track clicks for manual double-click detection
+// This is needed because DOM updates break native double-click detection
+const lastClickInfo = ref<{ sessionId: string; time: number } | null>(null)
+const DOUBLE_CLICK_THRESHOLD = 400 // milliseconds
 
 // Check if a session has branches
 function hasBranches(sessionId: string): boolean {
   return sessionsStore.sessions.some(s => s.parentSessionId === sessionId)
 }
+
+// Initialize collapsed state - collapse all parent sessions on startup
+function initializeCollapsedState() {
+  if (initialCollapseApplied.value) return
+
+  const parentsWithBranches = sessionsStore.sessions
+    .filter(s => !s.parentSessionId) // Root sessions only
+    .filter(s => hasBranches(s.id))
+    .map(s => s.id)
+
+  if (parentsWithBranches.length > 0) {
+    collapsedParents.value = new Set(parentsWithBranches)
+    initialCollapseApplied.value = true
+  }
+}
+
+// Watch for sessions to be loaded and apply initial collapse
+watch(
+  () => sessionsStore.sessions.length,
+  (newLength) => {
+    if (newLength > 0 && !initialCollapseApplied.value) {
+      initializeCollapsedState()
+    }
+  },
+  { immediate: true }
+)
 
 // Toggle collapse state for a parent session
 function toggleCollapse(sessionId: string) {
@@ -363,6 +407,7 @@ interface SessionWithBranches extends ChatSession {
   isCollapsed: boolean
   isLastChild: boolean
   branchCount: number
+  isHidden: boolean  // Whether this session should be hidden (parent is collapsed)
 }
 
 function organizeSessionsWithBranches(sessions: ChatSession[]): SessionWithBranches[] {
@@ -379,6 +424,7 @@ function organizeSessionsWithBranches(sessions: ChatSession[]): SessionWithBranc
       isCollapsed: collapsedParents.value.has(session.id),
       isLastChild: false,
       branchCount: 0,
+      isHidden: false,
     })
   }
 
@@ -412,14 +458,18 @@ function organizeSessionsWithBranches(sessions: ChatSession[]): SessionWithBranc
   }
   markLastChildren(rootSessions)
 
-  // Flatten hierarchy for display, respecting collapse state
-  function flattenWithBranches(sessions: SessionWithBranches[]): SessionWithBranches[] {
+  // Flatten hierarchy for display
+  // Always include all sessions, but mark hidden ones with isHidden flag
+  // This keeps DOM stable for proper mouse event handling
+  function flattenWithBranches(sessions: SessionWithBranches[], parentCollapsed: boolean = false): SessionWithBranches[] {
     const result: SessionWithBranches[] = []
     for (const session of sessions) {
+      session.isHidden = parentCollapsed
       result.push(session)
-      // Only include branches if the parent is not collapsed
-      if (session.branches.length > 0 && !session.isCollapsed) {
-        result.push(...flattenWithBranches(session.branches))
+      // Always include branches, but mark them as hidden if parent is collapsed
+      if (session.branches.length > 0) {
+        const shouldHideChildren = parentCollapsed || session.isCollapsed
+        result.push(...flattenWithBranches(session.branches, shouldHideChildren))
       }
     }
     return result
@@ -505,17 +555,31 @@ function handleSessionClick(sessionId: string) {
   switchSession(sessionId)
 }
 
-// Handle session click with toggle for parent sessions
+// Handle session click - check for double-click to toggle collapse
 function handleSessionClickWithToggle(session: SessionWithBranches) {
   // Don't switch if we're editing
   if (editingSessionId.value) return
 
-  // If the session has branches, toggle collapse state
-  if (session.hasBranches) {
-    toggleCollapse(session.id)
+  const now = Date.now()
+  const lastClick = lastClickInfo.value
+
+  // Check if this is a double-click (same session clicked within threshold)
+  if (lastClick && lastClick.sessionId === session.id && (now - lastClick.time) < DOUBLE_CLICK_THRESHOLD) {
+    // Double-click detected - toggle collapse
+    lastClickInfo.value = null // Reset click tracking
+
+    if (session.hasBranches) {
+      // Parent session: toggle its own collapse state
+      toggleCollapse(session.id)
+    } else if (session.parentSessionId) {
+      // Child session: collapse its parent
+      toggleCollapse(session.parentSessionId)
+    }
+    return // Don't switch session on double-click
   }
 
-  // Always switch to the clicked session
+  // Single click - record it and switch session
+  lastClickInfo.value = { sessionId: session.id, time: now }
   switchSession(session.id)
 }
 
@@ -579,9 +643,28 @@ function handlePin() {
 }
 
 async function deleteSessionById(sessionId: string) {
-  if (confirm('Are you sure you want to delete this chat?')) {
+  // If already pending deletion for this session, confirm delete
+  if (pendingDeleteId.value === sessionId) {
+    if (deleteConfirmTimer) {
+      clearTimeout(deleteConfirmTimer)
+      deleteConfirmTimer = null
+    }
+    pendingDeleteId.value = null
     await sessionsStore.deleteSession(sessionId)
+    return
   }
+
+  // First click - set pending state
+  pendingDeleteId.value = sessionId
+
+  // Auto-reset after 3 seconds if not confirmed
+  if (deleteConfirmTimer) {
+    clearTimeout(deleteConfirmTimer)
+  }
+  deleteConfirmTimer = setTimeout(() => {
+    pendingDeleteId.value = null
+    deleteConfirmTimer = null
+  }, 3000)
 }
 
 async function handleDelete() {
@@ -621,6 +704,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('click', handleOutsideClick)
+  // Clean up delete confirmation timer
+  if (deleteConfirmTimer) {
+    clearTimeout(deleteConfirmTimer)
+    deleteConfirmTimer = null
+  }
 })
 </script>
 
@@ -833,12 +921,28 @@ onUnmounted(() => {
   border: 1px solid transparent;
   border-radius: 10px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s ease, opacity 0.2s ease, max-height 0.25s ease, padding 0.25s ease, margin 0.25s ease;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 8px;
   margin-bottom: 2px;
+  user-select: none;
+  -webkit-user-select: none;
+  max-height: 100px;
+  opacity: 1;
+  overflow: hidden;
+}
+
+/* Hidden sessions (parent is collapsed) - animate collapse */
+.session-item.hidden {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-width: 0;
+  pointer-events: none;
 }
 
 .session-item:hover {
@@ -851,82 +955,32 @@ onUnmounted(() => {
   border-color: rgba(16, 163, 127, 0.25);
 }
 
-/* Parent session with branches styles */
+/* Parent session with branches - keep same style as normal sessions */
 .session-item.has-branches {
-  border-left: 3px solid var(--accent);
-  border-radius: 0 10px 10px 0;
-  background: rgba(16, 163, 127, 0.04);
+  /* No special styling - same as regular sessions */
 }
 
-.session-item.has-branches:hover {
-  background: var(--hover);
-  border-color: var(--border);
-  border-left-color: var(--accent);
-}
-
-.session-item.has-branches.active {
-  background: rgba(16, 163, 127, 0.12);
-  border-color: rgba(16, 163, 127, 0.25);
-  border-left-color: var(--accent);
-}
-
-.session-item.has-branches.collapsed {
-  border-left-color: var(--muted);
-  background: transparent;
-}
-
-.session-item.has-branches.collapsed:hover {
-  border-left-color: var(--accent);
-  background: var(--hover);
-}
-
-/* Branch (child) session styles */
+/* Branch (child) session styles - subtle distinction */
 .session-item.branch {
-  padding-right: 12px;
-  background: transparent;
-  position: relative;
-  margin-left: 8px;
+  /* Inherits normal session styles, just has padding-left via inline style */
 }
 
-.session-item.branch:hover {
-  background: var(--hover);
+/* Branch indicator icon - subtle visual cue */
+.branch-indicator {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  color: var(--muted);
+  opacity: 0.5;
 }
 
-.session-item.branch.active {
-  background: rgba(16, 163, 127, 0.1);
-  border-color: rgba(16, 163, 127, 0.2);
-}
-
-/* Tree connector lines */
-.tree-connector {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 20px;
-  pointer-events: none;
-}
-
-.tree-line-vertical {
-  position: absolute;
-  left: 8px;
-  top: -2px;
-  bottom: 50%;
-  width: 1px;
-  background: var(--border);
-}
-
-.tree-line-vertical.last-child {
-  bottom: 50%;
-}
-
-.tree-line-horizontal {
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  width: 10px;
-  height: 1px;
-  background: var(--border);
+.session-item.branch:hover .branch-indicator,
+.session-item.branch.active .branch-indicator {
+  opacity: 0.8;
 }
 
 /* Branch count badge */
@@ -951,55 +1005,33 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 8px;
-  color: var(--accent);
-  transition: all 0.2s ease;
-  width: 20px;
-  height: 20px;
+  margin-right: 6px;
+  color: var(--muted);
+  transition: all 0.15s ease;
+  width: 18px;
+  height: 18px;
   border-radius: 4px;
   cursor: pointer;
 }
 
 .collapse-chevron:hover {
-  background: rgba(16, 163, 127, 0.15);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
 }
 
 .collapse-chevron svg {
-  transition: transform 0.2s ease;
+  transition: transform 0.15s ease;
 }
 
 .collapse-chevron.collapsed svg {
   transform: rotate(-90deg);
 }
 
-.collapse-chevron.collapsed {
-  color: var(--muted);
-}
-
-.collapse-chevron.collapsed:hover {
-  color: var(--accent);
-}
-
-.session-item.has-branches:hover .collapse-chevron {
-  color: var(--accent);
-}
-
-.session-item.has-branches .session-name {
-  font-weight: 600;
-}
-
-.session-item.branch .session-name {
-  font-size: 12px;
+.session-item:hover .collapse-chevron {
   color: var(--text);
 }
 
-.session-item.branch .session-preview {
-  font-size: 11px;
-}
-
-.session-item.branch .session-time {
-  font-size: 10px;
-}
+/* Branch sessions use same text styling as regular sessions */
 
 .session-content {
   flex: 1;
@@ -1054,27 +1086,40 @@ onUnmounted(() => {
 .session-meta {
   flex-shrink: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
+  position: relative;
 }
 
 .session-time {
   font-size: 11px;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .session-actions {
-  display: none;
+  display: flex;
   gap: 2px;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  background: inherit;
 }
 
 .session-item:hover .session-actions {
-  display: flex;
+  opacity: 1;
 }
 
 .session-item:hover .session-time {
-  display: none;
+  visibility: hidden;
+}
+
+/* Keep branch count visible on hover */
+.session-item:hover .branch-count {
+  visibility: visible;
 }
 
 .session-action-btn {
@@ -1099,6 +1144,22 @@ onUnmounted(() => {
 .session-action-btn.danger:hover {
   background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
+}
+
+/* Confirm delete state - highlighted with animation */
+.session-action-btn.confirm-delete {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  animation: pulse-delete 1s ease-in-out infinite;
+}
+
+@keyframes pulse-delete {
+  0%, 100% {
+    background: rgba(239, 68, 68, 0.2);
+  }
+  50% {
+    background: rgba(239, 68, 68, 0.35);
+  }
 }
 
 .empty-sessions {

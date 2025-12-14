@@ -25,14 +25,93 @@ export function registerChatHandlers() {
     return { success: true, messages: session.messages }
   })
 
+  // 编辑消息并重新发送
+  ipcMain.handle(IPC_CHANNELS.EDIT_AND_RESEND, async (_event, { sessionId, messageId, newContent }) => {
+    return handleEditAndResend(sessionId, messageId, newContent)
+  })
+
   // 生成聊天标题
   ipcMain.handle(IPC_CHANNELS.GENERATE_TITLE, async (_event, { message }) => {
     return handleGenerateTitle(message)
   })
 }
 
+// Edit a user message and resend to get new AI response
+async function handleEditAndResend(sessionId: string, messageId: string, newContent: string) {
+  try {
+    // Update the message and truncate messages after it
+    const updated = store.updateMessageAndTruncate(sessionId, messageId, newContent)
+    if (!updated) {
+      return { success: false, error: 'Message not found' }
+    }
+
+    // Get settings and call AI
+    const settings = store.getSettings()
+    const providerConfig = getProviderConfig(settings)
+
+    if (!providerConfig.apiKey) {
+      return {
+        success: false,
+        error: 'API Key not configured. Please configure your AI settings.',
+      }
+    }
+
+    let assistantMessage: ChatMessage
+
+    switch (settings.ai.provider) {
+      case AIProvider.OpenAI:
+        assistantMessage = await callOpenAI(newContent, settings)
+        break
+      case AIProvider.Claude:
+        assistantMessage = await callClaude(newContent, settings)
+        break
+      case AIProvider.Custom:
+        assistantMessage = await callCustomAPI(newContent, settings)
+        break
+      default:
+        throw new Error('Unknown AI provider')
+    }
+
+    // Save assistant message
+    store.addMessage(sessionId, assistantMessage)
+
+    return {
+      success: true,
+      assistantMessage,
+    }
+  } catch (error: any) {
+    console.error('Error editing and resending message:', error)
+    return {
+      success: false,
+      error: error.message || 'Failed to edit and resend message',
+      errorDetails: error.response?.data?.error?.message || error.stack,
+    }
+  }
+}
+
+// Generate a short title from message content
+function generateTitleFromMessage(content: string, maxLength: number = 30): string {
+  // Remove extra whitespace and newlines
+  const cleaned = content.replace(/\s+/g, ' ').trim()
+
+  if (cleaned.length <= maxLength) {
+    return cleaned
+  }
+
+  // Truncate and add ellipsis
+  return cleaned.slice(0, maxLength).trim() + '...'
+}
+
 async function handleSendMessage(sessionId: string, messageContent: string) {
   try {
+    // Get session to check if this is the first user message
+    const session = store.getSession(sessionId)
+    const isFirstUserMessage = session && session.messages.filter(m => m.role === 'user').length === 0
+
+    // For branch sessions, check if this is the first NEW user message (after inherited messages)
+    const isBranchFirstMessage = session?.parentSessionId && session.messages.length > 0 &&
+      !session.messages.some(m => m.role === 'user' && m.timestamp > session.createdAt)
+
     // Save user message
     const userMessage: ChatMessage = {
       id: uuidv4(),
@@ -42,6 +121,12 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     }
 
     store.addMessage(sessionId, userMessage)
+
+    // Auto-rename session based on first user message
+    if (isFirstUserMessage || isBranchFirstMessage) {
+      const newTitle = generateTitleFromMessage(messageContent)
+      store.renameSession(sessionId, newTitle)
+    }
 
     // Get settings and call AI
     const settings = store.getSettings()
@@ -73,10 +158,15 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     // Save assistant message
     store.addMessage(sessionId, assistantMessage)
 
+    // Get updated session name if it was renamed
+    const updatedSession = store.getSession(sessionId)
+    const sessionName = updatedSession?.name
+
     return {
       success: true,
       userMessage,
       assistantMessage,
+      sessionName, // Include updated session name for UI update
     }
   } catch (error: any) {
     console.error('Error sending message:', error)

@@ -5,6 +5,7 @@ export const IPC_CHANNELS = {
   GET_CHAT_HISTORY: 'chat:get-history',
   CLEAR_CHAT: 'chat:clear',
   GENERATE_TITLE: 'chat:generate-title',
+  EDIT_AND_RESEND: 'chat:edit-and-resend',
 
   // Session related
   GET_SESSIONS: 'sessions:get-all',
@@ -26,10 +27,11 @@ export const IPC_CHANNELS = {
 // Type definitions for IPC messages
 export interface ChatMessage {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'error'  // 'error' is display-only, not saved to backend
   content: string
   timestamp: number
   isStreaming?: boolean
+  errorDetails?: string  // Additional error details for error messages
 }
 
 export interface ChatSession {
@@ -81,7 +83,22 @@ export interface SendMessageResponse {
   success: boolean
   userMessage?: ChatMessage
   assistantMessage?: ChatMessage
+  sessionName?: string  // Updated session name if auto-renamed
   error?: string
+  errorDetails?: string
+}
+
+export interface EditAndResendRequest {
+  sessionId: string
+  messageId: string
+  newContent: string
+}
+
+export interface EditAndResendResponse {
+  success: boolean
+  assistantMessage?: ChatMessage
+  error?: string
+  errorDetails?: string
 }
 
 export interface GetChatHistoryRequest {

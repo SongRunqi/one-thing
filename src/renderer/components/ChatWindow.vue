@@ -100,38 +100,22 @@ const currentModelDisplay = computed(() => {
   return `${providerName} / ${modelShort}`
 })
 
-// Generate title using AI
-async function generateTitleWithAI(message: string, sessionId: string) {
-  try {
-    const response = await window.electronAPI.generateTitle(message)
-    if (response.success && response.title) {
-      await sessionsStore.renameSession(sessionId, response.title)
-    }
-  } catch (error) {
-    console.error('Failed to generate title:', error)
-  }
-}
-
 async function handleSendMessage(message: string) {
   if (!currentSession.value) return
 
   const session = currentSession.value
-  // Check BEFORE sending - messages array is empty means this is the first message
-  const isFirstMessage = chatStore.messages.length === 0
-  // Check if session is untitled (empty, 'New Chat', or starts with 'Chat ' which is the default format)
-  const isUntitledSession =
-    !session.name || session.name === 'New Chat' || session.name === '' || session.name.startsWith('Chat ')
-  const shouldAutoRename = isFirstMessage && isUntitledSession
 
-  // Start sending the message
-  const sendPromise = chatStore.sendMessage(session.id, message)
+  // Send message - backend will auto-rename session based on first message
+  const result = await chatStore.sendMessage(session.id, message)
 
-  // Generate title with AI in the background (don't block message sending)
-  if (shouldAutoRename) {
-    generateTitleWithAI(message, session.id)
+  // If backend returned a new session name, update local sessions store
+  if (typeof result === 'string') {
+    // Update the session name in sessions store
+    const sessionInStore = sessionsStore.sessions.find(s => s.id === session.id)
+    if (sessionInStore) {
+      sessionInStore.name = result
+    }
   }
-
-  await sendPromise
 }
 
 async function createNewSession() {

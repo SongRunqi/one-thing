@@ -12,7 +12,7 @@ export function registerSessionHandlers() {
   // 创建新会话
   ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name }) => {
     const sessionId = uuidv4()
-    const session = store.createSession(sessionId, name || `Chat ${new Date().toLocaleString()}`)
+    const session = store.createSession(sessionId, name || 'New Chat')
     return { success: true, session }
   })
 
