@@ -1,13 +1,76 @@
 import { ipcMain } from 'electron'
-import axios from 'axios'
 import * as store from '../store.js'
-import type { ChatMessage, AppSettings, ProviderConfig } from '../../shared/ipc.js'
-import { IPC_CHANNELS, AIProvider } from '../../shared/ipc.js'
+import type { ChatMessage, AppSettings, ProviderConfig, CustomProviderConfig } from '../../shared/ipc.js'
+import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
+import {
+  generateChatResponseWithReasoning,
+  generateChatTitle,
+  isProviderSupported,
+} from '../providers/index.js'
+
+// Extract detailed error information from API responses
+function extractErrorDetails(error: any): string | undefined {
+  // AI SDK wraps errors with additional context
+  if (error.cause) {
+    return extractErrorDetails(error.cause)
+  }
+
+  // For API errors with response data
+  if (error.data) {
+    const data = error.data
+
+    // OpenAI error format: { error: { message: "...", type: "...", code: "..." } }
+    if (data.error?.message) {
+      const err = data.error
+      let details = err.message
+      if (err.type) details += ` (type: ${err.type})`
+      if (err.code) details += ` (code: ${err.code})`
+      return details
+    }
+
+    // Claude/Anthropic error format
+    if (data.type === 'error' && data.error) {
+      const err = data.error
+      return `${err.type}: ${err.message}`
+    }
+
+    if (data.message) {
+      return data.message
+    }
+
+    if (typeof data === 'string') {
+      return data
+    }
+
+    try {
+      return JSON.stringify(data, null, 2)
+    } catch {
+      return undefined
+    }
+  }
+
+  // Return message or stack trace
+  return error.message || error.stack
+}
 
 // Helper to get current provider config
 function getProviderConfig(settings: AppSettings): ProviderConfig {
   return settings.ai.providers[settings.ai.provider]
+}
+
+// Helper to get custom provider config by ID
+function getCustomProviderConfig(settings: AppSettings, providerId: string): CustomProviderConfig | undefined {
+  return settings.ai.customProviders?.find(p => p.id === providerId)
+}
+
+// Helper to get apiType for a provider
+function getProviderApiType(settings: AppSettings, providerId: string): 'openai' | 'anthropic' | undefined {
+  if (providerId.startsWith('custom-')) {
+    const customProvider = getCustomProviderConfig(settings, providerId)
+    return customProvider?.apiType
+  }
+  return undefined
 }
 
 export function registerChatHandlers() {
@@ -47,6 +110,7 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
 
     // Get settings and call AI
     const settings = store.getSettings()
+    const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
     if (!providerConfig.apiKey) {
@@ -56,20 +120,33 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
       }
     }
 
-    let assistantMessage: ChatMessage
+    if (!isProviderSupported(providerId)) {
+      return {
+        success: false,
+        error: `Unsupported provider: ${providerId}`,
+      }
+    }
 
-    switch (settings.ai.provider) {
-      case AIProvider.OpenAI:
-        assistantMessage = await callOpenAI(newContent, settings)
-        break
-      case AIProvider.Claude:
-        assistantMessage = await callClaude(newContent, settings)
-        break
-      case AIProvider.Custom:
-        assistantMessage = await callCustomAPI(newContent, settings)
-        break
-      default:
-        throw new Error('Unknown AI provider')
+    // Use AI SDK to generate response
+    const apiType = getProviderApiType(settings, providerId)
+    const response = await generateChatResponseWithReasoning(
+      providerId,
+      {
+        apiKey: providerConfig.apiKey,
+        baseUrl: providerConfig.baseUrl,
+        model: providerConfig.model,
+        apiType,
+      },
+      [{ role: 'user', content: newContent }],
+      { temperature: settings.ai.temperature }
+    )
+
+    const assistantMessage: ChatMessage = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: response.text,
+      timestamp: Date.now(),
+      reasoning: response.reasoning,
     }
 
     // Save assistant message
@@ -84,7 +161,7 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
     return {
       success: false,
       error: error.message || 'Failed to edit and resend message',
-      errorDetails: error.response?.data?.error?.message || error.stack,
+      errorDetails: extractErrorDetails(error),
     }
   }
 }
@@ -130,6 +207,7 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
 
     // Get settings and call AI
     const settings = store.getSettings()
+    const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
     if (!providerConfig.apiKey) {
@@ -139,20 +217,33 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
       }
     }
 
-    let assistantMessage: ChatMessage
+    if (!isProviderSupported(providerId)) {
+      return {
+        success: false,
+        error: `Unsupported provider: ${providerId}`,
+      }
+    }
 
-    switch (settings.ai.provider) {
-      case AIProvider.OpenAI:
-        assistantMessage = await callOpenAI(messageContent, settings)
-        break
-      case AIProvider.Claude:
-        assistantMessage = await callClaude(messageContent, settings)
-        break
-      case AIProvider.Custom:
-        assistantMessage = await callCustomAPI(messageContent, settings)
-        break
-      default:
-        throw new Error('Unknown AI provider')
+    // Use AI SDK to generate response
+    const apiType = getProviderApiType(settings, providerId)
+    const response = await generateChatResponseWithReasoning(
+      providerId,
+      {
+        apiKey: providerConfig.apiKey,
+        baseUrl: providerConfig.baseUrl,
+        model: providerConfig.model,
+        apiType,
+      },
+      [{ role: 'user', content: messageContent }],
+      { temperature: settings.ai.temperature }
+    )
+
+    const assistantMessage: ChatMessage = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: response.text,
+      timestamp: Date.now(),
+      reasoning: response.reasoning,
     }
 
     // Save assistant message
@@ -173,208 +264,45 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     return {
       success: false,
       error: error.message || 'Failed to send message',
+      errorDetails: extractErrorDetails(error),
     }
   }
 }
 
-async function callOpenAI(message: string, settings: AppSettings): Promise<ChatMessage> {
-  const providerConfig = getProviderConfig(settings)
-  const baseUrl = providerConfig.baseUrl || 'https://api.openai.com/v1'
-
-  const response = await axios.post(
-    `${baseUrl}/chat/completions`,
-    {
-      model: providerConfig.model,
-      messages: [{ role: 'user', content: message }],
-      temperature: settings.ai.temperature,
-    },
-    {
-      headers: {
-        'Authorization': `Bearer ${providerConfig.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-
-  const assistantMessage: ChatMessage = {
-    id: uuidv4(),
-    role: 'assistant',
-    content: response.data.choices[0].message.content,
-    timestamp: Date.now(),
-  }
-
-  return assistantMessage
-}
-
-async function callClaude(message: string, settings: AppSettings): Promise<ChatMessage> {
-  const providerConfig = getProviderConfig(settings)
-  const baseUrl = providerConfig.baseUrl || 'https://api.anthropic.com/v1'
-
-  const response = await axios.post(
-    `${baseUrl}/messages`,
-    {
-      model: providerConfig.model,
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: message }],
-    },
-    {
-      headers: {
-        'x-api-key': providerConfig.apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-
-  const assistantMessage: ChatMessage = {
-    id: uuidv4(),
-    role: 'assistant',
-    content: response.data.content[0].text,
-    timestamp: Date.now(),
-  }
-
-  return assistantMessage
-}
-
-async function callCustomAPI(message: string, settings: AppSettings): Promise<ChatMessage> {
-  const providerConfig = getProviderConfig(settings)
-
-  if (!providerConfig.baseUrl) {
-    throw new Error('Custom API URL is not configured')
-  }
-
-  const response = await axios.post(
-    providerConfig.baseUrl,
-    {
-      message,
-      model: providerConfig.model,
-    },
-    {
-      headers: {
-        'Authorization': `Bearer ${providerConfig.apiKey}`,
-      },
-    }
-  )
-
-  const assistantMessage: ChatMessage = {
-    id: uuidv4(),
-    role: 'assistant',
-    content: response.data.message || response.data.content,
-    timestamp: Date.now(),
-  }
-
-  return assistantMessage
-}
-
-// 生成聊天标题
+// Generate chat title using AI SDK
 async function handleGenerateTitle(userMessage: string) {
   try {
     const settings = store.getSettings()
+    const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
-    if (!providerConfig.apiKey) {
-      // 如果没有 API key，使用简单的截取方式
+    if (!providerConfig.apiKey || !isProviderSupported(providerId)) {
+      // Fallback to simple truncation
       return {
         success: true,
         title: userMessage.slice(0, 30) + (userMessage.length > 30 ? '...' : ''),
       }
     }
 
-    const prompt = `Generate a short, concise title (max 6 words) for a chat conversation that starts with this message. Only respond with the title, nothing else:\n\n"${userMessage}"`
-
-    let title: string
-
-    switch (settings.ai.provider) {
-      case AIProvider.OpenAI:
-        title = await generateTitleWithOpenAI(prompt, settings)
-        break
-      case AIProvider.Claude:
-        title = await generateTitleWithClaude(prompt, settings)
-        break
-      case AIProvider.Custom:
-        title = await generateTitleWithCustomAPI(prompt, settings)
-        break
-      default:
-        title = userMessage.slice(0, 30) + (userMessage.length > 30 ? '...' : '')
-    }
+    const apiType = getProviderApiType(settings, providerId)
+    const title = await generateChatTitle(
+      providerId,
+      {
+        apiKey: providerConfig.apiKey,
+        baseUrl: providerConfig.baseUrl,
+        model: providerConfig.model,
+        apiType,
+      },
+      userMessage
+    )
 
     return { success: true, title }
   } catch (error: any) {
     console.error('Error generating title:', error)
-    // 失败时使用简单的截取方式
+    // Fallback to simple truncation
     return {
       success: true,
       title: userMessage.slice(0, 30) + (userMessage.length > 30 ? '...' : ''),
     }
   }
-}
-
-async function generateTitleWithOpenAI(prompt: string, settings: AppSettings): Promise<string> {
-  const providerConfig = getProviderConfig(settings)
-  const baseUrl = providerConfig.baseUrl || 'https://api.openai.com/v1'
-
-  const response = await axios.post(
-    `${baseUrl}/chat/completions`,
-    {
-      model: providerConfig.model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
-      max_tokens: 20,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${providerConfig.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-
-  return response.data.choices[0].message.content.trim().replace(/^["']|["']$/g, '')
-}
-
-async function generateTitleWithClaude(prompt: string, settings: AppSettings): Promise<string> {
-  const providerConfig = getProviderConfig(settings)
-  const baseUrl = providerConfig.baseUrl || 'https://api.anthropic.com/v1'
-
-  const response = await axios.post(
-    `${baseUrl}/messages`,
-    {
-      model: providerConfig.model,
-      max_tokens: 20,
-      messages: [{ role: 'user', content: prompt }],
-    },
-    {
-      headers: {
-        'x-api-key': providerConfig.apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-
-  return response.data.content[0].text.trim().replace(/^["']|["']$/g, '')
-}
-
-async function generateTitleWithCustomAPI(prompt: string, settings: AppSettings): Promise<string> {
-  const providerConfig = getProviderConfig(settings)
-
-  if (!providerConfig.baseUrl) {
-    throw new Error('Custom API URL is not configured')
-  }
-
-  const response = await axios.post(
-    providerConfig.baseUrl,
-    {
-      message: prompt,
-      model: providerConfig.model,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${providerConfig.apiKey}`,
-      },
-    }
-  )
-
-  const content = response.data.message || response.data.content
-  return content.trim().replace(/^["']|["']$/g, '')
 }

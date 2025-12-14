@@ -40,6 +40,17 @@
       </div>
       <!-- Normal display -->
       <template v-else>
+        <!-- Reasoning/Thinking section (collapsible) -->
+        <div v-if="message.reasoning" class="reasoning-section">
+          <button class="reasoning-toggle" @click="showReasoning = !showReasoning">
+            <svg :class="['reasoning-icon', { expanded: showReasoning }]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+            <span class="reasoning-label">Thinking</span>
+            <span class="reasoning-hint">{{ showReasoning ? 'Click to collapse' : 'Click to expand' }}</span>
+          </button>
+          <div v-show="showReasoning" class="reasoning-content" v-html="renderedReasoning"></div>
+        </div>
         <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
         <div class="message-footer">
           <div class="meta">{{ formatTime(message.timestamp) }}</div>
@@ -144,6 +155,7 @@ const emit = defineEmits<{
 const showActions = ref(false)
 const copied = ref(false)
 const showBranchMenu = ref(false)
+const showReasoning = ref(false)  // For collapsible reasoning/thinking section
 const branchBtnRef = ref<HTMLElement | null>(null)
 const bubbleRef = ref<HTMLElement | null>(null)
 const branchMenuPosition = ref({ top: 0, left: 0 })
@@ -210,6 +222,12 @@ const renderedContent = computed(() => {
   }
   // For assistant messages, render markdown
   return marked.parse(contentToRender.value) as string
+})
+
+// Rendered reasoning content (for thinking models)
+const renderedReasoning = computed(() => {
+  if (!props.message.reasoning) return ''
+  return marked.parse(props.message.reasoning) as string
 })
 
 // Typewriter effect logic
@@ -896,5 +914,84 @@ html[data-theme='light'] .error-time {
 
 .branch-menu-new:hover {
   background: rgba(16, 163, 127, 0.1);
+}
+
+/* Reasoning/Thinking section styles */
+.reasoning-section {
+  margin-bottom: 12px;
+  border: 1px solid rgba(147, 51, 234, 0.2);
+  border-radius: 10px;
+  background: rgba(147, 51, 234, 0.05);
+  overflow: hidden;
+}
+
+.reasoning-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.reasoning-toggle:hover {
+  background: rgba(147, 51, 234, 0.08);
+}
+
+.reasoning-icon {
+  color: rgb(147, 51, 234);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.reasoning-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.reasoning-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgb(147, 51, 234);
+}
+
+.reasoning-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.reasoning-content {
+  padding: 0 12px 12px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  border-top: 1px solid rgba(147, 51, 234, 0.15);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.reasoning-content :deep(p) {
+  margin: 0.5em 0;
+}
+
+.reasoning-content :deep(p:first-child) {
+  margin-top: 0.75em;
+}
+
+.reasoning-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+html[data-theme='light'] .reasoning-section {
+  background: rgba(147, 51, 234, 0.04);
+  border-color: rgba(147, 51, 234, 0.15);
+}
+
+html[data-theme='light'] .reasoning-content {
+  color: rgba(0, 0, 0, 0.6);
 }
 </style>

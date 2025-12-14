@@ -99,7 +99,7 @@
                 hidden: session.isHidden
               }
             ]"
-            :style="{ paddingLeft: `${12 + session.depth * 20}px` }"
+            :style="getSessionStyle(session)"
             @click="handleSessionClickWithToggle(session)"
             @contextmenu.prevent="openContextMenu($event, session)"
           >
@@ -110,14 +110,14 @@
                 <path d="M18 9a3 3 0 01-3 3H9"/>
               </svg>
             </div>
-            <!-- Expand/Collapse chevron for sessions with branches -->
+            <!-- Expand/Collapse chevron (placeholder for alignment when no branches) -->
             <div
-              v-if="session.hasBranches"
+              v-if="session.depth === 0"
               class="collapse-chevron"
-              :class="{ collapsed: session.isCollapsed }"
-              @click.stop="toggleCollapse(session.id)"
+              :class="{ collapsed: session.isCollapsed, placeholder: !session.hasBranches }"
+              @click.stop="session.hasBranches && toggleCollapse(session.id)"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg v-if="session.hasBranches" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="6 9 12 15 18 9"/>
               </svg>
             </div>
@@ -141,30 +141,33 @@
               <span v-if="session.hasBranches && session.isCollapsed" class="branch-count" :title="`${session.branchCount} branch${session.branchCount > 1 ? 'es' : ''}`">
                 +{{ session.branchCount }}
               </span>
-              <span class="session-time">{{ formatRelativeTime(session.updatedAt) }}</span>
-              <div class="session-actions">
-                <button
-                  class="session-action-btn"
-                  title="Rename"
-                  @click.stop="startInlineRename(session)"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-                <button
-                  :class="['session-action-btn', 'danger', { 'confirm-delete': pendingDeleteId === session.id }]"
-                  :title="pendingDeleteId === session.id ? 'Click again to confirm' : 'Delete'"
-                  @click.stop="deleteSessionById(session.id)"
-                >
-                  <svg v-if="pendingDeleteId !== session.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                  </svg>
-                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M5 13l4 4L19 7"/>
-                  </svg>
-                </button>
+              <!-- Fixed width container for time/actions -->
+              <div class="session-time-actions">
+                <span class="session-time">{{ formatRelativeTime(session.updatedAt) }}</span>
+                <div class="session-actions">
+                  <button
+                    class="session-action-btn"
+                    title="Rename"
+                    @click.stop="startInlineRename(session)"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button
+                    :class="['session-action-btn', 'danger', { 'confirm-delete': pendingDeleteId === session.id }]"
+                    :title="pendingDeleteId === session.id ? 'Click again to confirm' : 'Delete'"
+                    @click.stop="deleteSessionById(session.id)"
+                  >
+                    <svg v-if="pendingDeleteId !== session.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                    </svg>
+                    <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M5 13l4 4L19 7"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -249,6 +252,7 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
+import { useSettingsStore } from '@/stores/settings'
 import type { ChatSession } from '@/types'
 
 interface Props {
@@ -265,7 +269,13 @@ const emit = defineEmits<{
 }>()
 
 const sessionsStore = useSessionsStore()
+const settingsStore = useSettingsStore()
 const showUserMenu = ref(false)
+
+// Computed animation speed from settings
+const animationSpeed = computed(() => {
+  return settingsStore.settings.general?.animationSpeed ?? 0.25
+})
 const query = ref('')
 const inlineInputRef = ref<HTMLInputElement | null>(null)
 
@@ -526,6 +536,15 @@ function getSessionPreview(session: ChatSession): string {
   const lastMessage = session.messages[session.messages.length - 1]
   const preview = lastMessage.content.slice(0, 50)
   return preview.length < lastMessage.content.length ? preview + '...' : preview
+}
+
+// Get session item style with dynamic animation speed
+function getSessionStyle(session: { depth: number }) {
+  const speed = animationSpeed.value
+  return {
+    paddingLeft: `${12 + session.depth * 20}px`,
+    transition: `all 0.15s ease, opacity ${speed}s ease, max-height ${speed}s ease, padding ${speed}s ease, margin ${speed}s ease`,
+  }
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -921,7 +940,7 @@ onUnmounted(() => {
   border: 1px solid transparent;
   border-radius: 10px;
   cursor: pointer;
-  transition: all 0.15s ease, opacity 0.2s ease, max-height 0.25s ease, padding 0.25s ease, margin 0.25s ease;
+  /* transition is set via inline style for dynamic animation speed */
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -1014,9 +1033,13 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.collapse-chevron:hover {
+.collapse-chevron:hover:not(.placeholder) {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text);
+}
+
+.collapse-chevron.placeholder {
+  cursor: default;
 }
 
 .collapse-chevron svg {
@@ -1039,6 +1062,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  overflow: hidden;
 }
 
 .session-name {
@@ -1047,6 +1071,7 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   font-size: 13px;
   font-weight: 500;
+  max-width: 100%;
 }
 
 .session-name-input {
@@ -1088,7 +1113,16 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  position: relative;
+  justify-content: flex-end;
+}
+
+/* Container for time/actions to maintain fixed size */
+.session-time-actions {
+  width: 54px; /* 2 buttons: 26px * 2 + 2px gap */
+  height: 26px; /* Match button height */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .session-time {
@@ -1098,28 +1132,21 @@ onUnmounted(() => {
 }
 
 .session-actions {
-  display: flex;
+  display: none;
   gap: 2px;
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  background: inherit;
 }
 
-.session-item:hover .session-actions {
-  opacity: 1;
+.session-item:hover .session-time-actions .session-actions {
+  display: flex;
 }
 
-.session-item:hover .session-time {
-  visibility: hidden;
+.session-item:hover .session-time-actions .session-time {
+  display: none;
 }
 
 /* Keep branch count visible on hover */
 .session-item:hover .branch-count {
-  visibility: visible;
+  display: flex;
 }
 
 .session-action-btn {

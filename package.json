@@ -19,6 +19,9 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.56",
+    "@ai-sdk/openai": "^2.0.86",
+    "ai": "^5.0.113",
     "axios": "^1.4.0",
     "electron-store": "^8.1.0",
     "highlight.js": "^11.11.1",

@@ -10,19 +10,25 @@ const defaultSettings: AppSettings = {
       [AIProvider.OpenAI]: {
         apiKey: '',
         model: 'gpt-4',
+        selectedModels: ['gpt-4', 'gpt-4o', 'gpt-3.5-turbo'],
       },
       [AIProvider.Claude]: {
         apiKey: '',
         model: 'claude-sonnet-4-5-20250929',
+        selectedModels: ['claude-sonnet-4-5-20250929', 'claude-3-5-haiku-20241022'],
       },
       [AIProvider.Custom]: {
         apiKey: '',
         baseUrl: '',
         model: '',
+        selectedModels: [],
       },
     },
   },
-  theme: 'light',
+  theme: 'dark',
+  general: {
+    animationSpeed: 0.25,
+  },
 }
 
 // Migrate old settings format to new format
@@ -45,20 +51,24 @@ function migrateSettings(settings: any): AppSettings {
             apiKey: currentProvider === AIProvider.OpenAI ? oldApiKey : '',
             model: currentProvider === AIProvider.OpenAI ? oldModel : 'gpt-4',
             baseUrl: currentProvider === AIProvider.OpenAI ? oldBaseUrl : undefined,
+            selectedModels: currentProvider === AIProvider.OpenAI && oldModel ? [oldModel] : ['gpt-4', 'gpt-4o'],
           },
           [AIProvider.Claude]: {
             apiKey: currentProvider === AIProvider.Claude ? oldApiKey : '',
             model: currentProvider === AIProvider.Claude ? oldModel : 'claude-sonnet-4-5-20250929',
             baseUrl: currentProvider === AIProvider.Claude ? oldBaseUrl : undefined,
+            selectedModels: currentProvider === AIProvider.Claude && oldModel ? [oldModel] : ['claude-sonnet-4-5-20250929'],
           },
           [AIProvider.Custom]: {
             apiKey: currentProvider === AIProvider.Custom ? oldApiKey : '',
             model: currentProvider === AIProvider.Custom ? oldModel : '',
             baseUrl: currentProvider === AIProvider.Custom ? oldBaseUrl : '',
+            selectedModels: currentProvider === AIProvider.Custom && oldModel ? [oldModel] : [],
           },
         },
       },
-      theme: settings.theme || 'light',
+      theme: settings.theme || 'dark',
+      general: settings.general || defaultSettings.general,
     }
 
     // Save migrated settings
@@ -69,6 +79,28 @@ function migrateSettings(settings: any): AppSettings {
   // Ensure providers object exists (partial migration case)
   if (settings.ai && !settings.ai.providers) {
     settings.ai.providers = defaultSettings.ai.providers
+    saveSettings(settings)
+  }
+
+  // Ensure selectedModels exists for each provider
+  let needsSave = false
+  if (settings.ai?.providers) {
+    for (const providerKey of Object.keys(settings.ai.providers)) {
+      const provider = settings.ai.providers[providerKey]
+      if (!provider.selectedModels) {
+        provider.selectedModels = provider.model ? [provider.model] : []
+        needsSave = true
+      }
+    }
+  }
+
+  // Ensure general settings exist
+  if (!settings.general) {
+    settings.general = defaultSettings.general
+    needsSave = true
+  }
+
+  if (needsSave) {
     saveSettings(settings)
   }
 

@@ -47,6 +47,10 @@ const electronAPI = {
 
   getCachedModels: (provider: AIProvider) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_CACHED_MODELS, { provider }),
+
+  // Providers methods
+  getProviders: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDERS),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

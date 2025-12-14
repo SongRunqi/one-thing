@@ -23,6 +23,29 @@ const CLAUDE_FALLBACK_MODELS: ModelInfo[] = [
   { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Legacy, fast' },
 ]
 
+// Predefined DeepSeek models as fallback
+const DEEPSEEK_FALLBACK_MODELS: ModelInfo[] = [
+  { id: 'deepseek-chat', name: 'DeepSeek Chat', description: 'General chat model (DeepSeek-V3)' },
+  { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', description: 'Advanced reasoning model (DeepSeek-R1)' },
+]
+
+// Predefined Kimi models as fallback
+const KIMI_FALLBACK_MODELS: ModelInfo[] = [
+  { id: 'moonshot-v1-8k', name: 'Moonshot v1 8K', description: '8K context window' },
+  { id: 'moonshot-v1-32k', name: 'Moonshot v1 32K', description: '32K context window' },
+  { id: 'moonshot-v1-128k', name: 'Moonshot v1 128K', description: '128K context window' },
+]
+
+// Predefined Zhipu models as fallback
+const ZHIPU_FALLBACK_MODELS: ModelInfo[] = [
+  { id: 'glm-4-flash', name: 'GLM-4 Flash', description: 'Fast, cost-effective' },
+  { id: 'glm-4-plus', name: 'GLM-4 Plus', description: 'Enhanced capabilities' },
+  { id: 'glm-4', name: 'GLM-4', description: 'Standard model' },
+  { id: 'glm-4-air', name: 'GLM-4 Air', description: 'Lightweight model' },
+  { id: 'glm-4-airx', name: 'GLM-4 AirX', description: 'Extended lightweight model' },
+  { id: 'glm-4-long', name: 'GLM-4 Long', description: 'Long context support' },
+]
+
 async function fetchOpenAIModels(apiKey: string, baseUrl: string): Promise<ModelInfo[]> {
   const response = await fetch(`${baseUrl}/models`, {
     headers: {
@@ -90,6 +113,12 @@ function getDefaultBaseUrl(provider: AIProvider): string {
       return 'https://api.openai.com/v1'
     case AIProvider.Claude:
       return 'https://api.anthropic.com/v1'
+    case AIProvider.DeepSeek:
+      return 'https://api.deepseek.com/v1'
+    case AIProvider.Kimi:
+      return 'https://api.moonshot.cn/v1'
+    case AIProvider.Zhipu:
+      return 'https://open.bigmodel.cn/api/paas/v4'
     default:
       return 'https://api.example.com/v1'
   }
@@ -125,6 +154,12 @@ async function handleFetchModels(
       case AIProvider.Claude:
         models = await fetchClaudeModels(apiKey, url)
         break
+      case AIProvider.DeepSeek:
+      case AIProvider.Kimi:
+      case AIProvider.Zhipu:
+        // These providers use OpenAI-compatible API
+        models = await fetchCustomModels(apiKey, url)
+        break
       case AIProvider.Custom:
         models = await fetchCustomModels(apiKey, url)
         break
@@ -152,11 +187,12 @@ async function handleFetchModels(
       }
     }
 
-    // For Claude, return fallback models if no cache
-    if (provider === AIProvider.Claude) {
+    // Return fallback models for providers that have them
+    const fallbackModels = getFallbackModels(provider)
+    if (fallbackModels) {
       return {
         success: true,
-        models: CLAUDE_FALLBACK_MODELS,
+        models: fallbackModels,
         fromCache: false,
         error: `Using fallback models. Fetch failed: ${error.message}`,
       }
@@ -166,6 +202,22 @@ async function handleFetchModels(
       success: false,
       error: error.message || 'Failed to fetch models',
     }
+  }
+}
+
+// Get fallback models for a provider
+function getFallbackModels(provider: AIProvider): ModelInfo[] | null {
+  switch (provider) {
+    case AIProvider.Claude:
+      return CLAUDE_FALLBACK_MODELS
+    case AIProvider.DeepSeek:
+      return DEEPSEEK_FALLBACK_MODELS
+    case AIProvider.Kimi:
+      return KIMI_FALLBACK_MODELS
+    case AIProvider.Zhipu:
+      return ZHIPU_FALLBACK_MODELS
+    default:
+      return null
   }
 }
 
@@ -184,11 +236,12 @@ async function handleGetCachedModels(
     }
   }
 
-  // Return fallback for Claude if no cache
-  if (provider === AIProvider.Claude) {
+  // Return fallback models for providers that have them
+  const fallbackModels = getFallbackModels(provider)
+  if (fallbackModels) {
     return {
       success: true,
-      models: CLAUDE_FALLBACK_MODELS,
+      models: fallbackModels,
     }
   }
 
