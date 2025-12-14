@@ -12,8 +12,8 @@ export function createWindow() {
     minWidth: 600,
     minHeight: 600,
     webPreferences: {
-      // Preload is built as CommonJS under dist/preload/preload/index.js with its own package.json (type: commonjs)
-      preload: path.join(__dirname, '../preload/preload/index.js'),
+      // Preload is bundled with esbuild to dist/preload/index.js
+      preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
