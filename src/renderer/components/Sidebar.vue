@@ -87,25 +87,35 @@
           <div
             v-for="session in group.sessions"
             :key="session.id"
-            :class="['session-item', { active: session.id === sessionsStore.currentSessionId, editing: editingSessionId === session.id, branch: session.depth > 0, 'has-branches': session.hasBranches, collapsed: session.isCollapsed }]"
-            :style="{ paddingLeft: `${12 + session.depth * 16}px` }"
+            :class="[
+              'session-item',
+              {
+                active: session.id === sessionsStore.currentSessionId,
+                editing: editingSessionId === session.id,
+                branch: session.depth > 0,
+                'has-branches': session.hasBranches,
+                collapsed: session.isCollapsed,
+                'last-child': session.isLastChild
+              }
+            ]"
+            :style="{ paddingLeft: `${12 + session.depth * 20}px` }"
             @click="handleSessionClickWithToggle(session)"
             @contextmenu.prevent="openContextMenu($event, session)"
           >
+            <!-- Tree line connector for child sessions -->
+            <div v-if="session.depth > 0" class="tree-connector">
+              <div class="tree-line-vertical" :class="{ 'last-child': session.isLastChild }"></div>
+              <div class="tree-line-horizontal"></div>
+            </div>
             <!-- Expand/Collapse chevron for sessions with branches -->
             <div
               v-if="session.hasBranches"
               class="collapse-chevron"
               :class="{ collapsed: session.isCollapsed }"
+              @click.stop="toggleCollapse(session.id)"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </div>
-            <!-- Branch indicator -->
-            <div v-else-if="session.depth > 0" class="branch-indicator">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M6 3v12M6 15c0-3 3-6 6-6h6"/>
               </svg>
             </div>
             <div class="session-content">
@@ -124,6 +134,10 @@
               <span v-if="editingSessionId !== session.id" class="session-preview">{{ getSessionPreview(session) }}</span>
             </div>
             <div class="session-meta">
+              <!-- Show branch count badge when collapsed -->
+              <span v-if="session.hasBranches && session.isCollapsed" class="branch-count">
+                {{ session.branchCount }}
+              </span>
               <span class="session-time">{{ formatRelativeTime(session.updatedAt) }}</span>
               <div class="session-actions">
                 <button
@@ -266,7 +280,7 @@ const collapsedParents = ref<Set<string>>(new Set())
 
 // Check if a session has branches
 function hasBranches(sessionId: string): boolean {
-  return sessionsStore.sessions.some(s => s.parentId === sessionId)
+  return sessionsStore.sessions.some(s => s.parentSessionId === sessionId)
 }
 
 // Toggle collapse state for a parent session
@@ -288,8 +302,8 @@ function isCollapsed(sessionId: string): boolean {
 // Get the root parent ID for a session (for checking if any ancestor is collapsed)
 function getRootParentId(session: ChatSession): string | null {
   let current = session
-  while (current.parentId) {
-    const parent = sessionsStore.sessions.find(s => s.id === current.parentId)
+  while (current.parentSessionId) {
+    const parent = sessionsStore.sessions.find(s => s.id === current.parentSessionId)
     if (!parent) break
     current = parent
   }
@@ -299,11 +313,11 @@ function getRootParentId(session: ChatSession): string | null {
 // Check if any ancestor of a session is collapsed
 function isAncestorCollapsed(session: ChatSession): boolean {
   let current = session
-  while (current.parentId) {
-    if (collapsedParents.value.has(current.parentId)) {
+  while (current.parentSessionId) {
+    if (collapsedParents.value.has(current.parentSessionId)) {
       return true
     }
-    const parent = sessionsStore.sessions.find(s => s.id === current.parentId)
+    const parent = sessionsStore.sessions.find(s => s.id === current.parentSessionId)
     if (!parent) break
     current = parent
   }
@@ -325,16 +339,16 @@ const recentSessions = computed(() => {
 
 // Check if a session is a branch
 function isBranch(session: ChatSession): boolean {
-  return !!session.parentId
+  return !!session.parentSessionId
 }
 
 // Get branch depth (how deep the branch is)
 function getBranchDepth(session: ChatSession): number {
   let depth = 0
   let current = session
-  while (current.parentId) {
+  while (current.parentSessionId) {
     depth++
-    const parent = sessionsStore.sessions.find(s => s.id === current.parentId)
+    const parent = sessionsStore.sessions.find(s => s.id === current.parentSessionId)
     if (!parent) break
     current = parent
   }
@@ -347,6 +361,8 @@ interface SessionWithBranches extends ChatSession {
   depth: number
   hasBranches: boolean
   isCollapsed: boolean
+  isLastChild: boolean
+  branchCount: number
 }
 
 function organizeSessionsWithBranches(sessions: ChatSession[]): SessionWithBranches[] {
@@ -361,14 +377,16 @@ function organizeSessionsWithBranches(sessions: ChatSession[]): SessionWithBranc
       depth: 0,
       hasBranches: false,
       isCollapsed: collapsedParents.value.has(session.id),
+      isLastChild: false,
+      branchCount: 0,
     })
   }
 
   // Second pass: organize into hierarchy
   for (const session of sessions) {
     const withBranches = sessionMap.get(session.id)!
-    if (session.parentId) {
-      const parent = sessionMap.get(session.parentId)
+    if (session.parentSessionId) {
+      const parent = sessionMap.get(session.parentSessionId)
       if (parent) {
         withBranches.depth = getBranchDepth(session)
         parent.branches.push(withBranches)
@@ -381,6 +399,18 @@ function organizeSessionsWithBranches(sessions: ChatSession[]): SessionWithBranc
       rootSessions.push(withBranches)
     }
   }
+
+  // Third pass: mark last children and count branches
+  function markLastChildren(sessions: SessionWithBranches[]) {
+    for (const session of sessions) {
+      session.branchCount = session.branches.length
+      if (session.branches.length > 0) {
+        session.branches[session.branches.length - 1].isLastChild = true
+        markLastChildren(session.branches)
+      }
+    }
+  }
+  markLastChildren(rootSessions)
 
   // Flatten hierarchy for display, respecting collapse state
   function flattenWithBranches(sessions: SessionWithBranches[]): SessionWithBranches[] {
@@ -825,6 +855,7 @@ onUnmounted(() => {
 .session-item.has-branches {
   border-left: 3px solid var(--accent);
   border-radius: 0 10px 10px 0;
+  background: rgba(16, 163, 127, 0.04);
 }
 
 .session-item.has-branches:hover {
@@ -839,32 +870,79 @@ onUnmounted(() => {
   border-left-color: var(--accent);
 }
 
+.session-item.has-branches.collapsed {
+  border-left-color: var(--muted);
+  background: transparent;
+}
+
+.session-item.has-branches.collapsed:hover {
+  border-left-color: var(--accent);
+  background: var(--hover);
+}
+
 /* Branch (child) session styles */
 .session-item.branch {
   padding-right: 12px;
-  background: rgba(128, 128, 128, 0.06);
-  opacity: 0.85;
+  background: transparent;
+  position: relative;
+  margin-left: 8px;
 }
 
 .session-item.branch:hover {
   background: var(--hover);
-  opacity: 1;
 }
 
 .session-item.branch.active {
   background: rgba(16, 163, 127, 0.1);
   border-color: rgba(16, 163, 127, 0.2);
-  opacity: 1;
 }
 
-.branch-indicator {
-  flex-shrink: 0;
-  color: var(--muted);
-  margin-right: 6px;
-  width: 16px;
-  display: flex;
+/* Tree connector lines */
+.tree-connector {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+}
+
+.tree-line-vertical {
+  position: absolute;
+  left: 8px;
+  top: -2px;
+  bottom: 50%;
+  width: 1px;
+  background: var(--border);
+}
+
+.tree-line-vertical.last-child {
+  bottom: 50%;
+}
+
+.tree-line-horizontal {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 10px;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Branch count badge */
+.branch-count {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(16, 163, 127, 0.15);
+  border-radius: 9px;
+  margin-right: 6px;
 }
 
 /* Collapse chevron - indicates expand/collapse state */
@@ -873,10 +951,17 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 6px;
+  margin-right: 8px;
   color: var(--accent);
   transition: all 0.2s ease;
   width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.collapse-chevron:hover {
+  background: rgba(16, 163, 127, 0.15);
 }
 
 .collapse-chevron svg {
@@ -891,6 +976,10 @@ onUnmounted(() => {
   color: var(--muted);
 }
 
+.collapse-chevron.collapsed:hover {
+  color: var(--accent);
+}
+
 .session-item.has-branches:hover .collapse-chevron {
   color: var(--accent);
 }
@@ -901,10 +990,15 @@ onUnmounted(() => {
 
 .session-item.branch .session-name {
   font-size: 12px;
+  color: var(--text);
 }
 
 .session-item.branch .session-preview {
   font-size: 11px;
+}
+
+.session-item.branch .session-time {
+  font-size: 10px;
 }
 
 .session-content {
