@@ -5,7 +5,6 @@ export const IPC_CHANNELS = {
   GET_CHAT_HISTORY: 'chat:get-history',
   CLEAR_CHAT: 'chat:clear',
   GENERATE_TITLE: 'chat:generate-title',
-  EDIT_AND_RESEND: 'chat:edit-and-resend',
 
   // Session related
   GET_SESSIONS: 'sessions:get-all',
@@ -18,16 +17,19 @@ export const IPC_CHANNELS = {
   // Settings related
   GET_SETTINGS: 'settings:get',
   SAVE_SETTINGS: 'settings:save',
+
+  // Models related
+  FETCH_MODELS: 'models:fetch',
+  GET_CACHED_MODELS: 'models:get-cached',
 } as const
 
 // Type definitions for IPC messages
 export interface ChatMessage {
   id: string
-  role: 'user' | 'assistant' | 'error' // 'error' is display-only, not sent to AI
+  role: 'user' | 'assistant'
   content: string
   timestamp: number
   isStreaming?: boolean
-  errorDetails?: string // Original API error for 'error' role
 }
 
 export interface ChatSession {
@@ -36,9 +38,8 @@ export interface ChatSession {
   messages: ChatMessage[]
   createdAt: number
   updatedAt: number
-  // Branch support
-  parentId?: string // Parent session ID if this is a branch
-  branchFromMessageId?: string // The message ID from which this branch was created
+  parentSessionId?: string
+  branchFromMessageId?: string
 }
 
 export enum AIProvider {
@@ -47,12 +48,22 @@ export enum AIProvider {
   Custom = 'custom',
 }
 
+// Per-provider configuration
+export interface ProviderConfig {
+  apiKey: string
+  baseUrl?: string
+  model: string
+}
+
 export interface AISettings {
   provider: AIProvider
-  apiKey: string
-  model: string
   temperature: number
-  customApiUrl?: string
+  // Per-provider configurations
+  providers: {
+    [AIProvider.OpenAI]: ProviderConfig
+    [AIProvider.Claude]: ProviderConfig
+    [AIProvider.Custom]: ProviderConfig
+  }
 }
 
 export interface AppSettings {
@@ -128,6 +139,17 @@ export interface RenameSessionResponse {
   error?: string
 }
 
+export interface CreateBranchRequest {
+  parentSessionId: string
+  branchFromMessageId: string
+}
+
+export interface CreateBranchResponse {
+  success: boolean
+  session?: ChatSession
+  error?: string
+}
+
 export interface GetSettingsResponse {
   success: boolean
   settings?: AppSettings
@@ -151,29 +173,41 @@ export interface GenerateTitleResponse {
   error?: string
 }
 
-// Edit and resend message
-export interface EditAndResendRequest {
-  sessionId: string
-  messageId: string // The user message to edit
-  newContent: string // New content for the message
+// Models related types
+export interface ModelInfo {
+  id: string
+  name: string
+  description?: string
+  createdAt?: string
 }
 
-export interface EditAndResendResponse {
+export interface CachedModels {
+  provider: AIProvider
+  models: ModelInfo[]
+  cachedAt: number
+}
+
+export interface FetchModelsRequest {
+  provider: AIProvider
+  apiKey: string
+  baseUrl?: string
+  forceRefresh?: boolean
+}
+
+export interface FetchModelsResponse {
   success: boolean
-  userMessage?: ChatMessage
-  assistantMessage?: ChatMessage
+  models?: ModelInfo[]
+  fromCache?: boolean
   error?: string
-  errorDetails?: string
 }
 
-// Create branch from AI response
-export interface CreateBranchRequest {
-  parentSessionId: string
-  branchFromMessageId: string // The assistant message to branch from
+export interface GetCachedModelsRequest {
+  provider: AIProvider
 }
 
-export interface CreateBranchResponse {
+export interface GetCachedModelsResponse {
   success: boolean
-  session?: ChatSession
+  models?: ModelInfo[]
+  cachedAt?: number
   error?: string
 }

@@ -22,7 +22,7 @@
         <div class="setting-group">
           <label>API Key</label>
           <input
-            v-model="localSettings.ai.apiKey"
+            v-model="localSettings.ai.providers[localSettings.ai.provider].apiKey"
             type="password"
             class="input-field"
             placeholder="Enter your API key"
@@ -32,7 +32,7 @@
         <div class="setting-group">
           <label>Model</label>
           <input
-            v-model="localSettings.ai.model"
+            v-model="localSettings.ai.providers[localSettings.ai.provider].model"
             type="text"
             class="input-field"
             placeholder="e.g., gpt-3.5-turbo"
@@ -42,7 +42,7 @@
         <div v-if="localSettings.ai.provider === 'custom'" class="setting-group">
           <label>Custom API URL</label>
           <input
-            v-model="localSettings.ai.customApiUrl"
+            v-model="localSettings.ai.providers[localSettings.ai.provider].baseUrl"
             type="text"
             class="input-field"
             placeholder="https://api.example.com/chat"

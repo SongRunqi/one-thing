@@ -10,6 +10,9 @@ const electronAPI = {
   getChatHistory: (sessionId) =>
     ipcRenderer.invoke('chat:get-history', { sessionId }),
 
+  generateTitle: (message) =>
+    ipcRenderer.invoke('chat:generate-title', { message }),
+
   // Session methods
   getSessions: () =>
     ipcRenderer.invoke('sessions:get-all'),
@@ -32,6 +35,13 @@ const electronAPI = {
 
   saveSettings: (settings) =>
     ipcRenderer.invoke('settings:save', settings),
+
+  // Models methods
+  fetchModels: (provider, apiKey, baseUrl, forceRefresh) =>
+    ipcRenderer.invoke('models:fetch', { provider, apiKey, baseUrl, forceRefresh }),
+
+  getCachedModels: (provider) =>
+    ipcRenderer.invoke('models:get-cached', { provider }),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

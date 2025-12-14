@@ -4,16 +4,31 @@ import type { AppSettings } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
 import type { AIProvider } from '../../shared/ipc'
 
-export const useSettingsStore = defineStore('settings', () => {
-  const settings = ref<AppSettings>({
-    ai: {
-      provider: AIProviderEnum.OpenAI,
-      apiKey: '',
-      model: 'gpt-3.5-turbo',
-      temperature: 0.7,
+const defaultSettings: AppSettings = {
+  ai: {
+    provider: AIProviderEnum.OpenAI,
+    temperature: 0.7,
+    providers: {
+      [AIProviderEnum.OpenAI]: {
+        apiKey: '',
+        model: 'gpt-4',
+      },
+      [AIProviderEnum.Claude]: {
+        apiKey: '',
+        model: 'claude-sonnet-4-5-20250929',
+      },
+      [AIProviderEnum.Custom]: {
+        apiKey: '',
+        baseUrl: '',
+        model: '',
+      },
     },
-    theme: 'light',
-  })
+  },
+  theme: 'light',
+}
+
+export const useSettingsStore = defineStore('settings', () => {
+  const settings = ref<AppSettings>(JSON.parse(JSON.stringify(defaultSettings)))
 
   const isLoading = ref(false)
 
@@ -44,12 +59,14 @@ export const useSettingsStore = defineStore('settings', () => {
     settings.value.ai.provider = provider
   }
 
-  function updateAPIKey(apiKey: string) {
-    settings.value.ai.apiKey = apiKey
+  function updateAPIKey(apiKey: string, provider?: AIProvider) {
+    const targetProvider = provider || settings.value.ai.provider
+    settings.value.ai.providers[targetProvider].apiKey = apiKey
   }
 
-  function updateModel(model: string) {
-    settings.value.ai.model = model
+  function updateModel(model: string, provider?: AIProvider) {
+    const targetProvider = provider || settings.value.ai.provider
+    settings.value.ai.providers[targetProvider].model = model
   }
 
   function updateTemperature(temperature: number) {
@@ -58,6 +75,11 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function updateTheme(theme: 'light' | 'dark') {
     settings.value.theme = theme
+  }
+
+  // Get current provider's config
+  function getCurrentProviderConfig() {
+    return settings.value.ai.providers[settings.value.ai.provider]
   }
 
   return {
@@ -70,5 +92,6 @@ export const useSettingsStore = defineStore('settings', () => {
     updateModel,
     updateTemperature,
     updateTheme,
+    getCurrentProviderConfig,
   }
 })

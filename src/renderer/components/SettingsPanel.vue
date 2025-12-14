@@ -48,14 +48,14 @@
         <div class="form-group">
           <label class="form-label">
             API Key
-            <span class="label-hint">Required</span>
+            <span class="label-hint">Required for {{ currentProviderName }}</span>
           </label>
           <div class="input-wrapper">
             <input
-              v-model="localSettings.ai.apiKey"
+              v-model="localSettings.ai.providers[localSettings.ai.provider].apiKey"
               :type="showApiKey ? 'text' : 'password'"
               class="form-input"
-              placeholder="Enter your API key..."
+              :placeholder="`Enter your ${currentProviderName} API key...`"
             />
             <button class="input-action" @click="showApiKey = !showApiKey" type="button">
               <svg v-if="showApiKey" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -73,7 +73,7 @@
         <div class="form-group">
           <label class="form-label">Base URL</label>
           <input
-            v-model="localSettings.ai.customApiUrl"
+            v-model="localSettings.ai.providers[localSettings.ai.provider].baseUrl"
             type="text"
             class="form-input"
             :placeholder="getDefaultBaseUrl()"
@@ -86,26 +86,29 @@
       <section class="settings-section">
         <h3 class="section-title">
           Model
-          <button
-            class="refresh-btn"
-            @click="fetchModels"
-            :disabled="isLoadingModels || !localSettings.ai.apiKey"
-            title="Fetch available models"
-          >
-            <svg
-              :class="{ spinning: isLoadingModels }"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
+          <div class="title-actions">
+            <span v-if="modelInfo" class="model-info">{{ modelInfo }}</span>
+            <button
+              class="refresh-btn"
+              @click="fetchModels(true)"
+              :disabled="isLoadingModels"
+              title="Refresh models from API"
             >
-              <path d="M23 4v6h-6M1 20v-6h6"/>
-              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-            </svg>
-            {{ isLoadingModels ? 'Loading...' : 'Fetch Models' }}
-          </button>
+              <svg
+                :class="{ spinning: isLoadingModels }"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M23 4v6h-6M1 20v-6h6"/>
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+              </svg>
+              {{ isLoadingModels ? 'Loading...' : 'Refresh' }}
+            </button>
+          </div>
         </h3>
 
         <div v-if="modelError" class="error-message">
@@ -116,7 +119,7 @@
           <div
             v-for="model in availableModels"
             :key="model.id"
-            :class="['model-card', { active: localSettings.ai.model === model.id }]"
+            :class="['model-card', { active: localSettings.ai.providers[localSettings.ai.provider].model === model.id }]"
             @click="selectModel(model.id)"
           >
             <div class="model-name">{{ model.name || model.id }}</div>
@@ -126,12 +129,12 @@
 
         <div v-else class="form-group">
           <input
-            v-model="localSettings.ai.model"
+            v-model="localSettings.ai.providers[localSettings.ai.provider].model"
             type="text"
             class="form-input"
             placeholder="e.g., gpt-4, claude-3-opus"
           />
-          <p class="form-hint">Enter model name or fetch available models with your API key</p>
+          <p class="form-hint">Enter model name or click Refresh to fetch available models</p>
         </div>
       </section>
 
@@ -205,9 +208,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, toRaw, onMounted } from 'vue'
+import { ref, toRaw, onMounted, computed } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import type { AppSettings, AIProvider } from '@/types'
+import type { AppSettings, AIProvider, ModelInfo } from '@/types'
+import { AIProvider as AIProviderEnum } from '../../shared/ipc'
 
 interface ProviderOption {
   id: AIProvider
@@ -216,26 +220,31 @@ interface ProviderOption {
   description: string
 }
 
-interface ModelInfo {
-  id: string
-  name?: string
-  description?: string
-}
-
 const emit = defineEmits<{
   close: []
 }>()
 
 const settingsStore = useSettingsStore()
 
+// Deep clone settings, ensuring providers object exists
 const localSettings = ref<AppSettings>(
   JSON.parse(JSON.stringify(toRaw(settingsStore.settings))) as AppSettings
 )
+
+// Ensure providers object exists (for migration from old settings)
+if (!localSettings.value.ai.providers) {
+  localSettings.value.ai.providers = {
+    [AIProviderEnum.OpenAI]: { apiKey: '', model: 'gpt-4' },
+    [AIProviderEnum.Claude]: { apiKey: '', model: 'claude-sonnet-4-5-20250929' },
+    [AIProviderEnum.Custom]: { apiKey: '', baseUrl: '', model: '' },
+  }
+}
 
 const showApiKey = ref(false)
 const isSaving = ref(false)
 const isLoadingModels = ref(false)
 const modelError = ref('')
+const modelInfo = ref('')  // Shows cache info or other messages
 const availableModels = ref<ModelInfo[]>([])
 
 const providers: ProviderOption[] = [
@@ -243,13 +252,13 @@ const providers: ProviderOption[] = [
     id: 'openai' as AIProvider,
     name: 'OpenAI',
     icon: '🤖',
-    description: 'GPT-4, GPT-3.5 Turbo',
+    description: 'GPT-4o, GPT-4, GPT-3.5 Turbo',
   },
   {
     id: 'claude' as AIProvider,
     name: 'Anthropic',
     icon: '🧠',
-    description: 'Claude 3 Opus, Sonnet, Haiku',
+    description: 'Claude 4.5, 4, 3.7, 3.5',
   },
   {
     id: 'custom' as AIProvider,
@@ -258,6 +267,18 @@ const providers: ProviderOption[] = [
     description: 'OpenAI-compatible API',
   },
 ]
+
+// Computed for display (read-only)
+const currentProviderConfig = computed(() => {
+  const provider = localSettings.value.ai.provider
+  return localSettings.value.ai.providers[provider]
+})
+
+// Computed property to get current provider name
+const currentProviderName = computed(() => {
+  const provider = localSettings.value.ai.provider
+  return providers.find(p => p.id === provider)?.name || provider
+})
 
 function getDefaultBaseUrl(): string {
   switch (localSettings.value.ai.provider) {
@@ -270,77 +291,80 @@ function getDefaultBaseUrl(): string {
   }
 }
 
-function selectProvider(provider: AIProvider) {
+async function selectProvider(provider: AIProvider) {
   localSettings.value.ai.provider = provider
   availableModels.value = []
   modelError.value = ''
+  modelInfo.value = ''
 
-  // Set default model for provider
-  switch (provider) {
-    case 'openai':
-      localSettings.value.ai.model = 'gpt-4'
-      break
-    case 'claude':
-      localSettings.value.ai.model = 'claude-3-opus-20240229'
-      break
-    default:
-      localSettings.value.ai.model = ''
-  }
+  // Load cached models for the new provider
+  await loadCachedModels()
 }
 
 function selectModel(modelId: string) {
-  localSettings.value.ai.model = modelId
+  const provider = localSettings.value.ai.provider
+  localSettings.value.ai.providers[provider].model = modelId
 }
 
-async function fetchModels() {
-  if (!localSettings.value.ai.apiKey) {
+// Load cached models from local storage
+async function loadCachedModels() {
+  const provider = localSettings.value.ai.provider
+  try {
+    const response = await window.electronAPI.getCachedModels(provider)
+    if (response.success && response.models && response.models.length > 0) {
+      availableModels.value = response.models
+      if (response.cachedAt) {
+        const cachedDate = new Date(response.cachedAt)
+        modelInfo.value = `Cached: ${cachedDate.toLocaleDateString()} ${cachedDate.toLocaleTimeString()}`
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load cached models:', err)
+  }
+}
+
+// Fetch models from API (force refresh)
+async function fetchModels(forceRefresh = true) {
+  const provider = localSettings.value.ai.provider
+  const providerConfig = localSettings.value.ai.providers[provider]
+  const apiKey = providerConfig.apiKey
+
+  // For non-Claude providers, API key is required
+  if (provider !== 'claude' && !apiKey) {
     modelError.value = 'Please enter an API key first'
     return
   }
 
   isLoadingModels.value = true
   modelError.value = ''
-  availableModels.value = []
+  modelInfo.value = ''
 
   try {
-    const provider = localSettings.value.ai.provider
-    const apiKey = localSettings.value.ai.apiKey
-    const baseUrl = localSettings.value.ai.customApiUrl || getDefaultBaseUrl()
+    const baseUrl = providerConfig.baseUrl || getDefaultBaseUrl()
+    const response = await window.electronAPI.fetchModels(provider, apiKey, baseUrl, forceRefresh)
 
-    let models: ModelInfo[] = []
+    if (response.success && response.models) {
+      availableModels.value = response.models
 
-    if (provider === 'openai' || provider === 'custom') {
-      const response = await fetch(`${baseUrl}/models`, {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status} ${response.statusText}`)
+      if (response.fromCache) {
+        const cached = await window.electronAPI.getCachedModels(provider)
+        if (cached.cachedAt) {
+          const cachedDate = new Date(cached.cachedAt)
+          modelInfo.value = `From cache: ${cachedDate.toLocaleDateString()} ${cachedDate.toLocaleTimeString()}`
+        }
+      } else {
+        modelInfo.value = 'Fetched from API'
       }
 
-      const data = await response.json()
-      models = (data.data || [])
-        .filter((m: any) => m.id.includes('gpt') || m.id.includes('text') || provider === 'custom')
-        .map((m: any) => ({
-          id: m.id,
-          name: m.id,
-        }))
-        .sort((a: ModelInfo, b: ModelInfo) => a.id.localeCompare(b.id))
-    } else if (provider === 'claude') {
-      // Anthropic doesn't have a models endpoint, use predefined list
-      models = [
-        { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: 'Most capable' },
-        { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: 'Balanced' },
-        { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Fast & efficient' },
-        { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', description: 'Latest' },
-      ]
+      if (response.error) {
+        // This means we got data but there was a warning (e.g., using cache due to network error)
+        modelError.value = response.error
+      }
+    } else {
+      modelError.value = response.error || 'Failed to fetch models'
     }
 
-    availableModels.value = models
-
-    if (models.length === 0) {
+    if (availableModels.value.length === 0) {
       modelError.value = 'No models found'
     }
   } catch (err: any) {
@@ -354,7 +378,7 @@ async function saveSettings() {
   isSaving.value = true
   try {
     await settingsStore.saveSettings(localSettings.value)
-    emit('close')
+    // Don't close automatically, let user decide when to close
   } catch (err) {
     console.error('Failed to save settings:', err)
   } finally {
@@ -362,16 +386,9 @@ async function saveSettings() {
   }
 }
 
-onMounted(() => {
-  // Pre-populate models for Claude since it doesn't have an API
-  if (localSettings.value.ai.provider === 'claude') {
-    availableModels.value = [
-      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: 'Most capable' },
-      { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: 'Balanced' },
-      { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Fast & efficient' },
-      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', description: 'Latest' },
-    ]
-  }
+onMounted(async () => {
+  // Load cached models on mount
+  await loadCachedModels()
 })
 </script>
 
@@ -452,6 +469,20 @@ html[data-theme='light'] .settings-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.model-info {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 /* Provider Cards */
