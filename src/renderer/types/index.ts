@@ -5,8 +5,11 @@ import type {
   AppSettings,
   AIProvider,
   ProviderConfig,
+  CustomProviderConfig,
+  ProviderInfo,
   ModelInfo,
   SendMessageResponse,
+  EditAndResendResponse,
   GetChatHistoryResponse,
   GetSessionsResponse,
   CreateSessionResponse,
@@ -19,14 +22,16 @@ import type {
   GenerateTitleResponse,
   FetchModelsResponse,
   GetCachedModelsResponse,
+  GetProvidersResponse,
 } from '../../shared/ipc'
 
-export type { ChatMessage, ChatSession, AISettings, AppSettings, AIProvider, ProviderConfig, ModelInfo }
+export type { ChatMessage, ChatSession, AISettings, AppSettings, AIProvider, ProviderConfig, CustomProviderConfig, ProviderInfo, ModelInfo }
 
 export interface ElectronAPI {
   sendMessage: (sessionId: string, message: string) => Promise<SendMessageResponse>
   getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
   generateTitle: (message: string) => Promise<GenerateTitleResponse>
+  editAndResend: (sessionId: string, messageId: string, newContent: string) => Promise<EditAndResendResponse>
   getSessions: () => Promise<GetSessionsResponse>
   createSession: (name: string) => Promise<CreateSessionResponse>
   switchSession: (sessionId: string) => Promise<SwitchSessionResponse>
@@ -42,6 +47,7 @@ export interface ElectronAPI {
     forceRefresh?: boolean
   ) => Promise<FetchModelsResponse>
   getCachedModels: (provider: AIProvider) => Promise<GetCachedModelsResponse>
+  getProviders: () => Promise<GetProvidersResponse>
 }
 
 declare global {

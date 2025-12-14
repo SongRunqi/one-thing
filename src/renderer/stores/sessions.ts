@@ -31,6 +31,17 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   async function createSession(name: string) {
     try {
+      // Check if there's already an empty "New Chat" session (no messages)
+      const existingEmptySession = sessions.value.find(
+        s => (s.name === 'New Chat' || s.name === '') && (!s.messages || s.messages.length === 0)
+      )
+
+      if (existingEmptySession) {
+        // Switch to existing empty session instead of creating a new one
+        await switchSession(existingEmptySession.id)
+        return existingEmptySession
+      }
+
       const response = await window.electronAPI.createSession(name)
       if (response.success && response.session) {
         sessions.value.unshift(response.session)

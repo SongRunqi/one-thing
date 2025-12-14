@@ -23,7 +23,7 @@
       <span v-if="message.role === 'assistant'">◎</span>
       <span v-else>🙂</span>
     </div>
-    <div class="bubble" @mouseenter="showActions = true" @mouseleave="showActions = false">
+    <div class="bubble" ref="bubbleRef" @mouseenter="showActions = true" @mouseleave="showActions = false">
       <!-- Edit mode for user messages -->
       <div v-if="isEditing" class="edit-container">
         <textarea
@@ -40,6 +40,17 @@
       </div>
       <!-- Normal display -->
       <template v-else>
+        <!-- Reasoning/Thinking section (collapsible) -->
+        <div v-if="message.reasoning" class="reasoning-section">
+          <button class="reasoning-toggle" @click="showReasoning = !showReasoning">
+            <svg :class="['reasoning-icon', { expanded: showReasoning }]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+            <span class="reasoning-label">Thinking</span>
+            <span class="reasoning-hint">{{ showReasoning ? 'Click to collapse' : 'Click to expand' }}</span>
+          </button>
+          <div v-show="showReasoning" class="reasoning-content" v-html="renderedReasoning"></div>
+        </div>
         <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
         <div class="message-footer">
           <div class="meta">{{ formatTime(message.timestamp) }}</div>
@@ -60,20 +71,47 @@
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
             </button>
-            <!-- Branch button for assistant messages -->
-            <button
-              v-if="message.role === 'assistant'"
-              class="action-btn"
-              @click="createBranch"
-              title="Create branch"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="6" y1="3" x2="6" y2="15"/>
-                <circle cx="18" cy="6" r="3"/>
-                <circle cx="6" cy="18" r="3"/>
-                <path d="M18 9a9 9 0 0 1-9 9"/>
-              </svg>
-            </button>
+            <!-- Branch button (only for assistant messages in root sessions) -->
+            <div v-if="canBranch && message.role === 'assistant'" class="branch-btn-wrapper" ref="branchBtnRef">
+              <button
+                class="action-btn"
+                :class="{ 'has-branches': hasBranches }"
+                @click="hasBranches ? toggleBranchMenu() : createBranch()"
+                :title="hasBranches ? `${branchCount} branch${branchCount > 1 ? 'es' : ''}` : 'Create branch from here'"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="6" y1="3" x2="6" y2="15"/>
+                  <circle cx="18" cy="6" r="3"/>
+                  <circle cx="6" cy="18" r="3"/>
+                  <path d="M18 9a9 9 0 0 1-9 9"/>
+                </svg>
+                <span v-if="hasBranches" class="branch-count-badge">{{ branchCount }}</span>
+              </button>
+              <!-- Branch dropdown menu -->
+              <div v-if="showBranchMenu && hasBranches" class="branch-menu" :style="branchMenuStyle">
+                <div class="branch-menu-list">
+                  <button
+                    v-for="branch in branches"
+                    :key="branch.id"
+                    class="branch-menu-item"
+                    @click="goToBranch(branch.id)"
+                  >
+                    <span class="branch-name">{{ branch.name || 'Untitled branch' }}</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M9 18l6-6-6-6"/>
+                    </svg>
+                  </button>
+                </div>
+                <div class="branch-menu-footer">
+                  <button class="branch-menu-new" @click="createBranch">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    <span>New branch</span>
+                  </button>
+                </div>
+              </div>
+            </div>
             <button
               v-if="message.role === 'assistant'"
               class="action-btn"
@@ -95,8 +133,15 @@ import { marked } from 'marked'
 import hljs from 'highlight.js'
 import type { ChatMessage } from '@/types'
 
+interface BranchInfo {
+  id: string
+  name: string
+}
+
 interface Props {
   message: ChatMessage
+  branches?: BranchInfo[]  // Branches that were created from this message
+  canBranch?: boolean      // Whether branching is allowed (false for child sessions)
 }
 
 const props = defineProps<Props>()
@@ -104,10 +149,26 @@ const emit = defineEmits<{
   regenerate: [messageId: string]
   edit: [messageId: string, newContent: string]
   branch: [messageId: string]
+  goToBranch: [sessionId: string]
 }>()
 
 const showActions = ref(false)
 const copied = ref(false)
+const showBranchMenu = ref(false)
+const showReasoning = ref(false)  // For collapsible reasoning/thinking section
+const branchBtnRef = ref<HTMLElement | null>(null)
+const bubbleRef = ref<HTMLElement | null>(null)
+const branchMenuPosition = ref({ top: 0, left: 0 })
+
+// Computed: whether this message has branches
+const hasBranches = computed(() => props.branches && props.branches.length > 0)
+const branchCount = computed(() => props.branches?.length || 0)
+
+// Computed style for branch menu positioning
+const branchMenuStyle = computed(() => ({
+  top: `${branchMenuPosition.value.top}px`,
+  left: `${branchMenuPosition.value.left}px`
+}))
 
 // Edit mode state
 const isEditing = ref(false)
@@ -161,6 +222,12 @@ const renderedContent = computed(() => {
   }
   // For assistant messages, render markdown
   return marked.parse(contentToRender.value) as string
+})
+
+// Rendered reasoning content (for thinking models)
+const renderedReasoning = computed(() => {
+  if (!props.message.reasoning) return ''
+  return marked.parse(props.message.reasoning) as string
 })
 
 // Typewriter effect logic
@@ -225,10 +292,12 @@ onMounted(() => {
   } else {
     displayedContent.value = props.message.content
   }
+  document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
   stopTypewriter()
+  document.removeEventListener('click', handleClickOutside)
 })
 
 function escapeHtml(text: string): string {
@@ -285,7 +354,60 @@ function submitEdit() {
 }
 
 function createBranch() {
+  showBranchMenu.value = false
   emit('branch', props.message.id)
+}
+
+function toggleBranchMenu() {
+  if (showBranchMenu.value) {
+    showBranchMenu.value = false
+    return
+  }
+
+  // Calculate menu position based on branch button position
+  if (branchBtnRef.value && bubbleRef.value) {
+    const btnRect = branchBtnRef.value.getBoundingClientRect()
+    const bubbleRect = bubbleRef.value.getBoundingClientRect()
+    const menuWidth = 200 // approximate menu width
+    const menuHeight = 150 // approximate menu height
+    const padding = 8
+
+    // Position: below the bubble, menu's left edge aligns with button's left edge
+    let top = bubbleRect.bottom + padding
+    let left = btnRect.left
+
+    // If menu would go off the right edge, shift left
+    if (left + menuWidth > window.innerWidth - padding) {
+      left = window.innerWidth - menuWidth - padding
+    }
+
+    // If menu would go off the left edge
+    if (left < padding) {
+      left = padding
+    }
+
+    // If menu would go off the bottom, show above the bubble
+    if (top + menuHeight > window.innerHeight - padding) {
+      top = bubbleRect.top - menuHeight - padding
+    }
+
+    branchMenuPosition.value = { top, left }
+  }
+
+  showBranchMenu.value = true
+}
+
+function goToBranch(sessionId: string) {
+  showBranchMenu.value = false
+  emit('goToBranch', sessionId)
+}
+
+// Close branch menu when clicking outside
+function handleClickOutside(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (!target.closest('.branch-btn-wrapper')) {
+    showBranchMenu.value = false
+  }
 }
 </script>
 
@@ -681,5 +803,195 @@ html[data-theme='light'] .error-time {
 
 .edit-btn.submit:hover {
   background: #0d8e6f;
+}
+
+/* Branch button and menu styles */
+.branch-btn-wrapper {
+  position: relative;
+}
+
+.action-btn.has-branches {
+  background: rgba(16, 163, 127, 0.15);
+  color: var(--accent);
+}
+
+.action-btn.has-branches:hover {
+  background: rgba(16, 163, 127, 0.25);
+}
+
+.branch-count-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  background: var(--accent);
+  color: white;
+  border-radius: 7px;
+}
+
+.branch-menu {
+  position: fixed;
+  min-width: 180px;
+  max-width: 240px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 1000;
+}
+
+.branch-menu-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.branch-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.branch-menu-item:hover {
+  background: var(--hover);
+}
+
+.branch-menu-item svg {
+  flex-shrink: 0;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.branch-menu-item:hover svg {
+  opacity: 1;
+}
+
+.branch-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-menu-footer {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.branch-menu-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.branch-menu-new:hover {
+  background: rgba(16, 163, 127, 0.1);
+}
+
+/* Reasoning/Thinking section styles */
+.reasoning-section {
+  margin-bottom: 12px;
+  border: 1px solid rgba(147, 51, 234, 0.2);
+  border-radius: 10px;
+  background: rgba(147, 51, 234, 0.05);
+  overflow: hidden;
+}
+
+.reasoning-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.reasoning-toggle:hover {
+  background: rgba(147, 51, 234, 0.08);
+}
+
+.reasoning-icon {
+  color: rgb(147, 51, 234);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.reasoning-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.reasoning-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgb(147, 51, 234);
+}
+
+.reasoning-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.reasoning-content {
+  padding: 0 12px 12px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  border-top: 1px solid rgba(147, 51, 234, 0.15);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.reasoning-content :deep(p) {
+  margin: 0.5em 0;
+}
+
+.reasoning-content :deep(p:first-child) {
+  margin-top: 0.75em;
+}
+
+.reasoning-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+html[data-theme='light'] .reasoning-section {
+  background: rgba(147, 51, 234, 0.04);
+  border-color: rgba(147, 51, 234, 0.15);
+}
+
+html[data-theme='light'] .reasoning-content {
+  color: rgba(0, 0, 0, 0.6);
 }
 </style>

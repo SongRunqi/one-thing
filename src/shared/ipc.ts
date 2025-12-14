@@ -5,6 +5,7 @@ export const IPC_CHANNELS = {
   GET_CHAT_HISTORY: 'chat:get-history',
   CLEAR_CHAT: 'chat:clear',
   GENERATE_TITLE: 'chat:generate-title',
+  EDIT_AND_RESEND: 'chat:edit-and-resend',
 
   // Session related
   GET_SESSIONS: 'sessions:get-all',
@@ -21,15 +22,20 @@ export const IPC_CHANNELS = {
   // Models related
   FETCH_MODELS: 'models:fetch',
   GET_CACHED_MODELS: 'models:get-cached',
+
+  // Providers related
+  GET_PROVIDERS: 'providers:get-all',
 } as const
 
 // Type definitions for IPC messages
 export interface ChatMessage {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'error'  // 'error' is display-only, not saved to backend
   content: string
   timestamp: number
   isStreaming?: boolean
+  errorDetails?: string  // Additional error details for error messages
+  reasoning?: string  // Thinking/reasoning process for reasoning models (e.g., deepseek-reasoner)
 }
 
 export interface ChatSession {
@@ -42,33 +48,70 @@ export interface ChatSession {
   branchFromMessageId?: string
 }
 
+// Provider IDs - can be extended by adding new providers
+export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'zhipu' | 'custom' | string
+
+// Legacy enum for backwards compatibility
 export enum AIProvider {
   OpenAI = 'openai',
   Claude = 'claude',
+  DeepSeek = 'deepseek',
+  Kimi = 'kimi',
+  Zhipu = 'zhipu',
   Custom = 'custom',
+}
+
+// Provider metadata for UI display
+export interface ProviderInfo {
+  id: string
+  name: string
+  description: string
+  defaultBaseUrl: string
+  defaultModel: string
+  icon: string
+  supportsCustomBaseUrl: boolean
+  requiresApiKey: boolean
 }
 
 // Per-provider configuration
 export interface ProviderConfig {
   apiKey: string
   baseUrl?: string
-  model: string
+  model: string  // Currently active model
+  selectedModels: string[]  // List of models user has selected/enabled for quick switching
+  enabled?: boolean  // Whether this provider is shown in the chat model selector
+}
+
+// User-defined custom provider
+export interface CustomProviderConfig extends ProviderConfig {
+  id: string  // Unique ID for the custom provider
+  name: string  // User-defined display name
+  description?: string  // Optional description
+  apiType: 'openai' | 'anthropic'  // API compatibility type
 }
 
 export interface AISettings {
-  provider: AIProvider
+  provider: string  // Can be built-in provider or custom provider ID
   temperature: number
-  // Per-provider configurations
+  // Per-provider configurations (built-in providers)
   providers: {
     [AIProvider.OpenAI]: ProviderConfig
     [AIProvider.Claude]: ProviderConfig
     [AIProvider.Custom]: ProviderConfig
+    [key: string]: ProviderConfig  // Allow dynamic provider keys
   }
+  // User-defined custom providers
+  customProviders?: CustomProviderConfig[]
+}
+
+export interface GeneralSettings {
+  animationSpeed: number  // 0.1 - 0.5 seconds, default 0.25
 }
 
 export interface AppSettings {
   ai: AISettings
-  theme: 'light' | 'dark'
+  theme: 'light' | 'dark' | 'system'
+  general: GeneralSettings
 }
 
 // IPC Request/Response types
@@ -81,7 +124,22 @@ export interface SendMessageResponse {
   success: boolean
   userMessage?: ChatMessage
   assistantMessage?: ChatMessage
+  sessionName?: string  // Updated session name if auto-renamed
   error?: string
+  errorDetails?: string
+}
+
+export interface EditAndResendRequest {
+  sessionId: string
+  messageId: string
+  newContent: string
+}
+
+export interface EditAndResendResponse {
+  success: boolean
+  assistantMessage?: ChatMessage
+  error?: string
+  errorDetails?: string
 }
 
 export interface GetChatHistoryRequest {
@@ -209,5 +267,12 @@ export interface GetCachedModelsResponse {
   success: boolean
   models?: ModelInfo[]
   cachedAt?: number
+  error?: string
+}
+
+// Providers related types
+export interface GetProvidersResponse {
+  success: boolean
+  providers?: ProviderInfo[]
   error?: string
 }

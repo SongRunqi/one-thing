@@ -92,7 +92,8 @@ export const useChatStore = defineStore('chat', () => {
         }, Math.min(response.assistantMessage.content.length * 10, 3000))
       }
 
-      return true
+      // Return session name if it was updated (for sidebar to update)
+      return response.sessionName || true
     } catch (err: any) {
       error.value = err.message || 'An error occurred'
       // Remove the temp user message on error
@@ -111,6 +112,21 @@ export const useChatStore = defineStore('chat', () => {
   async function editAndResend(sessionId: string, messageId: string, newContent: string) {
     error.value = null
     errorDetails.value = null
+
+    // Immediately update the UI: update message content and truncate messages after it
+    const messageIndex = messages.value.findIndex((m) => m.id === messageId)
+    if (messageIndex !== -1) {
+      // Update the message content
+      messages.value[messageIndex] = {
+        ...messages.value[messageIndex],
+        content: newContent,
+        timestamp: Date.now(),
+      }
+      // Remove all messages after this one (including old assistant response)
+      messages.value = messages.value.slice(0, messageIndex + 1)
+    }
+
+    // Now show loading state
     isLoading.value = true
 
     try {
@@ -133,21 +149,15 @@ export const useChatStore = defineStore('chat', () => {
         return false
       }
 
-      // Reload the chat history to reflect the changes
-      const historyResponse = await window.electronAPI.getChatHistory(sessionId)
-      if (historyResponse.success && historyResponse.messages) {
-        setMessages(historyResponse.messages)
-      }
-
-      // Add streaming effect to the new assistant message
+      // Add the new assistant message with streaming effect
       if (response.assistantMessage) {
-        const lastMessage = messages.value[messages.value.length - 1]
-        if (lastMessage && lastMessage.role === 'assistant') {
-          updateMessage(lastMessage.id, { isStreaming: true })
-          setTimeout(() => {
-            updateMessage(lastMessage.id, { isStreaming: false })
-          }, Math.min(lastMessage.content.length * 10, 3000))
-        }
+        const streamingMessage = { ...response.assistantMessage, isStreaming: true }
+        addMessage(streamingMessage)
+
+        // After typewriter animation, mark as not streaming
+        setTimeout(() => {
+          updateMessage(response.assistantMessage!.id, { isStreaming: false })
+        }, Math.min(response.assistantMessage.content.length * 10, 3000))
       }
 
       return true

@@ -8,8 +8,11 @@
       v-for="message in messages"
       :key="message.id"
       :message="message"
+      :branches="getBranchesForMessage(message.id)"
+      :can-branch="canCreateBranch"
       @edit="handleEdit"
       @branch="handleBranch"
+      @go-to-branch="handleGoToBranch"
     />
 
     <!-- Loading indicator -->
@@ -33,11 +36,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, computed } from 'vue'
 import type { ChatMessage } from '@/types'
 import MessageItem from './MessageItem.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
+
+interface BranchInfo {
+  id: string
+  name: string
+}
 
 interface Props {
   messages: ChatMessage[]
@@ -51,6 +59,41 @@ const props = withDefaults(defineProps<Props>(), {
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
 const messageListRef = ref<HTMLElement | null>(null)
+
+// Check if current session can create branches (only root sessions can)
+const canCreateBranch = computed(() => {
+  const currentSession = sessionsStore.currentSession
+  if (!currentSession) return false
+  // Only allow branching from root sessions (no parent)
+  return !currentSession.parentSessionId
+})
+
+// Compute branches for each message
+// Returns a map of messageId -> branches created from that message
+const messageBranches = computed(() => {
+  const branchMap = new Map<string, BranchInfo[]>()
+  const currentSession = sessionsStore.currentSession
+  if (!currentSession) return branchMap
+
+  // Find all sessions that branched from the current session
+  for (const session of sessionsStore.sessions) {
+    if (session.parentSessionId === currentSession.id && session.branchFromMessageId) {
+      const branches = branchMap.get(session.branchFromMessageId) || []
+      branches.push({
+        id: session.id,
+        name: session.name
+      })
+      branchMap.set(session.branchFromMessageId, branches)
+    }
+  }
+
+  return branchMap
+})
+
+// Get branches for a specific message
+function getBranchesForMessage(messageId: string): BranchInfo[] {
+  return messageBranches.value.get(messageId) || []
+}
 
 // Auto-scroll to bottom when messages change or loading state changes
 watch(
@@ -76,6 +119,11 @@ async function handleBranch(messageId: string) {
   const currentSession = sessionsStore.currentSession
   if (!currentSession) return
   await sessionsStore.createBranch(currentSession.id, messageId)
+}
+
+// Handle go to branch event
+async function handleGoToBranch(sessionId: string) {
+  await sessionsStore.switchSession(sessionId)
 }
 </script>
 

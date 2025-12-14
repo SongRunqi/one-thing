@@ -1,3 +1,6 @@
+/* Import component styles */
+@import './components.css';
+
 * {
   margin: 0;
   padding: 0;
@@ -10,6 +13,7 @@
     'Segoe UI Emoji';
 
   --bg: #0f1117;
+  --bg-elevated: #1e2028;
   --panel: #1a1c23;
   --panel-2: #151720;
   --muted: rgba(255, 255, 255, 0.68);
@@ -30,6 +34,7 @@
 /* Light theme (optional, controlled by Settings) */
 html[data-theme='light'] {
   --bg: #ffffff;
+  --bg-elevated: #ffffff;
   --panel: #f7f7f8;
   --panel-2: #ffffff;
   --muted: rgba(0, 0, 0, 0.6);
