@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
-import { IPC_CHANNELS } from '@shared/ipc'
-import * as store from '../store'
+import { IPC_CHANNELS } from '../../shared/ipc.js'
+import * as store from '../store.js'
 
 export function registerSettingsHandlers() {
   // 获取设置

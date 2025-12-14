@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { createWindow } from './window'
-import { initializeIPC } from './ipc/handlers'
+import { createWindow } from './window.js'
+import { initializeIPC } from './ipc/handlers.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)

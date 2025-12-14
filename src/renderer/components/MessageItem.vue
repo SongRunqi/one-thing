@@ -1,34 +1,96 @@
 <template>
-  <div :class="['message', message.role]">
+  <!-- Error message (notification style) -->
+  <div v-if="message.role === 'error'" class="message error">
+    <div class="error-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+    </div>
+    <div class="error-bubble">
+      <div class="error-content">{{ message.content }}</div>
+      <div v-if="message.errorDetails" class="error-details">{{ message.errorDetails }}</div>
+      <div class="error-footer">
+        <span class="error-time">{{ formatTime(message.timestamp) }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Normal user/assistant message -->
+  <div v-else :class="['message', message.role]">
     <div class="avatar" aria-hidden="true">
       <span v-if="message.role === 'assistant'">◎</span>
       <span v-else>🙂</span>
     </div>
     <div class="bubble" @mouseenter="showActions = true" @mouseleave="showActions = false">
-      <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
-      <div class="message-footer">
-        <div class="meta">{{ formatTime(message.timestamp) }}</div>
-        <div :class="['actions', { visible: showActions }]">
-          <button class="action-btn" @click="copyContent" :title="copied ? 'Copied!' : 'Copy'">
-            <span v-if="copied">✓</span>
-            <span v-else>⧉</span>
-          </button>
-          <button
-            v-if="message.role === 'assistant'"
-            class="action-btn"
-            @click="regenerate"
-            title="Regenerate"
-          >
-            ↻
-          </button>
+      <!-- Edit mode for user messages -->
+      <div v-if="isEditing" class="edit-container">
+        <textarea
+          ref="editTextarea"
+          v-model="editContent"
+          class="edit-textarea"
+          @keydown.enter.ctrl="submitEdit"
+          @keydown.escape="cancelEdit"
+        ></textarea>
+        <div class="edit-actions">
+          <button class="edit-btn cancel" @click="cancelEdit">Cancel</button>
+          <button class="edit-btn submit" @click="submitEdit">Send</button>
         </div>
       </div>
+      <!-- Normal display -->
+      <template v-else>
+        <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
+        <div class="message-footer">
+          <div class="meta">{{ formatTime(message.timestamp) }}</div>
+          <div :class="['actions', { visible: showActions }]">
+            <button class="action-btn" @click="copyContent" :title="copied ? 'Copied!' : 'Copy'">
+              <span v-if="copied">✓</span>
+              <span v-else>⧉</span>
+            </button>
+            <!-- Edit button for user messages -->
+            <button
+              v-if="message.role === 'user'"
+              class="action-btn"
+              @click="startEdit"
+              title="Edit"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </button>
+            <!-- Branch button for assistant messages -->
+            <button
+              v-if="message.role === 'assistant'"
+              class="action-btn"
+              @click="createBranch"
+              title="Create branch"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="6" y1="3" x2="6" y2="15"/>
+                <circle cx="18" cy="6" r="3"/>
+                <circle cx="6" cy="18" r="3"/>
+                <path d="M18 9a9 9 0 0 1-9 9"/>
+              </svg>
+            </button>
+            <button
+              v-if="message.role === 'assistant'"
+              class="action-btn"
+              @click="regenerate"
+              title="Regenerate"
+            >
+              ↻
+            </button>
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import type { ChatMessage } from '@/types'
@@ -40,10 +102,17 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{
   regenerate: [messageId: string]
+  edit: [messageId: string, newContent: string]
+  branch: [messageId: string]
 }>()
 
 const showActions = ref(false)
 const copied = ref(false)
+
+// Edit mode state
+const isEditing = ref(false)
+const editContent = ref('')
+const editTextarea = ref<HTMLTextAreaElement | null>(null)
 
 // Typewriter effect state
 const displayedContent = ref('')
@@ -189,6 +258,34 @@ async function copyContent() {
 
 function regenerate() {
   emit('regenerate', props.message.id)
+}
+
+function startEdit() {
+  editContent.value = props.message.content
+  isEditing.value = true
+  nextTick(() => {
+    if (editTextarea.value) {
+      editTextarea.value.focus()
+      // Auto-resize textarea
+      editTextarea.value.style.height = 'auto'
+      editTextarea.value.style.height = editTextarea.value.scrollHeight + 'px'
+    }
+  })
+}
+
+function cancelEdit() {
+  isEditing.value = false
+  editContent.value = ''
+}
+
+function submitEdit() {
+  if (!editContent.value.trim()) return
+  emit('edit', props.message.id, editContent.value.trim())
+  isEditing.value = false
+}
+
+function createBranch() {
+  emit('branch', props.message.id)
 }
 </script>
 
@@ -451,5 +548,138 @@ function regenerate() {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Error message styles */
+.message.error {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: min(860px, 100%);
+  animation: fadeIn 0.18s ease-out;
+}
+
+.error-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(239, 68, 68, 0.15);
+  color: rgb(239, 68, 68);
+  flex-shrink: 0;
+}
+
+.error-bubble {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.error-content {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.5;
+}
+
+html[data-theme='light'] .error-content {
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.error-details {
+  margin-top: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: 'SF Mono', Monaco, monospace;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.65);
+  word-break: break-all;
+}
+
+html[data-theme='light'] .error-details {
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.error-footer {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.error-time {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+html[data-theme='light'] .error-time {
+  color: rgba(0, 0, 0, 0.4);
+}
+
+/* Edit mode styles */
+.edit-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.edit-textarea {
+  width: 100%;
+  min-height: 60px;
+  max-height: 300px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+}
+
+.edit-textarea:focus {
+  border-color: var(--accent);
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.edit-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.edit-btn.cancel {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.edit-btn.cancel:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.edit-btn.submit {
+  background: var(--accent);
+  border: none;
+  color: white;
+}
+
+.edit-btn.submit:hover {
+  background: #0d8e6f;
 }
 </style>

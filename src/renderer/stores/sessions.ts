@@ -85,6 +85,21 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  async function createBranch(parentSessionId: string, branchFromMessageId: string) {
+    try {
+      const response = await window.electronAPI.createBranch(parentSessionId, branchFromMessageId)
+      if (response.success && response.session) {
+        // Add the new branch session to the list
+        sessions.value.unshift(response.session)
+        // Switch to the new branch session
+        await switchSession(response.session.id)
+        return response.session
+      }
+    } catch (error) {
+      console.error('Failed to create branch:', error)
+    }
+  }
+
   return {
     sessions,
     currentSessionId,
@@ -96,5 +111,6 @@ export const useSessionsStore = defineStore('sessions', () => {
     switchSession,
     deleteSession,
     renameSession,
+    createBranch,
   }
 })

@@ -5,6 +5,7 @@ export const IPC_CHANNELS = {
   GET_CHAT_HISTORY: 'chat:get-history',
   CLEAR_CHAT: 'chat:clear',
   GENERATE_TITLE: 'chat:generate-title',
+  EDIT_AND_RESEND: 'chat:edit-and-resend',
 
   // Session related
   GET_SESSIONS: 'sessions:get-all',
@@ -12,6 +13,7 @@ export const IPC_CHANNELS = {
   SWITCH_SESSION: 'sessions:switch',
   DELETE_SESSION: 'sessions:delete',
   RENAME_SESSION: 'sessions:rename',
+  CREATE_BRANCH: 'sessions:create-branch',
 
   // Settings related
   GET_SETTINGS: 'settings:get',
@@ -21,10 +23,11 @@ export const IPC_CHANNELS = {
 // Type definitions for IPC messages
 export interface ChatMessage {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'error' // 'error' is display-only, not sent to AI
   content: string
   timestamp: number
   isStreaming?: boolean
+  errorDetails?: string // Original API error for 'error' role
 }
 
 export interface ChatSession {
@@ -33,6 +36,9 @@ export interface ChatSession {
   messages: ChatMessage[]
   createdAt: number
   updatedAt: number
+  // Branch support
+  parentId?: string // Parent session ID if this is a branch
+  branchFromMessageId?: string // The message ID from which this branch was created
 }
 
 export enum AIProvider {
@@ -142,5 +148,32 @@ export interface GenerateTitleRequest {
 export interface GenerateTitleResponse {
   success: boolean
   title?: string
+  error?: string
+}
+
+// Edit and resend message
+export interface EditAndResendRequest {
+  sessionId: string
+  messageId: string // The user message to edit
+  newContent: string // New content for the message
+}
+
+export interface EditAndResendResponse {
+  success: boolean
+  userMessage?: ChatMessage
+  assistantMessage?: ChatMessage
+  error?: string
+  errorDetails?: string
+}
+
+// Create branch from AI response
+export interface CreateBranchRequest {
+  parentSessionId: string
+  branchFromMessageId: string // The assistant message to branch from
+}
+
+export interface CreateBranchResponse {
+  success: boolean
+  session?: ChatSession
   error?: string
 }

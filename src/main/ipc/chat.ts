@@ -1,9 +1,97 @@
 import { ipcMain } from 'electron'
-import axios from 'axios'
-import * as store from '../store'
-import type { ChatMessage } from '@shared/ipc'
-import { IPC_CHANNELS, AIProvider } from '@shared/ipc'
+import axios, { AxiosError } from 'axios'
+import * as store from '../store.js'
+import type { ChatMessage } from '../../shared/ipc.js'
+import { IPC_CHANNELS, AIProvider } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
+
+// Parse API errors into user-friendly messages with original API response
+interface ParsedError {
+  message: string // User-friendly message
+  details?: string // Original API error details
+}
+
+function parseAPIError(error: AxiosError, provider: string, model: string): ParsedError {
+  const status = error.response?.status
+  const data = error.response?.data as any
+
+  // Extract error message from response
+  const apiMessage =
+    data?.error?.message || data?.error?.code || data?.message || data?.error || ''
+
+  // Format original API response for display
+  const details = apiMessage
+    ? `[${status || 'Error'}] ${apiMessage}`
+    : status
+      ? `HTTP ${status}`
+      : undefined
+
+  // Common error patterns with user-friendly messages
+  if (status === 400) {
+    if (apiMessage.includes('model') || apiMessage.includes('does not exist')) {
+      return {
+        message: `Invalid model "${model}". Please check your model name in Settings.`,
+        details,
+      }
+    }
+    if (apiMessage.includes('messages')) {
+      return { message: `Invalid message format.`, details }
+    }
+    return { message: `Bad request. Please check your API configuration.`, details }
+  }
+
+  if (status === 401) {
+    return {
+      message: `Authentication failed. Your ${provider} API key is invalid or expired.`,
+      details,
+    }
+  }
+
+  if (status === 403) {
+    return {
+      message: `Access denied. Your API key doesn't have permission to use model "${model}".`,
+      details,
+    }
+  }
+
+  if (status === 404) {
+    return {
+      message: `Model "${model}" not found. Please check the model name in Settings.`,
+      details,
+    }
+  }
+
+  if (status === 429) {
+    return {
+      message: `Rate limit exceeded. Please wait a moment and try again.`,
+      details,
+    }
+  }
+
+  if (status === 500 || status === 502 || status === 503) {
+    return {
+      message: `${provider} service is temporarily unavailable. Please try again later.`,
+      details,
+    }
+  }
+
+  if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+    return {
+      message: `Cannot connect to ${provider} API. Please check your internet connection.`,
+      details: error.code,
+    }
+  }
+
+  if (error.code === 'ETIMEDOUT') {
+    return { message: `Request timed out. Please try again.`, details: error.code }
+  }
+
+  // Fallback
+  return {
+    message: error.message || 'An unexpected error occurred',
+    details,
+  }
+}
 
 export function registerChatHandlers() {
   // 发送消息
@@ -24,6 +112,14 @@ export function registerChatHandlers() {
   ipcMain.handle(IPC_CHANNELS.GENERATE_TITLE, async (_event, { message }) => {
     return handleGenerateTitle(message)
   })
+
+  // 编辑消息并重新发送
+  ipcMain.handle(
+    IPC_CHANNELS.EDIT_AND_RESEND,
+    async (_event, { sessionId, messageId, newContent }) => {
+      return handleEditAndResend(sessionId, messageId, newContent)
+    }
+  )
 }
 
 async function handleSendMessage(sessionId: string, messageContent: string) {
@@ -74,9 +170,31 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     }
   } catch (error: any) {
     console.error('Error sending message:', error)
+
+    const settings = store.getSettings()
+    const providerNames: Record<string, string> = {
+      openai: 'OpenAI',
+      claude: 'Claude',
+      custom: 'Custom API',
+    }
+    const providerName = providerNames[settings.ai.provider] || settings.ai.provider
+
+    // Parse error for user-friendly message with details
+    let errorMessage: string
+    let errorDetails: string | undefined
+
+    if (axios.isAxiosError(error)) {
+      const parsed = parseAPIError(error, providerName, settings.ai.model)
+      errorMessage = parsed.message
+      errorDetails = parsed.details
+    } else {
+      errorMessage = error.message || 'Failed to send message'
+    }
+
     return {
       success: false,
-      error: error.message || 'Failed to send message',
+      error: errorMessage,
+      errorDetails, // Original API response for debugging
     }
   }
 }
@@ -139,23 +257,32 @@ async function callCustomAPI(message: string, settings: any): Promise<ChatMessag
     throw new Error('Custom API URL is not configured')
   }
 
+  // Use OpenAI-compatible format for custom API
   const response = await axios.post(
     settings.ai.customApiUrl,
     {
-      message,
       model: settings.ai.model,
+      messages: [{ role: 'user', content: message }],
+      temperature: settings.ai.temperature,
     },
     {
       headers: {
         'Authorization': `Bearer ${settings.ai.apiKey}`,
+        'Content-Type': 'application/json',
       },
     }
   )
 
+  // Handle OpenAI-compatible response format
+  const content =
+    response.data.choices?.[0]?.message?.content ||
+    response.data.message ||
+    response.data.content
+
   const assistantMessage: ChatMessage = {
     id: uuidv4(),
     role: 'assistant',
-    content: response.data.message || response.data.content,
+    content,
     timestamp: Date.now(),
   }
 
@@ -249,19 +376,117 @@ async function generateTitleWithCustomAPI(prompt: string, settings: any): Promis
     throw new Error('Custom API URL is not configured')
   }
 
+  // Use OpenAI-compatible format for custom API
   const response = await axios.post(
     settings.ai.customApiUrl,
     {
-      message: prompt,
       model: settings.ai.model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 20,
     },
     {
       headers: {
         Authorization: `Bearer ${settings.ai.apiKey}`,
+        'Content-Type': 'application/json',
       },
     }
   )
 
-  const content = response.data.message || response.data.content
+  // Handle OpenAI-compatible response format
+  const content =
+    response.data.choices?.[0]?.message?.content ||
+    response.data.message ||
+    response.data.content
   return content.trim().replace(/^["']|["']$/g, '')
+}
+
+// Edit message and resend to AI
+async function handleEditAndResend(sessionId: string, messageId: string, newContent: string) {
+  try {
+    const session = store.getSession(sessionId)
+    if (!session) {
+      return { success: false, error: 'Session not found' }
+    }
+
+    // Find the message index
+    const messageIndex = session.messages.findIndex((m) => m.id === messageId)
+    if (messageIndex === -1) {
+      return { success: false, error: 'Message not found' }
+    }
+
+    // Remove all messages after this one
+    store.removeMessagesFrom(sessionId, messageIndex)
+
+    // Update the message content and get new message ID
+    const userMessage: ChatMessage = {
+      id: uuidv4(),
+      role: 'user',
+      content: newContent,
+      timestamp: Date.now(),
+    }
+    store.addMessage(sessionId, userMessage)
+
+    // Get settings and call AI
+    const settings = store.getSettings()
+
+    if (!settings.ai.apiKey) {
+      return {
+        success: false,
+        error: 'API Key not configured. Please configure your AI settings.',
+      }
+    }
+
+    let assistantMessage: ChatMessage
+
+    switch (settings.ai.provider) {
+      case AIProvider.OpenAI:
+        assistantMessage = await callOpenAI(newContent, settings)
+        break
+      case AIProvider.Claude:
+        assistantMessage = await callClaude(newContent, settings)
+        break
+      case AIProvider.Custom:
+        assistantMessage = await callCustomAPI(newContent, settings)
+        break
+      default:
+        throw new Error('Unknown AI provider')
+    }
+
+    // Save assistant message
+    store.addMessage(sessionId, assistantMessage)
+
+    return {
+      success: true,
+      userMessage,
+      assistantMessage,
+    }
+  } catch (error: any) {
+    console.error('Error editing and resending message:', error)
+
+    const settings = store.getSettings()
+    const providerNames: Record<string, string> = {
+      openai: 'OpenAI',
+      claude: 'Claude',
+      custom: 'Custom API',
+    }
+    const providerName = providerNames[settings.ai.provider] || settings.ai.provider
+
+    let errorMessage: string
+    let errorDetails: string | undefined
+
+    if (axios.isAxiosError(error)) {
+      const parsed = parseAPIError(error, providerName, settings.ai.model)
+      errorMessage = parsed.message
+      errorDetails = parsed.details
+    } else {
+      errorMessage = error.message || 'Failed to send message'
+    }
+
+    return {
+      success: false,
+      error: errorMessage,
+      errorDetails,
+    }
+  }
 }

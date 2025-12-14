@@ -1,6 +1,6 @@
-import { registerChatHandlers } from './chat'
-import { registerSessionHandlers } from './sessions'
-import { registerSettingsHandlers } from './settings'
+import { registerChatHandlers } from './chat.js'
+import { registerSessionHandlers } from './sessions.js'
+import { registerSettingsHandlers } from './settings.js'
 
 export function initializeIPC() {
   registerChatHandlers()

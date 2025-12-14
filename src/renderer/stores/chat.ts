@@ -6,6 +6,7 @@ export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  const errorDetails = ref<string | null>(null) // Original API error details
 
   const messageCount = computed(() => messages.value.length)
 
@@ -38,6 +39,7 @@ export const useChatStore = defineStore('chat', () => {
 
   async function sendMessage(sessionId: string, content: string) {
     error.value = null
+    errorDetails.value = null
 
     // Create and show user message immediately (before API call)
     const tempUserMessage: ChatMessage = {
@@ -56,8 +58,18 @@ export const useChatStore = defineStore('chat', () => {
 
       if (!response.success) {
         error.value = response.error || 'Failed to send message'
-        // Remove the temp user message on error
-        messages.value = messages.value.filter((m) => m.id !== tempUserMessage.id)
+        errorDetails.value = response.errorDetails || null
+
+        // Add error as a display-only message in the chat (not saved to backend)
+        const errorMessage: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: 'error',
+          content: response.error || 'Failed to send message',
+          timestamp: Date.now(),
+          errorDetails: response.errorDetails,
+        }
+        addMessage(errorMessage)
+
         return false
       }
 
@@ -91,10 +103,67 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function clearError() {
+    error.value = null
+    errorDetails.value = null
+  }
+
+  async function editAndResend(sessionId: string, messageId: string, newContent: string) {
+    error.value = null
+    errorDetails.value = null
+    isLoading.value = true
+
+    try {
+      const response = await window.electronAPI.editAndResend(sessionId, messageId, newContent)
+
+      if (!response.success) {
+        error.value = response.error || 'Failed to edit and resend message'
+        errorDetails.value = response.errorDetails || null
+
+        // Add error as a display-only message
+        const errorMessage: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: 'error',
+          content: response.error || 'Failed to edit and resend message',
+          timestamp: Date.now(),
+          errorDetails: response.errorDetails,
+        }
+        addMessage(errorMessage)
+
+        return false
+      }
+
+      // Reload the chat history to reflect the changes
+      const historyResponse = await window.electronAPI.getChatHistory(sessionId)
+      if (historyResponse.success && historyResponse.messages) {
+        setMessages(historyResponse.messages)
+      }
+
+      // Add streaming effect to the new assistant message
+      if (response.assistantMessage) {
+        const lastMessage = messages.value[messages.value.length - 1]
+        if (lastMessage && lastMessage.role === 'assistant') {
+          updateMessage(lastMessage.id, { isStreaming: true })
+          setTimeout(() => {
+            updateMessage(lastMessage.id, { isStreaming: false })
+          }, Math.min(lastMessage.content.length * 10, 3000))
+        }
+      }
+
+      return true
+    } catch (err: any) {
+      error.value = err.message || 'An error occurred'
+      return false
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   return {
     messages,
     isLoading,
     error,
+    errorDetails,
     messageCount,
     userMessages,
     assistantMessages,
@@ -102,6 +171,8 @@ export const useChatStore = defineStore('chat', () => {
     addMessage,
     updateMessage,
     clearMessages,
+    clearError,
     sendMessage,
+    editAndResend,
   }
 })

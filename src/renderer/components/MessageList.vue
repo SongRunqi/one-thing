@@ -4,7 +4,13 @@
       <div class="empty-title">ChatGPT 5.2</div>
       <div class="empty-subtitle">Ask anything</div>
     </div>
-    <MessageItem v-for="message in messages" :key="message.id" :message="message" />
+    <MessageItem
+      v-for="message in messages"
+      :key="message.id"
+      :message="message"
+      @edit="handleEdit"
+      @branch="handleBranch"
+    />
 
     <!-- Loading indicator -->
     <div v-if="isLoading" class="thinking-indicator">
@@ -30,6 +36,8 @@
 import { ref, watch, nextTick } from 'vue'
 import type { ChatMessage } from '@/types'
 import MessageItem from './MessageItem.vue'
+import { useChatStore } from '@/stores/chat'
+import { useSessionsStore } from '@/stores/sessions'
 
 interface Props {
   messages: ChatMessage[]
@@ -40,6 +48,8 @@ const props = withDefaults(defineProps<Props>(), {
   isLoading: false,
 })
 
+const chatStore = useChatStore()
+const sessionsStore = useSessionsStore()
 const messageListRef = ref<HTMLElement | null>(null)
 
 // Auto-scroll to bottom when messages change or loading state changes
@@ -53,6 +63,20 @@ watch(
   },
   { deep: true }
 )
+
+// Handle edit message event
+async function handleEdit(messageId: string, newContent: string) {
+  const currentSession = sessionsStore.currentSession
+  if (!currentSession) return
+  await chatStore.editAndResend(currentSession.id, messageId, newContent)
+}
+
+// Handle branch creation event
+async function handleBranch(messageId: string) {
+  const currentSession = sessionsStore.currentSession
+  if (!currentSession) return
+  await sessionsStore.createBranch(currentSession.id, messageId)
+}
 </script>
 
 <style scoped>
