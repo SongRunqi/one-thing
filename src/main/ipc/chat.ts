@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import * as store from '../store.js'
 import type { ChatMessage, AppSettings, ProviderConfig, CustomProviderConfig } from '../../shared/ipc.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
@@ -7,6 +7,7 @@ import {
   generateChatResponseWithReasoning,
   generateChatTitle,
   isProviderSupported,
+  streamChatResponseWithReasoning,
 } from '../providers/index.js'
 
 // Extract detailed error information from API responses
@@ -74,9 +75,14 @@ function getProviderApiType(settings: AppSettings, providerId: string): 'openai'
 }
 
 export function registerChatHandlers() {
-  // 发送消息
+  // 发送消息（非流式）
   ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE, async (_event, { sessionId, message }) => {
     return handleSendMessage(sessionId, message)
+  })
+
+  // 发送消息（流式）- 使用事件发射器
+  ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE_STREAM, async (event, { sessionId, message }) => {
+    return handleSendMessageStream(event.sender, sessionId, message)
   })
 
   // 获取聊天历史
@@ -303,6 +309,162 @@ async function handleGenerateTitle(userMessage: string) {
     return {
       success: true,
       title: userMessage.slice(0, 30) + (userMessage.length > 30 ? '...' : ''),
+    }
+  }
+}
+
+// Handle streaming message with event emitter
+async function handleSendMessageStream(sender: Electron.WebContents, sessionId: string, messageContent: string) {
+  try {
+    // Get session to check if this is the first user message
+    const session = store.getSession(sessionId)
+    const isFirstUserMessage = session && session.messages.filter(m => m.role === 'user').length === 0
+
+    // For branch sessions, check if this is the first NEW user message (after inherited messages)
+    const isBranchFirstMessage = session?.parentSessionId && session.messages.length > 0 &&
+      !session.messages.some(m => m.role === 'user' && m.timestamp > session.createdAt)
+
+    // Save user message
+    const userMessage: ChatMessage = {
+      id: uuidv4(),
+      role: 'user',
+      content: messageContent,
+      timestamp: Date.now(),
+    }
+
+    store.addMessage(sessionId, userMessage)
+
+    // Auto-rename session based on first user message
+    if (isFirstUserMessage || isBranchFirstMessage) {
+      const newTitle = generateTitleFromMessage(messageContent)
+      store.renameSession(sessionId, newTitle)
+    }
+
+    // Get settings and call AI
+    const settings = store.getSettings()
+    const providerId = settings.ai.provider
+    const providerConfig = getProviderConfig(settings)
+
+    if (!providerConfig.apiKey) {
+      return {
+        success: false,
+        error: 'API Key not configured. Please configure your AI settings.',
+      }
+    }
+
+    if (!isProviderSupported(providerId)) {
+      return {
+        success: false,
+        error: `Unsupported provider: ${providerId}`,
+      }
+    }
+
+    // Create assistant message with empty content initially
+    const assistantMessageId = uuidv4()
+    const assistantMessage: ChatMessage = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      isStreaming: true,
+    }
+
+    // Add empty assistant message to store
+    store.addMessage(sessionId, assistantMessage)
+
+    // Send initial response with message ID and user message
+    const initialResponse = {
+      success: true,
+      userMessage,
+      messageId: assistantMessageId,
+      sessionName: session?.name,
+    }
+
+    // Start streaming in background
+    setTimeout(async () => {
+      try {
+        // Use AI SDK to generate streaming response
+        const apiType = getProviderApiType(settings, providerId)
+        const stream = streamChatResponseWithReasoning(
+          providerId,
+          {
+            apiKey: providerConfig.apiKey,
+            baseUrl: providerConfig.baseUrl,
+            model: providerConfig.model,
+            apiType,
+          },
+          [{ role: 'user', content: messageContent }],
+          { temperature: settings.ai.temperature }
+        )
+
+        let accumulatedContent = ''
+        let accumulatedReasoning = ''
+
+        // Process stream chunks
+        for await (const chunk of stream) {
+          if (chunk.text) {
+            accumulatedContent += chunk.text
+
+            // Update message in store with accumulated content
+            store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
+
+            // Send text chunk via event
+            sender.send('chat:stream-chunk', {
+              type: 'text',
+              content: chunk.text,
+              messageId: assistantMessageId,
+            })
+          }
+
+          if (chunk.reasoning) {
+            accumulatedReasoning = chunk.reasoning
+
+            // Update reasoning in store
+            store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
+
+            // Send reasoning chunk via event
+            sender.send('chat:stream-chunk', {
+              type: 'reasoning',
+              content: '',
+              messageId: assistantMessageId,
+              reasoning: chunk.reasoning,
+            })
+          }
+        }
+
+        // Stream complete - finalize message
+        store.updateMessageStreaming(sessionId, assistantMessageId, false)
+
+        // Get updated session name if it was renamed
+        const updatedSession = store.getSession(sessionId)
+        const sessionName = updatedSession?.name
+
+        // Send completion event
+        sender.send('chat:stream-complete', {
+          messageId: assistantMessageId,
+          sessionName,
+        })
+
+      } catch (error: any) {
+        console.error('Error in streaming background task:', error)
+
+        // Send error event
+        sender.send('chat:stream-error', {
+          messageId: assistantMessageId,
+          error: error.message || 'Failed to stream message',
+          errorDetails: extractErrorDetails(error),
+        })
+      }
+    }, 0)
+
+    return initialResponse
+
+  } catch (error: any) {
+    console.error('Error starting stream:', error)
+    return {
+      success: false,
+      error: error.message || 'Failed to start streaming',
+      errorDetails: extractErrorDetails(error),
     }
   }
 }

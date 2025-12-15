@@ -24,6 +24,9 @@ export {
   renameSession,
   addMessage,
   updateMessageAndTruncate,
+  updateMessageContent,
+  updateMessageReasoning,
+  updateMessageStreaming,
 
   // Initialization
   initializeStores,

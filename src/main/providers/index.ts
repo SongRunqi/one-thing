@@ -10,7 +10,7 @@
  * That's it! The provider will be automatically registered and available.
  */
 
-import { generateText } from 'ai'
+import { generateText, streamText } from 'ai'
 import {
   initializeRegistry,
   getAvailableProviders as getProvidersFromRegistry,
@@ -95,6 +95,101 @@ export async function generateChatResponse(
 ): Promise<string> {
   const result = await generateChatResponseWithReasoning(providerId, config, messages, options)
   return result.text
+}
+
+/**
+ * Stream a chat response using the AI SDK
+ * Returns an async generator that yields text chunks
+ */
+export async function* streamChatResponse(
+  providerId: string,
+  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+  options: { temperature?: number; maxTokens?: number } = {}
+): AsyncGenerator<{ text: string; reasoning?: string }, void, unknown> {
+  const provider = createProvider(providerId, config)
+  const model = provider.createModel(config.model)
+
+  const isReasoning = isReasoningModel(config.model)
+
+  // Build streamText options
+  const streamOptions: Parameters<typeof streamText>[0] = {
+    model,
+    messages,
+    maxOutputTokens: options.maxTokens || 4096,
+  }
+
+  // Only add temperature for non-reasoning models
+  if (!isReasoning && options.temperature !== undefined) {
+    streamOptions.temperature = options.temperature
+  }
+
+  const stream = await streamText(streamOptions)
+
+  for await (const chunk of stream.textStream) {
+    yield { text: chunk }
+  }
+}
+
+/**
+ * Stream a chat response with reasoning/thinking content
+ * Returns an async generator that yields text and reasoning chunks
+ */
+export async function* streamChatResponseWithReasoning(
+  providerId: string,
+  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+  options: { temperature?: number; maxTokens?: number } = {}
+): AsyncGenerator<{ text: string; reasoning?: string }, void, unknown> {
+  const provider = createProvider(providerId, config)
+  const model = provider.createModel(config.model)
+
+  const isReasoning = isReasoningModel(config.model)
+
+  // Build streamText options
+  const streamOptions: Parameters<typeof streamText>[0] = {
+    model,
+    messages,
+    maxOutputTokens: options.maxTokens || 4096,
+  }
+
+  // Only add temperature for non-reasoning models
+  if (!isReasoning && options.temperature !== undefined) {
+    streamOptions.temperature = options.temperature
+  }
+
+  const stream = await streamText(streamOptions)
+
+  let accumulatedReasoning: string[] = []
+
+  for await (const chunk of stream.fullStream) {
+    // Extract text from chunk
+    let text = ''
+    if (chunk.type === 'text-delta') {
+      // text-delta事件包含textDelta属性
+      const textChunk = chunk as any
+      text = textChunk.textDelta || ''
+    }
+
+    // Extract reasoning from chunk
+    let reasoning: string | undefined = undefined
+    if (chunk.type === 'reasoning-delta') {
+      // reasoning-delta事件包含textDelta属性
+      const reasoningChunk = chunk as any
+      reasoning = reasoningChunk.textDelta || ''
+
+      if (reasoning) {
+        accumulatedReasoning.push(reasoning)
+      }
+    }
+
+    // For reasoning chunks, we yield them separately
+    if (chunk.type === 'reasoning-delta') {
+      yield { text: '', reasoning }
+    } else if (text) {
+      yield { text, reasoning: accumulatedReasoning.length > 0 ? accumulatedReasoning.join('\n') : undefined }
+    }
+  }
 }
 
 /**

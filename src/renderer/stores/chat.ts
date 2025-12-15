@@ -104,6 +104,149 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function sendMessageStream(sessionId: string, content: string) {
+    error.value = null
+    errorDetails.value = null
+
+    // Create and show user message immediately (before API call)
+    const tempUserMessage: ChatMessage = {
+      id: `temp-${Date.now()}`,
+      role: 'user',
+      content,
+      timestamp: Date.now(),
+    }
+    addMessage(tempUserMessage)
+
+    // Set loading state after user message is shown
+    isLoading.value = true
+
+    let assistantMessageId: string | null = null
+    let unsubscribeChunk: (() => void) | null = null
+    let unsubscribeComplete: (() => void) | null = null
+    let unsubscribeError: (() => void) | null = null
+
+    try {
+      const response = await window.electronAPI.sendMessageStream(sessionId, content)
+
+      if (!response.success) {
+        error.value = response.error || 'Failed to send message'
+        errorDetails.value = response.errorDetails || null
+
+        // Add error as a display-only message in the chat (not saved to backend)
+        const errorMessage: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: 'error',
+          content: response.error || 'Failed to send message',
+          timestamp: Date.now(),
+          errorDetails: response.errorDetails,
+        }
+        addMessage(errorMessage)
+
+        return false
+      }
+
+      assistantMessageId = response.messageId
+
+      // Replace temp user message with actual message from server
+      if (response.userMessage) {
+        const tempIndex = messages.value.findIndex((m) => m.id === tempUserMessage.id)
+        if (tempIndex !== -1) {
+          messages.value[tempIndex] = response.userMessage
+        }
+      }
+
+      // Create empty assistant message for streaming
+      const streamingMessage: ChatMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        isStreaming: true,
+      }
+      addMessage(streamingMessage)
+
+      // Set up event listeners for streaming
+      unsubscribeChunk = window.electronAPI.onStreamChunk((chunk) => {
+        if (chunk.messageId === assistantMessageId) {
+          if (chunk.type === 'text') {
+            // Append text to message content
+            const message = messages.value.find(m => m.id === assistantMessageId)
+            if (message) {
+              message.content += chunk.content
+            }
+          } else if (chunk.type === 'reasoning') {
+            // Update reasoning
+            updateMessage(assistantMessageId!, { reasoning: chunk.reasoning })
+          }
+        }
+      })
+
+      // Note: We don't set up a separate complete listener here
+      // because we handle it in the Promise below
+
+      unsubscribeError = window.electronAPI.onStreamError((data) => {
+        if (data.messageId === assistantMessageId) {
+          error.value = data.error || 'Streaming error'
+          errorDetails.value = data.errorDetails || null
+
+          // Add error as a display-only message
+          const errorMessage: ChatMessage = {
+            id: `error-${Date.now()}`,
+            role: 'error',
+            content: data.error || 'Streaming error',
+            timestamp: Date.now(),
+            errorDetails: data.errorDetails,
+          }
+          addMessage(errorMessage)
+
+          // Remove the streaming assistant message
+          messages.value = messages.value.filter((m) => m.id !== assistantMessageId)
+
+          // Clean up listeners
+          if (unsubscribeChunk) unsubscribeChunk()
+          if (unsubscribeComplete) unsubscribeComplete()
+          if (unsubscribeError) unsubscribeError()
+
+          isLoading.value = false
+          return false
+        }
+      })
+
+      // Return a promise that resolves when streaming is complete
+      return new Promise((resolve) => {
+        // We'll resolve this promise when we get the complete event
+        const completeListener = window.electronAPI.onStreamComplete((data) => {
+          if (data.messageId === assistantMessageId) {
+            // Mark message as not streaming
+            updateMessage(assistantMessageId!, { isStreaming: false })
+
+            // Clean up listeners
+            if (unsubscribeChunk) unsubscribeChunk()
+            if (unsubscribeComplete) unsubscribeComplete()
+            if (unsubscribeError) unsubscribeError()
+
+            isLoading.value = false
+            completeListener() // Clean up this listener
+            resolve(data.sessionName || true)
+          }
+        })
+      })
+
+    } catch (err: any) {
+      error.value = err.message || 'An error occurred'
+      // Remove the temp user message on error
+      messages.value = messages.value.filter((m) => m.id !== tempUserMessage.id)
+
+      // Clean up listeners if they were set up
+      if (unsubscribeChunk) unsubscribeChunk()
+      if (unsubscribeComplete) unsubscribeComplete()
+      if (unsubscribeError) unsubscribeError()
+
+      isLoading.value = false
+      return false
+    }
+  }
+
   function clearError() {
     error.value = null
     errorDetails.value = null
@@ -183,6 +326,7 @@ export const useChatStore = defineStore('chat', () => {
     clearMessages,
     clearError,
     sendMessage,
+    sendMessageStream,
     editAndResend,
   }
 })

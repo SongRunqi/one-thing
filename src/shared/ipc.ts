@@ -2,6 +2,7 @@
 export const IPC_CHANNELS = {
   // Chat related
   SEND_MESSAGE: 'chat:send-message',
+  SEND_MESSAGE_STREAM: 'chat:send-message-stream',
   GET_CHAT_HISTORY: 'chat:get-history',
   CLEAR_CHAT: 'chat:clear',
   GENERATE_TITLE: 'chat:generate-title',
@@ -275,4 +276,19 @@ export interface GetProvidersResponse {
   success: boolean
   providers?: ProviderInfo[]
   error?: string
+}
+
+// Stream message types
+export interface StreamMessageChunk {
+  type: 'text' | 'reasoning' | 'error' | 'complete'
+  content: string
+  messageId?: string
+  reasoning?: string
+}
+
+export interface SendMessageStreamResponse {
+  success: boolean
+  chunk?: StreamMessageChunk
+  error?: string
+  errorDetails?: string
 }
