@@ -127,14 +127,43 @@ export async function generateChatResponseWithReasoning(
   const result = await generateText(generateOptions)
 
   // Extract reasoning content if available
-  // AI SDK stores reasoning in result.experimental_reasoning or result.reasoning
-  const reasoning = (result as any).reasoning?.content ||
-                    (result as any).experimental_reasoning?.content ||
-                    undefined
+  // AI SDK stores reasoning in different formats depending on the provider:
+  // - DeepSeek: result.reasoning (array of ReasoningPart) or result.reasoning as string
+  // - Other providers may use experimental_reasoning
+  let reasoning: string | undefined = undefined
+
+  if (result.reasoning) {
+    // Handle array of reasoning parts (AI SDK format for streaming)
+    if (Array.isArray(result.reasoning)) {
+      reasoning = result.reasoning
+        .map((part: any) => {
+          if (typeof part === 'string') return part
+          if (part.type === 'text') return part.text
+          if (part.content) return part.content
+          return ''
+        })
+        .filter(Boolean)
+        .join('\n')
+    } else if (typeof result.reasoning === 'string') {
+      reasoning = result.reasoning
+    } else if ((result.reasoning as any).content) {
+      reasoning = (result.reasoning as any).content
+    }
+  }
+
+  // Fallback to experimental_reasoning if reasoning is not found
+  if (!reasoning && (result as any).experimental_reasoning) {
+    const expReasoning = (result as any).experimental_reasoning
+    if (typeof expReasoning === 'string') {
+      reasoning = expReasoning
+    } else if (expReasoning.content) {
+      reasoning = expReasoning.content
+    }
+  }
 
   return {
     text: result.text,
-    reasoning,
+    reasoning: reasoning || undefined,
   }
 }
 
