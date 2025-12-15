@@ -6,6 +6,35 @@ const electronAPI = {
   sendMessage: (sessionId: string, message: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE, { sessionId, message }),
 
+  // Streaming chat methods (for reasoning models)
+  sendMessageStream: (sessionId: string, message: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE_STREAM, { sessionId, message }),
+
+  // Stream event listeners
+  onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.STREAM_REASONING_DELTA, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_REASONING_DELTA, listener)
+  },
+
+  onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.STREAM_TEXT_DELTA, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_TEXT_DELTA, listener)
+  },
+
+  onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.STREAM_COMPLETE, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_COMPLETE, listener)
+  },
+
+  onStreamError: (callback: (data: { messageId?: string; error: string; errorDetails?: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.STREAM_ERROR, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_ERROR, listener)
+  },
+
   getChatHistory: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_CHAT_HISTORY, { sessionId }),
 
