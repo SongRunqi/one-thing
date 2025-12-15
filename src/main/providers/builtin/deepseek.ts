@@ -1,10 +1,10 @@
 /**
  * DeepSeek Provider Definition
  *
- * Uses OpenAI-compatible API with chat/completions endpoint.
+ * Uses the official @ai-sdk/deepseek package for proper reasoning/thinking support.
  */
 
-import { createOpenAI } from '@ai-sdk/openai'
+import { createDeepSeek } from '@ai-sdk/deepseek'
 import type { ProviderDefinition } from '../types.js'
 
 const deepseekProvider: ProviderDefinition = {
@@ -14,7 +14,7 @@ const deepseekProvider: ProviderDefinition = {
     id: 'deepseek',
     name: 'DeepSeek',
     description: 'DeepSeek-V3, DeepSeek-R1 and other DeepSeek models',
-    defaultBaseUrl: 'https://api.deepseek.com/v1',
+    defaultBaseUrl: 'https://api.deepseek.com',
     defaultModel: 'deepseek-chat',
     icon: 'deepseek',
     supportsCustomBaseUrl: true,
@@ -22,13 +22,12 @@ const deepseekProvider: ProviderDefinition = {
   },
 
   create: ({ apiKey, baseUrl }) => {
-    const provider = createOpenAI({
+    const provider = createDeepSeek({
       apiKey,
-      baseURL: baseUrl || 'https://api.deepseek.com/v1',
+      baseURL: baseUrl || 'https://api.deepseek.com',
     })
     return {
-      // Use provider.chat() to use chat/completions API instead of responses API
-      createModel: (modelId: string) => provider.chat(modelId),
+      createModel: (modelId: string) => provider(modelId),
     }
   },
 }
