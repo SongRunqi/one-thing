@@ -2,17 +2,11 @@
 export const IPC_CHANNELS = {
   // Chat related
   SEND_MESSAGE: 'chat:send-message',
-  SEND_MESSAGE_STREAM: 'chat:send-message-stream',  // For streaming responses
+  SEND_MESSAGE_STREAM: 'chat:send-message-stream',
   GET_CHAT_HISTORY: 'chat:get-history',
   CLEAR_CHAT: 'chat:clear',
   GENERATE_TITLE: 'chat:generate-title',
   EDIT_AND_RESEND: 'chat:edit-and-resend',
-
-  // Streaming events (main -> renderer)
-  STREAM_REASONING_DELTA: 'chat:stream-reasoning-delta',
-  STREAM_TEXT_DELTA: 'chat:stream-text-delta',
-  STREAM_COMPLETE: 'chat:stream-complete',
-  STREAM_ERROR: 'chat:stream-error',
 
   // Session related
   GET_SESSIONS: 'sessions:get-all',
@@ -41,7 +35,6 @@ export interface ChatMessage {
   content: string
   timestamp: number
   isStreaming?: boolean
-  isThinking?: boolean  // Whether AI is currently in thinking/reasoning phase
   errorDetails?: string  // Additional error details for error messages
   reasoning?: string  // Thinking/reasoning process for reasoning models (e.g., deepseek-reasoner)
 }
@@ -283,4 +276,19 @@ export interface GetProvidersResponse {
   success: boolean
   providers?: ProviderInfo[]
   error?: string
+}
+
+// Stream message types
+export interface StreamMessageChunk {
+  type: 'text' | 'reasoning' | 'error' | 'complete'
+  content: string
+  messageId?: string
+  reasoning?: string
+}
+
+export interface SendMessageStreamResponse {
+  success: boolean
+  chunk?: StreamMessageChunk
+  error?: string
+  errorDetails?: string
 }

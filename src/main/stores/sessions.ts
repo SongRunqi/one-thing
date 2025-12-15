@@ -215,3 +215,78 @@ export function updateMessageAndTruncate(
 
   return true
 }
+
+// Update message content (for streaming)
+export function updateMessageContent(sessionId: string, messageId: string, newContent: string): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  message.content = newContent
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
+
+// Update message reasoning (for streaming)
+export function updateMessageReasoning(sessionId: string, messageId: string, reasoning: string): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  message.reasoning = reasoning
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
+
+// Update message streaming status
+export function updateMessageStreaming(sessionId: string, messageId: string, isStreaming: boolean): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  message.isStreaming = isStreaming
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}

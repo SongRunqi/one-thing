@@ -260,8 +260,8 @@ async function handleSendMessage(message: string) {
 
   const session = currentSession.value
 
-  // Send message - backend will auto-rename session based on first message
-  const result = await chatStore.sendMessage(session.id, message)
+  // Send message using streaming
+  const result = await chatStore.sendMessageStream(session.id, message)
 
   // If backend returned a new session name, update local sessions store
   if (typeof result === 'string') {

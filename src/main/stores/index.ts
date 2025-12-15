@@ -12,6 +12,9 @@ export {
   renameSession,
   addMessage,
   updateMessageAndTruncate,
+  updateMessageContent,
+  updateMessageReasoning,
+  updateMessageStreaming,
 } from './sessions.js'
 
 // Migration function

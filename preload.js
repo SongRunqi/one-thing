@@ -7,11 +7,33 @@ const electronAPI = {
   sendMessage: (sessionId, message) =>
     ipcRenderer.invoke('chat:send-message', { sessionId, message }),
 
+  sendMessageStream: (sessionId, message) =>
+    ipcRenderer.invoke('chat:send-message-stream', { sessionId, message }),
+
   getChatHistory: (sessionId) =>
     ipcRenderer.invoke('chat:get-history', { sessionId }),
 
   generateTitle: (message) =>
     ipcRenderer.invoke('chat:generate-title', { message }),
+
+  // Stream event listeners
+  onStreamChunk: (callback) => {
+    const listener = (_event, data) => callback(data)
+    ipcRenderer.on('chat:stream-chunk', listener)
+    return () => ipcRenderer.removeListener('chat:stream-chunk', listener)
+  },
+
+  onStreamComplete: (callback) => {
+    const listener = (_event, data) => callback(data)
+    ipcRenderer.on('chat:stream-complete', listener)
+    return () => ipcRenderer.removeListener('chat:stream-complete', listener)
+  },
+
+  onStreamError: (callback) => {
+    const listener = (_event, data) => callback(data)
+    ipcRenderer.on('chat:stream-error', listener)
+    return () => ipcRenderer.removeListener('chat:stream-error', listener)
+  },
 
   // Session methods
   getSessions: () =>
