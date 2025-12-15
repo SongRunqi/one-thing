@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import type { ChatMessage } from '@/types'
 
 export const useChatStore = defineStore('chat', () => {
@@ -7,6 +7,9 @@ export const useChatStore = defineStore('chat', () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
   const errorDetails = ref<string | null>(null) // Original API error details
+
+  // Stream cleanup functions
+  const streamCleanups = ref<(() => void)[]>([])
 
   const messageCount = computed(() => messages.value.length)
 
@@ -34,6 +37,141 @@ export const useChatStore = defineStore('chat', () => {
     const index = messages.value.findIndex((m) => m.id === messageId)
     if (index !== -1) {
       messages.value[index] = { ...messages.value[index], ...updates }
+    }
+  }
+
+  // Append content to a message (for streaming)
+  function appendToMessage(messageId: string, field: 'content' | 'reasoning', delta: string) {
+    const index = messages.value.findIndex((m) => m.id === messageId)
+    if (index !== -1) {
+      const currentValue = messages.value[index][field] || ''
+      messages.value[index] = {
+        ...messages.value[index],
+        [field]: currentValue + delta,
+      }
+    }
+  }
+
+  // Clean up stream listeners
+  function cleanupStreamListeners() {
+    streamCleanups.value.forEach(cleanup => cleanup())
+    streamCleanups.value = []
+  }
+
+  // Setup stream listeners for a specific message
+  function setupStreamListeners(messageId: string) {
+    cleanupStreamListeners()
+
+    // Listen for reasoning deltas
+    const cleanupReasoning = window.electronAPI.onStreamReasoningDelta((data) => {
+      if (data.messageId === messageId) {
+        appendToMessage(messageId, 'reasoning', data.delta)
+      }
+    })
+    streamCleanups.value.push(cleanupReasoning)
+
+    // Listen for text deltas
+    const cleanupText = window.electronAPI.onStreamTextDelta((data) => {
+      if (data.messageId === messageId) {
+        // When we start receiving text, thinking is done
+        updateMessage(messageId, { isThinking: false })
+        appendToMessage(messageId, 'content', data.delta)
+      }
+    })
+    streamCleanups.value.push(cleanupText)
+
+    // Listen for completion
+    const cleanupComplete = window.electronAPI.onStreamComplete((data) => {
+      if (data.messageId === messageId) {
+        updateMessage(messageId, {
+          content: data.text,
+          reasoning: data.reasoning,
+          isStreaming: false,
+          isThinking: false,
+        })
+        cleanupStreamListeners()
+      }
+    })
+    streamCleanups.value.push(cleanupComplete)
+
+    // Listen for errors
+    const cleanupError = window.electronAPI.onStreamError((data) => {
+      if (!data.messageId || data.messageId === messageId) {
+        error.value = data.error
+        errorDetails.value = data.errorDetails || null
+        updateMessage(messageId, { isStreaming: false, isThinking: false })
+        cleanupStreamListeners()
+      }
+    })
+    streamCleanups.value.push(cleanupError)
+  }
+
+  // Send message with streaming support
+  async function sendMessageStream(sessionId: string, content: string) {
+    error.value = null
+    errorDetails.value = null
+
+    // Create and show user message immediately
+    const tempUserMessage: ChatMessage = {
+      id: `temp-${Date.now()}`,
+      role: 'user',
+      content,
+      timestamp: Date.now(),
+    }
+    addMessage(tempUserMessage)
+
+    isLoading.value = true
+
+    try {
+      const response = await window.electronAPI.sendMessageStream(sessionId, content)
+
+      if (!response.success) {
+        error.value = response.error || 'Failed to send message'
+        errorDetails.value = response.errorDetails || null
+
+        const errorMessage: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: 'error',
+          content: response.error || 'Failed to send message',
+          timestamp: Date.now(),
+          errorDetails: response.errorDetails,
+        }
+        addMessage(errorMessage)
+        return false
+      }
+
+      // Replace temp user message
+      if (response.userMessage) {
+        const tempIndex = messages.value.findIndex((m) => m.id === tempUserMessage.id)
+        if (tempIndex !== -1) {
+          messages.value[tempIndex] = response.userMessage
+        }
+      }
+
+      // Add placeholder assistant message for streaming
+      if (response.assistantMessageId) {
+        const streamingMessage: ChatMessage = {
+          id: response.assistantMessageId,
+          role: 'assistant',
+          content: '',
+          reasoning: '',
+          timestamp: Date.now(),
+          isStreaming: true,
+          isThinking: true, // Start in thinking mode
+        }
+        addMessage(streamingMessage)
+
+        // Setup stream listeners
+        setupStreamListeners(response.assistantMessageId)
+      }
+
+      return response.sessionName || true
+    } catch (err: any) {
+      error.value = err.message || 'An error occurred'
+      messages.value = messages.value.filter((m) => m.id !== tempUserMessage.id)
+      return false
+    } finally {
+      isLoading.value = false
     }
   }
 
@@ -183,6 +321,8 @@ export const useChatStore = defineStore('chat', () => {
     clearMessages,
     clearError,
     sendMessage,
+    sendMessageStream,
     editAndResend,
+    cleanupStreamListeners,
   }
 })

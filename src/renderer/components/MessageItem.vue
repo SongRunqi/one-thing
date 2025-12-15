@@ -40,16 +40,39 @@
       </div>
       <!-- Normal display -->
       <template v-else>
-        <!-- Reasoning/Thinking section (collapsible) -->
-        <div v-if="message.reasoning" class="reasoning-section">
-          <button class="reasoning-toggle" @click="showReasoning = !showReasoning">
-            <svg :class="['reasoning-icon', { expanded: showReasoning }]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
-            <span class="reasoning-label">Thinking</span>
-            <span class="reasoning-hint">{{ showReasoning ? 'Click to collapse' : 'Click to expand' }}</span>
+        <!-- Reasoning/Thinking section (collapsible) - show when reasoning exists or thinking is in progress -->
+        <div v-if="message.reasoning || message.isThinking" :class="['reasoning-section', { 'is-thinking': message.isThinking }]">
+          <button class="reasoning-toggle" @click="toggleReasoning">
+            <div class="reasoning-toggle-left">
+              <div :class="['thinking-icon-wrapper', { 'animate': message.isThinking }]">
+                <svg :class="['thinking-brain-icon', { 'animate': message.isThinking }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M12 4.5c-1.5-1.5-4-2-6 0s-2 5.5 0 8c1.5 2 4 3.5 6 6 2-2.5 4.5-4 6-6 2-2.5 2-6 0-8s-4.5-1.5-6 0z"/>
+                  <path d="M12 4.5v16"/>
+                  <path d="M9 8c-1 1-1 2.5 0 3.5"/>
+                  <path d="M15 8c1 1 1 2.5 0 3.5"/>
+                </svg>
+              </div>
+              <span class="reasoning-label">{{ message.isThinking ? '思考中...' : '思考过程' }}</span>
+              <span v-if="!message.isThinking" class="reasoning-badge">Deep Thinking</span>
+              <span v-else class="reasoning-badge thinking">思考中</span>
+            </div>
+            <div class="reasoning-toggle-right">
+              <span class="reasoning-hint">{{ showReasoning ? '收起' : '展开查看' }}</span>
+              <svg :class="['reasoning-chevron', { expanded: showReasoning }]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </div>
           </button>
-          <div v-show="showReasoning" class="reasoning-content" v-html="renderedReasoning"></div>
+          <Transition name="reasoning-expand">
+            <div v-show="showReasoning" class="reasoning-content-wrapper">
+              <div :class="['reasoning-content', { 'is-streaming': message.isThinking }]" v-html="renderedReasoning"></div>
+              <div v-if="message.isThinking && !message.reasoning" class="thinking-placeholder">
+                <span class="thinking-dots">
+                  <span></span><span></span><span></span>
+                </span>
+              </div>
+            </div>
+          </Transition>
         </div>
         <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
         <div class="message-footer">
@@ -159,6 +182,17 @@ const showReasoning = ref(false)  // For collapsible reasoning/thinking section
 const branchBtnRef = ref<HTMLElement | null>(null)
 const bubbleRef = ref<HTMLElement | null>(null)
 const branchMenuPosition = ref({ top: 0, left: 0 })
+
+// Auto-expand reasoning when thinking starts
+watch(
+  () => props.message.isThinking,
+  (isThinking) => {
+    if (isThinking) {
+      showReasoning.value = true
+    }
+  },
+  { immediate: true }
+)
 
 // Computed: whether this message has branches
 const hasBranches = computed(() => props.branches && props.branches.length > 0)
@@ -400,6 +434,10 @@ function toggleBranchMenu() {
 function goToBranch(sessionId: string) {
   showBranchMenu.value = false
   emit('goToBranch', sessionId)
+}
+
+function toggleReasoning() {
+  showReasoning.value = !showReasoning.value
 }
 
 // Close branch menu when clicking outside
@@ -918,80 +956,308 @@ html[data-theme='light'] .error-time {
 
 /* Reasoning/Thinking section styles */
 .reasoning-section {
-  margin-bottom: 12px;
-  border: 1px solid rgba(147, 51, 234, 0.2);
-  border-radius: 10px;
-  background: rgba(147, 51, 234, 0.05);
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(59, 130, 246, 0.06) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.2);
   overflow: hidden;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.08);
 }
 
 .reasoning-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: none;
   background: transparent;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s ease;
+  transition: all 0.2s ease;
 }
 
 .reasoning-toggle:hover {
-  background: rgba(147, 51, 234, 0.08);
+  background: rgba(139, 92, 246, 0.08);
 }
 
-.reasoning-icon {
-  color: rgb(147, 51, 234);
-  flex-shrink: 0;
-  transition: transform 0.2s ease;
+.reasoning-toggle-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.reasoning-icon.expanded {
-  transform: rotate(90deg);
+.reasoning-toggle-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.thinking-icon-wrapper {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(59, 130, 246, 0.15) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Only animate when actively thinking */
+.thinking-icon-wrapper.animate {
+  animation: thinking-pulse 2s ease-in-out infinite;
+}
+
+@keyframes thinking-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(139, 92, 246, 0);
+  }
+}
+
+.thinking-brain-icon {
+  color: rgb(139, 92, 246);
+}
+
+/* Only animate when actively thinking */
+.thinking-brain-icon.animate {
+  animation: thinking-glow 2s ease-in-out infinite;
+}
+
+@keyframes thinking-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 2px rgba(139, 92, 246, 0.5));
+  }
+  50% {
+    filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.8));
+  }
 }
 
 .reasoning-label {
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgb(139, 92, 246) 0%, rgb(59, 130, 246) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.reasoning-badge {
+  font-size: 10px;
   font-weight: 500;
-  color: rgb(147, 51, 234);
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.12) 100%);
+  color: rgb(139, 92, 246);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+/* Thinking badge with animation */
+.reasoning-badge.thinking {
+  animation: badge-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 .reasoning-hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
-  margin-left: auto;
+  transition: color 0.2s ease;
+}
+
+.reasoning-toggle:hover .reasoning-hint {
+  color: rgb(139, 92, 246);
+}
+
+.reasoning-chevron {
+  color: var(--muted);
+  flex-shrink: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.reasoning-chevron.expanded {
+  transform: rotate(180deg);
+  color: rgb(139, 92, 246);
+}
+
+/* Expand/Collapse animation */
+.reasoning-expand-enter-active,
+.reasoning-expand-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.reasoning-expand-enter-from,
+.reasoning-expand-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.reasoning-expand-enter-to,
+.reasoning-expand-leave-from {
+  opacity: 1;
+  max-height: 500px;
+}
+
+.reasoning-content-wrapper {
+  border-top: 1px solid rgba(139, 92, 246, 0.15);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .reasoning-content {
-  padding: 0 12px 12px 12px;
+  padding: 14px 16px;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
   color: var(--muted);
-  border-top: 1px solid rgba(147, 51, 234, 0.15);
   max-height: 400px;
   overflow-y: auto;
 }
 
+/* Custom scrollbar for reasoning content */
+.reasoning-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.reasoning-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.reasoning-content::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.3);
+  border-radius: 3px;
+}
+
+.reasoning-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.5);
+}
+
 .reasoning-content :deep(p) {
-  margin: 0.5em 0;
+  margin: 0.6em 0;
 }
 
 .reasoning-content :deep(p:first-child) {
-  margin-top: 0.75em;
+  margin-top: 0;
 }
 
 .reasoning-content :deep(p:last-child) {
   margin-bottom: 0;
 }
 
+/* Code in reasoning */
+.reasoning-content :deep(code) {
+  background: rgba(139, 92, 246, 0.15);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.reasoning-content :deep(pre) {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 10px 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
+.reasoning-content :deep(pre code) {
+  background: transparent;
+  padding: 0;
+}
+
+/* Light theme */
 html[data-theme='light'] .reasoning-section {
-  background: rgba(147, 51, 234, 0.04);
-  border-color: rgba(147, 51, 234, 0.15);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.06) 0%, rgba(59, 130, 246, 0.04) 100%);
+  border-color: rgba(139, 92, 246, 0.18);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.06);
+}
+
+html[data-theme='light'] .reasoning-content-wrapper {
+  background: rgba(139, 92, 246, 0.03);
 }
 
 html[data-theme='light'] .reasoning-content {
-  color: rgba(0, 0, 0, 0.6);
+  color: rgba(0, 0, 0, 0.65);
+}
+
+html[data-theme='light'] .thinking-icon-wrapper {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%);
+}
+
+html[data-theme='light'] .reasoning-badge {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(59, 130, 246, 0.08) 100%);
+}
+
+/* Thinking placeholder with animated dots */
+.thinking-placeholder {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thinking-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(139, 92, 246);
+  animation: thinking-dot-bounce 1.4s ease-in-out infinite;
+}
+
+.thinking-dots span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.thinking-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.thinking-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes thinking-dot-bounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Streaming content cursor */
+.reasoning-content.is-streaming::after {
+  content: '|';
+  animation: cursor-blink 0.8s infinite;
+  color: rgb(139, 92, 246);
+  font-weight: 300;
+  margin-left: 2px;
+}
+
+@keyframes cursor-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Is-thinking state enhancement */
+.reasoning-section.is-thinking {
+  border-color: rgba(139, 92, 246, 0.35);
+  box-shadow: 0 2px 12px rgba(139, 92, 246, 0.15);
 }
 </style>

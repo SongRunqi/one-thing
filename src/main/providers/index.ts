@@ -10,7 +10,7 @@
  * That's it! The provider will be automatically registered and available.
  */
 
-import { generateText } from 'ai'
+import { generateText, streamText } from 'ai'
 import {
   initializeRegistry,
   getAvailableProviders as getProvidersFromRegistry,
@@ -100,6 +100,9 @@ export async function generateChatResponse(
 /**
  * Generate a chat response with reasoning/thinking content
  * Returns both the response text and any reasoning process
+ *
+ * For DeepSeek reasoning models, uses streamText to capture reasoning tokens.
+ * For other models, uses generateText.
  */
 export async function generateChatResponseWithReasoning(
   providerId: string,
@@ -112,7 +115,13 @@ export async function generateChatResponseWithReasoning(
 
   const isReasoning = isReasoningModel(config.model)
 
-  // Build generateText options
+  // For DeepSeek reasoning models, use streamText to capture reasoning
+  // DeepSeek only exposes reasoning through streaming
+  if (isReasoning && providerId === 'deepseek') {
+    return generateWithStreamForReasoning(model, messages, options)
+  }
+
+  // For non-reasoning models, use generateText
   const generateOptions: Parameters<typeof generateText>[0] = {
     model,
     messages,
@@ -126,14 +135,10 @@ export async function generateChatResponseWithReasoning(
 
   const result = await generateText(generateOptions)
 
-  // Extract reasoning content if available
-  // AI SDK stores reasoning in different formats depending on the provider:
-  // - DeepSeek: result.reasoning (array of ReasoningPart) or result.reasoning as string
-  // - Other providers may use experimental_reasoning
+  // Extract reasoning content if available (for other providers that might support it)
   let reasoning: string | undefined = undefined
 
   if (result.reasoning) {
-    // Handle array of reasoning parts (AI SDK format for streaming)
     if (Array.isArray(result.reasoning)) {
       reasoning = result.reasoning
         .map((part: any) => {
@@ -151,20 +156,124 @@ export async function generateChatResponseWithReasoning(
     }
   }
 
-  // Fallback to experimental_reasoning if reasoning is not found
-  if (!reasoning && (result as any).experimental_reasoning) {
-    const expReasoning = (result as any).experimental_reasoning
-    if (typeof expReasoning === 'string') {
-      reasoning = expReasoning
-    } else if (expReasoning.content) {
-      reasoning = expReasoning.content
-    }
-  }
-
   return {
     text: result.text,
     reasoning: reasoning || undefined,
   }
+}
+
+/**
+ * Use streamText to capture reasoning from DeepSeek reasoning models
+ * Collects the full stream and extracts reasoning and text parts
+ */
+async function generateWithStreamForReasoning(
+  model: any,
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+  options: { temperature?: number; maxTokens?: number } = {}
+): Promise<ChatResponseResult> {
+  const streamOptions: Parameters<typeof streamText>[0] = {
+    model,
+    messages,
+    maxOutputTokens: options.maxTokens || 4096,
+  }
+
+  const result = streamText(streamOptions)
+
+  // Collect reasoning and text from the stream
+  let reasoningText = ''
+  let responseText = ''
+
+  for await (const part of result.fullStream) {
+    // Handle reasoning parts (DeepSeek reasoning model)
+    if (part.type === 'reasoning-delta') {
+      reasoningText += part.text || ''
+    } else if (part.type === 'text-delta') {
+      responseText += part.text || ''
+    }
+  }
+
+  return {
+    text: responseText,
+    reasoning: reasoningText || undefined,
+  }
+}
+
+/**
+ * Stream callbacks for real-time updates
+ */
+export interface StreamCallbacks {
+  onReasoningDelta?: (delta: string) => void
+  onTextDelta?: (delta: string) => void
+  onComplete?: (result: ChatResponseResult) => void
+  onError?: (error: Error) => void
+}
+
+/**
+ * Generate a streaming chat response with reasoning
+ * Provides real-time callbacks for reasoning and text deltas
+ * For all models (not just reasoning models) to provide faster feedback
+ */
+export async function streamChatResponseWithReasoning(
+  providerId: string,
+  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+  callbacks: StreamCallbacks,
+  options: { temperature?: number; maxTokens?: number } = {}
+): Promise<ChatResponseResult> {
+  const provider = createProvider(providerId, config)
+  const model = provider.createModel(config.model)
+
+  const isReasoning = isReasoningModel(config.model)
+
+  const streamOptions: Parameters<typeof streamText>[0] = {
+    model,
+    messages,
+    maxOutputTokens: options.maxTokens || 4096,
+  }
+
+  // Only add temperature for non-reasoning models
+  if (!isReasoning && options.temperature !== undefined) {
+    streamOptions.temperature = options.temperature
+  }
+
+  try {
+    const result = streamText(streamOptions)
+
+    let reasoningText = ''
+    let responseText = ''
+
+    for await (const part of result.fullStream) {
+      if (part.type === 'reasoning-delta') {
+        const delta = part.text || ''
+        reasoningText += delta
+        callbacks.onReasoningDelta?.(delta)
+      } else if (part.type === 'text-delta') {
+        const delta = part.text || ''
+        responseText += delta
+        callbacks.onTextDelta?.(delta)
+      }
+    }
+
+    const finalResult: ChatResponseResult = {
+      text: responseText,
+      reasoning: reasoningText || undefined,
+    }
+
+    callbacks.onComplete?.(finalResult)
+    return finalResult
+  } catch (error: any) {
+    callbacks.onError?.(error)
+    throw error
+  }
+}
+
+/**
+ * Check if a model should use streaming
+ * Now returns true for all models to provide faster feedback
+ */
+export function shouldUseStreaming(providerId: string, modelId: string): boolean {
+  // Always use streaming for all models for faster feedback
+  return true
 }
 
 /**

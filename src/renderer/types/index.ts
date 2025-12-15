@@ -27,8 +27,23 @@ import type {
 
 export type { ChatMessage, ChatSession, AISettings, AppSettings, AIProvider, ProviderConfig, CustomProviderConfig, ProviderInfo, ModelInfo }
 
+// Streaming response types
+export interface StreamSendMessageResponse {
+  success: boolean
+  userMessage?: ChatMessage
+  assistantMessageId?: string
+  sessionName?: string
+  error?: string
+  errorDetails?: string
+}
+
 export interface ElectronAPI {
   sendMessage: (sessionId: string, message: string) => Promise<SendMessageResponse>
+  sendMessageStream: (sessionId: string, message: string) => Promise<StreamSendMessageResponse>
+  onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
+  onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
+  onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string }) => void) => () => void
+  onStreamError: (callback: (data: { messageId?: string; error: string; errorDetails?: string }) => void) => () => void
   getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
   generateTitle: (message: string) => Promise<GenerateTitleResponse>
   editAndResend: (sessionId: string, messageId: string, newContent: string) => Promise<EditAndResendResponse>
