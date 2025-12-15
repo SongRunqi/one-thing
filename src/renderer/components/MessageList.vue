@@ -56,6 +56,10 @@ const props = withDefaults(defineProps<Props>(), {
   isLoading: false,
 })
 
+const emit = defineEmits<{
+  setQuotedText: [text: string]
+}>()
+
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
 const messageListRef = ref<HTMLElement | null>(null)
@@ -115,10 +119,18 @@ async function handleEdit(messageId: string, newContent: string) {
 }
 
 // Handle branch creation event
-async function handleBranch(messageId: string) {
+async function handleBranch(messageId: string, quotedText?: string) {
   const currentSession = sessionsStore.currentSession
   if (!currentSession) return
+
+  // Create the branch
   await sessionsStore.createBranch(currentSession.id, messageId)
+
+  // If we have quoted text, we need to pass it to InputBox
+  // We'll emit this to the parent so it can handle setting the quoted text
+  if (quotedText) {
+    emit('setQuotedText', quotedText)
+  }
 }
 
 // Handle go to branch event

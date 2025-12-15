@@ -82,10 +82,10 @@
         </div>
       </header>
 
-      <MessageList :messages="chatStore.messages" :is-loading="chatStore.isLoading" />
+      <MessageList :messages="chatStore.messages" :is-loading="chatStore.isLoading" @set-quoted-text="handleSetQuotedText" />
 
       <div class="composer">
-        <InputBox @send-message="handleSendMessage" :is-loading="chatStore.isLoading" />
+        <InputBox ref="inputBoxRef" @send-message="handleSendMessage" :is-loading="chatStore.isLoading" />
       </div>
     </template>
   </main>
@@ -122,6 +122,9 @@ const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 
 const currentSession = computed(() => sessionsStore.currentSession)
+
+// Input box ref for setting quoted text
+const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
 
 // Model selector dropdown state
 const showModelDropdown = ref(false)
@@ -275,6 +278,13 @@ async function handleSendMessage(message: string) {
 
 async function createNewSession() {
   await sessionsStore.createSession('')
+}
+
+function handleSetQuotedText(text: string) {
+  // Set quoted text in the input box
+  if (inputBoxRef.value) {
+    inputBoxRef.value.setQuotedText(text)
+  }
 }
 </script>
 

@@ -56,7 +56,7 @@ function extractErrorDetails(error: any): string | undefined {
 }
 
 // Helper to get current provider config
-function getProviderConfig(settings: AppSettings): ProviderConfig {
+function getProviderConfig(settings: AppSettings): ProviderConfig | undefined {
   return settings.ai.providers[settings.ai.provider]
 }
 
@@ -119,7 +119,7 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
-    if (!providerConfig.apiKey) {
+    if (!providerConfig || !providerConfig.apiKey) {
       return {
         success: false,
         error: 'API Key not configured. Please configure your AI settings.',
@@ -195,13 +195,14 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     const isBranchFirstMessage = session?.parentSessionId && session.messages.length > 0 &&
       !session.messages.some(m => m.role === 'user' && m.timestamp > session.createdAt)
 
-    // Save user message
+    // Save user message - use same ID format as frontend
     const userMessage: ChatMessage = {
-      id: uuidv4(),
+      id: `temp-${Date.now()}`,
       role: 'user',
       content: messageContent,
       timestamp: Date.now(),
     }
+    console.log('[Backend] Created user message with id:', userMessage.id)
 
     store.addMessage(sessionId, userMessage)
 
@@ -216,7 +217,7 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
-    if (!providerConfig.apiKey) {
+    if (!providerConfig || !providerConfig.apiKey) {
       return {
         success: false,
         error: 'API Key not configured. Please configure your AI settings.',
@@ -324,13 +325,14 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     const isBranchFirstMessage = session?.parentSessionId && session.messages.length > 0 &&
       !session.messages.some(m => m.role === 'user' && m.timestamp > session.createdAt)
 
-    // Save user message
+    // Save user message - use same ID format as frontend
     const userMessage: ChatMessage = {
-      id: uuidv4(),
+      id: `temp-${Date.now()}`,
       role: 'user',
       content: messageContent,
       timestamp: Date.now(),
     }
+    console.log('[Backend] Created user message with id:', userMessage.id)
 
     store.addMessage(sessionId, userMessage)
 
@@ -345,7 +347,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
-    if (!providerConfig.apiKey) {
+    if (!providerConfig || !providerConfig.apiKey) {
       return {
         success: false,
         error: 'API Key not configured. Please configure your AI settings.',
@@ -380,9 +382,12 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       sessionName: session?.name,
     }
 
-    // Start streaming in background
-    setTimeout(async () => {
+    // Start streaming in background - use process.nextTick to ensure frontend listeners are set up
+    process.nextTick(async () => {
       try {
+        console.log('[Backend] Starting streaming for message:', assistantMessageId)
+        console.log('[Backend] Provider:', providerId, 'Model:', providerConfig.model)
+
         // Use AI SDK to generate streaming response
         const apiType = getProviderApiType(settings, providerId)
         const stream = streamChatResponseWithReasoning(
@@ -399,17 +404,20 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
 
         let accumulatedContent = ''
         let accumulatedReasoning = ''
+        let chunkCount = 0
 
         // Process stream chunks
         for await (const chunk of stream) {
+          chunkCount++
           if (chunk.text) {
             accumulatedContent += chunk.text
+            console.log(`[Backend] Text chunk ${chunkCount}:`, chunk.text.substring(0, 50) + (chunk.text.length > 50 ? '...' : ''))
 
             // Update message in store with accumulated content
             store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
 
             // Send text chunk via event
-            sender.send('chat:stream-chunk', {
+            sender.send(IPC_CHANNELS.STREAM_CHUNK, {
               type: 'text',
               content: chunk.text,
               messageId: assistantMessageId,
@@ -418,12 +426,13 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
 
           if (chunk.reasoning) {
             accumulatedReasoning = chunk.reasoning
+            console.log(`[Backend] Reasoning chunk ${chunkCount}:`, chunk.reasoning.substring(0, 50) + (chunk.reasoning.length > 50 ? '...' : ''))
 
             // Update reasoning in store
             store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
 
             // Send reasoning chunk via event
-            sender.send('chat:stream-chunk', {
+            sender.send(IPC_CHANNELS.STREAM_CHUNK, {
               type: 'reasoning',
               content: '',
               messageId: assistantMessageId,
@@ -431,6 +440,8 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
             })
           }
         }
+
+        console.log(`[Backend] Streaming complete. Total chunks: ${chunkCount}, Final content length: ${accumulatedContent.length}`)
 
         // Stream complete - finalize message
         store.updateMessageStreaming(sessionId, assistantMessageId, false)
@@ -440,22 +451,24 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
         const sessionName = updatedSession?.name
 
         // Send completion event
-        sender.send('chat:stream-complete', {
+        sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
           messageId: assistantMessageId,
           sessionName,
         })
+        console.log('[Backend] Sent completion event')
 
       } catch (error: any) {
-        console.error('Error in streaming background task:', error)
+        console.error('[Backend] Error in streaming background task:', error)
 
         // Send error event
-        sender.send('chat:stream-error', {
+        sender.send(IPC_CHANNELS.STREAM_ERROR, {
           messageId: assistantMessageId,
           error: error.message || 'Failed to stream message',
           errorDetails: extractErrorDetails(error),
         })
+        console.log('[Backend] Sent error event')
       }
-    }, 0)
+    })
 
     return initialResponse
 

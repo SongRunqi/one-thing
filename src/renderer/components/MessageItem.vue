@@ -1,4 +1,23 @@
 <template>
+  <!-- Selection toolbar (floating) -->
+  <Teleport to="body">
+    <div
+      v-if="showSelectionToolbar"
+      class="selection-toolbar"
+      :style="{ top: selectionToolbarPosition.top + 'px', left: selectionToolbarPosition.left + 'px' }"
+    >
+      <button class="toolbar-btn" @click="createBranchWithSelection" title="Create branch with this text">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="6" y1="3" x2="6" y2="15"/>
+          <circle cx="18" cy="6" r="3"/>
+          <circle cx="6" cy="18" r="3"/>
+          <path d="M18 9a9 9 0 0 1-9 9"/>
+        </svg>
+        <span>Branch</span>
+      </button>
+    </div>
+  </Teleport>
+
   <!-- Error message (notification style) -->
   <div v-if="message.role === 'error'" class="message error">
     <div class="error-icon">
@@ -23,58 +42,34 @@
       <span v-if="message.role === 'assistant'">◎</span>
       <span v-else>🙂</span>
     </div>
-    <div class="bubble" ref="bubbleRef" @mouseenter="showActions = true" @mouseleave="showActions = false">
-      <!-- Edit mode for user messages -->
-      <div v-if="isEditing" class="edit-container">
-        <textarea
-          ref="editTextarea"
-          v-model="editContent"
-          class="edit-textarea"
-          @keydown.enter.ctrl="submitEdit"
-          @keydown.escape="cancelEdit"
-        ></textarea>
-        <div class="edit-actions">
-          <button class="edit-btn cancel" @click="cancelEdit">Cancel</button>
-          <button class="edit-btn submit" @click="submitEdit">Send</button>
-        </div>
+    <div class="message-content-wrapper">
+      <!-- Waiting/Thinking status indicator (streaming) - outside bubble -->
+      <div v-if="message.isStreaming && !message.content" class="thinking-status">
+        <!-- Waiting: no reasoning yet, still waiting for API response -->
+        <span v-if="!message.reasoning" class="thinking-text flowing">Waiting</span>
+        <!-- Thinking: has reasoning, model is thinking -->
+        <span v-else class="thinking-text flowing">Thinking</span>
       </div>
-      <!-- Normal display -->
-      <template v-else>
-        <!-- Reasoning/Thinking section (collapsible) - show when reasoning exists or thinking is in progress -->
-        <div v-if="message.reasoning || message.isThinking" :class="['reasoning-section', { 'is-thinking': message.isThinking }]">
-          <button class="reasoning-toggle" @click="toggleReasoning">
-            <div class="reasoning-toggle-left">
-              <div :class="['thinking-icon-wrapper', { 'animate': message.isThinking }]">
-                <svg :class="['thinking-brain-icon', { 'animate': message.isThinking }]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M12 4.5c-1.5-1.5-4-2-6 0s-2 5.5 0 8c1.5 2 4 3.5 6 6 2-2.5 4.5-4 6-6 2-2.5 2-6 0-8s-4.5-1.5-6 0z"/>
-                  <path d="M12 4.5v16"/>
-                  <path d="M9 8c-1 1-1 2.5 0 3.5"/>
-                  <path d="M15 8c1 1 1 2.5 0 3.5"/>
-                </svg>
-              </div>
-              <span class="reasoning-label">{{ message.isThinking ? '思考中...' : '思考过程' }}</span>
-              <span v-if="!message.isThinking" class="reasoning-badge">Deep Thinking</span>
-              <span v-else class="reasoning-badge thinking">思考中</span>
-            </div>
-            <div class="reasoning-toggle-right">
-              <span class="reasoning-hint">{{ showReasoning ? '收起' : '展开查看' }}</span>
-              <svg :class="['reasoning-chevron', { expanded: showReasoning }]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M6 9l6 6 6-6"/>
-              </svg>
-            </div>
-          </button>
-          <Transition name="reasoning-expand">
-            <div v-show="showReasoning" class="reasoning-content-wrapper">
-              <div :class="['reasoning-content', { 'is-streaming': message.isThinking }]" v-html="renderedReasoning"></div>
-              <div v-if="message.isThinking && !message.reasoning" class="thinking-placeholder">
-                <span class="thinking-dots">
-                  <span></span><span></span><span></span>
-                </span>
-              </div>
-            </div>
-          </Transition>
+
+      <!-- Message bubble - only show if there's content -->
+      <div v-if="message.content || !message.isStreaming" class="bubble" ref="bubbleRef" @mouseenter="showActions = true" @mouseleave="showActions = false" @mouseup="handleTextSelection">
+        <!-- Edit mode for user messages -->
+        <div v-if="isEditing" class="edit-container">
+          <textarea
+            ref="editTextarea"
+            v-model="editContent"
+            class="edit-textarea"
+            @keydown.enter.ctrl="submitEdit"
+            @keydown.escape="cancelEdit"
+          ></textarea>
+          <div class="edit-actions">
+            <button class="edit-btn cancel" @click="cancelEdit">Cancel</button>
+            <button class="edit-btn submit" @click="submitEdit">Send</button>
+          </div>
         </div>
-        <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
+        <!-- Normal display -->
+        <template v-else>
+          <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
         <div class="message-footer">
           <div class="meta">{{ formatTime(message.timestamp) }}</div>
           <div :class="['actions', { visible: showActions }]">
@@ -147,6 +142,7 @@
         </div>
       </template>
     </div>
+    </div>
   </div>
 </template>
 
@@ -171,28 +167,21 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   regenerate: [messageId: string]
   edit: [messageId: string, newContent: string]
-  branch: [messageId: string]
+  branch: [messageId: string, quotedText?: string]
   goToBranch: [sessionId: string]
 }>()
 
 const showActions = ref(false)
 const copied = ref(false)
 const showBranchMenu = ref(false)
-const showReasoning = ref(false)  // For collapsible reasoning/thinking section
 const branchBtnRef = ref<HTMLElement | null>(null)
 const bubbleRef = ref<HTMLElement | null>(null)
 const branchMenuPosition = ref({ top: 0, left: 0 })
 
-// Auto-expand reasoning when thinking starts
-watch(
-  () => props.message.isThinking,
-  (isThinking) => {
-    if (isThinking) {
-      showReasoning.value = true
-    }
-  },
-  { immediate: true }
-)
+// Text selection toolbar state
+const showSelectionToolbar = ref(false)
+const selectedText = ref('')
+const selectionToolbarPosition = ref({ top: 0, left: 0 })
 
 // Computed: whether this message has branches
 const hasBranches = computed(() => props.branches && props.branches.length > 0)
@@ -258,10 +247,36 @@ const renderedContent = computed(() => {
   return marked.parse(contentToRender.value) as string
 })
 
+// Clean reasoning content by removing XML tags (e.g., <think>...</think> from DeepSeek-R1)
+function cleanReasoningContent(content: string): string {
+  if (!content) return ''
+
+  console.log('[MessageItem] Raw reasoning content:', content)
+  console.log('[MessageItem] Content length:', content.length)
+
+  // Remove <think> and </think> tags (case-insensitive)
+  let cleaned = content.replace(/<\/?think>/gi, '')
+
+  // Remove other common reasoning-related XML tags
+  cleaned = cleaned.replace(/<\/?thinking>/gi, '')
+  cleaned = cleaned.replace(/<\/?reasoning>/gi, '')
+
+  // Trim leading/trailing whitespace
+  cleaned = cleaned.trim()
+
+  console.log('[MessageItem] Cleaned reasoning content:', cleaned)
+
+  return cleaned
+}
+
 // Rendered reasoning content (for thinking models)
 const renderedReasoning = computed(() => {
   if (!props.message.reasoning) return ''
-  return marked.parse(props.message.reasoning) as string
+
+  // Clean XML tags before parsing markdown
+  const cleanedContent = cleanReasoningContent(props.message.reasoning)
+
+  return marked.parse(cleanedContent) as string
 })
 
 // Typewriter effect logic
@@ -436,20 +451,136 @@ function goToBranch(sessionId: string) {
   emit('goToBranch', sessionId)
 }
 
-function toggleReasoning() {
-  showReasoning.value = !showReasoning.value
-}
-
 // Close branch menu when clicking outside
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement
   if (!target.closest('.branch-btn-wrapper')) {
     showBranchMenu.value = false
   }
+  // Also close selection toolbar if clicking outside
+  if (!target.closest('.selection-toolbar') && !target.closest('.bubble')) {
+    showSelectionToolbar.value = false
+  }
+}
+
+// Handle text selection in assistant messages
+function handleTextSelection(event: MouseEvent) {
+  // Only handle selection for assistant messages
+  if (props.message.role !== 'assistant') return
+
+  // Small delay to ensure selection is complete
+  setTimeout(() => {
+    const selection = window.getSelection()
+    const text = selection?.toString().trim()
+
+    if (!text || text.length === 0) {
+      showSelectionToolbar.value = false
+      return
+    }
+
+    // Store selected text
+    selectedText.value = text
+
+    // Get selection position for toolbar placement
+    const range = selection?.getRangeAt(0)
+    if (!range) return
+
+    const rect = range.getBoundingClientRect()
+    const padding = 8
+    const toolbarWidth = 150  // approximate toolbar width
+    const toolbarHeight = 40  // approximate toolbar height
+
+    // Position toolbar above the selection, centered
+    let top = rect.top - toolbarHeight - padding
+    let left = rect.left + (rect.width / 2) - (toolbarWidth / 2)
+
+    // Adjust if toolbar would go off screen
+    if (left < padding) {
+      left = padding
+    }
+    if (left + toolbarWidth > window.innerWidth - padding) {
+      left = window.innerWidth - toolbarWidth - padding
+    }
+    if (top < padding) {
+      // If no room above, show below
+      top = rect.bottom + padding
+    }
+
+    selectionToolbarPosition.value = { top, left }
+    showSelectionToolbar.value = true
+  }, 10)
+}
+
+// Create branch with selected text as context
+function createBranchWithSelection() {
+  // Emit branch event with selected text
+  emit('branch', props.message.id, selectedText.value)
+
+  // Hide toolbar and clear selection
+  showSelectionToolbar.value = false
+  window.getSelection()?.removeAllRanges()
 }
 </script>
 
 <style scoped>
+/* Selection toolbar (floating) */
+.selection-toolbar {
+  position: fixed;
+  z-index: 9999;
+  background: rgba(30, 30, 30, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 0.5px rgba(255, 255, 255, 0.05);
+  display: flex;
+  gap: 4px;
+  animation: fadeInScale 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html[data-theme='light'] .selection-toolbar {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.toolbar-btn:hover {
+  background: rgba(16, 163, 127, 0.15);
+  color: var(--accent);
+}
+
+.toolbar-btn svg {
+  flex-shrink: 0;
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 .message {
   display: flex;
   gap: 12px;
@@ -477,6 +608,19 @@ function handleClickOutside(event: MouseEvent) {
   color: var(--text);
   user-select: none;
   flex: 0 0 auto;
+}
+
+.message-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* User messages: align items to the right */
+.message.user .message-content-wrapper {
+  align-items: flex-end;
 }
 
 .bubble {
@@ -954,178 +1098,60 @@ html[data-theme='light'] .error-time {
   background: rgba(16, 163, 127, 0.1);
 }
 
-/* Reasoning/Thinking section styles */
-.reasoning-section {
-  margin-bottom: 14px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(59, 130, 246, 0.06) 100%);
-  border: 1px solid rgba(139, 92, 246, 0.2);
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.08);
+/* Thinking status indicator - flowing text */
+.thinking-status {
+  padding: 8px 0;
+  width: fit-content;
+  max-width: 100%;
 }
 
-.reasoning-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 12px 14px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.2s ease;
+.thinking-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
 }
 
-.reasoning-toggle:hover {
-  background: rgba(139, 92, 246, 0.08);
-}
-
-.reasoning-toggle-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.reasoning-toggle-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.thinking-icon-wrapper {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(59, 130, 246, 0.15) 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Only animate when actively thinking */
-.thinking-icon-wrapper.animate {
-  animation: thinking-pulse 2s ease-in-out infinite;
-}
-
-@keyframes thinking-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 0 6px rgba(139, 92, 246, 0);
-  }
-}
-
-.thinking-brain-icon {
-  color: rgb(139, 92, 246);
-}
-
-/* Only animate when actively thinking */
-.thinking-brain-icon.animate {
-  animation: thinking-glow 2s ease-in-out infinite;
-}
-
-@keyframes thinking-glow {
-  0%, 100% {
-    filter: drop-shadow(0 0 2px rgba(139, 92, 246, 0.5));
-  }
-  50% {
-    filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.8));
-  }
-}
-
-.reasoning-label {
-  font-size: 14px;
-  font-weight: 600;
-  background: linear-gradient(135deg, rgb(139, 92, 246) 0%, rgb(59, 130, 246) 100%);
+/* Flowing text animation - gradient sweeps from left to right */
+.thinking-text.flowing {
+  background: linear-gradient(
+    90deg,
+    rgba(120, 120, 128, 0.3) 0%,
+    rgba(120, 120, 128, 1) 25%,
+    rgba(120, 120, 128, 1) 50%,
+    rgba(120, 120, 128, 1) 75%,
+    rgba(120, 120, 128, 0.3) 100%
+  );
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  animation: flowing-gradient 2.5s ease-in-out infinite;
 }
 
-.reasoning-badge {
-  font-size: 10px;
-  font-weight: 500;
-  padding: 3px 8px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.12) 100%);
-  color: rgb(139, 92, 246);
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-}
-
-/* Thinking badge with animation */
-.reasoning-badge.thinking {
-  animation: badge-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes badge-pulse {
-  0%, 100% {
-    opacity: 1;
+@keyframes flowing-gradient {
+  0% {
+    background-position: 200% 0;
   }
-  50% {
-    opacity: 0.6;
+  100% {
+    background-position: -200% 0;
   }
-}
-
-.reasoning-hint {
-  font-size: 12px;
-  color: var(--muted);
-  transition: color 0.2s ease;
-}
-
-.reasoning-toggle:hover .reasoning-hint {
-  color: rgb(139, 92, 246);
-}
-
-.reasoning-chevron {
-  color: var(--muted);
-  flex-shrink: 0;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.reasoning-chevron.expanded {
-  transform: rotate(180deg);
-  color: rgb(139, 92, 246);
-}
-
-/* Expand/Collapse animation */
-.reasoning-expand-enter-active,
-.reasoning-expand-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
-}
-
-.reasoning-expand-enter-from,
-.reasoning-expand-leave-to {
-  opacity: 0;
-  max-height: 0;
-}
-
-.reasoning-expand-enter-to,
-.reasoning-expand-leave-from {
-  opacity: 1;
-  max-height: 500px;
-}
-
-.reasoning-content-wrapper {
-  border-top: 1px solid rgba(139, 92, 246, 0.15);
-  background: rgba(0, 0, 0, 0.1);
 }
 
 .reasoning-content {
-  padding: 14px 16px;
   font-size: 13px;
   line-height: 1.7;
   color: var(--muted);
   max-height: 400px;
   overflow-y: auto;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  scrollbar-gutter: stable;
 }
 
 /* Custom scrollbar for reasoning content */
 .reasoning-content::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 .reasoning-content::-webkit-scrollbar-track {
@@ -1141,6 +1167,7 @@ html[data-theme='light'] .error-time {
   background: rgba(139, 92, 246, 0.5);
 }
 
+/* Markdown elements in reasoning content */
 .reasoning-content :deep(p) {
   margin: 0.6em 0;
 }
@@ -1153,25 +1180,145 @@ html[data-theme='light'] .error-time {
   margin-bottom: 0;
 }
 
-/* Code in reasoning */
-.reasoning-content :deep(code) {
-  background: rgba(139, 92, 246, 0.15);
-  padding: 2px 5px;
-  border-radius: 4px;
+/* Lists */
+.reasoning-content :deep(ul),
+.reasoning-content :deep(ol) {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.reasoning-content :deep(li) {
+  margin: 0.25em 0;
+  line-height: 1.6;
+}
+
+.reasoning-content :deep(ul ul),
+.reasoning-content :deep(ol ol),
+.reasoning-content :deep(ul ol),
+.reasoning-content :deep(ol ul) {
+  margin: 0.15em 0;
+}
+
+/* Headings */
+.reasoning-content :deep(h1),
+.reasoning-content :deep(h2),
+.reasoning-content :deep(h3),
+.reasoning-content :deep(h4),
+.reasoning-content :deep(h5),
+.reasoning-content :deep(h6) {
+  margin: 0.8em 0 0.4em 0;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.3;
+}
+
+.reasoning-content :deep(h1:first-child),
+.reasoning-content :deep(h2:first-child),
+.reasoning-content :deep(h3:first-child),
+.reasoning-content :deep(h4:first-child),
+.reasoning-content :deep(h5:first-child),
+.reasoning-content :deep(h6:first-child) {
+  margin-top: 0;
+}
+
+.reasoning-content :deep(h1) { font-size: 1.3em; }
+.reasoning-content :deep(h2) { font-size: 1.2em; }
+.reasoning-content :deep(h3) { font-size: 1.1em; }
+.reasoning-content :deep(h4) { font-size: 1.05em; }
+.reasoning-content :deep(h5) { font-size: 1em; }
+.reasoning-content :deep(h6) { font-size: 0.95em; }
+
+/* Blockquote */
+.reasoning-content :deep(blockquote) {
+  margin: 0.6em 0;
+  padding: 0.4em 0.8em;
+  border-left: 3px solid rgba(139, 92, 246, 0.5);
+  background: rgba(139, 92, 246, 0.08);
+  border-radius: 0 6px 6px 0;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Links */
+.reasoning-content :deep(a) {
+  color: rgba(139, 92, 246, 0.9);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.reasoning-content :deep(a:hover) {
+  color: rgb(139, 92, 246);
+  text-decoration: underline;
+}
+
+/* Tables */
+.reasoning-content :deep(table) {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  width: 100%;
   font-size: 12px;
 }
 
+.reasoning-content :deep(th),
+.reasoning-content :deep(td) {
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.reasoning-content :deep(th) {
+  background: rgba(139, 92, 246, 0.15);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.reasoning-content :deep(tr:hover) {
+  background: rgba(139, 92, 246, 0.05);
+}
+
+/* Horizontal rule */
+.reasoning-content :deep(hr) {
+  border: none;
+  border-top: 1px solid rgba(139, 92, 246, 0.2);
+  margin: 0.8em 0;
+}
+
+/* Strong and emphasis */
+.reasoning-content :deep(strong) {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.reasoning-content :deep(em) {
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Code in reasoning */
+.reasoning-content :deep(.inline-code),
+.reasoning-content :deep(code:not(pre code)) {
+  background: rgba(139, 92, 246, 0.15);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.reasoning-content :deep(.code-block),
 .reasoning-content :deep(pre) {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.25);
   padding: 10px 12px;
   border-radius: 8px;
   overflow-x: auto;
-  margin: 0.75em 0;
+  margin: 0.6em 0;
+  border: 1px solid rgba(139, 92, 246, 0.15);
 }
 
 .reasoning-content :deep(pre code) {
   background: transparent;
   padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* Light theme */
@@ -1189,13 +1336,50 @@ html[data-theme='light'] .reasoning-content {
   color: rgba(0, 0, 0, 0.65);
 }
 
-html[data-theme='light'] .thinking-icon-wrapper {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%);
+html[data-theme='light'] .reasoning-content :deep(h1),
+html[data-theme='light'] .reasoning-content :deep(h2),
+html[data-theme='light'] .reasoning-content :deep(h3),
+html[data-theme='light'] .reasoning-content :deep(h4),
+html[data-theme='light'] .reasoning-content :deep(h5),
+html[data-theme='light'] .reasoning-content :deep(h6) {
+  color: rgba(0, 0, 0, 0.85);
 }
 
-html[data-theme='light'] .reasoning-badge {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(59, 130, 246, 0.08) 100%);
+html[data-theme='light'] .reasoning-content :deep(strong) {
+  color: rgba(0, 0, 0, 0.8);
 }
+
+html[data-theme='light'] .reasoning-content :deep(em) {
+  color: rgba(0, 0, 0, 0.7);
+}
+
+html[data-theme='light'] .reasoning-content :deep(blockquote) {
+  background: rgba(139, 92, 246, 0.06);
+  border-left-color: rgba(139, 92, 246, 0.4);
+  color: rgba(0, 0, 0, 0.7);
+}
+
+html[data-theme='light'] .reasoning-content :deep(.inline-code),
+html[data-theme='light'] .reasoning-content :deep(code:not(pre code)) {
+  background: rgba(139, 92, 246, 0.12);
+  color: rgba(0, 0, 0, 0.8);
+}
+
+html[data-theme='light'] .reasoning-content :deep(.code-block),
+html[data-theme='light'] .reasoning-content :deep(pre) {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(139, 92, 246, 0.12);
+}
+
+html[data-theme='light'] .reasoning-content :deep(th) {
+  background: rgba(139, 92, 246, 0.1);
+  color: rgba(0, 0, 0, 0.85);
+}
+
+html[data-theme='light'] .reasoning-content :deep(tr:hover) {
+  background: rgba(139, 92, 246, 0.03);
+}
+
 
 /* Thinking placeholder with animated dots */
 .thinking-placeholder {

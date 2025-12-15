@@ -106,74 +106,6 @@ export const useChatStore = defineStore('chat', () => {
     streamCleanups.value.push(cleanupError)
   }
 
-  // Send message with streaming support
-  async function sendMessageStream(sessionId: string, content: string) {
-    error.value = null
-    errorDetails.value = null
-
-    // Create and show user message immediately
-    const tempUserMessage: ChatMessage = {
-      id: `temp-${Date.now()}`,
-      role: 'user',
-      content,
-      timestamp: Date.now(),
-    }
-    addMessage(tempUserMessage)
-
-    isLoading.value = true
-
-    try {
-      const response = await window.electronAPI.sendMessageStream(sessionId, content)
-
-      if (!response.success) {
-        error.value = response.error || 'Failed to send message'
-        errorDetails.value = response.errorDetails || null
-
-        const errorMessage: ChatMessage = {
-          id: `error-${Date.now()}`,
-          role: 'error',
-          content: response.error || 'Failed to send message',
-          timestamp: Date.now(),
-          errorDetails: response.errorDetails,
-        }
-        addMessage(errorMessage)
-        return false
-      }
-
-      // Replace temp user message
-      if (response.userMessage) {
-        const tempIndex = messages.value.findIndex((m) => m.id === tempUserMessage.id)
-        if (tempIndex !== -1) {
-          messages.value[tempIndex] = response.userMessage
-        }
-      }
-
-      // Add placeholder assistant message for streaming
-      if (response.assistantMessageId) {
-        const streamingMessage: ChatMessage = {
-          id: response.assistantMessageId,
-          role: 'assistant',
-          content: '',
-          reasoning: '',
-          timestamp: Date.now(),
-          isStreaming: true,
-          isThinking: true, // Start in thinking mode
-        }
-        addMessage(streamingMessage)
-
-        // Setup stream listeners
-        setupStreamListeners(response.assistantMessageId)
-      }
-
-      return response.sessionName || true
-    } catch (err: any) {
-      error.value = err.message || 'An error occurred'
-      messages.value = messages.value.filter((m) => m.id !== tempUserMessage.id)
-      return false
-    } finally {
-      isLoading.value = false
-    }
-  }
 
   async function sendMessage(sessionId: string, content: string) {
     error.value = null
@@ -208,15 +140,23 @@ export const useChatStore = defineStore('chat', () => {
         }
         addMessage(errorMessage)
 
+        isLoading.value = false
         return false
       }
 
       // Replace temp user message with actual message from server
       if (response.userMessage) {
+        console.log('[Frontend] Received user message from backend with id:', response.userMessage.id)
         const tempIndex = messages.value.findIndex((m) => m.id === tempUserMessage.id)
+        console.log('[Frontend] Found temp message at index:', tempIndex)
         if (tempIndex !== -1) {
           messages.value[tempIndex] = response.userMessage
+          console.log('[Frontend] Successfully replaced temp message')
+        } else {
+          console.log('[Frontend] WARNING: Could not find temp message to replace')
         }
+      } else {
+        console.log('[Frontend] WARNING: No userMessage in response')
       }
 
       // Add assistant message with streaming flag for typewriter effect
@@ -253,6 +193,7 @@ export const useChatStore = defineStore('chat', () => {
       content,
       timestamp: Date.now(),
     }
+    console.log('[Frontend] Created temp user message with id:', tempUserMessage.id)
     addMessage(tempUserMessage)
 
     // Set loading state after user message is shown
@@ -280,6 +221,7 @@ export const useChatStore = defineStore('chat', () => {
         }
         addMessage(errorMessage)
 
+        isLoading.value = false
         return false
       }
 
@@ -287,10 +229,17 @@ export const useChatStore = defineStore('chat', () => {
 
       // Replace temp user message with actual message from server
       if (response.userMessage) {
+        console.log('[Frontend] Received user message from backend with id:', response.userMessage.id)
         const tempIndex = messages.value.findIndex((m) => m.id === tempUserMessage.id)
+        console.log('[Frontend] Found temp message at index:', tempIndex)
         if (tempIndex !== -1) {
           messages.value[tempIndex] = response.userMessage
+          console.log('[Frontend] Successfully replaced temp message')
+        } else {
+          console.log('[Frontend] WARNING: Could not find temp message to replace')
         }
+      } else {
+        console.log('[Frontend] WARNING: No userMessage in response')
       }
 
       // Create empty assistant message for streaming
@@ -303,19 +252,33 @@ export const useChatStore = defineStore('chat', () => {
       }
       addMessage(streamingMessage)
 
+      // Hide the independent "Thinking..." indicator now that we have the message bubble
+      // The message bubble will show its own thinking state
+      isLoading.value = false
+
       // Set up event listeners for streaming
       unsubscribeChunk = window.electronAPI.onStreamChunk((chunk) => {
+        console.log('[Frontend] Received stream chunk:', chunk)
         if (chunk.messageId === assistantMessageId) {
           if (chunk.type === 'text') {
+            console.log('[Frontend] Text chunk:', chunk.content)
             // Append text to message content
             const message = messages.value.find(m => m.id === assistantMessageId)
             if (message) {
               message.content += chunk.content
+              console.log('[Frontend] Updated message content, new length:', message.content.length)
             }
           } else if (chunk.type === 'reasoning') {
-            // Update reasoning
-            updateMessage(assistantMessageId!, { reasoning: chunk.reasoning })
+            console.log('[Frontend] Reasoning chunk:', chunk.reasoning)
+            // Append reasoning to existing reasoning content
+            const message = messages.value.find(m => m.id === assistantMessageId)
+            if (message) {
+              message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
+              console.log('[Frontend] Updated reasoning length:', message.reasoning.length)
+            }
           }
+        } else {
+          console.log('[Frontend] Chunk for different message:', chunk.messageId, 'expected:', assistantMessageId)
         }
       })
 
@@ -323,7 +286,9 @@ export const useChatStore = defineStore('chat', () => {
       // because we handle it in the Promise below
 
       unsubscribeError = window.electronAPI.onStreamError((data) => {
+        console.log('[Frontend] Received stream error:', data)
         if (data.messageId === assistantMessageId) {
+          console.log('[Frontend] Stream error for current message:', data.error)
           error.value = data.error || 'Streaming error'
           errorDetails.value = data.errorDetails || null
 
@@ -347,6 +312,8 @@ export const useChatStore = defineStore('chat', () => {
 
           isLoading.value = false
           return false
+        } else {
+          console.log('[Frontend] Error for different message:', data.messageId, 'expected:', assistantMessageId)
         }
       })
 
@@ -354,7 +321,9 @@ export const useChatStore = defineStore('chat', () => {
       return new Promise((resolve) => {
         // We'll resolve this promise when we get the complete event
         const completeListener = window.electronAPI.onStreamComplete((data) => {
+          console.log('[Frontend] Received stream complete:', data)
           if (data.messageId === assistantMessageId) {
+            console.log('[Frontend] Stream complete for current message')
             // Mark message as not streaming
             updateMessage(assistantMessageId!, { isStreaming: false })
 
@@ -366,6 +335,8 @@ export const useChatStore = defineStore('chat', () => {
             isLoading.value = false
             completeListener() // Clean up this listener
             resolve(data.sessionName || true)
+          } else {
+            console.log('[Frontend] Complete for different message:', data.messageId, 'expected:', assistantMessageId)
           }
         })
       })
@@ -427,6 +398,7 @@ export const useChatStore = defineStore('chat', () => {
         }
         addMessage(errorMessage)
 
+        isLoading.value = false
         return false
       }
 

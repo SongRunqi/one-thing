@@ -11,6 +11,12 @@ const electronAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE_STREAM, { sessionId, message }),
 
   // Stream event listeners
+  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning'; content: string; messageId: string; reasoning?: string }) => void) => {
+    const listener = (_event: any, chunk: any) => callback(chunk)
+    ipcRenderer.on(IPC_CHANNELS.STREAM_CHUNK, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_CHUNK, listener)
+  },
+
   onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => {
     const listener = (_event: any, data: any) => callback(data)
     ipcRenderer.on(IPC_CHANNELS.STREAM_REASONING_DELTA, listener)

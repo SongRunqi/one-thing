@@ -8,6 +8,13 @@ export const IPC_CHANNELS = {
   GENERATE_TITLE: 'chat:generate-title',
   EDIT_AND_RESEND: 'chat:edit-and-resend',
 
+  // Streaming related
+  STREAM_CHUNK: 'chat:stream-chunk',
+  STREAM_REASONING_DELTA: 'chat:stream-reasoning-delta',
+  STREAM_TEXT_DELTA: 'chat:stream-text-delta',
+  STREAM_COMPLETE: 'chat:stream-complete',
+  STREAM_ERROR: 'chat:stream-error',
+
   // Session related
   GET_SESSIONS: 'sessions:get-all',
   CREATE_SESSION: 'sessions:create',

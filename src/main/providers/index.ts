@@ -126,6 +126,7 @@ export async function* streamChatResponse(
 
   const stream = await streamText(streamOptions)
 
+  // Always use textStream for this function (simpler interface)
   for await (const chunk of stream.textStream) {
     yield { text: chunk }
   }
@@ -160,35 +161,59 @@ export async function* streamChatResponseWithReasoning(
 
   const stream = await streamText(streamOptions)
 
-  let accumulatedReasoning: string[] = []
+  // For reasoning models, use fullStream to capture reasoning
+  // For non-reasoning models, use textStream for simplicity
+  if (isReasoning) {
+    let accumulatedReasoning: string[] = []
+    let chunkCount = 0
 
-  for await (const chunk of stream.fullStream) {
-    // Extract text from chunk
-    let text = ''
-    if (chunk.type === 'text-delta') {
-      // text-delta事件包含textDelta属性
-      const textChunk = chunk as any
-      text = textChunk.textDelta || ''
-    }
+    for await (const chunk of stream.fullStream) {
+      chunkCount++
+      const chunkAny = chunk as any
+      console.log(`[Provider] Stream chunk ${chunkCount}:`, chunk.type,
+        'textDelta:', chunkAny.textDelta ? 'yes' : 'no',
+        'delta:', chunkAny.delta ? 'yes' : 'no',
+        'text:', chunkAny.text ? 'yes' : 'no',
+        'chunk keys:', Object.keys(chunkAny).join(', '))
 
-    // Extract reasoning from chunk
-    let reasoning: string | undefined = undefined
-    if (chunk.type === 'reasoning-delta') {
-      // reasoning-delta事件包含textDelta属性
-      const reasoningChunk = chunk as any
-      reasoning = reasoningChunk.textDelta || ''
+      // Extract text from chunk
+      let text = ''
+      if (chunk.type === 'text-delta') {
+        // 尝试不同的属性名
+        text = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
+        console.log(`[Provider] Text delta: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`)
+      }
 
-      if (reasoning) {
-        accumulatedReasoning.push(reasoning)
+      // Extract reasoning from chunk
+      let reasoning: string | undefined = undefined
+      if (chunk.type === 'reasoning-delta') {
+        // 尝试不同的属性名
+        reasoning = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
+        console.log(`[Provider] Reasoning delta: "${reasoning.substring(0, 50)}${reasoning.length > 50 ? '...' : ''}"`)
+
+        if (reasoning) {
+          accumulatedReasoning.push(reasoning)
+        }
+      }
+
+      // For reasoning chunks, we yield them separately
+      if (chunk.type === 'reasoning-delta') {
+        yield { text: '', reasoning }
+      } else if (text) {
+        yield { text, reasoning: accumulatedReasoning.length > 0 ? accumulatedReasoning.join('') : undefined }
       }
     }
 
-    // For reasoning chunks, we yield them separately
-    if (chunk.type === 'reasoning-delta') {
-      yield { text: '', reasoning }
-    } else if (text) {
-      yield { text, reasoning: accumulatedReasoning.length > 0 ? accumulatedReasoning.join('\n') : undefined }
+    console.log(`[Provider] Reasoning stream completed. Total chunks: ${chunkCount}`)
+  } else {
+    // For non-reasoning models, use textStream
+    let chunkCount = 0
+    for await (const chunk of stream.textStream) {
+      chunkCount++
+      console.log(`[Provider] Text stream chunk ${chunkCount}: "${chunk.substring(0, 50)}${chunk.length > 50 ? '...' : ''}"`)
+      yield { text: chunk }
     }
+    console.log(`[Provider] Text stream completed. Total chunks: ${chunkCount}`)
   }
 }
 
@@ -279,11 +304,12 @@ async function generateWithStreamForReasoning(
   let responseText = ''
 
   for await (const part of result.fullStream) {
+    const partAny = part as any
     // Handle reasoning parts (DeepSeek reasoning model)
     if (part.type === 'reasoning-delta') {
-      reasoningText += part.text || ''
+      reasoningText += partAny.textDelta || partAny.delta || partAny.text || ''
     } else if (part.type === 'text-delta') {
-      responseText += part.text || ''
+      responseText += partAny.textDelta || partAny.delta || partAny.text || ''
     }
   }
 
@@ -303,64 +329,6 @@ export interface StreamCallbacks {
   onError?: (error: Error) => void
 }
 
-/**
- * Generate a streaming chat response with reasoning
- * Provides real-time callbacks for reasoning and text deltas
- * For all models (not just reasoning models) to provide faster feedback
- */
-export async function streamChatResponseWithReasoning(
-  providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
-  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
-  callbacks: StreamCallbacks,
-  options: { temperature?: number; maxTokens?: number } = {}
-): Promise<ChatResponseResult> {
-  const provider = createProvider(providerId, config)
-  const model = provider.createModel(config.model)
-
-  const isReasoning = isReasoningModel(config.model)
-
-  const streamOptions: Parameters<typeof streamText>[0] = {
-    model,
-    messages,
-    maxOutputTokens: options.maxTokens || 4096,
-  }
-
-  // Only add temperature for non-reasoning models
-  if (!isReasoning && options.temperature !== undefined) {
-    streamOptions.temperature = options.temperature
-  }
-
-  try {
-    const result = streamText(streamOptions)
-
-    let reasoningText = ''
-    let responseText = ''
-
-    for await (const part of result.fullStream) {
-      if (part.type === 'reasoning-delta') {
-        const delta = part.text || ''
-        reasoningText += delta
-        callbacks.onReasoningDelta?.(delta)
-      } else if (part.type === 'text-delta') {
-        const delta = part.text || ''
-        responseText += delta
-        callbacks.onTextDelta?.(delta)
-      }
-    }
-
-    const finalResult: ChatResponseResult = {
-      text: responseText,
-      reasoning: reasoningText || undefined,
-    }
-
-    callbacks.onComplete?.(finalResult)
-    return finalResult
-  } catch (error: any) {
-    callbacks.onError?.(error)
-    throw error
-  }
-}
 
 /**
  * Check if a model should use streaming

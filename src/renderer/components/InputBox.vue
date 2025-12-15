@@ -1,5 +1,19 @@
 <template>
   <div class="composer-wrapper">
+    <!-- Quoted text context (shown above input when text is referenced) -->
+    <div v-if="quotedText" class="quoted-context">
+      <div class="quoted-bar"></div>
+      <div class="quoted-content-wrapper">
+        <div class="quoted-text">{{ quotedText }}</div>
+        <button class="remove-quote-btn" @click="clearQuotedText" title="Remove">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
     <div class="composer" :class="{ focused: isFocused }">
       <button class="icon-btn attach-btn" title="Attach file" @click="handleAttach">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -69,6 +83,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 const messageInput = ref('')
+const quotedText = ref('')
 const isFocused = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
@@ -106,8 +121,19 @@ function handleKeyDown(e: KeyboardEvent) {
 
 function sendMessage() {
   if (canSend.value) {
-    emit('sendMessage', messageInput.value)
+    let fullMessage = messageInput.value
+
+    // If there's quoted text, prepend it to the message with markdown quote format
+    if (quotedText.value) {
+      // Format: > quoted text (each line prefixed with >)
+      // Then a blank line, then the user's question
+      const quotedLines = quotedText.value.split('\n').map(line => `> ${line}`).join('\n')
+      fullMessage = `${quotedLines}\n\n${messageInput.value}`
+    }
+
+    emit('sendMessage', fullMessage)
     messageInput.value = ''
+    quotedText.value = ''
     nextTick(() => {
       adjustHeight()
     })
@@ -131,6 +157,24 @@ function handleAttach() {
   console.log('Attach file clicked')
 }
 
+function setQuotedText(text: string) {
+  quotedText.value = text
+  // Focus on the input after setting quoted text
+  nextTick(() => {
+    textareaRef.value?.focus()
+  })
+}
+
+function clearQuotedText() {
+  quotedText.value = ''
+}
+
+// Expose methods to parent component
+defineExpose({
+  setQuotedText,
+  clearQuotedText,
+})
+
 onMounted(() => {
   adjustHeight()
 })
@@ -140,6 +184,94 @@ onMounted(() => {
 .composer-wrapper {
   width: min(860px, 100%);
   margin: 0 auto;
+}
+
+/* Quoted text context */
+.quoted-context {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  background: rgba(120, 120, 128, 0.06);
+  border-radius: 12px;
+  position: relative;
+  animation: slideInDown 0.2s ease-out;
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.quoted-bar {
+  width: 3px;
+  background: linear-gradient(to bottom, rgba(16, 163, 127, 0.6), rgba(16, 163, 127, 0.3));
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.quoted-content-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.quoted-text {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  opacity: 0.75;
+  max-height: 80px;
+  overflow-y: auto;
+  min-width: 0;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+/* Custom scrollbar for quoted text */
+.quoted-text::-webkit-scrollbar {
+  width: 3px;
+}
+
+.quoted-text::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.quoted-text::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 128, 0.3);
+  border-radius: 2px;
+}
+
+.remove-quote-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.remove-quote-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  opacity: 1;
 }
 
 .composer {
