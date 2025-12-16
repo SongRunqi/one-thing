@@ -28,15 +28,56 @@ import type {
   ToolSettings,
   GetToolsResponse,
   ExecuteToolResponse,
+  // MCP types
+  MCPServerConfig,
+  MCPServerState,
+  MCPToolInfo,
+  MCPResourceInfo,
+  MCPPromptInfo,
+  MCPSettings,
+  MCPGetServersResponse,
+  MCPAddServerResponse,
+  MCPUpdateServerResponse,
+  MCPRemoveServerResponse,
+  MCPConnectServerResponse,
+  MCPDisconnectServerResponse,
+  MCPRefreshServerResponse,
+  MCPGetToolsResponse,
+  MCPCallToolResponse,
+  MCPGetResourcesResponse,
+  MCPReadResourceResponse,
+  MCPGetPromptsResponse,
+  MCPGetPromptResponse,
 } from '../../shared/ipc'
 
-export type { ChatMessage, ChatSession, AISettings, AppSettings, AIProvider, ProviderConfig, CustomProviderConfig, ProviderInfo, ModelInfo, ToolDefinition, ToolCall, ToolSettings }
+export type {
+  ChatMessage,
+  ChatSession,
+  AISettings,
+  AppSettings,
+  AIProvider,
+  ProviderConfig,
+  CustomProviderConfig,
+  ProviderInfo,
+  ModelInfo,
+  ToolDefinition,
+  ToolCall,
+  ToolSettings,
+  // MCP types
+  MCPServerConfig,
+  MCPServerState,
+  MCPToolInfo,
+  MCPResourceInfo,
+  MCPPromptInfo,
+  MCPSettings,
+}
 
 // Streaming response types
 export interface StreamSendMessageResponse {
   success: boolean
   userMessage?: ChatMessage
-  assistantMessageId?: string
+  messageId?: string  // ID of the assistant message being streamed
+  assistantMessageId?: string  // Alias for messageId (backward compatibility)
   sessionName?: string
   error?: string
   errorDetails?: string
@@ -73,6 +114,21 @@ export interface ElectronAPI {
   getTools: () => Promise<GetToolsResponse>
   executeTool: (toolId: string, args: Record<string, any>, messageId: string, sessionId: string) => Promise<ExecuteToolResponse>
   cancelTool: (toolCallId: string) => Promise<{ success: boolean }>
+
+  // MCP methods
+  mcpGetServers: () => Promise<MCPGetServersResponse>
+  mcpAddServer: (config: MCPServerConfig) => Promise<MCPAddServerResponse>
+  mcpUpdateServer: (config: MCPServerConfig) => Promise<MCPUpdateServerResponse>
+  mcpRemoveServer: (serverId: string) => Promise<MCPRemoveServerResponse>
+  mcpConnectServer: (serverId: string) => Promise<MCPConnectServerResponse>
+  mcpDisconnectServer: (serverId: string) => Promise<MCPDisconnectServerResponse>
+  mcpRefreshServer: (serverId: string) => Promise<MCPRefreshServerResponse>
+  mcpGetTools: () => Promise<MCPGetToolsResponse>
+  mcpCallTool: (serverId: string, toolName: string, args: Record<string, any>) => Promise<MCPCallToolResponse>
+  mcpGetResources: () => Promise<MCPGetResourcesResponse>
+  mcpReadResource: (serverId: string, uri: string) => Promise<MCPReadResourceResponse>
+  mcpGetPrompts: () => Promise<MCPGetPromptsResponse>
+  mcpGetPrompt: (serverId: string, name: string, args?: Record<string, string>) => Promise<MCPGetPromptResponse>
 }
 
 declare global {

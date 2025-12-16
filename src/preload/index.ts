@@ -96,6 +96,46 @@ const electronAPI = {
 
   cancelTool: (toolCallId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.CANCEL_TOOL, { toolCallId }),
+
+  // MCP methods
+  mcpGetServers: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_GET_SERVERS),
+
+  mcpAddServer: (config: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_ADD_SERVER, { config }),
+
+  mcpUpdateServer: (config: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_UPDATE_SERVER, { config }),
+
+  mcpRemoveServer: (serverId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_REMOVE_SERVER, { serverId }),
+
+  mcpConnectServer: (serverId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_CONNECT_SERVER, { serverId }),
+
+  mcpDisconnectServer: (serverId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_DISCONNECT_SERVER, { serverId }),
+
+  mcpRefreshServer: (serverId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_REFRESH_SERVER, { serverId }),
+
+  mcpGetTools: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_GET_TOOLS),
+
+  mcpCallTool: (serverId: string, toolName: string, args: Record<string, any>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_CALL_TOOL, { serverId, toolName, arguments: args }),
+
+  mcpGetResources: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_GET_RESOURCES),
+
+  mcpReadResource: (serverId: string, uri: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_READ_RESOURCE, { serverId, uri }),
+
+  mcpGetPrompts: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_GET_PROMPTS),
+
+  mcpGetPrompt: (serverId: string, name: string, args?: Record<string, string>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_GET_PROMPT, { serverId, name, arguments: args }),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

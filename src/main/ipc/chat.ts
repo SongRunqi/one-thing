@@ -18,6 +18,7 @@ import {
   createToolCall,
 } from '../tools/index.js'
 import type { ToolCall, ToolSettings } from '../../shared/ipc.js'
+import { getMCPToolsForAI, isMCPTool, executeMCPTool } from '../mcp/index.js'
 
 // Extract detailed error information from API responses
 function extractErrorDetails(error: any): string | undefined {
@@ -401,9 +402,14 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
 
         // Get enabled tools if tool calls are enabled
         const enabledTools = toolSettings?.enableToolCalls ? getEnabledTools() : []
-        const hasTools = enabledTools.length > 0
 
-        console.log(`[Backend] Tools enabled: ${hasTools}, Tool count: ${enabledTools.length}`)
+        // Get MCP tools (already in AI SDK format)
+        const mcpTools = toolSettings?.enableToolCalls ? getMCPToolsForAI() : {}
+        const mcpToolCount = Object.keys(mcpTools).length
+
+        const hasTools = enabledTools.length > 0 || mcpToolCount > 0
+
+        console.log(`[Backend] Tools enabled: ${hasTools}, Built-in tools: ${enabledTools.length}, MCP tools: ${mcpToolCount}`)
 
         // Use AI SDK to generate streaming response
         const apiType = getProviderApiType(settings, providerId)
@@ -415,7 +421,9 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
 
         if (hasTools) {
           // Use tool-enabled streaming
-          const toolsForAI = convertToolDefinitionsForAI(enabledTools)
+          // Combine built-in tools and MCP tools
+          const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
+          const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
           const stream = streamChatResponseWithTools(
             providerId,
             {
@@ -488,19 +496,35 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
               })
 
               // Check if we should auto-execute this tool
-              if (canAutoExecute(chunk.toolCall.toolName, toolSettings?.tools)) {
+              // For MCP tools, always auto-execute (they are external tools)
+              const shouldAutoExecute = isMCPTool(chunk.toolCall.toolName) || canAutoExecute(chunk.toolCall.toolName, toolSettings?.tools)
+
+              if (shouldAutoExecute) {
                 console.log(`[Backend] Auto-executing tool: ${chunk.toolCall.toolName}`)
 
                 // Update tool status to executing
                 toolCall.status = 'executing'
                 store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
 
-                // Execute the tool
-                const result = await executeTool(
-                  chunk.toolCall.toolName,
-                  chunk.toolCall.args,
-                  { sessionId, messageId: assistantMessageId }
-                )
+                let result: { success: boolean; data?: any; error?: string }
+
+                // Execute the tool (MCP or built-in)
+                if (isMCPTool(chunk.toolCall.toolName)) {
+                  // Execute MCP tool
+                  const mcpResult = await executeMCPTool(chunk.toolCall.toolName, chunk.toolCall.args)
+                  result = {
+                    success: mcpResult.success,
+                    data: mcpResult.content,
+                    error: mcpResult.error,
+                  }
+                } else {
+                  // Execute built-in tool
+                  result = await executeTool(
+                    chunk.toolCall.toolName,
+                    chunk.toolCall.args,
+                    { sessionId, messageId: assistantMessageId }
+                  )
+                }
 
                 // Update tool with result
                 toolCall.status = result.success ? 'completed' : 'failed'
