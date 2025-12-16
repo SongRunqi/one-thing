@@ -1,7 +1,10 @@
 <template>
   <div class="message-list" ref="messageListRef">
     <div v-if="messages.length === 0 && !isLoading" class="empty-state">
-      <div class="empty-title">ChatGPT 5.2</div>
+      <div class="empty-title">
+        <span class="typing-text">one thing</span>
+        <span class="cursor"></span>
+      </div>
       <div class="empty-subtitle">Ask anything</div>
     </div>
     <MessageItem
@@ -164,20 +167,74 @@ function handleQuote(quotedText: string) {
   justify-content: center;
   height: 100%;
   color: var(--muted);
-  gap: 8px;
+  gap: 12px;
   user-select: none;
 }
 
 .empty-title {
-  font-size: 22px;
+  display: flex;
+  align-items: center;
+  font-size: 32px;
   font-weight: 700;
   color: var(--text);
-  letter-spacing: 0.2px;
+  letter-spacing: -0.5px;
+}
+
+.typing-text {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 0;
+  animation: typing 1.2s steps(9, end) forwards;
+  animation-delay: 0.3s;
+}
+
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: var(--accent);
+  margin-left: 2px;
+  animation: blink 1s step-end infinite;
+  opacity: 0;
+  animation-delay: 0.3s;
+}
+
+@keyframes typing {
+  from {
+    width: 0;
+  }
+  to {
+    width: 4.8em;
+  }
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 .empty-subtitle {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--muted);
+  opacity: 0;
+  animation: fadeInUp 0.5s ease forwards;
+  animation-delay: 1.5s;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Thinking indicator */
