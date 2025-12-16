@@ -737,6 +737,15 @@ html[data-theme='light'] .toolbar-divider {
   position: relative;
 }
 
+/* AI messages: remove bubble styling for clean reading experience */
+.message.assistant .bubble {
+  max-width: 100%;
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+}
+
 .message.user .bubble {
   background: rgba(16, 163, 127, 0.14);
   border-color: rgba(16, 163, 127, 0.25);
@@ -910,6 +919,13 @@ html[data-theme='light'] .toolbar-divider {
   justify-content: space-between;
   align-items: center;
   margin-top: 8px;
+}
+
+/* AI messages: adjust footer for clean layout */
+.message.assistant .message-footer {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }
 
 .meta {
