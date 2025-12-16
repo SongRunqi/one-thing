@@ -8,7 +8,16 @@ import {
   generateChatTitle,
   isProviderSupported,
   streamChatResponseWithReasoning,
+  streamChatResponseWithTools,
+  convertToolDefinitionsForAI,
 } from '../providers/index.js'
+import {
+  getEnabledTools,
+  executeTool,
+  canAutoExecute,
+  createToolCall,
+} from '../tools/index.js'
+import type { ToolCall, ToolSettings } from '../../shared/ipc.js'
 
 // Extract detailed error information from API responses
 function extractErrorDetails(error: any): string | undefined {
@@ -346,6 +355,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     const settings = store.getSettings()
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
+    const toolSettings = settings.tools
 
     if (!providerConfig || !providerConfig.apiKey) {
       return {
@@ -369,6 +379,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       content: '',
       timestamp: Date.now(),
       isStreaming: true,
+      toolCalls: [],
     }
 
     // Add empty assistant message to store
@@ -388,56 +399,172 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
         console.log('[Backend] Starting streaming for message:', assistantMessageId)
         console.log('[Backend] Provider:', providerId, 'Model:', providerConfig.model)
 
+        // Get enabled tools if tool calls are enabled
+        const enabledTools = toolSettings?.enableToolCalls ? getEnabledTools() : []
+        const hasTools = enabledTools.length > 0
+
+        console.log(`[Backend] Tools enabled: ${hasTools}, Tool count: ${enabledTools.length}`)
+
         // Use AI SDK to generate streaming response
         const apiType = getProviderApiType(settings, providerId)
-        const stream = streamChatResponseWithReasoning(
-          providerId,
-          {
-            apiKey: providerConfig.apiKey,
-            baseUrl: providerConfig.baseUrl,
-            model: providerConfig.model,
-            apiType,
-          },
-          [{ role: 'user', content: messageContent }],
-          { temperature: settings.ai.temperature }
-        )
 
         let accumulatedContent = ''
         let accumulatedReasoning = ''
         let chunkCount = 0
+        const toolCalls: ToolCall[] = []
 
-        // Process stream chunks
-        for await (const chunk of stream) {
-          chunkCount++
-          if (chunk.text) {
-            accumulatedContent += chunk.text
-            console.log(`[Backend] Text chunk ${chunkCount}:`, chunk.text.substring(0, 50) + (chunk.text.length > 50 ? '...' : ''))
+        if (hasTools) {
+          // Use tool-enabled streaming
+          const toolsForAI = convertToolDefinitionsForAI(enabledTools)
+          const stream = streamChatResponseWithTools(
+            providerId,
+            {
+              apiKey: providerConfig.apiKey,
+              baseUrl: providerConfig.baseUrl,
+              model: providerConfig.model,
+              apiType,
+            },
+            [{ role: 'user', content: messageContent }],
+            toolsForAI,
+            { temperature: settings.ai.temperature }
+          )
 
-            // Update message in store with accumulated content
-            store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
+          // Process stream chunks with tool support
+          for await (const chunk of stream) {
+            chunkCount++
 
-            // Send text chunk via event
-            sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-              type: 'text',
-              content: chunk.text,
-              messageId: assistantMessageId,
-            })
+            if (chunk.type === 'text' && chunk.text) {
+              accumulatedContent += chunk.text
+              console.log(`[Backend] Text chunk ${chunkCount}:`, chunk.text.substring(0, 50) + (chunk.text.length > 50 ? '...' : ''))
+
+              // Update message in store with accumulated content
+              store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
+
+              // Send text chunk via event
+              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                type: 'text',
+                content: chunk.text,
+                messageId: assistantMessageId,
+              })
+            }
+
+            if (chunk.type === 'reasoning' && chunk.reasoning) {
+              accumulatedReasoning += chunk.reasoning
+              console.log(`[Backend] Reasoning chunk ${chunkCount}:`, chunk.reasoning.substring(0, 50) + (chunk.reasoning.length > 50 ? '...' : ''))
+
+              // Update reasoning in store
+              store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
+
+              // Send reasoning chunk via event
+              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                type: 'reasoning',
+                content: '',
+                messageId: assistantMessageId,
+                reasoning: chunk.reasoning,
+              })
+            }
+
+            if (chunk.type === 'tool-call' && chunk.toolCall) {
+              console.log(`[Backend] Tool call chunk:`, chunk.toolCall)
+
+              // Create a ToolCall object
+              const toolCall = createToolCall(
+                chunk.toolCall.toolName,
+                chunk.toolCall.toolName,
+                chunk.toolCall.args
+              )
+              toolCall.id = chunk.toolCall.toolCallId // Use the ID from AI SDK
+              toolCalls.push(toolCall)
+
+              // Update message with tool calls
+              store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
+
+              // Send tool call event
+              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                type: 'tool_call',
+                content: '',
+                messageId: assistantMessageId,
+                toolCall,
+              })
+
+              // Check if we should auto-execute this tool
+              if (canAutoExecute(chunk.toolCall.toolName, toolSettings?.tools)) {
+                console.log(`[Backend] Auto-executing tool: ${chunk.toolCall.toolName}`)
+
+                // Update tool status to executing
+                toolCall.status = 'executing'
+                store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
+
+                // Execute the tool
+                const result = await executeTool(
+                  chunk.toolCall.toolName,
+                  chunk.toolCall.args,
+                  { sessionId, messageId: assistantMessageId }
+                )
+
+                // Update tool with result
+                toolCall.status = result.success ? 'completed' : 'failed'
+                toolCall.result = result.data
+                toolCall.error = result.error
+                store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
+
+                // Send tool result event
+                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                  type: 'tool_result',
+                  content: '',
+                  messageId: assistantMessageId,
+                  toolCall,
+                })
+              }
+            }
           }
+        } else {
+          // Use regular streaming without tools
+          const stream = streamChatResponseWithReasoning(
+            providerId,
+            {
+              apiKey: providerConfig.apiKey,
+              baseUrl: providerConfig.baseUrl,
+              model: providerConfig.model,
+              apiType,
+            },
+            [{ role: 'user', content: messageContent }],
+            { temperature: settings.ai.temperature }
+          )
 
-          if (chunk.reasoning) {
-            accumulatedReasoning = chunk.reasoning
-            console.log(`[Backend] Reasoning chunk ${chunkCount}:`, chunk.reasoning.substring(0, 50) + (chunk.reasoning.length > 50 ? '...' : ''))
+          // Process stream chunks
+          for await (const chunk of stream) {
+            chunkCount++
+            if (chunk.text) {
+              accumulatedContent += chunk.text
+              console.log(`[Backend] Text chunk ${chunkCount}:`, chunk.text.substring(0, 50) + (chunk.text.length > 50 ? '...' : ''))
 
-            // Update reasoning in store
-            store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
+              // Update message in store with accumulated content
+              store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
 
-            // Send reasoning chunk via event
-            sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-              type: 'reasoning',
-              content: '',
-              messageId: assistantMessageId,
-              reasoning: chunk.reasoning,
-            })
+              // Send text chunk via event
+              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                type: 'text',
+                content: chunk.text,
+                messageId: assistantMessageId,
+              })
+            }
+
+            if (chunk.reasoning) {
+              accumulatedReasoning = chunk.reasoning
+              console.log(`[Backend] Reasoning chunk ${chunkCount}:`, chunk.reasoning.substring(0, 50) + (chunk.reasoning.length > 50 ? '...' : ''))
+
+              // Update reasoning in store
+              store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
+
+              // Send reasoning chunk via event
+              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                type: 'reasoning',
+                content: '',
+                messageId: assistantMessageId,
+                reasoning: chunk.reasoning,
+              })
+            }
           }
         }
 

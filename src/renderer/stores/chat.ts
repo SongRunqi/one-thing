@@ -276,6 +276,26 @@ export const useChatStore = defineStore('chat', () => {
               message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
               console.log('[Frontend] Updated reasoning length:', message.reasoning.length)
             }
+          } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
+            console.log('[Frontend] Tool chunk:', chunk.type, chunk.toolCall)
+            // Update tool calls in message
+            const message = messages.value.find(m => m.id === assistantMessageId)
+            if (message && chunk.toolCall) {
+              // Initialize toolCalls array if not exists
+              if (!message.toolCalls) {
+                message.toolCalls = []
+              }
+              // Find existing tool call or add new one
+              const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
+              if (existingIndex >= 0) {
+                // Update existing tool call
+                message.toolCalls[existingIndex] = chunk.toolCall
+              } else {
+                // Add new tool call
+                message.toolCalls.push(chunk.toolCall)
+              }
+              console.log('[Frontend] Updated toolCalls:', message.toolCalls.length)
+            }
           }
         } else {
           console.log('[Frontend] Chunk for different message:', chunk.messageId, 'expected:', assistantMessageId)

@@ -3,6 +3,7 @@ import { registerSessionHandlers } from './sessions.js'
 import { registerSettingsHandlers } from './settings.js'
 import { registerModelsHandlers } from './models.js'
 import { registerProvidersHandlers } from './providers.js'
+import { registerToolHandlers } from './tools.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -10,4 +11,5 @@ export function initializeIPC() {
   registerSettingsHandlers()
   registerModelsHandlers()
   registerProvidersHandlers()
+  registerToolHandlers()
 }

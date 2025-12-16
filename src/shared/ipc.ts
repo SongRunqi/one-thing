@@ -33,6 +33,13 @@ export const IPC_CHANNELS = {
 
   // Providers related
   GET_PROVIDERS: 'providers:get-all',
+
+  // Tools related
+  GET_TOOLS: 'tools:get-all',
+  EXECUTE_TOOL: 'tools:execute',
+  CANCEL_TOOL: 'tools:cancel',
+  STREAM_TOOL_CALL: 'chat:stream-tool-call',
+  STREAM_TOOL_RESULT: 'chat:stream-tool-result',
 } as const
 
 // Type definitions for IPC messages
@@ -44,6 +51,7 @@ export interface ChatMessage {
   isStreaming?: boolean
   errorDetails?: string  // Additional error details for error messages
   reasoning?: string  // Thinking/reasoning process for reasoning models (e.g., deepseek-reasoner)
+  toolCalls?: ToolCall[]  // Tool calls made by the assistant
 }
 
 export interface ChatSession {
@@ -120,6 +128,7 @@ export interface AppSettings {
   ai: AISettings
   theme: 'light' | 'dark' | 'system'
   general: GeneralSettings
+  tools: ToolSettings
 }
 
 // IPC Request/Response types
@@ -285,12 +294,77 @@ export interface GetProvidersResponse {
   error?: string
 }
 
+// Tool related types
+export interface GetToolsResponse {
+  success: boolean
+  tools?: ToolDefinition[]
+  error?: string
+}
+
+export interface ExecuteToolRequest {
+  toolId: string
+  arguments: Record<string, any>
+  messageId: string  // Associated message ID
+  sessionId: string
+}
+
+export interface ExecuteToolResponse {
+  success: boolean
+  result?: any
+  error?: string
+}
+
+export interface ToolParameter {
+  name: string
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array'
+  description: string
+  required?: boolean
+  enum?: string[]
+  default?: any
+}
+
+export interface ToolDefinition {
+  id: string
+  name: string
+  description: string
+  parameters: ToolParameter[]
+  // Permission settings
+  enabled: boolean           // Whether this tool is enabled
+  autoExecute: boolean       // Whether to auto-execute when called
+  // Tool category for grouping in UI
+  category: 'builtin' | 'custom'
+  // Icon for UI display
+  icon?: string
+}
+
+export interface ToolCall {
+  id: string                 // Unique ID for this tool call
+  toolId: string             // ID of the tool being called
+  toolName: string           // Name of the tool
+  arguments: Record<string, any>  // Arguments passed to the tool
+  status: 'pending' | 'executing' | 'completed' | 'failed' | 'cancelled'
+  result?: any               // Result of the tool execution
+  error?: string             // Error message if failed
+  timestamp: number
+}
+
+export interface ToolSettings {
+  // Global tool settings
+  enableToolCalls: boolean   // Master switch for tool calls
+  // Per-tool settings (toolId -> settings)
+  tools: Record<string, {
+    enabled: boolean
+    autoExecute: boolean
+  }>
+}
+
 // Stream message types
 export interface StreamMessageChunk {
-  type: 'text' | 'reasoning' | 'error' | 'complete'
+  type: 'text' | 'reasoning' | 'error' | 'complete' | 'tool_call' | 'tool_result'
   content: string
   messageId?: string
   reasoning?: string
+  toolCall?: ToolCall
 }
 
 export interface SendMessageStreamResponse {

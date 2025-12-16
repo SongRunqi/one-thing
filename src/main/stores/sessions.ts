@@ -1,5 +1,5 @@
 import fs from 'fs'
-import type { ChatMessage, ChatSession } from '../../shared/ipc.js'
+import type { ChatMessage, ChatSession, ToolCall } from '../../shared/ipc.js'
 import {
   getSessionsDir,
   getSessionPath,
@@ -275,6 +275,31 @@ export function updateMessageStreaming(sessionId: string, messageId: string, isS
   if (!message) return false
 
   message.isStreaming = isStreaming
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
+
+// Update message tool calls
+export function updateMessageToolCalls(sessionId: string, messageId: string, toolCalls: ToolCall[]): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  message.toolCalls = toolCalls
   session.updatedAt = Date.now()
 
   // Save session file
