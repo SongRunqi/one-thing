@@ -21,17 +21,83 @@
         </svg>
       </button>
 
-      <!-- Tools toggle button -->
-      <button
-        class="icon-btn tools-toggle-btn"
-        :class="{ active: toolsEnabled }"
-        :title="toolsEnabled ? 'Tools enabled - click to disable' : 'Tools disabled - click to enable'"
-        @click="toggleTools"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-        </svg>
-      </button>
+      <!-- Tools section -->
+      <div class="tools-section" ref="toolsSectionRef">
+        <!-- Tools toggle button -->
+        <button
+          class="icon-btn tools-toggle-btn"
+          :class="{ active: toolsEnabled }"
+          :title="toolsEnabled ? 'Tools enabled - click to disable' : 'Tools disabled - click to enable'"
+          @click="toggleTools"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          </svg>
+        </button>
+
+        <!-- Tools panel button (only show when tools enabled) -->
+        <button
+          v-if="toolsEnabled"
+          class="icon-btn tools-panel-btn"
+          :class="{ active: showToolsPanel }"
+          @click="toggleToolsPanel"
+          title="View available tools"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Tools quick panel (Teleport to body) -->
+      <Teleport to="body">
+        <div
+          v-if="showToolsPanel"
+          class="tools-popover"
+          :style="toolsPanelPosition"
+          @click.stop
+        >
+          <div class="tools-popover-header">
+            <span>Available Tools</span>
+            <button class="popover-close" @click="showToolsPanel = false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <div class="tools-popover-list">
+            <div
+              v-for="tool in availableTools"
+              :key="tool.id"
+              class="tool-quick-item"
+              :class="{ enabled: isToolEnabled(tool.id) }"
+            >
+              <div class="tool-quick-info">
+                <span class="tool-quick-name">{{ tool.name || tool.id }}</span>
+                <span class="tool-quick-status">{{ isToolEnabled(tool.id) ? 'On' : 'Off' }}</span>
+              </div>
+              <label class="mini-toggle">
+                <input
+                  type="checkbox"
+                  :checked="isToolEnabled(tool.id)"
+                  @change="toggleToolEnabled(tool.id)"
+                />
+                <span class="mini-toggle-slider"></span>
+              </label>
+            </div>
+            <div v-if="availableTools.length === 0" class="tools-empty">
+              No tools available
+            </div>
+          </div>
+          <button class="tools-popover-settings" @click="openToolSettings">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span>Advanced Settings</span>
+          </button>
+        </div>
+      </Teleport>
 
       <div class="input-container">
         <textarea
@@ -82,8 +148,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
+
+interface ToolDefinition {
+  id: string
+  name: string
+  description?: string
+}
 
 interface Props {
   isLoading?: boolean
@@ -93,6 +165,7 @@ interface Props {
 interface Emits {
   (e: 'sendMessage', message: string): void
   (e: 'toolsEnabledChange', enabled: boolean): void
+  (e: 'openToolSettings'): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -107,6 +180,12 @@ const messageInput = ref('')
 const quotedText = ref('')
 const isFocused = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+
+// Tools panel state
+const showToolsPanel = ref(false)
+const toolsSectionRef = ref<HTMLElement | null>(null)
+const toolsPanelPosition = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
+const availableTools = ref<ToolDefinition[]>([])
 
 // Tools toggle state - synced with settings
 const toolsEnabled = ref(settingsStore.settings?.tools?.enableToolCalls ?? true)
@@ -126,6 +205,89 @@ function toggleTools() {
     settingsStore.saveSettings(settingsStore.settings)
   }
   emit('toolsEnabledChange', toolsEnabled.value)
+}
+
+// Load available tools
+async function loadAvailableTools() {
+  try {
+    const response = await window.electronAPI.getTools()
+    if (response.success && response.tools) {
+      availableTools.value = response.tools.map((tool: any) => ({
+        id: tool.id,
+        name: tool.name || tool.id,
+        description: tool.description
+      }))
+    }
+  } catch (error) {
+    console.error('Failed to load tools:', error)
+  }
+}
+
+// Toggle tools panel
+function toggleToolsPanel() {
+  if (!showToolsPanel.value && toolsSectionRef.value) {
+    const rect = toolsSectionRef.value.getBoundingClientRect()
+    const panelHeight = 320
+    const panelWidth = 280
+
+    // Position panel above the button
+    let top = rect.top - panelHeight - 8
+    let left = rect.left
+
+    // Ensure panel doesn't go off screen
+    if (top < 8) {
+      top = rect.bottom + 8
+    }
+    if (left + panelWidth > window.innerWidth - 8) {
+      left = window.innerWidth - panelWidth - 8
+    }
+
+    toolsPanelPosition.value = {
+      top: `${top}px`,
+      left: `${left}px`
+    }
+  }
+  showToolsPanel.value = !showToolsPanel.value
+
+  // Load tools when opening panel
+  if (showToolsPanel.value) {
+    loadAvailableTools()
+  }
+}
+
+// Check if a tool is enabled
+function isToolEnabled(toolId: string): boolean {
+  const toolSettings = settingsStore.settings?.tools?.tools?.[toolId]
+  return toolSettings?.enabled ?? true
+}
+
+// Toggle individual tool enabled state
+function toggleToolEnabled(toolId: string) {
+  if (settingsStore.settings?.tools) {
+    if (!settingsStore.settings.tools.tools) {
+      settingsStore.settings.tools.tools = {}
+    }
+    const current = settingsStore.settings.tools.tools[toolId]
+    settingsStore.settings.tools.tools[toolId] = {
+      ...current,
+      enabled: !(current?.enabled ?? true)
+    }
+    settingsStore.saveSettings(settingsStore.settings)
+  }
+}
+
+// Open tool settings
+function openToolSettings() {
+  showToolsPanel.value = false
+  emit('openToolSettings')
+}
+
+// Close panel when clicking outside
+function handleClickOutside(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (!target.closest('.tools-section') && !target.closest('.tools-popover')) {
+    showToolsPanel.value = false
+  }
 }
 
 const charCount = computed(() => messageInput.value.length)
@@ -218,6 +380,11 @@ defineExpose({
 
 onMounted(() => {
   adjustHeight()
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
@@ -318,18 +485,52 @@ onMounted(() => {
 .composer {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  box-shadow: var(--shadow);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 4px 24px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .composer.focused {
+  border-color: rgba(16, 163, 127, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(16, 163, 127, 0.15),
+    0 4px 32px rgba(0, 0, 0, 0.2),
+    0 0 20px rgba(16, 163, 127, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Light theme */
+html[data-theme='light'] .composer {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(250, 250, 250, 0.9) 100%
+  );
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.04),
+    0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme='light'] .composer.focused {
   border-color: rgba(16, 163, 127, 0.4);
-  box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1), var(--shadow);
+  box-shadow:
+    0 0 0 1px rgba(16, 163, 127, 0.1),
+    0 4px 32px rgba(0, 0, 0, 0.08),
+    0 0 20px rgba(16, 163, 127, 0.05);
 }
 
 .icon-btn {
@@ -360,15 +561,35 @@ onMounted(() => {
 /* Tools toggle button */
 .tools-toggle-btn {
   position: relative;
+  transition: all 0.2s ease;
 }
 
 .tools-toggle-btn.active {
   color: var(--accent);
-  background: rgba(16, 163, 127, 0.1);
+  background: rgba(16, 163, 127, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(16, 163, 127, 0.2);
 }
 
 .tools-toggle-btn.active:hover {
-  background: rgba(16, 163, 127, 0.15);
+  background: rgba(16, 163, 127, 0.18);
+}
+
+/* Active indicator dot */
+.tools-toggle-btn.active::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
 }
 
 /* Tools indicator in footer */
@@ -437,33 +658,37 @@ onMounted(() => {
 }
 
 .send-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
   border: none;
-  background: var(--accent);
+  background: linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%);
   color: white;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(16, 163, 127, 0.3);
 }
 
 .send-btn:hover:not(:disabled) {
-  background: #0d8a6a;
-  transform: scale(1.02);
+  background: linear-gradient(135deg, #0d8a6a 0%, #0a7559 100%);
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 4px 16px rgba(16, 163, 127, 0.4);
 }
 
 .send-btn:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: scale(0.96);
+  box-shadow: 0 1px 4px rgba(16, 163, 127, 0.2);
 }
 
 .send-btn:disabled {
   background: rgba(255, 255, 255, 0.08);
   color: var(--muted);
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .loading-spinner {
@@ -524,5 +749,205 @@ onMounted(() => {
 
 .char-count.error {
   color: #ef4444;
+}
+
+/* Tools section */
+.tools-section {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Tools panel button */
+.tools-panel-btn {
+  margin-left: -4px;
+  width: 32px;
+  height: 32px;
+}
+
+.tools-panel-btn.active {
+  background: rgba(16, 163, 127, 0.1);
+  color: var(--accent);
+}
+
+/* Tools popover */
+.tools-popover {
+  position: fixed;
+  width: 280px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  z-index: 1000;
+  overflow: hidden;
+  animation: popoverSlideIn 0.2s ease-out;
+}
+
+@keyframes popoverSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tools-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.popover-close {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.popover-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.tools-popover-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.tool-quick-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  transition: background 0.15s;
+}
+
+.tool-quick-item:last-child {
+  margin-bottom: 0;
+}
+
+.tool-quick-item:hover {
+  background: var(--hover);
+}
+
+.tool-quick-item.enabled {
+  background: rgba(16, 163, 127, 0.06);
+}
+
+.tool-quick-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tool-quick-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tool-quick-status {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.tools-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tools-popover-settings {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tools-popover-settings:hover {
+  background: rgba(16, 163, 127, 0.08);
+}
+
+/* Mini toggle */
+.mini-toggle {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+}
+
+.mini-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.mini-toggle-slider {
+  display: block;
+  width: 36px;
+  height: 20px;
+  background: var(--border);
+  border-radius: 10px;
+  position: relative;
+  transition: background 0.2s;
+}
+
+.mini-toggle-slider::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.mini-toggle input:checked + .mini-toggle-slider {
+  background: var(--accent);
+}
+
+.mini-toggle input:checked + .mini-toggle-slider::after {
+  transform: translateX(16px);
+}
+
+/* Light theme */
+html[data-theme='light'] .tools-popover {
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
 }
 </style>

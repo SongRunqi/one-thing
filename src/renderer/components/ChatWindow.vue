@@ -97,7 +97,7 @@
       <MessageList :messages="chatStore.messages" :is-loading="chatStore.isLoading" @set-quoted-text="handleSetQuotedText" />
 
       <div class="composer">
-        <InputBox ref="inputBoxRef" @send-message="handleSendMessage" :is-loading="chatStore.isLoading" />
+        <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @open-tool-settings="handleOpenToolSettings" :is-loading="chatStore.isLoading" />
       </div>
     </template>
   </main>
@@ -279,6 +279,11 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
 })
+
+// Handle open tool settings from InputBox
+function handleOpenToolSettings() {
+  emit('openSettings')
+}
 
 async function handleSendMessage(message: string) {
   if (!currentSession.value) return

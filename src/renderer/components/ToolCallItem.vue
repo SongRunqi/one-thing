@@ -128,32 +128,51 @@ function formatResult(result: any): string {
 
 <style scoped>
 .tool-call {
-  margin: 8px 0;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 0;
+  margin-bottom: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
   font-size: 13px;
+  transition: background 0.15s ease;
+}
+
+.tool-call:last-child {
+  margin-bottom: 0;
+}
+
+.tool-call:hover {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .tool-call.status-pending {
-  border-color: rgba(251, 191, 36, 0.3);
-  background: rgba(251, 191, 36, 0.05);
+  border-left-color: rgba(251, 191, 36, 0.6);
+  background: transparent;
+}
+
+.tool-call.status-pending:hover {
+  background: rgba(251, 191, 36, 0.04);
 }
 
 .tool-call.status-executing {
-  border-color: rgba(59, 130, 246, 0.3);
-  background: rgba(59, 130, 246, 0.05);
+  border-left-color: rgba(59, 130, 246, 0.6);
+  background: rgba(59, 130, 246, 0.04);
 }
 
 .tool-call.status-completed {
-  border-color: rgba(16, 163, 127, 0.3);
-  background: rgba(16, 163, 127, 0.05);
+  border-left-color: rgba(16, 163, 127, 0.6);
+  background: transparent;
+}
+
+.tool-call.status-completed:hover {
+  background: rgba(16, 163, 127, 0.04);
 }
 
 .tool-call.status-failed {
-  border-color: rgba(239, 68, 68, 0.3);
-  background: rgba(239, 68, 68, 0.05);
+  border-left-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.04);
 }
 
 .tool-header {
@@ -316,8 +335,27 @@ function formatResult(result: any): string {
 
 /* Light theme */
 html[data-theme='light'] .tool-call {
+  background: transparent;
+}
+
+html[data-theme='light'] .tool-call:hover {
   background: rgba(0, 0, 0, 0.02);
-  border-color: rgba(0, 0, 0, 0.08);
+}
+
+html[data-theme='light'] .tool-call.status-pending:hover {
+  background: rgba(251, 191, 36, 0.05);
+}
+
+html[data-theme='light'] .tool-call.status-executing {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+html[data-theme='light'] .tool-call.status-completed:hover {
+  background: rgba(16, 163, 127, 0.05);
+}
+
+html[data-theme='light'] .tool-call.status-failed {
+  background: rgba(239, 68, 68, 0.05);
 }
 
 html[data-theme='light'] .tool-icon {

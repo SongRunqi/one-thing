@@ -86,15 +86,6 @@
         <!-- Normal display -->
         <template v-else>
           <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
-          <!-- Tool calls display -->
-          <div v-if="message.toolCalls && message.toolCalls.length > 0" class="tool-calls-section">
-            <ToolCallItem
-              v-for="toolCall in message.toolCalls"
-              :key="toolCall.id"
-              :toolCall="toolCall"
-              @execute="handleToolExecute"
-            />
-          </div>
         <div class="message-footer">
           <div class="meta">{{ formatTime(message.timestamp) }}</div>
           <div :class="['actions', { visible: showActions }]">
@@ -167,6 +158,25 @@
         </div>
       </template>
     </div>
+
+      <!-- Tool calls - Independent section outside bubble -->
+      <div v-if="message.toolCalls && message.toolCalls.length > 0" class="tool-calls-container">
+        <div class="tool-calls-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          </svg>
+          <span>Tool {{ message.toolCalls.length > 1 ? 'Calls' : 'Call' }}</span>
+          <span class="tool-calls-count">{{ message.toolCalls.length }}</span>
+        </div>
+        <div class="tool-calls-list">
+          <ToolCallItem
+            v-for="toolCall in message.toolCalls"
+            :key="toolCall.id"
+            :toolCall="toolCall"
+            @execute="handleToolExecute"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -729,11 +739,11 @@ html[data-theme='light'] .toolbar-divider {
 }
 
 .bubble {
-  max-width: min(720px, 82%);
-  padding: 12px 14px;
-  border-radius: 16px;
+  max-width: min(680px, 78%);
+  padding: 14px 16px;
+  border-radius: 18px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.05);
   position: relative;
 }
 
@@ -753,9 +763,10 @@ html[data-theme='light'] .toolbar-divider {
 
 .content {
   word-wrap: break-word;
-  line-height: 1.6;
-  font-size: 14px;
+  line-height: 1.7;
+  font-size: 14.5px;
   color: var(--text);
+  letter-spacing: 0.01em;
 }
 
 .content.typing::after {
@@ -1219,11 +1230,64 @@ html[data-theme='light'] .error-time {
   background: rgba(16, 163, 127, 0.1);
 }
 
-/* Tool calls section */
-.tool-calls-section {
+/* Tool calls container - Independent section outside bubble */
+.tool-calls-container {
   margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  max-width: min(720px, 100%);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  animation: toolCallSlideIn 0.25s ease-out;
+}
+
+@keyframes toolCallSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tool-calls-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(16, 163, 127, 0.06);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.tool-calls-header svg {
+  opacity: 0.8;
+}
+
+.tool-calls-count {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: rgba(16, 163, 127, 0.15);
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.tool-calls-list {
+  padding: 8px;
+}
+
+/* Light theme */
+html[data-theme='light'] .tool-calls-container {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+html[data-theme='light'] .tool-calls-header {
+  background: rgba(16, 163, 127, 0.05);
 }
 
 /* Thinking status indicator - flowing text */
