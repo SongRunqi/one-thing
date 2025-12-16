@@ -21,6 +21,18 @@
         </svg>
       </button>
 
+      <!-- Tools toggle button -->
+      <button
+        class="icon-btn tools-toggle-btn"
+        :class="{ active: toolsEnabled }"
+        :title="toolsEnabled ? 'Tools enabled - click to disable' : 'Tools disabled - click to enable'"
+        @click="toggleTools"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        </svg>
+      </button>
+
       <div class="input-container">
         <textarea
           ref="textareaRef"
@@ -55,6 +67,12 @@
     <div class="composer-footer">
       <div class="hint">
         <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to send
+        <span v-if="toolsEnabled" class="tools-indicator">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          </svg>
+          Tools on
+        </span>
       </div>
       <div class="char-count" :class="{ warning: charCount > maxChars * 0.9, error: charCount > maxChars }">
         {{ charCount }} / {{ maxChars }}
@@ -64,7 +82,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
+import { useSettingsStore } from '@/stores/settings'
 
 interface Props {
   isLoading?: boolean
@@ -73,6 +92,7 @@ interface Props {
 
 interface Emits {
   (e: 'sendMessage', message: string): void
+  (e: 'toolsEnabledChange', enabled: boolean): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -81,11 +101,32 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<Emits>()
+const settingsStore = useSettingsStore()
 
 const messageInput = ref('')
 const quotedText = ref('')
 const isFocused = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+
+// Tools toggle state - synced with settings
+const toolsEnabled = ref(settingsStore.settings?.tools?.enableToolCalls ?? true)
+
+// Watch for settings changes
+watch(() => settingsStore.settings?.tools?.enableToolCalls, (newValue) => {
+  if (newValue !== undefined) {
+    toolsEnabled.value = newValue
+  }
+})
+
+function toggleTools() {
+  toolsEnabled.value = !toolsEnabled.value
+  // Update settings store
+  if (settingsStore.settings?.tools) {
+    settingsStore.settings.tools.enableToolCalls = toolsEnabled.value
+    settingsStore.saveSettings(settingsStore.settings)
+  }
+  emit('toolsEnabledChange', toolsEnabled.value)
+}
 
 const charCount = computed(() => messageInput.value.length)
 const maxChars = computed(() => props.maxChars)
@@ -314,6 +355,33 @@ onMounted(() => {
 .icon-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Tools toggle button */
+.tools-toggle-btn {
+  position: relative;
+}
+
+.tools-toggle-btn.active {
+  color: var(--accent);
+  background: rgba(16, 163, 127, 0.1);
+}
+
+.tools-toggle-btn.active:hover {
+  background: rgba(16, 163, 127, 0.15);
+}
+
+/* Tools indicator in footer */
+.tools-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 2px 8px;
+  background: rgba(16, 163, 127, 0.1);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--accent);
 }
 
 .input-container {
