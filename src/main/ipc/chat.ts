@@ -20,6 +20,16 @@ import {
 import type { ToolCall, ToolSettings } from '../../shared/ipc.js'
 import { getMCPToolsForAI, isMCPTool, executeMCPTool } from '../mcp/index.js'
 
+// System prompt to control tool usage behavior
+const TOOL_BEHAVIOR_SYSTEM_PROMPT = `You are a helpful assistant. You have access to tools, but you should ONLY use them when the user's request specifically requires their functionality.
+
+Important guidelines:
+- DO NOT mention your available tools or capabilities unless the user explicitly asks what you can do
+- DO NOT offer to use tools proactively - wait for the user to make a request that requires them
+- For casual conversation (greetings, general questions, etc.), respond naturally without referring to tools
+- Only call a tool when the user's message clearly requires that tool's specific functionality
+- If unsure whether a tool is needed, prefer responding conversationally first`
+
 // Extract detailed error information from API responses
 function extractErrorDetails(error: any): string | undefined {
   // AI SDK wraps errors with additional context
@@ -424,6 +434,13 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
           // Combine built-in tools and MCP tools
           const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
           const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
+
+          // Add system prompt to control tool behavior
+          const messagesWithSystem = [
+            { role: 'system' as const, content: TOOL_BEHAVIOR_SYSTEM_PROMPT },
+            { role: 'user' as const, content: messageContent },
+          ]
+
           const stream = streamChatResponseWithTools(
             providerId,
             {
@@ -432,7 +449,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
               model: providerConfig.model,
               apiType,
             },
-            [{ role: 'user', content: messageContent }],
+            messagesWithSystem,
             toolsForAI,
             { temperature: settings.ai.temperature }
           )

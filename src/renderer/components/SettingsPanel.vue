@@ -73,6 +73,17 @@
         </svg>
         Tools
       </button>
+      <button
+        :class="['tab-btn', { active: activeTab === 'mcp' }]"
+        @click="activeTab = 'mcp'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+          <line x1="8" y1="21" x2="16" y2="21"/>
+          <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        MCP
+      </button>
     </div>
 
     <div class="settings-content" ref="settingsContentRef">
@@ -594,6 +605,14 @@
           </div>
         </section>
       </div>
+
+      <!-- MCP Tab -->
+      <div v-show="activeTab === 'mcp'" class="tab-content">
+        <MCPSettingsPanel
+          :settings="localSettings.mcp || { enabled: true, servers: [] }"
+          @update:settings="handleMCPSettingsUpdate"
+        />
+      </div>
     </div>
 
     <footer class="settings-footer">
@@ -640,6 +659,7 @@ import { v4 as uuidv4 } from 'uuid'
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
 import UnsavedChangesDialog from './settings/UnsavedChangesDialog.vue'
 import DeleteConfirmDialog from './settings/DeleteConfirmDialog.vue'
+import MCPSettingsPanel from './settings/MCPSettingsPanel.vue'
 
 const emit = defineEmits<{
   close: []
@@ -648,7 +668,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 
 // Active tab
-const activeTab = ref<'general' | 'ai' | 'tools'>('general')
+const activeTab = ref<'general' | 'ai' | 'tools' | 'mcp'>('general')
 
 // Deep clone settings, ensuring providers object exists
 const localSettings = ref<AppSettings>(
@@ -708,6 +728,14 @@ if (!localSettings.value.tools) {
   localSettings.value.tools = {
     enableToolCalls: true,
     tools: {},
+  }
+}
+
+// Ensure MCP settings exist
+if (!localSettings.value.mcp) {
+  localSettings.value.mcp = {
+    enabled: true,
+    servers: [],
   }
 }
 
@@ -798,6 +826,11 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
   } else {
     localSettings.value.tools.tools[toolId].autoExecute = autoExecute
   }
+}
+
+// Handle MCP settings update from child component
+function handleMCPSettingsUpdate(mcpSettings: { enabled: boolean; servers: any[] }) {
+  localSettings.value.mcp = mcpSettings
 }
 
 // Store original settings for comparison (use localSettings after migration to avoid false positives)

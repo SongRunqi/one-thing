@@ -805,14 +805,18 @@ onUnmounted(() => {
 <style scoped>
 .sidebar {
   width: 300px;
+  max-width: 300px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
   transition: width 0.2s ease;
+  overflow: hidden;
 }
 
 .sidebar.collapsed {
   width: 60px;
+  max-width: 60px;
 }
 
 /* Collapsed State Styles */
@@ -993,7 +997,9 @@ onUnmounted(() => {
   flex-direction: column;
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
+  min-width: 0;
   padding: 8px;
 }
 
@@ -1062,6 +1068,9 @@ html[data-theme='light'] .group-count {
   max-height: 100px;
   opacity: 1;
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 /* Hidden sessions (parent is collapsed) - animate collapse */
