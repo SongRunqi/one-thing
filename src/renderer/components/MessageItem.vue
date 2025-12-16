@@ -6,6 +6,22 @@
       class="selection-toolbar"
       :style="{ top: selectionToolbarPosition.top + 'px', left: selectionToolbarPosition.left + 'px' }"
     >
+      <button class="toolbar-btn" @click="copySelection" title="Copy selected text">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        <span>{{ selectionCopied ? 'Copied!' : 'Copy' }}</span>
+      </button>
+      <div class="toolbar-divider"></div>
+      <button class="toolbar-btn" @click="quoteSelection" title="Quote in current chat">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/>
+          <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/>
+        </svg>
+        <span>Quote</span>
+      </button>
+      <div class="toolbar-divider"></div>
       <button class="toolbar-btn" @click="createBranchWithSelection" title="Create branch with this text">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="6" y1="3" x2="6" y2="15"/>
@@ -169,6 +185,7 @@ const emit = defineEmits<{
   edit: [messageId: string, newContent: string]
   branch: [messageId: string, quotedText?: string]
   goToBranch: [sessionId: string]
+  quote: [quotedText: string]
 }>()
 
 const showActions = ref(false)
@@ -182,6 +199,7 @@ const branchMenuPosition = ref({ top: 0, left: 0 })
 const showSelectionToolbar = ref(false)
 const selectedText = ref('')
 const selectionToolbarPosition = ref({ top: 0, left: 0 })
+const selectionCopied = ref(false)
 
 // Computed: whether this message has branches
 const hasBranches = computed(() => props.branches && props.branches.length > 0)
@@ -487,8 +505,8 @@ function handleTextSelection(event: MouseEvent) {
 
     const rect = range.getBoundingClientRect()
     const padding = 8
-    const toolbarWidth = 150  // approximate toolbar width
-    const toolbarHeight = 40  // approximate toolbar height
+    const toolbarWidth = 320  // approximate toolbar width (Copy + Quote + Branch)
+    const toolbarHeight = 44  // approximate toolbar height
 
     // Position toolbar above the selection, centered
     let top = rect.top - toolbarHeight - padding
@@ -511,6 +529,28 @@ function handleTextSelection(event: MouseEvent) {
   }, 10)
 }
 
+// Copy selected text to clipboard
+async function copySelection() {
+  try {
+    await navigator.clipboard.writeText(selectedText.value)
+    selectionCopied.value = true
+    setTimeout(() => {
+      selectionCopied.value = false
+    }, 1500)
+  } catch (err) {
+    console.error('Failed to copy selection:', err)
+  }
+}
+
+// Quote selected text in current chat
+function quoteSelection() {
+  emit('quote', selectedText.value)
+
+  // Hide toolbar and clear selection
+  showSelectionToolbar.value = false
+  window.getSelection()?.removeAllRanges()
+}
+
 // Create branch with selected text as context
 function createBranchWithSelection() {
   // Emit branch event with selected text
@@ -523,26 +563,65 @@ function createBranchWithSelection() {
 </script>
 
 <style scoped>
+/* Custom text selection highlight for AI messages */
+.message.assistant .bubble ::selection {
+  background: rgba(16, 163, 127, 0.35);
+  color: inherit;
+}
+
+.message.assistant .bubble ::-moz-selection {
+  background: rgba(16, 163, 127, 0.35);
+  color: inherit;
+}
+
+html[data-theme='light'] .message.assistant .bubble ::selection {
+  background: rgba(16, 163, 127, 0.25);
+}
+
+html[data-theme='light'] .message.assistant .bubble ::-moz-selection {
+  background: rgba(16, 163, 127, 0.25);
+}
+
 /* Selection toolbar (floating) */
 .selection-toolbar {
   position: fixed;
   z-index: 9999;
-  background: rgba(30, 30, 30, 0.95);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 0.5px rgba(255, 255, 255, 0.05);
+  background: rgba(24, 24, 27, 0.98);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.3),
+    0 4px 6px -1px rgba(0, 0, 0, 0.3),
+    0 12px 24px -4px rgba(0, 0, 0, 0.4),
+    0 0 40px rgba(16, 163, 127, 0.08);
   display: flex;
-  gap: 4px;
-  animation: fadeInScale 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  align-items: center;
+  gap: 2px;
+  animation: toolbarSlideIn 0.2s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 html[data-theme='light'] .selection-toolbar {
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.05),
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 12px 24px -4px rgba(0, 0, 0, 0.15),
+    0 0 40px rgba(16, 163, 127, 0.06);
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 2px;
+}
+
+html[data-theme='light'] .toolbar-divider {
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .toolbar-btn {
@@ -555,29 +634,39 @@ html[data-theme='light'] .selection-toolbar {
   color: var(--text);
   font-size: 13px;
   font-weight: 500;
-  border-radius: 7px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.32, 0.72, 0, 1);
   white-space: nowrap;
 }
 
 .toolbar-btn:hover {
   background: rgba(16, 163, 127, 0.15);
   color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.toolbar-btn:active {
+  transform: translateY(0) scale(0.98);
 }
 
 .toolbar-btn svg {
   flex-shrink: 0;
+  transition: transform 0.15s ease;
 }
 
-@keyframes fadeInScale {
+.toolbar-btn:hover svg {
+  transform: scale(1.1);
+}
+
+@keyframes toolbarSlideIn {
   from {
     opacity: 0;
-    transform: scale(0.9) translateY(4px);
+    transform: translateY(8px) scale(0.95);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 

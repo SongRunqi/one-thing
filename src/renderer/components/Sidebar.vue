@@ -83,10 +83,21 @@
 
       <div class="sessions-list" role="list">
         <template v-for="group in groupedSessions" :key="group.label">
-          <div class="group-header">{{ group.label }}</div>
+          <div
+            class="group-header"
+            :class="{ collapsed: collapsedGroups.has(group.label) }"
+            @click="toggleGroupCollapse(group.label)"
+          >
+            <svg class="group-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span class="group-label">{{ group.label }}</span>
+            <span class="group-count">{{ group.sessions.filter(s => !s.isHidden).length }}</span>
+          </div>
           <div
             v-for="session in group.sessions"
             :key="session.id"
+            v-show="!collapsedGroups.has(group.label)"
             :class="[
               'session-item',
               {
@@ -298,6 +309,9 @@ let deleteConfirmTimer: ReturnType<typeof setTimeout> | null = null
 // Collapsed parent sessions state (stores parent session IDs that are collapsed)
 const collapsedParents = ref<Set<string>>(new Set())
 
+// Collapsed groups state (stores group labels that are collapsed)
+const collapsedGroups = ref<Set<string>>(new Set())
+
 // Track if initial collapse has been done
 const initialCollapseApplied = ref(false)
 
@@ -311,19 +325,40 @@ function hasBranches(sessionId: string): boolean {
   return sessionsStore.sessions.some(s => s.parentSessionId === sessionId)
 }
 
+// Get all ancestor IDs for a session
+function getAncestorIds(sessionId: string): string[] {
+  const ancestors: string[] = []
+  const session = sessionsStore.sessions.find(s => s.id === sessionId)
+  if (!session) return ancestors
+
+  let current = session
+  while (current.parentSessionId) {
+    ancestors.push(current.parentSessionId)
+    const parent = sessionsStore.sessions.find(s => s.id === current.parentSessionId)
+    if (!parent) break
+    current = parent
+  }
+  return ancestors
+}
+
 // Initialize collapsed state - collapse all parent sessions on startup
+// But keep ancestors of the current session expanded
 function initializeCollapsedState() {
   if (initialCollapseApplied.value) return
+
+  // Get ancestors of the current session (these should stay expanded)
+  const currentSessionAncestors = new Set(getAncestorIds(sessionsStore.currentSessionId))
 
   const parentsWithBranches = sessionsStore.sessions
     .filter(s => !s.parentSessionId) // Root sessions only
     .filter(s => hasBranches(s.id))
+    .filter(s => !currentSessionAncestors.has(s.id)) // Don't collapse ancestors of current session
     .map(s => s.id)
 
   if (parentsWithBranches.length > 0) {
     collapsedParents.value = new Set(parentsWithBranches)
-    initialCollapseApplied.value = true
   }
+  initialCollapseApplied.value = true
 }
 
 // Watch for sessions to be loaded and apply initial collapse
@@ -337,6 +372,31 @@ watch(
   { immediate: true }
 )
 
+// Watch for current session changes - expand ancestors when switching to a branch
+watch(
+  () => sessionsStore.currentSessionId,
+  (newSessionId) => {
+    if (!newSessionId) return
+
+    // Get ancestors of the new current session
+    const ancestors = getAncestorIds(newSessionId)
+
+    // Expand any collapsed ancestors
+    let changed = false
+    for (const ancestorId of ancestors) {
+      if (collapsedParents.value.has(ancestorId)) {
+        collapsedParents.value.delete(ancestorId)
+        changed = true
+      }
+    }
+
+    // Trigger reactivity if we made changes
+    if (changed) {
+      collapsedParents.value = new Set(collapsedParents.value)
+    }
+  }
+)
+
 // Toggle collapse state for a parent session
 function toggleCollapse(sessionId: string) {
   if (collapsedParents.value.has(sessionId)) {
@@ -346,6 +406,17 @@ function toggleCollapse(sessionId: string) {
   }
   // Trigger reactivity
   collapsedParents.value = new Set(collapsedParents.value)
+}
+
+// Toggle collapse state for a group (Today, Yesterday, etc.)
+function toggleGroupCollapse(groupLabel: string) {
+  if (collapsedGroups.value.has(groupLabel)) {
+    collapsedGroups.value.delete(groupLabel)
+  } else {
+    collapsedGroups.value.add(groupLabel)
+  }
+  // Trigger reactivity
+  collapsedGroups.value = new Set(collapsedGroups.value)
 }
 
 // Check if a session is collapsed
@@ -927,12 +998,52 @@ onUnmounted(() => {
 }
 
 .group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 10px 6px;
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  cursor: pointer;
+  border-radius: 6px;
+  margin: 2px 0;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.group-header:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.group-chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.group-header.collapsed .group-chevron {
+  transform: rotate(-90deg);
+}
+
+.group-label {
+  flex: 1;
+}
+
+.group-count {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 10px;
+  opacity: 0.8;
+}
+
+html[data-theme='light'] .group-count {
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .session-item {
