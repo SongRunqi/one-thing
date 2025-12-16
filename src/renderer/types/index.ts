@@ -23,9 +23,14 @@ import type {
   FetchModelsResponse,
   GetCachedModelsResponse,
   GetProvidersResponse,
+  ToolDefinition,
+  ToolCall,
+  ToolSettings,
+  GetToolsResponse,
+  ExecuteToolResponse,
 } from '../../shared/ipc'
 
-export type { ChatMessage, ChatSession, AISettings, AppSettings, AIProvider, ProviderConfig, CustomProviderConfig, ProviderInfo, ModelInfo }
+export type { ChatMessage, ChatSession, AISettings, AppSettings, AIProvider, ProviderConfig, CustomProviderConfig, ProviderInfo, ModelInfo, ToolDefinition, ToolCall, ToolSettings }
 
 // Streaming response types
 export interface StreamSendMessageResponse {
@@ -40,6 +45,7 @@ export interface StreamSendMessageResponse {
 export interface ElectronAPI {
   sendMessage: (sessionId: string, message: string) => Promise<SendMessageResponse>
   sendMessageStream: (sessionId: string, message: string) => Promise<StreamSendMessageResponse>
+  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result'; content: string; messageId: string; reasoning?: string; toolCall?: ToolCall }) => void) => () => void
   onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string }) => void) => () => void
@@ -63,6 +69,10 @@ export interface ElectronAPI {
   ) => Promise<FetchModelsResponse>
   getCachedModels: (provider: AIProvider) => Promise<GetCachedModelsResponse>
   getProviders: () => Promise<GetProvidersResponse>
+  // Tools methods
+  getTools: () => Promise<GetToolsResponse>
+  executeTool: (toolId: string, args: Record<string, any>, messageId: string, sessionId: string) => Promise<ExecuteToolResponse>
+  cancelTool: (toolCallId: string) => Promise<{ success: boolean }>
 }
 
 declare global {

@@ -27,6 +27,7 @@ export {
   updateMessageContent,
   updateMessageReasoning,
   updateMessageStreaming,
+  updateMessageToolCalls,
 
   // Initialization
   initializeStores,

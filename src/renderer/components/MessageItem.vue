@@ -86,6 +86,15 @@
         <!-- Normal display -->
         <template v-else>
           <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
+          <!-- Tool calls display -->
+          <div v-if="message.toolCalls && message.toolCalls.length > 0" class="tool-calls-section">
+            <ToolCallItem
+              v-for="toolCall in message.toolCalls"
+              :key="toolCall.id"
+              :toolCall="toolCall"
+              @execute="handleToolExecute"
+            />
+          </div>
         <div class="message-footer">
           <div class="meta">{{ formatTime(message.timestamp) }}</div>
           <div :class="['actions', { visible: showActions }]">
@@ -166,7 +175,8 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
-import type { ChatMessage } from '@/types'
+import type { ChatMessage, ToolCall } from '@/types'
+import ToolCallItem from './ToolCallItem.vue'
 
 interface BranchInfo {
   id: string
@@ -186,6 +196,7 @@ const emit = defineEmits<{
   branch: [messageId: string, quotedText?: string]
   goToBranch: [sessionId: string]
   quote: [quotedText: string]
+  executeTool: [toolCall: ToolCall]
 }>()
 
 const showActions = ref(false)
@@ -559,6 +570,11 @@ function createBranchWithSelection() {
   // Hide toolbar and clear selection
   showSelectionToolbar.value = false
   window.getSelection()?.removeAllRanges()
+}
+
+// Handle tool execution
+function handleToolExecute(toolCall: ToolCall) {
+  emit('executeTool', toolCall)
 }
 </script>
 
@@ -1185,6 +1201,13 @@ html[data-theme='light'] .error-time {
 
 .branch-menu-new:hover {
   background: rgba(16, 163, 127, 0.1);
+}
+
+/* Tool calls section */
+.tool-calls-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
 /* Thinking status indicator - flowing text */

@@ -11,7 +11,7 @@ const electronAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE_STREAM, { sessionId, message }),
 
   // Stream event listeners
-  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning'; content: string; messageId: string; reasoning?: string }) => void) => {
+  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result'; content: string; messageId: string; reasoning?: string; toolCall?: any }) => void) => {
     const listener = (_event: any, chunk: any) => callback(chunk)
     ipcRenderer.on(IPC_CHANNELS.STREAM_CHUNK, listener)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_CHUNK, listener)
@@ -86,6 +86,16 @@ const electronAPI = {
   // Providers methods
   getProviders: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDERS),
+
+  // Tools methods
+  getTools: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_TOOLS),
+
+  executeTool: (toolId: string, args: Record<string, any>, messageId: string, sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXECUTE_TOOL, { toolId, arguments: args, messageId, sessionId }),
+
+  cancelTool: (toolCallId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CANCEL_TOOL, { toolCallId }),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

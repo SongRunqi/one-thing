@@ -11,6 +11,7 @@
  */
 
 import { generateText, streamText } from 'ai'
+import { z } from 'zod'
 import {
   initializeRegistry,
   getAvailableProviders as getProvidersFromRegistry,
@@ -76,11 +77,85 @@ function isReasoningModel(modelId: string): boolean {
 }
 
 /**
+ * Tool call information from AI response
+ */
+export interface AIToolCall {
+  toolCallId: string
+  toolName: string
+  args: Record<string, any>
+}
+
+/**
  * Chat response result with optional reasoning/thinking content
  */
 export interface ChatResponseResult {
   text: string
   reasoning?: string  // Thinking/reasoning process if available
+  toolCalls?: AIToolCall[]  // Tool calls made by the assistant
+}
+
+/**
+ * Stream chunk types for tool-enabled responses
+ */
+export interface StreamChunkWithTools {
+  type: 'text' | 'reasoning' | 'tool-call' | 'tool-result'
+  text?: string
+  reasoning?: string
+  toolCall?: AIToolCall
+  toolResult?: {
+    toolCallId: string
+    result: any
+  }
+}
+
+/**
+ * Tool definition for AI SDK
+ */
+export interface AIToolDefinition {
+  description: string
+  parameters: z.ZodObject<any>
+  execute?: (args: any) => Promise<any>
+}
+
+/**
+ * Convert tool parameters to Zod schema
+ */
+function createZodSchema(parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }>): z.ZodObject<any> {
+  const shape: Record<string, z.ZodTypeAny> = {}
+
+  for (const param of parameters) {
+    let zodType: z.ZodTypeAny
+
+    switch (param.type) {
+      case 'string':
+        zodType = param.enum ? z.enum(param.enum as [string, ...string[]]) : z.string()
+        break
+      case 'number':
+        zodType = z.number()
+        break
+      case 'boolean':
+        zodType = z.boolean()
+        break
+      case 'object':
+        zodType = z.record(z.string(), z.any())
+        break
+      case 'array':
+        zodType = z.array(z.any())
+        break
+      default:
+        zodType = z.any()
+    }
+
+    zodType = zodType.describe(param.description)
+
+    if (!param.required) {
+      zodType = zodType.optional()
+    }
+
+    shape[param.name] = zodType
+  }
+
+  return z.object(shape)
 }
 
 /**
@@ -358,6 +433,119 @@ export async function generateChatTitle(
 
   // Clean up the title - remove quotes
   return response.trim().replace(/^["']|["']$/g, '')
+}
+
+/**
+ * Stream a chat response with tools support
+ * Returns an async generator that yields text, reasoning, and tool call chunks
+ */
+export async function* streamChatResponseWithTools(
+  providerId: string,
+  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+  tools: Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }>,
+  options: { temperature?: number; maxTokens?: number } = {}
+): AsyncGenerator<StreamChunkWithTools, void, unknown> {
+  const provider = createProvider(providerId, config)
+  const model = provider.createModel(config.model)
+
+  const isReasoning = isReasoningModel(config.model)
+
+  // Convert our tool definitions to AI SDK format
+  // AI SDK expects tools with inputSchema property
+  const aiTools: Record<string, any> = {}
+  for (const [toolId, toolDef] of Object.entries(tools)) {
+    aiTools[toolId] = {
+      description: toolDef.description,
+      inputSchema: createZodSchema(toolDef.parameters),
+    }
+  }
+
+  // Build streamText options
+  const streamOptions: Parameters<typeof streamText>[0] = {
+    model,
+    messages,
+    tools: Object.keys(aiTools).length > 0 ? aiTools : undefined,
+    maxOutputTokens: options.maxTokens || 4096,
+  }
+
+  // Only add temperature for non-reasoning models
+  if (!isReasoning && options.temperature !== undefined) {
+    streamOptions.temperature = options.temperature
+  }
+
+  console.log(`[Provider] Starting stream with ${Object.keys(aiTools).length} tools`)
+
+  const stream = await streamText(streamOptions)
+
+  // Process the full stream to capture all types of chunks
+  for await (const chunk of stream.fullStream) {
+    const chunkAny = chunk as any
+
+    switch (chunk.type) {
+      case 'text-delta':
+        const text = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
+        if (text) {
+          yield { type: 'text', text }
+        }
+        break
+
+      case 'reasoning-delta':
+        const reasoning = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
+        if (reasoning) {
+          yield { type: 'reasoning', reasoning }
+        }
+        break
+
+      case 'tool-call':
+        console.log(`[Provider] Tool call:`, chunkAny)
+        yield {
+          type: 'tool-call',
+          toolCall: {
+            toolCallId: chunkAny.toolCallId,
+            toolName: chunkAny.toolName,
+            args: chunkAny.args || {},
+          },
+        }
+        break
+
+      case 'tool-result':
+        console.log(`[Provider] Tool result:`, chunkAny)
+        yield {
+          type: 'tool-result',
+          toolResult: {
+            toolCallId: chunkAny.toolCallId,
+            result: chunkAny.result,
+          },
+        }
+        break
+    }
+  }
+
+  console.log(`[Provider] Stream with tools completed`)
+}
+
+/**
+ * Convert ToolDefinition array to the format expected by streamChatResponseWithTools
+ */
+export function convertToolDefinitionsForAI(
+  toolDefinitions: Array<{
+    id: string
+    name: string
+    description: string
+    parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }>
+  }>
+): Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }> {
+  const result: Record<string, any> = {}
+
+  for (const tool of toolDefinitions) {
+    result[tool.id] = {
+      description: tool.description,
+      parameters: tool.parameters,
+    }
+  }
+
+  return result
 }
 
 // Legacy export for backward compatibility

@@ -44,6 +44,13 @@ const defaultSettings: AppSettings = {
   general: {
     animationSpeed: 0.25,
   },
+  tools: {
+    enableToolCalls: true,
+    tools: {
+      get_current_time: { enabled: true, autoExecute: true },
+      calculator: { enabled: true, autoExecute: true },
+    },
+  },
 }
 
 // Migrate old settings format to new format
@@ -102,6 +109,7 @@ function migrateSettings(settings: any): AppSettings {
       },
       theme: settings.theme || 'dark',
       general: settings.general || defaultSettings.general,
+      tools: settings.tools || defaultSettings.tools,
     }
 
     // Save migrated settings
@@ -130,6 +138,12 @@ function migrateSettings(settings: any): AppSettings {
   // Ensure general settings exist
   if (!settings.general) {
     settings.general = defaultSettings.general
+    needsSave = true
+  }
+
+  // Ensure tools settings exist
+  if (!settings.tools) {
+    settings.tools = defaultSettings.tools
     needsSave = true
   }
 

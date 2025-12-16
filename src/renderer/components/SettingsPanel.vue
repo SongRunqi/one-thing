@@ -64,6 +64,15 @@
         </svg>
         AI Provider
       </button>
+      <button
+        :class="['tab-btn', { active: activeTab === 'tools' }]"
+        @click="activeTab = 'tools'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        </svg>
+        Tools
+      </button>
     </div>
 
     <div class="settings-content" ref="settingsContentRef">
@@ -513,6 +522,78 @@
           </div>
         </section>
       </div>
+
+      <!-- Tools Tab -->
+      <div v-show="activeTab === 'tools'" class="tab-content">
+        <!-- Enable Tool Calls -->
+        <section class="settings-section">
+          <h3 class="section-title">Tool Settings</h3>
+
+          <div class="form-group">
+            <div class="toggle-row">
+              <label class="form-label">Enable Tool Calls</label>
+              <label class="toggle">
+                <input
+                  type="checkbox"
+                  v-model="localSettings.tools.enableToolCalls"
+                />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <p class="form-hint">Allow AI to use tools during conversations</p>
+          </div>
+        </section>
+
+        <!-- Available Tools -->
+        <section class="settings-section" v-if="localSettings.tools.enableToolCalls">
+          <h3 class="section-title">Available Tools</h3>
+
+          <div v-if="availableTools.length === 0" class="empty-state">
+            <p>No tools available</p>
+          </div>
+
+          <div v-else class="tools-list">
+            <div
+              v-for="tool in availableTools"
+              :key="tool.id"
+              class="tool-item"
+            >
+              <div class="tool-info">
+                <div class="tool-header">
+                  <span class="tool-name">{{ tool.name }}</span>
+                  <span :class="['tool-category', tool.category]">{{ tool.category }}</span>
+                </div>
+                <p class="tool-description">{{ tool.description }}</p>
+              </div>
+              <div class="tool-controls">
+                <div class="toggle-row">
+                  <span class="control-label">Enabled</span>
+                  <label class="toggle small">
+                    <input
+                      type="checkbox"
+                      :checked="getToolEnabled(tool.id)"
+                      @change="setToolEnabled(tool.id, ($event.target as HTMLInputElement).checked)"
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="toggle-row">
+                  <span class="control-label">Auto Execute</span>
+                  <label class="toggle small">
+                    <input
+                      type="checkbox"
+                      :checked="getToolAutoExecute(tool.id)"
+                      @change="setToolAutoExecute(tool.id, ($event.target as HTMLInputElement).checked)"
+                      :disabled="!getToolEnabled(tool.id)"
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
 
     <footer class="settings-footer">
@@ -553,7 +634,7 @@
 <script setup lang="ts">
 import { ref, toRaw, onMounted, onUnmounted, computed } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import type { AppSettings, AIProvider, ModelInfo, ProviderInfo, CustomProviderConfig } from '@/types'
+import type { AppSettings, AIProvider, ModelInfo, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
 import { v4 as uuidv4 } from 'uuid'
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
@@ -567,7 +648,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 
 // Active tab
-const activeTab = ref<'general' | 'ai'>('general')
+const activeTab = ref<'general' | 'ai' | 'tools'>('general')
 
 // Deep clone settings, ensuring providers object exists
 const localSettings = ref<AppSettings>(
@@ -622,6 +703,14 @@ if (!localSettings.value.ai.customProviders) {
   localSettings.value.ai.customProviders = []
 }
 
+// Ensure tools settings exist
+if (!localSettings.value.tools) {
+  localSettings.value.tools = {
+    enableToolCalls: true,
+    tools: {},
+  }
+}
+
 const showApiKey = ref(false)
 const isSaving = ref(false)
 const showSaveSuccess = ref(false)
@@ -655,6 +744,61 @@ const customProviderFormData = ref<CustomProviderForm>({
   apiKey: '',
   model: '',
 })
+
+// Tools state
+const availableTools = ref<ToolDefinition[]>([])
+
+// Load available tools
+async function loadAvailableTools() {
+  try {
+    const response = await window.electronAPI.getTools()
+    if (response.success && response.tools) {
+      availableTools.value = response.tools
+    }
+  } catch (error) {
+    console.error('Failed to load tools:', error)
+  }
+}
+
+// Get tool enabled state
+function getToolEnabled(toolId: string): boolean {
+  const settings = localSettings.value.tools.tools[toolId]
+  if (settings !== undefined) {
+    return settings.enabled
+  }
+  // Default to the tool's default setting
+  const tool = availableTools.value.find(t => t.id === toolId)
+  return tool?.enabled ?? true
+}
+
+// Set tool enabled state
+function setToolEnabled(toolId: string, enabled: boolean) {
+  if (!localSettings.value.tools.tools[toolId]) {
+    localSettings.value.tools.tools[toolId] = { enabled, autoExecute: true }
+  } else {
+    localSettings.value.tools.tools[toolId].enabled = enabled
+  }
+}
+
+// Get tool auto-execute state
+function getToolAutoExecute(toolId: string): boolean {
+  const settings = localSettings.value.tools.tools[toolId]
+  if (settings !== undefined) {
+    return settings.autoExecute
+  }
+  // Default to the tool's default setting
+  const tool = availableTools.value.find(t => t.id === toolId)
+  return tool?.autoExecute ?? true
+}
+
+// Set tool auto-execute state
+function setToolAutoExecute(toolId: string, autoExecute: boolean) {
+  if (!localSettings.value.tools.tools[toolId]) {
+    localSettings.value.tools.tools[toolId] = { enabled: true, autoExecute }
+  } else {
+    localSettings.value.tools.tools[toolId].autoExecute = autoExecute
+  }
+}
 
 // Store original settings for comparison (use localSettings after migration to avoid false positives)
 const originalSettings = ref<string>(JSON.stringify(localSettings.value))
@@ -1192,6 +1336,9 @@ async function saveAndClose() {
 onMounted(async () => {
   // Load cached models on mount
   await loadCachedModels()
+
+  // Load available tools
+  await loadAvailableTools()
 
   // Add click outside listener for provider dropdown
   document.addEventListener('click', handleProviderDropdownClickOutside)
@@ -2585,5 +2732,164 @@ html[data-theme='light'] .custom-select-dropdown {
     opacity: 0;
     transform: translateX(-50%) translateY(-10px);
   }
+}
+
+/* Tools Tab Styles */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle.small {
+  width: 36px;
+  height: 20px;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  transition: all 0.2s ease;
+}
+
+.toggle-slider::before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--text);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.toggle.small .toggle-slider::before {
+  height: 14px;
+  width: 14px;
+}
+
+.toggle input:checked + .toggle-slider {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.toggle input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+  background-color: white;
+}
+
+.toggle.small input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+}
+
+.toggle input:disabled + .toggle-slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.empty-state {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--surface-hover);
+  border-radius: 8px;
+}
+
+.tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tool-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  background: var(--surface-hover);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.tool-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tool-name {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.tool-category {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(16, 163, 127, 0.15);
+  color: var(--accent);
+}
+
+.tool-category.custom {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.tool-description {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.tool-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tool-controls .toggle-row {
+  gap: 8px;
+}
+
+.control-label {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 80px;
 }
 </style>
