@@ -19,6 +19,18 @@
               <line x1="9" y1="3" x2="9" y2="21"/>
             </svg>
           </button>
+          <!-- Back to parent button (shown for branch sessions) -->
+          <button
+            v-if="isBranchSession"
+            class="back-to-parent-btn"
+            title="Back to parent chat"
+            @click="goToParentSession"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            <span>Parent</span>
+          </button>
           <div class="chat-title">
             <div class="model-selector" ref="modelSelectorRef">
               <button class="model-selector-btn" @click="toggleModelDropdown">
@@ -122,6 +134,16 @@ const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 
 const currentSession = computed(() => sessionsStore.currentSession)
+
+// Check if current session is a branch
+const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)
+
+// Go back to parent session
+async function goToParentSession() {
+  if (currentSession.value?.parentSessionId) {
+    await sessionsStore.switchSession(currentSession.value.parentSessionId)
+  }
+}
 
 // Input box ref for setting quoted text
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
@@ -320,6 +342,44 @@ html[data-theme='light'] .chat-header {
 
 .sidebar-toggle {
   flex-shrink: 0;
+}
+
+.back-to-parent-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.back-to-parent-btn:hover {
+  background: rgba(16, 163, 127, 0.1);
+  border-color: rgba(16, 163, 127, 0.3);
+  color: var(--accent);
+}
+
+.back-to-parent-btn:active {
+  transform: scale(0.98);
+}
+
+.back-to-parent-btn svg {
+  flex-shrink: 0;
+}
+
+html[data-theme='light'] .back-to-parent-btn {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+html[data-theme='light'] .back-to-parent-btn:hover {
+  background: rgba(16, 163, 127, 0.08);
 }
 
 .chat-title {
