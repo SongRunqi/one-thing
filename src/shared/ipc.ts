@@ -40,6 +40,21 @@ export const IPC_CHANNELS = {
   CANCEL_TOOL: 'tools:cancel',
   STREAM_TOOL_CALL: 'chat:stream-tool-call',
   STREAM_TOOL_RESULT: 'chat:stream-tool-result',
+
+  // MCP related
+  MCP_GET_SERVERS: 'mcp:get-servers',
+  MCP_ADD_SERVER: 'mcp:add-server',
+  MCP_UPDATE_SERVER: 'mcp:update-server',
+  MCP_REMOVE_SERVER: 'mcp:remove-server',
+  MCP_CONNECT_SERVER: 'mcp:connect-server',
+  MCP_DISCONNECT_SERVER: 'mcp:disconnect-server',
+  MCP_REFRESH_SERVER: 'mcp:refresh-server',
+  MCP_GET_TOOLS: 'mcp:get-tools',
+  MCP_CALL_TOOL: 'mcp:call-tool',
+  MCP_GET_RESOURCES: 'mcp:get-resources',
+  MCP_READ_RESOURCE: 'mcp:read-resource',
+  MCP_GET_PROMPTS: 'mcp:get-prompts',
+  MCP_GET_PROMPT: 'mcp:get-prompt',
 } as const
 
 // Type definitions for IPC messages
@@ -129,6 +144,7 @@ export interface AppSettings {
   theme: 'light' | 'dark' | 'system'
   general: GeneralSettings
   tools: ToolSettings
+  mcp?: MCPSettings
 }
 
 // IPC Request/Response types
@@ -372,4 +388,191 @@ export interface SendMessageStreamResponse {
   chunk?: StreamMessageChunk
   error?: string
   errorDetails?: string
+}
+
+// MCP related types
+export type MCPTransportType = 'stdio' | 'sse'
+
+export interface MCPServerConfig {
+  id: string
+  name: string
+  transport: MCPTransportType
+  enabled: boolean
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  cwd?: string
+  url?: string
+  headers?: Record<string, string>
+}
+
+export type MCPConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
+
+export interface MCPToolInfo {
+  name: string
+  description?: string
+  inputSchema: {
+    type: 'object'
+    properties?: Record<string, any>
+    required?: string[]
+  }
+  serverId: string
+}
+
+export interface MCPResourceInfo {
+  uri: string
+  name: string
+  description?: string
+  mimeType?: string
+  serverId: string
+}
+
+export interface MCPPromptInfo {
+  name: string
+  description?: string
+  arguments?: Array<{
+    name: string
+    description?: string
+    required?: boolean
+  }>
+  serverId: string
+}
+
+export interface MCPServerState {
+  config: MCPServerConfig
+  status: MCPConnectionStatus
+  error?: string
+  tools: MCPToolInfo[]
+  resources: MCPResourceInfo[]
+  prompts: MCPPromptInfo[]
+  connectedAt?: number
+}
+
+export interface MCPSettings {
+  enabled: boolean
+  servers: MCPServerConfig[]
+}
+
+// MCP IPC Request/Response types
+export interface MCPGetServersResponse {
+  success: boolean
+  servers?: MCPServerState[]
+  error?: string
+}
+
+export interface MCPAddServerRequest {
+  config: MCPServerConfig
+}
+
+export interface MCPAddServerResponse {
+  success: boolean
+  server?: MCPServerState
+  error?: string
+}
+
+export interface MCPUpdateServerRequest {
+  config: MCPServerConfig
+}
+
+export interface MCPUpdateServerResponse {
+  success: boolean
+  server?: MCPServerState
+  error?: string
+}
+
+export interface MCPRemoveServerRequest {
+  serverId: string
+}
+
+export interface MCPRemoveServerResponse {
+  success: boolean
+  error?: string
+}
+
+export interface MCPConnectServerRequest {
+  serverId: string
+}
+
+export interface MCPConnectServerResponse {
+  success: boolean
+  server?: MCPServerState
+  error?: string
+}
+
+export interface MCPDisconnectServerRequest {
+  serverId: string
+}
+
+export interface MCPDisconnectServerResponse {
+  success: boolean
+  error?: string
+}
+
+export interface MCPRefreshServerRequest {
+  serverId: string
+}
+
+export interface MCPRefreshServerResponse {
+  success: boolean
+  server?: MCPServerState
+  error?: string
+}
+
+export interface MCPGetToolsResponse {
+  success: boolean
+  tools?: MCPToolInfo[]
+  error?: string
+}
+
+export interface MCPCallToolRequest {
+  serverId: string
+  toolName: string
+  arguments: Record<string, any>
+}
+
+export interface MCPCallToolResponse {
+  success: boolean
+  content?: Array<{
+    type: 'text' | 'image' | 'resource'
+    text?: string
+    data?: string
+    mimeType?: string
+  }>
+  error?: string
+  isError?: boolean
+}
+
+export interface MCPGetResourcesResponse {
+  success: boolean
+  resources?: MCPResourceInfo[]
+  error?: string
+}
+
+export interface MCPReadResourceRequest {
+  serverId: string
+  uri: string
+}
+
+export interface MCPReadResourceResponse {
+  success: boolean
+  content?: any
+  error?: string
+}
+
+export interface MCPGetPromptsResponse {
+  success: boolean
+  prompts?: MCPPromptInfo[]
+  error?: string
+}
+
+export interface MCPGetPromptRequest {
+  serverId: string
+  name: string
+  arguments?: Record<string, string>
+}
+
+export interface MCPGetPromptResponse {
+  success: boolean
+  messages?: any[]
+  error?: string
 }
