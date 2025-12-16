@@ -14,6 +14,14 @@
         <span>{{ selectionCopied ? 'Copied!' : 'Copy' }}</span>
       </button>
       <div class="toolbar-divider"></div>
+      <button class="toolbar-btn" @click="quoteSelection" title="Quote in current chat">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/>
+          <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/>
+        </svg>
+        <span>Quote</span>
+      </button>
+      <div class="toolbar-divider"></div>
       <button class="toolbar-btn" @click="createBranchWithSelection" title="Create branch with this text">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="6" y1="3" x2="6" y2="15"/>
@@ -177,6 +185,7 @@ const emit = defineEmits<{
   edit: [messageId: string, newContent: string]
   branch: [messageId: string, quotedText?: string]
   goToBranch: [sessionId: string]
+  quote: [quotedText: string]
 }>()
 
 const showActions = ref(false)
@@ -496,7 +505,7 @@ function handleTextSelection(event: MouseEvent) {
 
     const rect = range.getBoundingClientRect()
     const padding = 8
-    const toolbarWidth = 220  // approximate toolbar width (increased for Copy button)
+    const toolbarWidth = 320  // approximate toolbar width (Copy + Quote + Branch)
     const toolbarHeight = 44  // approximate toolbar height
 
     // Position toolbar above the selection, centered
@@ -531,6 +540,15 @@ async function copySelection() {
   } catch (err) {
     console.error('Failed to copy selection:', err)
   }
+}
+
+// Quote selected text in current chat
+function quoteSelection() {
+  emit('quote', selectedText.value)
+
+  // Hide toolbar and clear selection
+  showSelectionToolbar.value = false
+  window.getSelection()?.removeAllRanges()
 }
 
 // Create branch with selected text as context

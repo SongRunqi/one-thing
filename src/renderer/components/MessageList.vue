@@ -13,6 +13,7 @@
       @edit="handleEdit"
       @branch="handleBranch"
       @go-to-branch="handleGoToBranch"
+      @quote="handleQuote"
     />
 
     <!-- Loading indicator -->
@@ -136,6 +137,11 @@ async function handleBranch(messageId: string, quotedText?: string) {
 // Handle go to branch event
 async function handleGoToBranch(sessionId: string) {
   await sessionsStore.switchSession(sessionId)
+}
+
+// Handle quote text event
+function handleQuote(quotedText: string) {
+  emit('setQuotedText', quotedText)
 }
 </script>
 
