@@ -325,19 +325,40 @@ function hasBranches(sessionId: string): boolean {
   return sessionsStore.sessions.some(s => s.parentSessionId === sessionId)
 }
 
+// Get all ancestor IDs for a session
+function getAncestorIds(sessionId: string): string[] {
+  const ancestors: string[] = []
+  const session = sessionsStore.sessions.find(s => s.id === sessionId)
+  if (!session) return ancestors
+
+  let current = session
+  while (current.parentSessionId) {
+    ancestors.push(current.parentSessionId)
+    const parent = sessionsStore.sessions.find(s => s.id === current.parentSessionId)
+    if (!parent) break
+    current = parent
+  }
+  return ancestors
+}
+
 // Initialize collapsed state - collapse all parent sessions on startup
+// But keep ancestors of the current session expanded
 function initializeCollapsedState() {
   if (initialCollapseApplied.value) return
+
+  // Get ancestors of the current session (these should stay expanded)
+  const currentSessionAncestors = new Set(getAncestorIds(sessionsStore.currentSessionId))
 
   const parentsWithBranches = sessionsStore.sessions
     .filter(s => !s.parentSessionId) // Root sessions only
     .filter(s => hasBranches(s.id))
+    .filter(s => !currentSessionAncestors.has(s.id)) // Don't collapse ancestors of current session
     .map(s => s.id)
 
   if (parentsWithBranches.length > 0) {
     collapsedParents.value = new Set(parentsWithBranches)
-    initialCollapseApplied.value = true
   }
+  initialCollapseApplied.value = true
 }
 
 // Watch for sessions to be loaded and apply initial collapse
@@ -349,6 +370,31 @@ watch(
     }
   },
   { immediate: true }
+)
+
+// Watch for current session changes - expand ancestors when switching to a branch
+watch(
+  () => sessionsStore.currentSessionId,
+  (newSessionId) => {
+    if (!newSessionId) return
+
+    // Get ancestors of the new current session
+    const ancestors = getAncestorIds(newSessionId)
+
+    // Expand any collapsed ancestors
+    let changed = false
+    for (const ancestorId of ancestors) {
+      if (collapsedParents.value.has(ancestorId)) {
+        collapsedParents.value.delete(ancestorId)
+        changed = true
+      }
+    }
+
+    // Trigger reactivity if we made changes
+    if (changed) {
+      collapsedParents.value = new Set(collapsedParents.value)
+    }
+  }
 )
 
 // Toggle collapse state for a parent session
