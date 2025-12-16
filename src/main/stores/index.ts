@@ -16,6 +16,7 @@ export {
   updateMessageReasoning,
   updateMessageStreaming,
   updateMessageToolCalls,
+  updateMessageContentParts,
 } from './sessions.js'
 
 // Migration function

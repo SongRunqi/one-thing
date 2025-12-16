@@ -40,6 +40,7 @@ export const IPC_CHANNELS = {
   CANCEL_TOOL: 'tools:cancel',
   STREAM_TOOL_CALL: 'chat:stream-tool-call',
   STREAM_TOOL_RESULT: 'chat:stream-tool-result',
+  UPDATE_CONTENT_PARTS: 'chat:update-content-parts',
 
   // MCP related
   MCP_GET_SERVERS: 'mcp:get-servers',
@@ -57,6 +58,12 @@ export const IPC_CHANNELS = {
   MCP_GET_PROMPT: 'mcp:get-prompt',
 } as const
 
+// Content part types for sequential display
+export type ContentPart =
+  | { type: 'text'; content: string }
+  | { type: 'tool-call'; toolCalls: ToolCall[] }
+  | { type: 'waiting' }  // Waiting for AI continuation after tool call
+
 // Type definitions for IPC messages
 export interface ChatMessage {
   id: string
@@ -66,7 +73,8 @@ export interface ChatMessage {
   isStreaming?: boolean
   errorDetails?: string  // Additional error details for error messages
   reasoning?: string  // Thinking/reasoning process for reasoning models (e.g., deepseek-reasoner)
-  toolCalls?: ToolCall[]  // Tool calls made by the assistant
+  toolCalls?: ToolCall[]  // Tool calls made by the assistant (legacy, for backward compat)
+  contentParts?: ContentPart[]  // Sequential content parts for inline tool call display
 }
 
 export interface ChatSession {

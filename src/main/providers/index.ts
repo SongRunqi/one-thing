@@ -436,13 +436,22 @@ export async function generateChatTitle(
 }
 
 /**
+ * Message type for tool-enabled chat
+ * Supports regular messages, assistant messages with tool calls, and tool result messages
+ */
+export type ToolChatMessage =
+  | { role: 'user' | 'system'; content: string }
+  | { role: 'assistant'; content: string; toolCalls?: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>; reasoningContent?: string }
+  | { role: 'tool'; content: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: any }> }
+
+/**
  * Stream a chat response with tools support
  * Returns an async generator that yields text, reasoning, and tool call chunks
  */
 export async function* streamChatResponseWithTools(
   providerId: string,
   config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
-  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+  messages: ToolChatMessage[],
   tools: Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }>,
   options: { temperature?: number; maxTokens?: number } = {}
 ): AsyncGenerator<StreamChunkWithTools, void, unknown> {
@@ -461,10 +470,55 @@ export async function* streamChatResponseWithTools(
     }
   }
 
+  // Convert messages to AI SDK CoreMessage format
+  const convertedMessages: any[] = messages.map(msg => {
+    if (msg.role === 'user' || msg.role === 'system') {
+      return { role: msg.role, content: msg.content }
+    }
+    if (msg.role === 'assistant') {
+      // Assistant message with optional tool calls and reasoning content
+      if (msg.toolCalls && msg.toolCalls.length > 0) {
+        const content: any[] = []
+        if (msg.content) {
+          content.push({ type: 'text', text: msg.content })
+        }
+        for (const tc of msg.toolCalls) {
+          content.push({
+            type: 'tool-call',
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            input: tc.args || {},  // DeepSeek provider expects 'input' not 'args'
+          })
+        }
+        const assistantMsg: any = { role: 'assistant', content }
+        // Include reasoning_content for DeepSeek Reasoner (required for tool calls in thinking mode)
+        if (msg.reasoningContent) {
+          assistantMsg.reasoning_content = msg.reasoningContent
+        }
+        return assistantMsg
+      }
+      return { role: 'assistant', content: msg.content }
+    }
+    if (msg.role === 'tool') {
+      // Tool result message - convert to AI SDK expected format
+      // output must have { type: 'text'|'json', value: ... } structure
+      return {
+        role: 'tool',
+        content: msg.content.map((item: any) => ({
+          type: item.type,
+          toolCallId: item.toolCallId,
+          toolName: item.toolName,
+          output: { type: 'json', value: item.result },
+        })),
+      }
+    }
+    return msg
+  })
+
   // Build streamText options
   const streamOptions: Parameters<typeof streamText>[0] = {
     model,
-    messages,
+    messages: convertedMessages,
     tools: Object.keys(aiTools).length > 0 ? aiTools : undefined,
     maxOutputTokens: options.maxTokens || 4096,
   }
@@ -475,6 +529,8 @@ export async function* streamChatResponseWithTools(
   }
 
   console.log(`[Provider] Starting stream with ${Object.keys(aiTools).length} tools`)
+  console.log(`[Provider] Messages count: ${convertedMessages.length}`)
+  console.log(`[Provider] Messages:`, JSON.stringify(convertedMessages, null, 2))
 
   const stream = await streamText(streamOptions)
 
@@ -504,7 +560,7 @@ export async function* streamChatResponseWithTools(
           toolCall: {
             toolCallId: chunkAny.toolCallId,
             toolName: chunkAny.toolName,
-            args: chunkAny.args || {},
+            args: chunkAny.input || chunkAny.args || {},  // AI SDK uses 'input'
           },
         }
         break

@@ -26,7 +26,7 @@
       </div>
       <div class="tool-info">
         <span class="tool-name">{{ toolCall.toolName }}</span>
-        <span class="tool-status">{{ statusText }}</span>
+        <span :class="['tool-status', { flowing: toolCall.status === 'executing' }]">{{ statusText }}</span>
       </div>
       <button
         v-if="toolCall.status === 'pending'"
@@ -87,7 +87,7 @@ defineEmits<{
 }>()
 
 const argumentsExpanded = ref(false)
-const resultExpanded = ref(true)
+const resultExpanded = ref(false) // Default to collapsed
 
 const statusClass = computed(() => {
   return `status-${props.toolCall.status}`
@@ -235,6 +235,32 @@ function formatResult(result: any): string {
 .tool-status {
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Flowing animation for executing state */
+.tool-status.flowing {
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.4) 0%,
+    rgba(59, 130, 246, 1) 25%,
+    rgba(59, 130, 246, 1) 50%,
+    rgba(59, 130, 246, 1) 75%,
+    rgba(59, 130, 246, 0.4) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: flowing-gradient 2.5s ease-in-out infinite;
+}
+
+@keyframes flowing-gradient {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .execute-btn {

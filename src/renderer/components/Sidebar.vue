@@ -82,7 +82,7 @@
       </div>
 
       <div class="sessions-list" role="list">
-        <template v-for="group in groupedSessions" :key="group.label">
+        <div v-for="group in groupedSessions" :key="group.label" class="session-group">
           <div
             class="group-header"
             :class="{ collapsed: collapsedGroups.has(group.label) }"
@@ -94,95 +94,96 @@
             <span class="group-label">{{ group.label }}</span>
             <span class="group-count">{{ group.sessions.filter(s => !s.isHidden).length }}</span>
           </div>
-          <div
-            v-for="session in group.sessions"
-            :key="session.id"
-            v-show="!collapsedGroups.has(group.label)"
-            :class="[
-              'session-item',
-              {
-                active: session.id === sessionsStore.currentSessionId,
-                editing: editingSessionId === session.id,
-                branch: session.depth > 0,
-                'has-branches': session.hasBranches,
-                collapsed: session.isCollapsed,
-                'last-child': session.isLastChild,
-                hidden: session.isHidden
-              }
-            ]"
-            :style="getSessionStyle(session)"
-            @click="handleSessionClickWithToggle(session)"
-            @contextmenu.prevent="openContextMenu($event, session)"
-          >
-            <!-- Branch indicator for child sessions -->
-            <div v-if="session.depth > 0" class="branch-indicator">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M6 3v12"/>
-                <path d="M18 9a3 3 0 01-3 3H9"/>
-              </svg>
-            </div>
-            <!-- Expand/Collapse chevron (placeholder for alignment when no branches) -->
+          <div class="group-sessions" :class="{ collapsed: collapsedGroups.has(group.label) }">
             <div
-              v-if="session.depth === 0"
-              class="collapse-chevron"
-              :class="{ collapsed: session.isCollapsed, placeholder: !session.hasBranches }"
-              @click.stop="session.hasBranches && toggleCollapse(session.id)"
+              v-for="session in group.sessions"
+              :key="session.id"
+              :class="[
+                'session-item',
+                {
+                  active: session.id === sessionsStore.currentSessionId,
+                  editing: editingSessionId === session.id,
+                  branch: session.depth > 0,
+                  'has-branches': session.hasBranches,
+                  collapsed: session.isCollapsed,
+                  'last-child': session.isLastChild,
+                  hidden: session.isHidden
+                }
+              ]"
+              :style="getSessionStyle(session)"
+              @click="handleSessionClickWithToggle(session)"
+              @contextmenu.prevent="openContextMenu($event, session)"
             >
-              <svg v-if="session.hasBranches" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </div>
-            <div class="session-content">
-              <!-- Inline editing mode -->
-              <input
-                v-if="editingSessionId === session.id"
-                ref="inlineInputRef"
-                v-model="editingName"
-                class="session-name-input"
-                @click.stop
-                @keydown.enter="confirmInlineRename"
-                @keydown.esc="cancelInlineRename"
-                @blur="confirmInlineRename"
-              />
-              <span v-else class="session-name">{{ session.name || 'New chat' }}</span>
-              <span v-if="editingSessionId !== session.id" class="session-preview">{{ getSessionPreview(session) }}</span>
-            </div>
-            <div class="session-meta">
-              <!-- Show branch count badge when collapsed -->
-              <span v-if="session.hasBranches && session.isCollapsed" class="branch-count" :title="`${session.branchCount} branch${session.branchCount > 1 ? 'es' : ''}`">
-                +{{ session.branchCount }}
-              </span>
-              <!-- Fixed width container for time/actions -->
-              <div class="session-time-actions">
-                <span class="session-time">{{ formatRelativeTime(session.updatedAt) }}</span>
-                <div class="session-actions">
-                  <button
-                    class="session-action-btn"
-                    title="Rename"
-                    @click.stop="startInlineRename(session)"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  </button>
-                  <button
-                    :class="['session-action-btn', 'danger', { 'confirm-delete': pendingDeleteId === session.id }]"
-                    :title="pendingDeleteId === session.id ? 'Click again to confirm' : 'Delete'"
-                    @click.stop="deleteSessionById(session.id)"
-                  >
-                    <svg v-if="pendingDeleteId !== session.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                    </svg>
-                    <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M5 13l4 4L19 7"/>
-                    </svg>
-                  </button>
+              <!-- Branch indicator for child sessions -->
+              <div v-if="session.depth > 0" class="branch-indicator">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 3v12"/>
+                  <path d="M18 9a3 3 0 01-3 3H9"/>
+                </svg>
+              </div>
+              <!-- Expand/Collapse chevron (placeholder for alignment when no branches) -->
+              <div
+                v-if="session.depth === 0"
+                class="collapse-chevron"
+                :class="{ collapsed: session.isCollapsed, placeholder: !session.hasBranches }"
+                @click.stop="session.hasBranches && toggleCollapse(session.id)"
+              >
+                <svg v-if="session.hasBranches" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </div>
+              <div class="session-content">
+                <!-- Inline editing mode -->
+                <input
+                  v-if="editingSessionId === session.id"
+                  ref="inlineInputRef"
+                  v-model="editingName"
+                  class="session-name-input"
+                  @click.stop
+                  @keydown.enter="confirmInlineRename"
+                  @keydown.esc="cancelInlineRename"
+                  @blur="confirmInlineRename"
+                />
+                <span v-else class="session-name">{{ session.name || 'New chat' }}</span>
+                <span v-if="editingSessionId !== session.id" class="session-preview">{{ getSessionPreview(session) }}</span>
+              </div>
+              <div class="session-meta">
+                <!-- Show branch count badge when collapsed -->
+                <span v-if="session.hasBranches && session.isCollapsed" class="branch-count" :title="`${session.branchCount} branch${session.branchCount > 1 ? 'es' : ''}`">
+                  +{{ session.branchCount }}
+                </span>
+                <!-- Fixed width container for time/actions -->
+                <div class="session-time-actions">
+                  <span class="session-time">{{ formatRelativeTime(session.updatedAt) }}</span>
+                  <div class="session-actions">
+                    <button
+                      class="session-action-btn"
+                      title="Rename"
+                      @click.stop="startInlineRename(session)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button
+                      :class="['session-action-btn', 'danger', { 'confirm-delete': pendingDeleteId === session.id }]"
+                      :title="pendingDeleteId === session.id ? 'Click again to confirm' : 'Delete'"
+                      @click.stop="deleteSessionById(session.id)"
+                    >
+                      <svg v-if="pendingDeleteId !== session.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                      </svg>
+                      <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 13l4 4L19 7"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </template>
+        </div>
 
         <div v-if="filteredSessions.length === 0" class="empty-sessions">
           <span v-if="query">No chats found</span>
@@ -614,7 +615,8 @@ function getSessionStyle(session: { depth: number }) {
   const speed = animationSpeed.value
   return {
     paddingLeft: `${12 + session.depth * 20}px`,
-    transition: `all 0.15s ease, opacity ${speed}s ease, max-height ${speed}s ease, padding ${speed}s ease, margin ${speed}s ease`,
+    // Avoid 'transition: all' as it can cause width issues during v-show toggles
+    transition: `background-color 0.15s ease, border-color 0.15s ease, opacity ${speed}s ease, max-height ${speed}s ease, padding ${speed}s ease, margin ${speed}s ease`,
   }
 }
 
@@ -1001,6 +1003,24 @@ onUnmounted(() => {
   min-height: 0;
   min-width: 0;
   padding: 8px;
+  /* Prevent width jump when scrollbar appears/disappears */
+  scrollbar-gutter: stable;
+}
+
+.session-group {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.group-sessions {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.group-sessions.collapsed {
+  display: none;
 }
 
 .group-header {

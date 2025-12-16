@@ -85,7 +85,32 @@
         </div>
         <!-- Normal display -->
         <template v-else>
-          <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
+          <!-- Sequential content parts (text and tool calls interleaved) -->
+          <template v-if="message.contentParts && message.contentParts.length > 0">
+            <template v-for="(part, index) in message.contentParts" :key="index">
+              <!-- Text part -->
+              <div v-if="part.type === 'text'" :class="['content', { typing: isTyping && index === message.contentParts.length - 1 }]" v-html="renderMarkdown(part.content)"></div>
+              <!-- Tool call part -->
+              <ToolCallGroup
+                v-else-if="part.type === 'tool-call'"
+                :toolCalls="part.toolCalls"
+                @execute="handleToolExecute"
+              />
+              <!-- Waiting indicator (after tool call, before AI continues) -->
+              <div v-else-if="part.type === 'waiting'" class="thinking-status">
+                <span class="thinking-text flowing">Waiting</span>
+              </div>
+            </template>
+          </template>
+          <!-- Fallback: legacy content display (no contentParts) -->
+          <template v-else>
+            <ToolCallGroup
+              v-if="message.toolCalls && message.toolCalls.length > 0"
+              :toolCalls="message.toolCalls"
+              @execute="handleToolExecute"
+            />
+            <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
+          </template>
         <div class="message-footer">
           <div class="meta">{{ formatTime(message.timestamp) }}</div>
           <div :class="['actions', { visible: showActions }]">
@@ -158,25 +183,6 @@
         </div>
       </template>
     </div>
-
-      <!-- Tool calls - Independent section outside bubble -->
-      <div v-if="message.toolCalls && message.toolCalls.length > 0" class="tool-calls-container">
-        <div class="tool-calls-header">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-          </svg>
-          <span>Tool {{ message.toolCalls.length > 1 ? 'Calls' : 'Call' }}</span>
-          <span class="tool-calls-count">{{ message.toolCalls.length }}</span>
-        </div>
-        <div class="tool-calls-list">
-          <ToolCallItem
-            v-for="toolCall in message.toolCalls"
-            :key="toolCall.id"
-            :toolCall="toolCall"
-            @execute="handleToolExecute"
-          />
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -186,7 +192,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import type { ChatMessage, ToolCall } from '@/types'
-import ToolCallItem from './ToolCallItem.vue'
+import ToolCallGroup from './ToolCallGroup.vue'
 
 interface BranchInfo {
   id: string
@@ -277,13 +283,16 @@ const contentToRender = computed(() => {
   return props.message.content
 })
 
-const renderedContent = computed(() => {
+// Render markdown for a given content string
+function renderMarkdown(content: string): string {
   if (props.message.role === 'user') {
-    // For user messages, just escape HTML and preserve line breaks
-    return escapeHtml(contentToRender.value).replace(/\n/g, '<br>')
+    return escapeHtml(content).replace(/\n/g, '<br>')
   }
-  // For assistant messages, render markdown
-  return marked.parse(contentToRender.value) as string
+  return marked.parse(content) as string
+}
+
+const renderedContent = computed(() => {
+  return renderMarkdown(contentToRender.value)
 })
 
 // Clean reasoning content by removing XML tags (e.g., <think>...</think> from DeepSeek-R1)
@@ -1228,66 +1237,6 @@ html[data-theme='light'] .error-time {
 
 .branch-menu-new:hover {
   background: rgba(16, 163, 127, 0.1);
-}
-
-/* Tool calls container - Independent section outside bubble */
-.tool-calls-container {
-  margin-top: 12px;
-  max-width: min(720px, 100%);
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  overflow: hidden;
-  animation: toolCallSlideIn 0.25s ease-out;
-}
-
-@keyframes toolCallSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.tool-calls-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: rgba(16, 163, 127, 0.06);
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.tool-calls-header svg {
-  opacity: 0.8;
-}
-
-.tool-calls-count {
-  margin-left: auto;
-  padding: 2px 8px;
-  background: rgba(16, 163, 127, 0.15);
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.tool-calls-list {
-  padding: 8px;
-}
-
-/* Light theme */
-html[data-theme='light'] .tool-calls-container {
-  background: rgba(0, 0, 0, 0.02);
-}
-
-html[data-theme='light'] .tool-calls-header {
-  background: rgba(16, 163, 127, 0.05);
 }
 
 /* Thinking status indicator - flowing text */

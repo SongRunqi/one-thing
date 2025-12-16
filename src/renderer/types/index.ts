@@ -28,6 +28,7 @@ import type {
   ToolSettings,
   GetToolsResponse,
   ExecuteToolResponse,
+  ContentPart,
   // MCP types
   MCPServerConfig,
   MCPServerState,
@@ -63,6 +64,7 @@ export type {
   ToolDefinition,
   ToolCall,
   ToolSettings,
+  ContentPart,
   // MCP types
   MCPServerConfig,
   MCPServerState,
@@ -86,7 +88,7 @@ export interface StreamSendMessageResponse {
 export interface ElectronAPI {
   sendMessage: (sessionId: string, message: string) => Promise<SendMessageResponse>
   sendMessageStream: (sessionId: string, message: string) => Promise<StreamSendMessageResponse>
-  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result'; content: string; messageId: string; reasoning?: string; toolCall?: ToolCall }) => void) => () => void
+  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation'; content: string; messageId: string; reasoning?: string; toolCall?: ToolCall }) => void) => () => void
   onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string }) => void) => () => void
@@ -114,6 +116,7 @@ export interface ElectronAPI {
   getTools: () => Promise<GetToolsResponse>
   executeTool: (toolId: string, args: Record<string, any>, messageId: string, sessionId: string) => Promise<ExecuteToolResponse>
   cancelTool: (toolCallId: string) => Promise<{ success: boolean }>
+  updateContentParts: (sessionId: string, messageId: string, contentParts: ContentPart[]) => Promise<{ success: boolean }>
 
   // MCP methods
   mcpGetServers: () => Promise<MCPGetServersResponse>

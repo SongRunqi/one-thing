@@ -21,8 +21,41 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.filter(m => m.role === 'assistant')
   )
 
+  /**
+   * Rebuild contentParts for a message that has toolCalls but no contentParts
+   * This is needed when loading historical messages from storage
+   * Returns a new message object to ensure Vue reactivity
+   */
+  function rebuildContentParts(message: ChatMessage): ChatMessage {
+    if (message.role !== 'assistant') return message
+    if (message.contentParts && message.contentParts.length > 0) return message
+    if (!message.toolCalls || message.toolCalls.length === 0) return message
+
+    // Rebuild contentParts: text first, then tool calls
+    const parts: ChatMessage['contentParts'] = []
+
+    // Add text part if there's content
+    if (message.content) {
+      parts.push({ type: 'text', content: message.content })
+    }
+
+    // Add tool-call part with all tool calls
+    parts.push({ type: 'tool-call', toolCalls: [...message.toolCalls] })
+
+    // Return new object to ensure Vue reactivity
+    return { ...message, contentParts: parts }
+  }
+
   function setMessages(newMessages: ChatMessage[]) {
-    messages.value = newMessages
+    // Rebuild contentParts for messages with toolCalls, creating new objects
+    const processedMessages = newMessages.map((msg, i) => {
+      const processed = rebuildContentParts(msg)
+      if (processed.contentParts && processed.contentParts.length > 0) {
+        console.log(`[Chat Store] Message ${i} contentParts rebuilt:`, processed.contentParts.length, 'parts')
+      }
+      return processed
+    })
+    messages.value = processedMessages
   }
 
   function addMessage(message: ChatMessage) {
@@ -249,8 +282,12 @@ export const useChatStore = defineStore('chat', () => {
         content: '',
         timestamp: Date.now(),
         isStreaming: true,
+        contentParts: [],  // Initialize empty content parts
       }
       addMessage(streamingMessage)
+
+      // Track if we have pending tool calls that haven't been followed by text yet
+      let hasToolCallsInCurrentSegment = false
 
       // Hide the independent "Thinking..." indicator now that we have the message bubble
       // The message bubble will show its own thinking state
@@ -260,42 +297,95 @@ export const useChatStore = defineStore('chat', () => {
       unsubscribeChunk = window.electronAPI.onStreamChunk((chunk) => {
         console.log('[Frontend] Received stream chunk:', chunk)
         if (chunk.messageId === assistantMessageId) {
+          const message = messages.value.find(m => m.id === assistantMessageId)
+          if (!message) return
+
+          // Initialize contentParts if not exists
+          if (!message.contentParts) {
+            message.contentParts = []
+          }
+
           if (chunk.type === 'text') {
             console.log('[Frontend] Text chunk:', chunk.content)
-            // Append text to message content
-            const message = messages.value.find(m => m.id === assistantMessageId)
-            if (message) {
-              message.content += chunk.content
-              console.log('[Frontend] Updated message content, new length:', message.content.length)
+            // Append text to message content (for backward compat)
+            message.content += chunk.content
+
+            // Also update contentParts for sequential display
+            const parts = message.contentParts!
+            let lastPart = parts[parts.length - 1]
+
+            // Remove waiting indicator if present
+            if (lastPart && lastPart.type === 'waiting') {
+              parts.pop()
+              lastPart = parts[parts.length - 1]
             }
+
+            // If last part is text, append to it. Otherwise create new text part.
+            if (lastPart && lastPart.type === 'text') {
+              lastPart.content += chunk.content
+            } else {
+              // Create new text part (this happens after tool calls)
+              parts.push({ type: 'text', content: chunk.content })
+              hasToolCallsInCurrentSegment = false
+            }
+            // Force Vue reactivity by reassigning array
+            message.contentParts = [...parts]
+            console.log('[Frontend] Updated contentParts, count:', message.contentParts.length)
           } else if (chunk.type === 'reasoning') {
             console.log('[Frontend] Reasoning chunk:', chunk.reasoning)
-            // Append reasoning to existing reasoning content
-            const message = messages.value.find(m => m.id === assistantMessageId)
-            if (message) {
-              message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
-              console.log('[Frontend] Updated reasoning length:', message.reasoning.length)
-            }
+            message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
+            console.log('[Frontend] Updated reasoning length:', message.reasoning.length)
           } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
             console.log('[Frontend] Tool chunk:', chunk.type, chunk.toolCall)
-            // Update tool calls in message
-            const message = messages.value.find(m => m.id === assistantMessageId)
-            if (message && chunk.toolCall) {
-              // Initialize toolCalls array if not exists
+            if (chunk.toolCall) {
+              // Update toolCalls array (for backward compat)
               if (!message.toolCalls) {
                 message.toolCalls = []
               }
-              // Find existing tool call or add new one
               const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
               if (existingIndex >= 0) {
-                // Update existing tool call
                 message.toolCalls[existingIndex] = chunk.toolCall
               } else {
-                // Add new tool call
                 message.toolCalls.push(chunk.toolCall)
               }
-              console.log('[Frontend] Updated toolCalls:', message.toolCalls.length)
+
+              // Update contentParts for sequential display
+              const parts = message.contentParts!
+              let lastPart = parts[parts.length - 1]
+
+              // Remove waiting indicator if present (tool call replaces waiting)
+              if (lastPart && lastPart.type === 'waiting') {
+                parts.pop()
+                lastPart = parts[parts.length - 1]
+              }
+
+              // Check if we should add tool-call to existing tool-call part or create new one
+              if (lastPart && lastPart.type === 'tool-call') {
+                // Add to existing tool-call part
+                const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
+                if (existingTcIndex >= 0) {
+                  lastPart.toolCalls[existingTcIndex] = chunk.toolCall
+                } else {
+                  lastPart.toolCalls.push(chunk.toolCall)
+                }
+              } else {
+                // Create new tool-call part
+                parts.push({ type: 'tool-call', toolCalls: [chunk.toolCall] })
+              }
+              hasToolCallsInCurrentSegment = true
+              // Force Vue reactivity by reassigning array
+              message.contentParts = [...parts]
+              console.log('[Frontend] Updated contentParts with tool call, count:', message.contentParts.length)
             }
+          } else if (chunk.type === 'continuation') {
+            console.log('[Frontend] AI continuing after tool execution')
+            // Mark that tool calls are complete, next text will be new part
+            hasToolCallsInCurrentSegment = true
+            // Add waiting indicator
+            const parts = message.contentParts!
+            parts.push({ type: 'waiting' })
+            // Force Vue reactivity by reassigning array
+            message.contentParts = [...parts]
           }
         } else {
           console.log('[Frontend] Chunk for different message:', chunk.messageId, 'expected:', assistantMessageId)
@@ -340,10 +430,28 @@ export const useChatStore = defineStore('chat', () => {
       // Return a promise that resolves when streaming is complete
       return new Promise((resolve) => {
         // We'll resolve this promise when we get the complete event
-        const completeListener = window.electronAPI.onStreamComplete((data) => {
+        const completeListener = window.electronAPI.onStreamComplete(async (data) => {
           console.log('[Frontend] Received stream complete:', data)
           if (data.messageId === assistantMessageId) {
             console.log('[Frontend] Stream complete for current message')
+
+            // Remove any remaining waiting indicator from contentParts
+            const message = messages.value.find(m => m.id === assistantMessageId)
+            if (message?.contentParts) {
+              const lastPart = message.contentParts[message.contentParts.length - 1]
+              if (lastPart && lastPart.type === 'waiting') {
+                message.contentParts.pop()
+              }
+
+              // Save contentParts to backend if there are any
+              if (message.contentParts.length > 0) {
+                console.log('[Frontend] Saving contentParts to backend:', message.contentParts.length, 'parts')
+                // Deep clone to remove Vue reactive proxy (can't be cloned by IPC)
+                const plainContentParts = JSON.parse(JSON.stringify(message.contentParts))
+                await window.electronAPI.updateContentParts(sessionId, assistantMessageId!, plainContentParts)
+              }
+            }
+
             // Mark message as not streaming
             updateMessage(assistantMessageId!, { isStreaming: false })
 

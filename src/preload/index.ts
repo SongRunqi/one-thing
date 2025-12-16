@@ -97,6 +97,9 @@ const electronAPI = {
   cancelTool: (toolCallId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.CANCEL_TOOL, { toolCallId }),
 
+  updateContentParts: (sessionId: string, messageId: string, contentParts: any[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CONTENT_PARTS, { sessionId, messageId, contentParts }),
+
   // MCP methods
   mcpGetServers: () =>
     ipcRenderer.invoke(IPC_CHANNELS.MCP_GET_SERVERS),

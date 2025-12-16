@@ -10,6 +10,7 @@ import {
   streamChatResponseWithReasoning,
   streamChatResponseWithTools,
   convertToolDefinitionsForAI,
+  type ToolChatMessage,
 } from '../providers/index.js'
 import {
   getEnabledTools,
@@ -122,6 +123,12 @@ export function registerChatHandlers() {
   // 生成聊天标题
   ipcMain.handle(IPC_CHANNELS.GENERATE_TITLE, async (_event, { message }) => {
     return handleGenerateTitle(message)
+  })
+
+  // 更新消息的 contentParts
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CONTENT_PARTS, async (_event, { sessionId, messageId, contentParts }) => {
+    const updated = store.updateMessageContentParts(sessionId, messageId, contentParts)
+    return { success: updated }
   })
 }
 
@@ -430,134 +437,219 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
         const toolCalls: ToolCall[] = []
 
         if (hasTools) {
-          // Use tool-enabled streaming
+          // Use tool-enabled streaming with auto-continue after tool execution
           // Combine built-in tools and MCP tools
           const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
           const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
 
-          // Add system prompt to control tool behavior
-          const messagesWithSystem = [
-            { role: 'system' as const, content: TOOL_BEHAVIOR_SYSTEM_PROMPT },
-            { role: 'user' as const, content: messageContent },
+          // Maximum number of tool turns to prevent infinite loops
+          const MAX_TOOL_TURNS = 5
+          let currentTurn = 0
+
+          // Build conversation messages (will be extended with tool results)
+          const conversationMessages: ToolChatMessage[] = [
+            { role: 'system', content: TOOL_BEHAVIOR_SYSTEM_PROMPT },
+            { role: 'user', content: messageContent },
           ]
 
-          const stream = streamChatResponseWithTools(
-            providerId,
-            {
-              apiKey: providerConfig.apiKey,
-              baseUrl: providerConfig.baseUrl,
-              model: providerConfig.model,
-              apiType,
-            },
-            messagesWithSystem,
-            toolsForAI,
-            { temperature: settings.ai.temperature }
-          )
+          // Loop until no more tool calls or max turns reached
+          while (currentTurn < MAX_TOOL_TURNS) {
+            currentTurn++
+            const toolCallsThisTurn: ToolCall[] = []
+            let turnContent = ''
+            let turnReasoning = ''  // Track reasoning content for this turn (needed for DeepSeek Reasoner)
 
-          // Process stream chunks with tool support
-          for await (const chunk of stream) {
-            chunkCount++
+            console.log(`[Backend] Starting tool turn ${currentTurn}`)
 
-            if (chunk.type === 'text' && chunk.text) {
-              accumulatedContent += chunk.text
-              console.log(`[Backend] Text chunk ${chunkCount}:`, chunk.text.substring(0, 50) + (chunk.text.length > 50 ? '...' : ''))
+            const stream = streamChatResponseWithTools(
+              providerId,
+              {
+                apiKey: providerConfig.apiKey,
+                baseUrl: providerConfig.baseUrl,
+                model: providerConfig.model,
+                apiType,
+              },
+              conversationMessages,
+              toolsForAI,
+              { temperature: settings.ai.temperature }
+            )
 
-              // Update message in store with accumulated content
-              store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
+            // Process stream chunks with tool support
+            for await (const chunk of stream) {
+              chunkCount++
 
-              // Send text chunk via event
-              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                type: 'text',
-                content: chunk.text,
-                messageId: assistantMessageId,
-              })
-            }
+              if (chunk.type === 'text' && chunk.text) {
+                accumulatedContent += chunk.text
+                turnContent += chunk.text
+                console.log(`[Backend] Text chunk ${chunkCount}:`, chunk.text.substring(0, 50) + (chunk.text.length > 50 ? '...' : ''))
 
-            if (chunk.type === 'reasoning' && chunk.reasoning) {
-              accumulatedReasoning += chunk.reasoning
-              console.log(`[Backend] Reasoning chunk ${chunkCount}:`, chunk.reasoning.substring(0, 50) + (chunk.reasoning.length > 50 ? '...' : ''))
+                // Update message in store with accumulated content
+                store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
 
-              // Update reasoning in store
-              store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
-
-              // Send reasoning chunk via event
-              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                type: 'reasoning',
-                content: '',
-                messageId: assistantMessageId,
-                reasoning: chunk.reasoning,
-              })
-            }
-
-            if (chunk.type === 'tool-call' && chunk.toolCall) {
-              console.log(`[Backend] Tool call chunk:`, chunk.toolCall)
-
-              // Create a ToolCall object
-              const toolCall = createToolCall(
-                chunk.toolCall.toolName,
-                chunk.toolCall.toolName,
-                chunk.toolCall.args
-              )
-              toolCall.id = chunk.toolCall.toolCallId // Use the ID from AI SDK
-              toolCalls.push(toolCall)
-
-              // Update message with tool calls
-              store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
-
-              // Send tool call event
-              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                type: 'tool_call',
-                content: '',
-                messageId: assistantMessageId,
-                toolCall,
-              })
-
-              // Check if we should auto-execute this tool
-              // For MCP tools, always auto-execute (they are external tools)
-              const shouldAutoExecute = isMCPTool(chunk.toolCall.toolName) || canAutoExecute(chunk.toolCall.toolName, toolSettings?.tools)
-
-              if (shouldAutoExecute) {
-                console.log(`[Backend] Auto-executing tool: ${chunk.toolCall.toolName}`)
-
-                // Update tool status to executing
-                toolCall.status = 'executing'
-                store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
-
-                let result: { success: boolean; data?: any; error?: string }
-
-                // Execute the tool (MCP or built-in)
-                if (isMCPTool(chunk.toolCall.toolName)) {
-                  // Execute MCP tool
-                  const mcpResult = await executeMCPTool(chunk.toolCall.toolName, chunk.toolCall.args)
-                  result = {
-                    success: mcpResult.success,
-                    data: mcpResult.content,
-                    error: mcpResult.error,
-                  }
-                } else {
-                  // Execute built-in tool
-                  result = await executeTool(
-                    chunk.toolCall.toolName,
-                    chunk.toolCall.args,
-                    { sessionId, messageId: assistantMessageId }
-                  )
-                }
-
-                // Update tool with result
-                toolCall.status = result.success ? 'completed' : 'failed'
-                toolCall.result = result.data
-                toolCall.error = result.error
-                store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
-
-                // Send tool result event
+                // Send text chunk via event
                 sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                  type: 'tool_result',
+                  type: 'text',
+                  content: chunk.text,
+                  messageId: assistantMessageId,
+                })
+              }
+
+              if (chunk.type === 'reasoning' && chunk.reasoning) {
+                accumulatedReasoning += chunk.reasoning
+                turnReasoning += chunk.reasoning  // Also track for this turn (needed for DeepSeek Reasoner continuation)
+                console.log(`[Backend] Reasoning chunk ${chunkCount}:`, chunk.reasoning.substring(0, 50) + (chunk.reasoning.length > 50 ? '...' : ''))
+
+                // Update reasoning in store
+                store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
+
+                // Send reasoning chunk via event
+                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                  type: 'reasoning',
+                  content: '',
+                  messageId: assistantMessageId,
+                  reasoning: chunk.reasoning,
+                })
+              }
+
+              if (chunk.type === 'tool-call' && chunk.toolCall) {
+                console.log(`[Backend] Tool call chunk:`, chunk.toolCall)
+
+                // Create a ToolCall object
+                const toolCall = createToolCall(
+                  chunk.toolCall.toolName,
+                  chunk.toolCall.toolName,
+                  chunk.toolCall.args
+                )
+                toolCall.id = chunk.toolCall.toolCallId // Use the ID from AI SDK
+                toolCalls.push(toolCall)
+                toolCallsThisTurn.push(toolCall)
+
+                // Update message with tool calls
+                store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
+
+                // Send tool call event
+                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                  type: 'tool_call',
                   content: '',
                   messageId: assistantMessageId,
                   toolCall,
                 })
+
+                // Check if we should auto-execute this tool
+                // For MCP tools, always auto-execute (they are external tools)
+                const shouldAutoExecute = isMCPTool(chunk.toolCall.toolName) || canAutoExecute(chunk.toolCall.toolName, toolSettings?.tools)
+
+                if (shouldAutoExecute) {
+                  console.log(`[Backend] Auto-executing tool: ${chunk.toolCall.toolName}`)
+
+                  // Update tool status to executing
+                  toolCall.status = 'executing'
+                  store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
+
+                  let result: { success: boolean; data?: any; error?: string }
+
+                  // Execute the tool (MCP or built-in)
+                  if (isMCPTool(chunk.toolCall.toolName)) {
+                    // Execute MCP tool
+                    const mcpResult = await executeMCPTool(chunk.toolCall.toolName, chunk.toolCall.args)
+                    result = {
+                      success: mcpResult.success,
+                      data: mcpResult.content,
+                      error: mcpResult.error,
+                    }
+                  } else {
+                    // Execute built-in tool
+                    result = await executeTool(
+                      chunk.toolCall.toolName,
+                      chunk.toolCall.args,
+                      { sessionId, messageId: assistantMessageId }
+                    )
+                  }
+
+                  // Update tool with result
+                  toolCall.status = result.success ? 'completed' : 'failed'
+                  toolCall.result = result.data
+                  toolCall.error = result.error
+                  store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
+
+                  // Send tool result event
+                  sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                    type: 'tool_result',
+                    content: '',
+                    messageId: assistantMessageId,
+                    toolCall,
+                  })
+                }
               }
             }
+
+            // If no tool calls this turn, we're done
+            if (toolCallsThisTurn.length === 0) {
+              console.log(`[Backend] No tool calls in turn ${currentTurn}, ending loop`)
+              break
+            }
+
+            // Check if all tools were auto-executed
+            const allExecuted = toolCallsThisTurn.every(tc => tc.status === 'completed' || tc.status === 'failed')
+            if (!allExecuted) {
+              console.log(`[Backend] Not all tools auto-executed, ending loop`)
+              break
+            }
+
+            // Build continuation messages with tool results
+            console.log(`[Backend] Building continuation with ${toolCallsThisTurn.length} tool results`)
+            console.log(`[Backend] Turn content length: ${turnContent.length}`)
+            console.log(`[Backend] Turn reasoning length: ${turnReasoning.length}`)
+
+            // Add assistant message with tool calls (include reasoningContent for DeepSeek Reasoner)
+            const assistantMsg: {
+              role: 'assistant'
+              content: string
+              toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>
+              reasoningContent?: string
+            } = {
+              role: 'assistant' as const,
+              content: turnContent,
+              toolCalls: toolCallsThisTurn.map(tc => ({
+                toolCallId: tc.id,
+                toolName: tc.toolName,
+                args: tc.arguments,
+              })),
+            }
+            // Include reasoning content if present (required for DeepSeek Reasoner tool calls)
+            if (turnReasoning) {
+              assistantMsg.reasoningContent = turnReasoning
+            }
+            console.log(`[Backend] Assistant message:`, JSON.stringify(assistantMsg, null, 2))
+            conversationMessages.push(assistantMsg)
+
+            // Add tool result message
+            const toolResultMsg = {
+              role: 'tool' as const,
+              content: toolCallsThisTurn.map(tc => ({
+                type: 'tool-result' as const,
+                toolCallId: tc.id,
+                toolName: tc.toolName,
+                result: tc.status === 'completed' ? tc.result : { error: tc.error },
+              })),
+            }
+            console.log(`[Backend] Tool result message:`, JSON.stringify(toolResultMsg, null, 2))
+            conversationMessages.push(toolResultMsg)
+
+            console.log(`[Backend] Total messages in conversation: ${conversationMessages.length}`)
+
+            // Notify frontend that AI is continuing
+            sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+              type: 'continuation',
+              content: '',
+              messageId: assistantMessageId,
+            })
+
+            console.log(`[Backend] Continuing to next turn...`)
+          }
+
+          if (currentTurn >= MAX_TOOL_TURNS) {
+            console.log(`[Backend] Reached max tool turns (${MAX_TOOL_TURNS})`)
           }
         } else {
           // Use regular streaming without tools

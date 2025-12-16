@@ -315,3 +315,28 @@ export function updateMessageToolCalls(sessionId: string, messageId: string, too
 
   return true
 }
+
+// Update message content parts (for sequential tool call display)
+export function updateMessageContentParts(sessionId: string, messageId: string, contentParts: ChatMessage['contentParts']): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  message.contentParts = contentParts
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
