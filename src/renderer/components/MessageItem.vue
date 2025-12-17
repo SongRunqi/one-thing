@@ -58,7 +58,7 @@
       <span v-if="message.role === 'assistant'">◎</span>
       <span v-else>🙂</span>
     </div>
-    <div class="message-content-wrapper">
+    <div class="message-content-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
       <!-- Waiting/Thinking status indicator (streaming) - outside bubble -->
       <div v-if="message.isStreaming && !message.content" class="thinking-status">
         <!-- Waiting: no reasoning yet, still waiting for API response -->
@@ -68,121 +68,137 @@
       </div>
 
       <!-- Message bubble - only show if there's content -->
-      <div v-if="message.content || !message.isStreaming" class="bubble" ref="bubbleRef" @mouseenter="showActions = true" @mouseleave="showActions = false" @mouseup="handleTextSelection">
+      <div v-if="message.content || !message.isStreaming" class="bubble" :class="{ editing: isEditing }" ref="bubbleRef" @mouseup="handleTextSelection">
         <!-- Edit mode for user messages -->
-        <div v-if="isEditing" class="edit-container">
+        <div v-if="isEditing" class="edit-container" @click.stop>
           <textarea
             ref="editTextarea"
             v-model="editContent"
             class="edit-textarea"
             @keydown.enter.ctrl="submitEdit"
             @keydown.escape="cancelEdit"
+            @input="adjustEditTextareaHeight"
+            placeholder="Edit your message..."
           ></textarea>
           <div class="edit-actions">
-            <button class="edit-btn cancel" @click="cancelEdit">Cancel</button>
-            <button class="edit-btn submit" @click="submitEdit">Send</button>
+            <button class="edit-btn cancel" @click="cancelEdit" title="Cancel (Esc)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+            <button class="edit-btn submit" @click="submitEdit" :disabled="!editContent.trim()" title="Send (Ctrl+Enter)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+              </svg>
+            </button>
           </div>
         </div>
         <!-- Normal display -->
-        <template v-else>
-          <!-- Sequential content parts (text and tool calls interleaved) -->
-          <template v-if="message.contentParts && message.contentParts.length > 0">
-            <template v-for="(part, index) in message.contentParts" :key="index">
-              <!-- Text part -->
-              <div v-if="part.type === 'text'" :class="['content', { typing: isTyping && index === message.contentParts.length - 1 }]" v-html="renderMarkdown(part.content)"></div>
-              <!-- Tool call part -->
+        <div v-else class="content-display">
+            <!-- Sequential content parts (text and tool calls interleaved) -->
+            <template v-if="message.contentParts && message.contentParts.length > 0">
+              <template v-for="(part, index) in message.contentParts" :key="index">
+                <!-- Text part -->
+                <div v-if="part.type === 'text'" :class="['content', { typing: isTyping && index === message.contentParts.length - 1 }]" v-html="renderMarkdown(part.content)"></div>
+                <!-- Tool call part -->
+                <ToolCallGroup
+                  v-else-if="part.type === 'tool-call'"
+                  :toolCalls="part.toolCalls"
+                  @execute="handleToolExecute"
+                />
+                <!-- Waiting indicator (after tool call, before AI continues) -->
+                <div v-else-if="part.type === 'waiting'" class="thinking-status">
+                  <span class="thinking-text flowing">Waiting</span>
+                </div>
+              </template>
+            </template>
+            <!-- Fallback: legacy content display (no contentParts) -->
+            <template v-else>
               <ToolCallGroup
-                v-else-if="part.type === 'tool-call'"
-                :toolCalls="part.toolCalls"
+                v-if="message.toolCalls && message.toolCalls.length > 0"
+                :toolCalls="message.toolCalls"
                 @execute="handleToolExecute"
               />
-              <!-- Waiting indicator (after tool call, before AI continues) -->
-              <div v-else-if="part.type === 'waiting'" class="thinking-status">
-                <span class="thinking-text flowing">Waiting</span>
-              </div>
+              <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
             </template>
-          </template>
-          <!-- Fallback: legacy content display (no contentParts) -->
-          <template v-else>
-            <ToolCallGroup
-              v-if="message.toolCalls && message.toolCalls.length > 0"
-              :toolCalls="message.toolCalls"
-              @execute="handleToolExecute"
-            />
-            <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
-          </template>
-        <div class="message-footer">
-          <div class="meta">{{ formatTime(message.timestamp) }}</div>
-          <div :class="['actions', { visible: showActions }]">
-            <button class="action-btn" @click="copyContent" :title="copied ? 'Copied!' : 'Copy'">
-              <span v-if="copied">✓</span>
-              <span v-else>⧉</span>
-            </button>
-            <!-- Edit button for user messages -->
+          </div>
+      </div>
+      <!-- Message footer - moved outside bubble -->
+      <div class="message-footer">
+        <div v-if="message.role !== 'user'" class="meta">{{ formatTime(message.timestamp) }}</div>
+        <div :class="['actions', message.role === 'user' ? 'user-actions' : '', { visible: showActions }]">
+          <!-- Copy button -->
+          <button class="action-btn copy-btn" @click="copyContent" :title="copied ? 'Copied!' : 'Copy'">
+            <svg v-if="!copied" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </button>
+          <!-- Edit button for user messages -->
+          <button
+            v-if="message.role === 'user'"
+            class="action-btn edit-btn"
+            @click="startEdit"
+            title="Edit"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+            </svg>
+          </button>
+          <!-- Branch button (only for assistant messages in root sessions) -->
+          <div v-if="canBranch && message.role === 'assistant'" class="branch-btn-wrapper" ref="branchBtnRef">
             <button
-              v-if="message.role === 'user'"
               class="action-btn"
-              @click="startEdit"
-              title="Edit"
+              :class="{ 'has-branches': hasBranches }"
+              @click="hasBranches ? toggleBranchMenu() : createBranch()"
+              :title="hasBranches ? `${branchCount} branch${branchCount > 1 ? 'es' : ''}` : 'Create branch from here'"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                <line x1="6" y1="3" x2="6" y2="15"/>
+                <circle cx="18" cy="6" r="3"/>
+                <circle cx="6" cy="18" r="3"/>
+                <path d="M18 9a9 9 0 0 1-9 9"/>
               </svg>
+              <span v-if="hasBranches" class="branch-count-badge">{{ branchCount }}</span>
             </button>
-            <!-- Branch button (only for assistant messages in root sessions) -->
-            <div v-if="canBranch && message.role === 'assistant'" class="branch-btn-wrapper" ref="branchBtnRef">
-              <button
-                class="action-btn"
-                :class="{ 'has-branches': hasBranches }"
-                @click="hasBranches ? toggleBranchMenu() : createBranch()"
-                :title="hasBranches ? `${branchCount} branch${branchCount > 1 ? 'es' : ''}` : 'Create branch from here'"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="6" y1="3" x2="6" y2="15"/>
-                  <circle cx="18" cy="6" r="3"/>
-                  <circle cx="6" cy="18" r="3"/>
-                  <path d="M18 9a9 9 0 0 1-9 9"/>
-                </svg>
-                <span v-if="hasBranches" class="branch-count-badge">{{ branchCount }}</span>
-              </button>
-              <!-- Branch dropdown menu -->
-              <div v-if="showBranchMenu && hasBranches" class="branch-menu" :style="branchMenuStyle">
-                <div class="branch-menu-list">
-                  <button
-                    v-for="branch in branches"
-                    :key="branch.id"
-                    class="branch-menu-item"
-                    @click="goToBranch(branch.id)"
-                  >
-                    <span class="branch-name">{{ branch.name || 'Untitled branch' }}</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M9 18l6-6-6-6"/>
-                    </svg>
-                  </button>
-                </div>
-                <div class="branch-menu-footer">
-                  <button class="branch-menu-new" @click="createBranch">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M12 5v14M5 12h14"/>
-                    </svg>
-                    <span>New branch</span>
-                  </button>
-                </div>
+            <!-- Branch dropdown menu -->
+            <div v-if="showBranchMenu && hasBranches" class="branch-menu" :style="branchMenuStyle">
+              <div class="branch-menu-list">
+                <button
+                  v-for="branch in branches"
+                  :key="branch.id"
+                  class="branch-menu-item"
+                  @click="goToBranch(branch.id)"
+                >
+                  <span class="branch-name">{{ branch.name || 'Untitled branch' }}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="branch-menu-footer">
+                <button class="branch-menu-new" @click="createBranch">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14"/>
+                  </svg>
+                  <span>New branch</span>
+                </button>
               </div>
             </div>
-            <button
-              v-if="message.role === 'assistant'"
-              class="action-btn"
-              @click="regenerate"
-              title="Regenerate"
-            >
-              ↻
-            </button>
           </div>
+          <button
+            v-if="message.role === 'assistant'"
+            class="action-btn"
+            @click="regenerate"
+            title="Regenerate"
+          >
+            ↻
+          </button>
         </div>
-      </template>
-    </div>
+      </div>
     </div>
   </div>
 </template>
@@ -426,6 +442,13 @@ function regenerate() {
   emit('regenerate', props.message.id)
 }
 
+function adjustEditTextareaHeight() {
+  if (editTextarea.value) {
+    editTextarea.value.style.height = 'auto'
+    editTextarea.value.style.height = editTextarea.value.scrollHeight + 'px'
+  }
+}
+
 function startEdit() {
   editContent.value = props.message.content
   isEditing.value = true
@@ -433,8 +456,9 @@ function startEdit() {
     if (editTextarea.value) {
       editTextarea.value.focus()
       // Auto-resize textarea
-      editTextarea.value.style.height = 'auto'
-      editTextarea.value.style.height = editTextarea.value.scrollHeight + 'px'
+      adjustEditTextareaHeight()
+      // Select all text for easy replacement
+      editTextarea.value.select()
     }
   })
 }
@@ -445,9 +469,12 @@ function cancelEdit() {
 }
 
 function submitEdit() {
-  if (!editContent.value.trim()) return
-  emit('edit', props.message.id, editContent.value.trim())
+  const trimmedContent = editContent.value.trim()
+  if (!trimmedContent) return
+
+  emit('edit', props.message.id, trimmedContent)
   isEditing.value = false
+  editContent.value = ''
 }
 
 function createBranch() {
@@ -707,10 +734,11 @@ html[data-theme='light'] .toolbar-divider {
 
 .message {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: flex-start;
   animation: fadeIn 0.18s ease-out;
   width: min(900px, 100%);
+  margin-bottom: 4px;
 }
 
 .message.user {
@@ -722,8 +750,8 @@ html[data-theme='light'] .toolbar-divider {
 }
 
 .avatar {
-  height: 34px;
-  width: 34px;
+  height: 32px;
+  width: 32px;
   border-radius: 999px;
   display: grid;
   place-items: center;
@@ -732,12 +760,13 @@ html[data-theme='light'] .toolbar-divider {
   color: var(--text);
   user-select: none;
   flex: 0 0 auto;
+  font-size: 16px;
 }
 
 .message-content-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
   flex: 1;
   min-width: 0;
 }
@@ -747,13 +776,24 @@ html[data-theme='light'] .toolbar-divider {
   align-items: flex-end;
 }
 
+
+.message.assistant .message-content-wrapper {
+  gap: 8px;
+}
+
 .bubble {
   max-width: min(680px, 78%);
-  padding: 14px 16px;
-  border-radius: 18px;
-  border: 1px solid var(--border);
+  padding: 14px 18px;
+  border-radius: 20px;
+  border: none;
   background: rgba(255, 255, 255, 0.05);
   position: relative;
+  transition: all 0.2s ease;
+}
+
+/* Editing state - smoother transition */
+.bubble.editing {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* AI messages: remove bubble styling for clean reading experience */
@@ -765,17 +805,34 @@ html[data-theme='light'] .toolbar-divider {
   background: transparent;
 }
 
+/* User message bubble - Modern gradient design */
 .message.user .bubble {
-  background: rgba(16, 163, 127, 0.14);
-  border-color: rgba(16, 163, 127, 0.25);
+  background: linear-gradient(135deg, rgba(75, 85, 99, 0.95) 0%, rgba(55, 65, 81, 0.98) 100%);
+  border-radius: 20px 20px 6px 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  border: none;
+}
+
+html[data-theme='light'] .message.user .bubble {
+  background: linear-gradient(135deg, rgba(243, 244, 246, 0.98) 0%, rgba(229, 231, 235, 0.95) 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .content {
   word-wrap: break-word;
-  line-height: 1.7;
-  font-size: 14.5px;
+  line-height: 1.6;
+  font-size: 14px;
   color: var(--text);
   letter-spacing: 0.01em;
+}
+
+.message.user .content {
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+html[data-theme='light'] .message.user .content {
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .content.typing::after {
@@ -938,7 +995,17 @@ html[data-theme='light'] .toolbar-divider {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 8px;
+  margin-top: 6px;
+  padding: 0 4px;
+}
+
+/* User messages: position actions at bottom-right of bubble */
+.message.user .message-footer {
+  position: relative;
+  margin-top: 6px;
+  margin-right: 8px;
+  justify-content: flex-end;
+  padding: 0;
 }
 
 /* AI messages: adjust footer for clean layout */
@@ -946,6 +1013,7 @@ html[data-theme='light'] .toolbar-divider {
   margin-top: 12px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
+  padding-left: 0;
 }
 
 .meta {
@@ -955,33 +1023,105 @@ html[data-theme='light'] .toolbar-divider {
 
 .actions {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(30, 30, 35, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 }
 
 .actions.visible {
   opacity: 1;
 }
 
+/* User message actions - special styling */
+.actions.user-actions {
+  background: rgba(40, 40, 45, 0.85);
+  border-radius: 14px;
+  padding: 5px;
+  gap: 4px;
+}
+
 .action-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   border: none;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--muted);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  transition: all 0.15s ease;
+  font-size: 13px;
+  transition: background 0.12s ease, color 0.12s ease;
+  flex-shrink: 0;
+  position: relative;
 }
 
 .action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.action-btn:active {
   background: rgba(255, 255, 255, 0.15);
-  color: var(--text);
+}
+
+.action-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* User actions buttons */
+.user-actions .action-btn {
+  width: 34px;
+  height: 34px;
+}
+
+.user-actions .action-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Copy button success state */
+.copy-btn:has(svg polyline) {
+  color: var(--accent);
+}
+
+html[data-theme='light'] .actions {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.05) inset;
+}
+
+html[data-theme='light'] .actions.user-actions {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+html[data-theme='light'] .action-btn {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme='light'] .action-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.85);
+}
+
+html[data-theme='light'] .action-btn:active {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+html[data-theme='light'] .user-actions .action-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.9);
 }
 
 @keyframes fadeIn {
@@ -1067,12 +1207,93 @@ html[data-theme='light'] .error-time {
 
 /* Edit mode styles */
 .edit-container {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  position: relative;
 }
 
-.edit-textarea {
+/* User message edit mode - modern glass effect */
+.message.user .edit-textarea {
+  width: 100%;
+  min-height: 100px;
+  max-height: 300px;
+  padding: 16px 20px;
+  padding-bottom: 60px;
+  border: none;
+  border-radius: 20px 20px 6px 20px;
+  background: linear-gradient(135deg, rgba(75, 85, 99, 0.98) 0%, rgba(55, 65, 81, 1) 100%);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  line-height: 1.55;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.25),
+    0 0 0 2px rgba(16, 163, 127, 0.3) inset;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+  overflow-y: auto;
+}
+
+.message.user .edit-textarea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.message.user .edit-textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message.user .edit-textarea::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.message.user .edit-textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.message.user .edit-textarea:focus {
+  box-shadow:
+    0 6px 28px rgba(0, 0, 0, 0.3),
+    0 0 0 2px rgba(16, 163, 127, 0.5) inset,
+    0 0 40px rgba(16, 163, 127, 0.08);
+  background: linear-gradient(135deg, rgba(80, 90, 104, 0.98) 0%, rgba(60, 70, 86, 1) 100%);
+}
+
+.message.user .edit-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+  opacity: 1;
+}
+
+html[data-theme='light'] .message.user .edit-textarea {
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.95) 100%);
+  color: rgba(0, 0, 0, 0.9);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.1),
+    0 0 0 2px rgba(16, 163, 127, 0.2) inset;
+}
+
+html[data-theme='light'] .message.user .edit-textarea:focus {
+  box-shadow:
+    0 6px 24px rgba(0, 0, 0, 0.12),
+    0 0 0 2px rgba(16, 163, 127, 0.35) inset,
+    0 0 30px rgba(16, 163, 127, 0.06);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 100%);
+}
+
+html[data-theme='light'] .message.user .edit-textarea::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+html[data-theme='light'] .message.user .edit-textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+html[data-theme='light'] .message.user .edit-textarea::placeholder {
+  color: rgba(0, 0, 0, 0.3);
+  opacity: 1;
+}
+
+/* Assistant message edit mode - keep original style */
+.message.assistant .edit-textarea {
   width: 100%;
   min-height: 60px;
   max-height: 300px;
@@ -1088,44 +1309,86 @@ html[data-theme='light'] .error-time {
   font-family: inherit;
 }
 
-.edit-textarea:focus {
+.message.assistant .edit-textarea:focus {
   border-color: var(--accent);
 }
 
 .edit-actions {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
+  z-index: 10;
 }
 
 .edit-btn {
-  padding: 6px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.edit-btn svg {
+  width: 18px;
+  height: 18px;
 }
 
 .edit-btn.cancel {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 .edit-btn.cancel:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.edit-btn.cancel:active {
+  transform: scale(0.95);
+}
+
+html[data-theme='light'] .edit-btn.cancel {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.5);
+}
+
+html[data-theme='light'] .edit-btn.cancel:hover {
+  background: rgba(0, 0, 0, 0.12);
+  color: rgba(0, 0, 0, 0.8);
 }
 
 .edit-btn.submit {
   background: var(--accent);
-  border: none;
   color: white;
+  box-shadow: 0 2px 8px rgba(16, 163, 127, 0.35);
 }
 
 .edit-btn.submit:hover {
-  background: #0d8e6f;
+  background: #0d9e76;
+}
+
+.edit-btn.submit:active {
+  transform: scale(0.95);
+}
+
+.edit-btn.submit:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.3);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+html[data-theme='light'] .edit-btn.submit:disabled {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.25);
 }
 
 /* Branch button and menu styles */

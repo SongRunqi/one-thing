@@ -19,8 +19,8 @@
       @quote="handleQuote"
     />
 
-    <!-- Loading indicator -->
-    <div v-if="isLoading" class="thinking-indicator">
+    <!-- Loading indicator (only show if no streaming message exists to avoid duplicate indicators) -->
+    <div v-if="isLoading && !hasStreamingMessage" class="thinking-indicator">
       <div class="thinking-avatar">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"/>
@@ -74,6 +74,11 @@ const canCreateBranch = computed(() => {
   if (!currentSession) return false
   // Only allow branching from root sessions (no parent)
   return !currentSession.parentSessionId
+})
+
+// Check if there's already a streaming message (to avoid double loading indicator)
+const hasStreamingMessage = computed(() => {
+  return props.messages.some(m => m.isStreaming)
 })
 
 // Compute branches for each message

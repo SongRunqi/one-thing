@@ -120,6 +120,11 @@ export function registerChatHandlers() {
     return handleEditAndResend(sessionId, messageId, newContent)
   })
 
+  // 编辑消息并重新发送（流式）
+  ipcMain.handle(IPC_CHANNELS.EDIT_AND_RESEND_STREAM, async (event, { sessionId, messageId, newContent }) => {
+    return handleEditAndResendStream(event.sender, sessionId, messageId, newContent)
+  })
+
   // 生成聊天标题
   ipcMain.handle(IPC_CHANNELS.GENERATE_TITLE, async (_event, { message }) => {
     return handleGenerateTitle(message)
@@ -191,6 +196,301 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
     }
   } catch (error: any) {
     console.error('Error editing and resending message:', error)
+    return {
+      success: false,
+      error: error.message || 'Failed to edit and resend message',
+      errorDetails: extractErrorDetails(error),
+    }
+  }
+}
+
+// Handle streaming edit and resend (similar to handleSendMessageStream but for edits)
+async function handleEditAndResendStream(sender: Electron.WebContents, sessionId: string, messageId: string, newContent: string) {
+  try {
+    // Update the message and truncate messages after it
+    const updated = store.updateMessageAndTruncate(sessionId, messageId, newContent)
+    if (!updated) {
+      return { success: false, error: 'Message not found' }
+    }
+
+    // Get settings and call AI
+    const settings = store.getSettings()
+    const providerId = settings.ai.provider
+    const providerConfig = getProviderConfig(settings)
+    const toolSettings = settings.tools
+
+    if (!providerConfig || !providerConfig.apiKey) {
+      return {
+        success: false,
+        error: 'API Key not configured. Please configure your AI settings.',
+      }
+    }
+
+    if (!isProviderSupported(providerId)) {
+      return {
+        success: false,
+        error: `Unsupported provider: ${providerId}`,
+      }
+    }
+
+    // Create assistant message with empty content initially
+    const assistantMessageId = uuidv4()
+    const assistantMessage: ChatMessage = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      isStreaming: true,
+      toolCalls: [],
+    }
+
+    // Add empty assistant message to store
+    store.addMessage(sessionId, assistantMessage)
+
+    // Get the updated session with truncated messages
+    const session = store.getSession(sessionId)
+
+    // Send initial response with message ID
+    const initialResponse = {
+      success: true,
+      messageId: assistantMessageId,
+      sessionName: session?.name,
+    }
+
+    // Start streaming in background
+    process.nextTick(async () => {
+      try {
+        console.log('[Backend] Starting streaming for edit-resend, message:', assistantMessageId)
+
+        // Get enabled tools if tool calls are enabled
+        const enabledTools = toolSettings?.enableToolCalls ? getEnabledTools() : []
+        const mcpTools = toolSettings?.enableToolCalls ? getMCPToolsForAI() : {}
+        const mcpToolCount = Object.keys(mcpTools).length
+        const hasTools = enabledTools.length > 0 || mcpToolCount > 0
+
+        const apiType = getProviderApiType(settings, providerId)
+
+        let accumulatedContent = ''
+        let accumulatedReasoning = ''
+        const toolCalls: ToolCall[] = []
+
+        // Build conversation messages from session history
+        const historyMessages = session?.messages
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })) || []
+
+        if (hasTools) {
+          const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
+          const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
+
+          const MAX_TOOL_TURNS = 5
+          let currentTurn = 0
+
+          const conversationMessages: ToolChatMessage[] = [
+            { role: 'system', content: TOOL_BEHAVIOR_SYSTEM_PROMPT },
+            ...historyMessages,
+          ]
+
+          while (currentTurn < MAX_TOOL_TURNS) {
+            currentTurn++
+            const toolCallsThisTurn: ToolCall[] = []
+            let turnContent = ''
+            let turnReasoning = ''
+
+            const stream = streamChatResponseWithTools(
+              providerId,
+              {
+                apiKey: providerConfig.apiKey,
+                baseUrl: providerConfig.baseUrl,
+                model: providerConfig.model,
+                apiType,
+              },
+              conversationMessages,
+              toolsForAI,
+              { temperature: settings.ai.temperature }
+            )
+
+            for await (const chunk of stream) {
+              if (chunk.type === 'text' && chunk.text) {
+                accumulatedContent += chunk.text
+                turnContent += chunk.text
+                store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
+                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                  type: 'text',
+                  content: chunk.text,
+                  messageId: assistantMessageId,
+                })
+              }
+
+              if (chunk.type === 'reasoning' && chunk.reasoning) {
+                accumulatedReasoning += chunk.reasoning
+                turnReasoning += chunk.reasoning
+                store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
+                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                  type: 'reasoning',
+                  content: '',
+                  messageId: assistantMessageId,
+                  reasoning: chunk.reasoning,
+                })
+              }
+
+              if (chunk.type === 'tool-call' && chunk.toolCall) {
+                const toolCall = createToolCall(
+                  chunk.toolCall.toolName,
+                  chunk.toolCall.toolName,
+                  chunk.toolCall.args
+                )
+                toolCall.id = chunk.toolCall.toolCallId
+                toolCalls.push(toolCall)
+                toolCallsThisTurn.push(toolCall)
+
+                store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
+                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                  type: 'tool_call',
+                  content: '',
+                  messageId: assistantMessageId,
+                  toolCall,
+                })
+
+                const shouldAutoExecute = isMCPTool(chunk.toolCall.toolName) || canAutoExecute(chunk.toolCall.toolName, toolSettings?.tools)
+
+                if (shouldAutoExecute) {
+                  toolCall.status = 'executing'
+                  store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
+
+                  let result: { success: boolean; data?: any; error?: string }
+
+                  if (isMCPTool(chunk.toolCall.toolName)) {
+                    const mcpResult = await executeMCPTool(chunk.toolCall.toolName, chunk.toolCall.args)
+                    result = {
+                      success: mcpResult.success,
+                      data: mcpResult.content,
+                      error: mcpResult.error,
+                    }
+                  } else {
+                    result = await executeTool(
+                      chunk.toolCall.toolName,
+                      chunk.toolCall.args,
+                      { sessionId, messageId: assistantMessageId }
+                    )
+                  }
+
+                  toolCall.status = result.success ? 'completed' : 'failed'
+                  toolCall.result = result.data
+                  toolCall.error = result.error
+                  store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
+
+                  sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                    type: 'tool_result',
+                    content: '',
+                    messageId: assistantMessageId,
+                    toolCall,
+                  })
+                }
+              }
+            }
+
+            if (toolCallsThisTurn.length === 0) break
+
+            const allExecuted = toolCallsThisTurn.every(tc => tc.status === 'completed' || tc.status === 'failed')
+            if (!allExecuted) break
+
+            const assistantMsg: {
+              role: 'assistant'
+              content: string
+              toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>
+              reasoningContent?: string
+            } = {
+              role: 'assistant' as const,
+              content: turnContent,
+              toolCalls: toolCallsThisTurn.map(tc => ({
+                toolCallId: tc.id,
+                toolName: tc.toolName,
+                args: tc.arguments,
+              })),
+            }
+            if (turnReasoning) {
+              assistantMsg.reasoningContent = turnReasoning
+            }
+            conversationMessages.push(assistantMsg)
+
+            const toolResultMsg = {
+              role: 'tool' as const,
+              content: toolCallsThisTurn.map(tc => ({
+                type: 'tool-result' as const,
+                toolCallId: tc.id,
+                toolName: tc.toolName,
+                result: tc.status === 'completed' ? tc.result : { error: tc.error },
+              })),
+            }
+            conversationMessages.push(toolResultMsg)
+
+            sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+              type: 'continuation',
+              content: '',
+              messageId: assistantMessageId,
+            })
+          }
+        } else {
+          // No tools, simple streaming
+          const stream = streamChatResponseWithReasoning(
+            providerId,
+            {
+              apiKey: providerConfig.apiKey,
+              baseUrl: providerConfig.baseUrl,
+              model: providerConfig.model,
+              apiType,
+            },
+            historyMessages,
+            { temperature: settings.ai.temperature }
+          )
+
+          for await (const chunk of stream) {
+            if (chunk.text) {
+              accumulatedContent += chunk.text
+              store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
+              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                type: 'text',
+                content: chunk.text,
+                messageId: assistantMessageId,
+              })
+            }
+
+            if (chunk.reasoning) {
+              accumulatedReasoning += chunk.reasoning
+              store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
+              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+                type: 'reasoning',
+                content: '',
+                messageId: assistantMessageId,
+                reasoning: chunk.reasoning,
+              })
+            }
+          }
+        }
+
+        // Mark as complete
+        store.updateMessageStreaming(sessionId, assistantMessageId, false)
+        sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+          messageId: assistantMessageId,
+          sessionName: session?.name,
+        })
+      } catch (error: any) {
+        console.error('[Backend] Streaming error:', error)
+        sender.send(IPC_CHANNELS.STREAM_ERROR, {
+          messageId: assistantMessageId,
+          error: error.message || 'Streaming error',
+          errorDetails: extractErrorDetails(error),
+        })
+      }
+    })
+
+    return initialResponse
+  } catch (error: any) {
+    console.error('Error in edit and resend stream:', error)
     return {
       success: false,
       error: error.message || 'Failed to edit and resend message',

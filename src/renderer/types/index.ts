@@ -96,6 +96,7 @@ export interface ElectronAPI {
   getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
   generateTitle: (message: string) => Promise<GenerateTitleResponse>
   editAndResend: (sessionId: string, messageId: string, newContent: string) => Promise<EditAndResendResponse>
+  editAndResendStream: (sessionId: string, messageId: string, newContent: string) => Promise<StreamSendMessageResponse>
   getSessions: () => Promise<GetSessionsResponse>
   createSession: (name: string) => Promise<CreateSessionResponse>
   switchSession: (sessionId: string) => Promise<SwitchSessionResponse>

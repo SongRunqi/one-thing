@@ -509,14 +509,21 @@ export const useChatStore = defineStore('chat', () => {
     // Now show loading state
     isLoading.value = true
 
+    // Clean up any existing listeners
+    cleanupStreamListeners()
+
+    let unsubscribeChunk: (() => void) | null = null
+    let unsubscribeComplete: (() => void) | null = null
+    let unsubscribeError: (() => void) | null = null
+    let assistantMessageId: string | null = null
+
     try {
-      const response = await window.electronAPI.editAndResend(sessionId, messageId, newContent)
+      const response = await window.electronAPI.editAndResendStream(sessionId, messageId, newContent)
 
       if (!response.success) {
         error.value = response.error || 'Failed to edit and resend message'
         errorDetails.value = response.errorDetails || null
 
-        // Add error as a display-only message
         const errorMessage: ChatMessage = {
           id: `error-${Date.now()}`,
           role: 'error',
@@ -530,23 +537,158 @@ export const useChatStore = defineStore('chat', () => {
         return false
       }
 
-      // Add the new assistant message with streaming effect
-      if (response.assistantMessage) {
-        const streamingMessage = { ...response.assistantMessage, isStreaming: true }
-        addMessage(streamingMessage)
+      assistantMessageId = response.messageId
 
-        // After typewriter animation, mark as not streaming
-        setTimeout(() => {
-          updateMessage(response.assistantMessage!.id, { isStreaming: false })
-        }, Math.min(response.assistantMessage.content.length * 10, 3000))
+      // Create streaming assistant message
+      const assistantMessage: ChatMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        isStreaming: true,
+        contentParts: [],
       }
+      addMessage(assistantMessage)
 
-      return true
+      // Hide the global loading indicator - the message bubble shows its own streaming state
+      isLoading.value = false
+
+      let hasToolCallsInCurrentSegment = false
+
+      // Set up chunk listener
+      unsubscribeChunk = window.electronAPI.onStreamChunk((chunk) => {
+        if (chunk.messageId === assistantMessageId) {
+          const message = messages.value.find(m => m.id === assistantMessageId)
+          if (!message) return
+
+          if (chunk.type === 'text') {
+            message.content += chunk.content
+
+            // Update contentParts
+            if (!message.contentParts) message.contentParts = []
+            const parts = message.contentParts
+
+            if (hasToolCallsInCurrentSegment || parts.length === 0 || parts[parts.length - 1].type !== 'text') {
+              // Remove waiting indicator if present
+              if (parts.length > 0 && parts[parts.length - 1].type === 'waiting') {
+                parts.pop()
+              }
+              parts.push({ type: 'text', content: chunk.content })
+              hasToolCallsInCurrentSegment = false
+            } else {
+              const lastPart = parts[parts.length - 1]
+              if (lastPart.type === 'text') {
+                lastPart.content += chunk.content
+              }
+            }
+            message.contentParts = [...parts]
+          } else if (chunk.type === 'reasoning') {
+            message.reasoning = (message.reasoning || '') + chunk.reasoning
+          } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
+            if (chunk.toolCall) {
+              if (!message.toolCalls) message.toolCalls = []
+              const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
+              if (existingIndex >= 0) {
+                message.toolCalls[existingIndex] = chunk.toolCall
+              } else {
+                message.toolCalls.push(chunk.toolCall)
+              }
+
+              const parts = message.contentParts!
+              let lastPart = parts[parts.length - 1]
+
+              if (lastPart && lastPart.type === 'waiting') {
+                parts.pop()
+                lastPart = parts[parts.length - 1]
+              }
+
+              if (lastPart && lastPart.type === 'tool-call') {
+                const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
+                if (existingTcIndex >= 0) {
+                  lastPart.toolCalls[existingTcIndex] = chunk.toolCall
+                } else {
+                  lastPart.toolCalls.push(chunk.toolCall)
+                }
+              } else {
+                parts.push({ type: 'tool-call', toolCalls: [chunk.toolCall] })
+              }
+              hasToolCallsInCurrentSegment = true
+              message.contentParts = [...parts]
+            }
+          } else if (chunk.type === 'continuation') {
+            hasToolCallsInCurrentSegment = true
+            const parts = message.contentParts!
+            parts.push({ type: 'waiting' })
+            message.contentParts = [...parts]
+          }
+        }
+      })
+
+      // Set up error listener
+      unsubscribeError = window.electronAPI.onStreamError((data) => {
+        if (data.messageId === assistantMessageId) {
+          error.value = data.error || 'Streaming error'
+          errorDetails.value = data.errorDetails || null
+
+          const errorMessage: ChatMessage = {
+            id: `error-${Date.now()}`,
+            role: 'error',
+            content: data.error || 'Streaming error',
+            timestamp: Date.now(),
+            errorDetails: data.errorDetails,
+          }
+          addMessage(errorMessage)
+
+          messages.value = messages.value.filter((m) => m.id !== assistantMessageId)
+
+          if (unsubscribeChunk) unsubscribeChunk()
+          if (unsubscribeComplete) unsubscribeComplete()
+          if (unsubscribeError) unsubscribeError()
+
+          isLoading.value = false
+        }
+      })
+
+      // Return a promise that resolves when streaming is complete
+      return new Promise((resolve) => {
+        const completeListener = window.electronAPI.onStreamComplete(async (data) => {
+          if (data.messageId === assistantMessageId) {
+            const message = messages.value.find(m => m.id === assistantMessageId)
+            if (message?.contentParts) {
+              const lastPart = message.contentParts[message.contentParts.length - 1]
+              if (lastPart && lastPart.type === 'waiting') {
+                message.contentParts.pop()
+              }
+
+              if (message.contentParts.length > 0) {
+                const plainContentParts = JSON.parse(JSON.stringify(message.contentParts))
+                await window.electronAPI.updateContentParts(sessionId, assistantMessageId!, plainContentParts)
+              }
+            }
+
+            updateMessage(assistantMessageId!, { isStreaming: false })
+
+            if (unsubscribeChunk) unsubscribeChunk()
+            if (unsubscribeComplete) unsubscribeComplete()
+            if (unsubscribeError) unsubscribeError()
+
+            isLoading.value = false
+            completeListener()
+            resolve(data.sessionName || true)
+          }
+        })
+      })
+
     } catch (err: any) {
       error.value = err.message || 'An error occurred'
-      return false
-    } finally {
+      messages.value = messages.value.filter((m) => m.id !== assistantMessageId)
+
+      if (unsubscribeChunk) unsubscribeChunk()
+      if (unsubscribeComplete) unsubscribeComplete()
+      if (unsubscribeError) unsubscribeError()
+
       isLoading.value = false
+      return false
     }
   }
 

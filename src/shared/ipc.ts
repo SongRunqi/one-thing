@@ -7,6 +7,7 @@ export const IPC_CHANNELS = {
   CLEAR_CHAT: 'chat:clear',
   GENERATE_TITLE: 'chat:generate-title',
   EDIT_AND_RESEND: 'chat:edit-and-resend',
+  EDIT_AND_RESEND_STREAM: 'chat:edit-and-resend-stream',
 
   // Streaming related
   STREAM_CHUNK: 'chat:stream-chunk',
