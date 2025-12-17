@@ -41,6 +41,9 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_ERROR, listener)
   },
 
+  abortStream: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.ABORT_STREAM),
+
   getChatHistory: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_CHAT_HISTORY, { sessionId }),
 

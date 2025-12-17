@@ -215,7 +215,7 @@ export async function* streamChatResponseWithReasoning(
   providerId: string,
   config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
-  options: { temperature?: number; maxTokens?: number } = {}
+  options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
 ): AsyncGenerator<{ text: string; reasoning?: string }, void, unknown> {
   const provider = createProvider(providerId, config)
   const model = provider.createModel(config.model)
@@ -232,6 +232,11 @@ export async function* streamChatResponseWithReasoning(
   // Only add temperature for non-reasoning models
   if (!isReasoning && options.temperature !== undefined) {
     streamOptions.temperature = options.temperature
+  }
+
+  // Add abort signal if provided
+  if (options.abortSignal) {
+    streamOptions.abortSignal = options.abortSignal
   }
 
   const stream = await streamText(streamOptions)
@@ -453,7 +458,7 @@ export async function* streamChatResponseWithTools(
   config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
   messages: ToolChatMessage[],
   tools: Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }>,
-  options: { temperature?: number; maxTokens?: number } = {}
+  options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
 ): AsyncGenerator<StreamChunkWithTools, void, unknown> {
   const provider = createProvider(providerId, config)
   const model = provider.createModel(config.model)
@@ -526,6 +531,11 @@ export async function* streamChatResponseWithTools(
   // Only add temperature for non-reasoning models
   if (!isReasoning && options.temperature !== undefined) {
     streamOptions.temperature = options.temperature
+  }
+
+  // Add abort signal if provided
+  if (options.abortSignal) {
+    streamOptions.abortSignal = options.abortSignal
   }
 
   console.log(`[Provider] Starting stream with ${Object.keys(aiTools).length} tools`)

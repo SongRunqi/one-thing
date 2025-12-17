@@ -489,6 +489,19 @@ export const useChatStore = defineStore('chat', () => {
     errorDetails.value = null
   }
 
+  // Stop the current streaming generation
+  async function stopGeneration() {
+    if (!isLoading.value) return false
+
+    try {
+      const response = await window.electronAPI.abortStream()
+      return response.success
+    } catch (err: any) {
+      console.error('Failed to stop generation:', err)
+      return false
+    }
+  }
+
   async function editAndResend(sessionId: string, messageId: string, newContent: string) {
     error.value = null
     errorDetails.value = null
@@ -707,6 +720,7 @@ export const useChatStore = defineStore('chat', () => {
     clearError,
     sendMessage,
     sendMessageStream,
+    stopGeneration,
     editAndResend,
     cleanupStreamListeners,
   }

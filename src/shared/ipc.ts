@@ -15,6 +15,7 @@ export const IPC_CHANNELS = {
   STREAM_TEXT_DELTA: 'chat:stream-text-delta',
   STREAM_COMPLETE: 'chat:stream-complete',
   STREAM_ERROR: 'chat:stream-error',
+  ABORT_STREAM: 'chat:abort-stream',
 
   // Session related
   GET_SESSIONS: 'sessions:get-all',

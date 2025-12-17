@@ -32,50 +32,6 @@
             <span>Parent</span>
           </button>
           <div class="chat-title">
-            <div class="model-selector" ref="modelSelectorRef">
-              <button class="model-selector-btn" @click="toggleModelDropdown">
-                <span class="model-text">{{ currentModelDisplay }}</span>
-                <svg class="dropdown-chevron" :class="{ open: showModelDropdown }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
-              <div v-if="showModelDropdown" class="model-dropdown">
-                <div v-for="provider in availableProviders" :key="provider.key" class="provider-group">
-                  <div
-                    class="provider-header"
-                    :class="{ active: provider.key === currentProvider }"
-                    @click="handleProviderClick(provider.key, provider.selectedModels.length > 0)"
-                  >
-                    <svg
-                      v-if="provider.selectedModels.length > 0"
-                      class="expand-chevron"
-                      :class="{ expanded: expandedProviders.has(provider.key) }"
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                    <span class="provider-name">{{ provider.name }}</span>
-                    <span class="model-count" v-if="provider.selectedModels.length > 0">({{ provider.selectedModels.length }})</span>
-                  </div>
-                  <div v-if="provider.selectedModels.length > 0 && expandedProviders.has(provider.key)" class="model-list">
-                    <div
-                      v-for="model in provider.selectedModels"
-                      :key="model"
-                      class="model-item"
-                      :class="{ active: provider.key === currentProvider && model === currentModel }"
-                      @click="selectModel(provider.key, model)"
-                    >
-                      <span class="model-name">{{ formatModelName(model) }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
             <div class="chat-session">{{ currentSession?.name || 'New chat' }}</div>
           </div>
         </div>
@@ -97,18 +53,16 @@
       <MessageList :messages="chatStore.messages" :is-loading="chatStore.isLoading" @set-quoted-text="handleSetQuotedText" />
 
       <div class="composer">
-        <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @open-tool-settings="handleOpenToolSettings" :is-loading="chatStore.isLoading" />
+        <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="chatStore.isLoading" />
       </div>
     </template>
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
-import { useSettingsStore } from '@/stores/settings'
-import { AIProvider } from '../../shared/ipc'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import SettingsPanel from './SettingsPanel.vue'
@@ -131,7 +85,6 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
-const settingsStore = useSettingsStore()
 
 const currentSession = computed(() => sessionsStore.currentSession)
 
@@ -147,138 +100,6 @@ async function goToParentSession() {
 
 // Input box ref for setting quoted text
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
-
-// Model selector dropdown state
-const showModelDropdown = ref(false)
-const modelSelectorRef = ref<HTMLElement | null>(null)
-// Track which providers are expanded (default: current provider expanded)
-const expandedProviders = ref<Set<string>>(new Set([settingsStore.settings.ai.provider]))
-
-const providerNames: Record<string, string> = {
-  openai: 'OpenAI',
-  claude: 'Claude',
-  deepseek: 'DeepSeek',
-  kimi: 'Kimi',
-  zhipu: '智谱 GLM',
-  custom: 'Custom',
-}
-
-const currentProvider = computed(() => settingsStore.settings.ai.provider)
-const currentModel = computed(() => settingsStore.settings.ai.providers[currentProvider.value]?.model || '')
-
-const currentModelDisplay = computed(() => {
-  const provider = currentProvider.value
-  const model = currentModel.value
-
-  const providerName = providerNames[provider] || provider
-  const modelShort = formatModelName(model)
-
-  return `${providerName} / ${modelShort}`
-})
-
-const availableProviders = computed(() => {
-  const settings = settingsStore.settings
-  return [
-    {
-      key: AIProvider.OpenAI,
-      name: 'OpenAI',
-      selectedModels: settings.ai.providers[AIProvider.OpenAI]?.selectedModels || [],
-    },
-    {
-      key: AIProvider.Claude,
-      name: 'Claude',
-      selectedModels: settings.ai.providers[AIProvider.Claude]?.selectedModels || [],
-    },
-    {
-      key: AIProvider.DeepSeek,
-      name: 'DeepSeek',
-      selectedModels: settings.ai.providers[AIProvider.DeepSeek]?.selectedModels || [],
-    },
-    {
-      key: AIProvider.Kimi,
-      name: 'Kimi',
-      selectedModels: settings.ai.providers[AIProvider.Kimi]?.selectedModels || [],
-    },
-    {
-      key: AIProvider.Zhipu,
-      name: '智谱 GLM',
-      selectedModels: settings.ai.providers[AIProvider.Zhipu]?.selectedModels || [],
-    },
-    {
-      key: AIProvider.Custom,
-      name: 'Custom',
-      selectedModels: settings.ai.providers[AIProvider.Custom]?.selectedModels || [],
-    },
-  ].filter(p => {
-    const config = settings.ai.providers[p.key]
-    // Filter by enabled flag (default to true if not set)
-    return config?.enabled !== false
-  })
-})
-
-function formatModelName(model: string): string {
-  if (!model) return 'No model'
-  return model
-}
-
-function toggleModelDropdown() {
-  showModelDropdown.value = !showModelDropdown.value
-  // Reset expanded state when opening dropdown - only expand current provider
-  if (showModelDropdown.value) {
-    expandedProviders.value = new Set([currentProvider.value])
-  }
-}
-
-function toggleProviderExpanded(providerKey: string) {
-  if (expandedProviders.value.has(providerKey)) {
-    expandedProviders.value.delete(providerKey)
-  } else {
-    expandedProviders.value.add(providerKey)
-  }
-  // Trigger reactivity
-  expandedProviders.value = new Set(expandedProviders.value)
-}
-
-function handleProviderClick(providerKey: string, hasModels: boolean) {
-  // If provider has models, toggle expand/collapse
-  if (hasModels) {
-    toggleProviderExpanded(providerKey)
-  }
-  // Also select this provider
-  selectProvider(providerKey)
-}
-
-function closeDropdown() {
-  showModelDropdown.value = false
-}
-
-function handleClickOutside(event: MouseEvent) {
-  if (modelSelectorRef.value && !modelSelectorRef.value.contains(event.target as Node)) {
-    closeDropdown()
-  }
-}
-
-async function selectProvider(provider: AIProvider) {
-  settingsStore.updateAIProvider(provider)
-  await settingsStore.saveSettings(settingsStore.settings)
-}
-
-async function selectModel(provider: AIProvider, model: string) {
-  if (provider !== currentProvider.value) {
-    settingsStore.updateAIProvider(provider)
-  }
-  settingsStore.updateModel(model, provider)
-  await settingsStore.saveSettings(settingsStore.settings)
-  closeDropdown()
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
 
 // Handle open tool settings from InputBox
 function handleOpenToolSettings() {
@@ -301,6 +122,10 @@ async function handleSendMessage(message: string) {
       sessionInStore.name = result
     }
   }
+}
+
+async function handleStopGeneration() {
+  await chatStore.stopGeneration()
 }
 
 async function createNewSession() {
@@ -392,165 +217,6 @@ html[data-theme='light'] .back-to-parent-btn:hover {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-}
-
-.model-selector {
-  position: relative;
-}
-
-.model-selector-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  margin: -2px -6px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--muted);
-  transition: all 0.15s ease;
-}
-
-.model-selector-btn:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.model-text {
-  white-space: nowrap;
-}
-
-.dropdown-chevron {
-  transition: transform 0.2s ease;
-  flex-shrink: 0;
-}
-
-.dropdown-chevron.open {
-  transform: rotate(180deg);
-}
-
-.model-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: -6px;
-  min-width: 220px;
-  max-height: 320px;
-  overflow-y: auto;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  z-index: 1000;
-  padding: 6px;
-  backdrop-filter: blur(12px);
-}
-
-html[data-theme='light'] .model-dropdown {
-  background: var(--bg);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-}
-
-.provider-group {
-  margin-bottom: 4px;
-}
-
-.provider-group:last-child {
-  margin-bottom: 0;
-}
-
-.provider-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  transition: background 0.15s ease;
-  cursor: pointer;
-}
-
-.provider-header:hover {
-  background: var(--hover);
-}
-
-.provider-header.active {
-  background: rgba(16, 163, 127, 0.1);
-}
-
-.provider-header.active .provider-name {
-  color: var(--accent);
-}
-
-.expand-chevron {
-  transition: transform 0.2s ease;
-}
-
-.expand-chevron.expanded {
-  transform: rotate(90deg);
-}
-
-.provider-name {
-  flex: 1;
-}
-
-.model-count {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--muted);
-  margin-right: auto;
-}
-
-.model-list {
-  padding-left: 8px;
-  border-left: 2px solid var(--border);
-  margin-left: 19px;
-  margin-top: 2px;
-  margin-bottom: 6px;
-  animation: slideDown 0.15s ease;
-  overflow: hidden;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    max-height: 0;
-  }
-  to {
-    opacity: 1;
-    max-height: 500px;
-  }
-}
-
-.model-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--muted);
-  transition: all 0.15s ease;
-}
-
-.model-item:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.model-item.active {
-  background: rgba(16, 163, 127, 0.15);
-  color: var(--accent);
-}
-
-.model-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .chat-session {
