@@ -21,6 +21,9 @@ import {
 import type { ToolCall, ToolSettings } from '../../shared/ipc.js'
 import { getMCPToolsForAI, isMCPTool, executeMCPTool } from '../mcp/index.js'
 
+// Store active AbortController for stream cancellation
+let activeStreamAbortController: AbortController | null = null
+
 // System prompt to control tool usage behavior
 const TOOL_BEHAVIOR_SYSTEM_PROMPT = `You are a helpful assistant. You have access to tools, but you should ONLY use them when the user's request specifically requires their functionality.
 
@@ -129,6 +132,17 @@ export function registerChatHandlers() {
   ipcMain.handle(IPC_CHANNELS.UPDATE_CONTENT_PARTS, async (_event, { sessionId, messageId, contentParts }) => {
     const updated = store.updateMessageContentParts(sessionId, messageId, contentParts)
     return { success: updated }
+  })
+
+  // 中止当前流式请求
+  ipcMain.handle(IPC_CHANNELS.ABORT_STREAM, async () => {
+    if (activeStreamAbortController) {
+      console.log('[Backend] Aborting active stream')
+      activeStreamAbortController.abort()
+      activeStreamAbortController = null
+      return { success: true }
+    }
+    return { success: false, error: 'No active stream to abort' }
   })
 }
 
@@ -413,6 +427,10 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
 
     // Start streaming in background - use process.nextTick to ensure frontend listeners are set up
     process.nextTick(async () => {
+      // Create abort controller for this stream
+      activeStreamAbortController = new AbortController()
+      const abortSignal = activeStreamAbortController.signal
+
       try {
         console.log('[Backend] Starting streaming for message:', assistantMessageId)
         console.log('[Backend] Provider:', providerId, 'Model:', providerConfig.model)
@@ -471,7 +489,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
               },
               conversationMessages,
               toolsForAI,
-              { temperature: settings.ai.temperature }
+              { temperature: settings.ai.temperature, abortSignal }
             )
 
             // Process stream chunks with tool support
@@ -662,7 +680,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
               apiType,
             },
             [{ role: 'user', content: messageContent }],
-            { temperature: settings.ai.temperature }
+            { temperature: settings.ai.temperature, abortSignal }
           )
 
           // Process stream chunks
@@ -718,15 +736,35 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
         console.log('[Backend] Sent completion event')
 
       } catch (error: any) {
-        console.error('[Backend] Error in streaming background task:', error)
+        // Check if this is an abort error
+        const isAborted = error.name === 'AbortError' || abortSignal.aborted
 
-        // Send error event
-        sender.send(IPC_CHANNELS.STREAM_ERROR, {
-          messageId: assistantMessageId,
-          error: error.message || 'Failed to stream message',
-          errorDetails: extractErrorDetails(error),
-        })
-        console.log('[Backend] Sent error event')
+        if (isAborted) {
+          console.log('[Backend] Stream aborted by user')
+
+          // Finalize the message with current content (mark as stopped)
+          store.updateMessageStreaming(sessionId, assistantMessageId, false)
+
+          // Send completion event (not error) to gracefully end the stream
+          sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+            messageId: assistantMessageId,
+            sessionName: store.getSession(sessionId)?.name,
+            aborted: true,
+          })
+        } else {
+          console.error('[Backend] Error in streaming background task:', error)
+
+          // Send error event
+          sender.send(IPC_CHANNELS.STREAM_ERROR, {
+            messageId: assistantMessageId,
+            error: error.message || 'Failed to stream message',
+            errorDetails: extractErrorDetails(error),
+          })
+          console.log('[Backend] Sent error event')
+        }
+      } finally {
+        // Clear the active abort controller
+        activeStreamAbortController = null
       }
     })
 
