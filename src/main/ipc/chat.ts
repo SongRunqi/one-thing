@@ -572,6 +572,14 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
       }
     }
 
+    // Build conversation history from session messages
+    const historyMessages = session?.messages
+      .filter(m => m.role === 'user' || m.role === 'assistant')
+      .map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })) || []
+
     // Use AI SDK to generate response
     const apiType = getProviderApiType(settings, providerId)
     const response = await generateChatResponseWithReasoning(
@@ -582,7 +590,7 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
         model: providerConfig.model,
         apiType,
       },
-      [{ role: 'user', content: messageContent }],
+      historyMessages,
       { temperature: settings.ai.temperature }
     )
 
@@ -749,6 +757,15 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
         // Use AI SDK to generate streaming response
         const apiType = getProviderApiType(settings, providerId)
 
+        // Build conversation history from session messages (including the just-added user message)
+        const sessionForHistory = store.getSession(sessionId)
+        const historyMessages = sessionForHistory?.messages
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })) || []
+
         let accumulatedContent = ''
         let accumulatedReasoning = ''
         let chunkCount = 0
@@ -765,9 +782,10 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
           let currentTurn = 0
 
           // Build conversation messages (will be extended with tool results)
+          // Include system prompt and full conversation history
           const conversationMessages: ToolChatMessage[] = [
             { role: 'system', content: TOOL_BEHAVIOR_SYSTEM_PROMPT },
-            { role: 'user', content: messageContent },
+            ...historyMessages,
           ]
 
           // Loop until no more tool calls or max turns reached
@@ -979,7 +997,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
               model: providerConfig.model,
               apiType,
             },
-            [{ role: 'user', content: messageContent }],
+            historyMessages,
             { temperature: settings.ai.temperature, abortSignal }
           )
 

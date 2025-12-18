@@ -108,7 +108,7 @@ defineEmits<{
 }
 
 .btn.primary:hover {
-  background: #0d8a6a;
+  background: #2563eb;
 }
 
 .btn.secondary {

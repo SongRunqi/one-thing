@@ -1,86 +1,7 @@
 <template>
   <aside :class="['sidebar', 'panel', { collapsed }]">
-    <!-- Collapsed State -->
-    <template v-if="collapsed">
-      <div class="collapsed-content">
-        <button class="collapse-btn" @click="emit('toggleCollapse')" title="Expand sidebar">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M13 17l5-5-5-5M6 17l5-5-5-5"/>
-          </svg>
-        </button>
-
-        <button class="icon-btn collapsed-action" title="New chat" @click="createNewSession">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-        </button>
-
-        <div class="collapsed-sessions">
-          <div
-            v-for="session in recentSessions"
-            :key="session.id"
-            :class="['collapsed-session', { active: session.id === sessionsStore.currentSessionId }]"
-            :title="session.name || 'New chat'"
-            @click="switchSession(session.id)"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-            </svg>
-          </div>
-        </div>
-
-        <div class="collapsed-footer">
-          <button class="icon-btn collapsed-action" title="Settings" @click="openSettings">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </template>
-
-    <!-- Expanded State -->
-    <template v-else>
-      <div class="sidebar-top">
-        <div class="brand-row">
-          <div class="brand">
-            <div class="brand-mark">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <circle cx="12" cy="12" r="4"/>
-              </svg>
-            </div>
-            <div class="brand-name">ChatGPT</div>
-          </div>
-          <div class="brand-actions">
-            <button class="icon-btn" title="Collapse sidebar" @click="emit('toggleCollapse')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/>
-              </svg>
-            </button>
-            <button class="icon-btn new-chat-btn" title="New chat" @click="createNewSession">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <div class="search pill">
-          <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="M21 21l-4.35-4.35"/>
-          </svg>
-          <input v-model="query" class="search-input" placeholder="Search chats..." />
-          <button v-if="query" class="clear-search" @click="query = ''">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-
+    <!-- Expanded State (only shown when not collapsed) -->
+    <template v-if="!collapsed">
       <div class="sessions-list" role="list">
         <div v-for="group in groupedSessions" :key="group.label" class="session-group">
           <div
@@ -185,9 +106,8 @@
           </div>
         </div>
 
-        <div v-if="filteredSessions.length === 0" class="empty-sessions">
-          <span v-if="query">No chats found</span>
-          <span v-else>No chats yet</span>
+        <div v-if="sessionsStore.sessions.length === 0" class="empty-sessions">
+          <span>No chats yet</span>
         </div>
       </div>
 
@@ -288,7 +208,6 @@ const showUserMenu = ref(false)
 const animationSpeed = computed(() => {
   return settingsStore.settings.general?.animationSpeed ?? 0.25
 })
-const query = ref('')
 const inlineInputRef = ref<HTMLInputElement | null>(null)
 
 // Context menu state
@@ -450,18 +369,9 @@ function isAncestorCollapsed(session: ChatSession): boolean {
   return false
 }
 
-const filteredSessions = computed(() => {
-  const q = query.value.trim().toLowerCase()
-  if (!q) return sessionsStore.sessions
-  return sessionsStore.sessions.filter((s) => (s.name || '').toLowerCase().includes(q))
-})
+const filteredSessions = computed(() => sessionsStore.sessions)
 
 const totalChats = computed(() => sessionsStore.sessions.length)
-
-// Get recent sessions for collapsed view
-const recentSessions = computed(() => {
-  return sessionsStore.sessions.slice(0, 8)
-})
 
 // Check if a session is a branch
 function isBranch(session: ChatSession): boolean {
@@ -637,10 +547,6 @@ function formatRelativeTime(timestamp: number): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-async function createNewSession() {
-  await sessionsStore.createSession('')
-}
-
 function handleSessionClick(sessionId: string) {
   // Don't switch if we're editing
   if (editingSessionId.value) return
@@ -812,186 +718,18 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  transition: width 0.2s ease;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
 }
 
 .sidebar.collapsed {
-  width: 60px;
-  max-width: 60px;
-}
-
-/* Collapsed State Styles */
-.collapsed-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 12px 8px;
-  height: 100%;
-  gap: 8px;
-}
-
-.collapse-btn {
-  width: 44px;
-  height: 44px;
+  width: 0;
+  max-width: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
   border: none;
-  background: transparent;
-  border-radius: 10px;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-  margin-bottom: 8px;
-}
-
-.collapse-btn:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.collapsed-action {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-}
-
-.collapsed-sessions {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  overflow-y: auto;
-  width: 100%;
-}
-
-.collapsed-session {
-  width: 44px;
-  height: 44px;
-  margin: 0 auto;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--muted);
-  transition: all 0.15s ease;
-}
-
-.collapsed-session:hover {
-  background: var(--hover);
-  border-color: var(--border);
-  color: var(--text);
-}
-
-.collapsed-session.active {
-  background: rgba(16, 163, 127, 0.12);
-  border-color: rgba(16, 163, 127, 0.25);
-  color: var(--accent);
-}
-
-.collapsed-footer {
-  margin-top: auto;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
-}
-
-/* Expanded State Styles */
-.sidebar-top {
-  padding: 14px 14px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.brand-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  user-select: none;
-}
-
-.brand-mark {
-  height: 32px;
-  width: 32px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--accent) 0%, #0d8a6a 100%);
-  color: white;
-}
-
-.brand-name {
-  font-weight: 650;
-  font-size: 15px;
-  letter-spacing: 0.2px;
-}
-
-.brand-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.new-chat-btn {
-  background: var(--accent);
-  color: white;
-  border-radius: 10px;
-}
-
-.new-chat-btn:hover {
-  background: #0d8a6a;
-}
-
-.search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  position: relative;
-}
-
-.search-icon {
-  color: var(--muted);
-  flex-shrink: 0;
-}
-
-.search-input {
-  width: 100%;
-  border: none;
-  outline: none;
-  background: transparent;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.search-input::placeholder {
-  color: var(--muted);
-}
-
-.clear-search {
-  padding: 4px;
-  border: none;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.clear-search:hover {
-  color: var(--text);
+  box-shadow: none;
 }
 
 .sessions-list {
@@ -1110,8 +848,8 @@ html[data-theme='light'] .group-count {
 }
 
 .session-item.active {
-  background: rgba(16, 163, 127, 0.12);
-  border-color: rgba(16, 163, 127, 0.25);
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.25);
 }
 
 /* Parent session with branches - keep same style as normal sessions */
@@ -1153,7 +891,7 @@ html[data-theme='light'] .group-count {
   font-size: 10px;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(16, 163, 127, 0.15);
+  background: rgba(59, 130, 246, 0.15);
   border-radius: 9px;
   margin-right: 6px;
 }
@@ -1391,7 +1129,6 @@ html[data-theme='light'] .group-count {
 /* Footer */
 .sidebar-footer {
   padding: 12px;
-  border-top: 1px solid var(--border);
   position: relative;
 }
 
@@ -1401,15 +1138,13 @@ html[data-theme='light'] .group-count {
   gap: 10px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
+  background: transparent;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .footer-profile:hover {
   background: var(--hover);
-  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .avatar {
@@ -1418,7 +1153,7 @@ html[data-theme='light'] .group-count {
   border-radius: 999px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, var(--accent) 0%, #0d8a6a 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, #2563eb 100%);
   color: white;
 }
 

@@ -6,11 +6,17 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 export function createWindow() {
+  const isMac = process.platform === 'darwin'
+
   const mainWindow = new BrowserWindow({
     width: 1000,
     height: 800,
     minWidth: 600,
     minHeight: 600,
+    // Use hidden title bar on macOS to keep traffic lights
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    // Position traffic lights
+    trafficLightPosition: isMac ? { x: 16, y: 20 } : undefined,
     webPreferences: {
       // Preload is bundled with esbuild to dist/preload/index.js
       preload: path.join(__dirname, '../preload/index.js'),

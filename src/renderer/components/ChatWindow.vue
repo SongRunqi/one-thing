@@ -5,51 +5,6 @@
 
     <!-- Chat View -->
     <template v-else>
-      <header class="chat-header">
-        <div class="header-left">
-          <!-- Sidebar toggle button (shown when collapsed) -->
-          <button
-            v-if="sidebarCollapsed"
-            class="icon-btn sidebar-toggle"
-            title="Open sidebar"
-            @click="emit('toggleSidebar')"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <line x1="9" y1="3" x2="9" y2="21"/>
-            </svg>
-          </button>
-          <!-- Back to parent button (shown for branch sessions) -->
-          <button
-            v-if="isBranchSession"
-            class="back-to-parent-btn"
-            title="Back to parent chat"
-            @click="goToParentSession"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
-            <span>Parent</span>
-          </button>
-          <div class="chat-title">
-            <div class="chat-session">{{ currentSession?.name || 'New chat' }}</div>
-          </div>
-        </div>
-        <div class="chat-actions">
-          <button class="icon-btn" title="Settings" @click="emit('openSettings')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
-            </svg>
-          </button>
-          <button class="icon-btn" title="New chat" @click="createNewSession">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-          </button>
-        </div>
-      </header>
-
       <MessageList :messages="chatStore.messages" :is-loading="chatStore.isLoading" @set-quoted-text="handleSetQuotedText" />
 
       <div class="composer">
@@ -69,34 +24,21 @@ import SettingsPanel from './SettingsPanel.vue'
 
 interface Props {
   showSettings?: boolean
-  sidebarCollapsed?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
   showSettings: false,
-  sidebarCollapsed: false,
 })
 
 const emit = defineEmits<{
   closeSettings: []
   openSettings: []
-  toggleSidebar: []
 }>()
 
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
 
 const currentSession = computed(() => sessionsStore.currentSession)
-
-// Check if current session is a branch
-const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)
-
-// Go back to parent session
-async function goToParentSession() {
-  if (currentSession.value?.parentSessionId) {
-    await sessionsStore.switchSession(currentSession.value.parentSessionId)
-  }
-}
 
 // Input box ref for setting quoted text
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
@@ -128,10 +70,6 @@ async function handleStopGeneration() {
   await chatStore.stopGeneration()
 }
 
-async function createNewSession() {
-  await sessionsStore.createSession('')
-}
-
 function handleSetQuotedText(text: string) {
   // Set quoted text in the input box
   if (inputBoxRef.value) {
@@ -149,116 +87,12 @@ function handleSetQuotedText(text: string) {
   background: var(--bg);
 }
 
-.chat-header {
-  height: 56px;
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.08);
-}
-
-html[data-theme='light'] .chat-header {
-  background: rgba(0, 0, 0, 0.02);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.sidebar-toggle {
-  flex-shrink: 0;
-}
-
-.back-to-parent-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 8px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.back-to-parent-btn:hover {
-  background: rgba(16, 163, 127, 0.1);
-  border-color: rgba(16, 163, 127, 0.3);
-  color: var(--accent);
-}
-
-.back-to-parent-btn:active {
-  transform: scale(0.98);
-}
-
-.back-to-parent-btn svg {
-  flex-shrink: 0;
-}
-
-html[data-theme='light'] .back-to-parent-btn {
-  background: rgba(0, 0, 0, 0.03);
-}
-
-html[data-theme='light'] .back-to-parent-btn:hover {
-  background: rgba(16, 163, 127, 0.08);
-}
-
-.chat-title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.chat-session {
-  font-size: 14px;
-  font-weight: 650;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chat-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.icon-btn {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: transparent;
-  border-radius: 10px;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-}
-
-.icon-btn:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
 .composer {
   padding: 12px 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   align-items: center;
-  border-top: 1px solid var(--border);
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.12) 55%, rgba(0, 0, 0, 0.22) 100%);
 }
 

@@ -12,10 +12,10 @@
     Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Apple Color Emoji',
     'Segoe UI Emoji';
 
-  --bg: #0f1117;
-  --bg-elevated: #1e2028;
-  --panel: #1a1c23;
-  --panel-2: #151720;
+  --bg: #1a1d24;
+  --bg-elevated: #22252e;
+  --panel: #1e2128;
+  --panel-2: #1a1d24;
   --muted: rgba(255, 255, 255, 0.68);
   --text: rgba(255, 255, 255, 0.92);
   --border: rgba(255, 255, 255, 0.08);
@@ -23,7 +23,7 @@
   --active: rgba(255, 255, 255, 0.1);
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 
-  --accent: #10a37f;
+  --accent: #3b82f6;
   --danger: #ef4444;
 
   --radius-sm: 10px;
@@ -43,7 +43,7 @@ html[data-theme='light'] {
   --hover: rgba(0, 0, 0, 0.04);
   --active: rgba(0, 0, 0, 0.07);
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-  --accent: #0f766e;
+  --accent: #2563eb;
 }
 
 html,
@@ -93,7 +93,13 @@ html[data-theme='light'] *::-webkit-scrollbar-thumb {
 
 .panel {
   background: var(--panel);
-  border-right: 1px solid var(--border);
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.15);
+  position: relative;
+  z-index: 10;
+}
+
+html[data-theme='light'] .panel {
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.06);
 }
 
 .icon-btn {

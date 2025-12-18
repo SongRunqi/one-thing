@@ -188,8 +188,8 @@ async function saveSettings() {
 
 .input-field:focus {
   outline: none;
-  border-color: rgba(16, 163, 127, 0.35);
-  box-shadow: 0 0 0 4px rgba(16, 163, 127, 0.12);
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
 }
 
 .slider {
@@ -235,12 +235,12 @@ async function saveSettings() {
 }
 
 .save-button {
-  background: rgba(16, 163, 127, 0.22);
+  background: rgba(59, 130, 246, 0.22);
   color: var(--text);
-  border: 1px solid rgba(16, 163, 127, 0.3);
+  border: 1px solid rgba(59, 130, 246, 0.3);
 }
 
 .save-button:hover {
-  background: rgba(16, 163, 127, 0.3);
+  background: rgba(59, 130, 246, 0.3);
 }
 </style>

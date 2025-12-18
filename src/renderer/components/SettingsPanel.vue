@@ -1607,7 +1607,7 @@ html[data-theme='light'] .tabs-nav {
 .form-select:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .form-select:hover {
@@ -1658,7 +1658,7 @@ html[data-theme='light'] .tabs-nav {
 .custom-select-trigger:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .select-icon {
@@ -1684,7 +1684,7 @@ html[data-theme='light'] .tabs-nav {
   font-size: 10px;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(16, 163, 127, 0.15);
+  background: rgba(59, 130, 246, 0.15);
   padding: 3px 8px;
   border-radius: 4px;
   flex-shrink: 0;
@@ -1751,11 +1751,11 @@ html[data-theme='light'] .custom-select-dropdown {
 }
 
 .custom-select-option.selected {
-  background: rgba(16, 163, 127, 0.08);
+  background: rgba(59, 130, 246, 0.08);
 }
 
 .custom-select-option.active {
-  background: rgba(16, 163, 127, 0.12);
+  background: rgba(59, 130, 246, 0.12);
 }
 
 .option-icon {
@@ -1798,7 +1798,7 @@ html[data-theme='light'] .custom-select-dropdown {
   font-size: 11px;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(16, 163, 127, 0.15);
+  background: rgba(59, 130, 246, 0.15);
   padding: 4px 8px;
   border-radius: 4px;
   flex-shrink: 0;
@@ -1935,7 +1935,7 @@ html[data-theme='light'] .custom-select-dropdown {
 .form-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .form-input::placeholder {
@@ -2066,12 +2066,12 @@ html[data-theme='light'] .custom-select-dropdown {
 
 .model-card.selected {
   border-color: var(--accent);
-  background: rgba(16, 163, 127, 0.08);
+  background: rgba(59, 130, 246, 0.08);
 }
 
 .model-card.active {
   border-color: var(--accent);
-  background: rgba(16, 163, 127, 0.15);
+  background: rgba(59, 130, 246, 0.15);
 }
 
 .model-check {
@@ -2113,7 +2113,7 @@ html[data-theme='light'] .custom-select-dropdown {
   font-size: 10px;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(16, 163, 127, 0.15);
+  background: rgba(59, 130, 246, 0.15);
   padding: 2px 6px;
   border-radius: 4px;
   flex-shrink: 0;
@@ -2179,7 +2179,7 @@ html[data-theme='light'] .custom-select-dropdown {
 
 .model-chip.active {
   border-color: var(--accent);
-  background: rgba(16, 163, 127, 0.1);
+  background: rgba(59, 130, 246, 0.1);
 }
 
 .chip-remove {
@@ -2242,7 +2242,7 @@ html[data-theme='light'] .custom-select-dropdown {
 .model-search .search-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .model-search .search-input::placeholder {
@@ -2307,7 +2307,7 @@ html[data-theme='light'] .custom-select-dropdown {
 
 .theme-card.active {
   border-color: var(--accent);
-  background: rgba(16, 163, 127, 0.1);
+  background: rgba(59, 130, 246, 0.1);
 }
 
 .theme-card span {
@@ -2449,7 +2449,7 @@ html[data-theme='light'] .custom-select-dropdown {
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: #0d8a6a;
+  background: #2563eb;
 }
 
 .btn.primary:disabled {
@@ -2462,8 +2462,8 @@ html[data-theme='light'] .custom-select-dropdown {
 }
 
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 163, 127, 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(16, 163, 127, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
 }
 
 /* Dialog */
@@ -2580,7 +2580,7 @@ html[data-theme='light'] .custom-select-dropdown {
 
 .api-type-btn.active {
   border-color: var(--accent);
-  background: rgba(16, 163, 127, 0.1);
+  background: rgba(59, 130, 246, 0.1);
   color: var(--text);
 }
 
@@ -2612,7 +2612,7 @@ html[data-theme='light'] .custom-select-dropdown {
 }
 
 .add-provider-btn:hover {
-  background: rgba(16, 163, 127, 0.1);
+  background: rgba(59, 130, 246, 0.1);
 }
 
 .add-provider-btn svg {
@@ -2728,7 +2728,7 @@ html[data-theme='light'] .custom-select-dropdown {
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
-  box-shadow: 0 4px 20px rgba(16, 163, 127, 0.4);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
   z-index: 100;
 }
 
@@ -2893,7 +2893,7 @@ html[data-theme='light'] .custom-select-dropdown {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(16, 163, 127, 0.15);
+  background: rgba(59, 130, 246, 0.15);
   color: var(--accent);
 }
 

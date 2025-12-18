@@ -162,12 +162,12 @@ function formatResult(result: any): string {
 }
 
 .tool-call.status-completed {
-  border-left-color: rgba(16, 163, 127, 0.6);
+  border-left-color: rgba(59, 130, 246, 0.6);
   background: transparent;
 }
 
 .tool-call.status-completed:hover {
-  background: rgba(16, 163, 127, 0.04);
+  background: rgba(59, 130, 246, 0.04);
 }
 
 .tool-call.status-failed {
@@ -204,7 +204,7 @@ function formatResult(result: any): string {
 }
 
 .status-completed .tool-icon svg {
-  color: rgb(16, 163, 127);
+  color: rgb(59, 130, 246);
 }
 
 .status-failed .tool-icon svg {
@@ -377,7 +377,7 @@ html[data-theme='light'] .tool-call.status-executing {
 }
 
 html[data-theme='light'] .tool-call.status-completed:hover {
-  background: rgba(16, 163, 127, 0.05);
+  background: rgba(59, 130, 246, 0.05);
 }
 
 html[data-theme='light'] .tool-call.status-failed {

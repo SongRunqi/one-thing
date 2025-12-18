@@ -639,7 +639,7 @@ async function deleteServer() {
 }
 
 .add-server-btn:hover {
-  background: #0d8a6a;
+  background: #2563eb;
 }
 
 /* Toggle styles */
@@ -1160,7 +1160,7 @@ code.info-value {
 .form-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .form-input::placeholder {
@@ -1193,7 +1193,7 @@ code.info-value {
 }
 
 .transport-option.active {
-  background: rgba(16, 163, 127, 0.1);
+  background: rgba(59, 130, 246, 0.1);
   border-color: var(--accent);
 }
 
@@ -1239,7 +1239,7 @@ code.info-value {
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: #0d8a6a;
+  background: #2563eb;
 }
 
 .btn.primary:disabled {

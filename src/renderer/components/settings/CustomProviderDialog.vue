@@ -317,7 +317,7 @@ function handleSave() {
 }
 
 .api-type-btn.active {
-  background: rgba(16, 163, 127, 0.1);
+  background: rgba(59, 130, 246, 0.1);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -352,7 +352,7 @@ function handleSave() {
 }
 
 .btn.primary:hover {
-  background: #0d8a6a;
+  background: #2563eb;
 }
 
 .btn.secondary {

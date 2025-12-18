@@ -53,11 +53,7 @@
   </div>
 
   <!-- Normal user/assistant message -->
-  <div v-else :class="['message', message.role]">
-    <div class="avatar" aria-hidden="true">
-      <span v-if="message.role === 'assistant'">◎</span>
-      <span v-else>🙂</span>
-    </div>
+  <div v-else :class="['message', message.role, { highlighted: isHighlighted }]" :data-message-id="message.id">
     <div class="message-content-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
       <!-- Waiting/Thinking status indicator (streaming) - outside bubble -->
       <div v-if="message.isStreaming && !message.content" class="thinking-status">
@@ -69,28 +65,20 @@
 
       <!-- Message bubble - only show if there's content -->
       <div v-if="message.content || !message.isStreaming" class="bubble" :class="{ editing: isEditing }" ref="bubbleRef" @mouseup="handleTextSelection">
-        <!-- Edit mode for user messages -->
+        <!-- Edit mode for user messages - inline editing -->
         <div v-if="isEditing" class="edit-container" @click.stop>
           <textarea
             ref="editTextarea"
             v-model="editContent"
             class="edit-textarea"
-            @keydown.enter.ctrl="submitEdit"
+            @keydown.enter.exact="submitEdit"
             @keydown.escape="cancelEdit"
+            @keydown.shift.enter.stop
             @input="adjustEditTextareaHeight"
             placeholder="Edit your message..."
           ></textarea>
-          <div class="edit-actions">
-            <button class="edit-btn cancel" @click="cancelEdit" title="Cancel (Esc)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
-            </button>
-            <button class="edit-btn submit" @click="submitEdit" :disabled="!editContent.trim()" title="Send (Ctrl+Enter)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-              </svg>
-            </button>
+          <div class="edit-hint">
+            <span class="kbd">Esc</span> to cancel · <span class="kbd">Enter</span> to save
           </div>
         </div>
         <!-- Normal display -->
@@ -128,42 +116,44 @@
         <div v-if="message.role !== 'user'" class="meta">{{ formatTime(message.timestamp) }}</div>
         <div :class="['actions', message.role === 'user' ? 'user-actions' : '', { visible: showActions }]">
           <!-- Copy button -->
-          <button class="action-btn copy-btn" @click="copyContent" :title="copied ? 'Copied!' : 'Copy'">
-            <svg v-if="!copied" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-          </button>
-          <!-- Edit button for user messages -->
-          <button
-            v-if="message.role === 'user'"
-            class="action-btn edit-btn"
-            @click="startEdit"
-            title="Edit"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-            </svg>
-          </button>
-          <!-- Branch button (only for assistant messages in root sessions) -->
-          <div v-if="canBranch && message.role === 'assistant'" class="branch-btn-wrapper" ref="branchBtnRef">
-            <button
-              class="action-btn"
-              :class="{ 'has-branches': hasBranches }"
-              @click="hasBranches ? toggleBranchMenu() : createBranch()"
-              :title="hasBranches ? `${branchCount} branch${branchCount > 1 ? 'es' : ''}` : 'Create branch from here'"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="6" y1="3" x2="6" y2="15"/>
-                <circle cx="18" cy="6" r="3"/>
-                <circle cx="6" cy="18" r="3"/>
-                <path d="M18 9a9 9 0 0 1-9 9"/>
+          <Tooltip :text="copied ? 'Copied!' : 'Copy'">
+            <button class="action-btn copy-btn" @click="copyContent">
+              <svg v-if="!copied" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
               </svg>
-              <span v-if="hasBranches" class="branch-count-badge">{{ branchCount }}</span>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
             </button>
+          </Tooltip>
+          <!-- Edit button for user messages -->
+          <Tooltip v-if="message.role === 'user'" text="Edit">
+            <button
+              class="action-btn edit-btn"
+              @click.stop="startEdit"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+              </svg>
+            </button>
+          </Tooltip>
+          <!-- Branch button (for assistant messages) -->
+          <Tooltip v-if="message.role === 'assistant'" :text="hasBranches ? `${branchCount} branch${branchCount > 1 ? 'es' : ''}` : 'Branch'">
+            <div class="branch-btn-wrapper" ref="branchBtnRef">
+              <button
+                class="action-btn"
+                :class="{ 'has-branches': hasBranches }"
+                @click="hasBranches ? toggleBranchMenu() : createBranch()"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="6" y1="3" x2="6" y2="15"/>
+                  <circle cx="18" cy="6" r="3"/>
+                  <circle cx="6" cy="18" r="3"/>
+                  <path d="M18 9a9 9 0 0 1-9 9"/>
+                </svg>
+                <span v-if="hasBranches" class="branch-count-badge">{{ branchCount }}</span>
+              </button>
             <!-- Branch dropdown menu -->
             <div v-if="showBranchMenu && hasBranches" class="branch-menu" :style="branchMenuStyle">
               <div class="branch-menu-list">
@@ -188,15 +178,16 @@
                 </button>
               </div>
             </div>
-          </div>
-          <button
-            v-if="message.role === 'assistant'"
-            class="action-btn"
-            @click="regenerate"
-            title="Regenerate"
-          >
-            ↻
-          </button>
+            </div>
+          </Tooltip>
+          <Tooltip v-if="message.role === 'assistant'" text="Regenerate">
+            <button
+              class="action-btn"
+              @click="regenerate"
+            >
+              ↻
+            </button>
+          </Tooltip>
         </div>
       </div>
     </div>
@@ -209,6 +200,7 @@ import { marked } from 'marked'
 import hljs from 'highlight.js'
 import type { ChatMessage, ToolCall } from '@/types'
 import ToolCallGroup from './ToolCallGroup.vue'
+import Tooltip from './Tooltip.vue'
 
 interface BranchInfo {
   id: string
@@ -219,6 +211,7 @@ interface Props {
   message: ChatMessage
   branches?: BranchInfo[]  // Branches that were created from this message
   canBranch?: boolean      // Whether branching is allowed (false for child sessions)
+  isHighlighted?: boolean  // Whether this message is highlighted by navigation
 }
 
 const props = defineProps<Props>()
@@ -247,6 +240,9 @@ const selectionCopied = ref(false)
 // Computed: whether this message has branches
 const hasBranches = computed(() => props.branches && props.branches.length > 0)
 const branchCount = computed(() => props.branches?.length || 0)
+
+// Computed: whether this message is highlighted
+const isHighlighted = computed(() => props.isHighlighted || false)
 
 // Computed style for branch menu positioning
 const branchMenuStyle = computed(() => ({
@@ -468,7 +464,12 @@ function cancelEdit() {
   editContent.value = ''
 }
 
-function submitEdit() {
+function submitEdit(event?: KeyboardEvent) {
+  // Prevent default Enter behavior (newline)
+  if (event) {
+    event.preventDefault()
+  }
+
   const trimmedContent = editContent.value.trim()
   if (!trimmedContent) return
 
@@ -535,6 +536,10 @@ function handleClickOutside(event: MouseEvent) {
   // Also close selection toolbar if clicking outside
   if (!target.closest('.selection-toolbar') && !target.closest('.bubble')) {
     showSelectionToolbar.value = false
+  }
+  // Cancel editing when clicking outside the bubble
+  if (isEditing.value && !target.closest('.bubble')) {
+    cancelEdit()
   }
 }
 
@@ -627,21 +632,21 @@ function handleToolExecute(toolCall: ToolCall) {
 <style scoped>
 /* Custom text selection highlight for AI messages */
 .message.assistant .bubble ::selection {
-  background: rgba(16, 163, 127, 0.35);
+  background: rgba(59, 130, 246, 0.35);
   color: inherit;
 }
 
 .message.assistant .bubble ::-moz-selection {
-  background: rgba(16, 163, 127, 0.35);
+  background: rgba(59, 130, 246, 0.35);
   color: inherit;
 }
 
 html[data-theme='light'] .message.assistant .bubble ::selection {
-  background: rgba(16, 163, 127, 0.25);
+  background: rgba(59, 130, 246, 0.25);
 }
 
 html[data-theme='light'] .message.assistant .bubble ::-moz-selection {
-  background: rgba(16, 163, 127, 0.25);
+  background: rgba(59, 130, 246, 0.25);
 }
 
 /* Selection toolbar (floating) */
@@ -658,7 +663,7 @@ html[data-theme='light'] .message.assistant .bubble ::-moz-selection {
     0 0 0 1px rgba(0, 0, 0, 0.3),
     0 4px 6px -1px rgba(0, 0, 0, 0.3),
     0 12px 24px -4px rgba(0, 0, 0, 0.4),
-    0 0 40px rgba(16, 163, 127, 0.08);
+    0 0 40px rgba(59, 130, 246, 0.08);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -672,7 +677,7 @@ html[data-theme='light'] .selection-toolbar {
     0 0 0 1px rgba(0, 0, 0, 0.05),
     0 4px 6px -1px rgba(0, 0, 0, 0.1),
     0 12px 24px -4px rgba(0, 0, 0, 0.15),
-    0 0 40px rgba(16, 163, 127, 0.06);
+    0 0 40px rgba(59, 130, 246, 0.06);
 }
 
 .toolbar-divider {
@@ -703,7 +708,7 @@ html[data-theme='light'] .toolbar-divider {
 }
 
 .toolbar-btn:hover {
-  background: rgba(16, 163, 127, 0.15);
+  background: rgba(59, 130, 246, 0.15);
   color: var(--accent);
   transform: translateY(-1px);
 }
@@ -749,6 +754,23 @@ html[data-theme='light'] .toolbar-divider {
   flex-direction: row;
 }
 
+/* Navigation highlight effect - only highlight user's bubble */
+.message.user.highlighted .bubble {
+  animation: highlight-pulse 2.5s ease-out;
+}
+
+@keyframes highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.6), 0 0 20px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.4), 0 0 15px rgba(59, 130, 246, 0.2);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+
 .avatar {
   height: 32px;
   width: 32px;
@@ -779,10 +801,12 @@ html[data-theme='light'] .toolbar-divider {
 
 .message.assistant .message-content-wrapper {
   gap: 8px;
+  max-width: 85%;
+  margin: 0 auto;
 }
 
 .bubble {
-  max-width: min(680px, 78%);
+  max-width: 70%;
   padding: 14px 18px;
   border-radius: 20px;
   border: none;
@@ -1009,11 +1033,11 @@ html[data-theme='light'] .message.user .content {
 }
 
 /* AI messages: adjust footer for clean layout */
+/* Toolbar on left, time on right */
 .message.assistant .message-footer {
   margin-top: 12px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
   padding-left: 0;
+  flex-direction: row-reverse;
 }
 
 .meta {
@@ -1040,13 +1064,7 @@ html[data-theme='light'] .message.user .content {
   opacity: 1;
 }
 
-/* User message actions - special styling */
-.actions.user-actions {
-  background: rgba(40, 40, 45, 0.85);
-  border-radius: 14px;
-  padding: 5px;
-  gap: 4px;
-}
+/* User message actions - now unified with AI actions style */
 
 .action-btn {
   width: 32px;
@@ -1075,17 +1093,6 @@ html[data-theme='light'] .message.user .content {
 }
 
 .action-btn svg {
-  width: 15px;
-  height: 15px;
-}
-
-/* User actions buttons */
-.user-actions .action-btn {
-  width: 34px;
-  height: 34px;
-}
-
-.user-actions .action-btn svg {
   width: 16px;
   height: 16px;
 }
@@ -1102,9 +1109,6 @@ html[data-theme='light'] .actions {
     0 0 0 1px rgba(0, 0, 0, 0.05) inset;
 }
 
-html[data-theme='light'] .actions.user-actions {
-  background: rgba(255, 255, 255, 0.92);
-}
 
 html[data-theme='light'] .action-btn {
   color: rgba(0, 0, 0, 0.45);
@@ -1117,11 +1121,6 @@ html[data-theme='light'] .action-btn:hover {
 
 html[data-theme='light'] .action-btn:active {
   background: rgba(0, 0, 0, 0.1);
-}
-
-html[data-theme='light'] .user-actions .action-btn:hover {
-  background: rgba(0, 0, 0, 0.08);
-  color: rgba(0, 0, 0, 0.9);
 }
 
 @keyframes fadeIn {
@@ -1205,36 +1204,32 @@ html[data-theme='light'] .error-time {
   color: rgba(0, 0, 0, 0.4);
 }
 
-/* Edit mode styles */
+/* Edit mode styles - inline editing */
 .edit-container {
   position: relative;
+  width: 100%;
 }
 
-/* User message edit mode - modern glass effect */
+/* User message edit mode - inline, minimal change from original bubble */
 .message.user .edit-textarea {
   width: 100%;
-  min-height: 100px;
+  min-height: 40px;
   max-height: 300px;
-  padding: 16px 20px;
-  padding-bottom: 60px;
+  padding: 0;
   border: none;
-  border-radius: 20px 20px 6px 20px;
-  background: linear-gradient(135deg, rgba(75, 85, 99, 0.98) 0%, rgba(55, 65, 81, 1) 100%);
+  border-radius: 0;
+  background: transparent;
   color: rgba(255, 255, 255, 0.95);
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.5;
   resize: none;
   outline: none;
   font-family: inherit;
-  box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.25),
-    0 0 0 2px rgba(16, 163, 127, 0.3) inset;
-  transition: box-shadow 0.2s ease, background 0.2s ease;
   overflow-y: auto;
 }
 
 .message.user .edit-textarea::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 .message.user .edit-textarea::-webkit-scrollbar-track {
@@ -1243,56 +1238,68 @@ html[data-theme='light'] .error-time {
 
 .message.user .edit-textarea::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
-}
-
-.message.user .edit-textarea::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.message.user .edit-textarea:focus {
-  box-shadow:
-    0 6px 28px rgba(0, 0, 0, 0.3),
-    0 0 0 2px rgba(16, 163, 127, 0.5) inset,
-    0 0 40px rgba(16, 163, 127, 0.08);
-  background: linear-gradient(135deg, rgba(80, 90, 104, 0.98) 0%, rgba(60, 70, 86, 1) 100%);
+  border-radius: 2px;
 }
 
 .message.user .edit-textarea::placeholder {
   color: rgba(255, 255, 255, 0.35);
-  opacity: 1;
 }
 
 html[data-theme='light'] .message.user .edit-textarea {
-  background: linear-gradient(135deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.95) 100%);
   color: rgba(0, 0, 0, 0.9);
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.1),
-    0 0 0 2px rgba(16, 163, 127, 0.2) inset;
-}
-
-html[data-theme='light'] .message.user .edit-textarea:focus {
-  box-shadow:
-    0 6px 24px rgba(0, 0, 0, 0.12),
-    0 0 0 2px rgba(16, 163, 127, 0.35) inset,
-    0 0 30px rgba(16, 163, 127, 0.06);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 100%);
 }
 
 html[data-theme='light'] .message.user .edit-textarea::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.15);
 }
 
-html[data-theme='light'] .message.user .edit-textarea::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
-}
-
 html[data-theme='light'] .message.user .edit-textarea::placeholder {
   color: rgba(0, 0, 0, 0.3);
-  opacity: 1;
 }
 
-/* Assistant message edit mode - keep original style */
+/* Editing state bubble - expand to match input box width */
+.message.user .bubble.editing {
+  max-width: min(860px, 100%);
+  background: linear-gradient(135deg, rgba(85, 95, 109, 0.98) 0%, rgba(65, 75, 91, 1) 100%);
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.2),
+    0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+html[data-theme='light'] .message.user .bubble.editing {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(245, 247, 250, 0.95) 100%);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+/* Keyboard hint */
+.edit-hint {
+  margin-top: 10px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: right;
+}
+
+html[data-theme='light'] .edit-hint {
+  color: rgba(0, 0, 0, 0.35);
+}
+
+.edit-hint .kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  margin: 0 2px;
+}
+
+html[data-theme='light'] .edit-hint .kbd {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Assistant message edit mode */
 .message.assistant .edit-textarea {
   width: 100%;
   min-height: 60px;
@@ -1313,96 +1320,18 @@ html[data-theme='light'] .message.user .edit-textarea::placeholder {
   border-color: var(--accent);
 }
 
-.edit-actions {
-  position: absolute;
-  bottom: 12px;
-  right: 12px;
-  display: flex;
-  gap: 10px;
-  z-index: 10;
-}
-
-.edit-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  cursor: pointer;
-  transition: background 0.15s ease, transform 0.15s ease;
-  flex-shrink: 0;
-}
-
-.edit-btn svg {
-  width: 18px;
-  height: 18px;
-}
-
-.edit-btn.cancel {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-}
-
-.edit-btn.cancel:hover {
-  background: rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.edit-btn.cancel:active {
-  transform: scale(0.95);
-}
-
-html[data-theme='light'] .edit-btn.cancel {
-  background: rgba(0, 0, 0, 0.08);
-  color: rgba(0, 0, 0, 0.5);
-}
-
-html[data-theme='light'] .edit-btn.cancel:hover {
-  background: rgba(0, 0, 0, 0.12);
-  color: rgba(0, 0, 0, 0.8);
-}
-
-.edit-btn.submit {
-  background: var(--accent);
-  color: white;
-  box-shadow: 0 2px 8px rgba(16, 163, 127, 0.35);
-}
-
-.edit-btn.submit:hover {
-  background: #0d9e76;
-}
-
-.edit-btn.submit:active {
-  transform: scale(0.95);
-}
-
-.edit-btn.submit:disabled {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.3);
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-html[data-theme='light'] .edit-btn.submit:disabled {
-  background: rgba(0, 0, 0, 0.08);
-  color: rgba(0, 0, 0, 0.25);
-}
-
 /* Branch button and menu styles */
 .branch-btn-wrapper {
   position: relative;
 }
 
 .action-btn.has-branches {
-  background: rgba(16, 163, 127, 0.15);
+  background: rgba(59, 130, 246, 0.15);
   color: var(--accent);
 }
 
 .action-btn.has-branches:hover {
-  background: rgba(16, 163, 127, 0.25);
+  background: rgba(59, 130, 246, 0.25);
 }
 
 .branch-count-badge {
@@ -1499,7 +1428,7 @@ html[data-theme='light'] .edit-btn.submit:disabled {
 }
 
 .branch-menu-new:hover {
-  background: rgba(16, 163, 127, 0.1);
+  background: rgba(59, 130, 246, 0.1);
 }
 
 /* Thinking status indicator - flowing text */
