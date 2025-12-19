@@ -71,8 +71,13 @@ function isReasoningModel(modelId: string): boolean {
     'o1-mini',
     'o3',
     'o3-mini',
+    'gpt-5.2',  // GPT-5.2 Thinking model
   ]
   const lowerModelId = modelId.toLowerCase()
+  // Exclude gpt-5.2-chat-latest which is the Instant (non-reasoning) variant
+  if (lowerModelId.includes('gpt-5.2-chat') || lowerModelId.includes('gpt-5.2-instant')) {
+    return false
+  }
   return reasoningModels.some(rm => lowerModelId.includes(rm))
 }
 

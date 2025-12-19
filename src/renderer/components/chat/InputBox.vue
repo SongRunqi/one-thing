@@ -81,24 +81,44 @@
                   </label>
                 </div>
 
-                <!-- Tool list -->
+                <!-- Tool list (grouped) -->
                 <div class="tools-menu-list">
-                  <div
-                    v-for="tool in availableTools"
-                    :key="tool.id"
-                    class="tool-item"
-                    :class="{ disabled: !toolsEnabled }"
-                  >
-                    <span class="tool-name">{{ tool.name || tool.id }}</span>
-                    <label class="tool-item-toggle">
-                      <input
-                        type="checkbox"
-                        :checked="isToolEnabled(tool.id)"
-                        :disabled="!toolsEnabled"
-                        @change="toggleToolEnabled(tool.id)"
-                      />
-                      <span class="tool-item-toggle-slider"></span>
-                    </label>
+                  <div v-for="group in groupedTools" :key="group.id" class="tool-group">
+                    <!-- Group header -->
+                    <div
+                      class="tool-group-header"
+                      :class="{ collapsed: group.collapsed }"
+                      @click="toggleGroupCollapse(group.id)"
+                    >
+                      <svg class="group-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"/>
+                      </svg>
+                      <span class="group-name">{{ group.name }}</span>
+                      <span class="group-badge" :class="group.source">
+                        {{ group.source === 'mcp' ? 'MCP' : '' }}
+                      </span>
+                      <span class="group-count">{{ group.tools.length }}</span>
+                    </div>
+                    <!-- Group tools (collapsible) -->
+                    <div class="tool-group-items" :class="{ collapsed: group.collapsed }">
+                      <div
+                        v-for="tool in group.tools"
+                        :key="tool.id"
+                        class="tool-item"
+                        :class="{ disabled: !toolsEnabled }"
+                      >
+                        <span class="tool-name">{{ tool.name || tool.id }}</span>
+                        <label class="tool-item-toggle">
+                          <input
+                            type="checkbox"
+                            :checked="isToolEnabled(tool.id)"
+                            :disabled="!toolsEnabled"
+                            @change="toggleToolEnabled(tool.id)"
+                          />
+                          <span class="tool-item-toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
                   </div>
                   <div v-if="availableTools.length === 0" class="tools-empty">
                     No tools available
@@ -223,7 +243,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import { AIProvider } from '../../shared/ipc'
+import { AIProvider } from '../../../shared/ipc'
 
 interface ToolDefinition {
   id: string
@@ -259,7 +279,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 // Tools panel state
 const showToolsPanel = ref(false)
 const toolsDropdownRef = ref<HTMLElement | null>(null)
-const toolsPanelPosition = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
+const toolsPanelPosition = ref<{ top?: string; bottom?: string; left: string }>({ bottom: '0px', left: '0px' })
 const availableTools = ref<ToolDefinition[]>([])
 
 // Tools toggle state - synced with settings
@@ -268,7 +288,7 @@ const toolsEnabled = ref(settingsStore.settings?.tools?.enableToolCalls ?? true)
 // Model selector state
 const showModelDropdown = ref(false)
 const modelSelectorRef = ref<HTMLElement | null>(null)
-const modelDropdownPosition = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
+const modelDropdownPosition = ref<{ top?: string; bottom?: string; left: string }>({ bottom: '0px', left: '0px' })
 const expandedProviders = ref<Set<string>>(new Set([settingsStore.settings?.ai?.provider || 'claude']))
 
 const providerNames: Record<string, string> = {
@@ -422,12 +442,79 @@ async function loadAvailableTools() {
       availableTools.value = response.tools.map((tool: any) => ({
         id: tool.id,
         name: tool.name || tool.id,
-        description: tool.description
+        description: tool.description,
+        source: tool.source || 'builtin',
+        serverId: tool.serverId,
+        serverName: tool.serverName,
       }))
     }
   } catch (error) {
     console.error('Failed to load tools:', error)
   }
+}
+
+// Group tools by source (builtin vs MCP servers)
+interface ToolGroup {
+  id: string
+  name: string
+  source: 'builtin' | 'mcp'
+  tools: ToolDefinition[]
+  collapsed: boolean
+}
+
+const collapsedGroups = ref<Set<string>>(new Set())
+
+const groupedTools = computed(() => {
+  const groups: ToolGroup[] = []
+
+  // Separate builtin and MCP tools
+  const builtinTools = availableTools.value.filter(t => t.source !== 'mcp')
+  const mcpTools = availableTools.value.filter(t => t.source === 'mcp')
+
+  // Add builtin tools group
+  if (builtinTools.length > 0) {
+    groups.push({
+      id: 'builtin',
+      name: 'Built-in Tools',
+      source: 'builtin',
+      tools: builtinTools,
+      collapsed: collapsedGroups.value.has('builtin'),
+    })
+  }
+
+  // Group MCP tools by server
+  const mcpServerGroups = new Map<string, ToolDefinition[]>()
+  for (const tool of mcpTools) {
+    const serverId = tool.serverId || 'unknown'
+    if (!mcpServerGroups.has(serverId)) {
+      mcpServerGroups.set(serverId, [])
+    }
+    mcpServerGroups.get(serverId)!.push(tool)
+  }
+
+  // Add MCP server groups
+  for (const [serverId, tools] of mcpServerGroups) {
+    const serverName = tools[0]?.serverName || serverId
+    groups.push({
+      id: `mcp:${serverId}`,
+      name: serverName,
+      source: 'mcp',
+      tools,
+      collapsed: collapsedGroups.value.has(`mcp:${serverId}`),
+    })
+  }
+
+  return groups
+})
+
+function toggleGroupCollapse(groupId: string) {
+  if (collapsedGroups.value.has(groupId)) {
+    collapsedGroups.value.delete(groupId)
+  } else {
+    collapsedGroups.value.add(groupId)
+  }
+  // Trigger reactivity
+  collapsedGroups.value = new Set(collapsedGroups.value)
 }
 
 // Toggle tools panel
@@ -506,24 +593,21 @@ const canSend = computed(() => {
 })
 
 function handleKeyDown(e: KeyboardEvent) {
-  // Ctrl/Cmd + Enter to send
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-    e.preventDefault()
-    sendMessage()
-    return
-  }
+  const shortcut = settingsStore.settings?.general?.sendShortcut || 'enter'
 
-  // Shift + Enter for new line (default behavior)
-  if (e.shiftKey && e.key === 'Enter') {
-    return // Allow default
+  if (shortcut === 'enter') {
+    // Enter to send, Shift+Enter for new line
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+  } else {
+    // Ctrl/Cmd + Enter to send
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault()
+      sendMessage()
+    }
   }
-
-  // Plain Enter to send (optional, can be disabled)
-  // Uncomment if you want Enter to send:
-  // if (e.key === 'Enter' && !e.shiftKey) {
-  //   e.preventDefault()
-  //   sendMessage()
-  // }
 }
 
 function sendMessage() {
@@ -1056,9 +1140,96 @@ html[data-theme='light'] .tools-menu {
 
 /* Tools menu list */
 .tools-menu-list {
-  max-height: 200px;
+  max-height: 280px;
   overflow-y: auto;
   padding: 8px;
+}
+
+/* Tool group styles */
+.tool-group {
+  margin-bottom: 4px;
+}
+
+.tool-group:last-child {
+  margin-bottom: 0;
+}
+
+.tool-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.tool-group-header:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.group-chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.tool-group-header.collapsed .group-chevron {
+  transform: rotate(-90deg);
+}
+
+.group-name {
+  flex: 1;
+}
+
+.group-badge {
+  font-size: 9px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.group-badge.mcp {
+  background: rgba(139, 92, 246, 0.15);
+  color: rgb(139, 92, 246);
+}
+
+.group-badge.builtin {
+  display: none;
+}
+
+.group-count {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 8px;
+  opacity: 0.8;
+}
+
+html[data-theme='light'] .group-count {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.tool-group-items {
+  padding-left: 8px;
+  overflow: hidden;
+  transition: max-height 0.2s ease, opacity 0.2s ease;
+  max-height: 500px;
+  opacity: 1;
+}
+
+.tool-group-items.collapsed {
+  max-height: 0;
+  opacity: 0;
 }
 
 .tool-item {
@@ -1364,11 +1535,123 @@ html[data-theme='light'] .model-dropdown {
 .model-item.active {
   background: rgba(59, 130, 246, 0.1);
   color: var(--accent);
+  font-weight: 600;
 }
 
 .model-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .composer-wrapper {
+    max-width: 100%;
+  }
+
+  .composer {
+    border-radius: 14px;
+  }
+
+  .composer-input {
+    font-size: 15px;
+  }
+
+  .toolbar-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .send-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .model-selector-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+    max-width: 150px;
+  }
+
+  .tools-panel {
+    width: 280px;
+    max-height: 350px;
+  }
+
+  .model-selector-dropdown {
+    width: 260px;
+  }
+}
+
+@media (max-width: 480px) {
+  .composer {
+    border-radius: 12px;
+  }
+
+  .input-area {
+    padding: 10px 12px 0;
+  }
+
+  .composer-input {
+    font-size: 14px;
+  }
+
+  .composer-toolbar {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .toolbar-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .toolbar-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .send-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+
+  .send-btn svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .model-selector-btn {
+    padding: 5px 8px;
+    font-size: 11px;
+    max-width: 120px;
+    border-radius: 8px;
+  }
+
+  .tools-panel {
+    width: 90vw;
+    max-width: 320px;
+    max-height: 300px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .model-selector-dropdown {
+    width: 90vw;
+    max-width: 280px;
+    right: 0;
+    left: auto;
+  }
+
+  .quoted-context {
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  .quoted-text {
+    font-size: 12px;
+  }
 }
 </style>

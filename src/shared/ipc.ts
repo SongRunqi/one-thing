@@ -73,6 +73,7 @@ export interface ChatMessage {
   content: string
   timestamp: number
   isStreaming?: boolean
+  isThinking?: boolean
   errorDetails?: string  // Additional error details for error messages
   reasoning?: string  // Thinking/reasoning process for reasoning models (e.g., deepseek-reasoner)
   toolCalls?: ToolCall[]  // Tool calls made by the assistant (legacy, for backward compat)
@@ -147,6 +148,7 @@ export interface AISettings {
 
 export interface GeneralSettings {
   animationSpeed: number  // 0.1 - 0.5 seconds, default 0.25
+  sendShortcut: 'enter' | 'ctrl-enter' | 'cmd-enter'
 }
 
 export interface AppSettings {
@@ -228,6 +230,8 @@ export interface DeleteSessionRequest {
 export interface DeleteSessionResponse {
   success: boolean
   error?: string
+  parentSessionId?: string  // Parent session ID if deleted session was a branch
+  deletedCount?: number     // Total count of deleted sessions (including cascaded children)
 }
 
 export interface RenameSessionRequest {
@@ -257,7 +261,7 @@ export interface GetSettingsResponse {
   error?: string
 }
 
-export interface SaveSettingsRequest extends AppSettings {}
+export interface SaveSettingsRequest extends AppSettings { }
 
 export interface SaveSettingsResponse {
   success: boolean
@@ -361,6 +365,10 @@ export interface ToolDefinition {
   category: 'builtin' | 'custom'
   // Icon for UI display
   icon?: string
+  // Tool source for UI display
+  source?: 'builtin' | 'mcp'  // Where the tool comes from
+  serverId?: string           // MCP server ID (only for MCP tools)
+  serverName?: string         // MCP server name (only for MCP tools)
 }
 
 export interface ToolCall {

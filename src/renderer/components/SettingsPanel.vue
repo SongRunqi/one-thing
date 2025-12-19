@@ -166,6 +166,26 @@
             </div>
           </div>
         </section>
+
+        <!-- Shortcuts -->
+        <section class="settings-section">
+          <h3 class="section-title">Shortcuts</h3>
+          <div class="form-group">
+            <label class="form-label">Send Message Shortcut</label>
+            <div class="radio-group">
+              <label class="radio-item" :class="{ active: localSettings.general.sendShortcut === 'enter' }">
+                <input type="radio" v-model="localSettings.general.sendShortcut" value="enter" />
+                <span class="radio-label">Enter</span>
+                <span class="radio-desc">Use Enter to send, Shift+Enter for new line</span>
+              </label>
+              <label class="radio-item" :class="{ active: localSettings.general.sendShortcut === 'ctrl-enter' }">
+                <input type="radio" v-model="localSettings.general.sendShortcut" value="ctrl-enter" />
+                <span class="radio-label">Ctrl + Enter</span>
+                <span class="radio-desc">Both Ctrl+Enter and Cmd+Enter will send</span>
+              </label>
+            </div>
+          </div>
+        </section>
       </div>
 
       <!-- AI Provider Tab -->
@@ -715,7 +735,10 @@ for (const providerKey of Object.keys(localSettings.value.ai.providers)) {
 if (!localSettings.value.general) {
   localSettings.value.general = {
     animationSpeed: 0.25,
+    sendShortcut: 'enter',
   }
+} else if (!localSettings.value.general.sendShortcut) {
+  localSettings.value.general.sendShortcut = 'enter'
 }
 
 // Ensure customProviders array exists
@@ -751,7 +774,7 @@ const availableModels = ref<ModelInfo[]>([])
 
 // Separate "viewing/editing provider" from "active provider in settings"
 // This allows users to browse different provider configs without changing the active one
-const viewingProvider = ref<AIProvider>(localSettings.value.ai.provider)
+const viewingProvider = ref<string>(localSettings.value.ai.provider)
 const newModelInput = ref('')
 const showUnsavedDialog = ref(false)
 const isModelSectionExpanded = ref(false)
@@ -952,7 +975,7 @@ function getDefaultBaseUrl(): string {
 }
 
 // Switch which provider we're viewing/editing (doesn't change active provider)
-async function switchViewingProvider(provider: AIProvider) {
+async function switchViewingProvider(provider: string) {
   viewingProvider.value = provider
   availableModels.value = []
   modelError.value = ''
@@ -969,7 +992,7 @@ function toggleProviderDropdown() {
 }
 
 // Select provider from custom dropdown
-async function selectProviderOption(provider: AIProvider) {
+async function selectProviderOption(provider: string) {
   showProviderDropdown.value = false
   await switchViewingProvider(provider)
 }
@@ -982,7 +1005,7 @@ function handleProviderDropdownClickOutside(event: MouseEvent) {
 }
 
 // Set a provider as the active one for chat
-function setActiveProvider(provider: AIProvider) {
+function setActiveProvider(provider: string) {
   localSettings.value.ai.provider = provider
 }
 
@@ -1250,7 +1273,7 @@ async function deleteCustomProvider() {
 
   // If we were viewing this provider, switch to OpenAI
   if (viewingProvider.value === providerId) {
-    await switchViewingProvider('openai' as AIProvider)
+    await switchViewingProvider('openai')
   }
 
   // Save settings to persist changes
@@ -1263,7 +1286,7 @@ async function deleteCustomProvider() {
 // Load cached models from local storage
 async function loadCachedModels() {
   try {
-    const response = await window.electronAPI.getCachedModels(viewingProvider.value)
+    const response = await window.electronAPI.getCachedModels(viewingProvider.value as AIProvider)
     if (response.success && response.models && response.models.length > 0) {
       availableModels.value = response.models
       if (response.cachedAt) {
@@ -1293,13 +1316,13 @@ async function fetchModels(forceRefresh = true) {
 
   try {
     const baseUrl = providerConfig.baseUrl || getDefaultBaseUrl()
-    const response = await window.electronAPI.fetchModels(viewingProvider.value, apiKey, baseUrl, forceRefresh)
+    const response = await window.electronAPI.fetchModels(viewingProvider.value as AIProvider, apiKey, baseUrl, forceRefresh)
 
     if (response.success && response.models) {
       availableModels.value = response.models
 
       if (response.fromCache) {
-        const cached = await window.electronAPI.getCachedModels(viewingProvider.value)
+        const cached = await window.electronAPI.getCachedModels(viewingProvider.value as AIProvider)
         if (cached.cachedAt) {
           const cachedDate = new Date(cached.cachedAt)
           modelInfo.value = `From cache: ${cachedDate.toLocaleDateString()} ${cachedDate.toLocaleTimeString()}`
@@ -1417,6 +1440,53 @@ html[data-theme='light'] .settings-header {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+}
+
+/* Radio Group */
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.radio-item {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.radio-item:hover {
+  background: var(--hover);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.radio-item.active {
+  background: rgba(59, 130, 246, 0.05);
+  border-color: var(--accent);
+}
+
+.radio-item input {
+  position: absolute;
+  opacity: 0;
+}
+
+.radio-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.radio-desc {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .close-btn {
@@ -2924,5 +2994,134 @@ html[data-theme='light'] .custom-select-dropdown {
   font-size: 12px;
   color: var(--muted);
   min-width: 80px;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .settings-panel {
+    width: 100%;
+  }
+
+  .settings-header {
+    padding: 14px 16px;
+  }
+
+  .tabs-nav {
+    padding: 10px 16px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .tabs-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-btn {
+    padding: 8px 12px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .settings-content {
+    padding: 16px;
+  }
+
+  .theme-cards {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .model-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .settings-header {
+    padding: 12px 14px;
+  }
+
+  .header-title h2 {
+    font-size: 16px;
+  }
+
+  .tabs-nav {
+    padding: 8px 12px;
+    gap: 2px;
+  }
+
+  .tab-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+    gap: 6px;
+  }
+
+  .tab-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .settings-content {
+    padding: 12px;
+  }
+
+  .section-title {
+    font-size: 12px;
+  }
+
+  .form-group {
+    margin-bottom: 14px;
+  }
+
+  .form-label {
+    font-size: 13px;
+  }
+
+  .form-input {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .theme-cards {
+    gap: 8px;
+  }
+
+  .theme-card {
+    padding: 8px;
+  }
+
+  .theme-card span {
+    font-size: 11px;
+  }
+
+  .theme-preview {
+    height: 50px;
+    border-radius: 6px;
+  }
+
+  .model-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+  }
+
+  .radio-item {
+    padding: 10px 12px;
+    border-radius: 10px;
+  }
+
+  .radio-label {
+    font-size: 13px;
+  }
+
+  .radio-desc {
+    font-size: 11px;
+  }
+
+  .tool-item {
+    padding: 12px;
+    border-radius: 10px;
+  }
 }
 </style>

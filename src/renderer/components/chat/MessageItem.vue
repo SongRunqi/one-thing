@@ -75,11 +75,7 @@
             @keydown.escape="cancelEdit"
             @keydown.shift.enter.stop
             @input="adjustEditTextareaHeight"
-            placeholder="Edit your message..."
           ></textarea>
-          <div class="edit-hint">
-            <span class="kbd">Esc</span> to cancel · <span class="kbd">Enter</span> to save
-          </div>
         </div>
         <!-- Normal display -->
         <div v-else class="content-display">
@@ -180,12 +176,16 @@
             </div>
             </div>
           </Tooltip>
-          <Tooltip v-if="message.role === 'assistant'" text="Regenerate">
+          <Tooltip v-if="message.role === 'user'" text="Regenerate response">
             <button
-              class="action-btn"
+              class="action-btn regenerate-btn"
               @click="regenerate"
             >
-              ↻
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6"/>
+                <path d="M1 20v-6h6"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
             </button>
           </Tooltip>
         </div>
@@ -200,7 +200,7 @@ import { marked } from 'marked'
 import hljs from 'highlight.js'
 import type { ChatMessage, ToolCall } from '@/types'
 import ToolCallGroup from './ToolCallGroup.vue'
-import Tooltip from './Tooltip.vue'
+import Tooltip from '../common/Tooltip.vue'
 
 interface BranchInfo {
   id: string
@@ -1273,32 +1273,6 @@ html[data-theme='light'] .message.user .bubble.editing {
     0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
-/* Keyboard hint */
-.edit-hint {
-  margin-top: 10px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
-  text-align: right;
-}
-
-html[data-theme='light'] .edit-hint {
-  color: rgba(0, 0, 0, 0.35);
-}
-
-.edit-hint .kbd {
-  display: inline-block;
-  padding: 1px 5px;
-  font-size: 10px;
-  font-family: inherit;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  margin: 0 2px;
-}
-
-html[data-theme='light'] .edit-hint .kbd {
-  background: rgba(0, 0, 0, 0.06);
-}
-
 /* Assistant message edit mode */
 .message.assistant .edit-textarea {
   width: 100%;
@@ -1431,6 +1405,14 @@ html[data-theme='light'] .edit-hint .kbd {
   background: rgba(59, 130, 246, 0.1);
 }
 
+.regenerate-btn svg {
+  transition: transform 0.3s ease;
+}
+
+.regenerate-btn:hover svg {
+  transform: rotate(180deg);
+}
+
 /* Thinking status indicator - flowing text */
 .thinking-status {
   padding: 8px 0;
@@ -1442,6 +1424,10 @@ html[data-theme='light'] .edit-hint .kbd {
   font-size: 13px;
   font-weight: 500;
   color: var(--muted);
+}
+
+html[data-theme='light'] .thinking-text {
+  color: rgba(0, 0, 0, 0.45);
 }
 
 /* Flowing text animation - gradient sweeps from left to right */
@@ -1776,5 +1762,115 @@ html[data-theme='light'] .reasoning-content :deep(tr:hover) {
 .reasoning-section.is-thinking {
   border-color: rgba(139, 92, 246, 0.35);
   box-shadow: 0 2px 12px rgba(139, 92, 246, 0.15);
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .message {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .bubble {
+    padding: 12px 14px;
+    border-radius: 16px;
+  }
+
+  .avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+
+  .avatar svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .message-actions {
+    gap: 2px;
+  }
+
+  .action-btn {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .action-btn svg {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .message {
+    gap: 6px;
+  }
+
+  .bubble {
+    padding: 10px 12px;
+    border-radius: 14px;
+    font-size: 14px;
+  }
+
+  .avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+  }
+
+  .avatar svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .message-actions {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .action-btn {
+    padding: 4px 6px;
+    font-size: 10px;
+    border-radius: 6px;
+  }
+
+  .action-btn svg {
+    width: 11px;
+    height: 11px;
+  }
+
+  .action-btn span {
+    display: none; /* Hide button text on very small screens */
+  }
+
+  .selection-toolbar {
+    padding: 3px;
+    gap: 1px;
+    border-radius: 10px;
+  }
+
+  .toolbar-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .toolbar-btn svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .reasoning-section {
+    padding: 10px 12px;
+    border-radius: 10px;
+  }
+
+  .reasoning-header {
+    font-size: 11px;
+  }
+
+  .reasoning-content {
+    font-size: 12px;
+  }
 }
 </style>

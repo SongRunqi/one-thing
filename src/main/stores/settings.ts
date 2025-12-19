@@ -43,6 +43,7 @@ const defaultSettings: AppSettings = {
   theme: 'dark',
   general: {
     animationSpeed: 0.25,
+    sendShortcut: 'enter',
   },
   tools: {
     enableToolCalls: true,
@@ -138,6 +139,12 @@ function migrateSettings(settings: any): AppSettings {
   // Ensure general settings exist
   if (!settings.general) {
     settings.general = defaultSettings.general
+    needsSave = true
+  }
+
+  // Ensure sendShortcut exists in general settings
+  if (settings.general && !settings.general.sendShortcut) {
+    settings.general.sendShortcut = 'enter'
     needsSave = true
   }
 

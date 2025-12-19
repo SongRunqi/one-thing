@@ -1,5 +1,5 @@
 {
-  "name": "ai-chat-electron",
+  "name": "0neThing",
   "version": "0.1.0",
   "description": "An Electron app for chatting with AI",
   "main": "dist/main/index.js",

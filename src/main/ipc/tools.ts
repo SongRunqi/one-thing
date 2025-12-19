@@ -2,13 +2,13 @@
  * Tools IPC Handlers
  *
  * Handles IPC communication for tool-related operations:
- * - Get all available tools
+ * - Get all available tools (builtin + MCP)
  * - Execute a tool
  * - Cancel a tool execution
  */
 
 import { ipcMain } from 'electron'
-import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { IPC_CHANNELS, type ToolDefinition } from '../../shared/ipc.js'
 import {
   getAllTools,
   executeTool,
@@ -16,6 +16,8 @@ import {
   isInitialized,
 } from '../tools/index.js'
 import type { ToolExecutionContext } from '../tools/index.js'
+import { MCPManager } from '../mcp/manager.js'
+import { mcpToolToToolDefinition } from '../mcp/bridge.js'
 
 /**
  * Register all tool-related IPC handlers
@@ -26,13 +28,37 @@ export function registerToolHandlers() {
     initializeToolRegistry()
   }
 
-  // Get all available tools
+  // Get all available tools (builtin + MCP)
   ipcMain.handle(IPC_CHANNELS.GET_TOOLS, async () => {
     try {
-      const tools = getAllTools()
+      // Get builtin tools and mark their source
+      const builtinTools: ToolDefinition[] = getAllTools().map(t => ({
+        ...t,
+        source: 'builtin' as const,
+      }))
+
+      // Get MCP tools if MCP is enabled
+      const mcpTools: ToolDefinition[] = []
+      if (MCPManager.isEnabled) {
+        const mcpToolInfos = MCPManager.getAllTools()
+        const serverStates = MCPManager.getServerStates()
+
+        for (const mcpTool of mcpToolInfos) {
+          const toolDef = mcpToolToToolDefinition(mcpTool)
+          // Find server name
+          const serverState = serverStates.find(s => s.config.id === mcpTool.serverId)
+          mcpTools.push({
+            ...toolDef,
+            source: 'mcp' as const,
+            serverId: mcpTool.serverId,
+            serverName: serverState?.config.name || mcpTool.serverId,
+          })
+        }
+      }
+
       return {
         success: true,
-        tools,
+        tools: [...builtinTools, ...mcpTools],
       }
     } catch (error: any) {
       console.error('[Tools IPC] Error getting tools:', error)

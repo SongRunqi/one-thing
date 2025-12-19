@@ -179,6 +179,15 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
       }
     }
 
+    // Get the updated session with truncated messages to build history
+    const session = store.getSession(sessionId)
+    const historyMessages = session?.messages
+      .filter(m => m.role === 'user' || m.role === 'assistant')
+      .map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })) || []
+
     // Use AI SDK to generate response
     const apiType = getProviderApiType(settings, providerId)
     const response = await generateChatResponseWithReasoning(
@@ -189,7 +198,7 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
         model: providerConfig.model,
         apiType,
       },
-      [{ role: 'user', content: newContent }],
+      historyMessages,
       { temperature: settings.ai.temperature }
     )
 
@@ -778,7 +787,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
           const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
 
           // Maximum number of tool turns to prevent infinite loops
-          const MAX_TOOL_TURNS = 5
+          const MAX_TOOL_TURNS = 100
           let currentTurn = 0
 
           // Build conversation messages (will be extended with tool results)

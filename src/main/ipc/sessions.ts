@@ -26,10 +26,14 @@ export function registerSessionHandlers() {
     return { success: true, session }
   })
 
-  // 删除会话
+  // 删除会话 (包括级联删除子会话)
   ipcMain.handle(IPC_CHANNELS.DELETE_SESSION, async (_event, { sessionId }) => {
-    store.deleteSession(sessionId)
-    return { success: true }
+    const result = store.deleteSession(sessionId)
+    return {
+      success: true,
+      parentSessionId: result.parentSessionId,
+      deletedCount: result.deletedIds.length,
+    }
   })
 
   // 重命名会话

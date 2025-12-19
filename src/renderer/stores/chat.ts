@@ -705,6 +705,12 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function regenerate(sessionId: string, messageId: string) {
+    const message = messages.value.find(m => m.id === messageId)
+    if (!message) return
+    return await editAndResend(sessionId, messageId, message.content)
+  }
+
   return {
     messages,
     isLoading,
@@ -722,6 +728,7 @@ export const useChatStore = defineStore('chat', () => {
     sendMessageStream,
     stopGeneration,
     editAndResend,
+    regenerate,
     cleanupStreamListeners,
   }
 })

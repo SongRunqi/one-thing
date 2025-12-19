@@ -46,6 +46,11 @@ const defaultSettings: AppSettings = {
   theme: 'dark',
   general: {
     animationSpeed: 0.25,
+    sendShortcut: 'enter',
+  },
+  tools: {
+    enableToolCalls: true,
+    tools: {},
   },
 }
 
@@ -172,6 +177,10 @@ export const useSettingsStore = defineStore('settings', () => {
     applyTheme()
   }
 
+  function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
+    settings.value.general.sendShortcut = shortcut
+  }
+
   // Get current provider's config
   function getCurrentProviderConfig() {
     return settings.value.ai.providers[settings.value.ai.provider]
@@ -279,6 +288,7 @@ export const useSettingsStore = defineStore('settings', () => {
     updateModel,
     updateTemperature,
     updateTheme,
+    updateSendShortcut,
     getCurrentProviderConfig,
     getProviderInfo,
     isCustomProvider,

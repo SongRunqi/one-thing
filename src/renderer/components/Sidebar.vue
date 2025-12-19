@@ -191,7 +191,7 @@ interface Props {
   collapsed?: boolean
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   collapsed: false,
 })
 
@@ -698,16 +698,27 @@ function handleOutsideClick(event: MouseEvent) {
 
 onMounted(() => {
   document.addEventListener('click', handleOutsideClick)
+  window.addEventListener('resize', handleResize)
+  handleResize() // Initial check
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleOutsideClick)
+  window.removeEventListener('resize', handleResize)
   // Clean up delete confirmation timer
   if (deleteConfirmTimer) {
     clearTimeout(deleteConfirmTimer)
     deleteConfirmTimer = null
   }
 })
+
+function handleResize() {
+  if (window.innerWidth < 768) {
+    if (!props.collapsed) {
+      emit('toggleCollapse')
+    }
+  }
+}
 </script>
 
 <style scoped>
@@ -1216,5 +1227,13 @@ html[data-theme='light'] .group-count {
 
 .user-menu-item:hover {
   background: var(--hover);
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    height: 100%;
+    z-index: 1000;
+  }
 }
 </style>

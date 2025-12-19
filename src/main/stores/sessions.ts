@@ -124,21 +124,56 @@ export function createBranchSession(
   return session
 }
 
-// Delete a session
-export function deleteSession(sessionId: string): void {
-  // Delete session file
-  deleteJsonFile(getSessionPath(sessionId))
+// Delete session result type
+export interface DeleteSessionResult {
+  deletedIds: string[]
+  parentSessionId?: string
+}
 
-  // Update index
+// Delete a session and all its child sessions (cascade delete)
+export function deleteSession(sessionId: string): DeleteSessionResult {
+  const session = getSession(sessionId)
+  const parentSessionId = session?.parentSessionId
+
+  // Recursively collect all child session IDs
+  function collectChildSessionIds(parentId: string): string[] {
+    const index = loadSessionsIndex()
+    const children = index.filter(s => s.parentSessionId === parentId)
+    let ids: string[] = []
+    for (const child of children) {
+      ids.push(child.id)
+      ids = ids.concat(collectChildSessionIds(child.id))
+    }
+    return ids
+  }
+
+  // Collect all IDs to delete (current session + all children)
+  const childIds = collectChildSessionIds(sessionId)
+  const allIdsToDelete = [sessionId, ...childIds]
+
+  // Delete all session files
+  for (const id of allIdsToDelete) {
+    deleteJsonFile(getSessionPath(id))
+  }
+
+  // Update index - remove all deleted sessions
   let index = loadSessionsIndex()
-  index = index.filter((s) => s.id !== sessionId)
+  index = index.filter(s => !allIdsToDelete.includes(s.id))
   saveSessionsIndex(index)
 
-  // Update current session if needed
-  if (getCurrentSessionId() === sessionId) {
-    const nextSession = index[0]
-    setCurrentSessionId(nextSession?.id || '')
+  // Update current session if it was deleted
+  if (allIdsToDelete.includes(getCurrentSessionId())) {
+    // If we have a parent session and it still exists, switch to it
+    if (parentSessionId && index.some(s => s.id === parentSessionId)) {
+      setCurrentSessionId(parentSessionId)
+    } else {
+      // Otherwise switch to the first available session
+      const nextSession = index[0]
+      setCurrentSessionId(nextSession?.id || '')
+    }
   }
+
+  return { deletedIds: allIdsToDelete, parentSessionId }
 }
 
 // Rename a session

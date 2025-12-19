@@ -91,7 +91,7 @@ export interface ElectronAPI {
   onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation'; content: string; messageId: string; reasoning?: string; toolCall?: ToolCall }) => void) => () => void
   onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
-  onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string }) => void) => () => void
+  onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string; sessionName?: string }) => void) => () => void
   onStreamError: (callback: (data: { messageId?: string; error: string; errorDetails?: string }) => void) => () => void
   getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
   generateTitle: (message: string) => Promise<GenerateTitleResponse>
@@ -118,6 +118,7 @@ export interface ElectronAPI {
   executeTool: (toolId: string, args: Record<string, any>, messageId: string, sessionId: string) => Promise<ExecuteToolResponse>
   cancelTool: (toolCallId: string) => Promise<{ success: boolean }>
   updateContentParts: (sessionId: string, messageId: string, contentParts: ContentPart[]) => Promise<{ success: boolean }>
+  abortStream: () => Promise<{ success: boolean }>
 
   // MCP methods
   mcpGetServers: () => Promise<MCPGetServersResponse>

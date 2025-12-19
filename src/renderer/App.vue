@@ -1,5 +1,6 @@
 <template>
-  <div class="app-shell">
+  <ErrorBoundary>
+    <div class="app-shell">
     <!-- Unified Header -->
     <header class="app-header">
       <!-- Sidebar Header Section -->
@@ -120,6 +121,7 @@
       </div>
     </Teleport>
   </div>
+  </ErrorBoundary>
 </template>
 
 <script setup lang="ts">
@@ -128,7 +130,8 @@ import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
 import Sidebar from '@/components/Sidebar.vue'
-import ChatWindow from '@/components/ChatWindow.vue'
+import ChatWindow from '@/components/chat/ChatWindow.vue'
+import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
@@ -587,5 +590,88 @@ html[data-theme='light'] .search-overlay {
   text-align: center;
   color: var(--muted);
   font-size: 14px;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .header-sidebar {
+    width: auto !important;
+    padding: 0 10px 0 80px !important; /* Reduced traffic lights space */
+  }
+
+  .header-sidebar.collapsed {
+    padding: 0 10px 0 80px !important;
+  }
+
+  .chat-title-bar {
+    width: 200px;
+    max-width: 35%;
+  }
+
+  .chat-title-bar.expanded {
+    left: 50%; /* Center on screen when sidebar is expanded */
+  }
+
+  .search-modal {
+    width: 90%;
+    max-width: 400px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-header {
+    height: 50px;
+  }
+
+  .header-sidebar {
+    padding: 0 8px 0 70px !important;
+  }
+
+  .header-controls {
+    gap: 2px;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .chat-title-bar {
+    width: 140px;
+    max-width: 30%;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 14px;
+  }
+
+  .chat-title-text {
+    font-size: 12px;
+  }
+
+  .chat-title-icon {
+    display: none;
+  }
+
+  .message-count {
+    font-size: 11px;
+  }
+
+  .back-to-parent-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .search-overlay {
+    padding-top: 60px;
+  }
+
+  .search-modal {
+    width: 95%;
+    max-height: 70vh;
+  }
+
+  .search-input {
+    font-size: 14px;
+  }
 }
 </style>

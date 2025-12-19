@@ -5,7 +5,7 @@
 
     <!-- Chat View -->
     <template v-else>
-      <MessageList :messages="chatStore.messages" :is-loading="chatStore.isLoading" @set-quoted-text="handleSetQuotedText" />
+      <MessageList :messages="chatStore.messages" :is-loading="chatStore.isLoading" @set-quoted-text="handleSetQuotedText" @regenerate="handleRegenerate" />
 
       <div class="composer">
         <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="chatStore.isLoading" />
@@ -20,7 +20,7 @@ import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
-import SettingsPanel from './SettingsPanel.vue'
+import SettingsPanel from '../SettingsPanel.vue'
 
 interface Props {
   showSettings?: boolean
@@ -75,6 +75,11 @@ function handleSetQuotedText(text: string) {
   if (inputBoxRef.value) {
     inputBoxRef.value.setQuotedText(text)
   }
+}
+
+async function handleRegenerate(messageId: string) {
+  if (!currentSession.value) return
+  await chatStore.regenerate(currentSession.value.id, messageId)
 }
 </script>
 

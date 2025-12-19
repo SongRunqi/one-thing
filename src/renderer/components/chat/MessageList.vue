@@ -3,7 +3,7 @@
     <div v-if="messages.length === 0 && !isLoading" class="empty-state">
       <div class="empty-title">
         <span class="typing-text">one thing</span>
-        <span class="cursor"></span>
+        <!-- <span class="cursor"></span> -->
       </div>
       <div class="empty-subtitle">Ask anything</div>
     </div>
@@ -18,6 +18,7 @@
       @branch="handleBranch"
       @go-to-branch="handleGoToBranch"
       @quote="handleQuote"
+      @regenerate="handleRegenerate"
     />
 
     <!-- Loading indicator (only show if no streaming message exists to avoid duplicate indicators) -->
@@ -71,7 +72,7 @@
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import type { ChatMessage } from '@/types'
 import MessageItem from './MessageItem.vue'
-import Tooltip from './Tooltip.vue'
+import Tooltip from '../common/Tooltip.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 
@@ -91,6 +92,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   setQuotedText: [text: string]
+  regenerate: [messageId: string]
 }>()
 
 const chatStore = useChatStore()
@@ -501,6 +503,10 @@ async function handleGoToBranch(sessionId: string) {
 function handleQuote(quotedText: string) {
   emit('setQuotedText', quotedText)
 }
+
+function handleRegenerate(messageId: string) {
+  emit('regenerate', messageId)
+}
 </script>
 
 <style scoped>
@@ -693,13 +699,13 @@ function handleQuote(quotedText: string) {
 /* User message navigation buttons */
 .nav-buttons {
   position: fixed;
-  bottom: 100px;
+  bottom: 140px;
   right: 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  z-index: 100;
+  z-index: 1000;
 }
 
 .nav-position {
@@ -747,5 +753,80 @@ function handleQuote(quotedText: string) {
 
 html[data-theme='light'] .nav-btn {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .message-list {
+    padding: 14px 12px 22px;
+    gap: 12px;
+  }
+
+  .thinking-indicator {
+    padding: 14px 16px;
+    border-radius: 14px;
+  }
+
+  .nav-buttons {
+    right: 16px;
+    bottom: 120px;
+  }
+
+  .nav-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .message-list {
+    padding: 10px 8px 18px;
+    gap: 10px;
+  }
+
+  .empty-title {
+    font-size: 26px;
+  }
+
+  .empty-subtitle {
+    font-size: 14px;
+  }
+
+  .thinking-indicator {
+    padding: 12px 14px;
+    border-radius: 12px;
+  }
+
+  .thinking-avatar {
+    width: 28px;
+    height: 28px;
+  }
+
+  .thinking-avatar svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .nav-buttons {
+    right: 12px;
+    bottom: 100px;
+  }
+
+  .nav-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+
+  .nav-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .nav-position {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
 }
 </style>
