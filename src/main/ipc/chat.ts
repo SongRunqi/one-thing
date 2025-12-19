@@ -21,6 +21,28 @@ import {
 import type { ToolCall, ToolSettings } from '../../shared/ipc.js'
 import { getMCPToolsForAI, isMCPTool, executeMCPTool } from '../mcp/index.js'
 
+// Helper function to build history messages from session messages
+// Includes reasoningContent for assistant messages (required by DeepSeek Reasoner)
+function buildHistoryMessages(messages: ChatMessage[]): Array<{
+  role: 'user' | 'assistant'
+  content: string
+  reasoningContent?: string
+}> {
+  return messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => {
+      const msg: { role: 'user' | 'assistant'; content: string; reasoningContent?: string } = {
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }
+      // Include reasoning content for assistant messages (needed for DeepSeek Reasoner)
+      if (m.role === 'assistant' && m.reasoning) {
+        msg.reasoningContent = m.reasoning
+      }
+      return msg
+    })
+}
+
 // Store active AbortController for stream cancellation
 let activeStreamAbortController: AbortController | null = null
 
@@ -181,12 +203,7 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
 
     // Get the updated session with truncated messages to build history
     const session = store.getSession(sessionId)
-    const historyMessages = session?.messages
-      .filter(m => m.role === 'user' || m.role === 'assistant')
-      .map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })) || []
+    const historyMessages = buildHistoryMessages(session?.messages || [])
 
     // Use AI SDK to generate response
     const apiType = getProviderApiType(settings, providerId)
@@ -298,12 +315,7 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
         const toolCalls: ToolCall[] = []
 
         // Build conversation messages from session history
-        const historyMessages = session?.messages
-          .filter(m => m.role === 'user' || m.role === 'assistant')
-          .map(m => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-          })) || []
+        const historyMessages = buildHistoryMessages(session?.messages || [])
 
         if (hasTools) {
           const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
@@ -582,12 +594,7 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     }
 
     // Build conversation history from session messages
-    const historyMessages = session?.messages
-      .filter(m => m.role === 'user' || m.role === 'assistant')
-      .map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })) || []
+    const historyMessages = buildHistoryMessages(session?.messages || [])
 
     // Use AI SDK to generate response
     const apiType = getProviderApiType(settings, providerId)
@@ -768,12 +775,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
 
         // Build conversation history from session messages (including the just-added user message)
         const sessionForHistory = store.getSession(sessionId)
-        const historyMessages = sessionForHistory?.messages
-          .filter(m => m.role === 'user' || m.role === 'assistant')
-          .map(m => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-          })) || []
+        const historyMessages = buildHistoryMessages(sessionForHistory?.messages || [])
 
         let accumulatedContent = ''
         let accumulatedReasoning = ''

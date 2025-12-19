@@ -219,7 +219,7 @@ export async function* streamChatResponse(
 export async function* streamChatResponseWithReasoning(
   providerId: string,
   config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
-  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string; reasoningContent?: string }>,
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
 ): AsyncGenerator<{ text: string; reasoning?: string }, void, unknown> {
   const provider = createProvider(providerId, config)
@@ -227,10 +227,22 @@ export async function* streamChatResponseWithReasoning(
 
   const isReasoning = isReasoningModel(config.model)
 
+  // Convert messages to include reasoning_content for DeepSeek Reasoner
+  const convertedMessages = messages.map(msg => {
+    if (msg.role === 'assistant' && msg.reasoningContent) {
+      return {
+        role: msg.role,
+        content: msg.content,
+        reasoning_content: msg.reasoningContent,
+      } as any
+    }
+    return { role: msg.role, content: msg.content }
+  })
+
   // Build streamText options
   const streamOptions: Parameters<typeof streamText>[0] = {
     model,
-    messages,
+    messages: convertedMessages,
     maxOutputTokens: options.maxTokens || 4096,
   }
 
@@ -312,7 +324,7 @@ export async function* streamChatResponseWithReasoning(
 export async function generateChatResponseWithReasoning(
   providerId: string,
   config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
-  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string; reasoningContent?: string }>,
   options: { temperature?: number; maxTokens?: number } = {}
 ): Promise<ChatResponseResult> {
   const provider = createProvider(providerId, config)
@@ -320,16 +332,28 @@ export async function generateChatResponseWithReasoning(
 
   const isReasoning = isReasoningModel(config.model)
 
+  // Convert messages to include reasoning_content for DeepSeek Reasoner
+  const convertedMessages = messages.map(msg => {
+    if (msg.role === 'assistant' && msg.reasoningContent) {
+      return {
+        role: msg.role,
+        content: msg.content,
+        reasoning_content: msg.reasoningContent,
+      } as any
+    }
+    return { role: msg.role, content: msg.content }
+  })
+
   // For DeepSeek reasoning models, use streamText to capture reasoning
   // DeepSeek only exposes reasoning through streaming
   if (isReasoning && providerId === 'deepseek') {
-    return generateWithStreamForReasoning(model, messages, options)
+    return generateWithStreamForReasoning(model, convertedMessages, options)
   }
 
   // For non-reasoning models, use generateText
   const generateOptions: Parameters<typeof generateText>[0] = {
     model,
-    messages,
+    messages: convertedMessages,
     maxOutputTokens: options.maxTokens || 4096,
   }
 
@@ -507,7 +531,13 @@ export async function* streamChatResponseWithTools(
         }
         return assistantMsg
       }
-      return { role: 'assistant', content: msg.content }
+      // Regular assistant message (no tool calls)
+      const assistantMsg: any = { role: 'assistant', content: msg.content }
+      // Include reasoning_content for DeepSeek Reasoner (required in thinking mode)
+      if (msg.reasoningContent) {
+        assistantMsg.reasoning_content = msg.reasoningContent
+      }
+      return assistantMsg
     }
     if (msg.role === 'tool') {
       // Tool result message - convert to AI SDK expected format
