@@ -111,6 +111,20 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  async function updateSessionPin(sessionId: string, isPinned: boolean) {
+    try {
+      const response = await window.electronAPI.updateSessionPin(sessionId, isPinned)
+      if (response.success) {
+        const session = sessions.value.find(s => s.id === sessionId)
+        if (session) {
+          session.isPinned = isPinned
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update session pin:', error)
+    }
+  }
+
   return {
     sessions,
     currentSessionId,
@@ -123,5 +137,6 @@ export const useSessionsStore = defineStore('sessions', () => {
     deleteSession,
     renameSession,
     createBranch,
+    updateSessionPin,
   }
 })

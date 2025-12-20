@@ -5,6 +5,7 @@ import { registerModelsHandlers } from './models.js'
 import { registerProvidersHandlers } from './providers.js'
 import { registerToolHandlers } from './tools.js'
 import { registerMCPHandlers, initializeMCP, shutdownMCP } from './mcp.js'
+import { registerSkillHandlers, initializeSkills } from './skills.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -14,6 +15,7 @@ export function initializeIPC() {
   registerProvidersHandlers()
   registerToolHandlers()
   registerMCPHandlers()
+  registerSkillHandlers()
 }
 
-export { initializeMCP, shutdownMCP }
+export { initializeMCP, shutdownMCP, initializeSkills }

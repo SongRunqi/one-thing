@@ -1,5 +1,6 @@
 <template>
   <aside :class="['sidebar', 'panel', { collapsed }]">
+
     <!-- Expanded State (only shown when not collapsed) -->
     <template v-if="!collapsed">
       <div class="sessions-list" role="list">
@@ -23,6 +24,8 @@
                 'session-item',
                 {
                   active: session.id === sessionsStore.currentSessionId,
+                  generating: session.id === chatStore.generatingSessionId,
+                  pinned: session.isPinned,
                   editing: editingSessionId === session.id,
                   branch: session.depth > 0,
                   'has-branches': session.hasBranches,
@@ -35,12 +38,20 @@
               @click="handleSessionClickWithToggle(session)"
               @contextmenu.prevent="openContextMenu($event, session)"
             >
-              <!-- Branch indicator for child sessions -->
-              <div v-if="session.depth > 0" class="branch-indicator">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M6 3v12"/>
-                  <path d="M18 9a3 3 0 01-3 3H9"/>
-                </svg>
+              <!-- Progress Glow Overlay -->
+              <div v-if="session.id === chatStore.generatingSessionId" class="progress-glow-overlay"></div>
+              
+              <!-- Threaded Lines for child sessions -->
+              <div v-if="session.depth > 0" class="thread-lines">
+                <div 
+                  v-for="d in session.depth" 
+                  :key="d" 
+                  class="thread-line"
+                  :class="{ 
+                    'horizontal': d === session.depth, 
+                    'vertical': d < session.depth && !session.ancestorsLastChild[d-1] 
+                  }"
+                ></div>
               </div>
               <!-- Expand/Collapse chevron (placeholder for alignment when no branches) -->
               <div
@@ -54,19 +65,28 @@
                 </svg>
               </div>
               <div class="session-content">
-                <!-- Inline editing mode -->
-                <input
-                  v-if="editingSessionId === session.id"
-                  ref="inlineInputRef"
-                  v-model="editingName"
-                  class="session-name-input"
-                  @click.stop
-                  @keydown.enter="confirmInlineRename"
-                  @keydown.esc="cancelInlineRename"
-                  @blur="confirmInlineRename"
-                />
-                <span v-else class="session-name">{{ session.name || 'New chat' }}</span>
-                <span v-if="editingSessionId !== session.id" class="session-preview">{{ getSessionPreview(session) }}</span>
+                <div class="session-name-row">
+                  <div 
+                    v-if="session.id === chatStore.generatingSessionId" 
+                    class="status-dot generating"
+                  ></div>
+                  <input
+                    v-if="editingSessionId === session.id"
+                    ref="inlineInputRef"
+                    v-model="editingName"
+                    class="session-name-input"
+                    maxlength="50"
+                    @click.stop
+                    @keydown.enter="confirmInlineRename"
+                    @keydown.esc="cancelInlineRename"
+                    @blur="confirmInlineRename"
+                  />
+                  <template v-else>
+                    <span v-if="session.parentSessionId" class="branch-indicator" title="Branched session">↳</span>
+                    <span class="session-name">{{ session.name || 'New chat' }}</span>
+                    <span v-if="session.lastModel" class="model-badge">{{ formatModelName(session.lastModel) }}</span>
+                  </template>
+                </div>
               </div>
               <div class="session-meta">
                 <!-- Show branch count badge when collapsed -->
@@ -77,6 +97,16 @@
                 <div class="session-time-actions">
                   <span class="session-time">{{ formatRelativeTime(session.updatedAt) }}</span>
                   <div class="session-actions">
+                    <button
+                      class="session-action-btn"
+                      :title="session.isPinned ? 'Unpin' : 'Pin'"
+                      @click.stop="togglePin(session)"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path v-if="session.isPinned" d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7" fill="currentColor" opacity="0.4"/>
+                        <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
+                      </svg>
+                    </button>
                     <button
                       class="session-action-btn"
                       title="Rename"
@@ -143,40 +173,6 @@
         <div v-if="contextMenu.show" class="context-overlay" @click="closeContextMenu"></div>
       </Teleport>
 
-      <div class="sidebar-footer">
-        <div class="footer-profile" @click="toggleUserMenu">
-          <div class="avatar">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
-              <circle cx="12" cy="7" r="4"/>
-            </svg>
-          </div>
-          <div class="profile-text">
-            <div class="profile-name">You</div>
-            <div class="profile-stats">{{ totalChats }} chats</div>
-          </div>
-          <svg class="profile-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M6 9l6 6 6-6"/>
-          </svg>
-        </div>
-
-        <!-- User Menu Dropdown -->
-        <div v-if="showUserMenu" class="user-menu">
-          <button class="user-menu-item" @click="openSettings">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
-            </svg>
-            Settings
-          </button>
-          <button class="user-menu-item" @click="clearAllChats">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-            </svg>
-            Clear all chats
-          </button>
-        </div>
-      </div>
     </template>
   </aside>
 </template>
@@ -185,6 +181,7 @@
 import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
+import { useChatStore } from '@/stores/chat'
 import type { ChatSession } from '@/types'
 
 interface Props {
@@ -196,13 +193,12 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  openSettings: []
   toggleCollapse: []
 }>()
 
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
-const showUserMenu = ref(false)
+const chatStore = useChatStore()
 
 // Computed animation speed from settings
 const animationSpeed = computed(() => {
@@ -239,6 +235,32 @@ const initialCollapseApplied = ref(false)
 // This is needed because DOM updates break native double-click detection
 const lastClickInfo = ref<{ sessionId: string; time: number } | null>(null)
 const DOUBLE_CLICK_THRESHOLD = 400 // milliseconds
+
+// Format model ID for display (e.g. gpt-4o-2024-05-13 -> GPT-4o)
+function formatModelName(modelId?: string): string {
+  if (!modelId) return ''
+  
+  // Custom mapping for common models
+  const lower = modelId.toLowerCase()
+  if (lower.includes('gpt-4o')) return 'GPT-4o'
+  if (lower.includes('gpt-4-turbo')) return 'GPT-4T'
+  if (lower.includes('gpt-4')) return 'GPT-4'
+  if (lower.includes('gpt-3.5')) return 'GPT-3.5'
+  if (lower.includes('claude-3-5-sonnet')) return 'Sonnet 3.5'
+  if (lower.includes('claude-3-5')) return 'Claude 3.5'
+  if (lower.includes('claude-3')) return 'Claude 3'
+  if (lower.includes('deepseek-reasoner')) return 'DS Reasoner'
+  if (lower.includes('deepseek-chat')) return 'DS Chat'
+  if (lower.includes('deepseek')) return 'DeepSeek'
+  if (lower.includes('gemini')) return 'Gemini'
+  
+  // Generic fallback: remove version dates and capitalize
+  return modelId
+    .replace(/-\d{4}-\d{2}-\d{2}$/, '')
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
 
 // Check if a session has branches
 function hasBranches(sessionId: string): boolean {
@@ -371,7 +393,6 @@ function isAncestorCollapsed(session: ChatSession): boolean {
 
 const filteredSessions = computed(() => sessionsStore.sessions)
 
-const totalChats = computed(() => sessionsStore.sessions.length)
 
 // Check if a session is a branch
 function isBranch(session: ChatSession): boolean {
@@ -399,7 +420,9 @@ interface SessionWithBranches extends ChatSession {
   isCollapsed: boolean
   isLastChild: boolean
   branchCount: number
-  isHidden: boolean  // Whether this session should be hidden (parent is collapsed)
+  isHidden: boolean
+  lastBranchUpdate: number
+  ancestorsLastChild: boolean[]
 }
 
 function organizeSessionsWithBranches(sessions: ChatSession[]): SessionWithBranches[] {
@@ -417,6 +440,8 @@ function organizeSessionsWithBranches(sessions: ChatSession[]): SessionWithBranc
       isLastChild: false,
       branchCount: 0,
       isHidden: false,
+      lastBranchUpdate: session.updatedAt,
+      ancestorsLastChild: []
     })
   }
 
@@ -429,8 +454,16 @@ function organizeSessionsWithBranches(sessions: ChatSession[]): SessionWithBranc
         withBranches.depth = getBranchDepth(session)
         parent.branches.push(withBranches)
         parent.hasBranches = true
+        
+        // Propagate branch update time to ancestors
+        let current: SessionWithBranches | undefined = parent
+        while (current) {
+          if (withBranches.updatedAt > current.lastBranchUpdate) {
+            current.lastBranchUpdate = withBranches.updatedAt
+          }
+          current = current.parentSessionId ? sessionMap.get(current.parentSessionId) : undefined
+        }
       } else {
-        // Parent not in filtered list, show as root
         rootSessions.push(withBranches)
       }
     } else {
@@ -453,19 +486,33 @@ function organizeSessionsWithBranches(sessions: ChatSession[]): SessionWithBranc
   // Flatten hierarchy for display
   // Always include all sessions, but mark hidden ones with isHidden flag
   // This keeps DOM stable for proper mouse event handling
-  function flattenWithBranches(sessions: SessionWithBranches[], parentCollapsed: boolean = false): SessionWithBranches[] {
+  function flattenWithBranches(sessions: SessionWithBranches[], parentCollapsed: boolean = false, ancestorsLast: boolean[] = []): SessionWithBranches[] {
     const result: SessionWithBranches[] = []
-    for (const session of sessions) {
+    
+    // Sort branches by updatedAt descending within their parent
+    const sorted = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)
+    
+    for (let i = 0; i < sorted.length; i++) {
+      const session = sorted[i]
+      const isLast = (i === sorted.length - 1)
+      session.isLastChild = isLast
       session.isHidden = parentCollapsed
+      session.ancestorsLastChild = [...ancestorsLast]
+      session.branchCount = session.branches.length // Restored
+      
       result.push(session)
-      // Always include branches, but mark them as hidden if parent is collapsed
+      
       if (session.branches.length > 0) {
         const shouldHideChildren = parentCollapsed || session.isCollapsed
-        result.push(...flattenWithBranches(session.branches, shouldHideChildren))
+        const nextAncestors = [...ancestorsLast, isLast]
+        result.push(...flattenWithBranches(session.branches, shouldHideChildren, nextAncestors))
       }
     }
     return result
   }
+
+  // Pre-sort root sessions by their branch activity so they arrive correctly at groupedSessions
+  rootSessions.sort((a, b) => b.lastBranchUpdate - a.lastBranchUpdate)
 
   return flattenWithBranches(rootSessions)
 }
@@ -485,6 +532,7 @@ const groupedSessions = computed(() => {
   const weekAgoStart = weekAgo.getTime()
 
   const groups: { label: string; sessions: SessionWithBranches[] }[] = [
+    { label: 'Pinned', sessions: [] },
     { label: 'Today', sessions: [] },
     { label: 'Yesterday', sessions: [] },
     { label: 'Previous 7 Days', sessions: [] },
@@ -494,19 +542,55 @@ const groupedSessions = computed(() => {
   // Get organized sessions (with branches nested under parents)
   const organizedSessions = organizeSessionsWithBranches(filteredSessions.value)
 
+  // Keep track of which root session ID we've processed to avoid splitting branches
+  const processedRoots = new Set<string>()
+
   for (const session of organizedSessions) {
-    // Use root session time for grouping
-    const time = session.updatedAt
+    if (session.isHidden) continue // Don't group hidden sessions
+    
+    // Find the root ancestor to determine the group for the whole branch
+    let root = session
+    while (root.parentSessionId) {
+      const parent = organizedSessions.find(s => s.id === root.parentSessionId)
+      if (!parent) break
+      root = parent
+    }
+
+    // Only process each root's entire branch once
+    if (processedRoots.has(root.id)) continue
+    processedRoots.add(root.id)
+
+    // Find all descendants of this root (they are sequential in organizedSessions)
+    const branchSessions = organizedSessions.filter(s => {
+      let curr = s
+      while (curr.id !== root.id && curr.parentSessionId) {
+        const p = organizedSessions.find(x => x.id === curr.parentSessionId)
+        if (!p) break
+        curr = p
+      }
+      return curr.id === root.id
+    })
+
+    const groupTarget = root.isPinned ? groups[0] : null
+    if (groupTarget) {
+      groupTarget.sessions.push(...branchSessions)
+      continue
+    }
+
+    const time = root.lastBranchUpdate
     if (time >= todayStart) {
-      groups[0].sessions.push(session)
+      groups[1].sessions.push(...branchSessions)
     } else if (time >= yesterdayStart) {
-      groups[1].sessions.push(session)
+      groups[2].sessions.push(...branchSessions)
     } else if (time >= weekAgoStart) {
-      groups[2].sessions.push(session)
+      groups[3].sessions.push(...branchSessions)
     } else {
-      groups[3].sessions.push(session)
+      groups[4].sessions.push(...branchSessions)
     }
   }
+
+  // We don't sort here anymore because organizeSessionsWithBranches handled it
+  // and we want to preserve the tree order (parent then children)
 
   return groups.filter((g) => g.sessions.length > 0)
 })
@@ -621,12 +705,20 @@ function cancelInlineRename() {
 
 async function confirmInlineRename() {
   if (!editingSessionId.value) return
+  const id = editingSessionId.value
   const newName = editingName.value.trim()
-  if (newName) {
-    await sessionsStore.renameSession(editingSessionId.value, newName)
-  }
+  
+  // Clear editing state first
   editingSessionId.value = null
   editingName.value = ''
+
+  if (newName) {
+    await sessionsStore.renameSession(id, newName)
+  }
+}
+
+async function togglePin(session: ChatSession) {
+  await sessionsStore.updateSessionPin(session.id, !session.isPinned)
 }
 
 function handleRename() {
@@ -636,7 +728,8 @@ function handleRename() {
 }
 
 function handlePin() {
-  console.log('Pin session:', contextMenu.value.session?.id)
+  if (!contextMenu.value.session) return
+  togglePin(contextMenu.value.session)
   closeContextMenu()
 }
 
@@ -672,38 +765,21 @@ async function handleDelete() {
 }
 
 function openSettings() {
-  emit('openSettings')
-  showUserMenu.value = false
+  // Logic removed as it's now handled in App.vue directly
 }
 
-function toggleUserMenu() {
-  showUserMenu.value = !showUserMenu.value
+function handleClearClick() {
+  // New chat logic or clear session
+  sessionsStore.currentSessionId = null
 }
 
-async function clearAllChats() {
-  if (confirm('Are you sure you want to delete all chats? This cannot be undone.')) {
-    for (const session of sessionsStore.sessions) {
-      await sessionsStore.deleteSession(session.id)
-    }
-  }
-  showUserMenu.value = false
-}
-
-function handleOutsideClick(event: MouseEvent) {
-  const target = event.target as HTMLElement
-  if (!target.closest('.footer-profile') && !target.closest('.user-menu')) {
-    showUserMenu.value = false
-  }
-}
 
 onMounted(() => {
-  document.addEventListener('click', handleOutsideClick)
   window.addEventListener('resize', handleResize)
   handleResize() // Initial check
 })
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleOutsideClick)
   window.removeEventListener('resize', handleResize)
   // Clean up delete confirmation timer
   if (deleteConfirmTimer) {
@@ -731,7 +807,10 @@ function handleResize() {
   min-height: 0;
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
+  background: rgba(var(--bg-rgb), 0.5);
+  backdrop-filter: blur(10px);
 }
+
 
 .sidebar.collapsed {
   width: 0;
@@ -751,7 +830,7 @@ function handleResize() {
   overflow-x: hidden;
   min-height: 0;
   min-width: 0;
-  padding: 8px;
+  padding: 12px 8px;
   /* Prevent width jump when scrollbar appears/disappears */
   scrollbar-gutter: stable;
 }
@@ -776,22 +855,21 @@ function handleResize() {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px 6px;
-  font-size: 11px;
-  font-weight: 600;
+  padding: 12px 10px 4px;
+  font-size: 10px;
+  font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.1em;
+  opacity: 0.7;
   cursor: pointer;
-  border-radius: 6px;
-  margin: 2px 0;
-  transition: all 0.15s ease;
+  margin: 4px 0 2px;
+  transition: opacity 0.2s ease;
   user-select: none;
 }
 
 .group-header:hover {
-  background: var(--hover);
-  color: var(--text);
+  opacity: 1;
 }
 
 .group-chevron {
@@ -805,6 +883,9 @@ function handleResize() {
 
 .group-label {
   flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
 }
 
 .group-count {
@@ -822,26 +903,147 @@ html[data-theme='light'] .group-count {
 }
 
 .session-item {
-  padding: 10px 12px;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  position: relative;
+  padding: 6px 12px;
+  border-radius: 8px;
   cursor: pointer;
-  /* transition is set via inline style for dynamic animation speed */
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 2px;
+  align-items: center;
+  gap: 10px;
+  margin: 1px 6px;
   user-select: none;
   -webkit-user-select: none;
-  max-height: 100px;
-  opacity: 1;
+  border: 1px solid transparent;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  width: 100%;
-  box-sizing: border-box;
-  min-width: 0;
+  min-height: 36px; /* High-density mode */
 }
 
+.session-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+}
+
+html[data-theme='light'] .session-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.session-item.active {
+  background: rgba(var(--accent-rgb), 0.08); /* Slightly more visible but flat */
+}
+
+.session-item.pinned {
+  background: rgba(var(--accent-rgb), 0.03);
+}
+
+html[data-theme='light'] .session-item.pinned {
+  background: rgba(var(--accent-rgb), 0.02);
+}
+
+.session-item.active::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 1px 1px 0;
+  opacity: 1;
+  transition: transform 0.3s ease;
+}
+
+.session-item:not(.active):hover::before {
+  content: '';
+  position: absolute;
+  top: 20%;
+  left: 0;
+  width: 2px;
+  height: 60%;
+  background: rgba(var(--accent-rgb), 0.3);
+  border-radius: 0 4px 4px 0;
+  transform: scaleY(0);
+  transition: transform 0.2s ease;
+}
+
+.session-item:not(.active):hover::before {
+  transform: scaleY(1);
+}
+
+.session-item.generating {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.thread-lines {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  pointer-events: none;
+}
+
+.thread-line {
+  width: 20px;
+  height: 100%;
+  position: relative;
+}
+
+.thread-line.vertical::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.05); /* Even more subtle */
+}
+
+.thread-line.horizontal::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 0;
+  height: 50%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.session-item:not(.last-child) .thread-line.horizontal::before {
+  height: 100%;
+}
+
+.thread-line.horizontal::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 8px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.session-item.active .thread-line::before,
+.session-item.active .thread-line::after {
+  background: var(--accent);
+  opacity: 0.3; /* Subtle glow */
+}
+
+.session-actions {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(10px);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  gap: 2px;
+}
+
+.session-item:hover .session-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
 /* Hidden sessions (parent is collapsed) - animate collapse */
 .session-item.hidden {
   max-height: 0;
@@ -851,16 +1053,6 @@ html[data-theme='light'] .group-count {
   margin-bottom: 0;
   border-width: 0;
   pointer-events: none;
-}
-
-.session-item:hover {
-  background: var(--hover);
-  border-color: var(--border);
-}
-
-.session-item.active {
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(59, 130, 246, 0.25);
 }
 
 /* Parent session with branches - keep same style as normal sessions */
@@ -921,6 +1113,30 @@ html[data-theme='light'] .group-count {
   border-radius: 4px;
   cursor: pointer;
 }
+.session-action-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.session-action-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.session-action-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.2);
+}
 
 .collapse-chevron:hover:not(.placeholder) {
   background: rgba(255, 255, 255, 0.1);
@@ -954,31 +1170,81 @@ html[data-theme='light'] .group-count {
   overflow: hidden;
 }
 
+.session-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* Tighter for better cohesion */
+  min-width: 0;
+  height: 18px;
+}
+
+.status-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.status-dot.generating {
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+  animation: breathe 2s infinite ease-in-out;
+  opacity: 1;
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); box-shadow: 0 0 4px rgba(16, 185, 129, 0.2); }
+  50% { opacity: 1; transform: scale(1.1); box-shadow: 0 0 12px rgba(16, 185, 129, 0.6); }
+}
+
+.session-name-input::selection {
+  background: rgba(var(--accent-rgb), 0.2);
+  color: inherit;
+}
+
+.branch-indicator {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: monospace;
+  margin-right: -4px; /* Move closer to name */
+  opacity: 0.5;
+}
+
 .session-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 13px;
   font-weight: 500;
-  max-width: 100%;
+  color: var(--text);
+  line-height: 18px;
+  height: 18px;
+  flex: 1;
 }
 
 .session-name-input {
-  width: 100%;
-  padding: 2px 6px;
-  margin: -2px -6px;
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  background: var(--panel-2);
+  flex: 1;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
   font-size: 13px;
   font-weight: 500;
   color: var(--text);
   outline: none;
+  height: 20px;
+  line-height: 20px;
+  border-bottom: 1px solid var(--accent);
+}
+
+.session-preview-row {
+  display: none;
 }
 
 .session-item.editing {
-  background: var(--hover);
-  border-color: var(--border);
+  background: rgba(var(--accent-rgb), 0.05);
 }
 
 .session-item.editing .session-actions {
@@ -989,93 +1255,92 @@ html[data-theme='light'] .group-count {
   display: block;
 }
 
-.session-preview {
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.model-badge {
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.branch-ref {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: rgba(var(--text-rgb), 0.3);
+  margin-top: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+html[data-theme='light'] .model-badge {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.progress-glow-overlay {
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(var(--accent-rgb), 0.08),
+    rgba(16, 201, 140, 0.1), /* Slightly green tinge for generating */
+    rgba(var(--accent-rgb), 0.08),
+    transparent
+  );
+  animation: flow 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+/* Particle breathing simulation */
+.session-item.generating::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--accent) 0.5px, transparent 0.5px);
+  background-size: 8px 8px;
+  opacity: 0.03;
+  animation: fizz 4s infinite linear;
+}
+
+@keyframes fizz {
+  0% { background-position: 0 0; opacity: 0.02; }
+  50% { opacity: 0.05; }
+  100% { background-position: 0 -32px; opacity: 0.02; }
+}
+
+@keyframes flow {
+  0% { transform: translateX(-100%) skewX(-20deg); }
+  100% { transform: translateX(200%) skewX(-20deg); }
 }
 
 .session-meta {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
-/* Container for time/actions to maintain fixed size */
 .session-time-actions {
-  width: 54px; /* 2 buttons: 26px * 2 + 2px gap */
-  height: 26px; /* Match button height */
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  gap: 8px;
 }
 
 .session-time {
   font-size: 11px;
-  color: var(--muted);
+  color: rgba(var(--text-rgb), 0.4);
+  font-weight: 400;
   white-space: nowrap;
-}
-
-.session-actions {
-  display: none;
-  gap: 2px;
-}
-
-.session-item:hover .session-time-actions .session-actions {
-  display: flex;
-}
-
-.session-item:hover .session-time-actions .session-time {
-  display: none;
-}
-
-/* Keep branch count visible on hover */
-.session-item:hover .branch-count {
-  display: flex;
-}
-
-.session-action-btn {
-  width: 26px;
-  height: 26px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-}
-
-.session-action-btn:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.session-action-btn.danger:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-}
-
-/* Confirm delete state - highlighted with animation */
-.session-action-btn.confirm-delete {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  animation: pulse-delete 1s ease-in-out infinite;
-}
-
-@keyframes pulse-delete {
-  0%, 100% {
-    background: rgba(239, 68, 68, 0.2);
-  }
-  50% {
-    background: rgba(239, 68, 68, 0.35);
-  }
 }
 
 .empty-sessions {
@@ -1139,94 +1404,64 @@ html[data-theme='light'] .group-count {
 
 /* Footer */
 .sidebar-footer {
-  padding: 12px;
-  position: relative;
+  padding: 16px 12px 20px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none; /* Allow events through to background if necessary, but pill will override */
 }
 
-.footer-profile {
+.footer-glass-pill {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.2),
+    inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  pointer-events: auto;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.footer-profile:hover {
-  background: var(--hover);
+.footer-glass-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.3),
+    inset 0 1px 1px rgba(255, 255, 255, 0.1);
 }
 
-.avatar {
-  height: 36px;
-  width: 36px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, var(--accent) 0%, #2563eb 100%);
-  color: white;
-}
-
-.profile-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-
-.profile-name {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.profile-stats {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.profile-chevron {
-  color: var(--muted);
-  transition: transform 0.2s ease;
-}
-
-.footer-profile:hover .profile-chevron {
-  transform: translateY(2px);
-}
-
-/* User Menu */
-.user-menu {
-  position: absolute;
-  bottom: 100%;
-  left: 12px;
-  right: 12px;
-  margin-bottom: 8px;
-  padding: 6px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-}
-
-.user-menu-item {
+.pill-btn {
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 12px;
+  justify-content: center;
   border: none;
   background: transparent;
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--text);
+  color: var(--muted);
+  border-radius: 16px;
   cursor: pointer;
-  text-align: left;
-  transition: background 0.1s ease;
+  transition: all 0.2s ease;
 }
 
-.user-menu-item:hover {
-  background: var(--hover);
+.pill-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.pill-btn:active {
+  transform: scale(0.9);
+}
+
+.pill-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 4px;
 }
 
 @media (max-width: 768px) {

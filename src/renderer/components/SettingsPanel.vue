@@ -1,5 +1,6 @@
 <template>
-  <div class="settings-panel">
+  <div class="settings-overlay" @click.self="handleClose">
+    <div class="settings-panel floating-hub">
     <header class="settings-header">
       <div class="header-title">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -83,6 +84,17 @@
           <line x1="12" y1="17" x2="12" y2="21"/>
         </svg>
         MCP
+      </button>
+      <button
+        :class="['tab-btn', { active: activeTab === 'skills' }]"
+        @click="activeTab = 'skills'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+          <path d="M2 17l10 5 10-5"/>
+          <path d="M2 12l10 5 10-5"/>
+        </svg>
+        Skills
       </button>
     </div>
 
@@ -633,6 +645,14 @@
           @update:settings="handleMCPSettingsUpdate"
         />
       </div>
+
+      <!-- Skills Tab -->
+      <div v-show="activeTab === 'skills'" class="tab-content">
+        <SkillsSettingsPanel
+          :settings="localSettings.skills || { enableSkills: true, skills: {} }"
+          @update:settings="handleSkillsSettingsUpdate"
+        />
+      </div>
     </div>
 
     <footer class="settings-footer">
@@ -667,6 +687,7 @@
         <span>Settings saved</span>
       </div>
     </Transition>
+    </div>
   </div>
 </template>
 
@@ -680,6 +701,7 @@ import CustomProviderDialog, { type CustomProviderForm } from './settings/Custom
 import UnsavedChangesDialog from './settings/UnsavedChangesDialog.vue'
 import DeleteConfirmDialog from './settings/DeleteConfirmDialog.vue'
 import MCPSettingsPanel from './settings/MCPSettingsPanel.vue'
+import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
 
 const emit = defineEmits<{
   close: []
@@ -688,7 +710,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 
 // Active tab
-const activeTab = ref<'general' | 'ai' | 'tools' | 'mcp'>('general')
+const activeTab = ref<'general' | 'ai' | 'tools' | 'mcp' | 'skills'>('general')
 
 // Deep clone settings, ensuring providers object exists
 const localSettings = ref<AppSettings>(
@@ -854,6 +876,11 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
 // Handle MCP settings update from child component
 function handleMCPSettingsUpdate(mcpSettings: { enabled: boolean; servers: any[] }) {
   localSettings.value.mcp = mcpSettings
+}
+
+// Handle Skills settings update from child component
+function handleSkillsSettingsUpdate(skillsSettings: { enableSkills: boolean; skills: Record<string, { enabled: boolean }> }) {
+  localSettings.value.skills = skillsSettings
 }
 
 // Store original settings for comparison (use localSettings after migration to avoid false positives)
@@ -1407,22 +1434,46 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.settings-panel {
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(8px);
+  padding: 20px;
+}
+
+.settings-panel.floating-hub {
   position: relative;
+  width: min(680px, 100%);
+  max-height: 85vh;
+  background: var(--bg);
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
-  height: 100%;
-  background: var(--bg);
-  user-select: none;
+  overflow: hidden;
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  animation: modalPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 .settings-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 html[data-theme='light'] .settings-header {
@@ -1438,7 +1489,7 @@ html[data-theme='light'] .settings-header {
 
 .header-title h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
 }
 
@@ -1511,10 +1562,10 @@ html[data-theme='light'] .settings-header {
 /* Tab Navigation */
 .tabs-nav {
   display: flex;
-  gap: 4px;
-  padding: 12px 20px;
+  gap: 2px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 html[data-theme='light'] .tabs-nav {
@@ -1524,12 +1575,12 @@ html[data-theme='light'] .tabs-nav {
 .tab-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
+  gap: 6px;
+  padding: 8px 12px;
   border: none;
   background: transparent;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--muted);
   cursor: pointer;
@@ -1542,8 +1593,8 @@ html[data-theme='light'] .tabs-nav {
 }
 
 .tab-btn.active {
-  background: var(--accent);
-  color: white;
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent);
 }
 
 .tab-btn svg {
@@ -1553,7 +1604,8 @@ html[data-theme='light'] .tabs-nav {
 .settings-content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 16px 20px;
+  scrollbar-width: thin;
 }
 
 .tab-content {
@@ -1574,27 +1626,29 @@ html[data-theme='light'] .tabs-nav {
 }
 
 .section-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0 0 16px 0;
+  letter-spacing: 0.1em;
+  margin: 0 0 12px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  opacity: 0.8;
 }
 
 .section-title.collapsible {
   cursor: pointer;
-  padding: 8px 10px;
-  margin: -8px -10px 16px -10px;
+  padding: 6px 10px;
+  margin: -6px -10px 12px -10px;
   border-radius: 8px;
   transition: background 0.15s ease;
 }
 
 .section-title.collapsible:hover {
   background: var(--hover);
+  opacity: 1;
 }
 
 .title-left {
@@ -2469,16 +2523,16 @@ html[data-theme='light'] .custom-select-dropdown {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 20px;
+  padding: 12px 20px;
   border-top: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .unsaved-indicator {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: 12px;
   color: #f59e0b;
   margin-right: auto;
 }
@@ -2489,14 +2543,14 @@ html[data-theme='light'] .custom-select-dropdown {
 
 .footer-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   margin-left: auto;
 }
 
 .btn {
-  padding: 12px 20px;
-  border-radius: 10px;
-  font-size: 14px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;

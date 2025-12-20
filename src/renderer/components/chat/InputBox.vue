@@ -15,8 +15,30 @@
     </div>
 
     <div class="composer" :class="{ focused: isFocused }">
+      <!-- Skill Picker -->
+      <SkillPicker
+        :visible="showSkillPicker"
+        :query="skillTriggerQuery"
+        :skills="availableSkills"
+        @select="handleSkillSelect"
+        @close="handleSkillPickerClose"
+      />
+
       <!-- Input area - full width -->
       <div class="input-area">
+        <!-- Mirror div for caret coordinate calculation -->
+        <div ref="mirrorRef" class="textarea-mirror" aria-hidden="true"></div>
+        
+        <!-- Custom animated caret -->
+        <div 
+          v-if="isFocused && !isLoading" 
+          class="custom-caret" 
+          :style="caretStyle"
+        >
+          <div class="caret-main"></div>
+          <div class="caret-tail"></div>
+        </div>
+
         <textarea
           ref="textareaRef"
           v-model="messageInput"
@@ -25,7 +47,9 @@
           @keydown="handleKeyDown"
           @focus="isFocused = true"
           @blur="isFocused = false"
-          @input="adjustHeight"
+          @input="handleInput"
+          @click="updateCaret"
+          @keyup="updateCaret"
           :disabled="isLoading"
           rows="1"
         />
@@ -244,11 +268,16 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { AIProvider } from '../../../shared/ipc'
+import type { SkillDefinition } from '@/types'
+import SkillPicker from './SkillPicker.vue'
 
 interface ToolDefinition {
   id: string
   name: string
   description?: string
+  source?: 'builtin' | 'mcp'
+  serverId?: string
+  serverName?: string
 }
 
 interface Props {
@@ -275,6 +304,83 @@ const messageInput = ref('')
 const quotedText = ref('')
 const isFocused = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const mirrorRef = ref<HTMLDivElement | null>(null)
+
+// Caret position state
+const caretPos = ref({ x: 0, y: 0, height: 20 })
+
+const caretStyle = computed(() => ({
+  transform: `translate3d(${caretPos.value.x}px, ${caretPos.value.y}px, 0)`,
+  height: `${caretPos.value.height}px`
+}))
+
+function updateCaret() {
+  const textarea = textareaRef.value
+  const mirror = mirrorRef.value
+  if (!textarea || !mirror) return
+
+  const { selectionStart, selectionEnd } = textarea
+  // Only show custom caret when no selection
+  if (selectionStart !== selectionEnd) {
+    caretPos.value = { ...caretPos.value, opacity: 0 } as any
+    return
+  }
+
+  // Copy textarea styles to mirror
+  const style = window.getComputedStyle(textarea)
+  const properties = [
+    'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing',
+    'textTransform', 'wordSpacing', 'textIndent', 'whiteSpace', 'wordBreak',
+    'wordWrap', 'paddingLeft', 'paddingRight', 'paddingBottom',
+    'borderLeftWidth', 'borderRightWidth', 'lineHeight', 'width'
+  ]
+  
+  properties.forEach(prop => {
+    (mirror.style as any)[prop] = (style as any)[prop]
+  })
+
+  // Set the mirror content to the text before the cursor
+  const content = textarea.value.substring(0, selectionStart)
+  mirror.textContent = content
+
+  // Insert a probe span to get coordinates
+  const probe = document.createElement('span')
+  probe.textContent = '\u200b' // Zero-width space
+  mirror.appendChild(probe)
+
+  // Get coordinates
+  const rect = probe.getBoundingClientRect()
+  const mirrorRect = mirror.getBoundingClientRect()
+  
+  // Calculate relative position accurately
+  // We need to account for scrolls if textarea has scroll
+  const fontSize = parseFloat(style.fontSize) || 16
+  const lineHeight = parseFloat(style.lineHeight) || 24
+  const caretHeight = fontSize * 1.6
+  // Shift the offset up slightly (-2px) to make it "shorter on the bottom"
+  const yOffset = (lineHeight - caretHeight) / 2 - 2
+  
+  const x = probe.offsetLeft - textarea.scrollLeft
+  const y = probe.offsetTop - textarea.scrollTop + yOffset
+
+  caretPos.value = {
+    x,
+    y,
+    height: caretHeight
+  }
+}
+
+function handleInput() {
+  adjustHeight()
+  updateCaret()
+}
+
+// Watch for focus to update caret
+watch(isFocused, (val) => {
+  if (val) {
+    nextTick(updateCaret)
+  }
+})
 
 // Tools panel state
 const showToolsPanel = ref(false)
@@ -288,6 +394,11 @@ const toolsEnabled = ref(settingsStore.settings?.tools?.enableToolCalls ?? true)
 // Model selector state
 const showModelDropdown = ref(false)
 const modelSelectorRef = ref<HTMLElement | null>(null)
+
+// Skills state
+const availableSkills = ref<SkillDefinition[]>([])
+const showSkillPicker = ref(false)
+const skillTriggerQuery = ref('')
 const modelDropdownPosition = ref<{ top?: string; bottom?: string; left: string }>({ bottom: '0px', left: '0px' })
 const expandedProviders = ref<Set<string>>(new Set([settingsStore.settings?.ai?.provider || 'claude']))
 
@@ -664,25 +775,92 @@ function clearQuotedText() {
   quotedText.value = ''
 }
 
+function setMessageInput(text: string) {
+  messageInput.value = text
+  nextTick(() => {
+    adjustHeight()
+    textareaRef.value?.focus()
+    updateCaret()
+  })
+}
+
 // Expose methods to parent component
 defineExpose({
   setQuotedText,
   clearQuotedText,
+  setMessageInput,
 })
 
-onMounted(() => {
+onMounted(async () => {
   adjustHeight()
   document.addEventListener('click', handleClickOutside)
+  // Load available skills
+  await loadSkills()
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
 })
+
+// Load skills from backend
+async function loadSkills() {
+  try {
+    const response = await window.electronAPI.getSkills()
+    if (response.success && response.skills) {
+      availableSkills.value = response.skills.filter(s => s.enabled)
+    }
+  } catch (error) {
+    console.error('Failed to load skills:', error)
+  }
+}
+
+// Watch for trigger patterns in input
+watch(messageInput, (newValue) => {
+  // Check for trigger pattern at the start: /xxx or @xxx
+  const triggerMatch = newValue.match(/^([/@]\w*)$/)
+  if (triggerMatch && availableSkills.value.length > 0) {
+    skillTriggerQuery.value = triggerMatch[1]
+    showSkillPicker.value = true
+  } else {
+    showSkillPicker.value = false
+    skillTriggerQuery.value = ''
+  }
+})
+
+// Handle skill selection
+async function handleSkillSelect(skill: SkillDefinition) {
+  showSkillPicker.value = false
+
+  try {
+    // For prompt templates, execute skill to expand template
+    const inputContent = messageInput.value.replace(/^[/@]\w*\s*/, '')
+
+    const result = await window.electronAPI.executeSkill(skill.id, {
+      sessionId: '', // Will be handled by the parent component
+      input: inputContent,
+    })
+
+    if (result.success && result.result?.output) {
+      // Replace the trigger with the expanded prompt
+      messageInput.value = result.result.output
+      await nextTick()
+      adjustHeight()
+      textareaRef.value?.focus()
+    }
+  } catch (error) {
+    console.error('Failed to execute skill:', error)
+  }
+}
+
+// Close skill picker
+function handleSkillPickerClose() {
+  showSkillPicker.value = false
+}
 </script>
 
 <style scoped>
 .composer-wrapper {
-  width: min(860px, 100%);
+  width: 85%;
   margin: 0 auto;
 }
 
@@ -779,71 +957,118 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.04) 0%,
-    rgba(255, 255, 255, 0.02) 100%
-  );
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  background: rgba(30, 30, 35, 0.65);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 4px 24px rgba(0, 0, 0, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+    0 4px 24px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
 }
 
 .composer.focused {
-  border-color: rgba(59, 130, 246, 0.35);
+  border-color: rgba(var(--accent-rgb), 0.35);
   box-shadow:
-    0 0 0 1px rgba(59, 130, 246, 0.15),
-    0 4px 32px rgba(0, 0, 0, 0.2),
-    0 0 20px rgba(59, 130, 246, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    0 0 0 0.5px rgba(var(--accent-rgb), 0.2),
+    0 8px 32px rgba(0, 0, 0, 0.18),
+    var(--shadow-glow);
 }
 
 /* Light theme */
 html[data-theme='light'] .composer {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(250, 250, 250, 0.9) 100%
-  );
-  border-color: rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(0, 0, 0, 0.06);
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.04),
-    0 4px 24px rgba(0, 0, 0, 0.06);
+    0 4px 24px rgba(0, 0, 0, 0.04);
 }
 
 html[data-theme='light'] .composer.focused {
   border-color: rgba(59, 130, 246, 0.4);
   box-shadow:
-    0 0 0 1px rgba(59, 130, 246, 0.1),
-    0 4px 32px rgba(0, 0, 0, 0.08),
-    0 0 20px rgba(59, 130, 246, 0.05);
+    0 0 0 0.5px rgba(59, 130, 246, 0.15),
+    0 8px 32px rgba(0, 0, 0, 0.06),
+    var(--shadow-glow);
 }
 
 /* Input area */
 .input-area {
-  padding: 16px 20px 8px 20px;
+  padding: 0 18px 6px 18px;
 }
 
 .composer-input {
   width: 100%;
-  padding: 0;
+  padding: 12px 0 0 0;
   border: none;
   outline: none;
   background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
   font-size: 15px;
+  line-height: 1.6;
   resize: none;
   min-height: 28px;
   max-height: 200px;
-  line-height: 1.6;
-  color: var(--text);
-  font-family: inherit;
   overflow-y: auto;
+  caret-color: transparent !important; /* Hide original caret */
+}
+
+/* Custom Caret Styles */
+.textarea-mirror {
+  position: absolute;
+  top: 12px;
+  left: 18px;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: hidden;
+  z-index: -1;
+}
+
+.custom-caret {
+  position: absolute;
+  top: 12px;
+  left: 18px;
+  width: 2px;
+  pointer-events: none;
+  z-index: 10;
+  transition: transform 0.12s cubic-bezier(0.18, 0.89, 0.32, 1.15), opacity 0.15s ease;
+}
+
+.caret-main {
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 1px;
+  box-shadow: 
+    0 0 8px var(--accent),
+    0 0 15px rgba(59, 130, 246, 0.4);
+  animation: caret-blink 0.8s ease-in-out infinite;
+}
+
+/* Comet Tail Effect */
+.caret-tail {
+  position: absolute;
+  top: 0;
+  left: -2px;
+  width: 8px;
+  height: 100%;
+  background: linear-gradient(to right, var(--accent), transparent);
+  opacity: 0.4;
+  filter: blur(4px);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+}
+
+@keyframes caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+html[data-theme='light'] .caret-main {
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
 }
 
 .composer-input::placeholder {
@@ -896,8 +1121,8 @@ html[data-theme='light'] .composer.focused {
 
 /* Toolbar buttons */
 .toolbar-btn {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   border: none;
   background: transparent;
@@ -906,14 +1131,18 @@ html[data-theme='light'] .composer.focused {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
 
 .toolbar-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover);
   color: var(--text);
+  transform: scale(1.1);
+}
+
+.toolbar-btn:active {
+  transform: scale(0.95);
 }
 
 html[data-theme='light'] .toolbar-btn:hover {
@@ -1032,12 +1261,12 @@ html[data-theme='light'] .send-btn:disabled {
 .tools-menu {
   position: fixed;
   width: 260px;
-  background: var(--panel);
+  background: var(--bg-elevated);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow:
-    0 8px 40px rgba(0, 0, 0, 0.35),
-    0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: var(--shadow);
   z-index: 9999;
   overflow: hidden;
   animation: menuSlideUp 0.15s ease-out;
@@ -1065,11 +1294,7 @@ html[data-theme='light'] .send-btn:disabled {
   }
 }
 
-html[data-theme='light'] .tools-menu {
-  box-shadow:
-    0 8px 40px rgba(0, 0, 0, 0.12),
-    0 0 0 1px rgba(0, 0, 0, 0.05);
-}
+/* Responsive animations removed for brevity if no changes needed */
 
 /* Tools menu header with master toggle */
 .tools-menu-header {
@@ -1111,7 +1336,7 @@ html[data-theme='light'] .tools-menu {
   display: block;
   width: 40px;
   height: 22px;
-  background: rgba(120, 120, 128, 0.32);
+  background: var(--border);
   border-radius: 11px;
   position: relative;
   transition: background 0.25s ease;
@@ -1353,21 +1578,26 @@ html[data-theme='light'] .group-count {
 .model-selector-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  background: var(--hover);
+  border-radius: 10px;
   cursor: pointer;
   font-size: 13px;
-  color: var(--muted);
-  transition: all 0.15s ease;
+  color: var(--text);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   height: 34px;
 }
 
 .model-selector-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text);
+  background: var(--active);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.model-selector-btn:active {
+  transform: scale(0.97);
 }
 
 html[data-theme='light'] .model-selector-btn:hover {
@@ -1399,11 +1629,11 @@ html[data-theme='light'] .model-selector-btn:hover {
 .provider-icon.kimi,
 .provider-icon.zhipu,
 .provider-icon.custom {
-  color: var(--muted);
+  color: var(--text);
 }
 
 .model-selector-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--active);
   color: var(--text);
 }
 
@@ -1433,12 +1663,12 @@ html[data-theme='light'] .model-selector-btn:hover {
   width: 240px;
   max-height: 320px;
   overflow-y: auto;
-  background: var(--panel);
+  background: var(--bg-elevated);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow:
-    0 8px 40px rgba(0, 0, 0, 0.35),
-    0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: var(--shadow);
   z-index: 9999;
   padding: 6px;
   animation: menuSlideUp 0.15s ease-out;
@@ -1475,8 +1705,13 @@ html[data-theme='light'] .model-dropdown {
   background: var(--hover);
 }
 
+.provider-header .provider-name {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
 .provider-header.active {
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .provider-header.active .provider-name {
@@ -1496,11 +1731,11 @@ html[data-theme='light'] .model-dropdown {
 }
 
 .model-list {
-  padding-left: 8px;
-  border-left: 2px solid var(--border);
-  margin-left: 19px;
-  margin-top: 2px;
-  margin-bottom: 6px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  margin-left: 21px;
+  margin-top: 4px;
+  margin-bottom: 8px;
   animation: slideDown 0.15s ease;
   overflow: hidden;
 }
@@ -1533,9 +1768,10 @@ html[data-theme='light'] .model-dropdown {
 }
 
 .model-item.active {
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(var(--accent-rgb), 0.15);
   color: var(--accent);
   font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.2);
 }
 
 .model-name {

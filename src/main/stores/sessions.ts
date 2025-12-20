@@ -17,6 +17,8 @@ interface SessionMeta {
   updatedAt: number
   parentSessionId?: string
   branchFromMessageId?: string
+  lastModel?: string
+  isPinned?: boolean
 }
 
 // Get sessions index path
@@ -197,12 +199,36 @@ export function renameSession(sessionId: string, newName: string): void {
   }
 }
 
+// Update session pin status
+export function updateSessionPin(sessionId: string, isPinned: boolean): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  session.isPinned = isPinned
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.isPinned = isPinned
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+}
+
 // Add a message to a session
 export function addMessage(sessionId: string, message: ChatMessage): void {
   const session = getSession(sessionId)
   if (!session) return
 
   session.messages.push(message)
+  if (message.role === 'assistant' && message.model) {
+    session.lastModel = message.model
+  }
   session.updatedAt = Date.now()
 
   // Save session file
@@ -213,6 +239,7 @@ export function addMessage(sessionId: string, message: ChatMessage): void {
   const meta = index.find((s) => s.id === sessionId)
   if (meta) {
     meta.updatedAt = session.updatedAt
+    meta.lastModel = message.role === 'assistant' ? message.model : meta.lastModel
     saveSessionsIndex(index)
   }
 }

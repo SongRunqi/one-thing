@@ -1,25 +1,67 @@
 <template>
   <div class="message-list" ref="messageListRef">
-    <div v-if="messages.length === 0 && !isLoading" class="empty-state">
-      <div class="empty-title">
-        <span class="typing-text">one thing</span>
-        <!-- <span class="cursor"></span> -->
+    <div v-if="messages.length === 0 && !isLoading" class="empty-state futuristic-christmas">
+      <!-- Starry Background Particles -->
+      <div class="star-field">
+        <div v-for="i in 12" :key="i" class="star-particle"></div>
       </div>
-      <div class="empty-subtitle">Ask anything</div>
+
+      <div class="holo-hero">
+        <div class="geometric-tree">
+          <div class="tree-layer"></div>
+          <div class="tree-layer"></div>
+          <div class="tree-layer"></div>
+          <div class="tree-glow"></div>
+        </div>
+        <div class="empty-title">
+          <span class="typing-text">one thing</span>
+        </div>
+        <div class="empty-subtitle">BEYOND_HORIZON_2025</div>
+      </div>
+
+      <!-- Holographic Suggestion Cards -->
+      <div class="holo-grid">
+        <div class="holo-card" @click="handleSuggestion('Help me write a warm Christmas greeting for my family.')">
+          <div class="holo-card-inner">
+            <span class="holo-icon">✉️</span>
+            <span>Synthesize Greeting</span>
+          </div>
+        </div>
+        <div class="holo-card" @click="handleSuggestion('Generate a list of unique Christmas gift ideas for a developer.')">
+          <div class="holo-card-inner">
+            <span class="holo-icon">🎁</span>
+            <span>Query Gift Data</span>
+          </div>
+        </div>
+        <div class="holo-card" @click="handleSuggestion('Create a festive CSS snowflake animation code.')">
+          <div class="holo-card-inner">
+            <span class="holo-icon">❄️</span>
+            <span>Render Snow.css</span>
+          </div>
+        </div>
+        <div class="holo-card" @click="handleSuggestion('Plan a cozy Christmas dinner menu for 4 people.')">
+          <div class="holo-card-inner">
+            <span class="holo-icon">🍽️</span>
+            <span>Optimize Menu</span>
+          </div>
+        </div>
+      </div>
     </div>
-    <MessageItem
-      v-for="message in messages"
-      :key="message.id"
-      :message="message"
-      :branches="getBranchesForMessage(message.id)"
-      :can-branch="canCreateBranch"
-      :is-highlighted="message.id === highlightedMessageId"
-      @edit="handleEdit"
-      @branch="handleBranch"
-      @go-to-branch="handleGoToBranch"
-      @quote="handleQuote"
-      @regenerate="handleRegenerate"
-    />
+    <TransitionGroup name="msg-list">
+      <MessageItem
+        v-for="message in messages"
+        :key="message.id"
+        :message="message"
+        :branches="getBranchesForMessage(message.id)"
+        :can-branch="canCreateBranch"
+        :is-highlighted="message.id === highlightedMessageId"
+        @edit="handleEdit"
+        @branch="handleBranch"
+        @go-to-branch="handleGoToBranch"
+        @quote="handleQuote"
+        @regenerate="handleRegenerate"
+      />
+    </TransitionGroup>
 
     <!-- Loading indicator (only show if no streaming message exists to avoid duplicate indicators) -->
     <div v-if="isLoading && !hasStreamingMessage" class="thinking-indicator">
@@ -92,6 +134,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   setQuotedText: [text: string]
+  setInputText: [text: string]
   regenerate: [messageId: string]
 }>()
 
@@ -507,6 +550,10 @@ function handleQuote(quotedText: string) {
 function handleRegenerate(messageId: string) {
   emit('regenerate', messageId)
 }
+
+function handleSuggestion(text: string) {
+  emit('setInputText', text)
+}
 </script>
 
 <style scoped>
@@ -517,89 +564,190 @@ function handleRegenerate(messageId: string) {
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  padding: 18px 18px 26px;
+  padding: 18px 18px 120px;
   background: transparent;
 }
 
-.empty-state {
+/* Futuristic Geometric Christmas Theme */
+.empty-state.futuristic-christmas {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  background: transparent;
+  padding: 40px 20px;
+  overflow: hidden;
+}
+
+.holo-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--muted);
-  gap: 12px;
-  user-select: none;
+  gap: 24px;
+  margin-bottom: 60px;
+  position: relative;
+  z-index: 2;
 }
 
-.empty-title {
+/* Geometric Tree */
+.geometric-tree {
+  position: relative;
+  width: 120px;
+  height: 160px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  font-size: 32px;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.5px;
+  filter: drop-shadow(0 0 20px rgba(59, 130, 246, 0.4));
+  animation: holo-float 6s ease-in-out infinite;
 }
 
-.typing-text {
-  display: inline-block;
-  overflow: hidden;
-  white-space: nowrap;
+@keyframes holo-float {
+  0%, 100% { transform: translateY(0) scale(1.05); }
+  50% { transform: translateY(-15px) scale(0.95); }
+}
+
+.tree-layer {
+  position: absolute;
   width: 0;
-  animation: typing 1.2s steps(9, end) forwards;
-  animation-delay: 0.3s;
+  height: 0;
+  border-left: 50px solid transparent;
+  border-right: 50px solid transparent;
+  border-bottom: 80px solid rgba(59, 130, 246, 0.2);
+  top: 40px;
 }
 
-.cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  background: var(--accent);
-  margin-left: 2px;
-  animation: blink 1s step-end 3 forwards;
-  opacity: 0;
-  animation-delay: 1.5s;
+.tree-layer:nth-child(2) {
+  border-left-width: 40px;
+  border-right-width: 40px;
+  border-bottom-width: 60px;
+  border-bottom-color: rgba(96, 165, 250, 0.3);
+  top: 15px;
 }
 
-@keyframes typing {
-  from {
-    width: 0;
-  }
-  to {
-    width: 4.8em;
-  }
+.tree-layer:nth-child(3) {
+  border-left-width: 30px;
+  border-right-width: 30px;
+  border-bottom-width: 40px;
+  border-bottom-color: rgba(147, 197, 253, 0.4);
+  top: 0;
 }
 
-@keyframes blink {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 0;
-  }
+.tree-glow {
+  position: absolute;
+  bottom: 0;
+  width: 90px;
+  height: 90px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.3) 0%, transparent 70%);
+  filter: blur(10px);
 }
 
 .empty-subtitle {
-  font-size: 15px;
-  color: var(--muted);
-  opacity: 0;
-  animation: fadeInUp 0.5s ease forwards;
-  animation-delay: 1.5s;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: #60a5fa;
+  text-transform: uppercase;
+  font-weight: 500;
+  opacity: 0.8;
+  animation: text-pulse 3s ease-in-out infinite;
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+@keyframes text-pulse {
+  0%, 100% { opacity: 0.5; text-shadow: 0 0 5px rgba(96, 165, 250, 0); }
+  50% { opacity: 1; text-shadow: 0 0 10px rgba(96, 165, 250, 0.5); }
 }
+
+/* Star Field */
+.star-field {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.star-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #60a5fa;
+  border-radius: 50%;
+  filter: blur(1px);
+  animation: star-move linear infinite;
+  opacity: 0.6;
+}
+
+@keyframes star-move {
+  0% { transform: translateY(0) translateX(0) scale(1); opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(100vh) translateX(50px) scale(0); opacity: 0; }
+}
+
+.star-particle:nth-child(4n) { width: 6px; height: 6px; background: #fbbf24; }
+
+.star-particle:nth-child(1) { left: 10%; animation-duration: 15s; }
+.star-particle:nth-child(2) { left: 25%; animation-duration: 12s; animation-delay: 2s; }
+.star-particle:nth-child(3) { left: 40%; animation-duration: 18s; animation-delay: 4s; }
+.star-particle:nth-child(4) { left: 55%; animation-duration: 14s; animation-delay: 1s; }
+.star-particle:nth-child(5) { left: 70%; animation-duration: 16s; animation-delay: 3s; }
+.star-particle:nth-child(6) { left: 85%; animation-duration: 13s; animation-delay: 5s; }
+.star-particle:nth-child(7) { left: 15%; animation-duration: 11s; }
+.star-particle:nth-child(8) { left: 90%; animation-duration: 17s; }
+.star-particle:nth-child(9) { left: 45%; animation-duration: 14s; }
+.star-particle:nth-child(10) { left: 30%; animation-duration: 15s; }
+.star-particle:nth-child(11) { left: 60%; animation-duration: 12s; }
+.star-particle:nth-child(12) { left: 80%; animation-duration: 16s; }
+
+/* Holographic Cards */
+.holo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  width: 100%;
+  padding: 0 24px;
+  z-index: 2;
+  animation: holo-fade-in 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+@keyframes holo-fade-in {
+  from { opacity: 0; transform: translateY(30px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.holo-card {
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.5), transparent, rgba(96, 165, 250, 0.2));
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.holo-card-inner {
+  padding: 16px;
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  transition: all 0.3s ease;
+}
+
+.holo-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  filter: brightness(1.2);
+  background: linear-gradient(135deg, #60a5fa, #fbbf24);
+  box-shadow: 0 15px 40px rgba(59, 130, 246, 0.3);
+}
+
+.holo-card:hover .holo-card-inner {
+  background: rgba(30, 41, 59, 0.4);
+}
+
+.holo-icon { font-size: 20px; }
 
 /* Thinking indicator */
 .thinking-indicator {
@@ -617,41 +765,29 @@ function handleRegenerate(messageId: string) {
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(12px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
-.thinking-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgb(59, 130, 246);
-  flex-shrink: 0;
-  animation: pulse 2s ease-in-out infinite;
+/* List Transitions */
+.msg-list-enter-active {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
+.msg-list-enter-from {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
 }
 
 .thinking-content {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding-top: 6px;
+  gap: 12px;
+  padding-top: 4px;
 }
 
 .thinking-dots {

@@ -22,6 +22,7 @@ export {
   createBranchSession,
   deleteSession,
   renameSession,
+  updateSessionPin,
   addMessage,
   updateMessageAndTruncate,
   updateMessageContent,

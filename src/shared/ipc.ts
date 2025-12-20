@@ -24,6 +24,7 @@ export const IPC_CHANNELS = {
   DELETE_SESSION: 'sessions:delete',
   RENAME_SESSION: 'sessions:rename',
   CREATE_BRANCH: 'sessions:create-branch',
+  UPDATE_SESSION_PIN: 'sessions:update-pin',
 
   // Settings related
   GET_SETTINGS: 'settings:get',
@@ -58,6 +59,13 @@ export const IPC_CHANNELS = {
   MCP_READ_RESOURCE: 'mcp:read-resource',
   MCP_GET_PROMPTS: 'mcp:get-prompts',
   MCP_GET_PROMPT: 'mcp:get-prompt',
+
+  // Skills related
+  SKILLS_GET_ALL: 'skills:get-all',
+  SKILLS_EXECUTE: 'skills:execute',
+  SKILLS_ADD_USER: 'skills:add-user',
+  SKILLS_UPDATE_USER: 'skills:update-user',
+  SKILLS_DELETE_USER: 'skills:delete-user',
 } as const
 
 // Content part types for sequential display
@@ -78,6 +86,7 @@ export interface ChatMessage {
   reasoning?: string  // Thinking/reasoning process for reasoning models (e.g., deepseek-reasoner)
   toolCalls?: ToolCall[]  // Tool calls made by the assistant (legacy, for backward compat)
   contentParts?: ContentPart[]  // Sequential content parts for inline tool call display
+  model?: string  // AI model used for assistant messages
 }
 
 export interface ChatSession {
@@ -88,6 +97,8 @@ export interface ChatSession {
   updatedAt: number
   parentSessionId?: string
   branchFromMessageId?: string
+  lastModel?: string
+  isPinned?: boolean
 }
 
 // Provider IDs - can be extended by adding new providers
@@ -157,6 +168,7 @@ export interface AppSettings {
   general: GeneralSettings
   tools: ToolSettings
   mcp?: MCPSettings
+  skills?: SkillSettings
 }
 
 // IPC Request/Response types
@@ -252,6 +264,16 @@ export interface CreateBranchRequest {
 export interface CreateBranchResponse {
   success: boolean
   session?: ChatSession
+  error?: string
+}
+
+export interface UpdateSessionPinRequest {
+  sessionId: string
+  isPinned: boolean
+}
+
+export interface UpdateSessionPinResponse {
+  success: boolean
   error?: string
 }
 
@@ -592,5 +614,141 @@ export interface MCPGetPromptRequest {
 export interface MCPGetPromptResponse {
   success: boolean
   messages?: any[]
+  error?: string
+}
+
+// ============================================
+// Skills related types
+// ============================================
+
+// Skill type
+export type SkillType = 'prompt-template' | 'workflow'
+
+// Skill source
+export type SkillSource = 'builtin' | 'user'
+
+// Skill parameter (for workflows)
+export interface SkillParameter {
+  name: string
+  type: 'string' | 'number' | 'boolean' | 'select'
+  description: string
+  required?: boolean
+  default?: any
+  options?: string[]  // For 'select' type
+}
+
+// Prompt template configuration
+export interface PromptTemplateConfig {
+  template: string  // Supports {{input}}, {{selection}} placeholders
+  systemPrompt?: string
+  includeContext?: boolean
+}
+
+// Workflow step type
+export type WorkflowStepType = 'prompt' | 'transform' | 'condition' | 'loop'
+
+// Workflow step
+export interface WorkflowStep {
+  id: string
+  type: WorkflowStepType
+  name: string
+  config: Record<string, any>
+  next?: string | { true: string; false: string }
+}
+
+// Workflow configuration
+export interface WorkflowConfig {
+  parameters: SkillParameter[]
+  steps: WorkflowStep[]
+  entryStep: string
+  timeout?: number
+}
+
+// Skill definition
+export interface SkillDefinition {
+  id: string
+  name: string
+  description: string
+  type: SkillType
+  source: SkillSource
+  triggers: string[]  // Trigger patterns: "/explain", "@review"
+  icon?: string
+  category?: string
+  enabled: boolean
+  config: PromptTemplateConfig | WorkflowConfig
+}
+
+// Skill execution context
+export interface SkillExecutionContext {
+  sessionId: string
+  messageId?: string
+  input: string
+  selection?: string
+  parameters?: Record<string, any>
+}
+
+// Skill execution result
+export interface SkillExecutionResult {
+  success: boolean
+  output?: string
+  error?: string
+  stepResults?: Array<{
+    stepId: string
+    output: string
+    duration: number
+  }>
+}
+
+// Skill settings
+export interface SkillSettings {
+  enableSkills: boolean
+  skills: Record<string, { enabled: boolean }>
+}
+
+// Skills IPC Request/Response types
+export interface GetSkillsResponse {
+  success: boolean
+  skills?: SkillDefinition[]
+  error?: string
+}
+
+export interface ExecuteSkillRequest {
+  skillId: string
+  context: SkillExecutionContext
+}
+
+export interface ExecuteSkillResponse {
+  success: boolean
+  result?: SkillExecutionResult
+  error?: string
+}
+
+export interface AddUserSkillRequest {
+  skill: Omit<SkillDefinition, 'source'>
+}
+
+export interface AddUserSkillResponse {
+  success: boolean
+  skill?: SkillDefinition
+  error?: string
+}
+
+export interface UpdateUserSkillRequest {
+  skillId: string
+  updates: Partial<SkillDefinition>
+}
+
+export interface UpdateUserSkillResponse {
+  success: boolean
+  skill?: SkillDefinition
+  error?: string
+}
+
+export interface DeleteUserSkillRequest {
+  skillId: string
+}
+
+export interface DeleteUserSkillResponse {
+  success: boolean
   error?: string
 }

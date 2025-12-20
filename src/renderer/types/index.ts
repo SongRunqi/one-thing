@@ -17,6 +17,7 @@ import type {
   DeleteSessionResponse,
   RenameSessionResponse,
   CreateBranchResponse,
+  UpdateSessionPinResponse,
   GetSettingsResponse,
   SaveSettingsResponse,
   GenerateTitleResponse,
@@ -49,6 +50,18 @@ import type {
   MCPReadResourceResponse,
   MCPGetPromptsResponse,
   MCPGetPromptResponse,
+  // Skills types
+  SkillDefinition,
+  SkillSettings,
+  SkillExecutionContext,
+  SkillExecutionResult,
+  PromptTemplateConfig,
+  WorkflowConfig,
+  GetSkillsResponse,
+  ExecuteSkillResponse,
+  AddUserSkillResponse,
+  UpdateUserSkillResponse,
+  DeleteUserSkillResponse,
 } from '../../shared/ipc'
 
 export type {
@@ -72,6 +85,13 @@ export type {
   MCPResourceInfo,
   MCPPromptInfo,
   MCPSettings,
+  // Skills types
+  SkillDefinition,
+  SkillSettings,
+  SkillExecutionContext,
+  SkillExecutionResult,
+  PromptTemplateConfig,
+  WorkflowConfig,
 }
 
 // Streaming response types
@@ -103,6 +123,7 @@ export interface ElectronAPI {
   deleteSession: (sessionId: string) => Promise<DeleteSessionResponse>
   renameSession: (sessionId: string, newName: string) => Promise<RenameSessionResponse>
   createBranch: (parentSessionId: string, branchFromMessageId: string) => Promise<CreateBranchResponse>
+  updateSessionPin: (sessionId: string, isPinned: boolean) => Promise<UpdateSessionPinResponse>
   getSettings: () => Promise<GetSettingsResponse>
   saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>
   fetchModels: (
@@ -134,6 +155,13 @@ export interface ElectronAPI {
   mcpReadResource: (serverId: string, uri: string) => Promise<MCPReadResourceResponse>
   mcpGetPrompts: () => Promise<MCPGetPromptsResponse>
   mcpGetPrompt: (serverId: string, name: string, args?: Record<string, string>) => Promise<MCPGetPromptResponse>
+
+  // Skills methods
+  getSkills: () => Promise<GetSkillsResponse>
+  executeSkill: (skillId: string, context: SkillExecutionContext) => Promise<ExecuteSkillResponse>
+  addUserSkill: (skill: Omit<SkillDefinition, 'source'>) => Promise<AddUserSkillResponse>
+  updateUserSkill: (skillId: string, updates: Partial<SkillDefinition>) => Promise<UpdateUserSkillResponse>
+  deleteUserSkill: (skillId: string) => Promise<DeleteUserSkillResponse>
 }
 
 declare global {

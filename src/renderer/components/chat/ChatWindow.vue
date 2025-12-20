@@ -1,16 +1,24 @@
 <template>
   <main class="chat">
-    <!-- Settings Panel -->
-    <SettingsPanel v-if="showSettings" @close="emit('closeSettings')" />
-
-    <!-- Chat View -->
-    <template v-else>
-      <MessageList :messages="chatStore.messages" :is-loading="chatStore.isLoading" @set-quoted-text="handleSetQuotedText" @regenerate="handleRegenerate" />
+    <!-- Chat View (Always rendered) -->
+    <div class="chat-container">
+      <MessageList 
+        :messages="chatStore.messages" 
+        :is-loading="chatStore.isLoading" 
+        @set-quoted-text="handleSetQuotedText" 
+        @set-input-text="handleSetInputText"
+        @regenerate="handleRegenerate" 
+      />
 
       <div class="composer">
         <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="chatStore.isLoading" />
       </div>
-    </template>
+    </div>
+
+    <!-- Settings Panel overlay -->
+    <Transition name="settings-fade">
+      <SettingsPanel v-if="showSettings" @close="emit('closeSettings')" />
+    </Transition>
   </main>
 </template>
 
@@ -81,6 +89,12 @@ async function handleRegenerate(messageId: string) {
   if (!currentSession.value) return
   await chatStore.regenerate(currentSession.value.id, messageId)
 }
+
+function handleSetInputText(text: string) {
+  if (inputBoxRef.value) {
+    inputBoxRef.value.setMessageInput(text)
+  }
+}
 </script>
 
 <style scoped>
@@ -89,19 +103,54 @@ async function handleRegenerate(messageId: string) {
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  background: var(--bg);
+  background: var(--chat-canvas);
+  position: relative; /* For overlay positioning */
+}
+
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .composer {
-  padding: 12px 16px 18px;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   align-items: center;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.12) 55%, rgba(0, 0, 0, 0.22) 100%);
+  background: transparent;
+  pointer-events: none;
+  z-index: 100;
 }
 
-html[data-theme='light'] .composer {
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, rgba(0, 0, 0, 0.02) 55%, rgba(0, 0, 0, 0.04) 100%);
+.composer > :deep(*) {
+  pointer-events: auto;
+}
+
+
+
+/* Settings Fade Transition */
+.settings-fade-enter-active,
+.settings-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.settings-fade-enter-from,
+.settings-fade-leave-to {
+  opacity: 0;
+}
+
+.settings-fade-enter-active :deep(.floating-hub) {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.settings-fade-enter-from :deep(.floating-hub) {
+  transform: scale(0.9) translateY(20px);
 }
 </style>

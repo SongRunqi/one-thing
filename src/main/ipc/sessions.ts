@@ -42,6 +42,12 @@ export function registerSessionHandlers() {
     return { success: true }
   })
 
+  // 置顶/取消置顶会话
+  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_PIN, async (_event, { sessionId, isPinned }) => {
+    store.updateSessionPin(sessionId, isPinned)
+    return { success: true }
+  })
+
   // 创建分支会话
   ipcMain.handle(
     IPC_CHANNELS.CREATE_BRANCH,

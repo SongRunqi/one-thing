@@ -7,6 +7,7 @@ export const useChatStore = defineStore('chat', () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
   const errorDetails = ref<string | null>(null) // Original API error details
+  const generatingSessionId = ref<string | null>(null)
 
   // Stream cleanup functions
   const streamCleanups = ref<(() => void)[]>([])
@@ -212,6 +213,7 @@ export const useChatStore = defineStore('chat', () => {
       return false
     } finally {
       isLoading.value = false
+      generatingSessionId.value = null
     }
   }
 
@@ -238,6 +240,7 @@ export const useChatStore = defineStore('chat', () => {
     let unsubscribeError: (() => void) | null = null
 
     try {
+      generatingSessionId.value = sessionId
       const response = await window.electronAPI.sendMessageStream(sessionId, content)
 
       if (!response.success) {
@@ -461,6 +464,7 @@ export const useChatStore = defineStore('chat', () => {
             if (unsubscribeError) unsubscribeError()
 
             isLoading.value = false
+            generatingSessionId.value = null
             completeListener() // Clean up this listener
             resolve(data.sessionName || true)
           } else {
@@ -521,6 +525,7 @@ export const useChatStore = defineStore('chat', () => {
 
     // Now show loading state
     isLoading.value = true
+    generatingSessionId.value = sessionId
 
     // Clean up any existing listeners
     cleanupStreamListeners()
@@ -686,6 +691,7 @@ export const useChatStore = defineStore('chat', () => {
             if (unsubscribeError) unsubscribeError()
 
             isLoading.value = false
+            generatingSessionId.value = null
             completeListener()
             resolve(data.sessionName || true)
           }
@@ -714,6 +720,7 @@ export const useChatStore = defineStore('chat', () => {
   return {
     messages,
     isLoading,
+    generatingSessionId,
     error,
     errorDetails,
     messageCount,

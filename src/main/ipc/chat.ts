@@ -23,13 +23,20 @@ import { getMCPToolsForAI, isMCPTool, executeMCPTool } from '../mcp/index.js'
 
 // Helper function to build history messages from session messages
 // Includes reasoningContent for assistant messages (required by DeepSeek Reasoner)
+// Filters out streaming messages (empty assistant messages being generated)
 function buildHistoryMessages(messages: ChatMessage[]): Array<{
   role: 'user' | 'assistant'
   content: string
   reasoningContent?: string
 }> {
   return messages
-    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .filter(m => {
+      // Only include user and assistant messages
+      if (m.role !== 'user' && m.role !== 'assistant') return false
+      // Exclude streaming messages (current message being generated)
+      if (m.isStreaming) return false
+      return true
+    })
     .map(m => {
       const msg: { role: 'user' | 'assistant'; content: string; reasoningContent?: string } = {
         role: m.role as 'user' | 'assistant',
@@ -222,6 +229,7 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
     const assistantMessage: ChatMessage = {
       id: uuidv4(),
       role: 'assistant',
+      model: providerConfig.model,
       content: response.text,
       timestamp: Date.now(),
       reasoning: response.reasoning,
@@ -278,6 +286,7 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
     const assistantMessage: ChatMessage = {
       id: assistantMessageId,
       role: 'assistant',
+      model: providerConfig.model,
       content: '',
       timestamp: Date.now(),
       isStreaming: true,
@@ -613,6 +622,7 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     const assistantMessage: ChatMessage = {
       id: uuidv4(),
       role: 'assistant',
+      model: providerConfig.model,
       content: response.text,
       timestamp: Date.now(),
       reasoning: response.reasoning,
@@ -732,6 +742,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     const assistantMessage: ChatMessage = {
       id: assistantMessageId,
       role: 'assistant',
+      model: providerConfig.model,
       content: '',
       timestamp: Date.now(),
       isStreaming: true,

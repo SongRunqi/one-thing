@@ -75,6 +75,9 @@ const electronAPI = {
   createBranch: (parentSessionId: string, branchFromMessageId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.CREATE_BRANCH, { parentSessionId, branchFromMessageId }),
 
+  updateSessionPin: (sessionId: string, isPinned: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_PIN, { sessionId, isPinned }),
+
   // Settings methods
   getSettings: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS),
@@ -145,6 +148,22 @@ const electronAPI = {
 
   mcpGetPrompt: (serverId: string, name: string, args?: Record<string, string>) =>
     ipcRenderer.invoke(IPC_CHANNELS.MCP_GET_PROMPT, { serverId, name, arguments: args }),
+
+  // Skills methods
+  getSkills: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_GET_ALL),
+
+  executeSkill: (skillId: string, context: { sessionId: string; messageId?: string; input: string; selection?: string; parameters?: Record<string, any> }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_EXECUTE, { skillId, context }),
+
+  addUserSkill: (skill: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_ADD_USER, { skill }),
+
+  updateUserSkill: (skillId: string, updates: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_UPDATE_USER, { skillId, updates }),
+
+  deleteUserSkill: (skillId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_DELETE_USER, { skillId }),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

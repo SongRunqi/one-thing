@@ -3,21 +3,63 @@
     Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Apple Color Emoji',
     'Segoe UI Emoji';
 
-  --bg: #1a1d24;
-  --bg-elevated: #22252e;
-  --panel: #1e2128;
-  --panel-2: #1a1d24;
-  --muted: rgba(255, 255, 255, 0.68);
-  --text: rgba(255, 255, 255, 0.92);
+  /* --- Dark Theme: Obsidian Slate --- */
+  --bg: #111214;
+  /* Layer 0: App Base (Sidebar/Shell) */
+  --bg-rgb: 17, 18, 20;
+  --chat-canvas: #141517;
+  /* Layer 1: Chat Stage background */
+  --chat-canvas-rgb: 20, 21, 23;
+  --panel: #1b1c1f;
+  /* Layer 2: Sidebars/Panels */
+  --bg-elevated: #24262b;
+  /* Layer 3: Popups/Floating */
+  --panel-2: #1b1c1f;
+
+  --muted: rgba(255, 255, 255, 0.5);
+  --text: rgba(255, 255, 255, 0.94);
   --border: rgba(255, 255, 255, 0.08);
   --hover: rgba(255, 255, 255, 0.06);
   --active: rgba(255, 255, 255, 0.1);
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(53, 122, 255, 0.15);
 
-  --accent: #3b82f6;
-  --danger: #ef4444;
+  --accent: #357aff;
+  /* Electric Blue */
+  --accent-rgb: 53, 122, 255;
+  --accent-secondary: #5a94ff;
+  --danger: #ff4d4d;
 
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+
+[data-theme='light'] {
+  /* --- Light Theme: Frosted Glacier --- */
+  --bg: #eceef1;
+  /* Layer 0: App Base (Sidebar/Shell) */
+  --bg-rgb: 236, 238, 241;
+  --chat-canvas: #f7f8fa;
+  /* Layer 1: Chat Stage background */
+  --chat-canvas-rgb: 247, 248, 250;
+  --panel: #ffffff;
+  /* Layer 2: Sidebars/Panels */
+  --bg-elevated: #ffffff;
+  --panel-2: #eff1f4;
+  /* Layer 0.5: Alternative surface */
+
+  --muted: rgba(60, 60, 67, 0.6);
+  --text: rgba(0, 0, 0, 0.9);
+  --border: rgba(0, 0, 0, 0.06);
+  --hover: rgba(0, 0, 0, 0.04);
+  --active: rgba(0, 0, 0, 0.06);
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --shadow-glow: 0 0 20px rgba(0, 98, 255, 0.1);
+
+  --accent: #0062ff;
+  /* Vivid Azure */
+  --accent-rgb: 0, 98, 255;
+  --accent-secondary: #0077ff;
 }

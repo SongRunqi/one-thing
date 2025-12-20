@@ -2,68 +2,97 @@
   <ErrorBoundary>
     <div class="app-shell">
     <!-- Unified Header -->
+    <!-- Unified Sidebar-Transferred Header -->
     <header class="app-header">
-      <!-- Sidebar Header Section -->
-      <div :class="['header-sidebar', { collapsed: sidebarCollapsed }]">
-        <div class="header-controls">
-          <button class="icon-btn" @click="sidebarCollapsed = !sidebarCollapsed" title="Toggle sidebar">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <line x1="9" y1="3" x2="9" y2="21"/>
-            </svg>
-          </button>
-          <button class="icon-btn" @click="openSearch" title="Search chats">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.35-4.35"/>
-            </svg>
-          </button>
-          <button class="icon-btn" @click="createNewChat" title="New chat">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-          </button>
+      <!-- Left: Sidebar Toggle, New Chat, Search -->
+      <div class="header-left">
+        <button 
+          class="sidebar-toggle-btn" 
+          @click="sidebarCollapsed = !sidebarCollapsed"
+          :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="9" y1="3" x2="9" y2="21"/>
+          </svg>
+        </button>
+        <button 
+          class="header-action-btn highlight" 
+          @click="createNewChat"
+          title="New chat"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </button>
+        <button 
+          class="header-action-btn" 
+          @click="openSearch"
+          title="Search chats"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.35-4.35"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Center: Title Bar (Safari-Style) -->
+      <div 
+        :class="['chat-title-bar', { expanded: !sidebarCollapsed }]" 
+        @click="startEditTitle"
+      >
+        <div class="title-content">
+          <svg class="chat-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <input
+            v-if="isEditingTitle"
+            ref="titleInput"
+            v-model="editingTitleValue"
+            class="chat-title-input"
+            @blur="saveTitle"
+            @keydown.enter="saveTitle"
+            @keydown.escape="cancelEditTitle"
+            @click.stop
+          />
+          <span v-else class="chat-title-text">{{ currentSession?.name || 'New chat' }}</span>
         </div>
       </div>
 
-      <!-- ChatWindow Header Section -->
-      <div class="header-chat">
-        <!-- Left: Back button (if branch) -->
-        <div class="header-chat-left">
-          <button
-            v-if="isBranchSession"
-            class="back-to-parent-btn"
-            title="Back to parent chat"
-            @click="goToParentSession"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
-          </button>
+      <!-- Right: Action buttons (Theme, Settings, Meta) -->
+      <div class="header-right">
+        <button
+          v-if="isBranchSession"
+          class="back-to-parent-btn"
+          title="Back to parent chat"
+          @click="goToParentSession"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          <span>Back</span>
+        </button>
+
+        <div class="header-meta">
+          <span class="message-count">{{ messageCount }} msg</span>
         </div>
 
-        <!-- Right: Message count -->
-        <div class="header-chat-right">
-          <span class="message-count">{{ messageCount }} messages</span>
-        </div>
-      </div>
+        <button class="header-action-btn" @click="toggleTheme" :title="isDark ? 'Light Mode' : 'Dark Mode'">
+          <svg v-if="isDark" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M17.66 6.34l1.42-1.42"/>
+          </svg>
+          <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
 
-      <!-- Center: Editable title bar (positioned relative to app-header, centered over ChatWindow) -->
-      <div :class="['chat-title-bar', { expanded: !sidebarCollapsed }]" @click="startEditTitle">
-        <svg class="chat-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        </svg>
-        <input
-          v-if="isEditingTitle"
-          ref="titleInput"
-          v-model="editingTitleValue"
-          class="chat-title-input"
-          @blur="saveTitle"
-          @keydown.enter="saveTitle"
-          @keydown.escape="cancelEditTitle"
-          @click.stop
-        />
-        <span v-else class="chat-title-text">{{ currentSession?.name || 'New chat' }}</span>
+        <button class="header-action-btn" @click="showSettings = true" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+          </svg>
+        </button>
       </div>
     </header>
 
@@ -73,6 +102,8 @@
         :collapsed="sidebarCollapsed"
         @open-settings="showSettings = true"
         @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
+        @open-search="openSearch"
+        @create-new-chat="createNewChat"
       />
       <ChatWindow
         :show-settings="showSettings"
@@ -180,6 +211,13 @@ async function saveTitle() {
   isEditingTitle.value = false
 }
 
+const isDark = computed(() => settingsStore.effectiveTheme === 'dark')
+
+function toggleTheme() {
+  const newTheme = isDark.value ? 'light' : 'dark'
+  settingsStore.updateTheme(newTheme)
+}
+
 function cancelEditTitle() {
   isEditingTitle.value = false
   editingTitleValue.value = ''
@@ -258,190 +296,133 @@ watchEffect(() => {
   flex-direction: column;
 }
 
-/* Unified Header */
+/* Unified Header (Safari-Style) */
 .app-header {
-  height: 56px;
-  display: flex;
-  align-items: center;
-  -webkit-app-region: drag;
-  flex-shrink: 0;
-  position: relative; /* For absolute positioning of title bar */
-}
-
-/* Sidebar Header Section */
-.header-sidebar {
-  width: 300px;
-  height: 100%;
-  padding: 0 14px;
-  display: flex;
-  align-items: center; /* 垂直居中 */
-  justify-content: flex-end; /* 展开时按钮在右侧 */
-  background: var(--panel);
-  flex-shrink: 0;
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-              padding 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-              background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.15);
-  position: relative;
-  z-index: 10;
-}
-
-.header-sidebar.collapsed {
-  width: 220px; /* 固定宽度让动画更平滑，留足间距避免重合 */
-  padding: 0 14px 0 100px; /* 收起时保留 traffic lights 空间 + 间距 */
-  background: rgba(0, 0, 0, 0.08); /* 和 chat header 背景一致 */
-  box-shadow: none;
-}
-
-html[data-theme='light'] .header-sidebar.collapsed {
-  background: rgba(0, 0, 0, 0.02);
-}
-
-html[data-theme='light'] .header-sidebar {
-  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.06);
-}
-
-/* Chat Header Section */
-.header-chat {
-  flex: 1;
-  height: 100%;
-  padding: 10px 14px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(0, 0, 0, 0.08);
-  min-width: 0;
+  padding: 0 16px;
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+  position: relative;
+  background: rgba(var(--bg-rgb), 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  z-index: 100;
 }
 
-html[data-theme='light'] .header-chat {
-  background: rgba(0, 0, 0, 0.02);
-}
-
-.header-chat-left {
+.header-left {
   display: flex;
   align-items: center;
-}
-
-.header-chat-right {
-  margin-left: auto;
-}
-
-.header-controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  gap: 8px;
+  padding-left: 80px; /* Offset for traffic lights in macOS */
   -webkit-app-region: no-drag;
 }
 
-.icon-btn {
-  width: 36px;
-  height: 36px;
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-toggle-btn,
+.header-action-btn {
+  width: 32px;
+  height: 32px;
   border: none;
   background: transparent;
-  border-radius: 10px;
+  border-radius: 8px;
   color: var(--muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.icon-btn:hover {
+.header-action-btn.highlight {
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.sidebar-toggle-btn:hover,
+.header-action-btn:hover {
   background: var(--hover);
   color: var(--text);
+  transform: translateY(-1px);
 }
 
-.back-to-parent-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 8px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-  -webkit-app-region: no-drag;
+.header-action-btn.highlight:hover {
+  background: rgba(var(--accent-rgb), 0.15);
 }
 
-.back-to-parent-btn:hover {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.3);
-  color: var(--accent);
+.sidebar-toggle-btn:active,
+.header-action-btn:active {
+  transform: scale(0.95);
 }
 
-.back-to-parent-btn:active {
-  transform: scale(0.98);
-}
-
-html[data-theme='light'] .back-to-parent-btn {
-  background: rgba(0, 0, 0, 0.03);
-}
-
-html[data-theme='light'] .back-to-parent-btn:hover {
-  background: rgba(59, 130, 246, 0.08);
-}
-
-/* Browser-style title bar - centered over ChatWindow area */
 .chat-title-bar {
   position: absolute;
-  left: 50%;  /* Centered on full screen = centered over ChatWindow when sidebar collapsed */
+  left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 400px;
-  max-width: 40%;
-  height: 36px;
+  width: min(400px, 100% - 320px);
+  height: 34px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 14px;
-  background: var(--hover);
-  border: 1px solid var(--border);
-  border-radius: 18px;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
   cursor: text;
-  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   -webkit-app-region: no-drag;
-  z-index: 5;
 }
 
-/* When sidebar is expanded, offset title to center over chat area */
 .chat-title-bar.expanded {
-  left: calc(50% + 150px);  /* 150px = half of sidebar width (300px) */
+  left: calc(50% + 150px);
 }
 
 .chat-title-bar:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.07);
   border-color: rgba(255, 255, 255, 0.12);
 }
 
-html[data-theme='light'] .chat-title-bar:hover {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.1);
+html[data-theme='light'] .chat-title-bar {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.title-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  justify-content: center;
 }
 
 .chat-title-icon {
   color: var(--muted);
-  flex-shrink: 0;
+  opacity: 0.6;
 }
 
 .chat-title-text {
-  flex: 1;
   font-size: 13px;
+  font-weight: 500;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: center;
 }
 
 .chat-title-input {
-  flex: 1;
+  width: 100%;
   border: none;
   background: transparent;
   font-size: 13px;
@@ -450,13 +431,47 @@ html[data-theme='light'] .chat-title-bar:hover {
   text-align: center;
 }
 
-.chat-title-input::placeholder {
-  color: var(--muted);
+.header-meta {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .message-count {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.back-to-parent-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.back-to-parent-btn:hover {
+  background: rgba(59, 130, 246, 0.15);
+  transform: translateY(-1px);
 }
 
 /* Main Content */
@@ -594,55 +609,19 @@ html[data-theme='light'] .search-overlay {
 
 /* Responsive styles */
 @media (max-width: 768px) {
-  .header-sidebar {
-    width: auto !important;
-    padding: 0 10px 0 80px !important; /* Reduced traffic lights space */
+  .app-header {
+    padding-left: 100px; /* Space for traffic lights */
   }
-
-  .header-sidebar.collapsed {
-    padding: 0 10px 0 80px !important;
-  }
-
+  
   .chat-title-bar {
     width: 200px;
     max-width: 35%;
   }
 
   .chat-title-bar.expanded {
-    left: 50%; /* Center on screen when sidebar is expanded */
-  }
-
-  .search-modal {
-    width: 90%;
-    max-width: 400px;
+    left: 50%;
   }
 }
-
-@media (max-width: 480px) {
-  .app-header {
-    height: 50px;
-  }
-
-  .header-sidebar {
-    padding: 0 8px 0 70px !important;
-  }
-
-  .header-controls {
-    gap: 2px;
-  }
-
-  .icon-btn {
-    width: 32px;
-    height: 32px;
-  }
-
-  .chat-title-bar {
-    width: 140px;
-    max-width: 30%;
-    height: 32px;
-    padding: 0 10px;
-    border-radius: 14px;
-  }
 
   .chat-title-text {
     font-size: 12px;
@@ -673,5 +652,4 @@ html[data-theme='light'] .search-overlay {
   .search-input {
     font-size: 14px;
   }
-}
 </style>

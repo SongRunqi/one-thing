@@ -55,12 +55,34 @@
   <!-- Normal user/assistant message -->
   <div v-else :class="['message', message.role, { highlighted: isHighlighted }]" :data-message-id="message.id">
     <div class="message-content-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
-      <!-- Waiting/Thinking status indicator (streaming) - outside bubble -->
-      <div v-if="message.isStreaming && !message.content" class="thinking-status">
-        <!-- Waiting: no reasoning yet, still waiting for API response -->
-        <span v-if="!message.reasoning" class="thinking-text flowing">Waiting</span>
-        <!-- Thinking: has reasoning, model is thinking -->
-        <span v-else class="thinking-text flowing">Thinking</span>
+      <!-- Waiting status (streaming, no content yet, no reasoning) -->
+      <div v-if="message.isStreaming && !message.content && !message.reasoning" class="thinking-status">
+        <div class="thinking-status-row">
+          <span class="thinking-text flowing">Waiting</span>
+          <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+        </div>
+      </div>
+
+      <!-- Thinking/Thought status (has reasoning) -->
+      <div v-if="message.reasoning" class="thinking-status">
+        <div class="thinking-with-content">
+          <div class="thinking-status-row" @click="toggleThinkingExpand">
+            <!-- Still thinking: animated -->
+            <span v-if="message.isStreaming && !message.content" class="thinking-text flowing">Thinking</span>
+            <!-- Done thinking: static "Thought for X seconds" -->
+            <span v-else class="thinking-text thought">Thought for {{ formatThinkingTime(finalThinkingTime) }}</span>
+            <!-- Show time separately only when still thinking -->
+            <span v-if="message.isStreaming && !message.content" class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+            <button class="thinking-toggle-btn" :class="{ expanded: isThinkingExpanded }">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </button>
+          </div>
+          <div v-if="isThinkingExpanded" class="thinking-content-wrapper">
+            <div class="thinking-content" v-html="renderMarkdown(message.reasoning)"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Message bubble - only show if there's content -->
@@ -91,7 +113,7 @@
                   @execute="handleToolExecute"
                 />
                 <!-- Waiting indicator (after tool call, before AI continues) -->
-                <div v-else-if="part.type === 'waiting'" class="thinking-status">
+                <div v-else-if="part.type === 'waiting'" class="thinking-status-inline">
                   <span class="thinking-text flowing">Waiting</span>
                 </div>
               </template>
@@ -260,6 +282,52 @@ const displayedContent = ref('')
 const isTyping = ref(false)
 let typewriterInterval: ReturnType<typeof setInterval> | null = null
 
+// Thinking state
+const isThinkingExpanded = ref(false) // Default collapsed after thinking done
+const thinkingElapsed = ref(0)
+const finalThinkingTime = ref(0) // Store final time when thinking ends
+let thinkingStartTime: number | null = null
+let thinkingTimer: ReturnType<typeof setInterval> | null = null
+
+// Toggle thinking content expand/collapse
+function toggleThinkingExpand() {
+  if (props.message.reasoning) {
+    isThinkingExpanded.value = !isThinkingExpanded.value
+  }
+}
+
+// Format thinking time (seconds -> mm:ss or ss.s)
+function formatThinkingTime(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}s`
+  }
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+// Start thinking timer
+function startThinkingTimer() {
+  if (thinkingTimer) return
+  thinkingStartTime = Date.now()
+  thinkingElapsed.value = 0
+  thinkingTimer = setInterval(() => {
+    if (thinkingStartTime) {
+      thinkingElapsed.value = (Date.now() - thinkingStartTime) / 1000
+    }
+  }, 100)
+}
+
+// Stop thinking timer
+function stopThinkingTimer() {
+  if (thinkingTimer) {
+    clearInterval(thinkingTimer)
+    thinkingTimer = null
+    // Save final time
+    finalThinkingTime.value = thinkingElapsed.value
+  }
+}
+
 // Configure marked with highlight.js
 marked.setOptions({
   breaks: true,
@@ -272,10 +340,13 @@ const renderer = new marked.Renderer()
 renderer.code = ({ text, lang }: { text: string; lang?: string }) => {
   const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext'
   const highlighted = hljs.highlight(text, { language }).value
-  return `<div class="code-block">
-    <div class="code-header">
-      <span class="code-lang">${language}</span>
-      <button class="code-copy" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.textContent)">Copy</button>
+  return `<div class="code-block-container">
+    <div class="code-block-header">
+      <div class="code-block-lang">${language}</div>
+      <button class="code-block-copy" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.textContent); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 2000)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span>Copy</span>
+      </button>
     </div>
     <pre><code class="hljs language-${language}">${highlighted}</code></pre>
   </div>`
@@ -378,11 +449,24 @@ watch(
   (newVal, oldVal) => {
     if (newVal && !oldVal) {
       startTypewriter()
+      startThinkingTimer()
     } else if (!newVal && oldVal) {
       stopTypewriter()
+      // Don't stop thinking timer here - it should stop when content arrives
     }
   },
   { immediate: true }
+)
+
+// Watch for content - stop thinking timer when content arrives
+watch(
+  () => props.message.content,
+  (newVal, oldVal) => {
+    // When content first appears, stop the thinking timer
+    if (newVal && !oldVal) {
+      stopThinkingTimer()
+    }
+  }
 )
 
 // Watch for content updates during streaming
@@ -398,6 +482,10 @@ watch(
 onMounted(() => {
   if (props.message.isStreaming) {
     startTypewriter()
+    // Only start thinking timer if no content yet
+    if (!props.message.content) {
+      startThinkingTimer()
+    }
   } else {
     displayedContent.value = props.message.content
   }
@@ -406,6 +494,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopTypewriter()
+  // Clean up timer without saving final time
+  if (thinkingTimer) {
+    clearInterval(thinkingTimer)
+    thinkingTimer = null
+  }
   document.removeEventListener('click', handleClickOutside)
 })
 
@@ -653,17 +746,13 @@ html[data-theme='light'] .message.assistant .bubble ::-moz-selection {
 .selection-toolbar {
   position: fixed;
   z-index: 9999;
-  background: rgba(24, 24, 27, 0.98);
+  background: var(--bg-elevated);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 4px;
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.3),
-    0 4px 6px -1px rgba(0, 0, 0, 0.3),
-    0 12px 24px -4px rgba(0, 0, 0, 0.4),
-    0 0 40px rgba(59, 130, 246, 0.08);
+  box-shadow: var(--shadow);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -801,18 +890,19 @@ html[data-theme='light'] .toolbar-divider {
 
 .message.assistant .message-content-wrapper {
   gap: 8px;
-  max-width: 85%;
-  margin: 0 auto;
+  max-width: 100%;
+  margin: 0; /* Remove auto margin to align with avatar and header */
 }
 
 .bubble {
-  max-width: 70%;
+  max-width: 80%;
   padding: 14px 18px;
-  border-radius: 20px;
-  border: none;
-  background: rgba(255, 255, 255, 0.05);
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
   position: relative;
   transition: all 0.2s ease;
+  box-shadow: var(--shadow);
 }
 
 /* Editing state - smoother transition */
@@ -827,19 +917,21 @@ html[data-theme='light'] .toolbar-divider {
   border-radius: 0;
   border: none;
   background: transparent;
+  box-shadow: none; /* Reset shadow for AI messages to avoid ghost border */
 }
 
 /* User message bubble - Modern gradient design */
 .message.user .bubble {
-  background: linear-gradient(135deg, rgba(75, 85, 99, 0.95) 0%, rgba(55, 65, 81, 0.98) 100%);
-  border-radius: 20px 20px 6px 20px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
-  border: none;
+  background: linear-gradient(135deg, #2d3139 0%, #1e1f23 100%);
+  border-radius: 18px 18px 4px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 html[data-theme='light'] .message.user .bubble {
-  background: linear-gradient(135deg, rgba(243, 244, 246, 0.98) 0%, rgba(229, 231, 235, 0.95) 100%);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: linear-gradient(135deg, #e3e8f0 0%, #f1f4f9 100%);
+  border-color: rgba(0, 98, 255, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
 .content {
@@ -852,7 +944,7 @@ html[data-theme='light'] .message.user .bubble {
 
 .message.user .content {
   line-height: 1.5;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--text);
 }
 
 html[data-theme='light'] .message.user .content {
@@ -1413,11 +1505,18 @@ html[data-theme='light'] .message.user .bubble.editing {
   transform: rotate(180deg);
 }
 
-/* Thinking status indicator - flowing text */
+/* Thinking status indicator */
 .thinking-status {
   padding: 8px 0;
   width: fit-content;
   max-width: 100%;
+}
+
+.thinking-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
 }
 
 .thinking-text {
@@ -1426,19 +1525,20 @@ html[data-theme='light'] .message.user .bubble.editing {
   color: var(--muted);
 }
 
-html[data-theme='light'] .thinking-text {
-  color: rgba(0, 0, 0, 0.45);
+.thinking-text.thought {
+  font-style: italic;
+  opacity: 0.8;
 }
 
 /* Flowing text animation - gradient sweeps from left to right */
 .thinking-text.flowing {
   background: linear-gradient(
     90deg,
-    rgba(120, 120, 128, 0.3) 0%,
-    rgba(120, 120, 128, 1) 25%,
-    rgba(120, 120, 128, 1) 50%,
-    rgba(120, 120, 128, 1) 75%,
-    rgba(120, 120, 128, 0.3) 100%
+    rgba(var(--accent-rgb), 0.3) 0%,
+    rgba(var(--accent-rgb), 1) 25%,
+    rgba(var(--accent-rgb), 1) 50%,
+    rgba(var(--accent-rgb), 1) 75%,
+    rgba(var(--accent-rgb), 0.3) 100%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;
@@ -1454,6 +1554,160 @@ html[data-theme='light'] .thinking-text {
   100% {
     background-position: -200% 0;
   }
+}
+
+.thinking-time {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  opacity: 0.7;
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+.thinking-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: rgba(120, 120, 128, 0.15);
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.thinking-toggle-btn:hover {
+  background: rgba(120, 120, 128, 0.25);
+}
+
+.thinking-toggle-btn svg {
+  transition: transform 0.2s ease;
+}
+
+.thinking-toggle-btn.expanded svg {
+  transform: rotate(180deg);
+}
+
+/* Thinking content display */
+.thinking-with-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.thinking-content-wrapper {
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border-radius: 10px;
+  border-left: 3px solid var(--accent);
+  max-height: 300px;
+  overflow-y: auto;
+  animation: fadeIn 0.2s ease;
+  box-shadow: var(--shadow);
+}
+
+.thinking-content {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  word-wrap: break-word;
+}
+
+.thinking-content :deep(p) {
+  margin: 0 0 0.5em 0;
+}
+
+.thinking-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* Scrollbar for thinking content */
+.thinking-content-wrapper::-webkit-scrollbar {
+  width: 4px;
+}
+
+.thinking-content-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thinking-content-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 128, 0.3);
+  border-radius: 2px;
+}
+
+/* Inline waiting status (after tool calls) */
+.thinking-status-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.thinking-status-inline .thinking-text {
+  font-size: 12px;
+}
+
+/* Code block container enhancements */
+.bubble :deep(.code-block-container) {
+  margin: 16px 0;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.bubble :deep(.code-block-header) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  -webkit-app-region: no-drag;
+}
+
+.bubble :deep(.code-block-lang) {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.8px;
+}
+
+.bubble :deep(.code-block-copy) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bubble :deep(.code-block-copy:hover) {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.bubble :deep(.code-block-copy svg) {
+  width: 12px;
+  height: 12px;
+}
+
+.bubble :deep(.code-block-container pre) {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  background: transparent;
 }
 
 .reasoning-content {
@@ -1478,7 +1732,7 @@ html[data-theme='light'] .thinking-text {
 }
 
 .reasoning-content::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.3);
+  background: rgba(var(--accent-rgb), 0.3);
   border-radius: 3px;
 }
 
@@ -1551,15 +1805,15 @@ html[data-theme='light'] .thinking-text {
 .reasoning-content :deep(blockquote) {
   margin: 0.6em 0;
   padding: 0.4em 0.8em;
-  border-left: 3px solid rgba(139, 92, 246, 0.5);
-  background: rgba(139, 92, 246, 0.08);
+  border-left: 3px solid var(--accent);
+  background: var(--hover);
   border-radius: 0 6px 6px 0;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--muted);
 }
 
 /* Links */
 .reasoning-content :deep(a) {
-  color: rgba(139, 92, 246, 0.9);
+  color: var(--accent);
   text-decoration: none;
   transition: color 0.15s ease;
 }
@@ -1641,62 +1895,17 @@ html[data-theme='light'] .thinking-text {
 }
 
 /* Light theme */
-html[data-theme='light'] .reasoning-section {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.06) 0%, rgba(59, 130, 246, 0.04) 100%);
-  border-color: rgba(139, 92, 246, 0.18);
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.06);
-}
-
-html[data-theme='light'] .reasoning-content-wrapper {
-  background: rgba(139, 92, 246, 0.03);
-}
-
 html[data-theme='light'] .reasoning-content {
-  color: rgba(0, 0, 0, 0.65);
-}
-
-html[data-theme='light'] .reasoning-content :deep(h1),
-html[data-theme='light'] .reasoning-content :deep(h2),
-html[data-theme='light'] .reasoning-content :deep(h3),
-html[data-theme='light'] .reasoning-content :deep(h4),
-html[data-theme='light'] .reasoning-content :deep(h5),
-html[data-theme='light'] .reasoning-content :deep(h6) {
-  color: rgba(0, 0, 0, 0.85);
-}
-
-html[data-theme='light'] .reasoning-content :deep(strong) {
-  color: rgba(0, 0, 0, 0.8);
-}
-
-html[data-theme='light'] .reasoning-content :deep(em) {
-  color: rgba(0, 0, 0, 0.7);
+  color: var(--text);
 }
 
 html[data-theme='light'] .reasoning-content :deep(blockquote) {
-  background: rgba(139, 92, 246, 0.06);
-  border-left-color: rgba(139, 92, 246, 0.4);
-  color: rgba(0, 0, 0, 0.7);
+  background: var(--panel-2);
 }
 
-html[data-theme='light'] .reasoning-content :deep(.inline-code),
-html[data-theme='light'] .reasoning-content :deep(code:not(pre code)) {
-  background: rgba(139, 92, 246, 0.12);
-  color: rgba(0, 0, 0, 0.8);
-}
-
-html[data-theme='light'] .reasoning-content :deep(.code-block),
-html[data-theme='light'] .reasoning-content :deep(pre) {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(139, 92, 246, 0.12);
-}
-
-html[data-theme='light'] .reasoning-content :deep(th) {
-  background: rgba(139, 92, 246, 0.1);
-  color: rgba(0, 0, 0, 0.85);
-}
-
-html[data-theme='light'] .reasoning-content :deep(tr:hover) {
-  background: rgba(139, 92, 246, 0.03);
+html[data-theme='light'] .reasoning-content :deep(th),
+html[data-theme='light'] .reasoning-content :deep(td) {
+  border-color: var(--border);
 }
 
 
@@ -1717,7 +1926,7 @@ html[data-theme='light'] .reasoning-content :deep(tr:hover) {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: rgb(139, 92, 246);
+  background: var(--accent); /* Sync with theme accent */
   animation: thinking-dot-bounce 1.4s ease-in-out infinite;
 }
 
@@ -1748,7 +1957,7 @@ html[data-theme='light'] .reasoning-content :deep(tr:hover) {
 .reasoning-content.is-streaming::after {
   content: '|';
   animation: cursor-blink 0.8s infinite;
-  color: rgb(139, 92, 246);
+  color: var(--accent); /* Sync with theme accent */
   font-weight: 300;
   margin-left: 2px;
 }
@@ -1760,8 +1969,8 @@ html[data-theme='light'] .reasoning-content :deep(tr:hover) {
 
 /* Is-thinking state enhancement */
 .reasoning-section.is-thinking {
-  border-color: rgba(139, 92, 246, 0.35);
-  box-shadow: 0 2px 12px rgba(139, 92, 246, 0.15);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  box-shadow: 0 2px 12px rgba(var(--accent-rgb), 0.15);
 }
 
 /* Responsive styles */
