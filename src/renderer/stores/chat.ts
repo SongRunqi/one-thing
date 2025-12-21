@@ -9,6 +9,12 @@ export const useChatStore = defineStore('chat', () => {
   const errorDetails = ref<string | null>(null) // Original API error details
   const generatingSessionId = ref<string | null>(null)
 
+  // Track currently viewed session (for filtering stream chunks)
+  const currentViewSessionId = ref<string | null>(null)
+
+  // Track all sessions with active streams (sessionId -> messageId)
+  const activeSessionStreams = ref<Map<string, string>>(new Map())
+
   // Stream cleanup functions
   const streamCleanups = ref<(() => void)[]>([])
 
@@ -28,17 +34,21 @@ export const useChatStore = defineStore('chat', () => {
     generatingSessionId.value !== null || messages.value.some(m => m.isStreaming)
   )
 
-  /**
-   * Rebuild contentParts for a message that has toolCalls but no contentParts
-   * This is needed when loading historical messages from storage
-   * Returns a new message object to ensure Vue reactivity
-   */
-  function rebuildContentParts(message: ChatMessage): ChatMessage {
-    if (message.role !== 'assistant') return message
-    if (message.contentParts && message.contentParts.length > 0) return message
-    if (!message.toolCalls || message.toolCalls.length === 0) return message
+  // Check if a specific session has an active stream
+  function isSessionGenerating(sessionId: string): boolean {
+    return activeSessionStreams.value.has(sessionId)
+  }
 
-    // Rebuild contentParts: text first, then tool calls
+  // Set the currently viewed session (called when switching sessions)
+  function setCurrentViewSession(sessionId: string | null) {
+    currentViewSessionId.value = sessionId
+  }
+
+  /**
+   * Rebuild contentParts from content and toolCalls for a streaming message
+   * This is used when switching back to a session that has an active stream
+   */
+  function rebuildContentPartsFromMessage(message: ChatMessage): ChatMessage['contentParts'] {
     const parts: ChatMessage['contentParts'] = []
 
     // Add text part if there's content
@@ -46,11 +56,112 @@ export const useChatStore = defineStore('chat', () => {
       parts.push({ type: 'text', content: message.content })
     }
 
-    // Add tool-call part with all tool calls
-    parts.push({ type: 'tool-call', toolCalls: [...message.toolCalls] })
+    // Add tool-call part if there are tool calls
+    if (message.toolCalls && message.toolCalls.length > 0) {
+      parts.push({ type: 'tool-call', toolCalls: [...message.toolCalls] })
+    }
 
-    // Return new object to ensure Vue reactivity
-    return { ...message, contentParts: parts }
+    // If message is still streaming and has tool calls with results,
+    // add a waiting indicator (AI is continuing after tool execution)
+    if (message.isStreaming && message.toolCalls && message.toolCalls.length > 0) {
+      const lastToolCall = message.toolCalls[message.toolCalls.length - 1]
+      // If the last tool call has a result, AI might be continuing
+      if (lastToolCall.result !== undefined) {
+        parts.push({ type: 'waiting' })
+      }
+    }
+
+    return parts
+  }
+
+  /**
+   * Merge backend message data into the current streaming message
+   * Called when switching back to a session with an active stream
+   */
+  function mergeBackendMessageToStreaming(
+    streamingMessageId: string,
+    backendMessages: ChatMessage[]
+  ) {
+    console.log('[Chat] mergeBackendMessageToStreaming called:', {
+      streamingMessageId,
+      backendMessagesCount: backendMessages.length,
+      backendMessageIds: backendMessages.map(m => m.id)
+    })
+
+    const backendMessage = backendMessages.find(m => m.id === streamingMessageId)
+    if (!backendMessage) {
+      console.warn('[Chat] Backend message not found for streaming ID:', streamingMessageId)
+      return
+    }
+
+    console.log('[Chat] Found backend message:', {
+      id: backendMessage.id,
+      contentLength: backendMessage.content?.length,
+      hasContentParts: !!backendMessage.contentParts?.length
+    })
+
+    const currentMessage = messages.value.find(m => m.id === streamingMessageId)
+    if (!currentMessage) {
+      console.warn('[Chat] Current message not found for streaming ID:', streamingMessageId)
+      return
+    }
+
+    // Update with accumulated content from backend
+    currentMessage.content = backendMessage.content
+    currentMessage.reasoning = backendMessage.reasoning
+    currentMessage.toolCalls = backendMessage.toolCalls
+
+    // Preserve thinkingStartTime for timer calculation
+    if (backendMessage.thinkingStartTime) {
+      currentMessage.thinkingStartTime = backendMessage.thinkingStartTime
+    }
+
+    // Preserve thinkingTime for display after thinking ends
+    if (backendMessage.thinkingTime) {
+      currentMessage.thinkingTime = backendMessage.thinkingTime
+    }
+
+    // Rebuild contentParts from the accumulated data
+    currentMessage.contentParts = rebuildContentPartsFromMessage(backendMessage)
+
+    // Keep streaming flag
+    currentMessage.isStreaming = true
+
+    console.log('[Chat] Updated streaming message:', {
+      contentLength: currentMessage.content?.length,
+      contentPartsCount: currentMessage.contentParts?.length,
+      hasThinkingStartTime: !!currentMessage.thinkingStartTime
+    })
+  }
+
+  /**
+   * Rebuild contentParts for a message from content and/or toolCalls
+   * This is needed when loading historical messages from storage
+   * Returns a new message object to ensure Vue reactivity
+   */
+  function rebuildContentParts(message: ChatMessage): ChatMessage {
+    if (message.role !== 'assistant') return message
+    if (message.contentParts && message.contentParts.length > 0) return message
+
+    // Rebuild contentParts from content and/or toolCalls
+    const parts: ChatMessage['contentParts'] = []
+
+    // Add text part if there's content
+    if (message.content) {
+      parts.push({ type: 'text', content: message.content })
+    }
+
+    // Add tool-call part if there are tool calls
+    if (message.toolCalls && message.toolCalls.length > 0) {
+      parts.push({ type: 'tool-call', toolCalls: [...message.toolCalls] })
+    }
+
+    // Only return new object if we rebuilt something
+    if (parts.length > 0) {
+      return { ...message, contentParts: parts }
+    }
+
+    return message
   }
 
   function setMessages(newMessages: ChatMessage[]) {
@@ -269,6 +380,9 @@ export const useChatStore = defineStore('chat', () => {
 
       assistantMessageId = response.messageId
 
+      // Track this session's active stream
+      activeSessionStreams.value.set(sessionId, assistantMessageId)
+
       // Replace temp user message with actual message from server
       if (response.userMessage) {
         console.log('[Frontend] Received user message from backend with id:', response.userMessage.id)
@@ -305,6 +419,12 @@ export const useChatStore = defineStore('chat', () => {
       // Set up event listeners for streaming
       unsubscribeChunk = window.electronAPI.onStreamChunk((chunk) => {
         console.log('[Frontend] Received stream chunk:', chunk)
+        // Only update UI if this chunk is for the currently viewed session
+        // (Backend already saves content regardless of which session is viewed)
+        if (chunk.sessionId && chunk.sessionId !== currentViewSessionId.value) {
+          console.log('[Frontend] Chunk for different session, skipping UI update')
+          return
+        }
         if (chunk.messageId === assistantMessageId) {
           const message = messages.value.find(m => m.id === assistantMessageId)
           if (!message) return
@@ -408,6 +528,22 @@ export const useChatStore = defineStore('chat', () => {
         console.log('[Frontend] Received stream error:', data)
         if (data.messageId === assistantMessageId) {
           console.log('[Frontend] Stream error for current message:', data.error)
+
+          // Remove from active streams
+          if (data.sessionId) {
+            activeSessionStreams.value.delete(data.sessionId)
+          }
+
+          // Only update UI if this is for the currently viewed session
+          if (data.sessionId && data.sessionId !== currentViewSessionId.value) {
+            console.log('[Frontend] Error for different session, skipping UI update')
+            // Still clean up listeners
+            if (unsubscribeChunk) unsubscribeChunk()
+            if (unsubscribeComplete) unsubscribeComplete()
+            if (unsubscribeError) unsubscribeError()
+            return
+          }
+
           error.value = data.error || 'Streaming error'
           errorDetails.value = data.errorDetails || null
 
@@ -444,25 +580,35 @@ export const useChatStore = defineStore('chat', () => {
           if (data.messageId === assistantMessageId) {
             console.log('[Frontend] Stream complete for current message')
 
-            // Remove any remaining waiting indicator from contentParts
-            const message = messages.value.find(m => m.id === assistantMessageId)
-            if (message?.contentParts) {
-              const lastPart = message.contentParts[message.contentParts.length - 1]
-              if (lastPart && lastPart.type === 'waiting') {
-                message.contentParts.pop()
-              }
-
-              // Save contentParts to backend if there are any
-              if (message.contentParts.length > 0) {
-                console.log('[Frontend] Saving contentParts to backend:', message.contentParts.length, 'parts')
-                // Deep clone to remove Vue reactive proxy (can't be cloned by IPC)
-                const plainContentParts = JSON.parse(JSON.stringify(message.contentParts))
-                await window.electronAPI.updateContentParts(sessionId, assistantMessageId!, plainContentParts)
-              }
+            // Remove from active streams
+            if (data.sessionId) {
+              activeSessionStreams.value.delete(data.sessionId)
             }
 
-            // Mark message as not streaming
-            updateMessage(assistantMessageId!, { isStreaming: false })
+            // Only update UI if this is for the currently viewed session
+            const isCurrentSession = !data.sessionId || data.sessionId === currentViewSessionId.value
+
+            if (isCurrentSession) {
+              // Remove any remaining waiting indicator from contentParts
+              const message = messages.value.find(m => m.id === assistantMessageId)
+              if (message?.contentParts) {
+                const lastPart = message.contentParts[message.contentParts.length - 1]
+                if (lastPart && lastPart.type === 'waiting') {
+                  message.contentParts.pop()
+                }
+
+                // Save contentParts to backend if there are any
+                if (message.contentParts.length > 0) {
+                  console.log('[Frontend] Saving contentParts to backend:', message.contentParts.length, 'parts')
+                  // Deep clone to remove Vue reactive proxy (can't be cloned by IPC)
+                  const plainContentParts = JSON.parse(JSON.stringify(message.contentParts))
+                  await window.electronAPI.updateContentParts(sessionId, assistantMessageId!, plainContentParts)
+                }
+              }
+
+              // Mark message as not streaming
+              updateMessage(assistantMessageId!, { isStreaming: false })
+            }
 
             // Clean up listeners
             if (unsubscribeChunk) unsubscribeChunk()
@@ -744,6 +890,8 @@ export const useChatStore = defineStore('chat', () => {
     isLoading,
     isGenerating,
     generatingSessionId,
+    activeSessionStreams,
+    currentViewSessionId,
     error,
     errorDetails,
     messageCount,
@@ -760,5 +908,8 @@ export const useChatStore = defineStore('chat', () => {
     editAndResend,
     regenerate,
     cleanupStreamListeners,
+    isSessionGenerating,
+    setCurrentViewSession,
+    mergeBackendMessageToStreaming,
   }
 })

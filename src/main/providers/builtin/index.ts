@@ -14,6 +14,7 @@ import claude from './claude.js'
 import deepseek from './deepseek.js'
 import kimi from './kimi.js'
 import zhipu from './zhipu.js'
+import openrouter from './openrouter.js'
 
 import type { ProviderDefinition } from '../types.js'
 
@@ -24,6 +25,7 @@ export const builtinProviders: ProviderDefinition[] = [
   deepseek,
   kimi,
   zhipu,
+  openrouter,
 ]
 
 export default builtinProviders

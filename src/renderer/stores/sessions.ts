@@ -58,10 +58,29 @@ export const useSessionsStore = defineStore('sessions', () => {
     try {
       const response = await window.electronAPI.switchSession(sessionId)
       if (response.success && response.session) {
-        currentSessionId.value = sessionId
-        // Update chat store with the session's messages
         const chatStore = useChatStore()
+
+        currentSessionId.value = sessionId
+
+        // 1. FIRST: Set the current view session to allow new chunks to be processed
+        chatStore.setCurrentViewSession(sessionId)
+
+        // 2. Check if the target session has an active stream
+        const hasActiveStream = chatStore.activeSessionStreams.has(sessionId)
+        const streamingMessageId = chatStore.activeSessionStreams.get(sessionId)
+
+        // 3. Load from backend (which has accumulated content)
         chatStore.setMessages(response.session.messages || [])
+
+        // 4. If there's an active stream, ensure contentParts is rebuilt
+        // (in case setMessages didn't fully reconstruct it)
+        if (hasActiveStream && streamingMessageId) {
+          chatStore.mergeBackendMessageToStreaming(
+            streamingMessageId,
+            response.session.messages || []
+          )
+        }
+
         return response.session
       }
     } catch (error) {

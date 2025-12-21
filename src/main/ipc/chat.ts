@@ -19,7 +19,7 @@ import {
   createToolCall,
 } from '../tools/index.js'
 import type { ToolCall, ToolSettings } from '../../shared/ipc.js'
-import { getMCPToolsForAI, isMCPTool, executeMCPTool } from '../mcp/index.js'
+import { getMCPToolsForAI, isMCPTool, executeMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '../mcp/index.js'
 import { getLoadedSkills } from './skills.js'
 import { buildSkillsAwarenessPrompt, buildSkillsDirectPrompt } from '../skills/prompt-builder.js'
 import type { SkillDefinition } from '../../shared/ipc.js'
@@ -53,8 +53,9 @@ function buildHistoryMessages(messages: ChatMessage[]): Array<{
     })
 }
 
-// Store active AbortController for stream cancellation
-let activeStreamAbortController: AbortController | null = null
+// Store active AbortControllers per session for stream cancellation
+// Key: sessionId, Value: AbortController
+const activeStreams = new Map<string, AbortController>()
 
 // Base system prompt to control tool usage behavior
 const BASE_SYSTEM_PROMPT = `You are a helpful assistant. You have access to tools, but you should ONLY use them when the user's request specifically requires their functionality.
@@ -210,6 +211,7 @@ function createStreamProcessor(ctx: StreamContext): StreamProcessor {
         type: 'text',
         content: text,
         messageId: ctx.assistantMessageId,
+        sessionId: ctx.sessionId,
       })
     },
 
@@ -221,6 +223,7 @@ function createStreamProcessor(ctx: StreamContext): StreamProcessor {
         type: 'reasoning',
         content: '',
         messageId: ctx.assistantMessageId,
+        sessionId: ctx.sessionId,
         reasoning,
       })
     },
@@ -230,9 +233,40 @@ function createStreamProcessor(ctx: StreamContext): StreamProcessor {
       toolName: string
       args: Record<string, any>
     }): ToolCall {
+      // Resolve tool ID - AI models may return short names like "get-library-docs"
+      // instead of full IDs like "mcp_serverId_get-library-docs"
+      let toolId = toolCallData.toolName
+      let displayName = toolCallData.toolName
+      let isMcp = false
+
+      if (isMCPTool(toolCallData.toolName)) {
+        // Already a full MCP tool ID
+        toolId = toolCallData.toolName
+        isMcp = true
+      } else {
+        // Try to find full MCP tool ID from short name or server name
+        const fullId = findMCPToolIdByShortName(toolCallData.toolName, toolCallData.args)
+        if (fullId) {
+          console.log(`[Backend] Resolved short tool name "${toolCallData.toolName}" to full ID "${fullId}"`)
+          toolId = fullId
+          isMcp = true
+        }
+      }
+
+      // For MCP tools, show the MCP server's display name
+      // For regular tools, show the tool name
+      if (isMcp) {
+        const parsed = parseMCPToolId(toolId)
+        if (parsed) {
+          // Get the server's display name from MCPManager
+          const serverState = MCPManager.getServerState(parsed.serverId)
+          displayName = serverState?.config.name || parsed.serverId
+        }
+      }
+
       const toolCall = createToolCall(
-        toolCallData.toolName,
-        toolCallData.toolName,
+        toolId,        // toolId: use full ID for execution
+        displayName,   // toolName: use readable name for display
         toolCallData.args
       )
       toolCall.id = toolCallData.toolCallId
@@ -243,6 +277,7 @@ function createStreamProcessor(ctx: StreamContext): StreamProcessor {
         type: 'tool_call',
         content: '',
         messageId: ctx.assistantMessageId,
+        sessionId: ctx.sessionId,
         toolCall,
       })
 
@@ -267,6 +302,15 @@ async function executeToolAndUpdate(
   toolCall.status = 'executing'
   toolCall.startTime = Date.now()
   store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+
+  // Send executing status to frontend so UI shows "Calling..." with spinner
+  ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+    type: 'tool_call',
+    content: '',
+    messageId: ctx.assistantMessageId,
+    sessionId: ctx.sessionId,
+    toolCall,
+  })
 
   let result: {
     success: boolean
@@ -309,6 +353,7 @@ async function executeToolAndUpdate(
     type: 'tool_result',
     content: '',
     messageId: ctx.assistantMessageId,
+    sessionId: ctx.sessionId,
     toolCall,
   })
 }
@@ -361,11 +406,17 @@ async function runToolLoop(
         const toolCall = processor.handleToolCallChunk(chunk.toolCall)
         toolCallsThisTurn.push(toolCall)
 
-        const shouldAutoExecute = isMCPTool(chunk.toolCall.toolName) ||
-          canAutoExecute(chunk.toolCall.toolName, ctx.toolSettings?.tools)
+        // Use resolved toolId (from handleToolCallChunk) for checking,
+        // as AI models may return short names that we've resolved to full IDs
+        const shouldAutoExecute = isMCPTool(toolCall.toolId) ||
+          canAutoExecute(toolCall.toolId, ctx.toolSettings?.tools)
 
         if (shouldAutoExecute) {
-          await executeToolAndUpdate(ctx, toolCall, chunk.toolCall, processor.toolCalls)
+          // Pass the resolved toolId for execution
+          await executeToolAndUpdate(ctx, toolCall, {
+            toolName: toolCall.toolId,
+            args: chunk.toolCall.args
+          }, processor.toolCalls)
         }
       }
     }
@@ -423,6 +474,7 @@ async function runToolLoop(
       type: 'continuation',
       content: '',
       messageId: ctx.assistantMessageId,
+      sessionId: ctx.sessionId,
     })
   }
 
@@ -477,8 +529,9 @@ async function executeStreamGeneration(
   try {
     console.log('[Backend] Starting streaming for message:', ctx.assistantMessageId)
 
-    // Get enabled tools
-    const enabledTools = ctx.toolSettings?.enableToolCalls ? getEnabledTools() : []
+    // Get enabled tools (filter out MCP tools since they're handled separately with sanitized names)
+    const allEnabledTools = ctx.toolSettings?.enableToolCalls ? getEnabledTools() : []
+    const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
     const mcpTools = ctx.toolSettings?.enableToolCalls ? getMCPToolsForAI() : {}
     const hasTools = enabledTools.length > 0 || Object.keys(mcpTools).length > 0
 
@@ -508,6 +561,7 @@ async function executeStreamGeneration(
     const updatedSession = store.getSession(ctx.sessionId)
     ctx.sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
       messageId: ctx.assistantMessageId,
+      sessionId: ctx.sessionId,
       sessionName: updatedSession?.name || sessionName,
     })
     console.log('[Backend] Streaming complete')
@@ -520,6 +574,7 @@ async function executeStreamGeneration(
       processor.finalize()
       ctx.sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
         messageId: ctx.assistantMessageId,
+        sessionId: ctx.sessionId,
         sessionName: store.getSession(ctx.sessionId)?.name,
         aborted: true,
       })
@@ -527,6 +582,7 @@ async function executeStreamGeneration(
       console.error('[Backend] Streaming error:', error)
       ctx.sender.send(IPC_CHANNELS.STREAM_ERROR, {
         messageId: ctx.assistantMessageId,
+        sessionId: ctx.sessionId,
         error: error.message || 'Streaming error',
         errorDetails: extractErrorDetails(error),
       })
@@ -585,15 +641,38 @@ export function registerChatHandlers() {
     return { success: updated }
   })
 
-  // 中止当前流式请求
-  ipcMain.handle(IPC_CHANNELS.ABORT_STREAM, async () => {
-    if (activeStreamAbortController) {
-      console.log('[Backend] Aborting active stream')
-      activeStreamAbortController.abort()
-      activeStreamAbortController = null
-      return { success: true }
+  // 中止当前流式请求 (支持指定 sessionId)
+  ipcMain.handle(IPC_CHANNELS.ABORT_STREAM, async (_event, { sessionId } = {}) => {
+    if (sessionId) {
+      // Abort specific session's stream
+      const controller = activeStreams.get(sessionId)
+      if (controller) {
+        console.log(`[Backend] Aborting stream for session: ${sessionId}`)
+        controller.abort()
+        activeStreams.delete(sessionId)
+        return { success: true }
+      }
+      return { success: false, error: 'No active stream for this session' }
+    } else {
+      // Abort all streams (backwards compatibility)
+      if (activeStreams.size > 0) {
+        console.log(`[Backend] Aborting all active streams (${activeStreams.size})`)
+        for (const [sid, controller] of activeStreams) {
+          controller.abort()
+        }
+        activeStreams.clear()
+        return { success: true }
+      }
+      return { success: false, error: 'No active streams to abort' }
     }
-    return { success: false, error: 'No active stream to abort' }
+  })
+
+  // Get active streaming sessions
+  ipcMain.handle(IPC_CHANNELS.GET_ACTIVE_STREAMS, async () => {
+    return {
+      success: true,
+      sessionIds: Array.from(activeStreams.keys())
+    }
   })
 }
 
@@ -706,6 +785,7 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
       content: '',
       timestamp: Date.now(),
       isStreaming: true,
+      thinkingStartTime: Date.now(),
       toolCalls: [],
     }
     store.addMessage(sessionId, assistantMessage)
@@ -722,13 +802,14 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
 
     // Start streaming in background using shared infrastructure
     process.nextTick(async () => {
-      activeStreamAbortController = new AbortController()
+      const abortController = new AbortController()
+      activeStreams.set(sessionId, abortController)
 
       const ctx: StreamContext = {
         sender,
         sessionId,
         assistantMessageId,
-        abortSignal: activeStreamAbortController.signal,
+        abortSignal: abortController.signal,
         settings,
         providerConfig,
         providerId,
@@ -738,7 +819,7 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
       try {
         await executeStreamGeneration(ctx, historyMessages, session?.name)
       } finally {
-        activeStreamAbortController = null
+        activeStreams.delete(sessionId)
       }
     })
 
@@ -954,6 +1035,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       content: '',
       timestamp: Date.now(),
       isStreaming: true,
+      thinkingStartTime: Date.now(),
       toolCalls: [],
     }
     store.addMessage(sessionId, assistantMessage)
@@ -967,7 +1049,8 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
 
     // Start streaming in background using shared infrastructure
     process.nextTick(async () => {
-      activeStreamAbortController = new AbortController()
+      const abortController = new AbortController()
+      activeStreams.set(sessionId, abortController)
 
       // Build history from updated session (includes user message)
       const sessionForHistory = store.getSession(sessionId)
@@ -977,7 +1060,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
         sender,
         sessionId,
         assistantMessageId,
-        abortSignal: activeStreamAbortController.signal,
+        abortSignal: abortController.signal,
         settings,
         providerConfig,
         providerId,
@@ -987,7 +1070,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       try {
         await executeStreamGeneration(ctx, historyMessages, session?.name)
       } finally {
-        activeStreamAbortController = null
+        activeStreams.delete(sessionId)
       }
     })
 

@@ -31,7 +31,10 @@ import {
   type MCPGetPromptsResponse,
   type MCPGetPromptRequest,
   type MCPGetPromptResponse,
+  type MCPReadConfigFileRequest,
+  type MCPReadConfigFileResponse,
 } from '../../shared/ipc.js'
+import * as fs from 'fs'
 import { MCPManager, registerMCPTools } from '../mcp/index.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
 
@@ -97,15 +100,18 @@ async function handleAddServer(request: MCPAddServerRequest): Promise<MCPAddServ
 
     const serverState = MCPManager.getServerState(config.id)
 
+    // Create a clean copy for IPC serialization
+    const cleanState = serverState ? JSON.parse(JSON.stringify(serverState)) : {
+      config,
+      status: 'disconnected',
+      tools: [],
+      resources: [],
+      prompts: [],
+    }
+
     return {
       success: true,
-      server: serverState || {
-        config,
-        status: 'disconnected',
-        tools: [],
-        resources: [],
-        prompts: [],
-      },
+      server: cleanState,
     }
   } catch (error: any) {
     console.error('[MCP IPC] Failed to add server:', error)
@@ -400,6 +406,36 @@ async function handleGetPrompt(request: MCPGetPromptRequest): Promise<MCPGetProm
 }
 
 /**
+ * Handle read config file (for importing MCP configurations)
+ */
+async function handleReadConfigFile(request: MCPReadConfigFileRequest): Promise<MCPReadConfigFileResponse> {
+  try {
+    const { filePath } = request
+
+    if (!fs.existsSync(filePath)) {
+      return {
+        success: false,
+        error: 'File not found',
+      }
+    }
+
+    const content = fs.readFileSync(filePath, 'utf-8')
+    const parsed = JSON.parse(content)
+
+    return {
+      success: true,
+      content: parsed,
+    }
+  } catch (error: any) {
+    console.error('[MCP IPC] Failed to read config file:', error)
+    return {
+      success: false,
+      error: error.message || 'Failed to read config file',
+    }
+  }
+}
+
+/**
  * Register all MCP IPC handlers
  */
 export function registerMCPHandlers(): void {
@@ -418,6 +454,7 @@ export function registerMCPHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.MCP_READ_RESOURCE, (_event, request: MCPReadResourceRequest) => handleReadResource(request))
   ipcMain.handle(IPC_CHANNELS.MCP_GET_PROMPTS, handleGetPrompts)
   ipcMain.handle(IPC_CHANNELS.MCP_GET_PROMPT, (_event, request: MCPGetPromptRequest) => handleGetPrompt(request))
+  ipcMain.handle(IPC_CHANNELS.MCP_READ_CONFIG_FILE, (_event, request: MCPReadConfigFileRequest) => handleReadConfigFile(request))
 
   console.log('[MCP IPC] Handlers registered')
 }

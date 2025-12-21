@@ -114,6 +114,16 @@ function handleSetInputText(text: string) {
     inputBoxRef.value.setMessageInput(text)
   }
 }
+
+// Focus the input box (for keyboard shortcuts)
+function focusInput() {
+  inputBoxRef.value?.focus()
+}
+
+// Expose methods for parent component
+defineExpose({
+  focusInput,
+})
 </script>
 
 <style scoped>

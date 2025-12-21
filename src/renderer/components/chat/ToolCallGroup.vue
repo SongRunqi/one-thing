@@ -1,9 +1,10 @@
 <template>
   <div :class="['tool-call-status', statusClass]">
-    <!-- Executing: show animated calling status -->
+    <!-- Executing: flowing text animation -->
     <template v-if="hasExecuting">
-      <svg class="status-icon spinning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+      <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <polyline points="12 6 12 12 16 14"/>
       </svg>
       <span class="status-text flowing">{{ executingText }}</span>
     </template>
@@ -27,13 +28,13 @@
       <span class="status-text">{{ failedText }}</span>
     </template>
 
-    <!-- Pending -->
+    <!-- Pending: flowing text animation but static clock icon -->
     <template v-else>
       <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10"/>
         <polyline points="12 6 12 12 16 14"/>
       </svg>
-      <span class="status-text">{{ pendingText }}</span>
+      <span class="status-text flowing">{{ pendingText }}</span>
     </template>
   </div>
 </template>
@@ -130,8 +131,9 @@ const pendingText = computed(() => {
   color: var(--muted);
 }
 
-.tool-call-status.executing .status-icon {
-  color: rgb(59, 130, 246);
+.tool-call-status.executing .status-icon,
+.tool-call-status.pending .status-icon {
+  color: var(--accent);
 }
 
 .tool-call-status.completed .status-icon {
@@ -140,15 +142,6 @@ const pendingText = computed(() => {
 
 .tool-call-status.failed .status-icon {
   color: rgb(239, 68, 68);
-}
-
-.spinning {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 .status-text {
@@ -161,15 +154,15 @@ const pendingText = computed(() => {
   color: rgb(239, 68, 68);
 }
 
-/* Flowing animation for executing state */
+/* Flowing text animation - gradient sweeps from left to right (matches Thinking animation) */
 .status-text.flowing {
   background: linear-gradient(
     90deg,
-    rgba(59, 130, 246, 0.4) 0%,
-    rgba(59, 130, 246, 1) 25%,
-    rgba(59, 130, 246, 1) 50%,
-    rgba(59, 130, 246, 1) 75%,
-    rgba(59, 130, 246, 0.4) 100%
+    rgba(var(--accent-rgb), 0.3) 0%,
+    rgba(var(--accent-rgb), 1) 25%,
+    rgba(var(--accent-rgb), 1) 50%,
+    rgba(var(--accent-rgb), 1) 75%,
+    rgba(var(--accent-rgb), 0.3) 100%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;

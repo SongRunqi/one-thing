@@ -35,4 +35,5 @@ export {
   parseMCPToolId,
   isMCPTool,
   executeMCPTool,
+  findMCPToolIdByShortName,
 } from './bridge.js'

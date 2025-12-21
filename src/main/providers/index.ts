@@ -504,18 +504,34 @@ export async function* streamChatResponseWithTools(
     }
   }
 
+  // Check if this is a DeepSeek Reasoner model (requires reasoning_content in all assistant messages)
+  const isDeepSeekReasoner = isReasoning && config.model.toLowerCase().includes('deepseek')
+
   // Convert messages to AI SDK CoreMessage format
+  // For DeepSeek Reasoner, reasoning must be included as { type: 'reasoning', text: ... } parts
+  // in the content array, not as a separate reasoning_content field
   const convertedMessages: any[] = messages.map(msg => {
     if (msg.role === 'user' || msg.role === 'system') {
       return { role: msg.role, content: msg.content }
     }
     if (msg.role === 'assistant') {
-      // Assistant message with optional tool calls and reasoning content
+      // Build content array with reasoning, text, and tool calls
+      const content: any[] = []
+
+      // For DeepSeek Reasoner, reasoning must be included as a content part
+      // The provider's convertToDeepSeekChatMessages extracts { type: 'reasoning' } parts
+      // and converts them to reasoning_content for the API
+      if (isDeepSeekReasoner && msg.reasoningContent) {
+        content.push({ type: 'reasoning', text: msg.reasoningContent })
+      }
+
+      // Add text content
+      if (msg.content) {
+        content.push({ type: 'text', text: msg.content })
+      }
+
+      // Add tool calls
       if (msg.toolCalls && msg.toolCalls.length > 0) {
-        const content: any[] = []
-        if (msg.content) {
-          content.push({ type: 'text', text: msg.content })
-        }
         for (const tc of msg.toolCalls) {
           content.push({
             type: 'tool-call',
@@ -524,20 +540,14 @@ export async function* streamChatResponseWithTools(
             input: tc.args || {},  // DeepSeek provider expects 'input' not 'args'
           })
         }
-        const assistantMsg: any = { role: 'assistant', content }
-        // Include reasoning_content for DeepSeek Reasoner (required for tool calls in thinking mode)
-        if (msg.reasoningContent) {
-          assistantMsg.reasoning_content = msg.reasoningContent
-        }
-        return assistantMsg
       }
-      // Regular assistant message (no tool calls)
-      const assistantMsg: any = { role: 'assistant', content: msg.content }
-      // Include reasoning_content for DeepSeek Reasoner (required in thinking mode)
-      if (msg.reasoningContent) {
-        assistantMsg.reasoning_content = msg.reasoningContent
+
+      // If no content parts, use empty string for content (required by API)
+      if (content.length === 0) {
+        return { role: 'assistant', content: '' }
       }
-      return assistantMsg
+
+      return { role: 'assistant', content }
     }
     if (msg.role === 'tool') {
       // Tool result message - convert to AI SDK expected format

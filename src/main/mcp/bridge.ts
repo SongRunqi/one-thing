@@ -12,6 +12,21 @@ import { registerTool, unregisterTool, getAllTools } from '../tools/registry.js'
 import { z } from 'zod'
 
 /**
+ * Mapping from sanitized tool IDs to original MCP tool info
+ * This is needed because API requires tool names to match ^[a-zA-Z0-9_-]+
+ * but MCP tool names may contain dots and other characters
+ */
+const sanitizedToOriginalMap = new Map<string, { serverId: string; toolName: string }>()
+
+/**
+ * Sanitize a string to match the API tool name pattern: ^[a-zA-Z0-9_-]+
+ * Replaces invalid characters with hyphens
+ */
+function sanitizeForToolName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_-]/g, '-')
+}
+
+/**
  * Convert MCP tool to internal ToolDefinition format
  */
 export function mcpToolToToolDefinition(mcpTool: MCPToolInfo): ToolDefinition {
@@ -162,10 +177,22 @@ export function getMCPToolsForAI(): Record<string, { description: string; parame
     return result
   }
 
+  // Clear the mapping before rebuilding
+  sanitizedToOriginalMap.clear()
+
   const mcpTools = MCPManager.getAllTools()
 
   for (const mcpTool of mcpTools) {
-    const toolId = `mcp_${mcpTool.serverId}_${mcpTool.name}`
+    // Sanitize serverId and toolName to match API pattern ^[a-zA-Z0-9_-]+
+    const sanitizedServerId = sanitizeForToolName(mcpTool.serverId)
+    const sanitizedToolName = sanitizeForToolName(mcpTool.name)
+    const toolId = `mcp_${sanitizedServerId}_${sanitizedToolName}`
+
+    // Store mapping from sanitized ID to original values
+    sanitizedToOriginalMap.set(toolId, {
+      serverId: mcpTool.serverId,
+      toolName: mcpTool.name,
+    })
 
     // Convert JSON Schema properties to parameter array format
     const parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> = []
@@ -252,8 +279,15 @@ export async function registerMCPTools(): Promise<void> {
 
 /**
  * Parse MCP tool ID to extract server ID and tool name
+ * Uses the sanitized-to-original mapping when available
  */
 export function parseMCPToolId(toolId: string): { serverId: string; toolName: string } | null {
+  // First, check the sanitized-to-original mapping
+  const mapped = sanitizedToOriginalMap.get(toolId)
+  if (mapped) {
+    return mapped
+  }
+
   // Handle both formats: "mcp:serverId:toolName" and "mcp_serverId_toolName"
   if (toolId.startsWith('mcp:')) {
     const parts = toolId.slice(4).split(':')
@@ -283,6 +317,85 @@ export function parseMCPToolId(toolId: string): { serverId: string; toolName: st
  */
 export function isMCPTool(toolId: string): boolean {
   return toolId.startsWith('mcp:') || toolId.startsWith('mcp_')
+}
+
+/**
+ * Find a tool that matches the given input parameters
+ * Returns the tool with the most matching parameter names
+ */
+function findToolByParameters(
+  tools: MCPToolInfo[],
+  args: Record<string, any>
+): MCPToolInfo | null {
+  const argNames = Object.keys(args)
+
+  let bestMatch: MCPToolInfo | null = null
+  let bestScore = 0
+
+  for (const tool of tools) {
+    if (!tool.inputSchema.properties) continue
+
+    const toolParams = Object.keys(tool.inputSchema.properties)
+    // Count matching parameter names
+    const matchCount = argNames.filter(name => toolParams.includes(name)).length
+
+    if (matchCount > bestScore) {
+      bestScore = matchCount
+      bestMatch = tool
+    }
+  }
+
+  return bestMatch
+}
+
+/**
+ * Find full MCP tool ID by short tool name or server name
+ * This handles cases where AI models return:
+ * 1. Short tool names like "get-library-docs"
+ * 2. Server names like "context7" (when displaying server name in UI)
+ */
+export function findMCPToolIdByShortName(
+  shortName: string,
+  args?: Record<string, any>
+): string | null {
+  // Sanitize the input name for comparison
+  const sanitizedInput = sanitizeForToolName(shortName)
+
+  // First, try to match by tool name
+  for (const [fullId, original] of sanitizedToOriginalMap.entries()) {
+    // Check if the original tool name matches
+    if (original.toolName === shortName) {
+      return fullId
+    }
+    // Also check sanitized version
+    const sanitizedOriginal = sanitizeForToolName(original.toolName)
+    if (sanitizedOriginal === sanitizedInput) {
+      return fullId
+    }
+  }
+
+  // If no match by tool name, check if it matches a server name
+  // and try to find a matching tool based on input parameters
+  if (args && Object.keys(args).length > 0) {
+    const serverStates = MCPManager.getServerStates()
+
+    for (const state of serverStates) {
+      // Check if the short name matches this server's name
+      if (state.config.name === shortName ||
+          sanitizeForToolName(state.config.name) === sanitizedInput) {
+        // Find the tool in this server that best matches the input parameters
+        const matchingTool = findToolByParameters(state.tools, args)
+        if (matchingTool) {
+          // Return the full tool ID
+          const sanitizedServerId = sanitizeForToolName(state.config.id)
+          const sanitizedToolName = sanitizeForToolName(matchingTool.name)
+          return `mcp_${sanitizedServerId}_${sanitizedToolName}`
+        }
+      }
+    }
+  }
+
+  return null
 }
 
 /**

@@ -123,33 +123,6 @@
       </div>
     </section>
 
-    <!-- Shortcuts -->
-    <section class="settings-section">
-      <h3 class="section-title">Shortcuts</h3>
-      <div class="form-group">
-        <label class="form-label">Send Message Shortcut</label>
-        <div class="radio-group">
-          <label class="radio-item" :class="{ active: settings.general.sendShortcut === 'enter' }">
-            <input
-              type="radio"
-              :checked="settings.general.sendShortcut === 'enter'"
-              @change="updateSendShortcut('enter')"
-            />
-            <span class="radio-label">Enter</span>
-            <span class="radio-desc">Use Enter to send, Shift+Enter for new line</span>
-          </label>
-          <label class="radio-item" :class="{ active: settings.general.sendShortcut === 'ctrl-enter' }">
-            <input
-              type="radio"
-              :checked="settings.general.sendShortcut === 'ctrl-enter'"
-              @change="updateSendShortcut('ctrl-enter')"
-            />
-            <span class="radio-label">Ctrl + Enter</span>
-            <span class="radio-desc">Both Ctrl+Enter and Cmd+Enter will send</span>
-          </label>
-        </div>
-      </div>
-    </section>
   </div>
 </template>
 
@@ -635,4 +608,5 @@ function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
     font-size: 11px;
   }
 }
+
 </style>

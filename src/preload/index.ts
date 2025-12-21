@@ -41,8 +41,11 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_ERROR, listener)
   },
 
-  abortStream: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.ABORT_STREAM),
+  abortStream: (sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.ABORT_STREAM, { sessionId }),
+
+  getActiveStreams: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_ACTIVE_STREAMS),
 
   getChatHistory: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_CHAT_HISTORY, { sessionId }),
@@ -151,6 +154,9 @@ const electronAPI = {
 
   mcpGetPrompt: (serverId: string, name: string, args?: Record<string, string>) =>
     ipcRenderer.invoke(IPC_CHANNELS.MCP_GET_PROMPT, { serverId, name, arguments: args }),
+
+  mcpReadConfigFile: (filePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_READ_CONFIG_FILE, { filePath }),
 
   // Skills methods (Official Claude Code Skills)
   getSkills: () =>

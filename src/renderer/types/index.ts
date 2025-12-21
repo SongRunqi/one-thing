@@ -10,6 +10,8 @@ import type {
   ModelInfo,
   ColorTheme,
   BaseTheme,
+  KeyboardShortcut,
+  ShortcutSettings,
   SendMessageResponse,
   EditAndResendResponse,
   GetChatHistoryResponse,
@@ -53,6 +55,7 @@ import type {
   MCPReadResourceResponse,
   MCPGetPromptsResponse,
   MCPGetPromptResponse,
+  MCPReadConfigFileResponse,
   // Skills types (Official Claude Code Skills)
   SkillDefinition,
   SkillFile,
@@ -77,6 +80,8 @@ export type {
   ModelInfo,
   ColorTheme,
   BaseTheme,
+  KeyboardShortcut,
+  ShortcutSettings,
   ToolDefinition,
   ToolCall,
   ToolSettings,
@@ -158,6 +163,7 @@ export interface ElectronAPI {
   mcpReadResource: (serverId: string, uri: string) => Promise<MCPReadResourceResponse>
   mcpGetPrompts: () => Promise<MCPGetPromptsResponse>
   mcpGetPrompt: (serverId: string, name: string, args?: Record<string, string>) => Promise<MCPGetPromptResponse>
+  mcpReadConfigFile: (filePath: string) => Promise<MCPReadConfigFileResponse>
 
   // Skills methods (Official Claude Code Skills)
   getSkills: () => Promise<GetSkillsResponse>

@@ -16,6 +16,7 @@ export const IPC_CHANNELS = {
   STREAM_COMPLETE: 'chat:stream-complete',
   STREAM_ERROR: 'chat:stream-error',
   ABORT_STREAM: 'chat:abort-stream',
+  GET_ACTIVE_STREAMS: 'chat:get-active-streams',
 
   // Session related
   GET_SESSIONS: 'sessions:get-all',
@@ -61,6 +62,7 @@ export const IPC_CHANNELS = {
   MCP_READ_RESOURCE: 'mcp:read-resource',
   MCP_GET_PROMPTS: 'mcp:get-prompts',
   MCP_GET_PROMPT: 'mcp:get-prompt',
+  MCP_READ_CONFIG_FILE: 'mcp:read-config-file',
 
   // Dialog related
   SHOW_OPEN_DIALOG: 'dialog:show-open',
@@ -95,6 +97,7 @@ export interface ChatMessage {
   contentParts?: ContentPart[]  // Sequential content parts for inline tool call display
   model?: string  // AI model used for assistant messages
   thinkingTime?: number  // Final thinking time in seconds (persisted for display after session switch)
+  thinkingStartTime?: number  // Timestamp when thinking started (for calculating elapsed time on session switch)
 }
 
 export interface ChatSession {
@@ -119,6 +122,7 @@ export enum AIProvider {
   DeepSeek = 'deepseek',
   Kimi = 'kimi',
   Zhipu = 'zhipu',
+  OpenRouter = 'openrouter',
   Custom = 'custom',
 }
 
@@ -172,11 +176,28 @@ export type BaseTheme =
   | 'obsidian' | 'ocean' | 'forest' | 'rose' | 'ember'  // Original themes
   | 'nord' | 'dracula' | 'tokyo' | 'catppuccin' | 'gruvbox' | 'onedark' | 'github' | 'rosepine'  // New themes
 
+// Keyboard shortcut configuration
+export interface KeyboardShortcut {
+  key: string           // Main key (e.g., 'Enter', 'n', '/')
+  ctrlKey?: boolean
+  metaKey?: boolean     // Cmd on Mac
+  shiftKey?: boolean
+  altKey?: boolean
+}
+
+export interface ShortcutSettings {
+  sendMessage: KeyboardShortcut      // Send message
+  newChat: KeyboardShortcut          // New chat
+  toggleSidebar: KeyboardShortcut    // Toggle sidebar
+  focusInput: KeyboardShortcut       // Focus input (default /)
+}
+
 export interface GeneralSettings {
   animationSpeed: number  // 0.1 - 0.5 seconds, default 0.25
-  sendShortcut: 'enter' | 'ctrl-enter' | 'cmd-enter'
+  sendShortcut: 'enter' | 'ctrl-enter' | 'cmd-enter'  // Legacy, kept for compatibility
   colorTheme: ColorTheme  // Accent color theme
   baseTheme: BaseTheme    // Base theme (overall colors)
+  shortcuts?: ShortcutSettings  // Custom keyboard shortcuts
 }
 
 export interface AppSettings {
@@ -647,6 +668,16 @@ export interface MCPGetPromptRequest {
 export interface MCPGetPromptResponse {
   success: boolean
   messages?: any[]
+  error?: string
+}
+
+export interface MCPReadConfigFileRequest {
+  filePath: string
+}
+
+export interface MCPReadConfigFileResponse {
+  success: boolean
+  content?: any
   error?: string
 }
 

@@ -87,7 +87,14 @@ export class MCPClient {
         }
       )
 
-      await this.client.connect(this.transport!)
+      // Add connection timeout (30 seconds for SSE, 60 seconds for stdio)
+      const timeoutMs = this._state.config.transport === 'sse' ? 30000 : 60000
+      const connectPromise = this.client.connect(this.transport!)
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Connection timeout after ${timeoutMs / 1000}s`)), timeoutMs)
+      })
+
+      await Promise.race([connectPromise, timeoutPromise])
 
       // Fetch available capabilities
       await this.refreshCapabilities()

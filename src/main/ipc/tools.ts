@@ -2,7 +2,7 @@
  * Tools IPC Handlers
  *
  * Handles IPC communication for tool-related operations:
- * - Get all available tools (builtin + MCP)
+ * - Get all available builtin tools
  * - Execute a tool
  * - Cancel a tool execution
  */
@@ -16,8 +16,6 @@ import {
   isInitialized,
 } from '../tools/index.js'
 import type { ToolExecutionContext } from '../tools/index.js'
-import { MCPManager } from '../mcp/manager.js'
-import { mcpToolToToolDefinition } from '../mcp/bridge.js'
 import * as store from '../store.js'
 
 /**
@@ -29,37 +27,20 @@ export function registerToolHandlers() {
     initializeToolRegistry()
   }
 
-  // Get all available tools (builtin + MCP)
+  // Get builtin tools only (MCP tools are managed in MCP settings page)
   ipcMain.handle(IPC_CHANNELS.GET_TOOLS, async () => {
     try {
-      // Get builtin tools and mark their source
-      const builtinTools: ToolDefinition[] = getAllTools().map(t => ({
-        ...t,
-        source: 'builtin' as const,
-      }))
-
-      // Get MCP tools if MCP is enabled
-      const mcpTools: ToolDefinition[] = []
-      if (MCPManager.isEnabled) {
-        const mcpToolInfos = MCPManager.getAllTools()
-        const serverStates = MCPManager.getServerStates()
-
-        for (const mcpTool of mcpToolInfos) {
-          const toolDef = mcpToolToToolDefinition(mcpTool)
-          // Find server name
-          const serverState = serverStates.find(s => s.config.id === mcpTool.serverId)
-          mcpTools.push({
-            ...toolDef,
-            source: 'mcp' as const,
-            serverId: mcpTool.serverId,
-            serverName: serverState?.config.name || mcpTool.serverId,
-          })
-        }
-      }
+      // Get builtin tools only (filter out MCP tools)
+      const builtinTools: ToolDefinition[] = getAllTools()
+        .filter(t => !t.id.startsWith('mcp:'))
+        .map(t => ({
+          ...t,
+          source: 'builtin' as const,
+        }))
 
       return {
         success: true,
-        tools: [...builtinTools, ...mcpTools],
+        tools: builtinTools,
       }
     } catch (error: any) {
       console.error('[Tools IPC] Error getting tools:', error)

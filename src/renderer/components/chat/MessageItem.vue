@@ -86,8 +86,8 @@
         </div>
       </div>
 
-      <!-- Message bubble - only show if there's content -->
-      <div v-if="message.content || !message.isStreaming" class="bubble" :class="{ editing: isEditing }" ref="bubbleRef" @mouseup="handleTextSelection">
+      <!-- Message bubble - show if there's content, contentParts, or streaming is done -->
+      <div v-if="message.content || (message.contentParts && message.contentParts.length > 0) || !message.isStreaming" class="bubble" :class="{ editing: isEditing }" ref="bubbleRef" @mouseup="handleTextSelection">
         <!-- Edit mode for user messages - inline editing -->
         <div v-if="isEditing" class="edit-container" @click.stop>
           <textarea
@@ -349,8 +349,11 @@ function formatThinkingTime(seconds: number): string {
 // Start thinking timer
 function startThinkingTimer() {
   if (thinkingTimer) return
-  thinkingStartTime = Date.now()
-  thinkingElapsed.value = 0
+  // Use message's thinkingStartTime if available (for session switching)
+  // Otherwise use current time
+  thinkingStartTime = props.message.thinkingStartTime || Date.now()
+  // Initialize elapsed time based on start time
+  thinkingElapsed.value = (Date.now() - thinkingStartTime) / 1000
   thinkingTimer = setInterval(() => {
     if (thinkingStartTime) {
       thinkingElapsed.value = (Date.now() - thinkingStartTime) / 1000
@@ -511,6 +514,17 @@ watch(
       stopThinkingTimer()
     }
   }
+)
+
+// Watch for thinkingTime changes (e.g., when switching sessions)
+watch(
+  () => props.message.thinkingTime,
+  (newVal) => {
+    if (newVal && newVal > 0) {
+      finalThinkingTime.value = newVal
+    }
+  },
+  { immediate: true }
 )
 
 // Watch for content updates during streaming

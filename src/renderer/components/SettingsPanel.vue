@@ -75,6 +75,16 @@
         Tools
       </button>
       <button
+        :class="['tab-btn', { active: activeTab === 'shortcuts' }]"
+        @click="activeTab = 'shortcuts'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="4" width="20" height="16" rx="2"/>
+          <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>
+        </svg>
+        Shortcuts
+      </button>
+      <button
         :class="['tab-btn', { active: activeTab === 'mcp' }]"
         @click="activeTab = 'mcp'"
       >
@@ -124,6 +134,13 @@
         @update:settings="updateSettings"
       />
 
+      <!-- Shortcuts Tab -->
+      <ShortcutsSettingsTab
+        v-show="activeTab === 'shortcuts'"
+        :settings="localSettings"
+        @update:settings="updateSettings"
+      />
+
       <!-- MCP Tab -->
       <div v-show="activeTab === 'mcp'" class="tab-content">
         <MCPSettingsPanel
@@ -168,6 +185,7 @@ import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
 import GeneralSettingsTab from './settings/GeneralSettingsTab.vue'
 import AIProviderTab from './settings/AIProviderTab.vue'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
+import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import SettingsFooter from './settings/SettingsFooter.vue'
 
 const emit = defineEmits<{
@@ -177,7 +195,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 
 // Active tab
-const activeTab = ref<'general' | 'ai' | 'tools' | 'mcp' | 'skills'>('general')
+const activeTab = ref<'general' | 'ai' | 'tools' | 'shortcuts' | 'mcp' | 'skills'>('general')
 
 // Deep clone settings, ensuring providers object exists
 const localSettings = ref<AppSettings>(
@@ -315,14 +333,18 @@ function updateSettings(newSettings: AppSettings) {
   localSettings.value = newSettings
 }
 
-// Handle MCP settings update
+// Handle MCP settings update (MCP changes are saved directly to backend via IPC)
 function handleMCPSettingsUpdate(mcpSettings: { enabled: boolean; servers: any[] }) {
   localSettings.value.mcp = mcpSettings
+  // Update originalSettings since MCP changes are already saved to backend
+  originalSettings.value = JSON.stringify(localSettings.value)
 }
 
-// Handle Skills settings update
+// Handle Skills settings update (Skills changes are saved directly to backend via IPC)
 function handleSkillsSettingsUpdate(skillsSettings: { enableSkills: boolean; skills: Record<string, { enabled: boolean }> }) {
   localSettings.value.skills = skillsSettings
+  // Update originalSettings since Skills changes are already saved to backend
+  originalSettings.value = JSON.stringify(localSettings.value)
 }
 
 // Load available tools
@@ -387,16 +409,23 @@ async function handleSaveCustomProvider(formData: CustomProviderForm) {
 
   try {
     if (editingCustomProvider.value) {
-      settingsStore.updateCustomProvider(editingCustomProvider.value, {
+      const updates = {
         name: formData.name.trim(),
         description: formData.description.trim() || undefined,
         apiType: formData.apiType,
         baseUrl: formData.baseUrl.trim(),
         apiKey: formData.apiKey,
         model: formData.model.trim(),
-      })
+      }
+      settingsStore.updateCustomProvider(editingCustomProvider.value, updates)
 
+      // Also update localSettings.ai.customProviders to keep in sync
       const providerId = editingCustomProvider.value
+      const customIndex = localSettings.value.ai.customProviders?.findIndex(p => p.id === providerId) ?? -1
+      if (customIndex !== -1 && localSettings.value.ai.customProviders) {
+        Object.assign(localSettings.value.ai.customProviders[customIndex], updates)
+      }
+
       if (localSettings.value.ai.providers[providerId]) {
         localSettings.value.ai.providers[providerId].apiKey = formData.apiKey
         localSettings.value.ai.providers[providerId].baseUrl = formData.baseUrl.trim()
@@ -415,6 +444,12 @@ async function handleSaveCustomProvider(formData: CustomProviderForm) {
         selectedModels: formData.model.trim() ? [formData.model.trim()] : [],
       }
       settingsStore.addCustomProvider(newProvider)
+
+      // Also update localSettings to keep in sync
+      if (!localSettings.value.ai.customProviders) {
+        localSettings.value.ai.customProviders = []
+      }
+      localSettings.value.ai.customProviders.push(newProvider)
 
       localSettings.value.ai.providers[newProviderId] = {
         apiKey: newProvider.apiKey,
@@ -440,7 +475,17 @@ async function deleteCustomProvider() {
 
   const providerId = editingCustomProvider.value
   settingsStore.deleteCustomProvider(providerId)
+
+  // Also update localSettings to keep in sync
+  if (localSettings.value.ai.customProviders) {
+    localSettings.value.ai.customProviders = localSettings.value.ai.customProviders.filter(p => p.id !== providerId)
+  }
   delete localSettings.value.ai.providers[providerId]
+
+  // If this was the active provider, switch to a built-in one
+  if (localSettings.value.ai.provider === providerId) {
+    localSettings.value.ai.provider = 'openai' as any
+  }
 
   await saveSettings()
   showDeleteConfirmDialog.value = false

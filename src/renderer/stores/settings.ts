@@ -34,6 +34,17 @@ const defaultSettings: AppSettings = {
         model: 'glm-4-flash',
         selectedModels: ['glm-4-flash', 'glm-4-plus', 'glm-4'],
       },
+      [AIProviderEnum.OpenRouter]: {
+        apiKey: '',
+        model: 'openai/gpt-4o',
+        selectedModels: [
+          'openai/gpt-4o',
+          'openai/gpt-4o-mini',
+          'anthropic/claude-3.5-sonnet',
+          'google/gemini-pro-1.5',
+          'meta-llama/llama-3.1-70b-instruct',
+        ],
+      },
       [AIProviderEnum.Custom]: {
         apiKey: '',
         baseUrl: '',
@@ -49,6 +60,12 @@ const defaultSettings: AppSettings = {
     sendShortcut: 'enter',
     colorTheme: 'blue',
     baseTheme: 'obsidian',
+    shortcuts: {
+      sendMessage: { key: 'Enter' },
+      newChat: { key: 'n', metaKey: true },
+      toggleSidebar: { key: 'b', metaKey: true },
+      focusInput: { key: '/' },
+    },
   },
   tools: {
     enableToolCalls: true,

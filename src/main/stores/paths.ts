@@ -49,11 +49,15 @@ export function ensureStoreDirs(): void {
 export function readJsonFile<T>(filePath: string, defaultValue: T): T {
   try {
     if (fs.existsSync(filePath)) {
-      const content = fs.readFileSync(filePath, 'utf-8')
+      const content = fs.readFileSync(filePath, 'utf-8').trim()
+      // Return default for empty files
+      if (!content) {
+        return defaultValue
+      }
       return JSON.parse(content) as T
     }
   } catch (error) {
-    console.error(`Error reading ${filePath}:`, error)
+    console.warn(`Failed to parse ${path.basename(filePath)}, using defaults`)
   }
   return defaultValue
 }

@@ -46,6 +46,16 @@ const ZHIPU_FALLBACK_MODELS: ModelInfo[] = [
   { id: 'glm-4-long', name: 'GLM-4 Long', description: 'Long context support' },
 ]
 
+// Predefined OpenRouter models as fallback
+const OPENROUTER_FALLBACK_MODELS: ModelInfo[] = [
+  { id: 'openai/gpt-4o', name: 'GPT-4o', description: 'OpenAI GPT-4o' },
+  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', description: 'OpenAI GPT-4o Mini' },
+  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', description: 'Anthropic Claude 3.5 Sonnet' },
+  { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus', description: 'Anthropic Claude 3 Opus' },
+  { id: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5', description: 'Google Gemini Pro 1.5' },
+  { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', description: 'Meta Llama 3.1 70B Instruct' },
+]
+
 async function fetchOpenAIModels(apiKey: string, baseUrl: string): Promise<ModelInfo[]> {
   const response = await fetch(`${baseUrl}/models`, {
     headers: {
@@ -107,6 +117,25 @@ async function fetchCustomModels(apiKey: string, baseUrl: string): Promise<Model
   }))
 }
 
+async function fetchOpenRouterModels(apiKey: string): Promise<ModelInfo[]> {
+  const response = await fetch('https://openrouter.ai/api/v1/models', {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  return (data.data || []).map((m: any) => ({
+    id: m.id,
+    name: m.name || m.id,
+    description: m.description,
+  }))
+}
+
 function getDefaultBaseUrl(provider: AIProvider): string {
   switch (provider) {
     case AIProvider.OpenAI:
@@ -119,6 +148,8 @@ function getDefaultBaseUrl(provider: AIProvider): string {
       return 'https://api.moonshot.cn/v1'
     case AIProvider.Zhipu:
       return 'https://open.bigmodel.cn/api/paas/v4'
+    case AIProvider.OpenRouter:
+      return 'https://openrouter.ai/api/v1'
     default:
       return 'https://api.example.com/v1'
   }
@@ -162,6 +193,9 @@ async function handleFetchModels(
         break
       case AIProvider.Custom:
         models = await fetchCustomModels(apiKey, url)
+        break
+      case AIProvider.OpenRouter:
+        models = await fetchOpenRouterModels(apiKey)
         break
     }
 
@@ -216,6 +250,8 @@ function getFallbackModels(provider: AIProvider): ModelInfo[] | null {
       return KIMI_FALLBACK_MODELS
     case AIProvider.Zhipu:
       return ZHIPU_FALLBACK_MODELS
+    case AIProvider.OpenRouter:
+      return OPENROUTER_FALLBACK_MODELS
     default:
       return null
   }

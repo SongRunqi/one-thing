@@ -106,6 +106,7 @@
         @create-new-chat="createNewChat"
       />
       <ChatWindow
+        ref="chatWindowRef"
         :show-settings="showSettings"
         @close-settings="showSettings = false"
         @open-settings="showSettings = true"
@@ -160,6 +161,7 @@ import { onMounted, watchEffect, ref, computed, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
+import { useShortcuts } from '@/composables/useShortcuts'
 import Sidebar from '@/components/Sidebar.vue'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
@@ -169,6 +171,20 @@ const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 
 const showSettings = ref(false)
+const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
+
+// Setup global keyboard shortcuts
+useShortcuts({
+  onNewChat: async () => {
+    await sessionsStore.createSession('')
+  },
+  onToggleSidebar: () => {
+    sidebarCollapsed.value = !sidebarCollapsed.value
+  },
+  onFocusInput: () => {
+    chatWindowRef.value?.focusInput()
+  },
+})
 
 // Persist sidebar collapsed state
 const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
