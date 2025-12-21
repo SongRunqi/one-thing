@@ -22,6 +22,12 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.filter(m => m.role === 'assistant')
   )
 
+  // True when generating (for stop button visibility)
+  // Uses generatingSessionId which persists throughout the entire generation process
+  const isGenerating = computed(() =>
+    generatingSessionId.value !== null || messages.value.some(m => m.isStreaming)
+  )
+
   /**
    * Rebuild contentParts for a message that has toolCalls but no contentParts
    * This is needed when loading historical messages from storage
@@ -495,8 +501,9 @@ export const useChatStore = defineStore('chat', () => {
 
   // Stop the current streaming generation
   async function stopGeneration() {
-    if (!isLoading.value) return false
-
+    // Don't check isGenerating - just try to abort
+    // This allows stopping even during the brief gap between button appearing
+    // (isRegenerating = true) and store state updating (generatingSessionId being set)
     try {
       const response = await window.electronAPI.abortStream()
       return response.success
@@ -714,12 +721,28 @@ export const useChatStore = defineStore('chat', () => {
   async function regenerate(sessionId: string, messageId: string) {
     const message = messages.value.find(m => m.id === messageId)
     if (!message) return
+
+    // If regenerating from an assistant message, find the preceding user message
+    if (message.role === 'assistant') {
+      const messageIndex = messages.value.findIndex(m => m.id === messageId)
+      // Find the most recent user message before this assistant message
+      for (let i = messageIndex - 1; i >= 0; i--) {
+        if (messages.value[i].role === 'user') {
+          return await editAndResend(sessionId, messages.value[i].id, messages.value[i].content)
+        }
+      }
+      // No preceding user message found
+      return
+    }
+
+    // For user messages, just resend with same content
     return await editAndResend(sessionId, messageId, message.content)
   }
 
   return {
     messages,
     isLoading,
+    isGenerating,
     generatingSessionId,
     error,
     errorDetails,

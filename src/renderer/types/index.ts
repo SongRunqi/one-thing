@@ -8,6 +8,8 @@ import type {
   CustomProviderConfig,
   ProviderInfo,
   ModelInfo,
+  ColorTheme,
+  BaseTheme,
   SendMessageResponse,
   EditAndResendResponse,
   GetChatHistoryResponse,
@@ -27,6 +29,7 @@ import type {
   ToolDefinition,
   ToolCall,
   ToolSettings,
+  BashToolSettings,
   GetToolsResponse,
   ExecuteToolResponse,
   ContentPart,
@@ -50,18 +53,16 @@ import type {
   MCPReadResourceResponse,
   MCPGetPromptsResponse,
   MCPGetPromptResponse,
-  // Skills types
+  // Skills types (Official Claude Code Skills)
   SkillDefinition,
+  SkillFile,
+  SkillSource,
   SkillSettings,
-  SkillExecutionContext,
-  SkillExecutionResult,
-  PromptTemplateConfig,
-  WorkflowConfig,
   GetSkillsResponse,
-  ExecuteSkillResponse,
-  AddUserSkillResponse,
-  UpdateUserSkillResponse,
-  DeleteUserSkillResponse,
+  RefreshSkillsResponse,
+  ReadSkillFileResponse,
+  OpenSkillDirectoryResponse,
+  CreateSkillResponse,
 } from '../../shared/ipc'
 
 export type {
@@ -74,9 +75,12 @@ export type {
   CustomProviderConfig,
   ProviderInfo,
   ModelInfo,
+  ColorTheme,
+  BaseTheme,
   ToolDefinition,
   ToolCall,
   ToolSettings,
+  BashToolSettings,
   ContentPart,
   // MCP types
   MCPServerConfig,
@@ -85,13 +89,11 @@ export type {
   MCPResourceInfo,
   MCPPromptInfo,
   MCPSettings,
-  // Skills types
+  // Skills types (Official Claude Code Skills)
   SkillDefinition,
+  SkillFile,
+  SkillSource,
   SkillSettings,
-  SkillExecutionContext,
-  SkillExecutionResult,
-  PromptTemplateConfig,
-  WorkflowConfig,
 }
 
 // Streaming response types
@@ -138,6 +140,7 @@ export interface ElectronAPI {
   getTools: () => Promise<GetToolsResponse>
   executeTool: (toolId: string, args: Record<string, any>, messageId: string, sessionId: string) => Promise<ExecuteToolResponse>
   cancelTool: (toolCallId: string) => Promise<{ success: boolean }>
+  updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolCall>) => Promise<{ success: boolean }>
   updateContentParts: (sessionId: string, messageId: string, contentParts: ContentPart[]) => Promise<{ success: boolean }>
   abortStream: () => Promise<{ success: boolean }>
 
@@ -156,12 +159,20 @@ export interface ElectronAPI {
   mcpGetPrompts: () => Promise<MCPGetPromptsResponse>
   mcpGetPrompt: (serverId: string, name: string, args?: Record<string, string>) => Promise<MCPGetPromptResponse>
 
-  // Skills methods
+  // Skills methods (Official Claude Code Skills)
   getSkills: () => Promise<GetSkillsResponse>
-  executeSkill: (skillId: string, context: SkillExecutionContext) => Promise<ExecuteSkillResponse>
-  addUserSkill: (skill: Omit<SkillDefinition, 'source'>) => Promise<AddUserSkillResponse>
-  updateUserSkill: (skillId: string, updates: Partial<SkillDefinition>) => Promise<UpdateUserSkillResponse>
-  deleteUserSkill: (skillId: string) => Promise<DeleteUserSkillResponse>
+  refreshSkills: () => Promise<RefreshSkillsResponse>
+  readSkillFile: (skillId: string, fileName: string) => Promise<ReadSkillFileResponse>
+  openSkillDirectory: (skillId?: string) => Promise<OpenSkillDirectoryResponse>
+  createSkill: (name: string, description: string, instructions: string, source: SkillSource) => Promise<CreateSkillResponse>
+  deleteSkill: (skillId: string) => Promise<{ success: boolean; error?: string }>
+  toggleSkillEnabled: (skillId: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
+
+  // Message update methods
+  updateMessageThinkingTime: (sessionId: string, messageId: string, thinkingTime: number) => Promise<{ success: boolean }>
+
+  // Dialog methods
+  showOpenDialog: (options: { properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>; title?: string; defaultPath?: string }) => Promise<{ canceled: boolean; filePaths: string[] }>
 }
 
 declare global {

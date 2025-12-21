@@ -1,42 +1,31 @@
 /**
  * Skills Module
  *
- * Exports all skill-related functionality
+ * Official Claude Code Skills support
+ * Loads SKILL.md files from ~/.claude/skills/ and .claude/skills/
  */
 
-// Core registry functions
 export {
-  registerSkill,
-  unregisterSkill,
-  getSkill,
-  getAllSkills,
-  getEnabledSkills,
-  findSkillByTrigger,
-  findSkillsByPartialTrigger,
-  executeSkill,
-  initializeSkillRegistry,
-  isInitialized,
-  getStats,
-} from './registry.js'
-
-// User skills management
-export {
-  loadUserSkills,
-  addUserSkill,
-  updateUserSkill,
-  deleteUserSkill,
-  getUserSkills,
-  getUserSkill,
-  isUserSkill,
+  loadAllSkills,
+  createSkill,
+  deleteSkill,
+  readSkillFile,
+  ensureSkillsDirectories,
+  getUserSkillsPath,
+  getProjectSkillsPath,
 } from './loader.js'
 
-// Types
+// Prompt building utilities
+export {
+  buildSkillsAwarenessPrompt,
+  buildSkillsDirectPrompt,
+  formatSkillsList,
+} from './prompt-builder.js'
+
+// Re-export types from shared
 export type {
   SkillDefinition,
-  SkillExecutionContext,
-  SkillExecutionResult,
-  PromptTemplateConfig,
-  WorkflowConfig,
-  SkillHandler,
-  RegisteredSkill,
-} from './types.js'
+  SkillFile,
+  SkillSource,
+  SkillSettings,
+} from '../../shared/ipc.js'

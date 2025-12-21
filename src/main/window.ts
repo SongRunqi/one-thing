@@ -1,16 +1,99 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, session } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { getWindowStatePath, readJsonFile, writeJsonFile } from './stores/paths.js'
+
+/**
+ * Configure Content Security Policy
+ */
+function setupContentSecurityPolicy() {
+  const isDevelopment = process.env.NODE_ENV === 'development'
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    // Build CSP directives
+    const cspDirectives = [
+      // Default: only allow from self
+      "default-src 'self'",
+      // Scripts: self, and unsafe-eval only in dev for HMR
+      isDevelopment
+        ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+        : "script-src 'self'",
+      // Styles: self and unsafe-inline (Vue uses inline styles)
+      "style-src 'self' 'unsafe-inline'",
+      // Images: self, data URIs, and https
+      "img-src 'self' data: https:",
+      // Fonts: self and data URIs
+      "font-src 'self' data:",
+      // Connect: allow API calls to various AI providers
+      "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.deepseek.com https://api.moonshot.cn https://open.bigmodel.cn https://*.zhipuai.cn ws://127.0.0.1:* http://127.0.0.1:*",
+      // Workers: self
+      "worker-src 'self' blob:",
+      // Frame: none (no iframes)
+      "frame-src 'none'",
+      // Object: none (no plugins)
+      "object-src 'none'",
+      // Base URI: self
+      "base-uri 'self'",
+      // Form action: self
+      "form-action 'self'",
+    ]
+
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [cspDirectives.join('; ')],
+      },
+    })
+  })
+}
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+interface WindowState {
+  width: number
+  height: number
+  x?: number
+  y?: number
+  isMaximized?: boolean
+}
+
+const defaultWindowState: WindowState = {
+  width: 1000,
+  height: 800,
+}
+
+function getWindowState(): WindowState {
+  return readJsonFile(getWindowStatePath(), defaultWindowState)
+}
+
+function saveWindowState(window: BrowserWindow): void {
+  if (window.isMaximized()) {
+    writeJsonFile(getWindowStatePath(), { ...getWindowState(), isMaximized: true })
+  } else {
+    const bounds = window.getBounds()
+    writeJsonFile(getWindowStatePath(), {
+      width: bounds.width,
+      height: bounds.height,
+      x: bounds.x,
+      y: bounds.y,
+      isMaximized: false,
+    })
+  }
+}
+
 export function createWindow() {
+  // Setup Content Security Policy before creating window
+  setupContentSecurityPolicy()
+
   const isMac = process.platform === 'darwin'
+  const windowState = getWindowState()
 
   const mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 800,
+    width: windowState.width,
+    height: windowState.height,
+    x: windowState.x,
+    y: windowState.y,
     minWidth: 600,
     minHeight: 600,
     // Use hidden title bar on macOS to keep traffic lights
@@ -24,6 +107,16 @@ export function createWindow() {
       nodeIntegration: false,
     },
   })
+
+  // Restore maximized state
+  if (windowState.isMaximized) {
+    mainWindow.maximize()
+  }
+
+  // Save window state on resize and move
+  mainWindow.on('resize', () => saveWindowState(mainWindow))
+  mainWindow.on('move', () => saveWindowState(mainWindow))
+  mainWindow.on('close', () => saveWindowState(mainWindow))
 
   const isDevelopment = process.env.NODE_ENV === 'development'
 

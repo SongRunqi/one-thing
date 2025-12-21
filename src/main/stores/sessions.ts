@@ -402,3 +402,28 @@ export function updateMessageContentParts(sessionId: string, messageId: string, 
 
   return true
 }
+
+// Update message thinking time (for persisting thinking duration after streaming completes)
+export function updateMessageThinkingTime(sessionId: string, messageId: string, thinkingTime: number): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  message.thinkingTime = thinkingTime
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}

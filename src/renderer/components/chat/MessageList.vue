@@ -60,6 +60,10 @@
         @go-to-branch="handleGoToBranch"
         @quote="handleQuote"
         @regenerate="handleRegenerate"
+        @execute-tool="handleExecuteTool"
+        @confirm-tool="handleConfirmTool"
+        @reject-tool="handleRejectTool"
+        @update-thinking-time="handleUpdateThinkingTime"
       />
     </TransitionGroup>
 
@@ -82,7 +86,7 @@
     </div>
 
     <!-- User message navigation buttons -->
-    <div v-if="userMessageIndices.length > 1" class="nav-buttons">
+    <div v-if="userMessageIndices.length >= 1" class="nav-buttons">
       <Tooltip text="Previous (double-click for first)" position="left">
         <button
           class="nav-btn"
@@ -136,6 +140,7 @@ const emit = defineEmits<{
   setQuotedText: [text: string]
   setInputText: [text: string]
   regenerate: [messageId: string]
+  editAndResend: [messageId: string, newContent: string]
 }>()
 
 const chatStore = useChatStore()
@@ -264,12 +269,31 @@ function goToFirstUserMessage() {
   scrollToUserMessage(0)
 }
 
-// Navigate to last user message (double-click)
+// Navigate to bottom of message list (double-click down button)
 function goToLastUserMessage() {
-  if (userMessageIndices.value.length === 0) return
   hasNavigated.value = true
-  currentUserMessageNavIndex.value = userMessageIndices.value.length - 1
-  scrollToUserMessage(userMessageIndices.value.length - 1)
+  // Update navigation index to last user message (if any)
+  if (userMessageIndices.value.length > 0) {
+    currentUserMessageNavIndex.value = userMessageIndices.value.length - 1
+  }
+  // Scroll to absolute bottom
+  if (messageListRef.value) {
+    // Prevent scroll handler from overriding the navigation index
+    isActivelyNavigating = true
+    if (navigationCooldownTimer) {
+      clearTimeout(navigationCooldownTimer)
+    }
+
+    messageListRef.value.scrollTo({
+      top: messageListRef.value.scrollHeight,
+      behavior: 'smooth'
+    })
+
+    // Reset flag after scroll animation completes
+    navigationCooldownTimer = setTimeout(() => {
+      isActivelyNavigating = false
+    }, 800)
+  }
 }
 
 // Handle prev button click with single/double click distinction
@@ -515,11 +539,9 @@ watch(
   }
 )
 
-// Handle edit message event
-async function handleEdit(messageId: string, newContent: string) {
-  const currentSession = sessionsStore.currentSession
-  if (!currentSession) return
-  await chatStore.editAndResend(currentSession.id, messageId, newContent)
+// Handle edit message event - emit to parent for immediate stop button response
+function handleEdit(messageId: string, newContent: string) {
+  emit('editAndResend', messageId, newContent)
 }
 
 // Handle branch creation event
@@ -554,6 +576,181 @@ function handleRegenerate(messageId: string) {
 function handleSuggestion(text: string) {
   emit('setInputText', text)
 }
+
+// Handle tool execution
+async function handleExecuteTool(toolCall: any) {
+  const currentSession = sessionsStore.currentSession
+  if (!currentSession) return
+
+  // Find the message containing this tool call
+  const message = chatStore.messages.find(m =>
+    m.toolCalls?.some(tc => tc.id === toolCall.id)
+  )
+  const tc = message?.toolCalls?.find(t => t.id === toolCall.id)
+
+  // Record start time
+  const startTime = Date.now()
+  if (tc) {
+    tc.status = 'executing'
+    tc.startTime = startTime
+  }
+
+  try {
+    const result = await window.electronAPI.executeTool(
+      toolCall.toolId,
+      toolCall.arguments,
+      toolCall.id,
+      currentSession.id
+    )
+
+    // Record end time and update status
+    const endTime = Date.now()
+    if (tc) {
+      tc.endTime = endTime
+      tc.status = result.success ? 'completed' : 'failed'
+      tc.result = result.result
+      tc.error = result.error
+    }
+
+    // Persist to backend
+    if (message) {
+      await window.electronAPI.updateToolCall(currentSession.id, message.id, toolCall.id, {
+        status: result.success ? 'completed' : 'failed',
+        startTime,
+        endTime,
+        result: result.result,
+        error: result.error,
+      })
+    }
+  } catch (error) {
+    console.error('Failed to execute tool:', error)
+    const endTime = Date.now()
+    if (tc) {
+      tc.endTime = endTime
+      tc.status = 'failed'
+      tc.error = String(error)
+    }
+
+    // Persist to backend
+    if (message) {
+      await window.electronAPI.updateToolCall(currentSession.id, message.id, toolCall.id, {
+        status: 'failed',
+        startTime,
+        endTime,
+        error: String(error),
+      })
+    }
+  }
+}
+
+// Handle tool confirmation (for dangerous bash commands)
+async function handleConfirmTool(toolCall: any) {
+  const currentSession = sessionsStore.currentSession
+  if (!currentSession) return
+
+  // Find the message containing this tool call
+  const message = chatStore.messages.find(m =>
+    m.toolCalls?.some(tc => tc.id === toolCall.id)
+  )
+  const tc = message?.toolCalls?.find(t => t.id === toolCall.id)
+
+  // Record start time
+  const startTime = Date.now()
+  if (tc) {
+    tc.status = 'executing'
+    tc.startTime = startTime
+    tc.requiresConfirmation = false
+  }
+
+  try {
+    // Re-execute the tool with confirmed: true
+    const result = await window.electronAPI.executeTool(
+      toolCall.toolId,
+      { ...toolCall.arguments, confirmed: true },
+      toolCall.id,
+      currentSession.id
+    )
+
+    // Record end time and update status
+    const endTime = Date.now()
+    if (tc) {
+      tc.endTime = endTime
+      tc.status = result.success ? 'completed' : 'failed'
+      tc.result = result.result
+      tc.error = result.error
+    }
+
+    // Persist to backend
+    if (message) {
+      await window.electronAPI.updateToolCall(currentSession.id, message.id, toolCall.id, {
+        status: result.success ? 'completed' : 'failed',
+        startTime,
+        endTime,
+        result: result.result,
+        error: result.error,
+        requiresConfirmation: false,
+      })
+    }
+  } catch (error) {
+    console.error('Failed to confirm tool:', error)
+    const endTime = Date.now()
+    if (tc) {
+      tc.endTime = endTime
+      tc.status = 'failed'
+      tc.error = String(error)
+    }
+
+    // Persist to backend
+    if (message) {
+      await window.electronAPI.updateToolCall(currentSession.id, message.id, toolCall.id, {
+        status: 'failed',
+        startTime,
+        endTime,
+        error: String(error),
+        requiresConfirmation: false,
+      })
+    }
+  }
+}
+
+// Handle tool rejection
+function handleRejectTool(toolCall: any) {
+  // Update the tool call status to cancelled/rejected
+  const currentSession = sessionsStore.currentSession
+  if (!currentSession) return
+
+  // Find the message containing this tool call and update its status
+  const message = chatStore.messages.find(m =>
+    m.toolCalls?.some(tc => tc.id === toolCall.id)
+  )
+  if (message) {
+    const tc = message.toolCalls?.find(t => t.id === toolCall.id)
+    if (tc) {
+      tc.status = 'cancelled'
+      tc.error = 'Command rejected by user'
+      tc.requiresConfirmation = false
+    }
+  }
+}
+
+// Handle updating thinking time for a message
+async function handleUpdateThinkingTime(messageId: string, thinkingTime: number) {
+  const currentSession = sessionsStore.currentSession
+  if (!currentSession) return
+
+  try {
+    // Update local message
+    const message = chatStore.messages.find(m => m.id === messageId)
+    if (message) {
+      message.thinkingTime = thinkingTime
+    }
+
+    // Persist to backend
+    await window.electronAPI.updateMessageThinkingTime(currentSession.id, messageId, thinkingTime)
+  } catch (error) {
+    console.error('Failed to update thinking time:', error)
+  }
+}
 </script>
 
 <style scoped>
@@ -564,7 +761,7 @@ function handleSuggestion(text: string) {
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  padding: 18px 18px 120px;
+  padding: 18px 18px var(--composer-height, 140px);
   background: transparent;
 }
 
@@ -723,7 +920,7 @@ function handleSuggestion(text: string) {
 
 .holo-card-inner {
   padding: 16px;
-  background: rgba(30, 41, 59, 0.6);
+  background: var(--bg-elevated);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-radius: 11px;
@@ -732,7 +929,7 @@ function handleSuggestion(text: string) {
   gap: 12px;
   font-size: 13px;
   font-weight: 500;
-  color: #fff;
+  color: var(--text);
   transition: all 0.3s ease;
 }
 
@@ -744,7 +941,7 @@ function handleSuggestion(text: string) {
 }
 
 .holo-card:hover .holo-card-inner {
-  background: rgba(30, 41, 59, 0.4);
+  background: var(--hover);
 }
 
 .holo-icon { font-size: 20px; }
@@ -894,7 +1091,7 @@ html[data-theme='light'] .nav-btn {
 /* Responsive styles */
 @media (max-width: 768px) {
   .message-list {
-    padding: 14px 12px 22px;
+    padding: 14px 12px var(--composer-height, 120px);
     gap: 12px;
   }
 
@@ -917,7 +1114,7 @@ html[data-theme='light'] .nav-btn {
 
 @media (max-width: 480px) {
   .message-list {
-    padding: 10px 8px 18px;
+    padding: 10px 8px var(--composer-height, 100px);
     gap: 10px;
   }
 

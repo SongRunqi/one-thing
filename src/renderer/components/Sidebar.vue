@@ -28,109 +28,87 @@
                   pinned: session.isPinned,
                   editing: editingSessionId === session.id,
                   branch: session.depth > 0,
-                  'has-branches': session.hasBranches,
-                  collapsed: session.isCollapsed,
-                  'last-child': session.isLastChild,
                   hidden: session.isHidden
                 }
               ]"
-              :style="getSessionStyle(session)"
+              :style="{ paddingLeft: `${12 + session.depth * 16}px` }"
+              :title="session.name || 'New chat'"
               @click="handleSessionClickWithToggle(session)"
               @contextmenu.prevent="openContextMenu($event, session)"
             >
-              <!-- Progress Glow Overlay -->
-              <div v-if="session.id === chatStore.generatingSessionId" class="progress-glow-overlay"></div>
-              
-              <!-- Threaded Lines for child sessions -->
-              <div v-if="session.depth > 0" class="thread-lines">
-                <div 
-                  v-for="d in session.depth" 
-                  :key="d" 
-                  class="thread-line"
-                  :class="{ 
-                    'horizontal': d === session.depth, 
-                    'vertical': d < session.depth && !session.ancestorsLastChild[d-1] 
-                  }"
-                ></div>
-              </div>
-              <!-- Expand/Collapse chevron (placeholder for alignment when no branches) -->
-              <div
-                v-if="session.depth === 0"
-                class="collapse-chevron"
-                :class="{ collapsed: session.isCollapsed, placeholder: !session.hasBranches }"
-                @click.stop="session.hasBranches && toggleCollapse(session.id)"
+              <!-- Collapse/Expand toggle for parent sessions -->
+              <button
+                v-if="session.hasBranches"
+                class="collapse-btn"
+                :class="{ collapsed: session.isCollapsed }"
+                @click.stop="toggleCollapse(session.id)"
               >
-                <svg v-if="session.hasBranches" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
-              </div>
-              <div class="session-content">
-                <div class="session-name-row">
-                  <div 
-                    v-if="session.id === chatStore.generatingSessionId" 
-                    class="status-dot generating"
-                  ></div>
-                  <input
-                    v-if="editingSessionId === session.id"
-                    ref="inlineInputRef"
-                    v-model="editingName"
-                    class="session-name-input"
-                    maxlength="50"
-                    @click.stop
-                    @keydown.enter="confirmInlineRename"
-                    @keydown.esc="cancelInlineRename"
-                    @blur="confirmInlineRename"
-                  />
+              </button>
+
+              <!-- Branch indicator -->
+              <span v-if="session.depth > 0" class="branch-indicator">↳</span>
+
+              <!-- Generating indicator -->
+              <div v-if="session.id === chatStore.generatingSessionId" class="generating-dot"></div>
+
+              <!-- Pin indicator -->
+              <svg v-if="session.isPinned && session.depth === 0" class="pin-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
+              </svg>
+
+              <!-- Session name -->
+              <input
+                v-if="editingSessionId === session.id"
+                ref="inlineInputRef"
+                v-model="editingName"
+                class="session-name-input"
+                maxlength="50"
+                @click.stop
+                @keydown.enter="confirmInlineRename"
+                @keydown.esc="cancelInlineRename"
+                @blur="confirmInlineRename"
+              />
+              <span v-else class="session-name">{{ session.name || 'New chat' }}</span>
+
+              <!-- Hover actions -->
+              <div class="session-actions">
+                <button
+                  class="action-btn"
+                  title="Rename"
+                  @click.stop="startInlineRename(session)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                <button
+                  class="action-btn"
+                  :title="session.isPinned ? 'Unpin' : 'Pin'"
+                  @click.stop="togglePin(session)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
+                  </svg>
+                </button>
+                <button
+                  :class="['action-btn', 'danger', { 'confirm': pendingDeleteId === session.id }]"
+                  :title="getDeleteTitle(session)"
+                  @click.stop="deleteSessionById(session.id)"
+                >
+                  <svg v-if="pendingDeleteId !== session.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                  </svg>
                   <template v-else>
-                    <span v-if="session.parentSessionId" class="branch-indicator" title="Branched session">↳</span>
-                    <span class="session-name">{{ session.name || 'New chat' }}</span>
-                    <span v-if="session.lastModel" class="model-badge">{{ formatModelName(session.lastModel) }}</span>
+                    <span v-if="session.hasBranches" class="delete-count">{{ session.branchCount + 1 }}</span>
+                    <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M5 13l4 4L19 7"/>
+                    </svg>
                   </template>
-                </div>
-              </div>
-              <div class="session-meta">
-                <!-- Show branch count badge when collapsed -->
-                <span v-if="session.hasBranches && session.isCollapsed" class="branch-count" :title="`${session.branchCount} branch${session.branchCount > 1 ? 'es' : ''}`">
-                  +{{ session.branchCount }}
-                </span>
-                <!-- Fixed width container for time/actions -->
-                <div class="session-time-actions">
-                  <span class="session-time">{{ formatRelativeTime(session.updatedAt) }}</span>
-                  <div class="session-actions">
-                    <button
-                      class="session-action-btn"
-                      :title="session.isPinned ? 'Unpin' : 'Pin'"
-                      @click.stop="togglePin(session)"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path v-if="session.isPinned" d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7" fill="currentColor" opacity="0.4"/>
-                        <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
-                      </svg>
-                    </button>
-                    <button
-                      class="session-action-btn"
-                      title="Rename"
-                      @click.stop="startInlineRename(session)"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                      </svg>
-                    </button>
-                    <button
-                      :class="['session-action-btn', 'danger', { 'confirm-delete': pendingDeleteId === session.id }]"
-                      :title="pendingDeleteId === session.id ? 'Click again to confirm' : 'Delete'"
-                      @click.stop="deleteSessionById(session.id)"
-                    >
-                      <svg v-if="pendingDeleteId !== session.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                      </svg>
-                      <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M5 13l4 4L19 7"/>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+                </button>
               </div>
             </div>
           </div>
@@ -191,6 +169,9 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   collapsed: false,
 })
+
+// Make collapsed available in template
+const collapsed = computed(() => props.collapsed)
 
 const emit = defineEmits<{
   toggleCollapse: []
@@ -733,6 +714,19 @@ function handlePin() {
   closeContextMenu()
 }
 
+function getDeleteTitle(session: SessionWithBranches): string {
+  if (pendingDeleteId.value === session.id) {
+    if (session.hasBranches) {
+      return `Click to delete ${session.branchCount + 1} chats`
+    }
+    return 'Click to confirm delete'
+  }
+  if (session.hasBranches) {
+    return `Delete (includes ${session.branchCount} branch${session.branchCount > 1 ? 'es' : ''})`
+  }
+  return 'Delete'
+}
+
 async function deleteSessionById(sessionId: string) {
   // If already pending deletion for this session, confirm delete
   if (pendingDeleteId.value === sessionId) {
@@ -776,7 +770,7 @@ function handleClearClick() {
 
 onMounted(() => {
   window.addEventListener('resize', handleResize)
-  handleResize() // Initial check
+  // Don't call handleResize() on mount - respect saved sidebar state from localStorage
 })
 
 onUnmounted(() => {
@@ -902,445 +896,233 @@ html[data-theme='light'] .group-count {
   background: rgba(0, 0, 0, 0.06);
 }
 
+/* Session Item - Minimal Design */
 .session-item {
   position: relative;
-  padding: 6px 12px;
-  border-radius: 8px;
-  cursor: pointer;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  margin: 1px 6px;
+  gap: 6px;
+  padding: 12px 12px;
+  margin: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  border: 1px solid transparent;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
-  min-height: 36px; /* High-density mode */
+  max-height: 60px;
+  transition:
+    background 0.15s ease,
+    max-height 0.25s ease,
+    padding 0.25s ease,
+    margin 0.25s ease,
+    opacity 0.2s ease;
 }
 
 .session-item:hover {
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 html[data-theme='light'] .session-item:hover {
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .session-item.active {
-  background: rgba(var(--accent-rgb), 0.08); /* Slightly more visible but flat */
+  background: var(--session-highlight);
 }
 
-.session-item.pinned {
-  background: rgba(var(--accent-rgb), 0.03);
+.session-item.hidden {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 
-html[data-theme='light'] .session-item.pinned {
-  background: rgba(var(--accent-rgb), 0.02);
+/* Generating indicator */
+.generating-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  flex-shrink: 0;
+  animation: pulse 1.5s ease-in-out infinite;
 }
 
-.session-item.active::before {
-  content: '';
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 0;
-  width: 2px;
-  background: var(--accent);
-  border-radius: 0 1px 1px 0;
-  opacity: 1;
-  transition: transform 0.3s ease;
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
 }
 
-.session-item:not(.active):hover::before {
-  content: '';
-  position: absolute;
-  top: 20%;
-  left: 0;
-  width: 2px;
-  height: 60%;
-  background: rgba(var(--accent-rgb), 0.3);
-  border-radius: 0 4px 4px 0;
-  transform: scaleY(0);
+/* Collapse button */
+.collapse-btn {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+html[data-theme='light'] .collapse-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.collapse-btn svg {
   transition: transform 0.2s ease;
 }
 
-.session-item:not(.active):hover::before {
-  transform: scaleY(1);
+.collapse-btn.collapsed svg {
+  transform: rotate(-90deg);
 }
 
-.session-item.generating {
-  background: rgba(59, 130, 246, 0.05);
+/* Branch indicator */
+.branch-indicator {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.4;
 }
 
-.thread-lines {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  display: flex;
-  pointer-events: none;
+/* Pin indicator */
+.pin-icon {
+  flex-shrink: 0;
+  color: var(--muted);
+  opacity: 0.5;
 }
 
-.thread-line {
-  width: 20px;
-  height: 100%;
-  position: relative;
+/* Session name */
+.session-name {
+  flex: 1;
+  min-width: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 70px; /* Reserve space for hover actions */
+  transition: color 0.15s ease;
 }
 
-.thread-line.vertical::before {
-  content: '';
-  position: absolute;
-  left: 10px;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: rgba(255, 255, 255, 0.05); /* Even more subtle */
+html[data-theme='light'] .session-name {
+  color: rgba(0, 0, 0, 0.5);
 }
 
-.thread-line.horizontal::before {
-  content: '';
-  position: absolute;
-  left: 10px;
-  top: 0;
-  height: 50%;
-  width: 1px;
-  background: rgba(255, 255, 255, 0.1);
+.session-item:hover .session-name {
+  color: var(--text);
 }
 
-.session-item:not(.last-child) .thread-line.horizontal::before {
-  height: 100%;
+.session-item.active .session-name {
+  font-weight: 500;
+  color: var(--text);
 }
 
-.thread-line.horizontal::after {
-  content: '';
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  width: 8px;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.1);
+.session-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid var(--accent);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text);
+  outline: none;
 }
 
-.session-item.active .thread-line::before,
-.session-item.active .thread-line::after {
-  background: var(--accent);
-  opacity: 0.3; /* Subtle glow */
-}
-
+/* Hover actions */
 .session-actions {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(10px);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
 }
 
 .session-item:hover .session-actions {
   opacity: 1;
   pointer-events: auto;
-  transform: translateX(0);
-}
-/* Hidden sessions (parent is collapsed) - animate collapse */
-.session-item.hidden {
-  max-height: 0;
-  opacity: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  margin-bottom: 0;
-  border-width: 0;
-  pointer-events: none;
 }
 
-/* Parent session with branches - keep same style as normal sessions */
-.session-item.has-branches {
-  /* No special styling - same as regular sessions */
-}
-
-/* Branch (child) session styles - subtle distinction */
-.session-item.branch {
-  /* Inherits normal session styles, just has padding-left via inline style */
-}
-
-/* Branch indicator icon - subtle visual cue */
-.branch-indicator {
-  flex-shrink: 0;
+.action-btn {
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
-  margin-right: 4px;
-  color: var(--muted);
-  opacity: 0.5;
-}
-
-.session-item.branch:hover .branch-indicator,
-.session-item.branch.active .branch-indicator {
-  opacity: 0.8;
-}
-
-/* Branch count badge */
-.branch-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--accent);
-  background: rgba(59, 130, 246, 0.15);
-  border-radius: 9px;
-  margin-right: 6px;
-}
-
-/* Collapse chevron - indicates expand/collapse state */
-.collapse-chevron {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 6px;
-  color: var(--muted);
-  transition: all 0.15s ease;
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.session-action-btn {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
+  background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
-.session-action-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text);
-}
-
-.session-action-btn.danger:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.2);
-}
-
-.collapse-chevron:hover:not(.placeholder) {
+.action-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text);
 }
 
-.collapse-chevron.placeholder {
-  cursor: default;
+html[data-theme='light'] .action-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
 }
 
-.collapse-chevron svg {
-  transition: transform 0.15s ease;
+.action-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
 }
 
-.collapse-chevron.collapsed svg {
-  transform: rotate(-90deg);
+.action-btn.confirm {
+  background: #ef4444;
+  color: white;
+  animation: shake 0.4s ease;
 }
 
-.session-item:hover .collapse-chevron {
-  color: var(--text);
+.action-btn.confirm:hover {
+  background: #dc2626;
+  color: white;
 }
 
-/* Branch sessions use same text styling as regular sessions */
-
-.session-content {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  overflow: hidden;
+.delete-count {
+  font-size: 10px;
+  font-weight: 700;
 }
 
-.session-name-row {
-  display: flex;
-  align-items: center;
-  gap: 8px; /* Tighter for better cohesion */
-  min-width: 0;
-  height: 18px;
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-2px); }
+  40% { transform: translateX(2px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
 }
 
-.status-dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--accent);
-  flex-shrink: 0;
-  opacity: 0.6;
+/* Pending delete state for session item */
+.session-item:has(.action-btn.confirm) {
+  background: rgba(239, 68, 68, 0.08) !important;
 }
 
-.status-dot.generating {
-  background: #10b981;
-  box-shadow: 0 0 6px #10b981;
-  animation: breathe 2s infinite ease-in-out;
-  opacity: 1;
-}
-
-@keyframes breathe {
-  0%, 100% { opacity: 0.4; transform: scale(0.85); box-shadow: 0 0 4px rgba(16, 185, 129, 0.2); }
-  50% { opacity: 1; transform: scale(1.1); box-shadow: 0 0 12px rgba(16, 185, 129, 0.6); }
-}
-
-.session-name-input::selection {
-  background: rgba(var(--accent-rgb), 0.2);
-  color: inherit;
-}
-
-.branch-indicator {
-  font-size: 11px;
-  color: var(--muted);
-  font-family: monospace;
-  margin-right: -4px; /* Move closer to name */
-  opacity: 0.5;
-}
-
-.session-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  line-height: 18px;
-  height: 18px;
-  flex: 1;
-}
-
-.session-name-input {
-  flex: 1;
-  padding: 0;
-  margin: 0;
-  border: none;
-  background: transparent;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  outline: none;
-  height: 20px;
-  line-height: 20px;
-  border-bottom: 1px solid var(--accent);
-}
-
-.session-preview-row {
-  display: none;
-}
-
-.session-item.editing {
-  background: rgba(var(--accent-rgb), 0.05);
-}
-
-.session-item.editing .session-actions {
-  display: none;
-}
-
-.session-item.editing .session-time {
-  display: block;
-}
-
-.model-badge {
-  font-size: 8px;
-  font-weight: 800;
-  text-transform: uppercase;
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: rgba(var(--accent-rgb), 0.1);
-  color: var(--accent);
-  letter-spacing: 0.05em;
-  flex-shrink: 0;
-}
-
-.branch-ref {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 9px;
-  color: rgba(var(--text-rgb), 0.3);
-  margin-top: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-html[data-theme='light'] .model-badge {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-.progress-glow-overlay {
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(var(--accent-rgb), 0.08),
-    rgba(16, 201, 140, 0.1), /* Slightly green tinge for generating */
-    rgba(var(--accent-rgb), 0.08),
-    transparent
-  );
-  animation: flow 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
-  pointer-events: none;
-}
-
-/* Particle breathing simulation */
-.session-item.generating::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(circle, var(--accent) 0.5px, transparent 0.5px);
-  background-size: 8px 8px;
-  opacity: 0.03;
-  animation: fizz 4s infinite linear;
-}
-
-@keyframes fizz {
-  0% { background-position: 0 0; opacity: 0.02; }
-  50% { opacity: 0.05; }
-  100% { background-position: 0 -32px; opacity: 0.02; }
-}
-
-@keyframes flow {
-  0% { transform: translateX(-100%) skewX(-20deg); }
-  100% { transform: translateX(200%) skewX(-20deg); }
-}
-
-.session-meta {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.session-time-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.session-time {
-  font-size: 11px;
-  color: rgba(var(--text-rgb), 0.4);
-  font-weight: 400;
-  white-space: nowrap;
+.session-item:has(.action-btn.confirm) .session-name {
+  color: #ef4444;
 }
 
 .empty-sessions {

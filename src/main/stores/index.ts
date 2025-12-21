@@ -17,6 +17,7 @@ export {
   updateMessageStreaming,
   updateMessageToolCalls,
   updateMessageContentParts,
+  updateMessageThinkingTime,
   updateSessionPin,
 } from './sessions.js'
 

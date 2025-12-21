@@ -8,7 +8,7 @@
  */
 
 import { ipcMain } from 'electron'
-import { IPC_CHANNELS, type ToolDefinition } from '../../shared/ipc.js'
+import { IPC_CHANNELS, type ToolDefinition, type ToolCall } from '../../shared/ipc.js'
 import {
   getAllTools,
   executeTool,
@@ -18,6 +18,7 @@ import {
 import type { ToolExecutionContext } from '../tools/index.js'
 import { MCPManager } from '../mcp/manager.js'
 import { mcpToolToToolDefinition } from '../mcp/bridge.js'
+import * as store from '../store.js'
 
 /**
  * Register all tool-related IPC handlers
@@ -101,6 +102,42 @@ export function registerToolHandlers() {
     console.log('[Tools IPC] Cancel tool requested:', toolCallId)
     return {
       success: true,
+    }
+  })
+
+  // Update a tool call (status, timing, result)
+  ipcMain.handle(IPC_CHANNELS.UPDATE_TOOL_CALL, async (_event, request) => {
+    try {
+      const { sessionId, messageId, toolCallId, updates } = request
+
+      // Get current session and find message
+      const session = store.getSession(sessionId)
+      if (!session) {
+        return { success: false, error: 'Session not found' }
+      }
+
+      const message = session.messages.find(m => m.id === messageId)
+      if (!message || !message.toolCalls) {
+        return { success: false, error: 'Message or tool calls not found' }
+      }
+
+      // Find and update the tool call
+      const toolCalls = message.toolCalls.map(tc => {
+        if (tc.id === toolCallId) {
+          return { ...tc, ...updates }
+        }
+        return tc
+      })
+
+      // Save to store
+      const success = store.updateMessageToolCalls(sessionId, messageId, toolCalls)
+      return { success }
+    } catch (error: any) {
+      console.error('[Tools IPC] Error updating tool call:', error)
+      return {
+        success: false,
+        error: error.message || 'Failed to update tool call',
+      }
     }
   })
 

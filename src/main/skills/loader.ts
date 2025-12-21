@@ -1,129 +1,450 @@
 /**
- * User Skills Loader
+ * Claude Code Skills Loader
  *
- * Handles loading and persisting user-defined skills
+ * Loads skills from filesystem following official Claude Code Skills format:
+ * - User skills: ~/.claude/skills/
+ * - Project skills: .claude/skills/ (relative to working directory)
+ *
+ * Each skill is a directory containing:
+ * - SKILL.md (required) - Markdown file with YAML frontmatter
+ * - Additional files (optional) - scripts, templates, reference docs
  */
 
+import fs from 'fs'
 import path from 'path'
-import { getStorePath, readJsonFile, writeJsonFile } from '../stores/paths.js'
-import { registerSkill, unregisterSkill } from './registry.js'
-import type { SkillDefinition } from './types.js'
+import os from 'os'
+import type { SkillDefinition, SkillFile, SkillSource } from '../../shared/ipc.js'
 
-// Path for user skills storage
-function getUserSkillsPath(): string {
-  return path.join(getStorePath(), 'user-skills.json')
+// YAML frontmatter parser (simple implementation)
+interface SkillFrontmatter {
+  name: string
+  description: string
+  'allowed-tools'?: string[]
 }
 
-// In-memory cache of user skills
-let userSkillsCache: SkillDefinition[] = []
-
 /**
- * Load user-defined skills from config file
+ * Parse YAML frontmatter from SKILL.md content
  */
-export async function loadUserSkills(): Promise<void> {
-  const skills = readJsonFile<SkillDefinition[]>(getUserSkillsPath(), [])
-  userSkillsCache = skills
+function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter | null; body: string } {
+  const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/
+  const match = content.match(frontmatterRegex)
 
-  for (const skill of skills) {
-    // Ensure source is set to 'user'
-    skill.source = 'user'
-    registerSkill(skill)
+  if (!match) {
+    return { frontmatter: null, body: content }
   }
 
-  console.log(`[UserSkills] Loaded ${skills.length} user skills`)
-}
+  const yamlContent = match[1]
+  const body = match[2]
 
-/**
- * Save user skills to config file
- */
-function saveUserSkills(): void {
-  writeJsonFile(getUserSkillsPath(), userSkillsCache)
-}
+  // Simple YAML parsing for our specific use case
+  const frontmatter: Partial<SkillFrontmatter> = {}
 
-/**
- * Add a new user skill
- */
-export function addUserSkill(skill: Omit<SkillDefinition, 'source'>): SkillDefinition {
-  const newSkill: SkillDefinition = {
-    ...skill,
-    source: 'user',
+  const lines = yamlContent.split('\n')
+  let currentKey: string | null = null
+  let arrayValue: string[] = []
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+
+    // Check for array item
+    if (trimmed.startsWith('- ') && currentKey === 'allowed-tools') {
+      arrayValue.push(trimmed.slice(2).trim())
+      continue
+    }
+
+    // Check for key-value pair
+    const colonIndex = trimmed.indexOf(':')
+    if (colonIndex > 0) {
+      // Save previous array if exists
+      if (currentKey === 'allowed-tools' && arrayValue.length > 0) {
+        frontmatter['allowed-tools'] = arrayValue
+        arrayValue = []
+      }
+
+      const key = trimmed.slice(0, colonIndex).trim()
+      let value = trimmed.slice(colonIndex + 1).trim()
+
+      // Handle inline array: allowed-tools: [Read, Write, Bash]
+      if (value.startsWith('[') && value.endsWith(']')) {
+        value = value.slice(1, -1)
+        frontmatter[key as keyof SkillFrontmatter] = value.split(',').map(s => s.trim()) as any
+        currentKey = null
+        continue
+      }
+
+      // Remove quotes if present
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1)
+      }
+
+      if (value) {
+        frontmatter[key as keyof SkillFrontmatter] = value as any
+        currentKey = null
+      } else {
+        // Empty value might mean array follows
+        currentKey = key
+        arrayValue = []
+      }
+    }
   }
 
-  // Check if ID already exists
-  const existingIndex = userSkillsCache.findIndex((s) => s.id === newSkill.id)
-  if (existingIndex !== -1) {
-    throw new Error(`Skill with ID "${newSkill.id}" already exists`)
+  // Save final array if exists
+  if (currentKey === 'allowed-tools' && arrayValue.length > 0) {
+    frontmatter['allowed-tools'] = arrayValue
   }
 
-  userSkillsCache.push(newSkill)
-  saveUserSkills()
-  registerSkill(newSkill)
-
-  console.log(`[UserSkills] Added skill: ${newSkill.id}`)
-  return newSkill
+  return {
+    frontmatter: frontmatter as SkillFrontmatter,
+    body
+  }
 }
 
 /**
- * Update an existing user skill
+ * Get the user skills directory path
  */
-export function updateUserSkill(
-  skillId: string,
-  updates: Partial<SkillDefinition>
-): SkillDefinition | null {
-  const index = userSkillsCache.findIndex((s) => s.id === skillId)
-  if (index === -1) return null
+export function getUserSkillsPath(): string {
+  return path.join(os.homedir(), '.claude', 'skills')
+}
 
-  const existingSkill = userSkillsCache[index]
-  const updatedSkill: SkillDefinition = {
-    ...existingSkill,
-    ...updates,
-    id: skillId, // Ensure ID doesn't change
-    source: 'user', // Ensure source doesn't change
+/**
+ * Get the project skills directory path
+ */
+export function getProjectSkillsPath(cwd?: string): string {
+  const workingDir = cwd || process.cwd()
+  return path.join(workingDir, '.claude', 'skills')
+}
+
+/**
+ * Get the official plugin skills directory path
+ */
+export function getPluginSkillsPath(): string {
+  return path.join(os.homedir(), '.claude', 'plugins', 'cache', 'claude-plugins-official')
+}
+
+/**
+ * Determine file type based on extension and location
+ */
+function getFileType(fileName: string, filePath: string): SkillFile['type'] {
+  const ext = path.extname(fileName).toLowerCase()
+
+  if (ext === '.md') return 'markdown'
+  if (['.py', '.js', '.ts', '.sh', '.bash'].includes(ext)) return 'script'
+  if (filePath.includes('/templates/') || fileName.includes('template')) return 'template'
+
+  return 'other'
+}
+
+/**
+ * Scan a skill directory for additional files
+ */
+function scanSkillFiles(skillDir: string): SkillFile[] {
+  const files: SkillFile[] = []
+
+  function scanDir(dir: string, relativePath: string = '') {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true })
+
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name)
+        const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
+
+        if (entry.isDirectory()) {
+          scanDir(fullPath, relPath)
+        } else if (entry.isFile() && entry.name !== 'SKILL.md') {
+          files.push({
+            name: relPath,
+            path: fullPath,
+            type: getFileType(entry.name, fullPath)
+          })
+        }
+      }
+    } catch (error) {
+      // Directory might not exist or be readable
+    }
   }
 
-  userSkillsCache[index] = updatedSkill
-  saveUserSkills()
-
-  // Re-register with updated definition
-  unregisterSkill(skillId)
-  registerSkill(updatedSkill)
-
-  console.log(`[UserSkills] Updated skill: ${skillId}`)
-  return updatedSkill
+  scanDir(skillDir)
+  return files
 }
 
 /**
- * Delete a user skill
+ * Load a single skill from a directory
  */
-export function deleteUserSkill(skillId: string): boolean {
-  const index = userSkillsCache.findIndex((s) => s.id === skillId)
-  if (index === -1) return false
+function loadSkillFromDirectory(skillDir: string, source: SkillSource): SkillDefinition | null {
+  const skillMdPath = path.join(skillDir, 'SKILL.md')
 
-  userSkillsCache.splice(index, 1)
-  saveUserSkills()
-  unregisterSkill(skillId)
+  // Check if SKILL.md exists
+  if (!fs.existsSync(skillMdPath)) {
+    return null
+  }
 
-  console.log(`[UserSkills] Deleted skill: ${skillId}`)
-  return true
+  try {
+    const content = fs.readFileSync(skillMdPath, 'utf-8')
+    const { frontmatter, body } = parseFrontmatter(content)
+
+    if (!frontmatter || !frontmatter.name || !frontmatter.description) {
+      console.warn(`[Skills] Invalid SKILL.md in ${skillDir}: missing required frontmatter fields`)
+      return null
+    }
+
+    // Validate name format
+    if (!/^[a-z0-9-]+$/.test(frontmatter.name)) {
+      console.warn(`[Skills] Invalid skill name "${frontmatter.name}": must be lowercase letters, numbers, and hyphens only`)
+    }
+
+    // Generate ID from source and name
+    const id = `${source}:${frontmatter.name}`
+
+    // Scan for additional files
+    const files = scanSkillFiles(skillDir)
+
+    const skill: SkillDefinition = {
+      id,
+      name: frontmatter.name,
+      description: frontmatter.description,
+      allowedTools: frontmatter['allowed-tools'],
+      source,
+      path: skillMdPath,
+      directoryPath: skillDir,
+      enabled: true,
+      instructions: body.trim(),
+      files: files.length > 0 ? files : undefined
+    }
+
+    return skill
+  } catch (error) {
+    console.error(`[Skills] Error loading skill from ${skillDir}:`, error)
+    return null
+  }
 }
 
 /**
- * Get all user skills
+ * Load all skills from a directory
  */
-export function getUserSkills(): SkillDefinition[] {
-  return [...userSkillsCache]
+function loadSkillsFromPath(skillsDir: string, source: SkillSource): SkillDefinition[] {
+  const skills: SkillDefinition[] = []
+
+  if (!fs.existsSync(skillsDir)) {
+    return skills
+  }
+
+  try {
+    const entries = fs.readdirSync(skillsDir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const skillDir = path.join(skillsDir, entry.name)
+        const skill = loadSkillFromDirectory(skillDir, source)
+        if (skill) {
+          skills.push(skill)
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`[Skills] Error scanning ${skillsDir}:`, error)
+  }
+
+  return skills
 }
 
 /**
- * Get a user skill by ID
+ * Load plugin skills from nested directory structure
+ * Structure: ~/.claude/plugins/cache/claude-plugins-official/{plugin}/{version}/skills/{skill}/SKILL.md
+ * Deduplicates by skill name (only keeps first found version of each skill)
  */
-export function getUserSkill(skillId: string): SkillDefinition | undefined {
-  return userSkillsCache.find((s) => s.id === skillId)
+function loadPluginSkills(): SkillDefinition[] {
+  const pluginCacheDir = getPluginSkillsPath()
+  const skillsMap = new Map<string, SkillDefinition>()
+
+  if (!fs.existsSync(pluginCacheDir)) {
+    return []
+  }
+
+  try {
+    // Iterate through plugin directories (e.g., vercel, frontend-design)
+    const pluginDirs = fs.readdirSync(pluginCacheDir, { withFileTypes: true })
+
+    for (const pluginDir of pluginDirs) {
+      if (!pluginDir.isDirectory()) continue
+
+      const pluginPath = path.join(pluginCacheDir, pluginDir.name)
+      let versionDirs: fs.Dirent[] = []
+
+      try {
+        versionDirs = fs.readdirSync(pluginPath, { withFileTypes: true })
+      } catch {
+        continue
+      }
+
+      for (const versionDir of versionDirs) {
+        if (!versionDir.isDirectory()) continue
+
+        const skillsPath = path.join(pluginPath, versionDir.name, 'skills')
+        if (!fs.existsSync(skillsPath)) continue
+
+        // Load skills from this version's skills directory
+        const loadedSkills = loadSkillsFromPath(skillsPath, 'plugin')
+
+        // Deduplicate by skill name (keep first found)
+        for (const skill of loadedSkills) {
+          if (!skillsMap.has(skill.name)) {
+            skillsMap.set(skill.name, skill)
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Skills] Error loading plugin skills:', error)
+  }
+
+  return Array.from(skillsMap.values())
 }
 
 /**
- * Check if a skill ID belongs to a user skill
+ * Load all skills from user, project, and plugin directories
  */
-export function isUserSkill(skillId: string): boolean {
-  return userSkillsCache.some((s) => s.id === skillId)
+export function loadAllSkills(projectPath?: string): SkillDefinition[] {
+  const userSkills = loadSkillsFromPath(getUserSkillsPath(), 'user')
+  const projectSkills = loadSkillsFromPath(getProjectSkillsPath(projectPath), 'project')
+  const pluginSkills = loadPluginSkills()
+
+  console.log(`[Skills] Loaded ${userSkills.length} user, ${projectSkills.length} project, ${pluginSkills.length} plugin skills`)
+
+  return [...userSkills, ...projectSkills, ...pluginSkills]
+}
+
+/**
+ * Create a new skill
+ */
+export function createSkill(
+  name: string,
+  description: string,
+  instructions: string,
+  source: SkillSource
+): SkillDefinition {
+  // Validate name
+  if (!/^[a-z0-9-]+$/.test(name)) {
+    throw new Error('Skill name must contain only lowercase letters, numbers, and hyphens')
+  }
+
+  if (name.length > 64) {
+    throw new Error('Skill name must be 64 characters or less')
+  }
+
+  if (description.length > 1024) {
+    throw new Error('Skill description must be 1024 characters or less')
+  }
+
+  // Determine directory
+  const skillsDir = source === 'user' ? getUserSkillsPath() : getProjectSkillsPath()
+  const skillDir = path.join(skillsDir, name)
+
+  // Check if already exists
+  if (fs.existsSync(skillDir)) {
+    throw new Error(`Skill "${name}" already exists in ${source} skills`)
+  }
+
+  // Create directory
+  fs.mkdirSync(skillDir, { recursive: true })
+
+  // Create SKILL.md content
+  const skillMdContent = `---
+name: ${name}
+description: ${description}
+---
+
+${instructions}
+`
+
+  const skillMdPath = path.join(skillDir, 'SKILL.md')
+  fs.writeFileSync(skillMdPath, skillMdContent, 'utf-8')
+
+  // Return the created skill
+  return {
+    id: `${source}:${name}`,
+    name,
+    description,
+    source,
+    path: skillMdPath,
+    directoryPath: skillDir,
+    enabled: true,
+    instructions
+  }
+}
+
+/**
+ * Get skill directory based on source
+ */
+function getSkillsDirBySource(source: string): string {
+  switch (source) {
+    case 'user':
+      return getUserSkillsPath()
+    case 'plugin':
+      return getPluginSkillsPath()
+    case 'project':
+    default:
+      return getProjectSkillsPath()
+  }
+}
+
+/**
+ * Delete a skill
+ */
+export function deleteSkill(skillId: string): boolean {
+  const [source, name] = skillId.split(':')
+  if (!source || !name) return false
+
+  const skillsDir = getSkillsDirBySource(source)
+  const skillDir = path.join(skillsDir, name)
+
+  if (!fs.existsSync(skillDir)) {
+    return false
+  }
+
+  try {
+    fs.rmSync(skillDir, { recursive: true })
+    console.log(`[Skills] Deleted skill: ${skillId}`)
+    return true
+  } catch (error) {
+    console.error(`[Skills] Error deleting skill ${skillId}:`, error)
+    return false
+  }
+}
+
+/**
+ * Read a file from a skill directory
+ */
+export function readSkillFile(skillId: string, fileName: string): string | null {
+  const [source, name] = skillId.split(':')
+  if (!source || !name) return null
+
+  const skillsDir = getSkillsDirBySource(source)
+  const filePath = path.join(skillsDir, name, fileName)
+
+  // Security: ensure the path is within the skill directory
+  const skillDir = path.join(skillsDir, name)
+  const resolvedPath = path.resolve(filePath)
+  if (!resolvedPath.startsWith(path.resolve(skillDir))) {
+    console.error(`[Skills] Security: attempted to read file outside skill directory`)
+    return null
+  }
+
+  try {
+    return fs.readFileSync(filePath, 'utf-8')
+  } catch (error) {
+    return null
+  }
+}
+
+/**
+ * Ensure skills directories exist
+ */
+export function ensureSkillsDirectories(): void {
+  const userSkillsDir = getUserSkillsPath()
+  if (!fs.existsSync(userSkillsDir)) {
+    fs.mkdirSync(userSkillsDir, { recursive: true })
+    console.log(`[Skills] Created user skills directory: ${userSkillsDir}`)
+  }
 }

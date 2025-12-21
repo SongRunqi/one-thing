@@ -1,8 +1,14 @@
 <template>
-  <div :class="['tool-call', statusClass]">
+  <div :class="['tool-call', statusClass, { 'requires-confirmation': toolCall.requiresConfirmation }]">
     <div class="tool-header">
       <div class="tool-icon">
-        <svg v-if="toolCall.status === 'pending'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <!-- Warning icon for confirmation required -->
+        <svg v-if="toolCall.requiresConfirmation" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <svg v-else-if="toolCall.status === 'pending'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"/>
           <polyline points="12 6 12 12 16 14"/>
         </svg>
@@ -26,16 +32,53 @@
       </div>
       <div class="tool-info">
         <span class="tool-name">{{ toolCall.toolName }}</span>
-        <span :class="['tool-status', { flowing: toolCall.status === 'executing' }]">{{ statusText }}</span>
+        <span :class="['tool-status', { 'has-dots': toolCall.status === 'pending' || toolCall.status === 'executing' }]">
+          {{ statusText }}<span v-if="toolCall.status === 'pending' || toolCall.status === 'executing'" class="animated-dots"><span>.</span><span>.</span><span>.</span></span>
+        </span>
       </div>
+      <!-- Confirmation buttons for dangerous commands -->
+      <template v-if="toolCall.requiresConfirmation">
+        <button
+          class="confirm-btn"
+          @click="$emit('confirm', toolCall)"
+          title="Confirm and execute"
+        >
+          Confirm
+        </button>
+        <button
+          class="reject-btn"
+          @click="$emit('reject', toolCall)"
+          title="Reject command"
+        >
+          Reject
+        </button>
+      </template>
       <button
-        v-if="toolCall.status === 'pending'"
+        v-else-if="toolCall.status === 'pending'"
         class="execute-btn"
         @click="$emit('execute', toolCall)"
         title="Execute tool"
       >
         Run
       </button>
+    </div>
+
+    <!-- Confirmation warning for dangerous commands -->
+    <div v-if="toolCall.requiresConfirmation" class="confirmation-warning">
+      <div class="warning-header">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <span>This command requires your confirmation</span>
+      </div>
+      <div class="command-preview">
+        <code>{{ toolCall.arguments.command }}</code>
+      </div>
+      <div class="warning-hint">
+        This is a potentially dangerous command that may modify or delete files.
+      </div>
     </div>
 
     <div v-if="showArguments && Object.keys(toolCall.arguments).length > 0" class="tool-arguments">
@@ -84,6 +127,8 @@ const props = withDefaults(defineProps<Props>(), {
 
 defineEmits<{
   execute: [toolCall: ToolCall]
+  confirm: [toolCall: ToolCall]
+  reject: [toolCall: ToolCall]
 }>()
 
 const argumentsExpanded = ref(false)
@@ -93,16 +138,40 @@ const statusClass = computed(() => {
   return `status-${props.toolCall.status}`
 })
 
+// Calculate execution time with appropriate precision
+const executionTime = computed(() => {
+  const { startTime, endTime } = props.toolCall
+  if (startTime && endTime) {
+    const ms = endTime - startTime
+    if (ms < 1000) {
+      // Show milliseconds for very fast executions
+      return `${ms}ms`
+    } else {
+      // Show seconds with 1 decimal for longer executions
+      return `${(ms / 1000).toFixed(1)}s`
+    }
+  }
+  return null
+})
+
 const statusText = computed(() => {
+  // Check for confirmation required first
+  if (props.toolCall.requiresConfirmation) {
+    return 'Awaiting Confirmation'
+  }
+
+  // Format execution time suffix (unit already included in executionTime)
+  const timeSuffix = executionTime.value ? ` (${executionTime.value})` : ''
+
   switch (props.toolCall.status) {
     case 'pending':
-      return 'Pending'
+      return 'Waiting'
     case 'executing':
-      return 'Running...'
+      return 'Calling'
     case 'completed':
-      return 'Completed'
+      return `Completed${timeSuffix}`
     case 'failed':
-      return 'Failed'
+      return `Failed${timeSuffix}`
     case 'cancelled':
       return 'Cancelled'
     default:
@@ -175,6 +244,16 @@ function formatResult(result: any): string {
   background: rgba(239, 68, 68, 0.04);
 }
 
+/* Confirmation required state */
+.tool-call.requires-confirmation {
+  border-left-color: rgba(245, 158, 11, 0.8);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.tool-call.requires-confirmation .tool-icon svg {
+  color: rgb(245, 158, 11);
+}
+
 .tool-header {
   display: flex;
   align-items: center;
@@ -237,29 +316,47 @@ function formatResult(result: any): string {
   color: var(--muted);
 }
 
-/* Flowing animation for executing state */
-.tool-status.flowing {
-  background: linear-gradient(
-    90deg,
-    rgba(59, 130, 246, 0.4) 0%,
-    rgba(59, 130, 246, 1) 25%,
-    rgba(59, 130, 246, 1) 50%,
-    rgba(59, 130, 246, 1) 75%,
-    rgba(59, 130, 246, 0.4) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: flowing-gradient 2.5s ease-in-out infinite;
+/* Status colors for pending/executing */
+.status-pending .tool-status {
+  color: rgb(251, 191, 36);
 }
 
-@keyframes flowing-gradient {
-  0% {
-    background-position: 200% 0;
+.status-executing .tool-status {
+  color: rgb(59, 130, 246);
+}
+
+/* Animated dots */
+.animated-dots {
+  display: inline-block;
+  margin-left: 1px;
+}
+
+.animated-dots span {
+  opacity: 0;
+  animation: dot-fade 1.4s infinite;
+}
+
+.animated-dots span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.animated-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.animated-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot-fade {
+  0%, 20% {
+    opacity: 0;
   }
-  100% {
-    background-position: -200% 0;
+  40% {
+    opacity: 1;
+  }
+  60%, 100% {
+    opacity: 0;
   }
 }
 
@@ -277,6 +374,78 @@ function formatResult(result: any): string {
 
 .execute-btn:hover {
   background: #0d8e6f;
+}
+
+/* Confirmation buttons */
+.confirm-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: none;
+  background: rgb(34, 197, 94);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.confirm-btn:hover {
+  background: rgb(22, 163, 74);
+}
+
+.reject-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  background: transparent;
+  color: rgb(239, 68, 68);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.reject-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgb(239, 68, 68);
+}
+
+/* Confirmation warning box */
+.confirmation-warning {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.warning-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgb(245, 158, 11);
+  margin-bottom: 8px;
+}
+
+.command-preview {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  margin-bottom: 8px;
+}
+
+.command-preview code {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 12px;
+  color: rgb(251, 191, 36);
+  word-break: break-all;
+}
+
+.warning-hint {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .tool-arguments,

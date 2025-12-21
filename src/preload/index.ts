@@ -106,6 +106,9 @@ const electronAPI = {
   cancelTool: (toolCallId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.CANCEL_TOOL, { toolCallId }),
 
+  updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Record<string, any>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_TOOL_CALL, { sessionId, messageId, toolCallId, updates }),
+
   updateContentParts: (sessionId: string, messageId: string, contentParts: any[]) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CONTENT_PARTS, { sessionId, messageId, contentParts }),
 
@@ -149,21 +152,35 @@ const electronAPI = {
   mcpGetPrompt: (serverId: string, name: string, args?: Record<string, string>) =>
     ipcRenderer.invoke(IPC_CHANNELS.MCP_GET_PROMPT, { serverId, name, arguments: args }),
 
-  // Skills methods
+  // Skills methods (Official Claude Code Skills)
   getSkills: () =>
     ipcRenderer.invoke(IPC_CHANNELS.SKILLS_GET_ALL),
 
-  executeSkill: (skillId: string, context: { sessionId: string; messageId?: string; input: string; selection?: string; parameters?: Record<string, any> }) =>
-    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_EXECUTE, { skillId, context }),
+  refreshSkills: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_REFRESH),
 
-  addUserSkill: (skill: any) =>
-    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_ADD_USER, { skill }),
+  readSkillFile: (skillId: string, fileName: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_READ_FILE, { skillId, fileName }),
 
-  updateUserSkill: (skillId: string, updates: any) =>
-    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_UPDATE_USER, { skillId, updates }),
+  openSkillDirectory: (skillId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_OPEN_DIRECTORY, { skillId }),
 
-  deleteUserSkill: (skillId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_DELETE_USER, { skillId }),
+  createSkill: (name: string, description: string, instructions: string, source: 'user' | 'project') =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_CREATE, { name, description, instructions, source }),
+
+  deleteSkill: (skillId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_DELETE, { skillId }),
+
+  toggleSkillEnabled: (skillId: string, enabled: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_TOGGLE_ENABLED, { skillId, enabled }),
+
+  // Message update methods
+  updateMessageThinkingTime: (sessionId: string, messageId: string, thinkingTime: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_MESSAGE_THINKING_TIME, { sessionId, messageId, thinkingTime }),
+
+  // Dialog methods
+  showOpenDialog: (options: { properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>; title?: string; defaultPath?: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SHOW_OPEN_DIALOG, options),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

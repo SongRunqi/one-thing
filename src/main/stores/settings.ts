@@ -44,12 +44,21 @@ const defaultSettings: AppSettings = {
   general: {
     animationSpeed: 0.25,
     sendShortcut: 'enter',
+    colorTheme: 'blue',
+    baseTheme: 'obsidian',
   },
   tools: {
     enableToolCalls: true,
     tools: {
       get_current_time: { enabled: true, autoExecute: true },
       calculator: { enabled: true, autoExecute: true },
+    },
+    bash: {
+      enableSandbox: true,
+      defaultWorkingDirectory: '',
+      allowedDirectories: [],
+      confirmDangerousCommands: true,
+      dangerousCommandWhitelist: [],
     },
   },
 }
@@ -148,9 +157,27 @@ function migrateSettings(settings: any): AppSettings {
     needsSave = true
   }
 
+  // Ensure colorTheme exists in general settings
+  if (settings.general && !settings.general.colorTheme) {
+    settings.general.colorTheme = 'blue'
+    needsSave = true
+  }
+
+  // Ensure baseTheme exists in general settings
+  if (settings.general && !settings.general.baseTheme) {
+    settings.general.baseTheme = 'obsidian'
+    needsSave = true
+  }
+
   // Ensure tools settings exist
   if (!settings.tools) {
     settings.tools = defaultSettings.tools
+    needsSave = true
+  }
+
+  // Ensure bash settings exist in tools
+  if (settings.tools && !settings.tools.bash) {
+    settings.tools.bash = defaultSettings.tools.bash
     needsSave = true
   }
 

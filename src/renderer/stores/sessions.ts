@@ -20,8 +20,9 @@ export const useSessionsStore = defineStore('sessions', () => {
       const response = await window.electronAPI.getSessions()
       if (response.success) {
         sessions.value = response.sessions || []
-        if (sessions.value.length > 0 && !currentSessionId.value) {
-          await switchSession(sessions.value[0].id)
+        // Always start with a new chat on app open
+        if (!currentSessionId.value) {
+          await createSession('New Chat')
         }
       }
     } finally {

@@ -28,6 +28,9 @@ export interface ToolExecutionResult {
   success: boolean
   data?: any
   error?: string
+  // For dangerous commands that need user confirmation
+  requiresConfirmation?: boolean
+  commandType?: 'read-only' | 'dangerous' | 'forbidden'
 }
 
 /**

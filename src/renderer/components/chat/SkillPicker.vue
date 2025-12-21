@@ -1,7 +1,7 @@
 <template>
   <div class="skill-picker" v-if="visible && filteredSkills.length > 0">
     <div class="skill-picker-header">
-      <span class="title">Skills</span>
+      <span class="title">Available Skills</span>
       <span class="count">{{ filteredSkills.length }}</span>
     </div>
     <div class="skill-list">
@@ -13,28 +13,25 @@
         @mouseenter="selectedIndex = index"
       >
         <div class="skill-icon">
-          <svg v-if="skill.type === 'prompt-template'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <polyline points="14,2 14,8 20,8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
+          <svg v-if="skill.source === 'user'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
           </svg>
           <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12,6 12,12 16,14"/>
+            <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
           </svg>
         </div>
         <div class="skill-info">
           <div class="skill-name">{{ skill.name }}</div>
-          <div class="skill-triggers">{{ skill.triggers.join(', ') }}</div>
+          <div class="skill-description">{{ skill.description }}</div>
         </div>
-        <div class="skill-type-badge" :class="skill.type">
-          {{ skill.type === 'prompt-template' ? 'Template' : 'Workflow' }}
+        <div class="skill-source-badge" :class="skill.source">
+          {{ skill.source === 'user' ? 'User' : 'Project' }}
         </div>
       </div>
     </div>
     <div class="skill-picker-hint">
-      <span><kbd>Tab</kbd> or <kbd>Enter</kbd> to select</span>
+      <span>Claude reads skills via Bash when relevant</span>
       <span><kbd>Esc</kbd> to close</span>
     </div>
   </div>
@@ -60,22 +57,22 @@ const emit = defineEmits<Emits>()
 
 const selectedIndex = ref(0)
 
-// Filter skills by query
+// Filter skills by query (match name or description)
 const filteredSkills = computed(() => {
   const q = props.query.toLowerCase()
-  return props.skills.filter(skill => {
-    // Match by trigger
-    for (const trigger of skill.triggers) {
-      if (trigger.toLowerCase().startsWith(q)) {
+  return props.skills
+    .filter(skill => skill.enabled)
+    .filter(skill => {
+      // Match by name
+      if (skill.name.toLowerCase().includes(q)) {
         return true
       }
-    }
-    // Match by name
-    if (skill.name.toLowerCase().includes(q)) {
-      return true
-    }
-    return false
-  })
+      // Match by description
+      if (skill.description.toLowerCase().includes(q)) {
+        return true
+      }
+      return false
+    })
 })
 
 // Reset selected index when query changes
@@ -182,7 +179,7 @@ onUnmounted(() => {
 
 .skill-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
   border-radius: 8px;
@@ -209,6 +206,7 @@ onUnmounted(() => {
   border-radius: 6px;
   color: var(--muted);
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .skill-item.selected .skill-icon {
@@ -223,36 +221,39 @@ onUnmounted(() => {
 
 .skill-name {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.skill-triggers {
-  font-size: 11px;
-  color: var(--muted);
   font-family: 'SF Mono', 'Monaco', monospace;
-  margin-top: 1px;
 }
 
-.skill-type-badge {
+.skill-description {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.skill-source-badge {
   font-size: 10px;
   font-weight: 600;
   padding: 2px 6px;
   border-radius: 4px;
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
-.skill-type-badge.prompt-template {
+.skill-source-badge.user {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.skill-source-badge.project {
   background: rgba(34, 197, 94, 0.15);
   color: #22c55e;
-}
-
-.skill-type-badge.workflow {
-  background: rgba(168, 85, 247, 0.15);
-  color: #a855f7;
 }
 
 .skill-picker-hint {

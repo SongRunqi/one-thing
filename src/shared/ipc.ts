@@ -41,9 +41,11 @@ export const IPC_CHANNELS = {
   GET_TOOLS: 'tools:get-all',
   EXECUTE_TOOL: 'tools:execute',
   CANCEL_TOOL: 'tools:cancel',
+  UPDATE_TOOL_CALL: 'tools:update-tool-call',
   STREAM_TOOL_CALL: 'chat:stream-tool-call',
   STREAM_TOOL_RESULT: 'chat:stream-tool-result',
   UPDATE_CONTENT_PARTS: 'chat:update-content-parts',
+  UPDATE_MESSAGE_THINKING_TIME: 'chat:update-thinking-time',
 
   // MCP related
   MCP_GET_SERVERS: 'mcp:get-servers',
@@ -60,12 +62,17 @@ export const IPC_CHANNELS = {
   MCP_GET_PROMPTS: 'mcp:get-prompts',
   MCP_GET_PROMPT: 'mcp:get-prompt',
 
-  // Skills related
+  // Dialog related
+  SHOW_OPEN_DIALOG: 'dialog:show-open',
+
+  // Skills related (Official Claude Code Skills)
   SKILLS_GET_ALL: 'skills:get-all',
-  SKILLS_EXECUTE: 'skills:execute',
-  SKILLS_ADD_USER: 'skills:add-user',
-  SKILLS_UPDATE_USER: 'skills:update-user',
-  SKILLS_DELETE_USER: 'skills:delete-user',
+  SKILLS_REFRESH: 'skills:refresh',
+  SKILLS_READ_FILE: 'skills:read-file',
+  SKILLS_OPEN_DIRECTORY: 'skills:open-directory',
+  SKILLS_CREATE: 'skills:create',
+  SKILLS_DELETE: 'skills:delete',
+  SKILLS_TOGGLE_ENABLED: 'skills:toggle-enabled',
 } as const
 
 // Content part types for sequential display
@@ -87,6 +94,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]  // Tool calls made by the assistant (legacy, for backward compat)
   contentParts?: ContentPart[]  // Sequential content parts for inline tool call display
   model?: string  // AI model used for assistant messages
+  thinkingTime?: number  // Final thinking time in seconds (persisted for display after session switch)
 }
 
 export interface ChatSession {
@@ -157,9 +165,18 @@ export interface AISettings {
   customProviders?: CustomProviderConfig[]
 }
 
+export type ColorTheme = 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'cyan' | 'red'
+
+// Base theme controls the overall look (backgrounds, text colors, etc.)
+export type BaseTheme =
+  | 'obsidian' | 'ocean' | 'forest' | 'rose' | 'ember'  // Original themes
+  | 'nord' | 'dracula' | 'tokyo' | 'catppuccin' | 'gruvbox' | 'onedark' | 'github' | 'rosepine'  // New themes
+
 export interface GeneralSettings {
   animationSpeed: number  // 0.1 - 0.5 seconds, default 0.25
   sendShortcut: 'enter' | 'ctrl-enter' | 'cmd-enter'
+  colorTheme: ColorTheme  // Accent color theme
+  baseTheme: BaseTheme    // Base theme (overall colors)
 }
 
 export interface AppSettings {
@@ -402,6 +419,20 @@ export interface ToolCall {
   result?: any               // Result of the tool execution
   error?: string             // Error message if failed
   timestamp: number
+  startTime?: number         // Execution start timestamp
+  endTime?: number           // Execution end timestamp
+  // For dangerous commands that need user confirmation
+  requiresConfirmation?: boolean
+  commandType?: 'read-only' | 'dangerous' | 'forbidden'
+}
+
+// Bash tool specific settings
+export interface BashToolSettings {
+  enableSandbox: boolean              // Whether to enable directory sandbox
+  defaultWorkingDirectory?: string    // Default working directory for commands
+  allowedDirectories: string[]        // List of allowed directories
+  confirmDangerousCommands: boolean   // Whether to confirm dangerous commands
+  dangerousCommandWhitelist: string[] // Commands to skip confirmation (e.g., "npm install")
 }
 
 export interface ToolSettings {
@@ -412,6 +443,8 @@ export interface ToolSettings {
     enabled: boolean
     autoExecute: boolean
   }>
+  // Bash tool specific settings
+  bash?: BashToolSettings
 }
 
 // Stream message types
@@ -618,90 +651,44 @@ export interface MCPGetPromptResponse {
 }
 
 // ============================================
-// Skills related types
+// Skills related types (Official Claude Code Skills format)
 // ============================================
 
-// Skill type
-export type SkillType = 'prompt-template' | 'workflow'
+// Skill source location
+export type SkillSource = 'user' | 'project' | 'plugin'
 
-// Skill source
-export type SkillSource = 'builtin' | 'user'
-
-// Skill parameter (for workflows)
-export interface SkillParameter {
-  name: string
-  type: 'string' | 'number' | 'boolean' | 'select'
-  description: string
-  required?: boolean
-  default?: any
-  options?: string[]  // For 'select' type
-}
-
-// Prompt template configuration
-export interface PromptTemplateConfig {
-  template: string  // Supports {{input}}, {{selection}} placeholders
-  systemPrompt?: string
-  includeContext?: boolean
-}
-
-// Workflow step type
-export type WorkflowStepType = 'prompt' | 'transform' | 'condition' | 'loop'
-
-// Workflow step
-export interface WorkflowStep {
-  id: string
-  type: WorkflowStepType
-  name: string
-  config: Record<string, any>
-  next?: string | { true: string; false: string }
-}
-
-// Workflow configuration
-export interface WorkflowConfig {
-  parameters: SkillParameter[]
-  steps: WorkflowStep[]
-  entryStep: string
-  timeout?: number
-}
-
-// Skill definition
+// Skill definition based on official Claude Code Skills
 export interface SkillDefinition {
-  id: string
+  // Parsed from SKILL.md YAML frontmatter
+  name: string                    // max 64 chars, lowercase letters/numbers/hyphens
+  description: string             // max 1024 chars, what it does AND when to use
+  allowedTools?: string[]         // Optional tool restrictions
+
+  // Metadata added by loader
+  id: string                      // Unique identifier (path-based)
+  source: SkillSource             // 'user' (~/.claude/skills) or 'project' (.claude/skills)
+  path: string                    // Full path to SKILL.md
+  directoryPath: string           // Path to skill directory
+  enabled: boolean                // Whether skill is enabled
+
+  // Content
+  instructions: string            // Main body of SKILL.md (after frontmatter)
+
+  // Optional: additional files in the skill directory
+  files?: SkillFile[]
+}
+
+// Additional file in a skill directory
+export interface SkillFile {
   name: string
-  description: string
-  type: SkillType
-  source: SkillSource
-  triggers: string[]  // Trigger patterns: "/explain", "@review"
-  icon?: string
-  category?: string
-  enabled: boolean
-  config: PromptTemplateConfig | WorkflowConfig
-}
-
-// Skill execution context
-export interface SkillExecutionContext {
-  sessionId: string
-  messageId?: string
-  input: string
-  selection?: string
-  parameters?: Record<string, any>
-}
-
-// Skill execution result
-export interface SkillExecutionResult {
-  success: boolean
-  output?: string
-  error?: string
-  stepResults?: Array<{
-    stepId: string
-    output: string
-    duration: number
-  }>
+  path: string
+  type: 'markdown' | 'script' | 'template' | 'other'
 }
 
 // Skill settings
 export interface SkillSettings {
   enableSkills: boolean
+  // Per-skill enabled state (keyed by skill id)
   skills: Record<string, { enabled: boolean }>
 }
 
@@ -712,43 +699,45 @@ export interface GetSkillsResponse {
   error?: string
 }
 
-export interface ExecuteSkillRequest {
-  skillId: string
-  context: SkillExecutionContext
-}
-
-export interface ExecuteSkillResponse {
+// Refresh skills from filesystem
+export interface RefreshSkillsResponse {
   success: boolean
-  result?: SkillExecutionResult
+  skills?: SkillDefinition[]
   error?: string
 }
 
-export interface AddUserSkillRequest {
-  skill: Omit<SkillDefinition, 'source'>
+// Read a skill file
+export interface ReadSkillFileRequest {
+  skillId: string
+  fileName: string
 }
 
-export interface AddUserSkillResponse {
+export interface ReadSkillFileResponse {
+  success: boolean
+  content?: string
+  error?: string
+}
+
+// Open skill directory in file manager
+export interface OpenSkillDirectoryRequest {
+  skillId: string
+}
+
+export interface OpenSkillDirectoryResponse {
+  success: boolean
+  error?: string
+}
+
+// Create new skill
+export interface CreateSkillRequest {
+  name: string
+  description: string
+  instructions: string
+  source: SkillSource
+}
+
+export interface CreateSkillResponse {
   success: boolean
   skill?: SkillDefinition
-  error?: string
-}
-
-export interface UpdateUserSkillRequest {
-  skillId: string
-  updates: Partial<SkillDefinition>
-}
-
-export interface UpdateUserSkillResponse {
-  success: boolean
-  skill?: SkillDefinition
-  error?: string
-}
-
-export interface DeleteUserSkillRequest {
-  skillId: string
-}
-
-export interface DeleteUserSkillResponse {
-  success: boolean
   error?: string
 }

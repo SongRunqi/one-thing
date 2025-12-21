@@ -26,6 +26,7 @@
     "ai": "^5.0.113",
     "axios": "^1.4.0",
     "electron-store": "^8.1.0",
+    "execa": "^9.6.1",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.1",
     "pinia": "^2.1.3",

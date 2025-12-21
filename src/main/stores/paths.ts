@@ -19,6 +19,10 @@ export function getModelsCachePath(): string {
   return path.join(getStorePath(), 'models-cache.json')
 }
 
+export function getWindowStatePath(): string {
+  return path.join(getStorePath(), 'window-state.json')
+}
+
 export function getSessionsDir(): string {
   return path.join(getStorePath(), 'sessions')
 }

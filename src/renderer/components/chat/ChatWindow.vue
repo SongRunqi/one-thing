@@ -2,16 +2,17 @@
   <main class="chat">
     <!-- Chat View (Always rendered) -->
     <div class="chat-container">
-      <MessageList 
-        :messages="chatStore.messages" 
-        :is-loading="chatStore.isLoading" 
-        @set-quoted-text="handleSetQuotedText" 
+      <MessageList
+        :messages="chatStore.messages"
+        :is-loading="chatStore.isLoading"
+        @set-quoted-text="handleSetQuotedText"
         @set-input-text="handleSetInputText"
-        @regenerate="handleRegenerate" 
+        @regenerate="handleRegenerate"
+        @edit-and-resend="handleEditAndResend"
       />
 
       <div class="composer">
-        <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="chatStore.isLoading" />
+        <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="isRegenerating || chatStore.isGenerating" />
       </div>
     </div>
 
@@ -51,6 +52,9 @@ const currentSession = computed(() => sessionsStore.currentSession)
 // Input box ref for setting quoted text
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
 
+// Local state for immediate stop button response during regenerate/editAndResend
+const isRegenerating = ref(false)
+
 // Handle open tool settings from InputBox
 function handleOpenToolSettings() {
   emit('openSettings')
@@ -87,7 +91,22 @@ function handleSetQuotedText(text: string) {
 
 async function handleRegenerate(messageId: string) {
   if (!currentSession.value) return
-  await chatStore.regenerate(currentSession.value.id, messageId)
+  isRegenerating.value = true  // Immediate response for stop button
+  try {
+    await chatStore.regenerate(currentSession.value.id, messageId)
+  } finally {
+    isRegenerating.value = false
+  }
+}
+
+async function handleEditAndResend(messageId: string, newContent: string) {
+  if (!currentSession.value) return
+  isRegenerating.value = true  // Immediate response for stop button
+  try {
+    await chatStore.editAndResend(currentSession.value.id, messageId, newContent)
+  } finally {
+    isRegenerating.value = false
+  }
 }
 
 function handleSetInputText(text: string) {

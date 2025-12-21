@@ -1,266 +1,112 @@
 <template>
   <div class="skills-settings">
-    <!-- Global Skills Toggle -->
+    <!-- Header with actions -->
     <section class="settings-section">
-      <h3 class="section-title">Skills Settings</h3>
-
-      <div class="form-group">
-        <div class="toggle-row">
-          <label class="form-label">Enable Skills</label>
-          <label class="toggle">
-            <input
-              type="checkbox"
-              v-model="localSkillsEnabled"
-              @change="handleEnableChange"
-            />
-            <span class="toggle-slider"></span>
-          </label>
+      <div class="section-header">
+        <div>
+          <h3 class="section-title">Claude Code Skills</h3>
+          <p class="section-description">
+            Skills are loaded from <code>~/.claude/skills/</code> (user) and <code>.claude/skills/</code> (project)
+          </p>
         </div>
-        <p class="form-hint">Enable skills to use prompt templates and workflows with trigger commands</p>
+        <div class="header-actions">
+          <button class="action-btn" @click="refreshSkills" :disabled="isLoading" title="Refresh skills">
+            <svg :class="{ spinning: isLoading }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6M1 20v-6h6"/>
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+            </svg>
+          </button>
+          <button class="action-btn" @click="openSkillsDirectory" title="Open skills folder">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </section>
 
     <!-- Skills List -->
-    <section class="settings-section" v-if="localSkillsEnabled">
-      <div class="section-header">
-        <h3 class="section-title">Available Skills</h3>
-        <button class="add-skill-btn" @click="openAddSkillDialog">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-          Add Skill
-        </button>
+    <section class="settings-section">
+      <div v-if="isLoading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading skills...</p>
       </div>
 
-      <div v-if="skills.length === 0" class="empty-state">
+      <div v-else-if="skills.length === 0" class="empty-state">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M12 2L2 7l10 5 10-5-10-5z"/>
           <path d="M2 17l10 5 10-5"/>
           <path d="M2 12l10 5 10-5"/>
         </svg>
-        <p>No skills available</p>
-        <p class="hint">Add custom skills or enable built-in ones</p>
+        <p>No skills found</p>
+        <p class="hint">Add SKILL.md files to your skills directories</p>
       </div>
 
-      <!-- Built-in Skills -->
       <div v-else>
-        <div v-if="builtinSkills.length > 0" class="skill-group">
-          <div class="group-header">
-            <span class="group-title">Built-in Skills</span>
-            <span class="group-count">{{ builtinSkills.length }}</span>
-          </div>
-          <div class="skills-list">
-            <div
-              v-for="skill in builtinSkills"
-              :key="skill.id"
-              :class="['skill-item', { expanded: expandedSkills.has(skill.id) }]"
-            >
-              <div class="skill-header" @click="toggleSkillExpanded(skill.id)">
-                <div class="skill-info">
-                  <div class="skill-details">
-                    <div class="skill-name">{{ skill.name }}</div>
-                    <div class="skill-meta">
-                      <span class="type-badge" :class="skill.type">
-                        {{ skill.type === 'prompt-template' ? 'Template' : 'Workflow' }}
-                      </span>
-                      <span class="triggers">{{ skill.triggers.join(', ') }}</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="skill-actions">
-                  <label class="toggle small" @click.stop title="Enable/Disable">
-                    <input
-                      type="checkbox"
-                      :checked="skill.enabled"
-                      @change="toggleSkillEnabled(skill.id, ($event.target as HTMLInputElement).checked)"
-                    />
-                    <span class="toggle-slider"></span>
-                  </label>
-                  <svg
-                    class="expand-chevron"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <polyline points="6 9 12 15 18 9"/>
-                  </svg>
-                </div>
-              </div>
-
-              <!-- Expanded Content -->
-              <div v-if="expandedSkills.has(skill.id)" class="skill-expanded">
-                <div class="skill-description">{{ skill.description }}</div>
-                <div v-if="skill.category" class="skill-category">
-                  <span class="label">Category:</span> {{ skill.category }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- User Skills -->
         <div v-if="userSkills.length > 0" class="skill-group">
           <div class="group-header">
-            <span class="group-title">Custom Skills</span>
+            <span class="group-title">User Skills</span>
+            <span class="group-path">~/.claude/skills/</span>
             <span class="group-count">{{ userSkills.length }}</span>
           </div>
           <div class="skills-list">
-            <div
+            <SkillItem
               v-for="skill in userSkills"
               :key="skill.id"
-              :class="['skill-item', { expanded: expandedSkills.has(skill.id) }]"
-            >
-              <div class="skill-header" @click="toggleSkillExpanded(skill.id)">
-                <div class="skill-info">
-                  <div class="skill-details">
-                    <div class="skill-name">{{ skill.name }}</div>
-                    <div class="skill-meta">
-                      <span class="type-badge" :class="skill.type">
-                        {{ skill.type === 'prompt-template' ? 'Template' : 'Workflow' }}
-                      </span>
-                      <span class="triggers">{{ skill.triggers.join(', ') }}</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="skill-actions">
-                  <label class="toggle small" @click.stop title="Enable/Disable">
-                    <input
-                      type="checkbox"
-                      :checked="skill.enabled"
-                      @change="toggleSkillEnabled(skill.id, ($event.target as HTMLInputElement).checked)"
-                    />
-                    <span class="toggle-slider"></span>
-                  </label>
-                  <button
-                    class="icon-btn small"
-                    @click.stop="openEditSkillDialog(skill)"
-                    title="Edit skill"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  </button>
-                  <button
-                    class="icon-btn small danger"
-                    @click.stop="confirmDeleteSkill(skill.id)"
-                    title="Delete skill"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                    </svg>
-                  </button>
-                  <svg
-                    class="expand-chevron"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <polyline points="6 9 12 15 18 9"/>
-                  </svg>
-                </div>
-              </div>
+              :skill="skill"
+              :expanded="expandedSkills.has(skill.id)"
+              @toggle-expand="toggleSkillExpanded(skill.id)"
+              @toggle-enabled="toggleSkillEnabled"
+              @delete="confirmDeleteSkill"
+              @open-directory="openSkillDirectory"
+            />
+          </div>
+        </div>
 
-              <!-- Expanded Content -->
-              <div v-if="expandedSkills.has(skill.id)" class="skill-expanded">
-                <div class="skill-description">{{ skill.description }}</div>
-                <div v-if="skill.type === 'prompt-template'" class="template-preview">
-                  <span class="label">Template:</span>
-                  <pre class="template-content">{{ (skill.config as any).template }}</pre>
-                </div>
-              </div>
-            </div>
+        <!-- Project Skills -->
+        <div v-if="projectSkills.length > 0" class="skill-group">
+          <div class="group-header">
+            <span class="group-title">Project Skills</span>
+            <span class="group-path">.claude/skills/</span>
+            <span class="group-count">{{ projectSkills.length }}</span>
+          </div>
+          <div class="skills-list">
+            <SkillItem
+              v-for="skill in projectSkills"
+              :key="skill.id"
+              :skill="skill"
+              :expanded="expandedSkills.has(skill.id)"
+              @toggle-expand="toggleSkillExpanded(skill.id)"
+              @toggle-enabled="toggleSkillEnabled"
+              @delete="confirmDeleteSkill"
+              @open-directory="openSkillDirectory"
+            />
+          </div>
+        </div>
+
+        <!-- Plugin Skills -->
+        <div v-if="pluginSkills.length > 0" class="skill-group">
+          <div class="group-header">
+            <span class="group-title">Plugin Skills</span>
+            <span class="group-path">~/.claude/plugins/cache/claude-plugins-official/</span>
+            <span class="group-count">{{ pluginSkills.length }}</span>
+          </div>
+          <div class="skills-list">
+            <SkillItem
+              v-for="skill in pluginSkills"
+              :key="skill.id"
+              :skill="skill"
+              :expanded="expandedSkills.has(skill.id)"
+              @toggle-expand="toggleSkillExpanded(skill.id)"
+              @toggle-enabled="toggleSkillEnabled"
+              @delete="confirmDeleteSkill"
+              @open-directory="openSkillDirectory"
+            />
           </div>
         </div>
       </div>
     </section>
-
-    <!-- Add/Edit Skill Dialog -->
-    <Teleport to="body">
-      <div v-if="showSkillDialog" class="dialog-overlay" @click.self="closeSkillDialog">
-        <div class="dialog">
-          <div class="dialog-header">
-            <h3>{{ editingSkill ? 'Edit Skill' : 'Add Custom Skill' }}</h3>
-            <button class="close-btn" @click="closeSkillDialog">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
-
-          <div class="dialog-content">
-            <div class="form-group">
-              <label class="form-label">Skill Name</label>
-              <input
-                v-model="skillForm.name"
-                type="text"
-                class="form-input"
-                placeholder="My Custom Skill"
-              />
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Description</label>
-              <input
-                v-model="skillForm.description"
-                type="text"
-                class="form-input"
-                placeholder="What this skill does"
-              />
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Triggers</label>
-              <input
-                v-model="skillForm.triggersString"
-                type="text"
-                class="form-input"
-                placeholder="/myskill, @myskill"
-              />
-              <p class="form-hint">Comma-separated trigger commands (e.g., /translate, @tr)</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Prompt Template</label>
-              <textarea
-                v-model="skillForm.template"
-                class="form-textarea"
-                rows="6"
-                placeholder="Enter your prompt template. Use {{input}} for user input."
-              ></textarea>
-              <p class="form-hint">Use {{input}} to insert user's message, {{selection}} for selected text</p>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">System Prompt (optional)</label>
-              <textarea
-                v-model="skillForm.systemPrompt"
-                class="form-textarea"
-                rows="3"
-                placeholder="Optional system prompt to guide AI behavior"
-              ></textarea>
-            </div>
-
-            <div v-if="skillDialogError" class="error-message">
-              {{ skillDialogError }}
-            </div>
-          </div>
-
-          <div class="dialog-footer">
-            <button class="btn secondary" @click="closeSkillDialog">Cancel</button>
-            <button class="btn primary" @click="saveSkill" :disabled="isSavingSkill">
-              {{ isSavingSkill ? 'Saving...' : (editingSkill ? 'Save Changes' : 'Add Skill') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
 
     <!-- Delete Confirmation Dialog -->
     <Teleport to="body">
@@ -270,7 +116,8 @@
             <h3>Delete Skill</h3>
           </div>
           <div class="dialog-content">
-            <p>Are you sure you want to delete this skill? This action cannot be undone.</p>
+            <p>Are you sure you want to delete <strong>{{ deletingSkill?.name }}</strong>?</p>
+            <p class="warning-text">This will delete the entire skill directory and cannot be undone.</p>
           </div>
           <div class="dialog-footer">
             <button class="btn secondary" @click="showDeleteDialog = false">Cancel</button>
@@ -283,9 +130,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import type { SkillDefinition, SkillSettings, PromptTemplateConfig } from '@/types'
-import { v4 as uuidv4 } from 'uuid'
+import { ref, computed, onMounted } from 'vue'
+import type { SkillDefinition, SkillSettings } from '@/types'
+import SkillItem from './SkillItem.vue'
 
 interface Props {
   settings: SkillSettings
@@ -298,45 +145,23 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-// Local state
-const localSkillsEnabled = ref(props.settings?.enableSkills ?? true)
+// State
 const skills = ref<SkillDefinition[]>([])
+const isLoading = ref(false)
 const expandedSkills = ref<Set<string>>(new Set())
 
-// Computed
-const builtinSkills = computed(() => skills.value.filter(s => s.source === 'builtin'))
-const userSkills = computed(() => skills.value.filter(s => s.source === 'user'))
-
-// Dialog state
-const showSkillDialog = ref(false)
+// Delete dialog state
 const showDeleteDialog = ref(false)
-const editingSkill = ref<SkillDefinition | null>(null)
-const deletingSkillId = ref<string | null>(null)
-const skillDialogError = ref('')
-const isSavingSkill = ref(false)
+const deletingSkill = ref<SkillDefinition | null>(null)
 
-// Skill form
-const skillForm = ref({
-  name: '',
-  description: '',
-  triggersString: '',
-  template: '',
-  systemPrompt: '',
-})
+// Computed
+const userSkills = computed(() => skills.value.filter(s => s.source === 'user'))
+const projectSkills = computed(() => skills.value.filter(s => s.source === 'project'))
+const pluginSkills = computed(() => skills.value.filter(s => s.source === 'plugin'))
 
-// Watch for settings changes
-watch(() => props.settings, (newSettings) => {
-  if (newSettings) {
-    localSkillsEnabled.value = newSettings.enableSkills
-  }
-}, { deep: true })
-
-// Load skills on mount
-onMounted(async () => {
-  await loadSkills()
-})
-
+// Load skills
 async function loadSkills() {
+  isLoading.value = true
   try {
     const response = await window.electronAPI.getSkills()
     if (response.success && response.skills) {
@@ -344,16 +169,27 @@ async function loadSkills() {
     }
   } catch (error) {
     console.error('Failed to load skills:', error)
+  } finally {
+    isLoading.value = false
   }
 }
 
-function handleEnableChange() {
-  emit('update:settings', {
-    ...props.settings,
-    enableSkills: localSkillsEnabled.value,
-  })
+// Refresh skills from filesystem
+async function refreshSkills() {
+  isLoading.value = true
+  try {
+    const response = await window.electronAPI.refreshSkills()
+    if (response.success && response.skills) {
+      skills.value = response.skills
+    }
+  } catch (error) {
+    console.error('Failed to refresh skills:', error)
+  } finally {
+    isLoading.value = false
+  }
 }
 
+// Toggle skill expanded state
 function toggleSkillExpanded(skillId: string) {
   if (expandedSkills.value.has(skillId)) {
     expandedSkills.value.delete(skillId)
@@ -363,145 +199,62 @@ function toggleSkillExpanded(skillId: string) {
   expandedSkills.value = new Set(expandedSkills.value)
 }
 
+// Toggle skill enabled state
 async function toggleSkillEnabled(skillId: string, enabled: boolean) {
-  const skill = skills.value.find(s => s.id === skillId)
-  if (!skill) return
-
-  // Update local state
-  skill.enabled = enabled
-
-  // Update settings
-  const updatedSkillSettings = { ...props.settings.skills }
-  updatedSkillSettings[skillId] = { enabled }
-  emit('update:settings', {
-    ...props.settings,
-    skills: updatedSkillSettings,
-  })
-
-  // If it's a user skill, also update in backend
-  if (skill.source === 'user') {
-    try {
-      await window.electronAPI.updateUserSkill(skillId, { enabled })
-    } catch (error) {
-      console.error('Failed to update skill:', error)
-    }
-  }
-}
-
-function openAddSkillDialog() {
-  editingSkill.value = null
-  skillDialogError.value = ''
-  skillForm.value = {
-    name: '',
-    description: '',
-    triggersString: '',
-    template: '',
-    systemPrompt: '',
-  }
-  showSkillDialog.value = true
-}
-
-function openEditSkillDialog(skill: SkillDefinition) {
-  editingSkill.value = skill
-  skillDialogError.value = ''
-  const config = skill.config as PromptTemplateConfig
-  skillForm.value = {
-    name: skill.name,
-    description: skill.description,
-    triggersString: skill.triggers.join(', '),
-    template: config.template || '',
-    systemPrompt: config.systemPrompt || '',
-  }
-  showSkillDialog.value = true
-}
-
-function closeSkillDialog() {
-  showSkillDialog.value = false
-  editingSkill.value = null
-  skillDialogError.value = ''
-}
-
-async function saveSkill() {
-  // Validate
-  if (!skillForm.value.name.trim()) {
-    skillDialogError.value = 'Skill name is required'
-    return
-  }
-
-  if (!skillForm.value.triggersString.trim()) {
-    skillDialogError.value = 'At least one trigger is required'
-    return
-  }
-
-  if (!skillForm.value.template.trim()) {
-    skillDialogError.value = 'Prompt template is required'
-    return
-  }
-
-  isSavingSkill.value = true
-  skillDialogError.value = ''
-
   try {
-    const triggers = skillForm.value.triggersString
-      .split(',')
-      .map(t => t.trim())
-      .filter(Boolean)
-
-    const skillData: Omit<SkillDefinition, 'source'> = {
-      id: editingSkill.value?.id || uuidv4(),
-      name: skillForm.value.name.trim(),
-      description: skillForm.value.description.trim(),
-      type: 'prompt-template',
-      triggers,
-      enabled: editingSkill.value?.enabled ?? true,
-      category: 'Custom',
-      config: {
-        template: skillForm.value.template,
-        systemPrompt: skillForm.value.systemPrompt.trim() || undefined,
-        includeContext: false,
-      } as PromptTemplateConfig,
+    await window.electronAPI.toggleSkillEnabled(skillId, enabled)
+    const skill = skills.value.find(s => s.id === skillId)
+    if (skill) {
+      skill.enabled = enabled
     }
-
-    let response
-    if (editingSkill.value) {
-      response = await window.electronAPI.updateUserSkill(skillData.id, skillData)
-    } else {
-      response = await window.electronAPI.addUserSkill(skillData)
-    }
-
-    if (response.success) {
-      await loadSkills()
-      closeSkillDialog()
-    } else {
-      skillDialogError.value = response.error || 'Failed to save skill'
-    }
-  } catch (error: any) {
-    skillDialogError.value = error.message || 'Failed to save skill'
-  } finally {
-    isSavingSkill.value = false
+  } catch (error) {
+    console.error('Failed to toggle skill:', error)
   }
 }
 
-function confirmDeleteSkill(skillId: string) {
-  deletingSkillId.value = skillId
+// Open skills directory
+async function openSkillsDirectory() {
+  try {
+    await window.electronAPI.openSkillDirectory()
+  } catch (error) {
+    console.error('Failed to open skills directory:', error)
+  }
+}
+
+// Open specific skill directory
+async function openSkillDirectory(skillId: string) {
+  try {
+    await window.electronAPI.openSkillDirectory(skillId)
+  } catch (error) {
+    console.error('Failed to open skill directory:', error)
+  }
+}
+
+// Delete skill
+function confirmDeleteSkill(skill: SkillDefinition) {
+  deletingSkill.value = skill
   showDeleteDialog.value = true
 }
 
 async function deleteSkill() {
-  if (!deletingSkillId.value) return
+  if (!deletingSkill.value) return
 
   try {
-    const response = await window.electronAPI.deleteUserSkill(deletingSkillId.value)
+    const response = await window.electronAPI.deleteSkill(deletingSkill.value.id)
     if (response.success) {
-      await loadSkills()
+      skills.value = skills.value.filter(s => s.id !== deletingSkill.value!.id)
     }
   } catch (error) {
     console.error('Failed to delete skill:', error)
   } finally {
     showDeleteDialog.value = false
-    deletingSkillId.value = null
+    deletingSkill.value = null
   }
 }
+
+onMounted(() => {
+  loadSkills()
+})
 </script>
 
 <style scoped>
@@ -515,138 +268,106 @@ async function deleteSkill() {
 }
 
 .settings-section {
-  margin-bottom: 32px;
-}
-
-.settings-section:last-child {
-  margin-bottom: 0;
+  margin-bottom: 24px;
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 16px;
   margin-bottom: 16px;
 }
 
 .section-title {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
+  color: var(--text);
+  margin: 0 0 4px 0;
+}
+
+.section-description {
+  font-size: 13px;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   margin: 0;
 }
 
-.section-header .section-title {
-  margin-bottom: 0;
+.section-description code {
+  background: var(--hover);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
-.add-skill-btn {
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.action-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
-  background: var(--accent);
-  color: white;
+  background: transparent;
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 500;
+  color: var(--text);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.add-skill-btn:hover {
+.action-btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.action-btn.primary:hover:not(:disabled) {
   background: #2563eb;
 }
 
-/* Toggle styles */
-.form-group {
-  margin-bottom: 16px;
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-.form-label {
-  display: block;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text);
-  margin-bottom: 8px;
+.spinning {
+  animation: spin 1s linear infinite;
 }
 
-.form-hint {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 6px;
-}
-
-.toggle-row {
+/* Loading state */
+.loading-state {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  padding: 48px;
+  gap: 16px;
 }
 
-.toggle {
-  position: relative;
-  display: inline-block;
-  width: 44px;
-  height: 24px;
-}
-
-.toggle.small {
-  width: 36px;
-  height: 20px;
-}
-
-.toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(120, 120, 128, 0.32);
-  border-radius: 12px;
-  transition: 0.2s;
-}
-
-.toggle.small .toggle-slider {
-  border-radius: 10px;
-}
-
-.toggle-slider:before {
-  position: absolute;
-  content: "";
-  height: 20px;
-  width: 20px;
-  left: 2px;
-  bottom: 2px;
-  background-color: white;
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
   border-radius: 50%;
-  transition: 0.2s;
+  animation: spin 1s linear infinite;
 }
 
-.toggle.small .toggle-slider:before {
-  height: 16px;
-  width: 16px;
-}
-
-.toggle input:checked + .toggle-slider {
-  background-color: var(--accent);
-}
-
-.toggle input:checked + .toggle-slider:before {
-  transform: translateX(20px);
-}
-
-.toggle.small input:checked + .toggle-slider:before {
-  transform: translateX(16px);
+.loading-state p {
+  color: var(--muted);
+  font-size: 14px;
 }
 
 /* Empty state */
@@ -678,6 +399,7 @@ async function deleteSkill() {
   font-size: 13px;
   color: var(--muted);
   margin-top: 4px;
+  margin-bottom: 20px;
 }
 
 /* Skill groups */
@@ -697,11 +419,15 @@ async function deleteSkill() {
 }
 
 .group-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
+  color: var(--text);
+}
+
+.group-path {
+  font-size: 12px;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-family: 'SF Mono', 'Monaco', monospace;
 }
 
 .group-count {
@@ -710,6 +436,7 @@ async function deleteSkill() {
   background: var(--hover);
   border-radius: 10px;
   color: var(--muted);
+  margin-left: auto;
 }
 
 /* Skills list */
@@ -719,7 +446,8 @@ async function deleteSkill() {
   gap: 8px;
 }
 
-.skill-item {
+/* Skill item */
+:deep(.skill-item) {
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -727,123 +455,65 @@ async function deleteSkill() {
   transition: all 0.15s ease;
 }
 
-.skill-item:hover {
+:deep(.skill-item:hover) {
   border-color: rgba(255, 255, 255, 0.15);
 }
 
-.skill-item.expanded {
+:deep(.skill-item.expanded) {
   border-color: var(--accent);
 }
 
-.skill-header {
+:deep(.skill-header) {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   padding: 14px 16px;
   cursor: pointer;
-}
-
-.skill-info {
-  display: flex;
-  align-items: center;
   gap: 12px;
+}
+
+:deep(.skill-info) {
+  flex: 1;
   min-width: 0;
 }
 
-.skill-details {
-  min-width: 0;
-}
-
-.skill-name {
+:deep(.skill-name) {
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.skill-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 2px;
-}
-
-.type-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(120, 120, 128, 0.2);
-  color: var(--muted);
-}
-
-.type-badge.prompt-template {
-  background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
-}
-
-.type-badge.workflow {
-  background: rgba(168, 85, 247, 0.15);
-  color: #a855f7;
-}
-
-.triggers {
-  font-size: 12px;
-  color: var(--muted);
   font-family: 'SF Mono', 'Monaco', monospace;
 }
 
-.skill-actions {
+:deep(.skill-description) {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+:deep(.skill-actions) {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
-.icon-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-}
-
-.icon-btn.small {
-  width: 28px;
-  height: 28px;
-}
-
-.icon-btn:hover:not(:disabled) {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.icon-btn.danger:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-}
-
-.expand-chevron {
+:deep(.expand-chevron) {
   transition: transform 0.2s ease;
   color: var(--muted);
 }
 
-.skill-item.expanded .expand-chevron {
+:deep(.skill-item.expanded .expand-chevron) {
   transform: rotate(180deg);
 }
 
-/* Expanded content */
-.skill-expanded {
+:deep(.skill-expanded) {
   padding: 0 16px 16px;
   border-top: 1px solid var(--border);
-  margin-top: -1px;
   animation: slideDown 0.2s ease;
 }
 
@@ -858,47 +528,122 @@ async function deleteSkill() {
   }
 }
 
-.skill-description {
+:deep(.skill-meta) {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
   font-size: 13px;
+}
+
+:deep(.meta-label) {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+:deep(.meta-value) {
   color: var(--text);
-  margin-top: 12px;
-  line-height: 1.5;
 }
 
-.skill-category {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 8px;
-}
-
-.skill-category .label {
-  font-weight: 600;
-}
-
-.template-preview {
-  margin-top: 12px;
-}
-
-.template-preview .label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
+:deep(.meta-value.description-full) {
   display: block;
-  margin-bottom: 6px;
+  margin-top: 4px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.template-content {
+:deep(.skill-instructions) {
+  margin-top: 12px;
+}
+
+:deep(.instructions-content) {
   font-size: 12px;
   font-family: 'SF Mono', 'Monaco', monospace;
   background: var(--hover);
   padding: 12px;
   border-radius: 8px;
-  margin: 0;
+  margin: 8px 0 0 0;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text);
-  max-height: 150px;
+  max-height: 200px;
   overflow-y: auto;
+}
+
+/* Toggle styles */
+:deep(.toggle) {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+}
+
+:deep(.toggle.small) {
+  width: 36px;
+  height: 20px;
+}
+
+:deep(.toggle input) {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+:deep(.toggle-slider) {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(120, 120, 128, 0.32);
+  border-radius: 10px;
+  transition: 0.2s;
+}
+
+:deep(.toggle-slider:before) {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+:deep(.toggle input:checked + .toggle-slider) {
+  background-color: var(--accent);
+}
+
+:deep(.toggle input:checked + .toggle-slider:before) {
+  transform: translateX(16px);
+}
+
+/* Icon button */
+:deep(.icon-btn) {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+:deep(.icon-btn:hover) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+:deep(.icon-btn.danger:hover) {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
 }
 
 /* Dialog styles */
@@ -909,14 +654,14 @@ async function deleteSkill() {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 3000;
   padding: 20px;
   animation: fadeIn 0.15s ease;
 }
 
 .dialog {
   width: 100%;
-  max-width: 520px;
+  max-width: 560px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -986,6 +731,12 @@ async function deleteSkill() {
   line-height: 1.6;
 }
 
+.warning-text {
+  color: #ef4444 !important;
+  margin-top: 8px !important;
+  font-size: 13px !important;
+}
+
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
@@ -994,7 +745,29 @@ async function deleteSkill() {
   border-top: 1px solid var(--border);
 }
 
-/* Form inputs */
+/* Form styles */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
 .form-input,
 .form-textarea {
   width: 100%;
@@ -1009,8 +782,12 @@ async function deleteSkill() {
 
 .form-textarea {
   resize: vertical;
+  min-height: 80px;
+}
+
+.form-textarea.code {
   font-family: 'SF Mono', 'Monaco', monospace;
-  min-height: 100px;
+  font-size: 13px;
 }
 
 .form-input:focus,
@@ -1022,6 +799,54 @@ async function deleteSkill() {
 
 .form-input::placeholder,
 .form-textarea::placeholder {
+  color: var(--muted);
+}
+
+/* Radio group */
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.radio-option:hover {
+  background: var(--hover);
+}
+
+.radio-option:has(input:checked) {
+  border-color: var(--accent);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.radio-option input {
+  margin-top: 3px;
+}
+
+.radio-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.radio-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.radio-desc {
+  font-size: 12px;
   color: var(--muted);
 }
 

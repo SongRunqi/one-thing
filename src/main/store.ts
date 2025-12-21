@@ -30,6 +30,7 @@ export {
   updateMessageStreaming,
   updateMessageToolCalls,
   updateMessageContentParts,
+  updateMessageThinkingTime,
 
   // Initialization
   initializeStores,

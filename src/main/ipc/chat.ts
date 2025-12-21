@@ -20,6 +20,9 @@ import {
 } from '../tools/index.js'
 import type { ToolCall, ToolSettings } from '../../shared/ipc.js'
 import { getMCPToolsForAI, isMCPTool, executeMCPTool } from '../mcp/index.js'
+import { getLoadedSkills } from './skills.js'
+import { buildSkillsAwarenessPrompt, buildSkillsDirectPrompt } from '../skills/prompt-builder.js'
+import type { SkillDefinition } from '../../shared/ipc.js'
 
 // Helper function to build history messages from session messages
 // Includes reasoningContent for assistant messages (required by DeepSeek Reasoner)
@@ -53,8 +56,8 @@ function buildHistoryMessages(messages: ChatMessage[]): Array<{
 // Store active AbortController for stream cancellation
 let activeStreamAbortController: AbortController | null = null
 
-// System prompt to control tool usage behavior
-const TOOL_BEHAVIOR_SYSTEM_PROMPT = `You are a helpful assistant. You have access to tools, but you should ONLY use them when the user's request specifically requires their functionality.
+// Base system prompt to control tool usage behavior
+const BASE_SYSTEM_PROMPT = `You are a helpful assistant. You have access to tools, but you should ONLY use them when the user's request specifically requires their functionality.
 
 Important guidelines:
 - DO NOT mention your available tools or capabilities unless the user explicitly asks what you can do
@@ -62,6 +65,30 @@ Important guidelines:
 - For casual conversation (greetings, general questions, etc.), respond naturally without referring to tools
 - Only call a tool when the user's message clearly requires that tool's specific functionality
 - If unsure whether a tool is needed, prefer responding conversationally first`
+
+/**
+ * Build dynamic system prompt with optional skills awareness
+ */
+function buildSystemPrompt(options: {
+  hasTools: boolean
+  skills: SkillDefinition[]
+}): string {
+  const { hasTools, skills } = options
+  let prompt = BASE_SYSTEM_PROMPT
+
+  // Add skills awareness when tools are enabled
+  if (skills.length > 0) {
+    if (hasTools) {
+      // Tools enabled - add awareness prompt (Claude can use Bash to read SKILL.md)
+      prompt += '\n\n' + buildSkillsAwarenessPrompt(skills)
+    } else {
+      // Tools disabled - include abbreviated instructions directly
+      prompt += '\n\n' + buildSkillsDirectPrompt(skills)
+    }
+  }
+
+  return prompt
+}
 
 // Extract detailed error information from API responses
 function extractErrorDetails(error: any): string | undefined {
@@ -127,6 +154,390 @@ function getProviderApiType(settings: AppSettings, providerId: string): 'openai'
   return undefined
 }
 
+// ============================================
+// Shared Streaming Infrastructure
+// ============================================
+
+/**
+ * Context for streaming operations
+ */
+interface StreamContext {
+  sender: Electron.WebContents
+  sessionId: string
+  assistantMessageId: string
+  abortSignal: AbortSignal
+  settings: AppSettings
+  providerConfig: ProviderConfig
+  providerId: string
+  toolSettings: ToolSettings | undefined
+}
+
+/**
+ * Stream processor that handles chunk accumulation and event sending
+ */
+interface StreamProcessor {
+  accumulatedContent: string
+  accumulatedReasoning: string
+  toolCalls: ToolCall[]
+  handleTextChunk(text: string, turnContent?: { value: string }): void
+  handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }): void
+  handleToolCallChunk(toolCallData: {
+    toolCallId: string
+    toolName: string
+    args: Record<string, any>
+  }): ToolCall
+  finalize(): void
+}
+
+/**
+ * Create a stream processor for handling chunks
+ */
+function createStreamProcessor(ctx: StreamContext): StreamProcessor {
+  let accumulatedContent = ''
+  let accumulatedReasoning = ''
+  const toolCalls: ToolCall[] = []
+
+  return {
+    get accumulatedContent() { return accumulatedContent },
+    get accumulatedReasoning() { return accumulatedReasoning },
+    get toolCalls() { return toolCalls },
+
+    handleTextChunk(text: string, turnContent?: { value: string }) {
+      accumulatedContent += text
+      if (turnContent) turnContent.value += text
+      store.updateMessageContent(ctx.sessionId, ctx.assistantMessageId, accumulatedContent)
+      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+        type: 'text',
+        content: text,
+        messageId: ctx.assistantMessageId,
+      })
+    },
+
+    handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }) {
+      accumulatedReasoning += reasoning
+      if (turnReasoning) turnReasoning.value += reasoning
+      store.updateMessageReasoning(ctx.sessionId, ctx.assistantMessageId, accumulatedReasoning)
+      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+        type: 'reasoning',
+        content: '',
+        messageId: ctx.assistantMessageId,
+        reasoning,
+      })
+    },
+
+    handleToolCallChunk(toolCallData: {
+      toolCallId: string
+      toolName: string
+      args: Record<string, any>
+    }): ToolCall {
+      const toolCall = createToolCall(
+        toolCallData.toolName,
+        toolCallData.toolName,
+        toolCallData.args
+      )
+      toolCall.id = toolCallData.toolCallId
+      toolCalls.push(toolCall)
+
+      store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+        type: 'tool_call',
+        content: '',
+        messageId: ctx.assistantMessageId,
+        toolCall,
+      })
+
+      return toolCall
+    },
+
+    finalize() {
+      store.updateMessageStreaming(ctx.sessionId, ctx.assistantMessageId, false)
+    },
+  }
+}
+
+/**
+ * Execute a tool (MCP or built-in) and update tool call status
+ */
+async function executeToolAndUpdate(
+  ctx: StreamContext,
+  toolCall: ToolCall,
+  toolCallData: { toolName: string; args: Record<string, any> },
+  allToolCalls: ToolCall[]
+): Promise<void> {
+  toolCall.status = 'executing'
+  toolCall.startTime = Date.now()
+  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+
+  let result: {
+    success: boolean
+    data?: any
+    error?: string
+    requiresConfirmation?: boolean
+    commandType?: 'read-only' | 'dangerous' | 'forbidden'
+  }
+
+  if (isMCPTool(toolCallData.toolName)) {
+    const mcpResult = await executeMCPTool(toolCallData.toolName, toolCallData.args)
+    result = {
+      success: mcpResult.success,
+      data: mcpResult.content,
+      error: mcpResult.error,
+    }
+  } else {
+    result = await executeTool(
+      toolCallData.toolName,
+      toolCallData.args,
+      { sessionId: ctx.sessionId, messageId: ctx.assistantMessageId }
+    )
+  }
+
+  toolCall.endTime = Date.now()
+
+  if (result.requiresConfirmation) {
+    toolCall.status = 'pending'
+    toolCall.requiresConfirmation = true
+    toolCall.commandType = result.commandType
+    toolCall.error = result.error
+  } else {
+    toolCall.status = result.success ? 'completed' : 'failed'
+    toolCall.result = result.data
+    toolCall.error = result.error
+  }
+
+  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+  ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+    type: 'tool_result',
+    content: '',
+    messageId: ctx.assistantMessageId,
+    toolCall,
+  })
+}
+
+/**
+ * Run the tool loop for streaming with tools
+ */
+async function runToolLoop(
+  ctx: StreamContext,
+  conversationMessages: ToolChatMessage[],
+  toolsForAI: Record<string, any>,
+  processor: StreamProcessor,
+  enabledSkills: SkillDefinition[]
+): Promise<void> {
+  const MAX_TOOL_TURNS = 100
+  let currentTurn = 0
+  const apiType = getProviderApiType(ctx.settings, ctx.providerId)
+
+  while (currentTurn < MAX_TOOL_TURNS) {
+    currentTurn++
+    const toolCallsThisTurn: ToolCall[] = []
+    const turnContent = { value: '' }
+    const turnReasoning = { value: '' }
+
+    console.log(`[Backend] Starting tool turn ${currentTurn}`)
+
+    const stream = streamChatResponseWithTools(
+      ctx.providerId,
+      {
+        apiKey: ctx.providerConfig.apiKey,
+        baseUrl: ctx.providerConfig.baseUrl,
+        model: ctx.providerConfig.model,
+        apiType,
+      },
+      conversationMessages,
+      toolsForAI,
+      { temperature: ctx.settings.ai.temperature, abortSignal: ctx.abortSignal }
+    )
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'text' && chunk.text) {
+        processor.handleTextChunk(chunk.text, turnContent)
+      }
+
+      if (chunk.type === 'reasoning' && chunk.reasoning) {
+        processor.handleReasoningChunk(chunk.reasoning, turnReasoning)
+      }
+
+      if (chunk.type === 'tool-call' && chunk.toolCall) {
+        const toolCall = processor.handleToolCallChunk(chunk.toolCall)
+        toolCallsThisTurn.push(toolCall)
+
+        const shouldAutoExecute = isMCPTool(chunk.toolCall.toolName) ||
+          canAutoExecute(chunk.toolCall.toolName, ctx.toolSettings?.tools)
+
+        if (shouldAutoExecute) {
+          await executeToolAndUpdate(ctx, toolCall, chunk.toolCall, processor.toolCalls)
+        }
+      }
+    }
+
+    // If any tool requires confirmation, stop the loop
+    if (toolCallsThisTurn.some(tc => tc.requiresConfirmation)) {
+      console.log(`[Backend] Tool requires user confirmation, pausing loop`)
+      break
+    }
+
+    // If no tool calls this turn, we're done
+    if (toolCallsThisTurn.length === 0) {
+      console.log(`[Backend] No tool calls in turn ${currentTurn}, ending loop`)
+      break
+    }
+
+    // Check if all tools were auto-executed
+    if (!toolCallsThisTurn.every(tc => tc.status === 'completed' || tc.status === 'failed')) {
+      console.log(`[Backend] Not all tools auto-executed, ending loop`)
+      break
+    }
+
+    // Build continuation messages
+    const assistantMsg: {
+      role: 'assistant'
+      content: string
+      toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>
+      reasoningContent?: string
+    } = {
+      role: 'assistant' as const,
+      content: turnContent.value,
+      toolCalls: toolCallsThisTurn.map(tc => ({
+        toolCallId: tc.id,
+        toolName: tc.toolName,
+        args: tc.arguments,
+      })),
+    }
+    if (turnReasoning.value) {
+      assistantMsg.reasoningContent = turnReasoning.value
+    }
+    conversationMessages.push(assistantMsg)
+
+    const toolResultMsg = {
+      role: 'tool' as const,
+      content: toolCallsThisTurn.map(tc => ({
+        type: 'tool-result' as const,
+        toolCallId: tc.id,
+        toolName: tc.toolName,
+        result: tc.status === 'completed' ? tc.result : { error: tc.error },
+      })),
+    }
+    conversationMessages.push(toolResultMsg)
+
+    ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+      type: 'continuation',
+      content: '',
+      messageId: ctx.assistantMessageId,
+    })
+  }
+
+  if (currentTurn >= MAX_TOOL_TURNS) {
+    console.log(`[Backend] Reached max tool turns (${MAX_TOOL_TURNS})`)
+  }
+}
+
+/**
+ * Run simple streaming without tools
+ */
+async function runSimpleStream(
+  ctx: StreamContext,
+  historyMessages: Array<{ role: 'user' | 'assistant'; content: string; reasoningContent?: string }>,
+  processor: StreamProcessor
+): Promise<void> {
+  const apiType = getProviderApiType(ctx.settings, ctx.providerId)
+
+  const stream = streamChatResponseWithReasoning(
+    ctx.providerId,
+    {
+      apiKey: ctx.providerConfig.apiKey,
+      baseUrl: ctx.providerConfig.baseUrl,
+      model: ctx.providerConfig.model,
+      apiType,
+    },
+    historyMessages,
+    { temperature: ctx.settings.ai.temperature, abortSignal: ctx.abortSignal }
+  )
+
+  for await (const chunk of stream) {
+    if (chunk.text) {
+      processor.handleTextChunk(chunk.text)
+    }
+    if (chunk.reasoning) {
+      processor.handleReasoningChunk(chunk.reasoning)
+    }
+  }
+}
+
+/**
+ * Core streaming execution function
+ * Handles both tool-enabled and simple streaming
+ */
+async function executeStreamGeneration(
+  ctx: StreamContext,
+  historyMessages: Array<{ role: 'user' | 'assistant'; content: string; reasoningContent?: string }>,
+  sessionName?: string
+): Promise<void> {
+  const processor = createStreamProcessor(ctx)
+
+  try {
+    console.log('[Backend] Starting streaming for message:', ctx.assistantMessageId)
+
+    // Get enabled tools
+    const enabledTools = ctx.toolSettings?.enableToolCalls ? getEnabledTools() : []
+    const mcpTools = ctx.toolSettings?.enableToolCalls ? getMCPToolsForAI() : {}
+    const hasTools = enabledTools.length > 0 || Object.keys(mcpTools).length > 0
+
+    // Get enabled skills
+    const skillsSettings = ctx.settings.skills
+    const skillsEnabled = skillsSettings?.enableSkills !== false
+    const enabledSkills = skillsEnabled ? getLoadedSkills().filter(s => s.enabled) : []
+
+    const systemPrompt = buildSystemPrompt({ hasTools, skills: enabledSkills })
+
+    if (hasTools) {
+      const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
+      const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
+
+      const conversationMessages: ToolChatMessage[] = [
+        { role: 'system', content: systemPrompt },
+        ...historyMessages,
+      ]
+
+      await runToolLoop(ctx, conversationMessages, toolsForAI, processor, enabledSkills)
+    } else {
+      await runSimpleStream(ctx, historyMessages, processor)
+    }
+
+    // Stream complete
+    processor.finalize()
+    const updatedSession = store.getSession(ctx.sessionId)
+    ctx.sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+      messageId: ctx.assistantMessageId,
+      sessionName: updatedSession?.name || sessionName,
+    })
+    console.log('[Backend] Streaming complete')
+
+  } catch (error: any) {
+    const isAborted = error.name === 'AbortError' || ctx.abortSignal.aborted
+
+    if (isAborted) {
+      console.log('[Backend] Stream aborted by user')
+      processor.finalize()
+      ctx.sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+        messageId: ctx.assistantMessageId,
+        sessionName: store.getSession(ctx.sessionId)?.name,
+        aborted: true,
+      })
+    } else {
+      console.error('[Backend] Streaming error:', error)
+      ctx.sender.send(IPC_CHANNELS.STREAM_ERROR, {
+        messageId: ctx.assistantMessageId,
+        error: error.message || 'Streaming error',
+        errorDetails: extractErrorDetails(error),
+      })
+    }
+  }
+}
+
+// ============================================
+// End of Shared Streaming Infrastructure
+// ============================================
+
 export function registerChatHandlers() {
   // 发送消息（非流式）
   ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE, async (_event, { sessionId, message }) => {
@@ -165,6 +576,12 @@ export function registerChatHandlers() {
   // 更新消息的 contentParts
   ipcMain.handle(IPC_CHANNELS.UPDATE_CONTENT_PARTS, async (_event, { sessionId, messageId, contentParts }) => {
     const updated = store.updateMessageContentParts(sessionId, messageId, contentParts)
+    return { success: updated }
+  })
+
+  // 更新消息的 thinkingTime（用于持久化thinking时长）
+  ipcMain.handle(IPC_CHANNELS.UPDATE_MESSAGE_THINKING_TIME, async (_event, { sessionId, messageId, thinkingTime }) => {
+    const updated = store.updateMessageThinkingTime(sessionId, messageId, thinkingTime)
     return { success: updated }
   })
 
@@ -261,11 +678,10 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
       return { success: false, error: 'Message not found' }
     }
 
-    // Get settings and call AI
+    // Get settings and validate
     const settings = store.getSettings()
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
-    const toolSettings = settings.tools
 
     if (!providerConfig || !providerConfig.apiKey) {
       return {
@@ -281,7 +697,7 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
       }
     }
 
-    // Create assistant message with empty content initially
+    // Create assistant message
     const assistantMessageId = uuidv4()
     const assistantMessage: ChatMessage = {
       id: assistantMessageId,
@@ -292,243 +708,37 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
       isStreaming: true,
       toolCalls: [],
     }
-
-    // Add empty assistant message to store
     store.addMessage(sessionId, assistantMessage)
 
-    // Get the updated session with truncated messages
+    // Get session and build history
     const session = store.getSession(sessionId)
+    const historyMessages = buildHistoryMessages(session?.messages || [])
 
-    // Send initial response with message ID
     const initialResponse = {
       success: true,
       messageId: assistantMessageId,
       sessionName: session?.name,
     }
 
-    // Start streaming in background
+    // Start streaming in background using shared infrastructure
     process.nextTick(async () => {
+      activeStreamAbortController = new AbortController()
+
+      const ctx: StreamContext = {
+        sender,
+        sessionId,
+        assistantMessageId,
+        abortSignal: activeStreamAbortController.signal,
+        settings,
+        providerConfig,
+        providerId,
+        toolSettings: settings.tools,
+      }
+
       try {
-        console.log('[Backend] Starting streaming for edit-resend, message:', assistantMessageId)
-
-        // Get enabled tools if tool calls are enabled
-        const enabledTools = toolSettings?.enableToolCalls ? getEnabledTools() : []
-        const mcpTools = toolSettings?.enableToolCalls ? getMCPToolsForAI() : {}
-        const mcpToolCount = Object.keys(mcpTools).length
-        const hasTools = enabledTools.length > 0 || mcpToolCount > 0
-
-        const apiType = getProviderApiType(settings, providerId)
-
-        let accumulatedContent = ''
-        let accumulatedReasoning = ''
-        const toolCalls: ToolCall[] = []
-
-        // Build conversation messages from session history
-        const historyMessages = buildHistoryMessages(session?.messages || [])
-
-        if (hasTools) {
-          const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
-          const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
-
-          const MAX_TOOL_TURNS = 5
-          let currentTurn = 0
-
-          const conversationMessages: ToolChatMessage[] = [
-            { role: 'system', content: TOOL_BEHAVIOR_SYSTEM_PROMPT },
-            ...historyMessages,
-          ]
-
-          while (currentTurn < MAX_TOOL_TURNS) {
-            currentTurn++
-            const toolCallsThisTurn: ToolCall[] = []
-            let turnContent = ''
-            let turnReasoning = ''
-
-            const stream = streamChatResponseWithTools(
-              providerId,
-              {
-                apiKey: providerConfig.apiKey,
-                baseUrl: providerConfig.baseUrl,
-                model: providerConfig.model,
-                apiType,
-              },
-              conversationMessages,
-              toolsForAI,
-              { temperature: settings.ai.temperature }
-            )
-
-            for await (const chunk of stream) {
-              if (chunk.type === 'text' && chunk.text) {
-                accumulatedContent += chunk.text
-                turnContent += chunk.text
-                store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
-                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                  type: 'text',
-                  content: chunk.text,
-                  messageId: assistantMessageId,
-                })
-              }
-
-              if (chunk.type === 'reasoning' && chunk.reasoning) {
-                accumulatedReasoning += chunk.reasoning
-                turnReasoning += chunk.reasoning
-                store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
-                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                  type: 'reasoning',
-                  content: '',
-                  messageId: assistantMessageId,
-                  reasoning: chunk.reasoning,
-                })
-              }
-
-              if (chunk.type === 'tool-call' && chunk.toolCall) {
-                const toolCall = createToolCall(
-                  chunk.toolCall.toolName,
-                  chunk.toolCall.toolName,
-                  chunk.toolCall.args
-                )
-                toolCall.id = chunk.toolCall.toolCallId
-                toolCalls.push(toolCall)
-                toolCallsThisTurn.push(toolCall)
-
-                store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
-                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                  type: 'tool_call',
-                  content: '',
-                  messageId: assistantMessageId,
-                  toolCall,
-                })
-
-                const shouldAutoExecute = isMCPTool(chunk.toolCall.toolName) || canAutoExecute(chunk.toolCall.toolName, toolSettings?.tools)
-
-                if (shouldAutoExecute) {
-                  toolCall.status = 'executing'
-                  store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
-
-                  let result: { success: boolean; data?: any; error?: string }
-
-                  if (isMCPTool(chunk.toolCall.toolName)) {
-                    const mcpResult = await executeMCPTool(chunk.toolCall.toolName, chunk.toolCall.args)
-                    result = {
-                      success: mcpResult.success,
-                      data: mcpResult.content,
-                      error: mcpResult.error,
-                    }
-                  } else {
-                    result = await executeTool(
-                      chunk.toolCall.toolName,
-                      chunk.toolCall.args,
-                      { sessionId, messageId: assistantMessageId }
-                    )
-                  }
-
-                  toolCall.status = result.success ? 'completed' : 'failed'
-                  toolCall.result = result.data
-                  toolCall.error = result.error
-                  store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
-
-                  sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                    type: 'tool_result',
-                    content: '',
-                    messageId: assistantMessageId,
-                    toolCall,
-                  })
-                }
-              }
-            }
-
-            if (toolCallsThisTurn.length === 0) break
-
-            const allExecuted = toolCallsThisTurn.every(tc => tc.status === 'completed' || tc.status === 'failed')
-            if (!allExecuted) break
-
-            const assistantMsg: {
-              role: 'assistant'
-              content: string
-              toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>
-              reasoningContent?: string
-            } = {
-              role: 'assistant' as const,
-              content: turnContent,
-              toolCalls: toolCallsThisTurn.map(tc => ({
-                toolCallId: tc.id,
-                toolName: tc.toolName,
-                args: tc.arguments,
-              })),
-            }
-            if (turnReasoning) {
-              assistantMsg.reasoningContent = turnReasoning
-            }
-            conversationMessages.push(assistantMsg)
-
-            const toolResultMsg = {
-              role: 'tool' as const,
-              content: toolCallsThisTurn.map(tc => ({
-                type: 'tool-result' as const,
-                toolCallId: tc.id,
-                toolName: tc.toolName,
-                result: tc.status === 'completed' ? tc.result : { error: tc.error },
-              })),
-            }
-            conversationMessages.push(toolResultMsg)
-
-            sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-              type: 'continuation',
-              content: '',
-              messageId: assistantMessageId,
-            })
-          }
-        } else {
-          // No tools, simple streaming
-          const stream = streamChatResponseWithReasoning(
-            providerId,
-            {
-              apiKey: providerConfig.apiKey,
-              baseUrl: providerConfig.baseUrl,
-              model: providerConfig.model,
-              apiType,
-            },
-            historyMessages,
-            { temperature: settings.ai.temperature }
-          )
-
-          for await (const chunk of stream) {
-            if (chunk.text) {
-              accumulatedContent += chunk.text
-              store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
-              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                type: 'text',
-                content: chunk.text,
-                messageId: assistantMessageId,
-              })
-            }
-
-            if (chunk.reasoning) {
-              accumulatedReasoning += chunk.reasoning
-              store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
-              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                type: 'reasoning',
-                content: '',
-                messageId: assistantMessageId,
-                reasoning: chunk.reasoning,
-              })
-            }
-          }
-        }
-
-        // Mark as complete
-        store.updateMessageStreaming(sessionId, assistantMessageId, false)
-        sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-          messageId: assistantMessageId,
-          sessionName: session?.name,
-        })
-      } catch (error: any) {
-        console.error('[Backend] Streaming error:', error)
-        sender.send(IPC_CHANNELS.STREAM_ERROR, {
-          messageId: assistantMessageId,
-          error: error.message || 'Streaming error',
-          errorDetails: extractErrorDetails(error),
-        })
+        await executeStreamGeneration(ctx, historyMessages, session?.name)
+      } finally {
+        activeStreamAbortController = null
       }
     })
 
@@ -700,7 +910,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     const isBranchFirstMessage = session?.parentSessionId && session.messages.length > 0 &&
       !session.messages.some(m => m.role === 'user' && m.timestamp > session.createdAt)
 
-    // Save user message - use same ID format as frontend
+    // Save user message
     const userMessage: ChatMessage = {
       id: `temp-${Date.now()}`,
       role: 'user',
@@ -708,7 +918,6 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       timestamp: Date.now(),
     }
     console.log('[Backend] Created user message with id:', userMessage.id)
-
     store.addMessage(sessionId, userMessage)
 
     // Auto-rename session based on first user message
@@ -717,11 +926,10 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       store.renameSession(sessionId, newTitle)
     }
 
-    // Get settings and call AI
+    // Get settings and validate
     const settings = store.getSettings()
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
-    const toolSettings = settings.tools
 
     if (!providerConfig || !providerConfig.apiKey) {
       return {
@@ -737,7 +945,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       }
     }
 
-    // Create assistant message with empty content initially
+    // Create assistant message
     const assistantMessageId = uuidv4()
     const assistantMessage: ChatMessage = {
       id: assistantMessageId,
@@ -748,11 +956,8 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       isStreaming: true,
       toolCalls: [],
     }
-
-    // Add empty assistant message to store
     store.addMessage(sessionId, assistantMessage)
 
-    // Send initial response with message ID and user message
     const initialResponse = {
       success: true,
       userMessage,
@@ -760,350 +965,28 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       sessionName: session?.name,
     }
 
-    // Start streaming in background - use process.nextTick to ensure frontend listeners are set up
+    // Start streaming in background using shared infrastructure
     process.nextTick(async () => {
-      // Create abort controller for this stream
       activeStreamAbortController = new AbortController()
-      const abortSignal = activeStreamAbortController.signal
+
+      // Build history from updated session (includes user message)
+      const sessionForHistory = store.getSession(sessionId)
+      const historyMessages = buildHistoryMessages(sessionForHistory?.messages || [])
+
+      const ctx: StreamContext = {
+        sender,
+        sessionId,
+        assistantMessageId,
+        abortSignal: activeStreamAbortController.signal,
+        settings,
+        providerConfig,
+        providerId,
+        toolSettings: settings.tools,
+      }
 
       try {
-        console.log('[Backend] Starting streaming for message:', assistantMessageId)
-        console.log('[Backend] Provider:', providerId, 'Model:', providerConfig.model)
-
-        // Get enabled tools if tool calls are enabled
-        const enabledTools = toolSettings?.enableToolCalls ? getEnabledTools() : []
-
-        // Get MCP tools (already in AI SDK format)
-        const mcpTools = toolSettings?.enableToolCalls ? getMCPToolsForAI() : {}
-        const mcpToolCount = Object.keys(mcpTools).length
-
-        const hasTools = enabledTools.length > 0 || mcpToolCount > 0
-
-        console.log(`[Backend] Tools enabled: ${hasTools}, Built-in tools: ${enabledTools.length}, MCP tools: ${mcpToolCount}`)
-
-        // Use AI SDK to generate streaming response
-        const apiType = getProviderApiType(settings, providerId)
-
-        // Build conversation history from session messages (including the just-added user message)
-        const sessionForHistory = store.getSession(sessionId)
-        const historyMessages = buildHistoryMessages(sessionForHistory?.messages || [])
-
-        let accumulatedContent = ''
-        let accumulatedReasoning = ''
-        let chunkCount = 0
-        const toolCalls: ToolCall[] = []
-
-        if (hasTools) {
-          // Use tool-enabled streaming with auto-continue after tool execution
-          // Combine built-in tools and MCP tools
-          const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
-          const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
-
-          // Maximum number of tool turns to prevent infinite loops
-          const MAX_TOOL_TURNS = 100
-          let currentTurn = 0
-
-          // Build conversation messages (will be extended with tool results)
-          // Include system prompt and full conversation history
-          const conversationMessages: ToolChatMessage[] = [
-            { role: 'system', content: TOOL_BEHAVIOR_SYSTEM_PROMPT },
-            ...historyMessages,
-          ]
-
-          // Loop until no more tool calls or max turns reached
-          while (currentTurn < MAX_TOOL_TURNS) {
-            currentTurn++
-            const toolCallsThisTurn: ToolCall[] = []
-            let turnContent = ''
-            let turnReasoning = ''  // Track reasoning content for this turn (needed for DeepSeek Reasoner)
-
-            console.log(`[Backend] Starting tool turn ${currentTurn}`)
-
-            const stream = streamChatResponseWithTools(
-              providerId,
-              {
-                apiKey: providerConfig.apiKey,
-                baseUrl: providerConfig.baseUrl,
-                model: providerConfig.model,
-                apiType,
-              },
-              conversationMessages,
-              toolsForAI,
-              { temperature: settings.ai.temperature, abortSignal }
-            )
-
-            // Process stream chunks with tool support
-            for await (const chunk of stream) {
-              chunkCount++
-
-              if (chunk.type === 'text' && chunk.text) {
-                accumulatedContent += chunk.text
-                turnContent += chunk.text
-                console.log(`[Backend] Text chunk ${chunkCount}:`, chunk.text.substring(0, 50) + (chunk.text.length > 50 ? '...' : ''))
-
-                // Update message in store with accumulated content
-                store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
-
-                // Send text chunk via event
-                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                  type: 'text',
-                  content: chunk.text,
-                  messageId: assistantMessageId,
-                })
-              }
-
-              if (chunk.type === 'reasoning' && chunk.reasoning) {
-                accumulatedReasoning += chunk.reasoning
-                turnReasoning += chunk.reasoning  // Also track for this turn (needed for DeepSeek Reasoner continuation)
-                console.log(`[Backend] Reasoning chunk ${chunkCount}:`, chunk.reasoning.substring(0, 50) + (chunk.reasoning.length > 50 ? '...' : ''))
-
-                // Update reasoning in store
-                store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
-
-                // Send reasoning chunk via event
-                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                  type: 'reasoning',
-                  content: '',
-                  messageId: assistantMessageId,
-                  reasoning: chunk.reasoning,
-                })
-              }
-
-              if (chunk.type === 'tool-call' && chunk.toolCall) {
-                console.log(`[Backend] Tool call chunk:`, chunk.toolCall)
-
-                // Create a ToolCall object
-                const toolCall = createToolCall(
-                  chunk.toolCall.toolName,
-                  chunk.toolCall.toolName,
-                  chunk.toolCall.args
-                )
-                toolCall.id = chunk.toolCall.toolCallId // Use the ID from AI SDK
-                toolCalls.push(toolCall)
-                toolCallsThisTurn.push(toolCall)
-
-                // Update message with tool calls
-                store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
-
-                // Send tool call event
-                sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                  type: 'tool_call',
-                  content: '',
-                  messageId: assistantMessageId,
-                  toolCall,
-                })
-
-                // Check if we should auto-execute this tool
-                // For MCP tools, always auto-execute (they are external tools)
-                const shouldAutoExecute = isMCPTool(chunk.toolCall.toolName) || canAutoExecute(chunk.toolCall.toolName, toolSettings?.tools)
-
-                if (shouldAutoExecute) {
-                  console.log(`[Backend] Auto-executing tool: ${chunk.toolCall.toolName}`)
-
-                  // Update tool status to executing
-                  toolCall.status = 'executing'
-                  store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
-
-                  let result: { success: boolean; data?: any; error?: string }
-
-                  // Execute the tool (MCP or built-in)
-                  if (isMCPTool(chunk.toolCall.toolName)) {
-                    // Execute MCP tool
-                    const mcpResult = await executeMCPTool(chunk.toolCall.toolName, chunk.toolCall.args)
-                    result = {
-                      success: mcpResult.success,
-                      data: mcpResult.content,
-                      error: mcpResult.error,
-                    }
-                  } else {
-                    // Execute built-in tool
-                    result = await executeTool(
-                      chunk.toolCall.toolName,
-                      chunk.toolCall.args,
-                      { sessionId, messageId: assistantMessageId }
-                    )
-                  }
-
-                  // Update tool with result
-                  toolCall.status = result.success ? 'completed' : 'failed'
-                  toolCall.result = result.data
-                  toolCall.error = result.error
-                  store.updateMessageToolCalls(sessionId, assistantMessageId, toolCalls)
-
-                  // Send tool result event
-                  sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                    type: 'tool_result',
-                    content: '',
-                    messageId: assistantMessageId,
-                    toolCall,
-                  })
-                }
-              }
-            }
-
-            // If no tool calls this turn, we're done
-            if (toolCallsThisTurn.length === 0) {
-              console.log(`[Backend] No tool calls in turn ${currentTurn}, ending loop`)
-              break
-            }
-
-            // Check if all tools were auto-executed
-            const allExecuted = toolCallsThisTurn.every(tc => tc.status === 'completed' || tc.status === 'failed')
-            if (!allExecuted) {
-              console.log(`[Backend] Not all tools auto-executed, ending loop`)
-              break
-            }
-
-            // Build continuation messages with tool results
-            console.log(`[Backend] Building continuation with ${toolCallsThisTurn.length} tool results`)
-            console.log(`[Backend] Turn content length: ${turnContent.length}`)
-            console.log(`[Backend] Turn reasoning length: ${turnReasoning.length}`)
-
-            // Add assistant message with tool calls (include reasoningContent for DeepSeek Reasoner)
-            const assistantMsg: {
-              role: 'assistant'
-              content: string
-              toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>
-              reasoningContent?: string
-            } = {
-              role: 'assistant' as const,
-              content: turnContent,
-              toolCalls: toolCallsThisTurn.map(tc => ({
-                toolCallId: tc.id,
-                toolName: tc.toolName,
-                args: tc.arguments,
-              })),
-            }
-            // Include reasoning content if present (required for DeepSeek Reasoner tool calls)
-            if (turnReasoning) {
-              assistantMsg.reasoningContent = turnReasoning
-            }
-            console.log(`[Backend] Assistant message:`, JSON.stringify(assistantMsg, null, 2))
-            conversationMessages.push(assistantMsg)
-
-            // Add tool result message
-            const toolResultMsg = {
-              role: 'tool' as const,
-              content: toolCallsThisTurn.map(tc => ({
-                type: 'tool-result' as const,
-                toolCallId: tc.id,
-                toolName: tc.toolName,
-                result: tc.status === 'completed' ? tc.result : { error: tc.error },
-              })),
-            }
-            console.log(`[Backend] Tool result message:`, JSON.stringify(toolResultMsg, null, 2))
-            conversationMessages.push(toolResultMsg)
-
-            console.log(`[Backend] Total messages in conversation: ${conversationMessages.length}`)
-
-            // Notify frontend that AI is continuing
-            sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-              type: 'continuation',
-              content: '',
-              messageId: assistantMessageId,
-            })
-
-            console.log(`[Backend] Continuing to next turn...`)
-          }
-
-          if (currentTurn >= MAX_TOOL_TURNS) {
-            console.log(`[Backend] Reached max tool turns (${MAX_TOOL_TURNS})`)
-          }
-        } else {
-          // Use regular streaming without tools
-          const stream = streamChatResponseWithReasoning(
-            providerId,
-            {
-              apiKey: providerConfig.apiKey,
-              baseUrl: providerConfig.baseUrl,
-              model: providerConfig.model,
-              apiType,
-            },
-            historyMessages,
-            { temperature: settings.ai.temperature, abortSignal }
-          )
-
-          // Process stream chunks
-          for await (const chunk of stream) {
-            chunkCount++
-            if (chunk.text) {
-              accumulatedContent += chunk.text
-              console.log(`[Backend] Text chunk ${chunkCount}:`, chunk.text.substring(0, 50) + (chunk.text.length > 50 ? '...' : ''))
-
-              // Update message in store with accumulated content
-              store.updateMessageContent(sessionId, assistantMessageId, accumulatedContent)
-
-              // Send text chunk via event
-              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                type: 'text',
-                content: chunk.text,
-                messageId: assistantMessageId,
-              })
-            }
-
-            if (chunk.reasoning) {
-              accumulatedReasoning = chunk.reasoning
-              console.log(`[Backend] Reasoning chunk ${chunkCount}:`, chunk.reasoning.substring(0, 50) + (chunk.reasoning.length > 50 ? '...' : ''))
-
-              // Update reasoning in store
-              store.updateMessageReasoning(sessionId, assistantMessageId, accumulatedReasoning)
-
-              // Send reasoning chunk via event
-              sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-                type: 'reasoning',
-                content: '',
-                messageId: assistantMessageId,
-                reasoning: chunk.reasoning,
-              })
-            }
-          }
-        }
-
-        console.log(`[Backend] Streaming complete. Total chunks: ${chunkCount}, Final content length: ${accumulatedContent.length}`)
-
-        // Stream complete - finalize message
-        store.updateMessageStreaming(sessionId, assistantMessageId, false)
-
-        // Get updated session name if it was renamed
-        const updatedSession = store.getSession(sessionId)
-        const sessionName = updatedSession?.name
-
-        // Send completion event
-        sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-          messageId: assistantMessageId,
-          sessionName,
-        })
-        console.log('[Backend] Sent completion event')
-
-      } catch (error: any) {
-        // Check if this is an abort error
-        const isAborted = error.name === 'AbortError' || abortSignal.aborted
-
-        if (isAborted) {
-          console.log('[Backend] Stream aborted by user')
-
-          // Finalize the message with current content (mark as stopped)
-          store.updateMessageStreaming(sessionId, assistantMessageId, false)
-
-          // Send completion event (not error) to gracefully end the stream
-          sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-            messageId: assistantMessageId,
-            sessionName: store.getSession(sessionId)?.name,
-            aborted: true,
-          })
-        } else {
-          console.error('[Backend] Error in streaming background task:', error)
-
-          // Send error event
-          sender.send(IPC_CHANNELS.STREAM_ERROR, {
-            messageId: assistantMessageId,
-            error: error.message || 'Failed to stream message',
-            errorDetails: extractErrorDetails(error),
-          })
-          console.log('[Backend] Sent error event')
-        }
+        await executeStreamGeneration(ctx, historyMessages, session?.name)
       } finally {
-        // Clear the active abort controller
         activeStreamAbortController = null
       }
     })

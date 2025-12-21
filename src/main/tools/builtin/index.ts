@@ -13,11 +13,13 @@ import { registerTool } from '../registry.js'
 // Import built-in tools
 import * as getCurrentTime from './get-current-time.js'
 import * as calculator from './calculator.js'
+import * as bash from './bash.js'
 
 // List of all built-in tools
 const builtinTools = [
   getCurrentTime,
   calculator,
+  bash,
 ]
 
 /**

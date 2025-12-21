@@ -1,4 +1,5 @@
 <template>
+  <div class="message-item-wrapper">
   <!-- Selection toolbar (floating) -->
   <Teleport to="body">
     <div
@@ -93,9 +94,9 @@
             ref="editTextarea"
             v-model="editContent"
             class="edit-textarea"
-            @keydown.enter.exact="submitEdit"
-            @keydown.escape="cancelEdit"
-            @keydown.shift.enter.stop
+            @keydown="handleEditKeyDown"
+            @compositionstart="isEditComposing = true"
+            @compositionend="isEditComposing = false"
             @input="adjustEditTextareaHeight"
           ></textarea>
         </div>
@@ -107,11 +108,21 @@
                 <!-- Text part -->
                 <div v-if="part.type === 'text'" :class="['content', { typing: isTyping && index === message.contentParts.length - 1 }]" v-html="renderMarkdown(part.content)"></div>
                 <!-- Tool call part -->
-                <ToolCallGroup
-                  v-else-if="part.type === 'tool-call'"
-                  :toolCalls="part.toolCalls"
-                  @execute="handleToolExecute"
-                />
+                <template v-else-if="part.type === 'tool-call'">
+                  <ToolCallGroup
+                    :toolCalls="part.toolCalls"
+                    @execute="handleToolExecute"
+                  />
+                  <!-- Show individual ToolCallItem for detailed view and confirmation -->
+                  <ToolCallItem
+                    v-for="tc in part.toolCalls"
+                    :key="tc.id"
+                    :toolCall="tc"
+                    @execute="handleToolExecute"
+                    @confirm="handleToolConfirm"
+                    @reject="handleToolReject"
+                  />
+                </template>
                 <!-- Waiting indicator (after tool call, before AI continues) -->
                 <div v-else-if="part.type === 'waiting'" class="thinking-status-inline">
                   <span class="thinking-text flowing">Waiting</span>
@@ -120,11 +131,20 @@
             </template>
             <!-- Fallback: legacy content display (no contentParts) -->
             <template v-else>
-              <ToolCallGroup
-                v-if="message.toolCalls && message.toolCalls.length > 0"
-                :toolCalls="message.toolCalls"
-                @execute="handleToolExecute"
-              />
+              <template v-if="message.toolCalls && message.toolCalls.length > 0">
+                <ToolCallGroup
+                  :toolCalls="message.toolCalls"
+                  @execute="handleToolExecute"
+                />
+                <ToolCallItem
+                  v-for="tc in message.toolCalls"
+                  :key="tc.id"
+                  :toolCall="tc"
+                  @execute="handleToolExecute"
+                  @confirm="handleToolConfirm"
+                  @reject="handleToolReject"
+                />
+              </template>
               <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
             </template>
           </div>
@@ -153,6 +173,19 @@
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+              </svg>
+            </button>
+          </Tooltip>
+          <!-- Regenerate button (for assistant messages) -->
+          <Tooltip v-if="message.role === 'assistant'" text="Regenerate">
+            <button
+              class="action-btn regenerate-btn"
+              @click="regenerate"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6"/>
+                <path d="M1 20v-6h6"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
               </svg>
             </button>
           </Tooltip>
@@ -214,6 +247,7 @@
       </div>
     </div>
   </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -222,6 +256,7 @@ import { marked } from 'marked'
 import hljs from 'highlight.js'
 import type { ChatMessage, ToolCall } from '@/types'
 import ToolCallGroup from './ToolCallGroup.vue'
+import ToolCallItem from './ToolCallItem.vue'
 import Tooltip from '../common/Tooltip.vue'
 
 interface BranchInfo {
@@ -244,6 +279,9 @@ const emit = defineEmits<{
   goToBranch: [sessionId: string]
   quote: [quotedText: string]
   executeTool: [toolCall: ToolCall]
+  confirmTool: [toolCall: ToolCall]
+  rejectTool: [toolCall: ToolCall]
+  updateThinkingTime: [messageId: string, thinkingTime: number]
 }>()
 
 const showActions = ref(false)
@@ -276,6 +314,8 @@ const branchMenuStyle = computed(() => ({
 const isEditing = ref(false)
 const editContent = ref('')
 const editTextarea = ref<HTMLTextAreaElement | null>(null)
+const savedBubbleSize = ref<{ width: string; height: string } | null>(null)
+const isEditComposing = ref(false)  // Track IME composition state for CJK input
 
 // Typewriter effect state
 const displayedContent = ref('')
@@ -325,6 +365,10 @@ function stopThinkingTimer() {
     thinkingTimer = null
     // Save final time
     finalThinkingTime.value = thinkingElapsed.value
+    // Persist to backend
+    if (finalThinkingTime.value > 0) {
+      emit('updateThinkingTime', props.message.id, finalThinkingTime.value)
+    }
   }
 }
 
@@ -480,6 +524,11 @@ watch(
 )
 
 onMounted(() => {
+  // Restore thinking time from persisted message
+  if (props.message.thinkingTime && props.message.thinkingTime > 0) {
+    finalThinkingTime.value = props.message.thinkingTime
+  }
+
   if (props.message.isStreaming) {
     startTypewriter()
     // Only start thinking timer if no content yet
@@ -538,14 +587,42 @@ function adjustEditTextareaHeight() {
   }
 }
 
+// Handle keydown in edit mode with IME support
+function handleEditKeyDown(e: KeyboardEvent) {
+  // Don't submit during IME composition (Chinese, Japanese, Korean input)
+  if (isEditComposing.value) {
+    return
+  }
+
+  if (e.key === 'Escape') {
+    cancelEdit()
+  } else if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    submitEdit()
+  }
+  // Shift+Enter allows new line (default behavior)
+}
+
 function startEdit() {
+  // Capture bubble width before switching to edit mode
+  if (bubbleRef.value) {
+    savedBubbleSize.value = {
+      width: bubbleRef.value.offsetWidth + 'px',
+      height: ''
+    }
+  }
   editContent.value = props.message.content
   isEditing.value = true
   nextTick(() => {
+    // Apply saved width to bubble
+    if (bubbleRef.value && savedBubbleSize.value) {
+      bubbleRef.value.style.width = savedBubbleSize.value.width
+    }
     if (editTextarea.value) {
+      // Set textarea height to match content
+      editTextarea.value.style.height = 'auto'
+      editTextarea.value.style.height = editTextarea.value.scrollHeight + 'px'
       editTextarea.value.focus()
-      // Auto-resize textarea
-      adjustEditTextareaHeight()
       // Select all text for easy replacement
       editTextarea.value.select()
     }
@@ -555,6 +632,11 @@ function startEdit() {
 function cancelEdit() {
   isEditing.value = false
   editContent.value = ''
+  // Reset bubble width
+  if (bubbleRef.value) {
+    bubbleRef.value.style.width = ''
+  }
+  savedBubbleSize.value = null
 }
 
 function submitEdit(event?: KeyboardEvent) {
@@ -569,6 +651,11 @@ function submitEdit(event?: KeyboardEvent) {
   emit('edit', props.message.id, trimmedContent)
   isEditing.value = false
   editContent.value = ''
+  // Reset bubble width
+  if (bubbleRef.value) {
+    bubbleRef.value.style.width = ''
+  }
+  savedBubbleSize.value = null
 }
 
 function createBranch() {
@@ -720,9 +807,27 @@ function createBranchWithSelection() {
 function handleToolExecute(toolCall: ToolCall) {
   emit('executeTool', toolCall)
 }
+
+// Handle tool confirmation (for dangerous bash commands)
+function handleToolConfirm(toolCall: ToolCall) {
+  emit('confirmTool', toolCall)
+}
+
+// Handle tool rejection
+function handleToolReject(toolCall: ToolCall) {
+  emit('rejectTool', toolCall)
+}
 </script>
 
 <style scoped>
+/* Wrapper for TransitionGroup compatibility */
+.message-item-wrapper {
+  width: 85%;
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Custom text selection highlight for AI messages */
 .message.assistant .bubble ::selection {
   background: rgba(59, 130, 246, 0.35);
@@ -831,16 +936,18 @@ html[data-theme='light'] .toolbar-divider {
   gap: 10px;
   align-items: flex-start;
   animation: fadeIn 0.18s ease-out;
-  width: min(900px, 100%);
+  width: 100%;
   margin-bottom: 4px;
 }
 
 .message.user {
   flex-direction: row-reverse;
+  justify-content: flex-start;
 }
 
 .message.assistant {
   flex-direction: row;
+  justify-content: flex-start;
 }
 
 /* Navigation highlight effect - only highlight user's bubble */
@@ -922,33 +1029,32 @@ html[data-theme='light'] .toolbar-divider {
 
 /* User message bubble - Modern gradient design */
 .message.user .bubble {
-  background: linear-gradient(135deg, #2d3139 0%, #1e1f23 100%);
+  background: var(--user-bubble);
   border-radius: 18px 18px 4px 18px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--user-bubble-border);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 html[data-theme='light'] .message.user .bubble {
-  background: linear-gradient(135deg, #e3e8f0 0%, #f1f4f9 100%);
-  border-color: rgba(0, 98, 255, 0.08);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
 .content {
   word-wrap: break-word;
   line-height: 1.6;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text);
   letter-spacing: 0.01em;
+}
+
+/* AI message text - slightly dimmed for comfortable reading */
+.message.assistant .content {
+  color: var(--ai-text);
 }
 
 .message.user .content {
   line-height: 1.5;
   color: var(--text);
-}
-
-html[data-theme='light'] .message.user .content {
-  color: rgba(0, 0, 0, 0.9);
 }
 
 .content.typing::after {
@@ -1106,6 +1212,30 @@ html[data-theme='light'] .message.user .content {
 .content :deep(.hljs-title) { color: #61afef; }
 .content :deep(.hljs-params) { color: #abb2bf; }
 .content :deep(.hljs-punctuation) { color: #abb2bf; }
+
+/* Light theme highlight.js overrides */
+html[data-theme='light'] .content :deep(.hljs) {
+  color: #383a42;
+}
+
+html[data-theme='light'] .content :deep(.hljs-keyword) { color: #a626a4; }
+html[data-theme='light'] .content :deep(.hljs-string) { color: #50a14f; }
+html[data-theme='light'] .content :deep(.hljs-number) { color: #986801; }
+html[data-theme='light'] .content :deep(.hljs-comment) { color: #a0a1a7; font-style: italic; }
+html[data-theme='light'] .content :deep(.hljs-function) { color: #4078f2; }
+html[data-theme='light'] .content :deep(.hljs-class) { color: #c18401; }
+html[data-theme='light'] .content :deep(.hljs-variable) { color: #e45649; }
+html[data-theme='light'] .content :deep(.hljs-attr) { color: #986801; }
+html[data-theme='light'] .content :deep(.hljs-built_in) { color: #c18401; }
+html[data-theme='light'] .content :deep(.hljs-title) { color: #4078f2; }
+html[data-theme='light'] .content :deep(.hljs-params) { color: #383a42; }
+html[data-theme='light'] .content :deep(.hljs-punctuation) { color: #383a42; }
+
+/* Light theme inline code */
+html[data-theme='light'] .content :deep(.inline-code) {
+  background: rgba(0, 0, 0, 0.06);
+  color: #e45649;
+}
 
 .message-footer {
   display: flex;
@@ -1299,25 +1429,25 @@ html[data-theme='light'] .error-time {
 /* Edit mode styles - inline editing */
 .edit-container {
   position: relative;
-  width: 100%;
 }
 
 /* User message edit mode - inline, minimal change from original bubble */
 .message.user .edit-textarea {
   width: 100%;
-  min-height: 40px;
+  min-height: 1.5em;
   max-height: 300px;
   padding: 0;
   border: none;
   border-radius: 0;
   background: transparent;
   color: rgba(255, 255, 255, 0.95);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
   resize: none;
   outline: none;
   font-family: inherit;
   overflow-y: auto;
+  caret-color: var(--accent);
 }
 
 .message.user .edit-textarea::-webkit-scrollbar {
@@ -1349,20 +1479,17 @@ html[data-theme='light'] .message.user .edit-textarea::placeholder {
   color: rgba(0, 0, 0, 0.3);
 }
 
-/* Editing state bubble - expand to match input box width */
+/* Editing state bubble - keep original size, just add focus indicator */
 .message.user .bubble.editing {
-  max-width: min(860px, 100%);
-  background: linear-gradient(135deg, rgba(85, 95, 109, 0.98) 0%, rgba(65, 75, 91, 1) 100%);
   box-shadow:
-    0 2px 12px rgba(0, 0, 0, 0.2),
-    0 0 0 2px rgba(59, 130, 246, 0.25);
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 0 0 2px rgba(59, 130, 246, 0.4);
 }
 
 html[data-theme='light'] .message.user .bubble.editing {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(245, 247, 250, 0.95) 100%);
   box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.08),
-    0 0 0 2px rgba(59, 130, 246, 0.2);
+    0 4px 12px rgba(0, 0, 0, 0.04),
+    0 0 0 2px rgba(59, 130, 246, 0.3);
 }
 
 /* Assistant message edit mode */
@@ -1380,6 +1507,7 @@ html[data-theme='light'] .message.user .bubble.editing {
   resize: none;
   outline: none;
   font-family: inherit;
+  caret-color: var(--accent);
 }
 
 .message.assistant .edit-textarea:focus {
@@ -1708,6 +1836,21 @@ html[data-theme='light'] .message.user .bubble.editing {
   padding: 16px;
   overflow-x: auto;
   background: transparent;
+}
+
+/* Light theme code block overrides */
+html[data-theme='light'] .bubble :deep(.code-block-header) {
+  background: rgba(0, 0, 0, 0.03);
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme='light'] .bubble :deep(.code-block-copy) {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+html[data-theme='light'] .bubble :deep(.code-block-copy:hover) {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .reasoning-content {

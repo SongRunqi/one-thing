@@ -47,6 +47,8 @@ const defaultSettings: AppSettings = {
   general: {
     animationSpeed: 0.25,
     sendShortcut: 'enter',
+    colorTheme: 'blue',
+    baseTheme: 'obsidian',
   },
   tools: {
     enableToolCalls: true,
@@ -85,6 +87,21 @@ export const useSettingsStore = defineStore('settings', () => {
   function applyTheme() {
     const theme = effectiveTheme.value
     document.documentElement.setAttribute('data-theme', theme)
+    // Also apply color theme and base theme
+    applyColorTheme()
+    applyBaseTheme()
+  }
+
+  // Apply color theme to document
+  function applyColorTheme() {
+    const colorTheme = settings.value.general?.colorTheme || 'blue'
+    document.documentElement.setAttribute('data-color-theme', colorTheme)
+  }
+
+  // Apply base theme to document
+  function applyBaseTheme() {
+    const baseTheme = settings.value.general?.baseTheme || 'obsidian'
+    document.documentElement.setAttribute('data-base-theme', baseTheme)
   }
 
   async function loadSettings() {
@@ -179,6 +196,16 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
     settings.value.general.sendShortcut = shortcut
+  }
+
+  function updateColorTheme(colorTheme: 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'cyan' | 'red') {
+    settings.value.general.colorTheme = colorTheme
+    applyColorTheme()
+  }
+
+  function updateBaseTheme(baseTheme: 'obsidian' | 'ocean' | 'forest' | 'rose' | 'ember') {
+    settings.value.general.baseTheme = baseTheme
+    applyBaseTheme()
   }
 
   // Get current provider's config
@@ -298,5 +325,9 @@ export const useSettingsStore = defineStore('settings', () => {
     deleteCustomProvider,
     refreshAvailableProviders,
     applyTheme,
+    applyColorTheme,
+    applyBaseTheme,
+    updateColorTheme,
+    updateBaseTheme,
   }
 })

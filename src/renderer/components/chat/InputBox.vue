@@ -1,5 +1,5 @@
 <template>
-  <div class="composer-wrapper">
+  <div class="composer-wrapper" ref="composerWrapperRef">
     <!-- Quoted text context (shown above input when text is referenced) -->
     <div v-if="quotedText" class="quoted-context">
       <div class="quoted-bar"></div>
@@ -14,7 +14,7 @@
       </div>
     </div>
 
-    <div class="composer" :class="{ focused: isFocused }">
+    <div class="composer" :class="{ focused: isFocused }" @click="focusTextarea">
       <!-- Skill Picker -->
       <SkillPicker
         :visible="showSkillPicker"
@@ -50,6 +50,8 @@
           @input="handleInput"
           @click="updateCaret"
           @keyup="updateCaret"
+          @compositionstart="isComposing = true"
+          @compositionend="isComposing = false"
           :disabled="isLoading"
           rows="1"
         />
@@ -235,9 +237,9 @@
         </div>
 
         <!-- Right side: send/stop button -->
-        <div class="toolbar-right">
+        <div class="toolbar-right" @click.stop>
           <button
-            v-if="isLoading"
+            v-if="isLoading || isSending"
             class="send-btn stop-btn"
             @click="stopGeneration"
             title="Stop generation"
@@ -303,8 +305,14 @@ const settingsStore = useSettingsStore()
 const messageInput = ref('')
 const quotedText = ref('')
 const isFocused = ref(false)
+const isSending = ref(false)
+const isComposing = ref(false)  // Track IME composition state for CJK input
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const mirrorRef = ref<HTMLDivElement | null>(null)
+const composerWrapperRef = ref<HTMLElement | null>(null)
+
+// ResizeObserver for dynamic height tracking
+let composerResizeObserver: ResizeObserver | null = null
 
 // Caret position state
 const caretPos = ref({ x: 0, y: 0, height: 20 })
@@ -535,6 +543,13 @@ watch(() => settingsStore.settings?.tools?.enableToolCalls, (newValue) => {
   }
 })
 
+// Reset isSending when generation completes (isLoading/isGenerating becomes false)
+watch(() => props.isLoading, (loading) => {
+  if (!loading) {
+    isSending.value = false
+  }
+})
+
 function toggleTools() {
   toolsEnabled.value = !toolsEnabled.value
   // Update settings store
@@ -704,6 +719,11 @@ const canSend = computed(() => {
 })
 
 function handleKeyDown(e: KeyboardEvent) {
+  // Don't send during IME composition (Chinese, Japanese, Korean input)
+  if (isComposing.value) {
+    return
+  }
+
   const shortcut = settingsStore.settings?.general?.sendShortcut || 'enter'
 
   if (shortcut === 'enter') {
@@ -723,6 +743,7 @@ function handleKeyDown(e: KeyboardEvent) {
 
 function sendMessage() {
   if (canSend.value) {
+    isSending.value = true
     let fullMessage = messageInput.value
 
     // If there's quoted text, prepend it to the message with markdown quote format
@@ -775,6 +796,10 @@ function clearQuotedText() {
   quotedText.value = ''
 }
 
+function focusTextarea() {
+  textareaRef.value?.focus()
+}
+
 function setMessageInput(text: string) {
   messageInput.value = text
   nextTick(() => {
@@ -796,10 +821,25 @@ onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
   // Load available skills
   await loadSkills()
+
+  // Setup ResizeObserver for dynamic composer height tracking
+  if (composerWrapperRef.value) {
+    composerResizeObserver = new ResizeObserver((entries) => {
+      const height = entries[0].contentRect.height
+      // Add some extra padding (40px) for spacing
+      document.documentElement.style.setProperty('--composer-height', `${height + 40}px`)
+    })
+    composerResizeObserver.observe(composerWrapperRef.value)
+  }
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  // Clean up ResizeObserver
+  if (composerResizeObserver) {
+    composerResizeObserver.disconnect()
+    composerResizeObserver = null
+  }
 })
 
 // Load skills from backend
@@ -963,7 +1003,7 @@ function handleSkillPickerClose() {
     0 4px 24px rgba(0, 0, 0, 0.12);
   backdrop-filter: blur(24px) saturate(1.2);
   -webkit-backdrop-filter: blur(24px) saturate(1.2);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
 }
 
@@ -1073,6 +1113,8 @@ html[data-theme='light'] .caret-main {
 
 .composer-input::placeholder {
   color: var(--muted);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .composer-input:disabled {
@@ -1131,7 +1173,7 @@ html[data-theme='light'] .caret-main {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
 
@@ -1198,7 +1240,7 @@ html[data-theme='light'] .toolbar-btn:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
@@ -1225,21 +1267,24 @@ html[data-theme='light'] .send-btn:disabled {
   background: rgba(0, 0, 0, 0.06);
 }
 
-/* Stop button variant */
+/* Stop button variant - subtle appearance using theme colors */
 .send-btn.stop-btn {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+  background: var(--hover);
+  box-shadow: none;
+  color: var(--muted);
+  border: 1px solid var(--border);
 }
 
 .send-btn.stop-btn:hover {
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  background: var(--active);
+  color: var(--text);
   transform: translateY(-1px) scale(1.02);
-  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.4);
+  box-shadow: none;
 }
 
 .send-btn.stop-btn:active {
   transform: scale(0.96);
-  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.2);
+  background: var(--active);
 }
 
 .loading-spinner {
@@ -1586,7 +1631,7 @@ html[data-theme='light'] .group-count {
   cursor: pointer;
   font-size: 13px;
   color: var(--text);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   height: 34px;
 }
 

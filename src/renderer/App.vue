@@ -16,8 +16,8 @@
             <line x1="9" y1="3" x2="9" y2="21"/>
           </svg>
         </button>
-        <button 
-          class="header-action-btn highlight" 
+        <button
+          class="header-action-btn"
           @click="createNewChat"
           title="New chat"
         >
@@ -169,7 +169,12 @@ const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 
 const showSettings = ref(false)
-const sidebarCollapsed = ref(false)
+
+// Persist sidebar collapsed state
+const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
+watch(sidebarCollapsed, (collapsed) => {
+  localStorage.setItem('sidebarCollapsed', String(collapsed))
+})
 
 // Current session
 const currentSession = computed(() => sessionsStore.currentSession)
@@ -343,20 +348,11 @@ watchEffect(() => {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.header-action-btn.highlight {
-  color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
-}
-
 .sidebar-toggle-btn:hover,
 .header-action-btn:hover {
   background: var(--hover);
   color: var(--text);
   transform: translateY(-1px);
-}
-
-.header-action-btn.highlight:hover {
-  background: rgba(var(--accent-rgb), 0.15);
 }
 
 .sidebar-toggle-btn:active,
