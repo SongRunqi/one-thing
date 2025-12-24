@@ -1108,6 +1108,20 @@ async function executeStreamGeneration(
       })
     } else {
       console.error('[Backend] Streaming error:', error)
+
+      // Remove the failed assistant message from storage
+      store.deleteMessage(ctx.sessionId, ctx.assistantMessageId)
+
+      // Add an error message to the session (persisted)
+      const errorMessage: ChatMessage = {
+        id: `error-${Date.now()}`,
+        role: 'error',
+        content: error.message || 'Streaming error',
+        timestamp: Date.now(),
+        errorDetails: extractErrorDetails(error),
+      }
+      store.addMessage(ctx.sessionId, errorMessage)
+
       ctx.sender.send(IPC_CHANNELS.STREAM_ERROR, {
         messageId: ctx.assistantMessageId,
         sessionId: ctx.sessionId,
@@ -1573,11 +1587,13 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     }
     store.addMessage(sessionId, assistantMessage)
 
+    // Get updated session name (may have been renamed above)
+    const updatedSessionForName = store.getSession(sessionId)
     const initialResponse = {
       success: true,
       userMessage,
       messageId: assistantMessageId,
-      sessionName: session?.name,
+      sessionName: updatedSessionForName?.name,
     }
 
     // Start streaming in background using shared infrastructure
@@ -1832,6 +1848,20 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
           })
         } else {
           console.error('[Backend] Resume streaming error:', error)
+
+          // Remove the failed assistant message from storage
+          store.deleteMessage(sessionId, messageId)
+
+          // Add an error message to the session (persisted)
+          const errorMessage: ChatMessage = {
+            id: `error-${Date.now()}`,
+            role: 'error',
+            content: error.message || 'Streaming error',
+            timestamp: Date.now(),
+            errorDetails: extractErrorDetails(error),
+          }
+          store.addMessage(sessionId, errorMessage)
+
           sender.send(IPC_CHANNELS.STREAM_ERROR, {
             messageId,
             sessionId,

@@ -52,7 +52,6 @@
           @keyup="updateCaret"
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
-          :disabled="isLoading"
           rows="1"
         />
       </div>
@@ -113,6 +112,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
+import { useSessionsStore } from '@/stores/sessions'
 import type { SkillDefinition } from '@/types'
 import SkillPicker from './SkillPicker.vue'
 import ModelSelector from './ModelSelector.vue'
@@ -138,6 +138,10 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<Emits>()
 const settingsStore = useSettingsStore()
+const sessionsStore = useSessionsStore()
+
+// Cache input text per session
+const sessionInputCache = new Map<string, string>()
 
 const messageInput = ref('')
 const quotedText = ref('')
@@ -223,6 +227,31 @@ watch(() => props.isLoading, (loading) => {
   }
 })
 
+// Cache input text when switching sessions
+let previousSessionId: string | null = null
+watch(() => sessionsStore.currentSessionId, (newSessionId, oldSessionId) => {
+  // Save current input to cache for the old session
+  if (oldSessionId && messageInput.value) {
+    sessionInputCache.set(oldSessionId, messageInput.value)
+  }
+  // Clear input if old session had content (will restore from cache if available)
+  if (oldSessionId) {
+    messageInput.value = ''
+  }
+  // Restore cached input for the new session
+  if (newSessionId) {
+    const cachedInput = sessionInputCache.get(newSessionId)
+    if (cachedInput) {
+      messageInput.value = cachedInput
+      nextTick(() => {
+        adjustHeight()
+        updateCaret()
+      })
+    }
+  }
+  previousSessionId = newSessionId
+}, { immediate: true })
+
 function handleToolsEnabledChange(enabled: boolean) {
   emit('toolsEnabledChange', enabled)
 }
@@ -283,6 +312,10 @@ function sendMessage() {
     emit('sendMessage', fullMessage)
     messageInput.value = ''
     quotedText.value = ''
+    // Clear the cache for this session since message was sent
+    if (sessionsStore.currentSessionId) {
+      sessionInputCache.delete(sessionsStore.currentSessionId)
+    }
     nextTick(() => {
       adjustHeight()
     })
@@ -600,10 +633,7 @@ html[data-theme='light'] .caret-main {
   -webkit-user-select: none;
 }
 
-.composer-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+/* Removed: textarea is never disabled - users can type while waiting */
 
 .composer-input::-webkit-scrollbar { width: 4px; }
 .composer-input::-webkit-scrollbar-track { background: transparent; }

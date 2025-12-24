@@ -21,7 +21,7 @@
         />
 
         <div class="composer">
-          <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="isRegenerating || chatStore.isGenerating" />
+          <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="isRegenerating || chatStore.isCurrentSessionGenerating" />
         </div>
       </div>
     </div>

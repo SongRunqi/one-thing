@@ -11,6 +11,7 @@ export {
   deleteSession,
   renameSession,
   addMessage,
+  deleteMessage,
   updateMessageAndTruncate,
   updateMessageContent,
   updateMessageReasoning,

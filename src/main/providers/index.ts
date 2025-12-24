@@ -257,6 +257,9 @@ export async function* streamChatResponseWithReasoning(
     streamOptions.abortSignal = options.abortSignal
   }
 
+  console.log(`[Provider] streamChatResponseWithReasoning - providerId: ${providerId}, model: ${config.model}`)
+  console.log(`[Provider] Messages being sent:`, JSON.stringify(convertedMessages, null, 2))
+
   const stream = await streamText(streamOptions)
 
   // For reasoning models, use fullStream to capture reasoning
@@ -294,6 +297,13 @@ export async function* streamChatResponseWithReasoning(
         }
       }
 
+      // Handle error chunks
+      if (chunk.type === 'error') {
+        const streamError = chunkAny.error || new Error('Unknown stream error')
+        console.error(`[Provider] Stream error in reasoning stream:`, streamError)
+        throw streamError
+      }
+
       // For reasoning chunks, we yield them separately
       if (chunk.type === 'reasoning-delta') {
         yield { text: '', reasoning }
@@ -304,12 +314,25 @@ export async function* streamChatResponseWithReasoning(
 
     console.log(`[Provider] Reasoning stream completed. Total chunks: ${chunkCount}`)
   } else {
-    // For non-reasoning models, use textStream
+    // For non-reasoning models, use fullStream to capture errors
+    // (textStream silently swallows errors)
     let chunkCount = 0
-    for await (const chunk of stream.textStream) {
+    for await (const chunk of stream.fullStream) {
       chunkCount++
-      console.log(`[Provider] Text stream chunk ${chunkCount}: "${chunk.substring(0, 50)}${chunk.length > 50 ? '...' : ''}"`)
-      yield { text: chunk }
+      const chunkAny = chunk as any
+
+      if (chunk.type === 'text-delta') {
+        const text = chunkAny.textDelta || ''
+        if (text) {
+          console.log(`[Provider] Text stream chunk ${chunkCount}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`)
+          yield { text }
+        }
+      } else if (chunk.type === 'error') {
+        // Handle stream errors - throw to be caught by caller
+        const streamError = chunkAny.error || new Error('Unknown stream error')
+        console.error(`[Provider] Stream error in simple stream:`, streamError)
+        throw streamError
+      }
     }
     console.log(`[Provider] Text stream completed. Total chunks: ${chunkCount}`)
   }
@@ -674,6 +697,18 @@ export async function* streamChatResponseWithTools(
           },
         }
         break
+
+      case 'error':
+        // Handle stream errors - throw to be caught by caller
+        const streamError = chunkAny.error || new Error('Unknown stream error')
+        console.error(`[Provider] Stream error chunk received:`, streamError)
+        console.error(`[Provider] Error details:`, JSON.stringify({
+          message: streamError.message,
+          name: streamError.name,
+          data: streamError.data,
+          responseBody: streamError.responseBody,
+        }, null, 2))
+        throw streamError
     }
   }
 

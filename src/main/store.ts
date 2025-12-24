@@ -24,6 +24,7 @@ export {
   renameSession,
   updateSessionPin,
   addMessage,
+  deleteMessage,
   updateMessageAndTruncate,
   updateMessageContent,
   updateMessageReasoning,

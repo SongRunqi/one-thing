@@ -28,11 +28,20 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.filter(m => m.role === 'assistant')
   )
 
-  // True when generating (for stop button visibility)
+  // True when ANY session is generating (for global state tracking)
   // Uses generatingSessionId which persists throughout the entire generation process
   const isGenerating = computed(() =>
     generatingSessionId.value !== null || messages.value.some(m => m.isStreaming)
   )
+
+  // True when the CURRENT session is generating (for input box state)
+  // This ensures input state is per-session, not shared across all sessions
+  const isCurrentSessionGenerating = computed(() => {
+    if (!currentViewSessionId.value) return false
+    return generatingSessionId.value === currentViewSessionId.value ||
+           activeSessionStreams.value.has(currentViewSessionId.value) ||
+           messages.value.some(m => m.isStreaming)
+  })
 
   // Check if a specific session has an active stream
   function isSessionGenerating(sessionId: string): boolean {
@@ -401,6 +410,18 @@ export const useChatStore = defineStore('chat', () => {
         console.log('[Frontend] WARNING: No userMessage in response')
       }
 
+      // Update session name immediately if it was renamed (don't wait for stream complete)
+      if (response.sessionName) {
+        // Import sessions store dynamically to avoid circular dependency
+        const { useSessionsStore } = await import('./sessions')
+        const sessionsStore = useSessionsStore()
+        const sessionInStore = sessionsStore.sessions.find(s => s.id === sessionId)
+        if (sessionInStore) {
+          sessionInStore.name = response.sessionName
+          sessionInStore.updatedAt = Date.now() // Move to top of list
+        }
+      }
+
       // Create empty assistant message for streaming
       const streamingMessage: ChatMessage = {
         id: assistantMessageId,
@@ -546,13 +567,15 @@ export const useChatStore = defineStore('chat', () => {
           // Only update UI if this is for the currently viewed session
           if (data.sessionId && data.sessionId !== currentViewSessionId.value) {
             console.log('[Frontend] Error for different session, skipping UI update')
-            // Still clean up listeners
+            // Still clean up listeners and reset state
             if (unsubscribeChunk) unsubscribeChunk()
             if (unsubscribeComplete) unsubscribeComplete()
             if (unsubscribeError) unsubscribeError()
             if (unsubscribeSkill) unsubscribeSkill()
             if (unsubscribeStepAdded) unsubscribeStepAdded()
             if (unsubscribeStepUpdated) unsubscribeStepUpdated()
+            isLoading.value = false
+            generatingSessionId.value = null
             return
           }
 
@@ -581,6 +604,7 @@ export const useChatStore = defineStore('chat', () => {
           if (unsubscribeStepUpdated) unsubscribeStepUpdated()
 
           isLoading.value = false
+          generatingSessionId.value = null
           return false
         } else {
           console.log('[Frontend] Error for different message:', data.messageId, 'expected:', assistantMessageId)
@@ -913,6 +937,7 @@ export const useChatStore = defineStore('chat', () => {
           if (unsubscribeStepUpdated) unsubscribeStepUpdated()
 
           isLoading.value = false
+          generatingSessionId.value = null
         }
       })
 
@@ -1047,6 +1072,7 @@ export const useChatStore = defineStore('chat', () => {
     messages,
     isLoading,
     isGenerating,
+    isCurrentSessionGenerating,
     generatingSessionId,
     activeSessionStreams,
     currentViewSessionId,

@@ -289,6 +289,23 @@ export function addMessage(sessionId: string, message: ChatMessage): void {
   }
 }
 
+// Delete a message from a session
+export function deleteMessage(sessionId: string, messageId: string): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const index = session.messages.findIndex((m) => m.id === messageId)
+  if (index === -1) return false
+
+  session.messages.splice(index, 1)
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  return true
+}
+
 // Update a message and remove all messages after it
 export function updateMessageAndTruncate(
   sessionId: string,

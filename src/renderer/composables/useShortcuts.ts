@@ -7,7 +7,7 @@
 
 import { onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '../stores/settings'
-import { useChatStore } from '../stores/chat'
+import { useSessionsStore } from '../stores/sessions'
 import type { KeyboardShortcut } from '@/types'
 
 /**
@@ -65,7 +65,7 @@ export interface ShortcutHandlers {
  */
 export function useShortcuts(handlers: ShortcutHandlers = {}) {
   const settingsStore = useSettingsStore()
-  const chatStore = useChatStore()
+  const sessionsStore = useSessionsStore()
 
   function handleGlobalKeydown(event: KeyboardEvent) {
     // Skip if we're in an input field (except for specific shortcuts)
@@ -84,7 +84,7 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
         handlers.onNewChat()
       } else {
         // Default: create new session
-        chatStore.createSession()
+        sessionsStore.createSession('')
       }
       return
     }
