@@ -1,14 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS, AIProvider } from '../shared/ipc.js'
+import { IPC_CHANNELS, AIProvider, MessageAttachment } from '../shared/ipc.js'
 
 const electronAPI = {
   // Chat methods
-  sendMessage: (sessionId: string, message: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE, { sessionId, message }),
+  sendMessage: (sessionId: string, message: string, attachments?: MessageAttachment[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE, { sessionId, message, attachments }),
 
   // Streaming chat methods (for reasoning models)
-  sendMessageStream: (sessionId: string, message: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE_STREAM, { sessionId, message }),
+  sendMessageStream: (sessionId: string, message: string, attachments?: MessageAttachment[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE_STREAM, { sessionId, message, attachments }),
 
   // Stream event listeners
   onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace'; content: string; messageId: string; sessionId?: string; reasoning?: string; toolCall?: any }) => void) => {
@@ -57,6 +57,12 @@ const electronAPI = {
     const listener = (_event: any, data: any) => callback(data)
     ipcRenderer.on(IPC_CHANNELS.STEP_UPDATED, listener)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.STEP_UPDATED, listener)
+  },
+
+  onImageGenerated: (callback: (data: { id: string; url: string; prompt: string; revisedPrompt?: string; model: string; sessionId: string; messageId: string; createdAt: number }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.IMAGE_GENERATED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.IMAGE_GENERATED, listener)
   },
 
   abortStream: (sessionId?: string) =>

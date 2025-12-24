@@ -21,6 +21,9 @@ export const IPC_CHANNELS = {
   // Skill usage notification
   SKILL_ACTIVATED: 'chat:skill-activated',
 
+  // Image generation notification
+  IMAGE_GENERATED: 'chat:image-generated',
+
   // Step tracking for showing AI reasoning process
   STEP_ADDED: 'chat:step-added',
   STEP_UPDATED: 'chat:step-updated',
@@ -151,6 +154,21 @@ export interface Step {
   }
 }
 
+// Message attachment types for file/image uploads
+export type AttachmentMediaType = 'image' | 'document' | 'audio' | 'video' | 'file'
+
+export interface MessageAttachment {
+  id: string
+  fileName: string
+  mimeType: string           // e.g., 'image/jpeg', 'application/pdf'
+  size: number               // File size in bytes
+  mediaType: AttachmentMediaType
+  base64Data?: string        // Base64 encoded file data (for sending to AI)
+  url?: string               // Local file URL (for display, optional)
+  width?: number             // Image width (for images)
+  height?: number            // Image height (for images)
+}
+
 // Type definitions for IPC messages
 export interface ChatMessage {
   id: string
@@ -168,6 +186,7 @@ export interface ChatMessage {
   thinkingStartTime?: number  // Timestamp when thinking started (for calculating elapsed time on session switch)
   skillUsed?: string  // Name of the skill used by the assistant (e.g., "agent-plan")
   steps?: Step[]  // Steps showing AI reasoning process
+  attachments?: MessageAttachment[]  // File/image attachments
 }
 
 export interface ChatSession {
@@ -304,6 +323,7 @@ export interface AppSettings {
 export interface SendMessageRequest {
   sessionId: string
   message: string
+  attachments?: MessageAttachment[]  // File/image attachments
 }
 
 export interface SendMessageResponse {

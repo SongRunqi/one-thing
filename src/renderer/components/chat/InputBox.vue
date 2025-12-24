@@ -1,5 +1,40 @@
 <template>
   <div class="composer-wrapper" ref="composerWrapperRef">
+    <!-- Hidden file input -->
+    <input
+      ref="fileInputRef"
+      type="file"
+      multiple
+      accept="image/*,.pdf,.doc,.docx,.txt,.md,.json,.csv"
+      style="display: none"
+      @change="handleFileSelect"
+    />
+
+    <!-- Attachment previews (shown above composer when files are attached) -->
+    <div v-if="attachedFiles.length > 0" class="attachments-preview">
+      <div
+        v-for="file in attachedFiles"
+        :key="file.id"
+        class="attachment-item"
+        :class="{ 'is-image': file.mediaType === 'image' }"
+      >
+        <img v-if="file.preview" :src="file.preview" :alt="file.name" class="attachment-thumb" />
+        <div v-else class="attachment-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+        </div>
+        <span class="attachment-name">{{ file.name }}</span>
+        <button class="attachment-remove" @click="removeAttachment(file.id)" title="Remove">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
     <!-- Quoted text context (shown above input when text is referenced) -->
     <div v-if="quotedText" class="quoted-context">
       <div class="quoted-bar"></div>
@@ -113,11 +148,17 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
-import type { SkillDefinition } from '@/types'
+import type { SkillDefinition, MessageAttachment, AttachmentMediaType } from '@/types'
 import SkillPicker from './SkillPicker.vue'
 import ModelSelector from './ModelSelector.vue'
 import ToolsMenu from './ToolsMenu.vue'
 import SkillsMenu from './SkillsMenu.vue'
+
+// Local interface for file preview (extends MessageAttachment with preview)
+interface AttachedFile extends Omit<MessageAttachment, 'base64Data'> {
+  preview?: string       // Data URL for preview display
+  base64Data: string     // Base64 encoded file data
+}
 
 interface Props {
   isLoading?: boolean
@@ -125,7 +166,7 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'sendMessage', message: string): void
+  (e: 'sendMessage', message: string, attachments?: MessageAttachment[]): void
   (e: 'stopGeneration'): void
   (e: 'toolsEnabledChange', enabled: boolean): void
   (e: 'openToolSettings'): void
@@ -151,6 +192,8 @@ const isComposing = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const mirrorRef = ref<HTMLDivElement | null>(null)
 const composerWrapperRef = ref<HTMLElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const attachedFiles = ref<AttachedFile[]>([])
 
 // ResizeObserver for dynamic height tracking
 let composerResizeObserver: ResizeObserver | null = null
@@ -261,7 +304,8 @@ function openToolSettings() {
 }
 
 const canSend = computed(() => {
-  return messageInput.value.trim().length > 0 && !props.isLoading
+  const hasContent = messageInput.value.trim().length > 0 || attachedFiles.value.length > 0
+  return hasContent && !props.isLoading
 })
 
 function handleKeyDown(e: KeyboardEvent) {
@@ -309,9 +353,24 @@ function sendMessage() {
       fullMessage = `${quotedLines}\n\n${messageInput.value}`
     }
 
-    emit('sendMessage', fullMessage)
+    // Convert attached files to MessageAttachment format (without preview)
+    const attachments: MessageAttachment[] | undefined = attachedFiles.value.length > 0
+      ? attachedFiles.value.map(f => ({
+          id: f.id,
+          fileName: f.fileName,
+          mimeType: f.mimeType,
+          size: f.size,
+          mediaType: f.mediaType,
+          base64Data: f.base64Data,
+          width: f.width,
+          height: f.height,
+        }))
+      : undefined
+
+    emit('sendMessage', fullMessage, attachments)
     messageInput.value = ''
     quotedText.value = ''
+    attachedFiles.value = [] // Clear attachments after sending
     // Clear the cache for this session since message was sent
     if (sessionsStore.currentSessionId) {
       sessionInputCache.delete(sessionsStore.currentSessionId)
@@ -336,7 +395,99 @@ function adjustHeight() {
 }
 
 function handleAttach() {
-  console.log('Attach file clicked')
+  fileInputRef.value?.click()
+}
+
+// File handling functions
+function getMediaType(mimeType: string): AttachmentMediaType {
+  if (mimeType.startsWith('image/')) return 'image'
+  if (mimeType.startsWith('audio/')) return 'audio'
+  if (mimeType.startsWith('video/')) return 'video'
+  if (mimeType === 'application/pdf' || mimeType.includes('document') || mimeType.includes('word')) return 'document'
+  return 'file'
+}
+
+async function handleFileSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = input.files
+  if (!files || files.length === 0) return
+
+  const maxFileSize = 10 * 1024 * 1024 // 10MB limit
+  const newFiles: AttachedFile[] = []
+
+  for (const file of Array.from(files)) {
+    if (file.size > maxFileSize) {
+      console.warn(`File ${file.name} is too large (max 10MB)`)
+      continue
+    }
+
+    const id = `attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const mediaType = getMediaType(file.type)
+
+    // Read file as base64
+    const base64Data = await readFileAsBase64(file)
+
+    const attachedFile: AttachedFile = {
+      id,
+      fileName: file.name,
+      mimeType: file.type || 'application/octet-stream',
+      size: file.size,
+      mediaType,
+      base64Data,
+    }
+
+    // Generate preview for images
+    if (mediaType === 'image') {
+      attachedFile.preview = await createImagePreview(file)
+      // Get image dimensions
+      const dimensions = await getImageDimensions(attachedFile.preview)
+      attachedFile.width = dimensions.width
+      attachedFile.height = dimensions.height
+    }
+
+    newFiles.push(attachedFile)
+  }
+
+  attachedFiles.value = [...attachedFiles.value, ...newFiles]
+
+  // Reset input for re-selection
+  input.value = ''
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      // Remove data URL prefix to get pure base64
+      const base64 = result.split(',')[1]
+      resolve(base64)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+function createImagePreview(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+function getImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve({ width: img.width, height: img.height })
+    img.onerror = () => resolve({ width: 0, height: 0 })
+    img.src = dataUrl
+  })
+}
+
+function removeAttachment(id: string) {
+  attachedFiles.value = attachedFiles.value.filter(f => f.id !== id)
 }
 
 function setQuotedText(text: string) {
@@ -447,6 +598,78 @@ function handleSkillPickerClose() {
 .composer-wrapper {
   width: 85%;
   margin: 0 auto;
+}
+
+/* Attachment preview */
+.attachments-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(120, 120, 128, 0.1);
+  border-radius: 8px;
+  max-width: 200px;
+  animation: slideInDown 0.2s ease-out;
+}
+
+.attachment-item.is-image {
+  padding: 4px;
+  background: rgba(120, 120, 128, 0.08);
+}
+
+.attachment-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.attachment-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.attachment-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+}
+
+.attachment-remove {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: all 0.15s ease;
+}
+
+.attachment-remove:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  opacity: 1;
 }
 
 /* Quoted text context */

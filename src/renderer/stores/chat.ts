@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, onUnmounted } from 'vue'
-import type { ChatMessage } from '@/types'
+import type { ChatMessage, MessageAttachment } from '@/types'
 
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
@@ -343,7 +343,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function sendMessageStream(sessionId: string, content: string) {
+  async function sendMessageStream(sessionId: string, content: string, attachments?: MessageAttachment[]) {
     error.value = null
     errorDetails.value = null
 
@@ -353,8 +353,9 @@ export const useChatStore = defineStore('chat', () => {
       role: 'user',
       content,
       timestamp: Date.now(),
+      attachments, // Include attachments in the temp message for display
     }
-    console.log('[Frontend] Created temp user message with id:', tempUserMessage.id)
+    console.log('[Frontend] Created temp user message with id:', tempUserMessage.id, 'attachments:', attachments?.length || 0)
     addMessage(tempUserMessage)
 
     // Set loading state after user message is shown
@@ -370,7 +371,7 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       generatingSessionId.value = sessionId
-      const response = await window.electronAPI.sendMessageStream(sessionId, content)
+      const response = await window.electronAPI.sendMessageStream(sessionId, content, attachments)
 
       if (!response.success) {
         error.value = response.error || 'Failed to send message'
@@ -459,31 +460,40 @@ export const useChatStore = defineStore('chat', () => {
           }
 
           if (chunk.type === 'text') {
-            console.log('[Frontend] Text chunk:', chunk.content)
-            // Append text to message content (for backward compat)
-            message.content += chunk.content
+            console.log('[Frontend] Text chunk:', chunk.content, 'replace:', chunk.replace)
 
-            // Also update contentParts for sequential display
-            const parts = message.contentParts!
-            let lastPart = parts[parts.length - 1]
-
-            // Remove waiting indicator if present
-            if (lastPart && lastPart.type === 'waiting') {
-              parts.pop()
-              lastPart = parts[parts.length - 1]
-            }
-
-            // If last part is text, append to it. Otherwise create new text part.
-            if (lastPart && lastPart.type === 'text') {
-              lastPart.content += chunk.content
+            // Check if this is a replace operation (used for image generation)
+            if (chunk.replace) {
+              // Replace entire content instead of appending
+              message.content = chunk.content
+              message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
+              console.log('[Frontend] Replaced content with:', chunk.content?.substring(0, 50))
             } else {
-              // Create new text part (this happens after tool calls)
-              parts.push({ type: 'text', content: chunk.content })
-              hasToolCallsInCurrentSegment = false
+              // Append text to message content (for backward compat)
+              message.content += chunk.content
+
+              // Also update contentParts for sequential display
+              const parts = message.contentParts!
+              let lastPart = parts[parts.length - 1]
+
+              // Remove waiting indicator if present
+              if (lastPart && lastPart.type === 'waiting') {
+                parts.pop()
+                lastPart = parts[parts.length - 1]
+              }
+
+              // If last part is text, append to it. Otherwise create new text part.
+              if (lastPart && lastPart.type === 'text') {
+                lastPart.content += chunk.content
+              } else {
+                // Create new text part (this happens after tool calls)
+                parts.push({ type: 'text', content: chunk.content })
+                hasToolCallsInCurrentSegment = false
+              }
+              // Force Vue reactivity by reassigning array
+              message.contentParts = [...parts]
+              console.log('[Frontend] Updated contentParts, count:', message.contentParts.length)
             }
-            // Force Vue reactivity by reassigning array
-            message.contentParts = [...parts]
-            console.log('[Frontend] Updated contentParts, count:', message.contentParts.length)
           } else if (chunk.type === 'reasoning') {
             console.log('[Frontend] Reasoning chunk:', chunk.reasoning)
             message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
@@ -846,26 +856,32 @@ export const useChatStore = defineStore('chat', () => {
           if (!message) return
 
           if (chunk.type === 'text') {
-            message.content += chunk.content
-
-            // Update contentParts
-            if (!message.contentParts) message.contentParts = []
-            const parts = message.contentParts
-
-            if (hasToolCallsInCurrentSegment || parts.length === 0 || parts[parts.length - 1].type !== 'text') {
-              // Remove waiting indicator if present
-              if (parts.length > 0 && parts[parts.length - 1].type === 'waiting') {
-                parts.pop()
-              }
-              parts.push({ type: 'text', content: chunk.content })
-              hasToolCallsInCurrentSegment = false
+            // Check if this is a replace operation (used for image generation)
+            if (chunk.replace) {
+              message.content = chunk.content
+              message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
             } else {
-              const lastPart = parts[parts.length - 1]
-              if (lastPart.type === 'text') {
-                lastPart.content += chunk.content
+              message.content += chunk.content
+
+              // Update contentParts
+              if (!message.contentParts) message.contentParts = []
+              const parts = message.contentParts
+
+              if (hasToolCallsInCurrentSegment || parts.length === 0 || parts[parts.length - 1].type !== 'text') {
+                // Remove waiting indicator if present
+                if (parts.length > 0 && parts[parts.length - 1].type === 'waiting') {
+                  parts.pop()
+                }
+                parts.push({ type: 'text', content: chunk.content })
+                hasToolCallsInCurrentSegment = false
+              } else {
+                const lastPart = parts[parts.length - 1]
+                if (lastPart.type === 'text') {
+                  lastPart.content += chunk.content
+                }
               }
+              message.contentParts = [...parts]
             }
-            message.contentParts = [...parts]
           } else if (chunk.type === 'reasoning') {
             message.reasoning = (message.reasoning || '') + chunk.reasoning
           } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {

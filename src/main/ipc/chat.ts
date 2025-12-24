@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import * as store from '../store.js'
-import type { ChatMessage, AppSettings, ProviderConfig, CustomProviderConfig, UserFact, AgentUserRelationship, AgentMood, AgentMemory, Step, StepType, ContentPart } from '../../shared/ipc.js'
+import type { ChatMessage, AppSettings, ProviderConfig, CustomProviderConfig, UserFact, AgentUserRelationship, AgentMood, AgentMemory, Step, StepType, ContentPart, MessageAttachment } from '../../shared/ipc.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
 import {
@@ -11,6 +11,7 @@ import {
   streamChatResponseWithTools,
   convertToolDefinitionsForAI,
   type ToolChatMessage,
+  type AIMessageContent,
 } from '../providers/index.js'
 import {
   getEnabledTools,
@@ -33,6 +34,89 @@ import { getTool } from '../tools/index.js'
 // Register triggers on module load
 triggerManager.register(memoryExtractionTrigger)
 triggerManager.register(contextCompactingTrigger)
+
+// Image generation model detection
+// Supports both formats: 'dall-e-3' and 'DALL-E 3'
+function isImageGenerationModel(modelId: string): boolean {
+  const normalized = modelId.toLowerCase().replace(/[\s-]+/g, '')  // 'DALL-E 3' -> 'dalle3', 'dall-e-3' -> 'dalle3'
+  return normalized.includes('dalle2') || normalized.includes('dalle3')
+}
+
+// Normalize model ID for API call
+function normalizeImageModelId(modelId: string): string {
+  const normalized = modelId.toLowerCase().replace(/[\s-]+/g, '')
+  if (normalized.includes('dalle3')) return 'dall-e-3'
+  if (normalized.includes('dalle2')) return 'dall-e-2'
+  return modelId
+}
+
+// Image generation using OpenAI API
+interface ImageGenerationResult {
+  success: boolean
+  imageUrl?: string
+  revisedPrompt?: string
+  error?: string
+}
+
+async function generateImage(
+  apiKey: string,
+  baseUrl: string,
+  model: string,
+  prompt: string,
+  options: { size?: string; quality?: string; style?: string } = {}
+): Promise<ImageGenerationResult> {
+  try {
+    const url = `${baseUrl || 'https://api.openai.com/v1'}/images/generations`
+
+    const body: Record<string, any> = {
+      model,
+      prompt,
+      n: 1,
+      response_format: 'url', // Can be 'url' or 'b64_json'
+    }
+
+    // DALL-E 3 specific options
+    if (model === 'dall-e-3') {
+      body.size = options.size || '1024x1024' // 1024x1024, 1792x1024, or 1024x1792
+      body.quality = options.quality || 'standard' // 'standard' or 'hd'
+      body.style = options.style || 'vivid' // 'vivid' or 'natural'
+    } else {
+      // DALL-E 2
+      body.size = options.size || '1024x1024' // 256x256, 512x512, or 1024x1024
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: { message: response.statusText } }))
+      return {
+        success: false,
+        error: error.error?.message || `API error: ${response.status}`,
+      }
+    }
+
+    const data = await response.json()
+    const imageData = data.data?.[0]
+
+    return {
+      success: true,
+      imageUrl: imageData?.url,
+      revisedPrompt: imageData?.revised_prompt, // DALL-E 3 may revise the prompt
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message || 'Failed to generate image',
+    }
+  }
+}
 
 // Helper function to format user profile into a readable prompt
 function formatUserProfilePrompt(facts: UserFact[]): string | undefined {
@@ -143,6 +227,54 @@ function formatAgentMemoryPrompt(relationship: AgentUserRelationship): string | 
   return sections.length > 0 ? sections.join('\n\n') : undefined
 }
 
+// Helper function to extract text content from AIMessageContent
+function getTextFromContent(content: AIMessageContent): string {
+  if (typeof content === 'string') {
+    return content
+  }
+  // Extract text from array content
+  return content
+    .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+    .map(part => part.text)
+    .join('\n')
+}
+
+// Helper function to convert message with attachments to multimodal format
+function buildMessageContent(message: ChatMessage): AIMessageContent {
+  // If no attachments, return simple string content
+  if (!message.attachments || message.attachments.length === 0) {
+    return message.content
+  }
+
+  // Build multimodal content array
+  const contentParts: Exclude<AIMessageContent, string> = []
+
+  // Add text content first (if any)
+  if (message.content) {
+    contentParts.push({ type: 'text', text: message.content })
+  }
+
+  // Add attachments
+  for (const attachment of message.attachments) {
+    if (attachment.mediaType === 'image' && attachment.base64Data) {
+      contentParts.push({
+        type: 'image',
+        image: attachment.base64Data,
+        mimeType: attachment.mimeType,
+      })
+    } else if (attachment.base64Data) {
+      // For non-image files, add as file type
+      contentParts.push({
+        type: 'file',
+        data: attachment.base64Data,
+        mimeType: attachment.mimeType,
+      })
+    }
+  }
+
+  return contentParts.length > 0 ? contentParts : message.content
+}
+
 // Helper function to build history messages from session messages
 // Includes reasoningContent for assistant messages (required by DeepSeek Reasoner)
 // Filters out streaming messages (empty assistant messages being generated)
@@ -152,7 +284,7 @@ function buildHistoryMessages(
   session?: { summary?: string; summaryUpToMessageId?: string }
 ): Array<{
   role: 'user' | 'assistant'
-  content: string
+  content: AIMessageContent
   reasoningContent?: string
 }> {
   // If session has a summary, use it to reduce context
@@ -164,7 +296,7 @@ function buildHistoryMessages(
       const recentMessages = messages.slice(summaryIndex + 1)
 
       // Build the history with summary + recent messages
-      const result: Array<{ role: 'user' | 'assistant'; content: string; reasoningContent?: string }> = []
+      const result: Array<{ role: 'user' | 'assistant'; content: AIMessageContent; reasoningContent?: string }> = []
 
       // Add summary as a "user" message (context injection)
       result.push({
@@ -183,9 +315,9 @@ function buildHistoryMessages(
         if (m.role !== 'user' && m.role !== 'assistant') continue
         if (m.isStreaming) continue
 
-        const msg: { role: 'user' | 'assistant'; content: string; reasoningContent?: string } = {
+        const msg: { role: 'user' | 'assistant'; content: AIMessageContent; reasoningContent?: string } = {
           role: m.role as 'user' | 'assistant',
-          content: m.content,
+          content: buildMessageContent(m),
         }
         if (m.role === 'assistant' && m.reasoning) {
           msg.reasoningContent = m.reasoning
@@ -208,9 +340,9 @@ function buildHistoryMessages(
       return true
     })
     .map(m => {
-      const msg: { role: 'user' | 'assistant'; content: string; reasoningContent?: string } = {
+      const msg: { role: 'user' | 'assistant'; content: AIMessageContent; reasoningContent?: string } = {
         role: m.role as 'user' | 'assistant',
-        content: m.content,
+        content: buildMessageContent(m),
       }
       // Include reasoning content for assistant messages (needed for DeepSeek Reasoner)
       if (m.role === 'assistant' && m.reasoning) {
@@ -903,7 +1035,7 @@ async function runToolLoop(
  */
 async function runSimpleStream(
   ctx: StreamContext,
-  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string; reasoningContent?: string }>,
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: AIMessageContent; reasoningContent?: string }>,
   processor: StreamProcessor
 ): Promise<void> {
   const apiType = getProviderApiType(ctx.settings, ctx.providerId)
@@ -937,7 +1069,7 @@ async function runSimpleStream(
  */
 async function executeStreamGeneration(
   ctx: StreamContext,
-  historyMessages: Array<{ role: 'user' | 'assistant'; content: string; reasoningContent?: string }>,
+  historyMessages: Array<{ role: 'user' | 'assistant'; content: AIMessageContent; reasoningContent?: string }>,
   sessionName?: string
 ): Promise<void> {
   const processor = createStreamProcessor(ctx)
@@ -982,9 +1114,10 @@ async function executeStreamGeneration(
     let agentIdForInteraction: string | undefined
 
     // Get the last user message for retrieval-based memory injection
-    const lastUserMessage = historyMessages
+    const lastUserMessageContent = historyMessages
       .filter(m => m.role === 'user')
-      .pop()?.content || ''
+      .pop()?.content
+    const lastUserMessage = lastUserMessageContent ? getTextFromContent(lastUserMessageContent) : ''
 
     // Retrieve relevant user facts based on conversation context (semantic search)
     try {
@@ -1067,18 +1200,18 @@ async function executeStreamGeneration(
 
       // Run post-response triggers asynchronously (memory extraction, context compacting, etc.)
       // Get the last user message from history
-      const lastUserMessage = historyMessages
+      const lastUserMessageObj = historyMessages
         .filter(m => m.role === 'user')
         .pop()
 
-      if (lastUserMessage && processor.accumulatedContent) {
+      if (lastUserMessageObj && processor.accumulatedContent) {
         const updatedSessionForTriggers = store.getSession(ctx.sessionId)
         if (updatedSessionForTriggers) {
           const triggerContext: TriggerContext = {
             sessionId: ctx.sessionId,
             session: updatedSessionForTriggers,
             messages: updatedSessionForTriggers.messages,
-            lastUserMessage: lastUserMessage.content,
+            lastUserMessage: getTextFromContent(lastUserMessageObj.content),
             lastAssistantMessage: processor.accumulatedContent,
             providerId: ctx.providerId,
             providerConfig: ctx.providerConfig,
@@ -1143,8 +1276,8 @@ export function registerChatHandlers() {
   })
 
   // 发送消息（流式）- 使用事件发射器
-  ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE_STREAM, async (event, { sessionId, message }) => {
-    return handleSendMessageStream(event.sender, sessionId, message)
+  ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE_STREAM, async (event, { sessionId, message, attachments }) => {
+    return handleSendMessageStream(event.sender, sessionId, message, attachments)
   })
 
   // 获取聊天历史
@@ -1528,7 +1661,7 @@ async function handleGenerateTitle(userMessage: string) {
 }
 
 // Handle streaming message with event emitter
-async function handleSendMessageStream(sender: Electron.WebContents, sessionId: string, messageContent: string) {
+async function handleSendMessageStream(sender: Electron.WebContents, sessionId: string, messageContent: string, attachments?: MessageAttachment[]) {
   try {
     // Get session to check if this is the first user message
     const session = store.getSession(sessionId)
@@ -1538,14 +1671,15 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     const isBranchFirstMessage = session?.parentSessionId && session.messages.length > 0 &&
       !session.messages.some(m => m.role === 'user' && m.timestamp > session.createdAt)
 
-    // Save user message
+    // Save user message (with attachments if provided)
     const userMessage: ChatMessage = {
       id: `temp-${Date.now()}`,
       role: 'user',
       content: messageContent,
       timestamp: Date.now(),
+      attachments: attachments, // Include file/image attachments
     }
-    console.log('[Backend] Created user message with id:', userMessage.id)
+    console.log('[Backend] Created user message with id:', userMessage.id, 'attachments:', attachments?.length || 0)
     store.addMessage(sessionId, userMessage)
 
     // Auto-rename session based on first user message
@@ -1601,23 +1735,106 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       const abortController = new AbortController()
       activeStreams.set(sessionId, abortController)
 
-      // Build history from updated session (includes user message)
-      const sessionForHistory = store.getSession(sessionId)
-      const historyMessages = buildHistoryMessages(sessionForHistory?.messages || [], sessionForHistory)
-
-      const ctx: StreamContext = {
-        sender,
-        sessionId,
-        assistantMessageId,
-        abortSignal: abortController.signal,
-        settings,
-        providerConfig,
-        providerId,
-        toolSettings: settings.tools,
-      }
-
       try {
-        await executeStreamGeneration(ctx, historyMessages, session?.name)
+        // Check if this is an image generation model (DALL-E)
+        if (isImageGenerationModel(providerConfig.model)) {
+          console.log(`[Backend] Detected image generation model: ${providerConfig.model}`)
+
+          // For image generation, we don't need history - just the prompt
+          const prompt = messageContent
+
+          // Send a "thinking" message to show progress
+          sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+            type: 'text',
+            content: '正在生成图片...\n\n',
+            messageId: assistantMessageId,
+            sessionId,
+          })
+          store.updateMessageContent(sessionId, assistantMessageId, '正在生成图片...\n\n')
+
+          // Generate image - normalize model ID for API
+          const normalizedModel = normalizeImageModelId(providerConfig.model)
+          console.log(`[Backend] Using normalized model ID: ${normalizedModel}`)
+
+          const result = await generateImage(
+            providerConfig.apiKey,
+            providerConfig.baseUrl || 'https://api.openai.com/v1',
+            normalizedModel,
+            prompt
+          )
+
+          if (result.success && result.imageUrl) {
+            // Format the response with markdown image and revised prompt info
+            let responseContent = ''
+
+            if (result.revisedPrompt && result.revisedPrompt !== prompt) {
+              responseContent += `**优化后的提示词:** ${result.revisedPrompt}\n\n`
+            }
+
+            responseContent += `![Generated Image](${result.imageUrl})`
+
+            // Update message with image
+            store.updateMessageContent(sessionId, assistantMessageId, responseContent)
+            store.updateMessageStreaming(sessionId, assistantMessageId, false)
+
+            // Send complete content to frontend
+            sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+              type: 'text',
+              content: responseContent,
+              messageId: assistantMessageId,
+              sessionId,
+              replace: true, // Signal frontend to replace content
+            })
+
+            // Notify frontend about the generated image for Media Panel
+            sender.send(IPC_CHANNELS.IMAGE_GENERATED, {
+              id: `img-${Date.now()}`,
+              url: result.imageUrl,
+              prompt: prompt,
+              revisedPrompt: result.revisedPrompt,
+              model: normalizedModel,
+              sessionId,
+              messageId: assistantMessageId,
+              createdAt: Date.now(),
+            })
+
+            sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+              messageId: assistantMessageId,
+              sessionId,
+              sessionName: updatedSessionForName?.name,
+            })
+            console.log('[Backend] Image generation complete')
+          } else {
+            // Handle error
+            const errorContent = `图片生成失败: ${result.error || '未知错误'}`
+            store.updateMessageContent(sessionId, assistantMessageId, errorContent)
+            store.updateMessageStreaming(sessionId, assistantMessageId, false)
+
+            sender.send(IPC_CHANNELS.STREAM_ERROR, {
+              messageId: assistantMessageId,
+              sessionId,
+              error: result.error || 'Image generation failed',
+            })
+          }
+        } else {
+          // Normal text streaming
+          // Build history from updated session (includes user message)
+          const sessionForHistory = store.getSession(sessionId)
+          const historyMessages = buildHistoryMessages(sessionForHistory?.messages || [], sessionForHistory)
+
+          const ctx: StreamContext = {
+            sender,
+            sessionId,
+            assistantMessageId,
+            abortSignal: abortController.signal,
+            settings,
+            providerConfig,
+            providerId,
+            toolSettings: settings.tools,
+          }
+
+          await executeStreamGeneration(ctx, historyMessages, session?.name)
+        }
       } finally {
         activeStreams.delete(sessionId)
       }
@@ -1709,9 +1926,10 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     const agentId = session.agentId
 
     // Get the last user message for retrieval-based memory injection
-    const lastUserMsg = historyWithoutCurrent
+    const lastUserMsgContent = historyWithoutCurrent
       .filter(m => m.role === 'user')
-      .pop()?.content || ''
+      .pop()?.content
+    const lastUserMsg = lastUserMsgContent ? getTextFromContent(lastUserMsgContent) : ''
 
     // Retrieve relevant user facts based on conversation context (semantic search)
     try {

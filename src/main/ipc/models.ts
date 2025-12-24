@@ -56,6 +56,22 @@ const OPENROUTER_FALLBACK_MODELS: ModelInfo[] = [
   { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', description: 'Meta Llama 3.1 70B Instruct' },
 ]
 
+// Predefined DALL-E image generation models
+const DALLE_MODELS: ModelInfo[] = [
+  { id: 'dall-e-3', name: 'DALL-E 3', description: 'Latest image generation model, best quality' },
+  { id: 'dall-e-2', name: 'DALL-E 2', description: 'Fast image generation model' },
+]
+
+// Predefined OpenAI models as fallback (includes GPT and DALL-E)
+const OPENAI_FALLBACK_MODELS: ModelInfo[] = [
+  { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable GPT-4 model' },
+  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable' },
+  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'GPT-4 Turbo with vision' },
+  { id: 'gpt-4', name: 'GPT-4', description: 'Most capable GPT-4' },
+  { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and cost-effective' },
+  ...DALLE_MODELS,
+]
+
 async function fetchOpenAIModels(apiKey: string, baseUrl: string): Promise<ModelInfo[]> {
   const response = await fetch(`${baseUrl}/models`, {
     headers: {
@@ -68,7 +84,7 @@ async function fetchOpenAIModels(apiKey: string, baseUrl: string): Promise<Model
   }
 
   const data = await response.json()
-  return (data.data || [])
+  const chatModels = (data.data || [])
     .filter((m: any) => m.id.includes('gpt') || m.id.includes('text'))
     .map((m: any) => ({
       id: m.id,
@@ -76,6 +92,9 @@ async function fetchOpenAIModels(apiKey: string, baseUrl: string): Promise<Model
       createdAt: m.created ? new Date(m.created * 1000).toISOString() : undefined,
     }))
     .sort((a: ModelInfo, b: ModelInfo) => a.id.localeCompare(b.id))
+
+  // Add DALL-E image models at the end
+  return [...chatModels, ...DALLE_MODELS]
 }
 
 async function fetchClaudeModels(apiKey: string, baseUrl: string): Promise<ModelInfo[]> {
@@ -242,6 +261,8 @@ async function handleFetchModels(
 // Get fallback models for a provider
 function getFallbackModels(provider: AIProvider): ModelInfo[] | null {
   switch (provider) {
+    case AIProvider.OpenAI:
+      return OPENAI_FALLBACK_MODELS
     case AIProvider.Claude:
       return CLAUDE_FALLBACK_MODELS
     case AIProvider.DeepSeek:

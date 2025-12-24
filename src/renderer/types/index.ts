@@ -13,6 +13,8 @@ import type {
   KeyboardShortcut,
   ShortcutSettings,
   EmbeddingSettings,
+  MessageAttachment,
+  AttachmentMediaType,
   SendMessageResponse,
   EditAndResendResponse,
   GetChatHistoryResponse,
@@ -126,6 +128,8 @@ export type {
   KeyboardShortcut,
   ShortcutSettings,
   EmbeddingSettings,
+  MessageAttachment,
+  AttachmentMediaType,
   ToolDefinition,
   ToolCall,
   ToolSettings,
@@ -176,9 +180,9 @@ export interface StreamSendMessageResponse {
 }
 
 export interface ElectronAPI {
-  sendMessage: (sessionId: string, message: string) => Promise<SendMessageResponse>
-  sendMessageStream: (sessionId: string, message: string) => Promise<StreamSendMessageResponse>
-  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace'; content: string; messageId: string; sessionId?: string; reasoning?: string; toolCall?: ToolCall }) => void) => () => void
+  sendMessage: (sessionId: string, message: string, attachments?: MessageAttachment[]) => Promise<SendMessageResponse>
+  sendMessageStream: (sessionId: string, message: string, attachments?: MessageAttachment[]) => Promise<StreamSendMessageResponse>
+  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace'; content: string; messageId: string; sessionId?: string; reasoning?: string; toolCall?: ToolCall; replace?: boolean }) => void) => () => void
   onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string; sessionId?: string; sessionName?: string }) => void) => () => void
@@ -186,6 +190,7 @@ export interface ElectronAPI {
   onSkillActivated: (callback: (data: { sessionId: string; messageId: string; skillName: string }) => void) => () => void
   onStepAdded: (callback: (data: { sessionId: string; messageId: string; step: any }) => void) => () => void
   onStepUpdated: (callback: (data: { sessionId: string; messageId: string; stepId: string; updates: any }) => void) => () => void
+  onImageGenerated: (callback: (data: { id: string; url: string; prompt: string; revisedPrompt?: string; model: string; sessionId: string; messageId: string; createdAt: number }) => void) => () => void
   getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
   generateTitle: (message: string) => Promise<GenerateTitleResponse>
   editAndResend: (sessionId: string, messageId: string, newContent: string) => Promise<EditAndResendResponse>

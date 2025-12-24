@@ -22,6 +22,13 @@ import {
 } from './registry.js'
 import type { ProviderInfo, ProviderConfig } from './types.js'
 
+// Multimodal content type for AI messages (Vercel AI SDK format)
+export type AIMessageContent = string | Array<
+  | { type: 'text'; text: string }
+  | { type: 'image'; image: string; mimeType?: string }
+  | { type: 'file'; data: string; mimeType: string }
+>
+
 // Initialize registry on module load
 initializeRegistry()
 
@@ -220,7 +227,7 @@ export async function* streamChatResponse(
 export async function* streamChatResponseWithReasoning(
   providerId: string,
   config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
-  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string; reasoningContent?: string }>,
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: AIMessageContent; reasoningContent?: string }>,
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
 ): AsyncGenerator<{ text: string; reasoning?: string }, void, unknown> {
   const provider = createProvider(providerId, config)
@@ -348,7 +355,7 @@ export async function* streamChatResponseWithReasoning(
 export async function generateChatResponseWithReasoning(
   providerId: string,
   config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
-  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string; reasoningContent?: string }>,
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: AIMessageContent; reasoningContent?: string }>,
   options: { temperature?: number; maxTokens?: number } = {}
 ): Promise<ChatResponseResult> {
   const provider = createProvider(providerId, config)
@@ -498,8 +505,8 @@ export async function generateChatTitle(
  * Supports regular messages, assistant messages with tool calls, and tool result messages
  */
 export type ToolChatMessage =
-  | { role: 'user' | 'system'; content: string }
-  | { role: 'assistant'; content: string; toolCalls?: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>; reasoningContent?: string }
+  | { role: 'user' | 'system'; content: AIMessageContent }
+  | { role: 'assistant'; content: AIMessageContent; toolCalls?: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>; reasoningContent?: string }
   | { role: 'tool'; content: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: any }> }
 
 /**

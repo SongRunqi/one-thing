@@ -101,13 +101,13 @@ async function handleStartAgentChat() {
   agentsStore.selectAgent(null)
 }
 
-async function handleSendMessage(message: string) {
+async function handleSendMessage(message: string, attachments?: import('@/types').MessageAttachment[]) {
   if (!currentSession.value) return
 
   const session = currentSession.value
 
-  // Send message using streaming
-  const result = await chatStore.sendMessageStream(session.id, message)
+  // Send message using streaming (with optional attachments)
+  const result = await chatStore.sendMessageStream(session.id, message, attachments)
 
   // If backend returned a new session name, update local sessions store
   if (typeof result === 'string') {

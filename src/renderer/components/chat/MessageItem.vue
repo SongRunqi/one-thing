@@ -1260,6 +1260,32 @@ html[data-theme='light'] .message.user .bubble {
   text-decoration: underline;
 }
 
+/* Generated images styling */
+.content :deep(img) {
+  max-width: 400px;
+  max-height: 400px;
+  width: auto;
+  height: auto;
+  border-radius: 12px;
+  margin: 8px 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.content :deep(img:hover) {
+  transform: scale(1.02);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+html[data-theme='light'] .content :deep(img) {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+html[data-theme='light'] .content :deep(img:hover) {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
 .content :deep(table) {
   border-collapse: collapse;
   margin: 0.75em 0;
