@@ -272,16 +272,17 @@
       </div>
 
       <!-- Selected models list when no available models -->
-      <div v-if="availableModels.length === 0 && currentSelectedModels.length > 0" class="selected-models-list">
-        <div class="form-label">Selected Models</div>
+      <!-- Always show selected models with remove buttons -->
+      <div v-if="currentSelectedModels.length > 0" class="selected-models-list">
+        <div class="form-label">Selected Models ({{ currentSelectedModels.length }})</div>
         <div class="selected-model-chips">
           <div
             v-for="model in currentSelectedModels"
             :key="model"
             :class="['model-chip', { active: settings.ai.providers[viewingProvider]?.model === model }]"
           >
-            <span>{{ model }}</span>
-            <button class="chip-remove" @click="removeSelectedModel(model)" title="Remove">
+            <span>{{ getModelDisplayName(model) }}</span>
+            <button class="chip-remove" @click.stop="removeSelectedModel(model)" title="Remove model">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M18 6L6 18M6 6l12 12"/>
               </svg>
@@ -409,6 +410,12 @@ function isModelSelected(modelId: string): boolean {
   return selectedModels.includes(modelId)
 }
 
+// Get display name for a model (from availableModels or just the id)
+function getModelDisplayName(modelId: string): string {
+  const model = availableModels.value.find(m => m.id === modelId)
+  return model?.name || modelId
+}
+
 // Update functions
 function updateSettings(updates: Partial<AppSettings>) {
   emit('update:settings', { ...props.settings, ...updates })
@@ -523,6 +530,14 @@ function addCustomModel() {
     providerConfig.model = modelId
   }
 
+  // Also add to availableModels so it shows in the grid
+  if (!availableModels.value.find(m => m.id === modelId)) {
+    availableModels.value = [
+      ...availableModels.value,
+      { id: modelId, name: modelId, description: 'Custom model' }
+    ]
+  }
+
   providers[viewingProvider.value] = providerConfig
   updateSettings({ ai: { ...props.settings.ai, providers } })
   newModelInput.value = ''
@@ -548,13 +563,25 @@ function removeSelectedModel(modelId: string) {
 async function loadCachedModels() {
   try {
     const response = await window.electronAPI.getCachedModels(viewingProvider.value as AIProvider)
+    let models: ModelInfo[] = []
+
     if (response.success && response.models && response.models.length > 0) {
-      availableModels.value = response.models
+      models = [...response.models]
       if (response.cachedAt) {
         const cachedDate = new Date(response.cachedAt)
         modelInfo.value = `Cached: ${cachedDate.toLocaleDateString()} ${cachedDate.toLocaleTimeString()}`
       }
     }
+
+    // Also include any selected models that aren't in the available list (custom models)
+    const selectedModels = props.settings.ai.providers[viewingProvider.value]?.selectedModels || []
+    for (const modelId of selectedModels) {
+      if (!models.find(m => m.id === modelId)) {
+        models.push({ id: modelId, name: modelId, description: 'Custom model' })
+      }
+    }
+
+    availableModels.value = models
   } catch (err) {
     console.error('Failed to load cached models:', err)
   }
@@ -578,7 +605,17 @@ async function fetchModels(forceRefresh = true) {
     const response = await window.electronAPI.fetchModels(viewingProvider.value as AIProvider, apiKey, baseUrl, forceRefresh)
 
     if (response.success && response.models) {
-      availableModels.value = response.models
+      let models = [...response.models]
+
+      // Also include any selected models that aren't in the available list (custom models)
+      const selectedModels = props.settings.ai.providers[viewingProvider.value]?.selectedModels || []
+      for (const modelId of selectedModels) {
+        if (!models.find(m => m.id === modelId)) {
+          models.push({ id: modelId, name: modelId, description: 'Custom model' })
+        }
+      }
+
+      availableModels.value = models
 
       if (response.fromCache) {
         const cached = await window.electronAPI.getCachedModels(viewingProvider.value as AIProvider)
