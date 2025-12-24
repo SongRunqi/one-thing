@@ -5,7 +5,7 @@ import { getSettingsPath, readJsonFile, writeJsonFile } from './paths.js'
 const defaultSettings: AppSettings = {
   ai: {
     provider: AIProvider.OpenAI,
-    temperature: 0.7,
+    temperature: 0.3,
     providers: {
       [AIProvider.OpenAI]: {
         apiKey: '',
@@ -59,6 +59,17 @@ const defaultSettings: AppSettings = {
       allowedDirectories: [],
       confirmDangerousCommands: true,
       dangerousCommandWhitelist: [],
+    },
+  },
+  // Embedding settings for memory system
+  embedding: {
+    provider: 'openai',
+    openai: {
+      model: 'text-embedding-3-small',
+      dimensions: 384,  // Use reduced dimensions for efficiency
+    },
+    local: {
+      model: 'all-MiniLM-L6-v2',
     },
   },
 }
@@ -178,6 +189,12 @@ function migrateSettings(settings: any): AppSettings {
   // Ensure bash settings exist in tools
   if (settings.tools && !settings.tools.bash) {
     settings.tools.bash = defaultSettings.tools.bash
+    needsSave = true
+  }
+
+  // Ensure embedding settings exist
+  if (!settings.embedding) {
+    settings.embedding = defaultSettings.embedding
     needsSave = true
   }
 

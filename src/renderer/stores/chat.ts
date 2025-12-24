@@ -355,6 +355,9 @@ export const useChatStore = defineStore('chat', () => {
     let unsubscribeChunk: (() => void) | null = null
     let unsubscribeComplete: (() => void) | null = null
     let unsubscribeError: (() => void) | null = null
+    let unsubscribeSkill: (() => void) | null = null
+    let unsubscribeStepAdded: (() => void) | null = null
+    let unsubscribeStepUpdated: (() => void) | null = null
 
     try {
       generatingSessionId.value = sessionId
@@ -515,6 +518,12 @@ export const useChatStore = defineStore('chat', () => {
             parts.push({ type: 'waiting' })
             // Force Vue reactivity by reassigning array
             message.contentParts = [...parts]
+          } else if (chunk.type === 'replace') {
+            console.log('[Frontend] Replacing message content (removing delegation marker)')
+            // Replace entire message content (used to remove delegation markers)
+            message.content = chunk.content
+            // Also reset contentParts
+            message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
           }
         } else {
           console.log('[Frontend] Chunk for different message:', chunk.messageId, 'expected:', assistantMessageId)
@@ -541,6 +550,9 @@ export const useChatStore = defineStore('chat', () => {
             if (unsubscribeChunk) unsubscribeChunk()
             if (unsubscribeComplete) unsubscribeComplete()
             if (unsubscribeError) unsubscribeError()
+            if (unsubscribeSkill) unsubscribeSkill()
+            if (unsubscribeStepAdded) unsubscribeStepAdded()
+            if (unsubscribeStepUpdated) unsubscribeStepUpdated()
             return
           }
 
@@ -564,11 +576,79 @@ export const useChatStore = defineStore('chat', () => {
           if (unsubscribeChunk) unsubscribeChunk()
           if (unsubscribeComplete) unsubscribeComplete()
           if (unsubscribeError) unsubscribeError()
+          if (unsubscribeSkill) unsubscribeSkill()
+          if (unsubscribeStepAdded) unsubscribeStepAdded()
+          if (unsubscribeStepUpdated) unsubscribeStepUpdated()
 
           isLoading.value = false
           return false
         } else {
           console.log('[Frontend] Error for different message:', data.messageId, 'expected:', assistantMessageId)
+        }
+      })
+
+      // Listen for skill activation events
+      unsubscribeSkill = window.electronAPI.onSkillActivated((data) => {
+        console.log('[Frontend] Skill activated:', data)
+        if (data.messageId === assistantMessageId) {
+          const message = messages.value.find(m => m.id === assistantMessageId)
+          if (message) {
+            message.skillUsed = data.skillName
+          }
+        }
+      })
+
+      // Listen for step events
+      unsubscribeStepAdded = window.electronAPI.onStepAdded((data) => {
+        console.log('[Frontend] Step added:', data)
+        if (data.messageId === assistantMessageId) {
+          const message = messages.value.find(m => m.id === assistantMessageId)
+          if (message) {
+            // Initialize steps array if needed
+            if (!message.steps) message.steps = []
+            message.steps.push(data.step)
+            // Force reactivity
+            message.steps = [...message.steps]
+
+            // Check if we need to add a steps placeholder for this turn
+            // Each turn should have its own steps placeholder so steps are interleaved with text
+            if (message.contentParts) {
+              const stepTurnIndex = data.step.turnIndex
+              const parts = message.contentParts
+
+              // Check if we already have a steps placeholder for this turnIndex
+              const hasPlaceholderForTurn = parts.some(
+                p => p.type === 'steps' && (p as any).turnIndex === stepTurnIndex
+              )
+
+              if (!hasPlaceholderForTurn) {
+                // Remove waiting indicator if present (step replaces waiting)
+                const lastPart = parts[parts.length - 1]
+                if (lastPart && lastPart.type === 'waiting') {
+                  parts.pop()
+                }
+                // Add steps placeholder with turnIndex
+                parts.push({ type: 'steps', turnIndex: stepTurnIndex } as any)
+                message.contentParts = [...parts]
+                console.log('[Frontend] Added steps placeholder for turn:', stepTurnIndex)
+              }
+            }
+          }
+        }
+      })
+
+      unsubscribeStepUpdated = window.electronAPI.onStepUpdated((data) => {
+        console.log('[Frontend] Step updated:', data)
+        if (data.messageId === assistantMessageId) {
+          const message = messages.value.find(m => m.id === assistantMessageId)
+          if (message?.steps) {
+            const step = message.steps.find(s => s.id === data.stepId)
+            if (step) {
+              Object.assign(step, data.updates)
+              // Force reactivity
+              message.steps = [...message.steps]
+            }
+          }
         }
       })
 
@@ -614,6 +694,9 @@ export const useChatStore = defineStore('chat', () => {
             if (unsubscribeChunk) unsubscribeChunk()
             if (unsubscribeComplete) unsubscribeComplete()
             if (unsubscribeError) unsubscribeError()
+            if (unsubscribeSkill) unsubscribeSkill()
+            if (unsubscribeStepAdded) unsubscribeStepAdded()
+            if (unsubscribeStepUpdated) unsubscribeStepUpdated()
 
             isLoading.value = false
             generatingSessionId.value = null
@@ -634,6 +717,9 @@ export const useChatStore = defineStore('chat', () => {
       if (unsubscribeChunk) unsubscribeChunk()
       if (unsubscribeComplete) unsubscribeComplete()
       if (unsubscribeError) unsubscribeError()
+      if (unsubscribeSkill) unsubscribeSkill()
+      if (unsubscribeStepAdded) unsubscribeStepAdded()
+      if (unsubscribeStepUpdated) unsubscribeStepUpdated()
 
       isLoading.value = false
       return false
@@ -686,6 +772,9 @@ export const useChatStore = defineStore('chat', () => {
     let unsubscribeChunk: (() => void) | null = null
     let unsubscribeComplete: (() => void) | null = null
     let unsubscribeError: (() => void) | null = null
+    let unsubscribeSkill: (() => void) | null = null
+    let unsubscribeStepAdded: (() => void) | null = null
+    let unsubscribeStepUpdated: (() => void) | null = null
     let assistantMessageId: string | null = null
 
     try {
@@ -791,6 +880,10 @@ export const useChatStore = defineStore('chat', () => {
             const parts = message.contentParts!
             parts.push({ type: 'waiting' })
             message.contentParts = [...parts]
+          } else if (chunk.type === 'replace') {
+            // Replace entire message content (used to remove delegation markers)
+            message.content = chunk.content
+            message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
           }
         }
       })
@@ -815,8 +908,67 @@ export const useChatStore = defineStore('chat', () => {
           if (unsubscribeChunk) unsubscribeChunk()
           if (unsubscribeComplete) unsubscribeComplete()
           if (unsubscribeError) unsubscribeError()
+          if (unsubscribeSkill) unsubscribeSkill()
+          if (unsubscribeStepAdded) unsubscribeStepAdded()
+          if (unsubscribeStepUpdated) unsubscribeStepUpdated()
 
           isLoading.value = false
+        }
+      })
+
+      // Listen for skill activation events
+      unsubscribeSkill = window.electronAPI.onSkillActivated((data) => {
+        if (data.messageId === assistantMessageId) {
+          const message = messages.value.find(m => m.id === assistantMessageId)
+          if (message) {
+            message.skillUsed = data.skillName
+          }
+        }
+      })
+
+      // Listen for step events
+      unsubscribeStepAdded = window.electronAPI.onStepAdded((data) => {
+        if (data.messageId === assistantMessageId) {
+          const message = messages.value.find(m => m.id === assistantMessageId)
+          if (message) {
+            // Initialize steps array if needed
+            if (!message.steps) message.steps = []
+            message.steps.push(data.step)
+            message.steps = [...message.steps]
+
+            // Check if we need to add a steps placeholder for this turn
+            if (message.contentParts) {
+              const stepTurnIndex = data.step.turnIndex
+              const parts = message.contentParts
+
+              // Check if we already have a steps placeholder for this turnIndex
+              const hasPlaceholderForTurn = parts.some(
+                p => p.type === 'steps' && (p as any).turnIndex === stepTurnIndex
+              )
+
+              if (!hasPlaceholderForTurn) {
+                const lastPart = parts[parts.length - 1]
+                if (lastPart && lastPart.type === 'waiting') {
+                  parts.pop()
+                }
+                parts.push({ type: 'steps', turnIndex: stepTurnIndex } as any)
+                message.contentParts = [...parts]
+              }
+            }
+          }
+        }
+      })
+
+      unsubscribeStepUpdated = window.electronAPI.onStepUpdated((data) => {
+        if (data.messageId === assistantMessageId) {
+          const message = messages.value.find(m => m.id === assistantMessageId)
+          if (message?.steps) {
+            const step = message.steps.find(s => s.id === data.stepId)
+            if (step) {
+              Object.assign(step, data.updates)
+              message.steps = [...message.steps]
+            }
+          }
         }
       })
 
@@ -842,6 +994,9 @@ export const useChatStore = defineStore('chat', () => {
             if (unsubscribeChunk) unsubscribeChunk()
             if (unsubscribeComplete) unsubscribeComplete()
             if (unsubscribeError) unsubscribeError()
+            if (unsubscribeSkill) unsubscribeSkill()
+            if (unsubscribeStepAdded) unsubscribeStepAdded()
+            if (unsubscribeStepUpdated) unsubscribeStepUpdated()
 
             isLoading.value = false
             generatingSessionId.value = null
@@ -858,6 +1013,9 @@ export const useChatStore = defineStore('chat', () => {
       if (unsubscribeChunk) unsubscribeChunk()
       if (unsubscribeComplete) unsubscribeComplete()
       if (unsubscribeError) unsubscribeError()
+      if (unsubscribeSkill) unsubscribeSkill()
+      if (unsubscribeStepAdded) unsubscribeStepAdded()
+      if (unsubscribeStepUpdated) unsubscribeStepUpdated()
 
       isLoading.value = false
       return false

@@ -1,5 +1,5 @@
 import fs from 'fs'
-import type { ChatMessage, ChatSession, ToolCall } from '../../shared/ipc.js'
+import type { ChatMessage, ChatSession, ToolCall, Step, ContentPart } from '../../shared/ipc.js'
 import {
   getSessionsDir,
   getSessionPath,
@@ -19,6 +19,8 @@ interface SessionMeta {
   branchFromMessageId?: string
   lastModel?: string
   isPinned?: boolean
+  workspaceId?: string  // Associated workspace ID
+  agentId?: string  // Associated agent ID for system prompt
 }
 
 // Get sessions index path
@@ -59,13 +61,15 @@ export function getSession(sessionId: string): ChatSession | undefined {
 }
 
 // Create a new session
-export function createSession(sessionId: string, name: string): ChatSession {
+export function createSession(sessionId: string, name: string, workspaceId?: string, agentId?: string): ChatSession {
   const session: ChatSession = {
     id: sessionId,
     name,
     messages: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    workspaceId,
+    agentId,
   }
 
   // Save session file
@@ -78,6 +82,8 @@ export function createSession(sessionId: string, name: string): ChatSession {
     name: session.name,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
+    workspaceId,
+    agentId,
   })
   saveSessionsIndex(index)
 
@@ -93,8 +99,14 @@ export function createBranchSession(
   name: string,
   parentSessionId: string,
   branchFromMessageId: string,
-  inheritedMessages: ChatMessage[]
+  inheritedMessages: ChatMessage[],
+  agentId?: string
 ): ChatSession {
+  // Get parent session to inherit workspaceId and agentId if not provided
+  const parentSession = getSession(parentSessionId)
+  const inheritedWorkspaceId = parentSession?.workspaceId
+  const inheritedAgentId = agentId ?? parentSession?.agentId
+
   const session: ChatSession = {
     id: sessionId,
     name,
@@ -103,6 +115,8 @@ export function createBranchSession(
     updatedAt: Date.now(),
     parentSessionId,
     branchFromMessageId,
+    workspaceId: inheritedWorkspaceId,
+    agentId: inheritedAgentId,
   }
 
   // Save session file
@@ -117,6 +131,8 @@ export function createBranchSession(
     updatedAt: session.updatedAt,
     parentSessionId,
     branchFromMessageId,
+    workspaceId: inheritedWorkspaceId,
+    agentId: inheritedAgentId,
   })
   saveSessionsIndex(index)
 
@@ -215,6 +231,35 @@ export function updateSessionPin(sessionId: string, isPinned: boolean): void {
   const meta = index.find((s) => s.id === sessionId)
   if (meta) {
     meta.isPinned = isPinned
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+}
+
+// Update session agent
+export function updateSessionAgent(sessionId: string, agentId: string | null): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  if (agentId === null) {
+    delete session.agentId
+  } else {
+    session.agentId = agentId
+  }
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    if (agentId === null) {
+      delete meta.agentId
+    } else {
+      meta.agentId = agentId
+    }
     meta.updatedAt = session.updatedAt
     saveSessionsIndex(index)
   }
@@ -403,6 +448,36 @@ export function updateMessageContentParts(sessionId: string, messageId: string, 
   return true
 }
 
+// Add a single content part to message (for streaming)
+export function addMessageContentPart(sessionId: string, messageId: string, part: ContentPart): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  // Initialize contentParts array if needed
+  if (!message.contentParts) {
+    message.contentParts = []
+  }
+
+  message.contentParts.push(part)
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
+
 // Update message thinking time (for persisting thinking duration after streaming completes)
 export function updateMessageThinkingTime(sessionId: string, messageId: string, thinkingTime: number): boolean {
   const session = getSession(sessionId)
@@ -426,4 +501,139 @@ export function updateMessageThinkingTime(sessionId: string, messageId: string, 
   }
 
   return true
+}
+
+// Update message skill used
+export function updateMessageSkill(sessionId: string, messageId: string, skillUsed: string): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  message.skillUsed = skillUsed
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
+
+// Add a step to a message
+export function addMessageStep(sessionId: string, messageId: string, step: Step): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  if (!message.steps) {
+    message.steps = []
+  }
+  message.steps.push(step)
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
+
+// Update a step in a message
+export function updateMessageStep(sessionId: string, messageId: string, stepId: string, updates: Partial<Step>): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message || !message.steps) return false
+
+  const step = message.steps.find((s) => s.id === stepId)
+  if (!step) return false
+
+  // Apply updates
+  Object.assign(step, updates)
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
+
+// Update session summary (for context compacting)
+export function updateSessionSummary(
+  sessionId: string,
+  summary: string,
+  summaryUpToMessageId: string
+): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  session.summary = summary
+  session.summaryUpToMessageId = summaryUpToMessageId
+  session.summaryCreatedAt = Date.now()
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
+
+// Delete all sessions associated with a workspace
+export function deleteSessionsByWorkspace(workspaceId: string): number {
+  const index = loadSessionsIndex()
+  const sessionsToDelete = index.filter(s => s.workspaceId === workspaceId)
+
+  // Delete session files
+  for (const session of sessionsToDelete) {
+    deleteJsonFile(getSessionPath(session.id))
+  }
+
+  // Update index - remove deleted sessions
+  const newIndex = index.filter(s => s.workspaceId !== workspaceId)
+  saveSessionsIndex(newIndex)
+
+  // If current session was deleted, clear it
+  const currentSessionId = getCurrentSessionId()
+  if (sessionsToDelete.some(s => s.id === currentSessionId)) {
+    // Try to switch to another session in default mode
+    const defaultSession = newIndex.find(s => !s.workspaceId)
+    setCurrentSessionId(defaultSession?.id || '')
+  }
+
+  return sessionsToDelete.length
 }

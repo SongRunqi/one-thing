@@ -55,6 +55,7 @@
         :branches="getBranchesForMessage(message.id)"
         :can-branch="canCreateBranch"
         :is-highlighted="message.id === highlightedMessageId"
+        :voice-config="currentAgentVoiceConfig"
         @edit="handleEdit"
         @branch="handleBranch"
         @go-to-branch="handleGoToBranch"
@@ -116,11 +117,12 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
-import type { ChatMessage } from '@/types'
+import type { ChatMessage, AgentVoice } from '@/types'
 import MessageItem from './MessageItem.vue'
 import Tooltip from '../common/Tooltip.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
+import { useAgentsStore } from '@/stores/agents'
 
 interface BranchInfo {
   id: string
@@ -145,7 +147,17 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
+const agentsStore = useAgentsStore()
 const messageListRef = ref<HTMLElement | null>(null)
+
+// Get current agent's voice config (if session is associated with an agent)
+const currentAgentVoiceConfig = computed<AgentVoice | undefined>(() => {
+  const currentSession = sessionsStore.currentSession
+  if (!currentSession?.agentId) return undefined
+
+  const agent = agentsStore.agents.find(a => a.id === currentSession.agentId)
+  return agent?.voice
+})
 
 // Track current navigation position among user messages
 const currentUserMessageNavIndex = ref(-1)
@@ -654,12 +666,28 @@ async function handleConfirmTool(toolCall: any) {
   )
   const tc = message?.toolCalls?.find(t => t.id === toolCall.id)
 
+  // Find and update the corresponding step
+  const step = message?.steps?.find(s => s.toolCallId === toolCall.id)
+
   // Record start time
   const startTime = Date.now()
   if (tc) {
     tc.status = 'executing'
     tc.startTime = startTime
     tc.requiresConfirmation = false
+  }
+
+  // Update step to running
+  if (step) {
+    step.status = 'running'
+    if (step.toolCall) {
+      step.toolCall.status = 'executing'
+      step.toolCall.requiresConfirmation = false
+    }
+    // Force reactivity
+    if (message?.steps) {
+      message.steps = [...message.steps]
+    }
   }
 
   try {
@@ -680,6 +708,22 @@ async function handleConfirmTool(toolCall: any) {
       tc.error = result.error
     }
 
+    // Update step status
+    if (step) {
+      step.status = result.success ? 'completed' : 'failed'
+      step.result = typeof result.result === 'string' ? result.result : JSON.stringify(result.result)
+      step.error = result.error
+      if (step.toolCall) {
+        step.toolCall.status = result.success ? 'completed' : 'failed'
+        step.toolCall.result = result.result
+        step.toolCall.error = result.error
+      }
+      // Force reactivity
+      if (message?.steps) {
+        message.steps = [...message.steps]
+      }
+    }
+
     // Persist to backend
     if (message) {
       await window.electronAPI.updateToolCall(currentSession.id, message.id, toolCall.id, {
@@ -690,6 +734,10 @@ async function handleConfirmTool(toolCall: any) {
         error: result.error,
         requiresConfirmation: false,
       })
+
+      // Resume the LLM conversation to process the tool result
+      console.log('[Frontend] Resuming LLM after tool confirm')
+      await window.electronAPI.resumeAfterToolConfirm(currentSession.id, message.id)
     }
   } catch (error) {
     console.error('Failed to confirm tool:', error)
@@ -698,6 +746,20 @@ async function handleConfirmTool(toolCall: any) {
       tc.endTime = endTime
       tc.status = 'failed'
       tc.error = String(error)
+    }
+
+    // Update step status on error
+    if (step) {
+      step.status = 'failed'
+      step.error = String(error)
+      if (step.toolCall) {
+        step.toolCall.status = 'failed'
+        step.toolCall.error = String(error)
+      }
+      // Force reactivity
+      if (message?.steps) {
+        message.steps = [...message.steps]
+      }
     }
 
     // Persist to backend
@@ -729,6 +791,22 @@ function handleRejectTool(toolCall: any) {
       tc.status = 'cancelled'
       tc.error = 'Command rejected by user'
       tc.requiresConfirmation = false
+    }
+
+    // Update the corresponding step
+    const step = message.steps?.find(s => s.toolCallId === toolCall.id)
+    if (step) {
+      step.status = 'failed'
+      step.error = '用户取消了命令执行'
+      if (step.toolCall) {
+        step.toolCall.status = 'cancelled'
+        step.toolCall.error = 'Command rejected by user'
+        step.toolCall.requiresConfirmation = false
+      }
+      // Force reactivity
+      if (message.steps) {
+        message.steps = [...message.steps]
+      }
     }
   }
 }

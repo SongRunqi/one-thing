@@ -3,7 +3,21 @@
 
     <!-- Expanded State (only shown when not collapsed) -->
     <template v-if="!collapsed">
-      <div class="sessions-list" role="list">
+      <!-- Agent Grid at top -->
+      <AgentGrid
+        v-if="agentsStore.pinnedAgents.length > 0 || true"
+        :selected-agent-id="null"
+        @select-agent="handleSelectAgent"
+        @edit-agent="(agent) => $emit('edit-agent', agent)"
+        @open-create-dialog="$emit('open-agent-dialog')"
+      />
+
+      <div
+        ref="sessionsListRef"
+        :class="['sessions-list', { 'is-overflowing': isSessionsOverflowing }]"
+        role="list"
+        @scroll="checkSessionsOverflow"
+      >
         <div v-for="group in groupedSessions" :key="group.label" class="session-group">
           <div
             class="group-header"
@@ -58,6 +72,17 @@
               <svg v-if="session.isPinned && session.depth === 0" class="pin-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                 <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
               </svg>
+
+              <!-- Agent avatar or chat icon -->
+              <span v-if="getSessionAgent(session)?.avatar.type === 'emoji'" class="session-agent-avatar">
+                {{ getSessionAgent(session)?.avatar.value }}
+              </span>
+              <img
+                v-else-if="getSessionAgent(session)"
+                :src="'file://' + getSessionAgent(session)?.avatar.value"
+                class="session-agent-img"
+                alt=""
+              />
 
               <!-- Session name -->
               <input
@@ -152,6 +177,15 @@
       </Teleport>
 
     </template>
+
+    <!-- Workspace Switcher -->
+    <WorkspaceSwitcher
+      :media-panel-open="mediaPanelOpen"
+      :show-separator="isSessionsOverflowing"
+      @toggle-media-panel="$emit('toggle-media-panel')"
+      @open-create-dialog="$emit('open-workspace-dialog')"
+      @edit-workspace="(workspace) => $emit('edit-workspace', workspace)"
+    />
   </aside>
 </template>
 
@@ -160,10 +194,14 @@ import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
-import type { ChatSession } from '@/types'
+import { useAgentsStore } from '@/stores/agents'
+import WorkspaceSwitcher from '@/components/WorkspaceSwitcher.vue'
+import AgentGrid from '@/components/AgentGrid.vue'
+import type { ChatSession, Workspace, Agent } from '@/types'
 
 interface Props {
   collapsed?: boolean
+  mediaPanelOpen?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -175,17 +213,55 @@ const collapsed = computed(() => props.collapsed)
 
 const emit = defineEmits<{
   toggleCollapse: []
+  'toggle-media-panel': []
+  'open-workspace-dialog': []
+  'edit-workspace': [workspace: Workspace]
+  'open-agent-dialog': []
+  'edit-agent': [agent: Agent]
+  'select-agent': [agent: Agent]
 }>()
 
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
+const agentsStore = useAgentsStore()
+
+function handleSelectAgent(agent: Agent) {
+  emit('select-agent', agent)
+}
+
+// Get the agent for a session (if it has one)
+function getSessionAgent(session: ChatSession) {
+  if (!session.agentId) return null
+  return agentsStore.agents.find(a => a.id === session.agentId) || null
+}
 
 // Computed animation speed from settings
 const animationSpeed = computed(() => {
   return settingsStore.settings.general?.animationSpeed ?? 0.25
 })
 const inlineInputRef = ref<HTMLInputElement | null>(null)
+const sessionsListRef = ref<HTMLElement | null>(null)
+const isSessionsOverflowing = ref(false)
+let mutationObserver: MutationObserver | null = null
+let resizeObserver: ResizeObserver | null = null
+
+// Check if sessions list content overlaps with the bottom area
+function checkSessionsOverflow() {
+  if (sessionsListRef.value) {
+    const el = sessionsListRef.value
+    // Logic: content is "covered" if there is more content below the current scroll view
+    // Using a 2px threshold for sub-pixel precision issues
+    const hasMoreContentBelow = el.scrollHeight > Math.ceil(el.scrollTop + el.clientHeight) + 2
+    isSessionsOverflowing.value = hasMoreContentBelow
+  }
+}
+
+// Delayed check for overflow (after animations complete)
+function checkSessionsOverflowDelayed() {
+  // Wait for collapse/expand animation to complete
+  setTimeout(checkSessionsOverflow, 350)
+}
 
 // Context menu state
 const contextMenu = ref({
@@ -291,6 +367,8 @@ watch(
     if (newLength > 0 && !initialCollapseApplied.value) {
       initializeCollapsedState()
     }
+    // Recheck overflow when sessions count changes
+    nextTick(checkSessionsOverflow)
   },
   { immediate: true }
 )
@@ -340,6 +418,8 @@ function toggleGroupCollapse(groupLabel: string) {
   }
   // Trigger reactivity
   collapsedGroups.value = new Set(collapsedGroups.value)
+  // Recheck overflow after animation completes
+  checkSessionsOverflowDelayed()
 }
 
 // Check if a session is collapsed
@@ -372,7 +452,7 @@ function isAncestorCollapsed(session: ChatSession): boolean {
   return false
 }
 
-const filteredSessions = computed(() => sessionsStore.sessions)
+const filteredSessions = computed(() => sessionsStore.filteredSessions)
 
 
 // Check if a session is a branch
@@ -771,6 +851,29 @@ function handleClearClick() {
 onMounted(() => {
   window.addEventListener('resize', handleResize)
   // Don't call handleResize() on mount - respect saved sidebar state from localStorage
+  
+  // Set up observers to detect DOM and size changes
+  if (sessionsListRef.value) {
+    // 1. MutationObserver for content changes (group toggle etc.)
+    mutationObserver = new MutationObserver(() => {
+      checkSessionsOverflow()
+    })
+    mutationObserver.observe(sessionsListRef.value, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style']
+    })
+
+    // 2. ResizeObserver for container size changes
+    resizeObserver = new ResizeObserver(() => {
+      checkSessionsOverflow()
+    })
+    resizeObserver.observe(sessionsListRef.value)
+
+    // Initial check
+    checkSessionsOverflowDelayed()
+  }
 })
 
 onUnmounted(() => {
@@ -779,6 +882,15 @@ onUnmounted(() => {
   if (deleteConfirmTimer) {
     clearTimeout(deleteConfirmTimer)
     deleteConfirmTimer = null
+  }
+  // Clean up Observers
+  if (mutationObserver) {
+    mutationObserver.disconnect()
+    mutationObserver = null
+  }
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
   }
 })
 
@@ -799,12 +911,14 @@ function handleResize() {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease;
   overflow: hidden;
   background: rgba(var(--bg-rgb), 0.5);
   backdrop-filter: blur(10px);
 }
-
 
 .sidebar.collapsed {
   width: 0;
@@ -814,9 +928,11 @@ function handleResize() {
   overflow: hidden;
   border: none;
   box-shadow: none;
+  opacity: 0;
 }
 
 .sessions-list {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -824,9 +940,11 @@ function handleResize() {
   overflow-x: hidden;
   min-height: 0;
   min-width: 0;
-  padding: 12px 8px;
+  padding: 12px 8px 60px; /* Restored and added bottom padding */
   /* Prevent width jump when scrollbar appears/disappears */
   scrollbar-gutter: stable;
+  /* Background dashed line separator */
+  border-bottom: none;
 }
 
 .session-group {
@@ -1001,6 +1119,21 @@ html[data-theme='light'] .collapse-btn:hover {
   flex-shrink: 0;
   color: var(--muted);
   opacity: 0.5;
+}
+
+/* Agent avatar */
+.session-agent-avatar {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.session-agent-img {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: cover;
 }
 
 /* Session name */

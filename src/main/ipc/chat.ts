@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import * as store from '../store.js'
-import type { ChatMessage, AppSettings, ProviderConfig, CustomProviderConfig } from '../../shared/ipc.js'
+import type { ChatMessage, AppSettings, ProviderConfig, CustomProviderConfig, UserFact, AgentUserRelationship, AgentMood, AgentMemory, Step, StepType, ContentPart } from '../../shared/ipc.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
 import {
@@ -23,15 +23,182 @@ import { getMCPToolsForAI, isMCPTool, executeMCPTool, parseMCPToolId, findMCPToo
 import { getLoadedSkills } from './skills.js'
 import { buildSkillsAwarenessPrompt, buildSkillsDirectPrompt } from '../skills/prompt-builder.js'
 import type { SkillDefinition } from '../../shared/ipc.js'
+import { getStorage } from '../storage/index.js'
+import { triggerManager, type TriggerContext } from '../services/triggers/index.js'
+import { memoryExtractionTrigger } from '../services/triggers/memory-extraction.js'
+import { contextCompactingTrigger } from '../services/triggers/context-compacting.js'
+import type { ToolExecutionContext, ToolExecutionResult } from '../tools/types.js'
+import { getTool } from '../tools/index.js'
+
+// Register triggers on module load
+triggerManager.register(memoryExtractionTrigger)
+triggerManager.register(contextCompactingTrigger)
+
+// Helper function to format user profile into a readable prompt
+function formatUserProfilePrompt(facts: UserFact[]): string | undefined {
+  if (!facts || facts.length === 0) return undefined
+
+  const sections: string[] = []
+
+  const groupedFacts: Record<string, UserFact[]> = {
+    personal: [],
+    preference: [],
+    goal: [],
+    trait: [],
+  }
+
+  for (const fact of facts) {
+    groupedFacts[fact.category].push(fact)
+  }
+
+  if (groupedFacts.personal.length > 0) {
+    sections.push(`## 关于用户\n${groupedFacts.personal.map(f => `- ${f.content}`).join('\n')}`)
+  }
+
+  if (groupedFacts.preference.length > 0) {
+    sections.push(`## 用户偏好\n${groupedFacts.preference.map(f => `- ${f.content}`).join('\n')}`)
+  }
+
+  if (groupedFacts.goal.length > 0) {
+    sections.push(`## 用户目标\n${groupedFacts.goal.map(f => `- ${f.content}`).join('\n')}`)
+  }
+
+  if (groupedFacts.trait.length > 0) {
+    sections.push(`## 用户特点\n${groupedFacts.trait.map(f => `- ${f.content}`).join('\n')}`)
+  }
+
+  return sections.length > 0 ? sections.join('\n\n') : undefined
+}
+
+/**
+ * Retrieve relevant user facts based on conversation context using embedding similarity
+ * Instead of loading all facts, only retrieve facts relevant to the current conversation
+ */
+async function retrieveRelevantFacts(
+  storage: any,
+  userMessage: string,
+  limit = 10,
+  minSimilarity = 0.3
+): Promise<UserFact[]> {
+  const messagePreview = userMessage.length > 50 ? userMessage.slice(0, 50) + '...' : userMessage
+  console.log(`[Chat] Retrieving relevant facts for: "${messagePreview}"`)
+
+  try {
+    // Use semantic search to find relevant facts
+    const relevantFacts = await storage.userProfile.searchFacts(userMessage)
+    console.log(`[Chat] Found ${relevantFacts.length} relevant facts via semantic search`)
+    return relevantFacts.slice(0, limit)
+  } catch (error) {
+    console.warn('[Chat] Failed to retrieve relevant facts, falling back to all facts:', error)
+    // Fallback: return all facts if semantic search fails
+    const profile = await storage.userProfile.getProfile()
+    console.log(`[Chat] Fallback: returning all ${profile.facts.length} facts`)
+    return profile.facts.slice(0, limit)
+  }
+}
+
+// Helper function to format agent memories into a readable prompt
+function formatAgentMemoryPrompt(relationship: AgentUserRelationship): string | undefined {
+  if (!relationship) return undefined
+
+  const sections: string[] = []
+  const rel = relationship.relationship
+
+  // Relationship context
+  sections.push(`## 与用户的关系
+- 信任度: ${rel.trustLevel}/100
+- 熟悉度: ${rel.familiarity}/100
+- 总互动次数: ${rel.totalInteractions}`)
+
+  // Current mood
+  const moodMap: Record<AgentMood, string> = {
+    happy: '开心',
+    neutral: '平静',
+    concerned: '担忧',
+    excited: '兴奋',
+  }
+  const mood = relationship.agentFeelings
+  sections.push(`## 当前状态
+- 心情: ${moodMap[mood.currentMood]}${mood.notes ? `\n- 备注: ${mood.notes}` : ''}`)
+
+  // Active memories (filter by strength > 10, sort by strength, top 5)
+  const activeMemories = relationship.observations
+    .filter(m => m.strength > 10)
+    .sort((a, b) => b.strength - a.strength)
+    .slice(0, 5)
+
+  if (activeMemories.length > 0) {
+    const memoryLines = activeMemories.map(m => {
+      const vividnessEmoji: Record<string, string> = {
+        vivid: '🌟',
+        clear: '💭',
+        hazy: '🌫️',
+        fragment: '❓',
+      }
+      return `- ${vividnessEmoji[m.vividness] || '💭'} ${m.content}`
+    })
+    sections.push(`## 关于用户的记忆\n${memoryLines.join('\n')}`)
+  }
+
+  return sections.length > 0 ? sections.join('\n\n') : undefined
+}
 
 // Helper function to build history messages from session messages
 // Includes reasoningContent for assistant messages (required by DeepSeek Reasoner)
 // Filters out streaming messages (empty assistant messages being generated)
-function buildHistoryMessages(messages: ChatMessage[]): Array<{
+// When session has a summary, uses [summary] + [recent messages] to reduce context window usage
+function buildHistoryMessages(
+  messages: ChatMessage[],
+  session?: { summary?: string; summaryUpToMessageId?: string }
+): Array<{
   role: 'user' | 'assistant'
   content: string
   reasoningContent?: string
 }> {
+  // If session has a summary, use it to reduce context
+  if (session?.summary && session?.summaryUpToMessageId) {
+    const summaryIndex = messages.findIndex(m => m.id === session.summaryUpToMessageId)
+
+    if (summaryIndex !== -1) {
+      // Get messages after the summary point
+      const recentMessages = messages.slice(summaryIndex + 1)
+
+      // Build the history with summary + recent messages
+      const result: Array<{ role: 'user' | 'assistant'; content: string; reasoningContent?: string }> = []
+
+      // Add summary as a "user" message (context injection)
+      result.push({
+        role: 'user',
+        content: `[对话历史摘要]\n${session.summary}\n\n请基于以上历史继续对话。`,
+      })
+
+      // Add an acknowledgment from assistant
+      result.push({
+        role: 'assistant',
+        content: '好的，我已了解之前的对话内容。请继续。',
+      })
+
+      // Add recent messages
+      for (const m of recentMessages) {
+        if (m.role !== 'user' && m.role !== 'assistant') continue
+        if (m.isStreaming) continue
+
+        const msg: { role: 'user' | 'assistant'; content: string; reasoningContent?: string } = {
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }
+        if (m.role === 'assistant' && m.reasoning) {
+          msg.reasoningContent = m.reasoning
+        }
+        result.push(msg)
+      }
+
+      console.log(`[buildHistoryMessages] Using summary + ${recentMessages.length} recent messages`)
+      return result
+    }
+  }
+
+  // No summary - use full history
   return messages
     .filter(m => {
       // Only include user and assistant messages
@@ -58,24 +225,63 @@ function buildHistoryMessages(messages: ChatMessage[]): Array<{
 const activeStreams = new Map<string, AbortController>()
 
 // Base system prompt to control tool usage behavior
-const BASE_SYSTEM_PROMPT = `You are a helpful assistant. You have access to tools, but you should ONLY use them when the user's request specifically requires their functionality.
-
+const BASE_SYSTEM_PROMPT = `
+You are a helpful assistant. You have access to tools, but you should ONLY use them when the user's request specifically requires their functionality.
 Important guidelines:
 - DO NOT mention your available tools or capabilities unless the user explicitly asks what you can do
 - DO NOT offer to use tools proactively - wait for the user to make a request that requires them
 - For casual conversation (greetings, general questions, etc.), respond naturally without referring to tools
 - Only call a tool when the user's message clearly requires that tool's specific functionality
-- If unsure whether a tool is needed, prefer responding conversationally first`
+- If unsure whether a tool is needed, prefer responding conversationally first
+### Important
+Before calling any tool, briefly explain what you're about to do.
+Never start your response with a tool call directly. Always output some text first.
+After obtaining the tool results, inform the user of the findings and explain the next steps.
+`
+
 
 /**
- * Build dynamic system prompt with optional skills awareness
+ * Build dynamic system prompt with optional skills awareness and workspace character
  */
 function buildSystemPrompt(options: {
   hasTools: boolean
   skills: SkillDefinition[]
+  workspaceSystemPrompt?: string
+  userProfilePrompt?: string
+  agentMemoryPrompt?: string
 }): string {
-  const { hasTools, skills } = options
+  const { hasTools, skills, workspaceSystemPrompt, userProfilePrompt, agentMemoryPrompt } = options
   let prompt = BASE_SYSTEM_PROMPT
+
+  // Prepend workspace/agent system prompt if provided (for character/persona)
+  if (workspaceSystemPrompt && workspaceSystemPrompt.trim()) {
+    prompt = workspaceSystemPrompt.trim() + '\n\n' + prompt
+  }
+
+  // Add user profile information if available
+  // Using XML tags and strong emphasis based on best practices research
+  if (userProfilePrompt && userProfilePrompt.trim()) {
+    prompt += `
+
+# User Memory (MUST USE - DO NOT ASK AGAIN)
+
+<user_facts>
+${userProfilePrompt.trim()}
+</user_facts>
+
+<memory_instructions>
+CRITICAL: The facts above are ALREADY KNOWN. You MUST:
+1. Use this information directly when answering related questions
+2. NEVER ask for information that is already in <user_facts>
+3. Combine related facts in your reasoning
+</memory_instructions>`
+  }
+
+  // Add agent memory information if available
+  // This is the agent's private relationship and memories with this user
+  if (agentMemoryPrompt && agentMemoryPrompt.trim()) {
+    prompt += '\n\n# Your Relationship and Memories with the User\nThe following is your understanding of the user and the state of your relationship. These are your private memories as a character with memory:\n\n' + agentMemoryPrompt.trim()
+  }
 
   // Add skills awareness when tools are enabled
   if (skills.length > 0) {
@@ -171,6 +377,7 @@ interface StreamContext {
   providerConfig: ProviderConfig
   providerId: string
   toolSettings: ToolSettings | undefined
+  // Note: skills are passed separately to runToolLoop/executeToolAndUpdate, not stored here
 }
 
 /**
@@ -193,9 +400,9 @@ interface StreamProcessor {
 /**
  * Create a stream processor for handling chunks
  */
-function createStreamProcessor(ctx: StreamContext): StreamProcessor {
-  let accumulatedContent = ''
-  let accumulatedReasoning = ''
+function createStreamProcessor(ctx: StreamContext, initialContent?: { content?: string; reasoning?: string }): StreamProcessor {
+  let accumulatedContent = initialContent?.content || ''
+  let accumulatedReasoning = initialContent?.reasoning || ''
   const toolCalls: ToolCall[] = []
 
   return {
@@ -293,16 +500,162 @@ function createStreamProcessor(ctx: StreamContext): StreamProcessor {
 /**
  * Execute a tool (MCP or built-in) and update tool call status
  */
+/**
+ * Detect if a bash command is reading a skill file and extract skill name
+ */
+function detectSkillUsage(toolName: string, args: Record<string, any>): string | null {
+  if (toolName !== 'bash') return null
+
+  const command = args.command as string
+  if (!command) return null
+
+  // Match patterns like: cat ~/.claude/skills/agent-plan/SKILL.md
+  // or: cat /Users/xxx/.claude/skills/agent-plan/SKILL.md
+  const skillPathMatch = command.match(/(?:cat|less|head|tail|more)\s+.*[/~]\.claude\/skills\/([^/]+)\/SKILL\.md/)
+  if (skillPathMatch) {
+    return skillPathMatch[1]  // Return skill name (e.g., "agent-plan")
+  }
+
+  return null
+}
+
+/**
+ * Determine step type from tool name and arguments
+ */
+function getStepType(toolName: string, args: Record<string, any>): StepType {
+  if (toolName === 'bash') {
+    const command = args.command as string || ''
+    // Check if it's reading a skill file
+    if (command.match(/(?:cat|less|head|tail|more)\s+.*SKILL\.md/)) {
+      return 'skill-read'
+    }
+    // Check if it's reading a file
+    if (command.match(/^(cat|less|head|tail|more)\s+/)) {
+      return 'file-read'
+    }
+    // Check if it's writing a file
+    if (command.match(/^(echo|printf|tee)\s+.*>/) || command.match(/^(mv|cp|mkdir|touch|rm)\s+/)) {
+      return 'file-write'
+    }
+    return 'command'
+  }
+
+  // MCP tools are treated as tool-call
+  return 'tool-call'
+}
+
+/**
+ * Generate a human-readable step title from tool name and arguments
+ */
+function generateStepTitle(toolName: string, args: Record<string, any>, skillName?: string | null): string {
+  if (skillName) {
+    return `查看 ${skillName} 技能文档`
+  }
+
+  if (toolName === 'bash') {
+    const command = args.command as string || ''
+    // Truncate long commands
+    const shortCommand = command.length > 40 ? command.slice(0, 40) + '...' : command
+    return `执行命令: ${shortCommand}`
+  }
+
+  // For MCP tools, show a cleaner name
+  if (toolName.includes(':')) {
+    const parts = toolName.split(':')
+    const shortName = parts[parts.length - 1]
+    return `调用工具: ${shortName}`
+  }
+
+  return `调用工具: ${toolName}`
+}
+
+/**
+ * Execute a tool directly without going through Tool Agent LLM
+ * This is the new direct execution path for simple tool calls
+ */
+async function executeToolDirectly(
+  toolName: string,
+  args: Record<string, any>,
+  context: { sessionId: string; messageId: string; abortSignal?: AbortSignal }
+): Promise<ToolExecutionResult> {
+  try {
+    // 1. Check if it's an MCP tool
+    if (isMCPTool(toolName)) {
+      console.log(`[DirectExec] Executing MCP tool: ${toolName}`)
+      const result = await executeMCPTool(toolName, args)
+      return { success: true, data: result }
+    }
+
+    // 2. Execute built-in tool via registry
+    console.log(`[DirectExec] Executing built-in tool: ${toolName}`)
+    const execContext: ToolExecutionContext = {
+      sessionId: context.sessionId,
+      messageId: context.messageId,
+      abortSignal: context.abortSignal,
+    }
+    const result = await executeTool(toolName, args, execContext)
+    return result
+  } catch (error: any) {
+    console.error(`[DirectExec] Tool execution error:`, error)
+    return { success: false, error: error.message || 'Unknown error during tool execution' }
+  }
+}
+
+/**
+ * Create a new step object with full tool call information
+ */
+function createStep(
+  toolCall: ToolCall,
+  skillName?: string | null,
+  turnIndex?: number
+): Step {
+  return {
+    id: uuidv4(),
+    type: getStepType(toolCall.toolName, toolCall.arguments),
+    title: generateStepTitle(toolCall.toolName, toolCall.arguments, skillName),
+    status: 'running',
+    timestamp: Date.now(),
+    turnIndex,  // Which turn this step belongs to (for interleaving with text)
+    toolCallId: toolCall.id,
+    toolCall: { ...toolCall },  // Include full tool call details
+  }
+}
+
 async function executeToolAndUpdate(
   ctx: StreamContext,
   toolCall: ToolCall,
   toolCallData: { toolName: string; args: Record<string, any> },
-  allToolCalls: ToolCall[]
+  allToolCalls: ToolCall[],
+  _skills: SkillDefinition[] = [],
+  turnIndex?: number
 ): Promise<void> {
+  // Check if this is reading a skill file
+  const skillName = detectSkillUsage(toolCallData.toolName, toolCallData.args)
+  if (skillName) {
+    console.log(`[Backend] Skill activated: ${skillName}`)
+    // Update message with skill info
+    store.updateMessageSkill(ctx.sessionId, ctx.assistantMessageId, skillName)
+    // Notify frontend
+    ctx.sender.send(IPC_CHANNELS.SKILL_ACTIVATED, {
+      sessionId: ctx.sessionId,
+      messageId: ctx.assistantMessageId,
+      skillName,
+    })
+  }
+
+  // Create step for UI with turnIndex
+  const step = createStep(toolCall, skillName, turnIndex)
+  store.addMessageStep(ctx.sessionId, ctx.assistantMessageId, step)
+  ctx.sender.send(IPC_CHANNELS.STEP_ADDED, {
+    sessionId: ctx.sessionId,
+    messageId: ctx.assistantMessageId,
+    step,
+  })
+
   toolCall.status = 'executing'
   toolCall.startTime = Date.now()
-  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
 
+  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
   // Send executing status to frontend so UI shows "Calling..." with spinner
   ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
     type: 'tool_call',
@@ -320,20 +673,16 @@ async function executeToolAndUpdate(
     commandType?: 'read-only' | 'dangerous' | 'forbidden'
   }
 
-  if (isMCPTool(toolCallData.toolName)) {
-    const mcpResult = await executeMCPTool(toolCallData.toolName, toolCallData.args)
-    result = {
-      success: mcpResult.success,
-      data: mcpResult.content,
-      error: mcpResult.error,
+  // Execute tool directly (no LLM overhead)
+  result = await executeToolDirectly(
+    toolCallData.toolName,
+    toolCallData.args,
+    {
+      sessionId: ctx.sessionId,
+      messageId: ctx.assistantMessageId,
+      abortSignal: ctx.abortSignal,
     }
-  } else {
-    result = await executeTool(
-      toolCallData.toolName,
-      toolCallData.args,
-      { sessionId: ctx.sessionId, messageId: ctx.assistantMessageId }
-    )
-  }
+  )
 
   toolCall.endTime = Date.now()
 
@@ -342,10 +691,37 @@ async function executeToolAndUpdate(
     toolCall.requiresConfirmation = true
     toolCall.commandType = result.commandType
     toolCall.error = result.error
+    // Update step to awaiting-confirmation (waiting for user confirmation)
+    const stepUpdates: Partial<Step> = {
+      status: 'awaiting-confirmation',
+      toolCall: { ...toolCall },  // Update toolCall with confirmation info
+    }
+    store.updateMessageStep(ctx.sessionId, ctx.assistantMessageId, step.id, stepUpdates)
+    ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
+      sessionId: ctx.sessionId,
+      messageId: ctx.assistantMessageId,
+      stepId: step.id,
+      updates: stepUpdates,
+    })
   } else {
     toolCall.status = result.success ? 'completed' : 'failed'
     toolCall.result = result.data
     toolCall.error = result.error
+    // Update step status based on result, include result/error
+    const stepStatus = result.success ? 'completed' : 'failed'
+    const stepUpdates: Partial<Step> = {
+      status: stepStatus,
+      toolCall: { ...toolCall },  // Update toolCall with result
+      result: typeof result.data === 'string' ? result.data : JSON.stringify(result.data),
+      error: result.error,
+    }
+    store.updateMessageStep(ctx.sessionId, ctx.assistantMessageId, step.id, stepUpdates)
+    ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
+      sessionId: ctx.sessionId,
+      messageId: ctx.assistantMessageId,
+      stepId: step.id,
+      updates: stepUpdates,
+    })
   }
 
   store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
@@ -359,6 +735,13 @@ async function executeToolAndUpdate(
 }
 
 /**
+ * Tool loop result indicating why the loop ended
+ */
+interface ToolLoopResult {
+  pausedForConfirmation: boolean  // Loop paused waiting for tool confirmation
+}
+
+/**
  * Run the tool loop for streaming with tools
  */
 async function runToolLoop(
@@ -367,7 +750,7 @@ async function runToolLoop(
   toolsForAI: Record<string, any>,
   processor: StreamProcessor,
   enabledSkills: SkillDefinition[]
-): Promise<void> {
+): Promise<ToolLoopResult> {
   const MAX_TOOL_TURNS = 100
   let currentTurn = 0
   const apiType = getProviderApiType(ctx.settings, ctx.providerId)
@@ -412,31 +795,61 @@ async function runToolLoop(
           canAutoExecute(toolCall.toolId, ctx.toolSettings?.tools)
 
         if (shouldAutoExecute) {
-          // Pass the resolved toolId for execution
+          // Pass the resolved toolId for execution, include skills for Tool Agent
           await executeToolAndUpdate(ctx, toolCall, {
             toolName: toolCall.toolId,
             args: chunk.toolCall.args
-          }, processor.toolCalls)
+          }, processor.toolCalls, enabledSkills, currentTurn)
         }
       }
     }
 
-    // If any tool requires confirmation, stop the loop
+    // Add contentParts for this turn to enable proper interleaving of text and steps
+    // Only add if there's actual content (text or tool calls)
+    if (turnContent.value) {
+      store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
+        type: 'text',
+        content: turnContent.value,
+      })
+      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+        type: 'content_part',
+        content: '',
+        messageId: ctx.assistantMessageId,
+        sessionId: ctx.sessionId,
+        contentPart: { type: 'text', content: turnContent.value },
+      })
+    }
+
+    if (toolCallsThisTurn.length > 0) {
+      store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
+        type: 'steps',
+        turnIndex: currentTurn,
+      })
+      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+        type: 'content_part',
+        content: '',
+        messageId: ctx.assistantMessageId,
+        sessionId: ctx.sessionId,
+        contentPart: { type: 'steps', turnIndex: currentTurn },
+      })
+    }
+
+    // If any tool requires confirmation, stop the loop and signal pause
     if (toolCallsThisTurn.some(tc => tc.requiresConfirmation)) {
       console.log(`[Backend] Tool requires user confirmation, pausing loop`)
-      break
+      return { pausedForConfirmation: true }
     }
 
     // If no tool calls this turn, we're done
     if (toolCallsThisTurn.length === 0) {
       console.log(`[Backend] No tool calls in turn ${currentTurn}, ending loop`)
-      break
+      return { pausedForConfirmation: false }
     }
 
     // Check if all tools were auto-executed
     if (!toolCallsThisTurn.every(tc => tc.status === 'completed' || tc.status === 'failed')) {
       console.log(`[Backend] Not all tools auto-executed, ending loop`)
-      break
+      return { pausedForConfirmation: false }
     }
 
     // Build continuation messages
@@ -481,6 +894,8 @@ async function runToolLoop(
   if (currentTurn >= MAX_TOOL_TURNS) {
     console.log(`[Backend] Reached max tool turns (${MAX_TOOL_TURNS})`)
   }
+
+  return { pausedForConfirmation: false }
 }
 
 /**
@@ -488,7 +903,7 @@ async function runToolLoop(
  */
 async function runSimpleStream(
   ctx: StreamContext,
-  historyMessages: Array<{ role: 'user' | 'assistant'; content: string; reasoningContent?: string }>,
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string; reasoningContent?: string }>,
   processor: StreamProcessor
 ): Promise<void> {
   const apiType = getProviderApiType(ctx.settings, ctx.providerId)
@@ -501,7 +916,7 @@ async function runSimpleStream(
       model: ctx.providerConfig.model,
       apiType,
     },
-    historyMessages,
+    messages,
     { temperature: ctx.settings.ai.temperature, abortSignal: ctx.abortSignal }
   )
 
@@ -518,6 +933,7 @@ async function runSimpleStream(
 /**
  * Core streaming execution function
  * Handles both tool-enabled and simple streaming
+ * Tool calls are routed through Tool Agent for execution
  */
 async function executeStreamGeneration(
   ctx: StreamContext,
@@ -540,9 +956,74 @@ async function executeStreamGeneration(
     const skillsEnabled = skillsSettings?.enableSkills !== false
     const enabledSkills = skillsEnabled ? getLoadedSkills().filter(s => s.enabled) : []
 
-    const systemPrompt = buildSystemPrompt({ hasTools, skills: enabledSkills })
+    // Get system prompt from agent (preferred) or workspace (fallback)
+    let characterSystemPrompt: string | undefined
+    const session = store.getSession(ctx.sessionId)
+
+    // First, try to get system prompt from agent
+    if (session?.agentId) {
+      const agent = store.getAgent(session.agentId)
+      if (agent?.systemPrompt) {
+        characterSystemPrompt = agent.systemPrompt
+      }
+    }
+
+    // Fallback to workspace system prompt if no agent prompt (for migration/backwards compatibility)
+    if (!characterSystemPrompt && session?.workspaceId) {
+      const workspace = store.getWorkspace(session.workspaceId)
+      if (workspace?.systemPrompt) {
+        characterSystemPrompt = workspace.systemPrompt
+      }
+    }
+
+    // Get user profile (shared) and agent memory (per-agent) for personalization
+    let userProfilePrompt: string | undefined
+    let agentMemoryPrompt: string | undefined
+    let agentIdForInteraction: string | undefined
+
+    // Get the last user message for retrieval-based memory injection
+    const lastUserMessage = historyMessages
+      .filter(m => m.role === 'user')
+      .pop()?.content || ''
+
+    // Retrieve relevant user facts based on conversation context (semantic search)
+    try {
+      const storage = getStorage()
+      const relevantFacts = await retrieveRelevantFacts(storage, lastUserMessage, 10, 0.3)
+      userProfilePrompt = formatUserProfilePrompt(relevantFacts)
+      if (relevantFacts.length > 0) {
+        console.log(`[Chat] Retrieved ${relevantFacts.length} relevant facts for context`)
+      }
+    } catch (error) {
+      console.error('Failed to retrieve relevant facts:', error)
+    }
+
+    // Load agent-specific memory only for agent sessions
+    if (session?.agentId) {
+      agentIdForInteraction = session.agentId
+      try {
+        const storage = getStorage()
+        const relationship = await storage.agentMemory.getRelationship(session.agentId)
+        if (relationship) {
+          agentMemoryPrompt = formatAgentMemoryPrompt(relationship)
+        }
+      } catch (error) {
+        console.error('Failed to load agent memory:', error)
+      }
+    }
+
+    const systemPrompt = buildSystemPrompt({
+      hasTools,
+      skills: enabledSkills,
+      workspaceSystemPrompt: characterSystemPrompt,
+      userProfilePrompt,
+      agentMemoryPrompt,
+    })
+
+    let pausedForConfirmation = false
 
     if (hasTools) {
+      // Main LLM sees all tools, Tool Agent handles execution
       const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
       const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
 
@@ -551,20 +1032,67 @@ async function executeStreamGeneration(
         ...historyMessages,
       ]
 
-      await runToolLoop(ctx, conversationMessages, toolsForAI, processor, enabledSkills)
+      const result = await runToolLoop(ctx, conversationMessages, toolsForAI, processor, enabledSkills)
+      pausedForConfirmation = result.pausedForConfirmation
     } else {
-      await runSimpleStream(ctx, historyMessages, processor)
+      // No tools: Simple streaming
+      const conversationMessages = [
+        { role: 'system' as const, content: systemPrompt },
+        ...historyMessages,
+      ]
+      await runSimpleStream(ctx, conversationMessages, processor)
     }
 
-    // Stream complete
-    processor.finalize()
-    const updatedSession = store.getSession(ctx.sessionId)
-    ctx.sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-      messageId: ctx.assistantMessageId,
-      sessionId: ctx.sessionId,
-      sessionName: updatedSession?.name || sessionName,
-    })
-    console.log('[Backend] Streaming complete')
+    // Only finalize and run post-processing if not paused for tool confirmation
+    if (!pausedForConfirmation) {
+      processor.finalize()
+      const updatedSession = store.getSession(ctx.sessionId)
+      ctx.sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+        messageId: ctx.assistantMessageId,
+        sessionId: ctx.sessionId,
+        sessionName: updatedSession?.name || sessionName,
+      })
+      console.log('[Backend] Streaming complete')
+
+      // Record interaction for agent sessions (update relationship stats)
+      if (agentIdForInteraction) {
+        try {
+          const storage = getStorage()
+          await storage.agentMemory.recordInteraction(agentIdForInteraction)
+          console.log('[Backend] Recorded interaction for agent:', agentIdForInteraction)
+        } catch (error) {
+          console.error('Failed to record agent interaction:', error)
+        }
+      }
+
+      // Run post-response triggers asynchronously (memory extraction, context compacting, etc.)
+      // Get the last user message from history
+      const lastUserMessage = historyMessages
+        .filter(m => m.role === 'user')
+        .pop()
+
+      if (lastUserMessage && processor.accumulatedContent) {
+        const updatedSessionForTriggers = store.getSession(ctx.sessionId)
+        if (updatedSessionForTriggers) {
+          const triggerContext: TriggerContext = {
+            sessionId: ctx.sessionId,
+            session: updatedSessionForTriggers,
+            messages: updatedSessionForTriggers.messages,
+            lastUserMessage: lastUserMessage.content,
+            lastAssistantMessage: processor.accumulatedContent,
+            providerId: ctx.providerId,
+            providerConfig: ctx.providerConfig,
+            agentId: agentIdForInteraction,
+          }
+
+          // Run triggers asynchronously - don't await
+          triggerManager.runPostResponse(triggerContext)
+            .catch(err => console.error('[Backend] Trigger execution failed:', err))
+        }
+      }
+    } else {
+      console.log('[Backend] Stream paused for tool confirmation, not sending complete')
+    }
 
   } catch (error: any) {
     const isAborted = error.name === 'AbortError' || ctx.abortSignal.aborted
@@ -674,6 +1202,11 @@ export function registerChatHandlers() {
       sessionIds: Array.from(activeStreams.keys())
     }
   })
+
+  // Resume streaming after user confirms a tool
+  ipcMain.handle(IPC_CHANNELS.RESUME_AFTER_TOOL_CONFIRM, async (event, { sessionId, messageId }) => {
+    return handleResumeAfterToolConfirm(event.sender, sessionId, messageId)
+  })
 }
 
 // Edit a user message and resend to get new AI response
@@ -706,7 +1239,7 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
 
     // Get the updated session with truncated messages to build history
     const session = store.getSession(sessionId)
-    const historyMessages = buildHistoryMessages(session?.messages || [])
+    const historyMessages = buildHistoryMessages(session?.messages || [], session)
 
     // Use AI SDK to generate response
     const apiType = getProviderApiType(settings, providerId)
@@ -792,7 +1325,7 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
 
     // Get session and build history
     const session = store.getSession(sessionId)
-    const historyMessages = buildHistoryMessages(session?.messages || [])
+    const historyMessages = buildHistoryMessages(session?.messages || [], session)
 
     const initialResponse = {
       success: true,
@@ -894,7 +1427,7 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     }
 
     // Build conversation history from session messages
-    const historyMessages = buildHistoryMessages(session?.messages || [])
+    const historyMessages = buildHistoryMessages(session?.messages || [], session)
 
     // Use AI SDK to generate response
     const apiType = getProviderApiType(settings, providerId)
@@ -1054,7 +1587,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
 
       // Build history from updated session (includes user message)
       const sessionForHistory = store.getSession(sessionId)
-      const historyMessages = buildHistoryMessages(sessionForHistory?.messages || [])
+      const historyMessages = buildHistoryMessages(sessionForHistory?.messages || [], sessionForHistory)
 
       const ctx: StreamContext = {
         sender,
@@ -1081,6 +1614,243 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     return {
       success: false,
       error: error.message || 'Failed to start streaming',
+      errorDetails: extractErrorDetails(error),
+    }
+  }
+}
+
+// Handle resuming streaming after user confirms a tool
+async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessionId: string, messageId: string) {
+  try {
+    console.log(`[Backend] Resuming after tool confirm for session: ${sessionId}, message: ${messageId}`)
+
+    // Get session
+    const session = store.getSession(sessionId)
+    if (!session) {
+      return { success: false, error: 'Session not found' }
+    }
+
+    // Find the assistant message with tool calls
+    const assistantMessage = session.messages.find(m => m.id === messageId)
+    if (!assistantMessage || assistantMessage.role !== 'assistant') {
+      return { success: false, error: 'Assistant message not found' }
+    }
+
+    // Check if there are completed tool calls to process
+    const toolCalls = assistantMessage.toolCalls || []
+    const completedToolCalls = toolCalls.filter(tc => tc.status === 'completed' || tc.status === 'failed')
+    if (completedToolCalls.length === 0) {
+      return { success: false, error: 'No completed tool calls to process' }
+    }
+
+    // Check if there are still pending tool calls
+    const pendingToolCalls = toolCalls.filter(tc => tc.status === 'pending' && tc.requiresConfirmation)
+    if (pendingToolCalls.length > 0) {
+      console.log(`[Backend] Still have ${pendingToolCalls.length} pending tool calls, not resuming yet`)
+      return { success: false, error: 'Still have pending tool calls awaiting confirmation' }
+    }
+
+    // Get settings and validate
+    const settings = store.getSettings()
+    const providerId = settings.ai.provider
+    const providerConfig = getProviderConfig(settings)
+
+    if (!providerConfig || !providerConfig.apiKey) {
+      return { success: false, error: 'API Key not configured' }
+    }
+
+    if (!isProviderSupported(providerId)) {
+      return { success: false, error: `Unsupported provider: ${providerId}` }
+    }
+
+    // Build conversation messages for continuation
+    // We need to include history + assistant message with tool calls + tool results
+    const historyMessages = buildHistoryMessages(session.messages, session)
+
+    // Filter out the current assistant message from history (we'll add it with tool calls)
+    const historyWithoutCurrent = historyMessages.filter((_, idx) => {
+      // Remove the last assistant message if it matches our message
+      const msgCount = historyMessages.length
+      return idx !== msgCount - 1 || historyMessages[idx].role !== 'assistant'
+    })
+
+    // Build tool-aware conversation messages
+    const conversationMessages: ToolChatMessage[] = []
+
+    // Add system prompt
+    const allEnabledTools = settings.tools?.enableToolCalls ? getEnabledTools() : []
+    const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
+    const mcpTools = settings.tools?.enableToolCalls ? getMCPToolsForAI() : {}
+    const hasTools = enabledTools.length > 0 || Object.keys(mcpTools).length > 0
+
+    const skillsSettings = settings.skills
+    const skillsEnabled = skillsSettings?.enableSkills !== false
+    const enabledSkills = skillsEnabled ? getLoadedSkills().filter(s => s.enabled) : []
+
+    // Load user profile (shared) and agent memory (per-agent) for system prompt
+    let userProfilePrompt: string | undefined
+    let agentMemoryPrompt: string | undefined
+    const agentId = session.agentId
+
+    // Get the last user message for retrieval-based memory injection
+    const lastUserMsg = historyWithoutCurrent
+      .filter(m => m.role === 'user')
+      .pop()?.content || ''
+
+    // Retrieve relevant user facts based on conversation context (semantic search)
+    try {
+      const storage = getStorage()
+      const relevantFacts = await retrieveRelevantFacts(storage, lastUserMsg, 10, 0.3)
+      if (relevantFacts.length > 0) {
+        userProfilePrompt = formatUserProfilePrompt(relevantFacts)
+        console.log(`[Chat] Retrieved ${relevantFacts.length} relevant facts for resume context`)
+      }
+    } catch (error) {
+      console.error('Failed to retrieve relevant facts:', error)
+    }
+
+    // Load agent-specific memory only for agent sessions
+    if (agentId) {
+      try {
+        const storage = getStorage()
+        const agentRelationship = await storage.agentMemory.getRelationship(agentId)
+        if (agentRelationship) {
+          agentMemoryPrompt = formatAgentMemoryPrompt(agentRelationship)
+        }
+      } catch (error) {
+        console.error('Failed to load agent memory:', error)
+      }
+    }
+
+    // Get workspace/agent system prompt
+    let characterSystemPrompt: string | undefined
+    if (session.workspaceId) {
+      const workspace = store.getWorkspace(session.workspaceId)
+      characterSystemPrompt = workspace?.systemPrompt
+    } else if (session.agentId) {
+      const agent = store.getAgent(session.agentId)
+      characterSystemPrompt = agent?.systemPrompt
+    }
+
+    const systemPrompt = buildSystemPrompt({
+      hasTools,
+      skills: enabledSkills,
+      workspaceSystemPrompt: characterSystemPrompt,
+      userProfilePrompt,
+      agentMemoryPrompt,
+    })
+
+    conversationMessages.push({ role: 'system', content: systemPrompt })
+
+    // Add history messages (excluding current assistant message)
+    for (const msg of historyWithoutCurrent) {
+      conversationMessages.push({
+        role: msg.role,
+        content: msg.content,
+        ...(msg.reasoningContent && { reasoningContent: msg.reasoningContent }),
+      })
+    }
+
+    // Add the assistant message with tool calls
+    conversationMessages.push({
+      role: 'assistant',
+      content: assistantMessage.content || '',
+      toolCalls: toolCalls.map(tc => ({
+        toolCallId: tc.id,
+        toolName: tc.toolName,
+        args: tc.arguments,
+      })),
+      ...(assistantMessage.reasoning && { reasoningContent: assistantMessage.reasoning }),
+    })
+
+    // Add tool results
+    conversationMessages.push({
+      role: 'tool',
+      content: toolCalls.map(tc => ({
+        type: 'tool-result' as const,
+        toolCallId: tc.id,
+        toolName: tc.toolName,
+        result: tc.status === 'completed' ? tc.result : { error: tc.error },
+      })),
+    })
+
+    // Start streaming continuation in background
+    process.nextTick(async () => {
+      const abortController = new AbortController()
+      activeStreams.set(sessionId, abortController)
+
+      const ctx: StreamContext = {
+        sender,
+        sessionId,
+        assistantMessageId: messageId,
+        abortSignal: abortController.signal,
+        settings,
+        providerConfig,
+        providerId,
+        toolSettings: settings.tools,
+      }
+
+      // Initialize processor with existing message content to preserve it
+      const processor = createStreamProcessor(ctx, {
+        content: assistantMessage.content || '',
+        reasoning: assistantMessage.reasoning || '',
+      })
+
+      try {
+        console.log('[Backend] Continuing tool loop after confirmation')
+
+        // Build tools for AI
+        const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
+        const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
+
+        // Continue the tool loop
+        const result = await runToolLoop(ctx, conversationMessages, toolsForAI, processor, enabledSkills)
+
+        // Only finalize and send complete if not paused for another confirmation
+        if (!result.pausedForConfirmation) {
+          processor.finalize()
+          sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+            messageId,
+            sessionId,
+            sessionName: session.name,
+          })
+          console.log('[Backend] Resume streaming complete')
+        } else {
+          console.log('[Backend] Resume paused for another tool confirmation')
+        }
+
+      } catch (error: any) {
+        const isAborted = error.name === 'AbortError' || abortController.signal.aborted
+        if (isAborted) {
+          console.log('[Backend] Resume stream aborted by user')
+          processor.finalize()
+          sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+            messageId,
+            sessionId,
+            sessionName: session.name,
+            aborted: true,
+          })
+        } else {
+          console.error('[Backend] Resume streaming error:', error)
+          sender.send(IPC_CHANNELS.STREAM_ERROR, {
+            messageId,
+            sessionId,
+            error: error.message || 'Streaming error',
+            errorDetails: extractErrorDetails(error),
+          })
+        }
+      } finally {
+        activeStreams.delete(sessionId)
+      }
+    })
+
+    return { success: true }
+
+  } catch (error: any) {
+    console.error('Error resuming after tool confirm:', error)
+    return {
+      success: false,
+      error: error.message || 'Failed to resume streaming',
       errorDetails: extractErrorDetails(error),
     }
   }

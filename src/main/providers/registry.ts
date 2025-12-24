@@ -62,6 +62,15 @@ export function isProviderSupported(providerId: string): boolean {
 }
 
 /**
+ * Check if a provider requires system messages to be merged into user messages
+ * Some APIs (like Zhipu) don't support system role when using tools
+ */
+export function requiresSystemMerge(providerId: string): boolean {
+  const definition = providers.get(providerId)
+  return definition?.requiresSystemMerge === true
+}
+
+/**
  * Create a provider instance
  *
  * @param providerId - The provider ID (built-in or custom-*)

@@ -7,7 +7,7 @@
  * - Tool handlers
  */
 
-import type { ToolDefinition, ToolCall, ToolParameter } from '../../shared/ipc.js'
+import type { ToolDefinition, ToolCall, ToolParameter, ProviderConfig, ToolSettings, Step, SkillDefinition } from '../../shared/ipc.js'
 
 // Re-export shared types
 export type { ToolDefinition, ToolCall, ToolParameter }
@@ -18,7 +18,15 @@ export type { ToolDefinition, ToolCall, ToolParameter }
 export interface ToolExecutionContext {
   sessionId: string
   messageId: string
-  // Add more context as needed (e.g., user settings, previous messages)
+  // Extended context for Tool Agent delegation
+  providerId?: string
+  providerConfig?: ProviderConfig
+  toolSettings?: ToolSettings
+  abortSignal?: AbortSignal
+  skills?: SkillDefinition[]  // Skills available for delegation
+  // Step event callbacks for delegate tool (Tool Agent forwards its steps)
+  onStepStart?: (step: Step) => void
+  onStepComplete?: (step: Step) => void
 }
 
 /**

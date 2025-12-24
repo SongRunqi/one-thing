@@ -31,6 +31,9 @@ const zhipuProvider: ProviderDefinition = {
       createModel: (modelId: string) => provider.chat(modelId),
     }
   },
+
+  // Zhipu requires system message to be merged into first user message when using tools
+  requiresSystemMerge: true,
 }
 
 export default zhipuProvider

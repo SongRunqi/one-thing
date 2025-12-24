@@ -54,4 +54,6 @@ export interface ProviderDefinition {
   info: ProviderInfo
   /** Factory function to create provider instances */
   create: ProviderCreator
+  /** Whether system messages should be merged into first user message (for APIs that don't support system role with tools) */
+  requiresSystemMerge?: boolean
 }

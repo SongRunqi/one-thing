@@ -40,10 +40,12 @@ You have access to Claude Code Skills - modular capabilities that provide specia
 
 ### How to Use Skills
 
-When a user's request matches a skill's description:
-1. Use Bash to read the SKILL.md file: \`cat {path}/SKILL.md\`
-2. Follow the instructions in the file
-3. If the skill references additional files, read them with Bash as needed
+When a user's request relates to a skill:
+1. **First explain**: Briefly tell the user what you're about to do (e.g., "Let me check the agent-plan skill instructions first.")
+2. **Then execute**: Read the skill's SKILL.md file using bash: \`cat {path}/SKILL.md\`
+3. **Continue**: Follow the instructions in the skill file and execute any scripts as needed
+
+**Important**: Always explain your intent before executing any command. Don't jump directly to tool calls.
 
 ### Available Skills
 

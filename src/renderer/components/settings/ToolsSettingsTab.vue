@@ -18,19 +18,63 @@
         </div>
         <p class="form-hint">Allow AI to use tools during conversations</p>
       </div>
+
+      <!-- Tool Agent Configuration -->
+      <div class="form-group tool-agent-config" v-if="settings.tools.enableToolCalls">
+        <label class="form-label">Tool Agent Configuration</label>
+        <p class="form-hint" style="margin-bottom: 12px;">
+          Configure which provider and model the Tool Agent uses. Use a cheaper model for lower cost.
+        </p>
+        <div class="selector-row">
+          <div class="selector-item">
+            <label class="selector-label">Provider</label>
+            <select
+              class="form-select"
+              :value="settings.tools.toolAgentSettings?.providerId || ''"
+              @change="updateToolAgentProvider(($event.target as HTMLSelectElement).value)"
+            >
+              <option value="">Same as main</option>
+              <option
+                v-for="providerId in availableProviders"
+                :key="providerId"
+                :value="providerId"
+              >
+                {{ getProviderDisplayName(providerId) }}
+              </option>
+            </select>
+          </div>
+          <div class="selector-item">
+            <label class="selector-label">Model</label>
+            <select
+              class="form-select"
+              :value="settings.tools.toolAgentSettings?.model || ''"
+              @change="updateToolAgentModel(($event.target as HTMLSelectElement).value)"
+            >
+              <option value="">{{ toolAgentModelPlaceholder }}</option>
+              <option
+                v-for="model in toolAgentAvailableModels"
+                :key="model"
+                :value="model"
+              >
+                {{ model }}
+              </option>
+            </select>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Available Tools -->
     <section class="settings-section" v-if="settings.tools.enableToolCalls">
       <h3 class="section-title">Available Tools</h3>
 
-      <div v-if="tools.length === 0" class="empty-state">
+      <div v-if="displayTools.length === 0" class="empty-state">
         <p>No tools available</p>
       </div>
 
       <div v-else class="tools-list">
         <div
-          v-for="tool in tools"
+          v-for="tool in displayTools"
           :key="tool.id"
           class="tool-item"
         >
@@ -93,15 +137,81 @@ const emit = defineEmits<{
   'update:settings': [settings: AppSettings]
 }>()
 
+// Filter out internal tools (like delegate) from display
+const displayTools = computed(() => {
+  return props.tools.filter(tool => tool.id !== 'delegate')
+})
+
 // Check if bash tool is available
 const hasBashTool = computed(() => {
   return props.tools.some(tool => tool.id === 'bash')
+})
+
+// Available providers for Tool Agent
+const availableProviders = computed(() => {
+  return Object.keys(props.settings.ai.providers).filter(id => {
+    const config = props.settings.ai.providers[id]
+    return config && config.apiKey // Only show configured providers
+  })
+})
+
+// Provider display names
+const providerDisplayNames: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  deepseek: 'DeepSeek',
+  zhipu: 'Zhipu AI',
+  openrouter: 'OpenRouter',
+  ollama: 'Ollama',
+}
+
+function getProviderDisplayName(providerId: string): string {
+  return providerDisplayNames[providerId] || providerId
+}
+
+// Available models for Tool Agent based on selected provider
+const toolAgentAvailableModels = computed(() => {
+  const providerId = props.settings.tools.toolAgentSettings?.providerId || props.settings.ai.provider
+  const config = props.settings.ai.providers[providerId]
+  return config?.selectedModels || []
+})
+
+// Model placeholder based on selected provider
+const toolAgentModelPlaceholder = computed(() => {
+  const providerId = props.settings.tools.toolAgentSettings?.providerId
+  if (providerId) {
+    const config = props.settings.ai.providers[providerId]
+    return config?.model ? `Default: ${config.model}` : 'Select model'
+  }
+  return 'Same as main conversation'
 })
 
 function updateEnableToolCalls(enabled: boolean) {
   emit('update:settings', {
     ...props.settings,
     tools: { ...props.settings.tools, enableToolCalls: enabled }
+  })
+}
+
+function updateToolAgentProvider(providerId: string) {
+  const toolAgentSettings = {
+    ...props.settings.tools.toolAgentSettings,
+    providerId: providerId || undefined
+  }
+  emit('update:settings', {
+    ...props.settings,
+    tools: { ...props.settings.tools, toolAgentSettings }
+  })
+}
+
+function updateToolAgentModel(model: string) {
+  const toolAgentSettings = {
+    ...props.settings.tools.toolAgentSettings,
+    model: model.trim() || undefined
+  }
+  emit('update:settings', {
+    ...props.settings,
+    tools: { ...props.settings.tools, toolAgentSettings }
   })
 }
 
@@ -181,6 +291,75 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
   font-size: 12px;
   color: var(--muted);
   margin-top: 4px;
+}
+
+/* Tool Agent Config */
+.tool-agent-config {
+  background: var(--hover);
+  border-radius: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+}
+
+.selector-row {
+  display: flex;
+  gap: 12px;
+}
+
+.selector-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.selector-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.form-select {
+  width: 100%;
+  padding: 10px 32px 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background-color: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.form-select:hover {
+  border-color: var(--accent);
+  background-color: var(--panel-2);
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.form-select option {
+  padding: 8px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+@media (max-width: 480px) {
+  .selector-row {
+    flex-direction: column;
+    gap: 16px;
+  }
 }
 
 /* Toggle */

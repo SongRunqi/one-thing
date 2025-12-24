@@ -38,12 +38,24 @@
       </div>
 
       <!-- Center: Title Bar (Safari-Style) -->
-      <div 
-        :class="['chat-title-bar', { expanded: !sidebarCollapsed }]" 
+      <div
+        class="chat-title-bar"
         @click="startEditTitle"
       >
         <div class="title-content">
-          <svg class="chat-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <!-- Show agent avatar as icon if session has agent, otherwise show chat icon -->
+          <template v-if="sessionAgent && !isEditingTitle">
+            <span v-if="sessionAgent.avatar.type === 'emoji'" class="chat-title-agent-avatar">
+              {{ sessionAgent.avatar.value }}
+            </span>
+            <img
+              v-else
+              :src="'file://' + sessionAgent.avatar.value"
+              class="chat-title-agent-img"
+              alt=""
+            />
+          </template>
+          <svg v-else class="chat-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
           <input
@@ -62,6 +74,7 @@
 
       <!-- Right: Action buttons (Theme, Settings, Meta) -->
       <div class="header-right">
+
         <button
           v-if="isBranchSession"
           class="back-to-parent-btn"
@@ -98,20 +111,50 @@
 
     <!-- Main Content -->
     <div class="app-content">
+      <!-- Media Panel (left side) -->
+      <MediaPanel
+        :visible="showMediaPanel"
+        @close="showMediaPanel = false"
+      />
+
       <Sidebar
         :collapsed="sidebarCollapsed"
+        :media-panel-open="showMediaPanel"
         @open-settings="showSettings = true"
         @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
         @open-search="openSearch"
         @create-new-chat="createNewChat"
+        @toggle-media-panel="toggleMediaPanel"
+        @open-workspace-dialog="openWorkspaceDialog()"
+        @edit-workspace="openWorkspaceDialog"
+        @open-agent-dialog="openAgentDialog()"
+        @edit-agent="openAgentDialog"
+        @select-agent="handleSelectAgent"
       />
       <ChatWindow
         ref="chatWindowRef"
         :show-settings="showSettings"
+        :show-agent-settings="showAgentSettings"
         @close-settings="showSettings = false"
         @open-settings="showSettings = true"
+        @close-agent-settings="showAgentSettings = false"
+        @open-agent-settings="showAgentSettings = true"
       />
     </div>
+
+    <!-- Workspace Dialog -->
+    <WorkspaceDialog
+      :visible="showWorkspaceDialog"
+      :workspace="editingWorkspace"
+      @close="closeWorkspaceDialog"
+    />
+
+    <!-- Agent Dialog -->
+    <AgentDialog
+      :visible="showAgentDialog"
+      :agent="editingAgent"
+      @close="closeAgentDialog"
+    />
 
     <!-- Search Overlay (teleported to body) -->
     <Teleport to="body">
@@ -161,17 +204,85 @@ import { onMounted, watchEffect, ref, computed, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
+import { useWorkspacesStore } from '@/stores/workspaces'
+import { useAgentsStore } from '@/stores/agents'
 import { useShortcuts } from '@/composables/useShortcuts'
 import Sidebar from '@/components/Sidebar.vue'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
+import WorkspaceDialog from '@/components/WorkspaceDialog.vue'
+import AgentDialog from '@/components/AgentDialog.vue'
+import MediaPanel from '@/components/MediaPanel.vue'
+import type { Workspace, Agent } from '@/types'
 
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
+const workspacesStore = useWorkspacesStore()
+const agentsStore = useAgentsStore()
 
 const showSettings = ref(false)
 const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
+
+// Workspace and Media Panel state
+const showWorkspaceDialog = ref(false)
+const editingWorkspace = ref<Workspace | null>(null)
+const showMediaPanel = ref(false)
+const sidebarStateBeforeMediaPanel = ref<boolean | null>(null)
+
+// Agent state
+const showAgentDialog = ref(false)
+const editingAgent = ref<Agent | null>(null)
+const showAgentSettings = ref(false)
+
+function openWorkspaceDialog(workspace?: Workspace) {
+  editingWorkspace.value = workspace || null
+  showWorkspaceDialog.value = true
+}
+
+function closeWorkspaceDialog() {
+  showWorkspaceDialog.value = false
+  editingWorkspace.value = null
+}
+
+function openAgentDialog(agent?: Agent) {
+  editingAgent.value = agent || null
+  showAgentDialog.value = true
+}
+
+function closeAgentDialog() {
+  showAgentDialog.value = false
+  editingAgent.value = null
+}
+
+async function handleSelectAgent(agent: Agent) {
+  // If current session has messages, create a new empty session first
+  // so the agent welcome page can be displayed
+  if (chatStore.messages.length > 0) {
+    await sessionsStore.createSession('')
+  }
+  // Select this agent to show the welcome page
+  agentsStore.selectAgent(agent.id)
+}
+
+function toggleMediaPanel() {
+  showMediaPanel.value = !showMediaPanel.value
+}
+
+// Auto-collapse sidebar when MediaPanel opens, restore when it closes
+watch(showMediaPanel, (isOpen) => {
+  if (isOpen) {
+    // Save current sidebar state and collapse it
+    sidebarStateBeforeMediaPanel.value = sidebarCollapsed.value
+    sidebarCollapsed.value = true
+  } else {
+    // Restore sidebar to previous state
+    if (sidebarStateBeforeMediaPanel.value !== null) {
+      sidebarCollapsed.value = sidebarStateBeforeMediaPanel.value
+      sidebarStateBeforeMediaPanel.value = null
+    }
+  }
+})
 
 // Setup global keyboard shortcuts
 useShortcuts({
@@ -194,6 +305,13 @@ watch(sidebarCollapsed, (collapsed) => {
 
 // Current session
 const currentSession = computed(() => sessionsStore.currentSession)
+
+// Get the agent for current session (if session was created with an agent)
+const sessionAgent = computed(() => {
+  const agentId = currentSession.value?.agentId
+  if (!agentId) return null
+  return agentsStore.agents.find(a => a.id === agentId) || null
+})
 
 // Message count
 const messageCount = computed(() => chatStore.messages.length)
@@ -294,6 +412,8 @@ async function createNewChat() {
 
 onMounted(async () => {
   // Load initial data
+  await workspacesStore.loadWorkspaces()
+  await agentsStore.loadAgents()
   await sessionsStore.loadSessions()
   await settingsStore.loadSettings()
 
@@ -320,9 +440,9 @@ watchEffect(() => {
 /* Unified Header (Safari-Style) */
 .app-header {
   height: 52px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) auto minmax(200px, 1fr);
   align-items: center;
-  justify-content: space-between;
   padding: 0 16px;
   -webkit-app-region: drag;
   flex-shrink: 0;
@@ -340,13 +460,17 @@ watchEffect(() => {
   gap: 8px;
   padding-left: 80px; /* Offset for traffic lights in macOS */
   -webkit-app-region: no-drag;
+  min-width: 0;
+  justify-self: start;
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   -webkit-app-region: no-drag;
+  justify-self: end;
+  min-width: 0;
 }
 
 .sidebar-toggle-btn,
@@ -377,38 +501,22 @@ watchEffect(() => {
 }
 
 .chat-title-bar {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(400px, 100% - 320px);
+  grid-column: 2;
+  width: min(520px, 100%);
+  min-width: 120px;
   height: 34px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 0 16px;
+  padding: 0 4px 0 14px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   cursor: text;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   -webkit-app-region: no-drag;
+  margin: 0 auto;
 }
 
-.chat-title-bar.expanded {
-  left: calc(50% + 150px);
-}
-
-.chat-title-bar:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-html[data-theme='light'] .chat-title-bar {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.06);
-}
 
 .title-content {
   display: flex;
@@ -416,12 +524,23 @@ html[data-theme='light'] .chat-title-bar {
   gap: 8px;
   min-width: 0;
   flex: 1;
-  justify-content: center;
 }
 
 .chat-title-icon {
   color: var(--muted);
   opacity: 0.6;
+}
+
+.chat-title-agent-avatar {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.chat-title-agent-img {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: cover;
 }
 
 .chat-title-text {

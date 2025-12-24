@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatSession } from '@/types'
 import { useChatStore } from './chat'
+import { useWorkspacesStore } from './workspaces'
+import { useAgentsStore } from './agents'
 
 export const useSessionsStore = defineStore('sessions', () => {
   const sessions = ref<ChatSession[]>([])
@@ -13,6 +15,22 @@ export const useSessionsStore = defineStore('sessions', () => {
   )
 
   const sessionCount = computed(() => sessions.value.length)
+
+  // Filter sessions by current workspace
+  const filteredSessions = computed(() => {
+    const workspacesStore = useWorkspacesStore()
+    const workspaceId = workspacesStore.currentWorkspaceId
+
+    if (workspaceId === null) {
+      // Default mode: show sessions without workspace
+      return sessions.value.filter(s => !s.workspaceId)
+    } else {
+      // Workspace mode: show sessions for this workspace
+      return sessions.value.filter(s => s.workspaceId === workspaceId)
+    }
+  })
+
+  const filteredSessionCount = computed(() => filteredSessions.value.length)
 
   async function loadSessions() {
     isLoading.value = true
@@ -30,20 +48,26 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
-  async function createSession(name: string) {
+  async function createSession(name: string, agentId?: string) {
     try {
-      // Check if there's already an empty "New Chat" session (no messages)
-      const existingEmptySession = sessions.value.find(
-        s => (s.name === 'New Chat' || s.name === '') && (!s.messages || s.messages.length === 0)
-      )
+      const workspacesStore = useWorkspacesStore()
+      const workspaceId = workspacesStore.currentWorkspaceId
 
-      if (existingEmptySession) {
-        // Switch to existing empty session instead of creating a new one
-        await switchSession(existingEmptySession.id)
-        return existingEmptySession
+      // Check if there's already an empty "New Chat" session in the current workspace (no messages)
+      // Only reuse if no specific agent is requested
+      if (!agentId) {
+        const existingEmptySession = filteredSessions.value.find(
+          s => (s.name === 'New Chat' || s.name === '') && (!s.messages || s.messages.length === 0)
+        )
+
+        if (existingEmptySession) {
+          // Switch to existing empty session instead of creating a new one
+          await switchSession(existingEmptySession.id)
+          return existingEmptySession
+        }
       }
 
-      const response = await window.electronAPI.createSession(name)
+      const response = await window.electronAPI.createSession(name, workspaceId || undefined, agentId)
       if (response.success && response.session) {
         sessions.value.unshift(response.session)
         await switchSession(response.session.id)
@@ -59,8 +83,12 @@ export const useSessionsStore = defineStore('sessions', () => {
       const response = await window.electronAPI.switchSession(sessionId)
       if (response.success && response.session) {
         const chatStore = useChatStore()
+        const agentsStore = useAgentsStore()
 
         currentSessionId.value = sessionId
+
+        // Clear selected agent when switching sessions (the temporary "welcome page" state)
+        agentsStore.selectAgent(null)
 
         // 1. FIRST: Set the current view session to allow new chunks to be processed
         chatStore.setCurrentViewSession(sessionId)
@@ -151,6 +179,8 @@ export const useSessionsStore = defineStore('sessions', () => {
     isLoading,
     currentSession,
     sessionCount,
+    filteredSessions,
+    filteredSessionCount,
     loadSessions,
     createSession,
     switchSession,

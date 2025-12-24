@@ -30,7 +30,35 @@ export {
   updateMessageStreaming,
   updateMessageToolCalls,
   updateMessageContentParts,
+  addMessageContentPart,
   updateMessageThinkingTime,
+  updateMessageSkill,
+  addMessageStep,
+  updateMessageStep,
+  updateSessionAgent,
+  deleteSessionsByWorkspace,
+
+  // Workspaces
+  getWorkspaces,
+  getWorkspace,
+  createWorkspace,
+  updateWorkspace,
+  deleteWorkspace,
+  switchWorkspace,
+  uploadWorkspaceAvatar,
+  getCurrentWorkspaceId,
+  setCurrentWorkspaceId,
+
+  // Agents
+  getAgents,
+  getAgent,
+  createAgent,
+  updateAgent,
+  deleteAgent,
+  uploadAgentAvatar,
+  getPinnedAgentIds,
+  pinAgent,
+  unpinAgent,
 
   // Initialization
   initializeStores,

@@ -18,6 +18,13 @@ export const IPC_CHANNELS = {
   ABORT_STREAM: 'chat:abort-stream',
   GET_ACTIVE_STREAMS: 'chat:get-active-streams',
 
+  // Skill usage notification
+  SKILL_ACTIVATED: 'chat:skill-activated',
+
+  // Step tracking for showing AI reasoning process
+  STEP_ADDED: 'chat:step-added',
+  STEP_UPDATED: 'chat:step-updated',
+
   // Session related
   GET_SESSIONS: 'sessions:get-all',
   CREATE_SESSION: 'sessions:create',
@@ -47,6 +54,7 @@ export const IPC_CHANNELS = {
   STREAM_TOOL_RESULT: 'chat:stream-tool-result',
   UPDATE_CONTENT_PARTS: 'chat:update-content-parts',
   UPDATE_MESSAGE_THINKING_TIME: 'chat:update-thinking-time',
+  RESUME_AFTER_TOOL_CONFIRM: 'chat:resume-after-tool-confirm',
 
   // MCP related
   MCP_GET_SERVERS: 'mcp:get-servers',
@@ -75,6 +83,37 @@ export const IPC_CHANNELS = {
   SKILLS_CREATE: 'skills:create',
   SKILLS_DELETE: 'skills:delete',
   SKILLS_TOGGLE_ENABLED: 'skills:toggle-enabled',
+
+  // Workspace related
+  WORKSPACE_GET_ALL: 'workspaces:get-all',
+  WORKSPACE_CREATE: 'workspaces:create',
+  WORKSPACE_UPDATE: 'workspaces:update',
+  WORKSPACE_DELETE: 'workspaces:delete',
+  WORKSPACE_SWITCH: 'workspaces:switch',
+  WORKSPACE_UPLOAD_AVATAR: 'workspaces:upload-avatar',
+
+  // Agent related
+  AGENT_GET_ALL: 'agents:get-all',
+  AGENT_CREATE: 'agents:create',
+  AGENT_UPDATE: 'agents:update',
+  AGENT_DELETE: 'agents:delete',
+  AGENT_UPLOAD_AVATAR: 'agents:upload-avatar',
+  AGENT_PIN: 'agents:pin',
+  AGENT_UNPIN: 'agents:unpin',
+
+  // User Profile related
+  USER_PROFILE_GET: 'user-profile:get',
+  USER_PROFILE_ADD_FACT: 'user-profile:add-fact',
+  USER_PROFILE_UPDATE_FACT: 'user-profile:update-fact',
+  USER_PROFILE_DELETE_FACT: 'user-profile:delete-fact',
+
+  // Agent Memory related
+  AGENT_MEMORY_GET_RELATIONSHIP: 'agent-memory:get-relationship',
+  AGENT_MEMORY_ADD_MEMORY: 'agent-memory:add-memory',
+  AGENT_MEMORY_RECALL: 'agent-memory:recall',
+  AGENT_MEMORY_GET_ACTIVE: 'agent-memory:get-active',
+  AGENT_MEMORY_UPDATE_RELATIONSHIP: 'agent-memory:update-relationship',
+  AGENT_MEMORY_RECORD_INTERACTION: 'agent-memory:record-interaction',
 } as const
 
 // Content part types for sequential display
@@ -82,6 +121,35 @@ export type ContentPart =
   | { type: 'text'; content: string }
   | { type: 'tool-call'; toolCalls: ToolCall[] }
   | { type: 'waiting' }  // Waiting for AI continuation after tool call
+  | { type: 'steps'; turnIndex: number }    // Placeholder for steps panel (rendered inline)
+
+// Step types for showing AI reasoning process
+export type StepType = 'skill-read' | 'tool-call' | 'thinking' | 'file-read' | 'file-write' | 'command' | 'tool-agent'
+
+export interface Step {
+  id: string
+  type: StepType
+  title: string                    // Short title (e.g., "查看agent-plan技能文档")
+  description?: string             // Longer description shown when expanded
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'awaiting-confirmation'
+  timestamp: number
+  turnIndex?: number               // Which turn this step belongs to (for interleaving with text)
+  toolCallId?: string              // Link to associated tool call if any
+  // Tool call details for inline display
+  toolCall?: ToolCall              // Full tool call object for displaying details
+  thinking?: string                // AI's reasoning before this step (why it's doing this)
+  result?: string                  // Tool execution result
+  summary?: string                 // AI's analysis after getting the result
+  error?: string                   // Error message if failed
+  // Tool Agent specific fields
+  toolAgentResult?: {              // Result from Tool Agent execution
+    success: boolean
+    summary: string
+    toolCallCount: number
+    filesModified?: string[]
+    errors?: string[]
+  }
+}
 
 // Type definitions for IPC messages
 export interface ChatMessage {
@@ -98,6 +166,8 @@ export interface ChatMessage {
   model?: string  // AI model used for assistant messages
   thinkingTime?: number  // Final thinking time in seconds (persisted for display after session switch)
   thinkingStartTime?: number  // Timestamp when thinking started (for calculating elapsed time on session switch)
+  skillUsed?: string  // Name of the skill used by the assistant (e.g., "agent-plan")
+  steps?: Step[]  // Steps showing AI reasoning process
 }
 
 export interface ChatSession {
@@ -110,6 +180,12 @@ export interface ChatSession {
   branchFromMessageId?: string
   lastModel?: string
   isPinned?: boolean
+  workspaceId?: string  // Associated workspace ID, null/undefined = default mode
+  agentId?: string      // Associated agent ID for system prompt injection
+  // Context compacting fields
+  summary?: string              // Conversation summary for context window management
+  summaryUpToMessageId?: string // ID of the last message included in the summary
+  summaryCreatedAt?: number     // Timestamp when summary was created
 }
 
 // Provider IDs - can be extended by adding new providers
@@ -200,6 +276,20 @@ export interface GeneralSettings {
   shortcuts?: ShortcutSettings  // Custom keyboard shortcuts
 }
 
+// Embedding settings for memory system
+export interface EmbeddingSettings {
+  provider: 'openai' | 'local'  // Which embedding provider to use
+  openai?: {
+    apiKey?: string     // Use separate API key, or undefined to use main OpenAI key
+    baseUrl?: string    // Custom base URL
+    model: string       // e.g., 'text-embedding-3-small', 'text-embedding-3-large'
+    dimensions?: number // Embedding dimensions (if supported by model)
+  }
+  local?: {
+    model: string       // Local model name (e.g., 'all-MiniLM-L6-v2')
+  }
+}
+
 export interface AppSettings {
   ai: AISettings
   theme: 'light' | 'dark' | 'system'
@@ -207,6 +297,7 @@ export interface AppSettings {
   tools: ToolSettings
   mcp?: MCPSettings
   skills?: SkillSettings
+  embedding?: EmbeddingSettings
 }
 
 // IPC Request/Response types
@@ -456,6 +547,15 @@ export interface BashToolSettings {
   dangerousCommandWhitelist: string[] // Commands to skip confirmation (e.g., "npm install")
 }
 
+// Tool Agent delegation settings
+export interface ToolAgentSettings {
+  autoConfirmDangerous?: boolean  // Auto-confirm dangerous commands (default: true)
+  maxToolCalls?: number           // Max tool calls per delegation (default: 50)
+  timeoutMs?: number              // Timeout for Tool Agent (default: 300000 = 5 min)
+  providerId?: string             // Optional: use different provider for Tool Agent
+  model?: string                  // Optional: use different model for Tool Agent
+}
+
 export interface ToolSettings {
   // Global tool settings
   enableToolCalls: boolean   // Master switch for tool calls
@@ -466,6 +566,8 @@ export interface ToolSettings {
   }>
   // Bash tool specific settings
   bash?: BashToolSettings
+  // Tool Agent settings (provider/model for tool execution)
+  toolAgentSettings?: ToolAgentSettings
 }
 
 // Stream message types
@@ -770,5 +872,404 @@ export interface CreateSkillRequest {
 export interface CreateSkillResponse {
   success: boolean
   skill?: SkillDefinition
+  error?: string
+}
+
+// ============================================
+// Workspace related types
+// ============================================
+
+// Workspace avatar type
+export interface WorkspaceAvatar {
+  type: 'emoji' | 'image'
+  value: string  // Emoji character or image file path
+}
+
+// Workspace definition
+export interface Workspace {
+  id: string
+  name: string
+  avatar: WorkspaceAvatar
+  systemPrompt?: string  // Deprecated: migrated to Agent, kept for backward compatibility
+  createdAt: number
+  updatedAt: number
+}
+
+// Workspace IPC Request/Response types
+export interface GetWorkspacesResponse {
+  success: boolean
+  workspaces?: Workspace[]
+  currentWorkspaceId?: string | null
+  error?: string
+}
+
+export interface CreateWorkspaceRequest {
+  name: string
+  avatar: WorkspaceAvatar
+  systemPrompt: string
+}
+
+export interface CreateWorkspaceResponse {
+  success: boolean
+  workspace?: Workspace
+  error?: string
+}
+
+export interface UpdateWorkspaceRequest {
+  id: string
+  name?: string
+  avatar?: WorkspaceAvatar
+  systemPrompt?: string
+}
+
+export interface UpdateWorkspaceResponse {
+  success: boolean
+  workspace?: Workspace
+  error?: string
+}
+
+export interface DeleteWorkspaceRequest {
+  workspaceId: string
+}
+
+export interface DeleteWorkspaceResponse {
+  success: boolean
+  deletedSessionCount?: number
+  error?: string
+}
+
+export interface SwitchWorkspaceRequest {
+  workspaceId: string | null  // null = switch to default mode
+}
+
+export interface SwitchWorkspaceResponse {
+  success: boolean
+  error?: string
+}
+
+export interface UploadWorkspaceAvatarRequest {
+  workspaceId: string
+  imageData: string  // Base64 encoded image data
+  mimeType: string
+}
+
+export interface UploadWorkspaceAvatarResponse {
+  success: boolean
+  avatarPath?: string
+  error?: string
+}
+
+// ============================================
+// Agent related types
+// ============================================
+
+// Agent avatar type (same as WorkspaceAvatar)
+export interface AgentAvatar {
+  type: 'emoji' | 'image'
+  value: string  // Emoji character or image file path
+}
+
+// Agent voice configuration (Browser TTS)
+export interface AgentVoice {
+  enabled: boolean
+  voiceURI?: string    // Browser SpeechSynthesis voiceURI
+  rate?: number        // 0.1 - 10, default 1
+  pitch?: number       // 0 - 2, default 1
+  volume?: number      // 0 - 1, default 1
+}
+
+// Agent definition
+export interface Agent {
+  id: string
+  name: string
+  avatar: AgentAvatar
+  systemPrompt: string
+  // Extended persona fields
+  tagline?: string           // 一句话介绍
+  personality?: string[]     // 性格标签 ['耐心', '幽默', '专业']
+  primaryColor?: string      // 主题色 (hex color)
+  // Voice configuration
+  voice?: AgentVoice
+  createdAt: number
+  updatedAt: number
+}
+
+// Agent IPC Request/Response types
+export interface GetAgentsResponse {
+  success: boolean
+  agents?: Agent[]
+  pinnedAgentIds?: string[]
+  error?: string
+}
+
+export interface CreateAgentRequest {
+  name: string
+  avatar: AgentAvatar
+  systemPrompt: string
+  tagline?: string
+  personality?: string[]
+  primaryColor?: string
+  voice?: AgentVoice
+}
+
+export interface CreateAgentResponse {
+  success: boolean
+  agent?: Agent
+  error?: string
+}
+
+export interface UpdateAgentRequest {
+  id: string
+  name?: string
+  avatar?: AgentAvatar
+  systemPrompt?: string
+  tagline?: string
+  personality?: string[]
+  primaryColor?: string
+  voice?: AgentVoice
+}
+
+export interface UpdateAgentResponse {
+  success: boolean
+  agent?: Agent
+  error?: string
+}
+
+export interface DeleteAgentRequest {
+  agentId: string
+}
+
+export interface DeleteAgentResponse {
+  success: boolean
+  error?: string
+}
+
+export interface UploadAgentAvatarRequest {
+  agentId: string
+  imageData: string  // Base64 encoded image data
+  mimeType: string
+}
+
+export interface UploadAgentAvatarResponse {
+  success: boolean
+  avatarPath?: string
+  error?: string
+}
+
+export interface PinAgentRequest {
+  agentId: string
+}
+
+export interface PinAgentResponse {
+  success: boolean
+  pinnedAgentIds?: string[]
+  error?: string
+}
+
+export interface UnpinAgentRequest {
+  agentId: string
+}
+
+export interface UnpinAgentResponse {
+  success: boolean
+  pinnedAgentIds?: string[]
+  error?: string
+}
+
+// ============================================
+// User Profile related types
+// ============================================
+
+// Fact category for user profile
+export type UserFactCategory = 'personal' | 'preference' | 'goal' | 'trait'
+
+// A single fact about the user
+export interface UserFact {
+  id: string
+  content: string                // The fact content
+  category: UserFactCategory     // Category of the fact
+  confidence: number             // 0-100, how confident we are about this fact
+  sources: string[]              // Which agents contributed this fact
+  createdAt: number
+  updatedAt: number
+}
+
+// User profile - shared across all agents
+export interface UserProfile {
+  id: string
+  facts: UserFact[]
+  createdAt: number
+  updatedAt: number
+}
+
+// User Profile IPC Request/Response types
+export interface GetUserProfileResponse {
+  success: boolean
+  profile?: UserProfile
+  error?: string
+}
+
+export interface AddUserFactRequest {
+  content: string
+  category: UserFactCategory
+  confidence?: number
+  sourceAgentId?: string
+}
+
+export interface AddUserFactResponse {
+  success: boolean
+  fact?: UserFact
+  error?: string
+}
+
+export interface UpdateUserFactRequest {
+  factId: string
+  content?: string
+  category?: UserFactCategory
+  confidence?: number
+}
+
+export interface UpdateUserFactResponse {
+  success: boolean
+  fact?: UserFact
+  error?: string
+}
+
+export interface DeleteUserFactRequest {
+  factId: string
+}
+
+export interface DeleteUserFactResponse {
+  success: boolean
+  error?: string
+}
+
+// ============================================
+// Agent Memory related types
+// ============================================
+
+// Memory category
+export type AgentMemoryCategory = 'observation' | 'event' | 'feeling' | 'learning'
+
+// Memory vividness level
+export type MemoryVividness = 'vivid' | 'clear' | 'hazy' | 'fragment'
+
+// Agent mood
+export type AgentMood = 'happy' | 'neutral' | 'concerned' | 'excited'
+
+// A single memory entry
+export interface AgentMemory {
+  id: string
+  content: string
+  category: AgentMemoryCategory
+
+  // Memory strength system
+  strength: number           // 0-100
+  emotionalWeight: number    // Higher = decays slower
+
+  // Reinforcement factors
+  createdAt: number
+  lastRecalledAt: number
+  recallCount: number
+  linkedMemories: string[]
+
+  // Memory state
+  vividness: MemoryVividness
+}
+
+// Agent's relationship with user
+export interface AgentUserRelationship {
+  agentId: string
+
+  // Relationship status
+  relationship: {
+    trustLevel: number        // 0-100
+    familiarity: number       // 0-100
+    lastInteraction: number
+    totalInteractions: number
+  }
+
+  // Agent's subjective feelings
+  agentFeelings: {
+    currentMood: AgentMood
+    notes: string
+  }
+
+  // Observations from agent's perspective
+  observations: AgentMemory[]
+
+  // Domain-specific memory
+  domainMemory: Record<string, unknown>
+}
+
+// Agent Memory IPC Request/Response types
+export interface GetAgentRelationshipRequest {
+  agentId: string
+}
+
+export interface GetAgentRelationshipResponse {
+  success: boolean
+  relationship?: AgentUserRelationship
+  error?: string
+}
+
+export interface AddAgentMemoryRequest {
+  agentId: string
+  content: string
+  category: AgentMemoryCategory
+  emotionalWeight?: number
+}
+
+export interface AddAgentMemoryResponse {
+  success: boolean
+  memory?: AgentMemory
+  error?: string
+}
+
+export interface RecallAgentMemoryRequest {
+  agentId: string
+  memoryId: string
+}
+
+export interface RecallAgentMemoryResponse {
+  success: boolean
+  memory?: AgentMemory
+  error?: string
+}
+
+export interface GetActiveMemoriesRequest {
+  agentId: string
+  limit?: number
+}
+
+export interface GetActiveMemoriesResponse {
+  success: boolean
+  memories?: AgentMemory[]
+  error?: string
+}
+
+export interface UpdateAgentRelationshipRequest {
+  agentId: string
+  updates: {
+    trustLevel?: number
+    familiarity?: number
+    mood?: AgentMood
+    moodNotes?: string
+  }
+}
+
+export interface UpdateAgentRelationshipResponse {
+  success: boolean
+  relationship?: AgentUserRelationship
+  error?: string
+}
+
+export interface RecordInteractionRequest {
+  agentId: string
+}
+
+export interface RecordInteractionResponse {
+  success: boolean
+  relationship?: AgentUserRelationship
   error?: string
 }

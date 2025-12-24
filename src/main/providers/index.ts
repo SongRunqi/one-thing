@@ -18,6 +18,7 @@ import {
   getProviderInfo as getInfoFromRegistry,
   isProviderSupported as isSupportedFromRegistry,
   createProviderInstance,
+  requiresSystemMerge as requiresSystemMergeFromRegistry,
 } from './registry.js'
 import type { ProviderInfo, ProviderConfig } from './types.js'
 
@@ -507,21 +508,33 @@ export async function* streamChatResponseWithTools(
   // Check if this is a DeepSeek Reasoner model (requires reasoning_content in all assistant messages)
   const isDeepSeekReasoner = isReasoning && config.model.toLowerCase().includes('deepseek')
 
+  // Check if this provider requires system messages to be merged into user messages
+  const needsSystemMerge = requiresSystemMergeFromRegistry(providerId)
+
   // Convert messages to AI SDK CoreMessage format
   // For DeepSeek Reasoner, reasoning must be included as { type: 'reasoning', text: ... } parts
   // in the content array, not as a separate reasoning_content field
-  const convertedMessages: any[] = messages.map(msg => {
+  let convertedMessages: any[] = messages.map(msg => {
     if (msg.role === 'user' || msg.role === 'system') {
       return { role: msg.role, content: msg.content }
     }
     if (msg.role === 'assistant') {
+      // Check if we need complex content format (reasoning or tool calls)
+      const hasToolCalls = msg.toolCalls && msg.toolCalls.length > 0
+      const hasReasoning = isDeepSeekReasoner && msg.reasoningContent
+
+      // For simple text-only responses, use string content (compatible with all APIs)
+      if (!hasToolCalls && !hasReasoning) {
+        return { role: 'assistant', content: msg.content || '' }
+      }
+
       // Build content array with reasoning, text, and tool calls
       const content: any[] = []
 
       // For DeepSeek Reasoner, reasoning must be included as a content part
       // The provider's convertToDeepSeekChatMessages extracts { type: 'reasoning' } parts
       // and converts them to reasoning_content for the API
-      if (isDeepSeekReasoner && msg.reasoningContent) {
+      if (hasReasoning) {
         content.push({ type: 'reasoning', text: msg.reasoningContent })
       }
 
@@ -531,8 +544,8 @@ export async function* streamChatResponseWithTools(
       }
 
       // Add tool calls
-      if (msg.toolCalls && msg.toolCalls.length > 0) {
-        for (const tc of msg.toolCalls) {
+      if (hasToolCalls) {
+        for (const tc of msg.toolCalls!) {
           content.push({
             type: 'tool-call',
             toolCallId: tc.toolCallId,
@@ -565,6 +578,35 @@ export async function* streamChatResponseWithTools(
     return msg
   })
 
+  // For providers that require system merge (like Zhipu), merge system messages into first user message
+  if (needsSystemMerge && convertedMessages.length > 0) {
+    const systemMessages: string[] = []
+    const nonSystemMessages: any[] = []
+
+    for (const msg of convertedMessages) {
+      if (msg.role === 'system') {
+        systemMessages.push(msg.content)
+      } else {
+        nonSystemMessages.push(msg)
+      }
+    }
+
+    // If we have system messages and at least one user message, merge them
+    if (systemMessages.length > 0 && nonSystemMessages.length > 0) {
+      const firstUserIndex = nonSystemMessages.findIndex(m => m.role === 'user')
+      if (firstUserIndex !== -1) {
+        const systemPrefix = systemMessages.join('\n\n')
+        const originalContent = nonSystemMessages[firstUserIndex].content
+        nonSystemMessages[firstUserIndex] = {
+          ...nonSystemMessages[firstUserIndex],
+          content: `[System Instructions]\n${systemPrefix}\n\n[User Message]\n${originalContent}`,
+        }
+        convertedMessages = nonSystemMessages
+        console.log(`[Provider] Merged ${systemMessages.length} system message(s) into first user message for ${providerId}`)
+      }
+    }
+  }
+
   // Build streamText options
   const streamOptions: Parameters<typeof streamText>[0] = {
     model,
@@ -592,10 +634,12 @@ export async function* streamChatResponseWithTools(
   // Process the full stream to capture all types of chunks
   for await (const chunk of stream.fullStream) {
     const chunkAny = chunk as any
+    console.log(`[Provider] Stream chunk type:`, chunk.type)
 
     switch (chunk.type) {
       case 'text-delta':
         const text = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
+        console.log(`[Provider] Text delta received:`, text ? `"${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"` : '(empty)')
         if (text) {
           yield { type: 'text', text }
         }

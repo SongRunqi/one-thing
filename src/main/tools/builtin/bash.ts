@@ -10,6 +10,7 @@
 import { execa } from 'execa'
 import * as path from 'path'
 import * as os from 'os'
+import { app } from 'electron'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 import { getSettings } from '../../stores/settings.js'
 
@@ -120,6 +121,19 @@ function matchesCommandSet(command: string, commandSet: Set<string>): boolean {
 }
 
 /**
+ * Check if command has output redirection (writes to file)
+ */
+function hasOutputRedirection(command: string): boolean {
+  // Match > or >> not inside quotes
+  // Simple check - look for > that's not part of heredoc delimiter
+  const patterns = [
+    /[^<]>\s*[^>]/, // Single > (not << or >>)
+    />>/,           // Append >>
+  ]
+  return patterns.some(p => p.test(command))
+}
+
+/**
  * Classify command type
  */
 function classifyCommand(command: string): 'read-only' | 'dangerous' | 'forbidden' {
@@ -133,6 +147,11 @@ function classifyCommand(command: string): 'read-only' | 'dangerous' | 'forbidde
     if (pattern.test(command)) {
       return 'forbidden'
     }
+  }
+
+  // Commands with output redirection are dangerous (they write to files)
+  if (hasOutputRedirection(command)) {
+    return 'dangerous'
   }
 
   // Check if read-only
@@ -160,6 +179,13 @@ function expandPath(dir: string): string {
 }
 
 /**
+ * Get the app's data directory for storing app data
+ */
+function getAppDataPath(): string {
+  return path.join(app.getPath('userData'), 'data')
+}
+
+/**
  * Get allowed directories for sandbox from settings
  */
 function getAllowedDirectories(): string[] {
@@ -181,6 +207,7 @@ function getAllowedDirectories(): string[] {
       '/tmp',                           // Temp directory
       '/var/tmp',
       path.join(homeDir, 'Downloads'),  // Downloads
+      getAppDataPath(),                 // App data directory (for skills to manage data)
     ]
   }
 
@@ -260,18 +287,21 @@ function extractPaths(command: string, workingDir: string): string[] {
   const paths: string[] = []
 
   // Simple path extraction - match quoted strings and unquoted paths
+  // For unquoted paths, handle backslash-escaped spaces (e.g., Application\ Support)
   const patterns = [
-    /"([^"]+)"/g,      // Double-quoted
-    /'([^']+)'/g,      // Single-quoted
-    /\s(\/\S+)/g,      // Absolute paths
-    /\s(\.\.?\/\S+)/g, // Relative paths
+    /"([^"]+)"/g,                    // Double-quoted
+    /'([^']+)'/g,                    // Single-quoted
+    /\s(\/(?:[^\s]|\\ )+)/g,         // Absolute paths (handle backslash-escaped spaces)
+    /\s(\.\.?\/(?:[^\s]|\\ )+)/g,    // Relative paths (handle backslash-escaped spaces)
   ]
 
   for (const pattern of patterns) {
     let match
     while ((match = pattern.exec(command)) !== null) {
-      const p = match[1]
+      let p = match[1]
       if (p && !p.startsWith('-')) {
+        // Remove backslash escapes for spaces
+        p = p.replace(/\\ /g, ' ')
         // Resolve relative to working directory
         const resolved = path.isAbsolute(p) ? p : path.resolve(workingDir, p)
         paths.push(resolved)
@@ -319,8 +349,13 @@ export const handler: ToolHandler = async (args, context) => {
       }
     }
 
-    // Use configured default working directory if not specified
-    const workingDir = workingDirectory || getDefaultWorkingDirectory()
+    // Use configured default working directory if not specified or invalid
+    // This handles cases where AI passes "/" or other disallowed directories
+    let workingDir = workingDirectory || getDefaultWorkingDirectory()
+    if (isSandboxEnabled() && workingDirectory && !isPathAllowed(workingDirectory)) {
+      // Fall back to default working directory instead of failing
+      workingDir = getDefaultWorkingDirectory()
+    }
 
     // Classify the command
     const commandType = classifyCommand(command)

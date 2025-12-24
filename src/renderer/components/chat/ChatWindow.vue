@@ -1,24 +1,43 @@
 <template>
   <main class="chat">
-    <!-- Chat View (Always rendered) -->
-    <div class="chat-container">
-      <MessageList
-        :messages="chatStore.messages"
-        :is-loading="chatStore.isLoading"
-        @set-quoted-text="handleSetQuotedText"
-        @set-input-text="handleSetInputText"
-        @regenerate="handleRegenerate"
-        @edit-and-resend="handleEditAndResend"
-      />
+    <!-- Agent Welcome Page (when agent selected and no messages) -->
+    <AgentWelcomePage
+      v-if="showAgentWelcome && agentsStore.selectedAgent"
+      :agent="agentsStore.selectedAgent"
+      @start-chat="handleStartAgentChat"
+      @open-settings="emit('openAgentSettings')"
+    />
 
-      <div class="composer">
-        <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="isRegenerating || chatStore.isGenerating" />
+    <!-- Chat View (when not showing agent welcome) -->
+    <div v-else class="chat-container">
+      <div class="chat-main">
+        <MessageList
+          :messages="chatStore.messages"
+          :is-loading="chatStore.isLoading"
+          @set-quoted-text="handleSetQuotedText"
+          @set-input-text="handleSetInputText"
+          @regenerate="handleRegenerate"
+          @edit-and-resend="handleEditAndResend"
+        />
+
+        <div class="composer">
+          <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="isRegenerating || chatStore.isGenerating" />
+        </div>
       </div>
     </div>
 
     <!-- Settings Panel overlay -->
     <Transition name="settings-fade">
       <SettingsPanel v-if="showSettings" @close="emit('closeSettings')" />
+    </Transition>
+
+    <!-- Agent Settings Panel overlay -->
+    <Transition name="settings-fade">
+      <AgentSettingsPanel
+        v-if="showAgentSettings"
+        :agent="agentsStore.selectedAgent"
+        @close="emit('closeAgentSettings')"
+      />
     </Transition>
   </main>
 </template>
@@ -27,27 +46,40 @@
 import { computed, ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
+import { useAgentsStore } from '@/stores/agents'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import SettingsPanel from '../SettingsPanel.vue'
+import AgentSettingsPanel from '../AgentSettingsPanel.vue'
+import AgentWelcomePage from './AgentWelcomePage.vue'
 
 interface Props {
   showSettings?: boolean
+  showAgentSettings?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
   showSettings: false,
+  showAgentSettings: false,
 })
 
 const emit = defineEmits<{
   closeSettings: []
   openSettings: []
+  closeAgentSettings: []
+  openAgentSettings: []
 }>()
 
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
+const agentsStore = useAgentsStore()
 
 const currentSession = computed(() => sessionsStore.currentSession)
+
+// Show agent welcome page when agent is selected and no messages in chat
+const showAgentWelcome = computed(() => {
+  return agentsStore.selectedAgent && chatStore.messages.length === 0
+})
 
 // Input box ref for setting quoted text
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
@@ -58,6 +90,15 @@ const isRegenerating = ref(false)
 // Handle open tool settings from InputBox
 function handleOpenToolSettings() {
   emit('openSettings')
+}
+
+// Handle starting a new chat with the selected agent
+async function handleStartAgentChat() {
+  if (!agentsStore.selectedAgent) return
+  // Create a new session with this agent
+  await sessionsStore.createSession('', agentsStore.selectedAgent.id)
+  // Clear the selected agent so we see the chat view
+  agentsStore.selectAgent(null)
 }
 
 async function handleSendMessage(message: string) {
@@ -138,9 +179,17 @@ defineExpose({
 
 .chat-container {
   display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-main {
+  display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  position: relative;
 }
 
 .composer {

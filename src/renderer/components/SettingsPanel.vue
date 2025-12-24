@@ -106,6 +106,20 @@
         </svg>
         Skills
       </button>
+      <button
+        :class="['tab-btn', { active: activeTab === 'embedding' }]"
+        @click="activeTab = 'embedding'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <circle cx="12" cy="12" r="8"/>
+          <line x1="12" y1="2" x2="12" y2="4"/>
+          <line x1="12" y1="20" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="4" y2="12"/>
+          <line x1="20" y1="12" x2="22" y2="12"/>
+        </svg>
+        Embedding
+      </button>
     </div>
 
     <div class="settings-content">
@@ -156,6 +170,14 @@
           @update:settings="handleSkillsSettingsUpdate"
         />
       </div>
+
+      <!-- Embedding Tab -->
+      <div v-show="activeTab === 'embedding'" class="tab-content">
+        <EmbeddingSettingsPanel
+          :settings="localSettings.embedding || { provider: 'openai', openai: { model: 'text-embedding-3-small', dimensions: 384 }, local: { model: 'all-MiniLM-L6-v2' } }"
+          @update:settings="handleEmbeddingSettingsUpdate"
+        />
+      </div>
     </div>
 
     <SettingsFooter
@@ -182,6 +204,7 @@ import UnsavedChangesDialog from './settings/UnsavedChangesDialog.vue'
 import DeleteConfirmDialog from './settings/DeleteConfirmDialog.vue'
 import MCPSettingsPanel from './settings/MCPSettingsPanel.vue'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
+import EmbeddingSettingsPanel from './settings/EmbeddingSettingsPanel.vue'
 import GeneralSettingsTab from './settings/GeneralSettingsTab.vue'
 import AIProviderTab from './settings/AIProviderTab.vue'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
@@ -195,7 +218,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 
 // Active tab
-const activeTab = ref<'general' | 'ai' | 'tools' | 'shortcuts' | 'mcp' | 'skills'>('general')
+const activeTab = ref<'general' | 'ai' | 'tools' | 'shortcuts' | 'mcp' | 'skills' | 'embedding'>('general')
 
 // Deep clone settings, ensuring providers object exists
 const localSettings = ref<AppSettings>(
@@ -280,6 +303,20 @@ function initializeSettings() {
       skills: {},
     }
   }
+
+  // Ensure Embedding settings exist
+  if (!localSettings.value.embedding) {
+    localSettings.value.embedding = {
+      provider: 'openai',
+      openai: {
+        model: 'text-embedding-3-small',
+        dimensions: 384,
+      },
+      local: {
+        model: 'all-MiniLM-L6-v2',
+      },
+    }
+  }
 }
 
 // State
@@ -345,6 +382,11 @@ function handleSkillsSettingsUpdate(skillsSettings: { enableSkills: boolean; ski
   localSettings.value.skills = skillsSettings
   // Update originalSettings since Skills changes are already saved to backend
   originalSettings.value = JSON.stringify(localSettings.value)
+}
+
+// Handle Embedding settings update
+function handleEmbeddingSettingsUpdate(embeddingSettings: { provider: 'openai' | 'local'; openai?: any; local?: any }) {
+  localSettings.value.embedding = embeddingSettings
 }
 
 // Load available tools

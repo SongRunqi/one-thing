@@ -88,6 +88,13 @@
 
       <!-- Message bubble - show if there's content, contentParts, or streaming is done -->
       <div v-if="message.content || (message.contentParts && message.contentParts.length > 0) || !message.isStreaming" class="bubble" :class="{ editing: isEditing }" ref="bubbleRef" @mouseup="handleTextSelection">
+        <!-- Skill usage badge -->
+        <div v-if="message.skillUsed && message.role === 'assistant'" class="skill-badge">
+          <svg class="skill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          </svg>
+          <span class="skill-name">{{ message.skillUsed }}</span>
+        </div>
         <!-- Edit mode for user messages - inline editing -->
         <div v-if="isEditing" class="edit-container" @click.stop>
           <textarea
@@ -107,8 +114,8 @@
               <template v-for="(part, index) in message.contentParts" :key="index">
                 <!-- Text part -->
                 <div v-if="part.type === 'text'" :class="['content', { typing: isTyping && index === message.contentParts.length - 1 }]" v-html="renderMarkdown(part.content)"></div>
-                <!-- Tool call part -->
-                <template v-else-if="part.type === 'tool-call'">
+                <!-- Tool call part - only show if no steps (steps panel handles tool calls now) -->
+                <template v-else-if="part.type === 'tool-call' && !(message.steps && message.steps.length > 0)">
                   <ToolCallGroup
                     :toolCalls="part.toolCalls"
                     @execute="handleToolExecute"
@@ -123,6 +130,14 @@
                     @reject="handleToolReject"
                   />
                 </template>
+                <!-- Steps panel - rendered inline where tool agent was called -->
+                <!-- Filter steps by turnIndex to show only steps for this specific turn -->
+                <StepsPanel
+                  v-else-if="part.type === 'steps' && message.steps && message.steps.length > 0"
+                  :steps="getStepsForTurn(part.turnIndex)"
+                  @confirm="handleToolConfirm"
+                  @reject="handleToolReject"
+                />
                 <!-- Waiting indicator (after tool call, before AI continues) -->
                 <div v-else-if="part.type === 'waiting'" class="thinking-status-inline">
                   <span class="thinking-text flowing">Waiting</span>
@@ -131,7 +146,8 @@
             </template>
             <!-- Fallback: legacy content display (no contentParts) -->
             <template v-else>
-              <template v-if="message.toolCalls && message.toolCalls.length > 0">
+              <!-- Only show tool calls if no steps (steps panel handles tool calls now) -->
+              <template v-if="message.toolCalls && message.toolCalls.length > 0 && !(message.steps && message.steps.length > 0)">
                 <ToolCallGroup
                   :toolCalls="message.toolCalls"
                   @execute="handleToolExecute"
@@ -148,6 +164,14 @@
               <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
             </template>
           </div>
+        <!-- Steps panel fallback - only for legacy messages without contentParts -->
+        <!-- (Normal messages render StepsPanel inline via contentParts type='steps') -->
+        <StepsPanel
+          v-if="message.role === 'assistant' && message.steps && message.steps.length > 0 && (!message.contentParts || !message.contentParts.some(p => p.type === 'steps'))"
+          :steps="message.steps"
+          @confirm="handleToolConfirm"
+          @reject="handleToolReject"
+        />
       </div>
       <!-- Message footer - moved outside bubble -->
       <div class="message-footer">
@@ -186,6 +210,26 @@
                 <path d="M23 4v6h-6"/>
                 <path d="M1 20v-6h6"/>
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+            </button>
+          </Tooltip>
+          <!-- Speak button (for assistant messages with TTS support) -->
+          <Tooltip v-if="message.role === 'assistant' && ttsSupported" :text="speakTooltip">
+            <button
+              class="action-btn speak-btn"
+              :class="{ speaking: isCurrentlySpeaking }"
+              @click="handleSpeak"
+            >
+              <!-- Play icon (not speaking) -->
+              <svg v-if="!isCurrentlySpeaking" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+              </svg>
+              <!-- Stop icon (speaking) -->
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="6" y="4" width="4" height="16"/>
+                <rect x="14" y="4" width="4" height="16"/>
               </svg>
             </button>
           </Tooltip>
@@ -254,10 +298,12 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
-import type { ChatMessage, ToolCall } from '@/types'
+import type { ChatMessage, ToolCall, AgentVoice } from '@/types'
 import ToolCallGroup from './ToolCallGroup.vue'
 import ToolCallItem from './ToolCallItem.vue'
+import StepsPanel from './StepsPanel.vue'
 import Tooltip from '../common/Tooltip.vue'
+import { useTTS } from '@/composables/useTTS'
 
 interface BranchInfo {
   id: string
@@ -269,6 +315,7 @@ interface Props {
   branches?: BranchInfo[]  // Branches that were created from this message
   canBranch?: boolean      // Whether branching is allowed (false for child sessions)
   isHighlighted?: boolean  // Whether this message is highlighted by navigation
+  voiceConfig?: AgentVoice // Voice configuration for TTS (from current agent)
 }
 
 const props = defineProps<Props>()
@@ -283,6 +330,77 @@ const emit = defineEmits<{
   rejectTool: [toolCall: ToolCall]
   updateThinkingTime: [messageId: string, thinkingTime: number]
 }>()
+
+// TTS (Text-to-Speech) functionality
+const { isSupported: ttsSupported, isSpeaking, speak, stop } = useTTS()
+const speakingMessageId = ref<string | null>(null)
+
+// Check if this specific message is currently being spoken
+const isCurrentlySpeaking = computed(() =>
+  isSpeaking.value && speakingMessageId.value === props.message.id
+)
+
+// Tooltip text based on speaking state
+const speakTooltip = computed(() =>
+  isCurrentlySpeaking.value ? 'Stop' : 'Speak'
+)
+
+// Handle speak button click
+async function handleSpeak() {
+  if (isCurrentlySpeaking.value) {
+    stop()
+    speakingMessageId.value = null
+    return
+  }
+
+  // Stop any other speaking
+  stop()
+
+  // Get plain text from message content (strip markdown)
+  const textContent = getPlainTextContent()
+  if (!textContent) return
+
+  speakingMessageId.value = props.message.id
+
+  try {
+    await speak(textContent, props.voiceConfig)
+  } catch (error) {
+    console.error('TTS error:', error)
+  } finally {
+    speakingMessageId.value = null
+  }
+}
+
+// Extract plain text from message content (remove markdown formatting)
+function getPlainTextContent(): string {
+  const content = props.message.content
+  if (!content) return ''
+
+  // Simple markdown stripping (for TTS)
+  return content
+    // Remove code blocks
+    .replace(/```[\s\S]*?```/g, '')
+    // Remove inline code
+    .replace(/`[^`]+`/g, '')
+    // Remove links but keep text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    // Remove images
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    // Remove bold/italic
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    // Remove headers
+    .replace(/^#+\s*/gm, '')
+    // Remove horizontal rules
+    .replace(/^---+$/gm, '')
+    // Remove blockquotes
+    .replace(/^>\s*/gm, '')
+    // Clean up extra whitespace
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
 
 const showActions = ref(false)
 const copied = ref(false)
@@ -831,6 +949,16 @@ function handleToolConfirm(toolCall: ToolCall) {
 function handleToolReject(toolCall: ToolCall) {
   emit('rejectTool', toolCall)
 }
+
+// Get steps for a specific turn (used for interleaving steps with text via contentParts)
+function getStepsForTurn(turnIndex: number | undefined) {
+  if (!props.message.steps) return []
+  if (turnIndex === undefined) {
+    // If no turnIndex specified, return all steps (fallback behavior)
+    return props.message.steps
+  }
+  return props.message.steps.filter(step => step.turnIndex === turnIndex)
+}
 </script>
 
 <style scoped>
@@ -1338,6 +1466,25 @@ html[data-theme='light'] .content :deep(.inline-code) {
   color: var(--accent);
 }
 
+/* Speak button speaking state */
+.speak-btn.speaking {
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.speak-btn.speaking:hover {
+  background: rgba(59, 130, 246, 0.25);
+}
+
+html[data-theme='light'] .speak-btn.speaking {
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+html[data-theme='light'] .speak-btn.speaking:hover {
+  background: rgba(59, 130, 246, 0.18);
+}
+
 html[data-theme='light'] .actions {
   background: rgba(255, 255, 255, 0.9);
   box-shadow:
@@ -1645,6 +1792,31 @@ html[data-theme='light'] .message.user .bubble.editing {
 
 .regenerate-btn:hover svg {
   transform: rotate(180deg);
+}
+
+/* Skill usage badge */
+.skill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  margin-bottom: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.skill-icon {
+  width: 14px;
+  height: 14px;
+  stroke: var(--accent);
+}
+
+.skill-name {
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 /* Thinking status indicator */

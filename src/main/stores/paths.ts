@@ -31,17 +31,78 @@ export function getSessionPath(sessionId: string): string {
   return path.join(getSessionsDir(), `${sessionId}.json`)
 }
 
+export function getWorkspacesDir(): string {
+  return path.join(getStorePath(), 'workspaces')
+}
+
+export function getWorkspacePath(workspaceId: string): string {
+  return path.join(getWorkspacesDir(), `${workspaceId}.json`)
+}
+
+export function getWorkspaceAvatarsDir(): string {
+  return path.join(getWorkspacesDir(), 'avatars')
+}
+
+export function getWorkspaceAvatarPath(workspaceId: string, extension: string): string {
+  return path.join(getWorkspaceAvatarsDir(), `${workspaceId}.${extension}`)
+}
+
+export function getAgentsDir(): string {
+  return path.join(getStorePath(), 'agents')
+}
+
+export function getAgentPath(agentId: string): string {
+  return path.join(getAgentsDir(), `${agentId}.json`)
+}
+
+export function getAgentAvatarsDir(): string {
+  return path.join(getAgentsDir(), 'avatars')
+}
+
+export function getAgentAvatarPath(agentId: string, extension: string): string {
+  return path.join(getAgentAvatarsDir(), `${agentId}.${extension}`)
+}
+
+// User Profile paths
+export function getUserProfileDir(): string {
+  return path.join(getStorePath(), 'user-profile')
+}
+
+export function getUserProfilePath(): string {
+  return path.join(getUserProfileDir(), 'profile.json')
+}
+
+// Agent Memory paths (for Phase 3)
+export function getAgentMemoryDir(): string {
+  return path.join(getStorePath(), 'agent-memory')
+}
+
+export function getAgentMemoryPath(agentId: string): string {
+  return path.join(getAgentMemoryDir(), `${agentId}.json`)
+}
+
+// SQLite database path for vector storage
+export function getDatabasePath(): string {
+  return path.join(getStorePath(), 'memory.db')
+}
+
 // Ensure all necessary directories exist
 export function ensureStoreDirs(): void {
-  const storePath = getStorePath()
-  const sessionsDir = getSessionsDir()
+  const dirs = [
+    getStorePath(),
+    getSessionsDir(),
+    getWorkspacesDir(),
+    getWorkspaceAvatarsDir(),
+    getAgentsDir(),
+    getAgentAvatarsDir(),
+    getUserProfileDir(),
+    getAgentMemoryDir(),
+  ]
 
-  if (!fs.existsSync(storePath)) {
-    fs.mkdirSync(storePath, { recursive: true })
-  }
-
-  if (!fs.existsSync(sessionsDir)) {
-    fs.mkdirSync(sessionsDir, { recursive: true })
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
   }
 }
 

@@ -41,6 +41,24 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_ERROR, listener)
   },
 
+  onSkillActivated: (callback: (data: { sessionId: string; messageId: string; skillName: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.SKILL_ACTIVATED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SKILL_ACTIVATED, listener)
+  },
+
+  onStepAdded: (callback: (data: { sessionId: string; messageId: string; step: any }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.STEP_ADDED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.STEP_ADDED, listener)
+  },
+
+  onStepUpdated: (callback: (data: { sessionId: string; messageId: string; stepId: string; updates: any }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.STEP_UPDATED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.STEP_UPDATED, listener)
+  },
+
   abortStream: (sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.ABORT_STREAM, { sessionId }),
 
@@ -59,12 +77,15 @@ const electronAPI = {
   editAndResendStream: (sessionId: string, messageId: string, newContent: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.EDIT_AND_RESEND_STREAM, { sessionId, messageId, newContent }),
 
+  resumeAfterToolConfirm: (sessionId: string, messageId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.RESUME_AFTER_TOOL_CONFIRM, { sessionId, messageId }),
+
   // Session methods
   getSessions: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SESSIONS),
 
-  createSession: (name: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.CREATE_SESSION, { name }),
+  createSession: (name: string, workspaceId?: string, agentId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CREATE_SESSION, { name, workspaceId, agentId }),
 
   switchSession: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.SWITCH_SESSION, { sessionId }),
@@ -187,6 +208,139 @@ const electronAPI = {
   // Dialog methods
   showOpenDialog: (options: { properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>; title?: string; defaultPath?: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.SHOW_OPEN_DIALOG, options),
+
+  // Workspace methods
+  getWorkspaces: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_GET_ALL),
+
+  createWorkspace: (name: string, avatar: { type: 'emoji' | 'image'; value: string }, systemPrompt: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_CREATE, { name, avatar, systemPrompt }),
+
+  updateWorkspace: (id: string, updates: { name?: string; avatar?: { type: 'emoji' | 'image'; value: string }; systemPrompt?: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_UPDATE, { id, ...updates }),
+
+  deleteWorkspace: (workspaceId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_DELETE, { workspaceId }),
+
+  switchWorkspace: (workspaceId: string | null) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_SWITCH, { workspaceId }),
+
+  uploadWorkspaceAvatar: (workspaceId: string, imageData: string, mimeType: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_UPLOAD_AVATAR, { workspaceId, imageData, mimeType }),
+
+  // Agent methods
+  getAgents: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_GET_ALL),
+
+  createAgent: (
+    name: string,
+    avatar: { type: 'emoji' | 'image'; value: string },
+    systemPrompt: string,
+    options?: {
+      tagline?: string
+      personality?: string[]
+      primaryColor?: string
+      voice?: { enabled: boolean; voiceURI?: string; rate?: number; pitch?: number; volume?: number }
+    }
+  ) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_CREATE, { name, avatar, systemPrompt, ...options }),
+
+  updateAgent: (id: string, updates: {
+    name?: string
+    avatar?: { type: 'emoji' | 'image'; value: string }
+    systemPrompt?: string
+    tagline?: string
+    personality?: string[]
+    primaryColor?: string
+    voice?: { enabled: boolean; voiceURI?: string; rate?: number; pitch?: number; volume?: number }
+  }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_UPDATE, { id, ...updates }),
+
+  deleteAgent: (agentId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_DELETE, { agentId }),
+
+  uploadAgentAvatar: (agentId: string, imageData: string, mimeType: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_UPLOAD_AVATAR, { agentId, imageData, mimeType }),
+
+  pinAgent: (agentId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_PIN, { agentId }),
+
+  unpinAgent: (agentId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_UNPIN, { agentId }),
+
+  // User Profile methods
+  getUserProfile: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.USER_PROFILE_GET),
+
+  addUserFact: (
+    content: string,
+    category: 'personal' | 'preference' | 'goal' | 'trait',
+    confidence?: number,
+    sourceAgentId?: string
+  ) =>
+    ipcRenderer.invoke(IPC_CHANNELS.USER_PROFILE_ADD_FACT, {
+      content,
+      category,
+      confidence,
+      sourceAgentId,
+    }),
+
+  updateUserFact: (
+    factId: string,
+    updates: {
+      content?: string
+      category?: 'personal' | 'preference' | 'goal' | 'trait'
+      confidence?: number
+    }
+  ) =>
+    ipcRenderer.invoke(IPC_CHANNELS.USER_PROFILE_UPDATE_FACT, { factId, ...updates }),
+
+  deleteUserFact: (factId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.USER_PROFILE_DELETE_FACT, { factId }),
+
+  // Agent Memory methods
+  getAgentRelationship: (agentId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_GET_RELATIONSHIP, { agentId }),
+
+  addAgentMemory: (
+    agentId: string,
+    content: string,
+    category: 'observation' | 'event' | 'feeling' | 'learning',
+    emotionalWeight?: number
+  ) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_ADD_MEMORY, {
+      agentId,
+      content,
+      category,
+      emotionalWeight,
+    }),
+
+  recallAgentMemory: (agentId: string, memoryId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_RECALL, { agentId, memoryId }),
+
+  getActiveAgentMemories: (agentId: string, limit?: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_GET_ACTIVE, { agentId, limit }),
+
+  updateAgentRelationship: (
+    agentId: string,
+    updates: {
+      trustLevel?: number
+      familiarity?: number
+      mood?: 'happy' | 'neutral' | 'concerned' | 'excited'
+      moodNotes?: string
+    }
+  ) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_UPDATE_RELATIONSHIP, { agentId, updates }),
+
+  recordAgentInteraction: (agentId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_RECORD_INTERACTION, { agentId }),
+
+  // Shell methods
+  openPath: (filePath: string) =>
+    ipcRenderer.invoke('shell:open-path', filePath),
+
+  getDataPath: () =>
+    ipcRenderer.invoke('app:get-data-path'),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

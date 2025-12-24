@@ -110,9 +110,36 @@ export function registerToolHandlers() {
         return tc
       })
 
-      // Save to store
-      const success = store.updateMessageToolCalls(sessionId, messageId, toolCalls)
-      return { success }
+      // Save tool calls to store
+      store.updateMessageToolCalls(sessionId, messageId, toolCalls)
+
+      // Also update the corresponding step if it exists
+      if (message.steps) {
+        const step = message.steps.find(s => s.toolCallId === toolCallId)
+        if (step) {
+          // Map toolCall status to step status
+          let stepStatus: 'pending' | 'running' | 'completed' | 'failed' | 'awaiting-confirmation' = step.status
+          if (updates.status === 'executing') {
+            stepStatus = 'running'
+          } else if (updates.status === 'completed') {
+            stepStatus = 'completed'
+          } else if (updates.status === 'failed' || updates.status === 'cancelled') {
+            stepStatus = 'failed'
+          } else if (updates.status === 'pending' && updates.requiresConfirmation) {
+            stepStatus = 'awaiting-confirmation'
+          }
+
+          // Update step
+          store.updateMessageStep(sessionId, messageId, step.id, {
+            status: stepStatus,
+            result: typeof updates.result === 'string' ? updates.result : (updates.result ? JSON.stringify(updates.result) : undefined),
+            error: updates.error,
+            toolCall: { ...step.toolCall, ...updates } as any,
+          })
+        }
+      }
+
+      return { success: true }
     } catch (error: any) {
       console.error('[Tools IPC] Error updating tool call:', error)
       return {

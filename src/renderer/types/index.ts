@@ -12,6 +12,7 @@ import type {
   BaseTheme,
   KeyboardShortcut,
   ShortcutSettings,
+  EmbeddingSettings,
   SendMessageResponse,
   EditAndResendResponse,
   GetChatHistoryResponse,
@@ -35,6 +36,8 @@ import type {
   GetToolsResponse,
   ExecuteToolResponse,
   ContentPart,
+  Step,
+  StepType,
   // MCP types
   MCPServerConfig,
   MCPServerState,
@@ -66,6 +69,46 @@ import type {
   ReadSkillFileResponse,
   OpenSkillDirectoryResponse,
   CreateSkillResponse,
+  // Workspace types
+  Workspace,
+  WorkspaceAvatar,
+  GetWorkspacesResponse,
+  CreateWorkspaceResponse,
+  UpdateWorkspaceResponse,
+  DeleteWorkspaceResponse,
+  SwitchWorkspaceResponse,
+  UploadWorkspaceAvatarResponse,
+  // Agent types
+  Agent,
+  AgentAvatar,
+  AgentVoice,
+  GetAgentsResponse,
+  CreateAgentResponse,
+  UpdateAgentResponse,
+  DeleteAgentResponse,
+  UploadAgentAvatarResponse,
+  PinAgentResponse,
+  UnpinAgentResponse,
+  // User Profile types
+  UserProfile,
+  UserFact,
+  UserFactCategory,
+  GetUserProfileResponse,
+  AddUserFactResponse,
+  UpdateUserFactResponse,
+  DeleteUserFactResponse,
+  // Agent Memory types
+  AgentMemory,
+  AgentMemoryCategory,
+  AgentUserRelationship,
+  AgentMood,
+  MemoryVividness,
+  GetAgentRelationshipResponse,
+  AddAgentMemoryResponse,
+  RecallAgentMemoryResponse,
+  GetActiveMemoriesResponse,
+  UpdateAgentRelationshipResponse,
+  RecordInteractionResponse,
 } from '../../shared/ipc'
 
 export type {
@@ -82,11 +125,14 @@ export type {
   BaseTheme,
   KeyboardShortcut,
   ShortcutSettings,
+  EmbeddingSettings,
   ToolDefinition,
   ToolCall,
   ToolSettings,
   BashToolSettings,
   ContentPart,
+  Step,
+  StepType,
   // MCP types
   MCPServerConfig,
   MCPServerState,
@@ -99,6 +145,23 @@ export type {
   SkillFile,
   SkillSource,
   SkillSettings,
+  // Workspace types
+  Workspace,
+  WorkspaceAvatar,
+  // Agent types
+  Agent,
+  AgentAvatar,
+  AgentVoice,
+  // User Profile types
+  UserProfile,
+  UserFact,
+  UserFactCategory,
+  // Agent Memory types
+  AgentMemory,
+  AgentMemoryCategory,
+  AgentUserRelationship,
+  AgentMood,
+  MemoryVividness,
 }
 
 // Streaming response types
@@ -115,17 +178,20 @@ export interface StreamSendMessageResponse {
 export interface ElectronAPI {
   sendMessage: (sessionId: string, message: string) => Promise<SendMessageResponse>
   sendMessageStream: (sessionId: string, message: string) => Promise<StreamSendMessageResponse>
-  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation'; content: string; messageId: string; reasoning?: string; toolCall?: ToolCall }) => void) => () => void
+  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace'; content: string; messageId: string; reasoning?: string; toolCall?: ToolCall }) => void) => () => void
   onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string; sessionName?: string }) => void) => () => void
   onStreamError: (callback: (data: { messageId?: string; error: string; errorDetails?: string }) => void) => () => void
+  onSkillActivated: (callback: (data: { sessionId: string; messageId: string; skillName: string }) => void) => () => void
+  onStepAdded: (callback: (data: { sessionId: string; messageId: string; step: any }) => void) => () => void
+  onStepUpdated: (callback: (data: { sessionId: string; messageId: string; stepId: string; updates: any }) => void) => () => void
   getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
   generateTitle: (message: string) => Promise<GenerateTitleResponse>
   editAndResend: (sessionId: string, messageId: string, newContent: string) => Promise<EditAndResendResponse>
   editAndResendStream: (sessionId: string, messageId: string, newContent: string) => Promise<StreamSendMessageResponse>
   getSessions: () => Promise<GetSessionsResponse>
-  createSession: (name: string) => Promise<CreateSessionResponse>
+  createSession: (name: string, workspaceId?: string, agentId?: string) => Promise<CreateSessionResponse>
   switchSession: (sessionId: string) => Promise<SwitchSessionResponse>
   deleteSession: (sessionId: string) => Promise<DeleteSessionResponse>
   renameSession: (sessionId: string, newName: string) => Promise<RenameSessionResponse>
@@ -179,6 +245,41 @@ export interface ElectronAPI {
 
   // Dialog methods
   showOpenDialog: (options: { properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>; title?: string; defaultPath?: string }) => Promise<{ canceled: boolean; filePaths: string[] }>
+
+  // Workspace methods
+  getWorkspaces: () => Promise<GetWorkspacesResponse>
+  createWorkspace: (name: string, avatar: WorkspaceAvatar, systemPrompt: string) => Promise<CreateWorkspaceResponse>
+  updateWorkspace: (id: string, updates: { name?: string; avatar?: WorkspaceAvatar; systemPrompt?: string }) => Promise<UpdateWorkspaceResponse>
+  deleteWorkspace: (workspaceId: string) => Promise<DeleteWorkspaceResponse>
+  switchWorkspace: (workspaceId: string | null) => Promise<SwitchWorkspaceResponse>
+  uploadWorkspaceAvatar: (workspaceId: string, imageData: string, mimeType: string) => Promise<UploadWorkspaceAvatarResponse>
+
+  // Agent methods
+  getAgents: () => Promise<GetAgentsResponse>
+  createAgent: (name: string, avatar: AgentAvatar, systemPrompt: string, options?: { tagline?: string; personality?: string[]; primaryColor?: string; voice?: AgentVoice }) => Promise<CreateAgentResponse>
+  updateAgent: (id: string, updates: { name?: string; avatar?: AgentAvatar; systemPrompt?: string; tagline?: string; personality?: string[]; primaryColor?: string; voice?: AgentVoice }) => Promise<UpdateAgentResponse>
+  deleteAgent: (agentId: string) => Promise<DeleteAgentResponse>
+  uploadAgentAvatar: (agentId: string, imageData: string, mimeType: string) => Promise<UploadAgentAvatarResponse>
+  pinAgent: (agentId: string) => Promise<PinAgentResponse>
+  unpinAgent: (agentId: string) => Promise<UnpinAgentResponse>
+
+  // User Profile methods
+  getUserProfile: () => Promise<GetUserProfileResponse>
+  addUserFact: (content: string, category: UserFactCategory, confidence?: number, sourceAgentId?: string) => Promise<AddUserFactResponse>
+  updateUserFact: (factId: string, updates: { content?: string; category?: UserFactCategory; confidence?: number }) => Promise<UpdateUserFactResponse>
+  deleteUserFact: (factId: string) => Promise<DeleteUserFactResponse>
+
+  // Agent Memory methods
+  getAgentRelationship: (agentId: string) => Promise<GetAgentRelationshipResponse>
+  addAgentMemory: (agentId: string, content: string, category: AgentMemoryCategory, emotionalWeight?: number) => Promise<AddAgentMemoryResponse>
+  recallAgentMemory: (agentId: string, memoryId: string) => Promise<RecallAgentMemoryResponse>
+  getActiveAgentMemories: (agentId: string, limit?: number) => Promise<GetActiveMemoriesResponse>
+  updateAgentRelationship: (agentId: string, updates: { trustLevel?: number; familiarity?: number; mood?: AgentMood; moodNotes?: string }) => Promise<UpdateAgentRelationshipResponse>
+  recordAgentInteraction: (agentId: string) => Promise<RecordInteractionResponse>
+
+  // Shell methods
+  openPath: (filePath: string) => Promise<string>
+  getDataPath: () => Promise<string>
 }
 
 declare global {

@@ -17,9 +17,41 @@ export {
   updateMessageStreaming,
   updateMessageToolCalls,
   updateMessageContentParts,
+  addMessageContentPart,
   updateMessageThinkingTime,
+  updateMessageSkill,
+  addMessageStep,
+  updateMessageStep,
   updateSessionPin,
+  updateSessionAgent,
+  deleteSessionsByWorkspace,
 } from './sessions.js'
+
+// Workspace exports
+export {
+  getWorkspaces,
+  getWorkspace,
+  createWorkspace,
+  updateWorkspace,
+  deleteWorkspace,
+  switchWorkspace,
+  uploadWorkspaceAvatar,
+  getCurrentWorkspaceId,
+  setCurrentWorkspaceId,
+} from './workspaces.js'
+
+// Agent exports
+export {
+  getAgents,
+  getAgent,
+  createAgent,
+  updateAgent,
+  deleteAgent,
+  uploadAgentAvatar,
+  getPinnedAgentIds,
+  pinAgent,
+  unpinAgent,
+} from './agents.js'
 
 // Migration function
 import { app } from 'electron'

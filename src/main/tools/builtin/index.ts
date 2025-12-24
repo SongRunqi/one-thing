@@ -16,6 +16,7 @@ import * as calculator from './calculator.js'
 import * as bash from './bash.js'
 
 // List of all built-in tools
+// Note: delegate tool removed - Tool Agent now handles all tool execution internally
 const builtinTools = [
   getCurrentTime,
   calculator,
@@ -29,5 +30,6 @@ export function registerBuiltinTools(): void {
   for (const tool of builtinTools) {
     registerTool(tool.definition, tool.handler)
   }
+
   console.log(`[BuiltinTools] Registered ${builtinTools.length} built-in tools`)
 }

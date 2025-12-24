@@ -6,6 +6,11 @@ import { registerProvidersHandlers } from './providers.js'
 import { registerToolHandlers } from './tools.js'
 import { registerMCPHandlers, initializeMCP, shutdownMCP } from './mcp.js'
 import { registerSkillHandlers, initializeSkills } from './skills.js'
+import { registerWorkspaceHandlers } from './workspaces.js'
+import { registerAgentHandlers } from './agents.js'
+import { registerUserProfileHandlers } from './user-profile.js'
+import { registerAgentMemoryHandlers } from './agent-memory.js'
+import { registerShellHandlers } from './shell.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -16,6 +21,11 @@ export function initializeIPC() {
   registerToolHandlers()
   registerMCPHandlers()
   registerSkillHandlers()
+  registerWorkspaceHandlers()
+  registerAgentHandlers()
+  registerUserProfileHandlers()
+  registerAgentMemoryHandlers()
+  registerShellHandlers()
 }
 
 export { initializeMCP, shutdownMCP, initializeSkills }

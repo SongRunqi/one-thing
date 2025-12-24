@@ -10,9 +10,9 @@ export function registerSessionHandlers() {
   })
 
   // 创建新会话
-  ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name }) => {
+  ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name, workspaceId, agentId }) => {
     const sessionId = uuidv4()
-    const session = store.createSession(sessionId, name || 'New Chat')
+    const session = store.createSession(sessionId, name || 'New Chat', workspaceId, agentId)
     return { success: true, session }
   })
 
