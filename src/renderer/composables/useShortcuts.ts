@@ -58,6 +58,7 @@ export interface ShortcutHandlers {
   onNewChat?: () => void
   onToggleSidebar?: () => void
   onFocusInput?: () => void
+  onOpenSettings?: () => void
 }
 
 /**
@@ -103,6 +104,16 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       event.preventDefault()
       if (handlers.onFocusInput) {
         handlers.onFocusInput()
+      }
+      return
+    }
+
+    // Open Settings - Cmd+, (macOS) or Ctrl+, (Windows)
+    // This is a hardcoded shortcut, not configurable
+    if ((event.metaKey || event.ctrlKey) && event.key === ',') {
+      event.preventDefault()
+      if (handlers.onOpenSettings) {
+        handlers.onOpenSettings()
       }
       return
     }

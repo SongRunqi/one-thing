@@ -1,115 +1,7 @@
 <template>
   <ErrorBoundary>
     <div class="app-shell">
-    <!-- Unified Header -->
-    <!-- Unified Sidebar-Transferred Header -->
-    <header class="app-header">
-      <!-- Left: Sidebar Toggle, New Chat, Search -->
-      <div class="header-left">
-        <button 
-          class="sidebar-toggle-btn" 
-          @click="sidebarCollapsed = !sidebarCollapsed"
-          :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-            <line x1="9" y1="3" x2="9" y2="21"/>
-          </svg>
-        </button>
-        <button
-          class="header-action-btn"
-          @click="createNewChat"
-          title="New chat"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-        </button>
-        <button 
-          class="header-action-btn" 
-          @click="openSearch"
-          title="Search chats"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="m21 21-4.35-4.35"/>
-          </svg>
-        </button>
-      </div>
-
-      <!-- Center: Title Bar (Safari-Style) -->
-      <div
-        class="chat-title-bar"
-        @click="startEditTitle"
-      >
-        <div class="title-content">
-          <!-- Show agent avatar as icon if session has agent, otherwise show chat icon -->
-          <template v-if="sessionAgent && !isEditingTitle">
-            <span v-if="sessionAgent.avatar.type === 'emoji'" class="chat-title-agent-avatar">
-              {{ sessionAgent.avatar.value }}
-            </span>
-            <img
-              v-else
-              :src="'file://' + sessionAgent.avatar.value"
-              class="chat-title-agent-img"
-              alt=""
-            />
-          </template>
-          <svg v-else class="chat-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          <input
-            v-if="isEditingTitle"
-            ref="titleInput"
-            v-model="editingTitleValue"
-            class="chat-title-input"
-            @blur="saveTitle"
-            @keydown.enter="saveTitle"
-            @keydown.escape="cancelEditTitle"
-            @click.stop
-          />
-          <span v-else class="chat-title-text">{{ currentSession?.name || 'New chat' }}</span>
-        </div>
-      </div>
-
-      <!-- Right: Action buttons (Theme, Settings, Meta) -->
-      <div class="header-right">
-
-        <button
-          v-if="isBranchSession"
-          class="back-to-parent-btn"
-          title="Back to parent chat"
-          @click="goToParentSession"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
-          <span>Back</span>
-        </button>
-
-        <div class="header-meta">
-          <span class="message-count">{{ messageCount }} msg</span>
-        </div>
-
-        <button class="header-action-btn" @click="toggleTheme" :title="isDark ? 'Light Mode' : 'Dark Mode'">
-          <svg v-if="isDark" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M17.66 6.34l1.42-1.42"/>
-          </svg>
-          <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
-          </svg>
-        </button>
-
-        <button class="header-action-btn" @click="showSettings = true" title="Settings">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
-          </svg>
-        </button>
-      </div>
-    </header>
-
-    <!-- Main Content -->
+    <!-- Main Content - No Header -->
     <div class="app-content">
       <!-- Media Panel (left side) -->
       <MediaPanel
@@ -119,6 +11,7 @@
 
       <Sidebar
         :collapsed="sidebarCollapsed"
+        :width="sidebarWidth"
         :media-panel-open="showMediaPanel"
         @open-settings="showSettings = true"
         @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
@@ -130,15 +23,18 @@
         @open-agent-dialog="openAgentDialog()"
         @edit-agent="openAgentDialog"
         @select-agent="handleSelectAgent"
+        @resize="handleSidebarResize"
       />
-      <ChatWindow
-        ref="chatWindowRef"
+      <ChatContainer
+        ref="chatContainerRef"
         :show-settings="showSettings"
         :show-agent-settings="showAgentSettings"
+        :sidebar-collapsed="sidebarCollapsed"
         @close-settings="showSettings = false"
         @open-settings="showSettings = true"
         @close-agent-settings="showAgentSettings = false"
         @open-agent-settings="showAgentSettings = true"
+        @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
       />
     </div>
 
@@ -208,7 +104,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAgentsStore } from '@/stores/agents'
 import { useShortcuts } from '@/composables/useShortcuts'
 import Sidebar from '@/components/Sidebar.vue'
-import ChatWindow from '@/components/chat/ChatWindow.vue'
+import ChatContainer from '@/components/ChatContainer.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import WorkspaceDialog from '@/components/WorkspaceDialog.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
@@ -222,7 +118,14 @@ const workspacesStore = useWorkspacesStore()
 const agentsStore = useAgentsStore()
 
 const showSettings = ref(false)
-const chatWindowRef = ref<InstanceType<typeof ChatWindow> | null>(null)
+const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
+
+// Sidebar width (persisted)
+const sidebarWidth = ref(parseInt(localStorage.getItem('sidebarWidth') || '300', 10))
+function handleSidebarResize(width: number) {
+  sidebarWidth.value = width
+  localStorage.setItem('sidebarWidth', String(width))
+}
 
 // Workspace and Media Panel state
 const showWorkspaceDialog = ref(false)
@@ -293,74 +196,21 @@ useShortcuts({
     sidebarCollapsed.value = !sidebarCollapsed.value
   },
   onFocusInput: () => {
-    chatWindowRef.value?.focusInput()
+    chatContainerRef.value?.focusInput()
+  },
+  onOpenSettings: () => {
+    showSettings.value = true
   },
 })
 
-// Persist sidebar collapsed state
+// Persist sidebar collapsed state and control traffic lights visibility
 const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
 watch(sidebarCollapsed, (collapsed) => {
   localStorage.setItem('sidebarCollapsed', String(collapsed))
-})
+  // Hide/show traffic lights when sidebar collapses/expands (macOS only)
+  window.electronAPI?.setWindowButtonVisibility?.(!collapsed)
+}, { immediate: true })
 
-// Current session
-const currentSession = computed(() => sessionsStore.currentSession)
-
-// Get the agent for current session (if session was created with an agent)
-const sessionAgent = computed(() => {
-  const agentId = currentSession.value?.agentId
-  if (!agentId) return null
-  return agentsStore.agents.find(a => a.id === agentId) || null
-})
-
-// Message count
-const messageCount = computed(() => chatStore.messages.length)
-
-// Check if current session is a branch
-const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)
-
-// Go back to parent session
-async function goToParentSession() {
-  if (currentSession.value?.parentSessionId) {
-    await sessionsStore.switchSession(currentSession.value.parentSessionId)
-  }
-}
-
-// Title editing state
-const isEditingTitle = ref(false)
-const editingTitleValue = ref('')
-const titleInput = ref<HTMLInputElement | null>(null)
-
-function startEditTitle() {
-  if (!currentSession.value) return
-  editingTitleValue.value = currentSession.value.name || ''
-  isEditingTitle.value = true
-  nextTick(() => {
-    titleInput.value?.focus()
-    titleInput.value?.select()
-  })
-}
-
-async function saveTitle() {
-  if (!currentSession.value || !isEditingTitle.value) return
-  const newName = editingTitleValue.value.trim()
-  if (newName && newName !== currentSession.value.name) {
-    await sessionsStore.renameSession(currentSession.value.id, newName)
-  }
-  isEditingTitle.value = false
-}
-
-const isDark = computed(() => settingsStore.effectiveTheme === 'dark')
-
-function toggleTheme() {
-  const newTheme = isDark.value ? 'light' : 'dark'
-  settingsStore.updateTheme(newTheme)
-}
-
-function cancelEditTitle() {
-  isEditingTitle.value = false
-  editingTitleValue.value = ''
-}
 
 // Search overlay state
 const showSearchOverlay = ref(false)
@@ -434,182 +284,16 @@ watchEffect(() => {
   height: 100%;
   width: 100%;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  background: var(--bg);
 }
 
-/* Unified Header (Safari-Style) */
-.app-header {
-  height: 52px;
-  display: grid;
-  grid-template-columns: minmax(200px, 1fr) auto minmax(200px, 1fr);
-  align-items: center;
-  padding: 0 16px;
-  -webkit-app-region: drag;
-  flex-shrink: 0;
-  position: relative;
-  background: rgba(var(--bg-rgb), 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  z-index: 100;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-left: 80px; /* Offset for traffic lights in macOS */
-  -webkit-app-region: no-drag;
-  min-width: 0;
-  justify-self: start;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  -webkit-app-region: no-drag;
-  justify-self: end;
-  min-width: 0;
-}
-
-.sidebar-toggle-btn,
-.header-action-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.sidebar-toggle-btn:hover,
-.header-action-btn:hover {
-  background: var(--hover);
-  color: var(--text);
-  transform: translateY(-1px);
-}
-
-.sidebar-toggle-btn:active,
-.header-action-btn:active {
-  transform: scale(0.95);
-}
-
-.chat-title-bar {
-  grid-column: 2;
-  width: min(520px, 100%);
-  min-width: 120px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  padding: 0 4px 0 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  cursor: text;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  -webkit-app-region: no-drag;
-  margin: 0 auto;
-}
-
-
-.title-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
-.chat-title-icon {
-  color: var(--muted);
-  opacity: 0.6;
-}
-
-.chat-title-agent-avatar {
-  font-size: 14px;
-  line-height: 1;
-}
-
-.chat-title-agent-img {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  object-fit: cover;
-}
-
-.chat-title-text {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chat-title-input {
-  width: 100%;
-  border: none;
-  background: transparent;
-  font-size: 13px;
-  color: var(--text);
-  outline: none;
-  text-align: center;
-}
-
-.header-meta {
-  display: flex;
-  align-items: center;
-  margin-left: auto;
-  padding-left: 8px;
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.message-count {
-  font-size: 11px;
-  color: var(--muted);
-  opacity: 0.8;
-  white-space: nowrap;
-}
-
-.header-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  -webkit-app-region: no-drag;
-}
-
-.back-to-parent-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: 8px;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.back-to-parent-btn:hover {
-  background: rgba(59, 130, 246, 0.15);
-  transform: translateY(-1px);
-}
-
-/* Main Content */
+/* Main Content - Full height, horizontal layout */
 .app-content {
   flex: 1;
   display: flex;
   min-height: 0;
+  min-width: 0;
 }
 
 /* Search Overlay */
@@ -740,37 +424,6 @@ html[data-theme='light'] .search-overlay {
 
 /* Responsive styles */
 @media (max-width: 768px) {
-  .app-header {
-    padding-left: 100px; /* Space for traffic lights */
-  }
-  
-  .chat-title-bar {
-    width: 200px;
-    max-width: 35%;
-  }
-
-  .chat-title-bar.expanded {
-    left: 50%;
-  }
-}
-
-  .chat-title-text {
-    font-size: 12px;
-  }
-
-  .chat-title-icon {
-    display: none;
-  }
-
-  .message-count {
-    font-size: 11px;
-  }
-
-  .back-to-parent-btn {
-    padding: 4px 8px;
-    font-size: 12px;
-  }
-
   .search-overlay {
     padding-top: 60px;
   }
@@ -783,4 +436,5 @@ html[data-theme='light'] .search-overlay {
   .search-input {
     font-size: 14px;
   }
+}
 </style>

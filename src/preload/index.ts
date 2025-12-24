@@ -347,6 +347,10 @@ const electronAPI = {
 
   getDataPath: () =>
     ipcRenderer.invoke('app:get-data-path'),
+
+  // Window methods
+  setWindowButtonVisibility: (visible: boolean) =>
+    ipcRenderer.invoke('window:set-button-visibility', visible),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

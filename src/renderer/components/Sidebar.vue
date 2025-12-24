@@ -1,8 +1,52 @@
 <template>
-  <aside :class="['sidebar', 'panel', { collapsed }]">
+  <aside
+    :class="['sidebar', { collapsed, resizing: isResizing }]"
+    :style="{ width: collapsed ? '0' : actualWidth + 'px', maxWidth: collapsed ? '0' : actualWidth + 'px' }"
+  >
+    <div class="sidebar-content">
+      <!-- Expanded State (only shown when not collapsed) -->
+      <template v-if="!collapsed">
+      <!-- Sidebar Header: Traffic lights space + Search + New Chat -->
+      <div class="sidebar-header">
+        <div class="traffic-lights-row">
+          <div class="traffic-lights-space"></div>
+          <button
+            class="sidebar-toggle-btn"
+            title="Hide sidebar"
+            @click="$emit('toggleCollapse')"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <line x1="9" y1="3" x2="9" y2="21"/>
+            </svg>
+          </button>
+        </div>
+        <div class="sidebar-actions">
+          <div class="search-wrapper">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input
+              v-model="localSearchQuery"
+              type="text"
+              class="search-input"
+              placeholder="Search..."
+              @keydown.escape="localSearchQuery = ''"
+            />
+          </div>
+          <button
+            class="new-chat-btn"
+            title="New chat"
+            @click="$emit('create-new-chat')"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </button>
+        </div>
+      </div>
 
-    <!-- Expanded State (only shown when not collapsed) -->
-    <template v-if="!collapsed">
       <!-- Agent Grid at top -->
       <AgentGrid
         v-if="agentsStore.pinnedAgents.length > 0 || true"
@@ -178,14 +222,21 @@
 
     </template>
 
-    <!-- Workspace Switcher -->
-    <WorkspaceSwitcher
-      :media-panel-open="mediaPanelOpen"
-      :show-separator="isSessionsOverflowing"
-      @toggle-media-panel="$emit('toggle-media-panel')"
-      @open-create-dialog="$emit('open-workspace-dialog')"
-      @edit-workspace="(workspace) => $emit('edit-workspace', workspace)"
-    />
+      <!-- Workspace Switcher -->
+      <WorkspaceSwitcher
+        :media-panel-open="mediaPanelOpen"
+        :show-separator="isSessionsOverflowing"
+        @toggle-media-panel="$emit('toggle-media-panel')"
+        @open-create-dialog="$emit('open-workspace-dialog')"
+        @edit-workspace="(workspace) => $emit('edit-workspace', workspace)"
+      />
+    </div>
+
+    <!-- Resize Handle -->
+    <div
+      class="resize-handle"
+      @mousedown="startResize"
+    ></div>
   </aside>
 </template>
 
@@ -202,10 +253,12 @@ import type { ChatSession, Workspace, Agent } from '@/types'
 interface Props {
   collapsed?: boolean
   mediaPanelOpen?: boolean
+  width?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
   collapsed: false,
+  width: 300,
 })
 
 // Make collapsed available in template
@@ -219,6 +272,9 @@ const emit = defineEmits<{
   'open-agent-dialog': []
   'edit-agent': [agent: Agent]
   'select-agent': [agent: Agent]
+  'create-new-chat': []
+  'open-search': []
+  'resize': [width: number]
 }>()
 
 const sessionsStore = useSessionsStore()
@@ -229,6 +285,40 @@ const agentsStore = useAgentsStore()
 function handleSelectAgent(agent: Agent) {
   emit('select-agent', agent)
 }
+
+// Sidebar width management
+const actualWidth = computed(() => props.width)
+const isResizing = ref(false)
+const startX = ref(0)
+const startWidth = ref(0)
+
+function startResize(event: MouseEvent) {
+  isResizing.value = true
+  startX.value = event.clientX
+  startWidth.value = props.width
+  document.addEventListener('mousemove', handleResize)
+  document.addEventListener('mouseup', stopResize)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function handleResize(event: MouseEvent) {
+  if (!isResizing.value) return
+  const delta = event.clientX - startX.value
+  const newWidth = Math.min(500, Math.max(200, startWidth.value + delta))
+  emit('resize', newWidth)
+}
+
+function stopResize() {
+  isResizing.value = false
+  document.removeEventListener('mousemove', handleResize)
+  document.removeEventListener('mouseup', stopResize)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
+
+// Local search query for filtering sessions
+const localSearchQuery = ref('')
 
 // Get the agent for a session (if it has one)
 function getSessionAgent(session: ChatSession) {
@@ -452,7 +542,16 @@ function isAncestorCollapsed(session: ChatSession): boolean {
   return false
 }
 
-const filteredSessions = computed(() => sessionsStore.filteredSessions)
+const filteredSessions = computed(() => {
+  const sessions = sessionsStore.filteredSessions
+  if (!localSearchQuery.value.trim()) {
+    return sessions
+  }
+  const query = localSearchQuery.value.toLowerCase()
+  return sessions.filter(s =>
+    (s.name || '').toLowerCase().includes(query)
+  )
+})
 
 
 // Check if a session is a branch
@@ -849,8 +948,8 @@ function handleClearClick() {
 
 
 onMounted(() => {
-  window.addEventListener('resize', handleResize)
-  // Don't call handleResize() on mount - respect saved sidebar state from localStorage
+  window.addEventListener('resize', handleWindowResize)
+  // Don't call handleWindowResize() on mount - respect saved sidebar state from localStorage
   
   // Set up observers to detect DOM and size changes
   if (sessionsListRef.value) {
@@ -877,7 +976,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
+  window.removeEventListener('resize', handleWindowResize)
   // Clean up delete confirmation timer
   if (deleteConfirmTimer) {
     clearTimeout(deleteConfirmTimer)
@@ -894,7 +993,7 @@ onUnmounted(() => {
   }
 })
 
-function handleResize() {
+function handleWindowResize() {
   if (window.innerWidth < 768) {
     if (!props.collapsed) {
       emit('toggleCollapse')
@@ -905,8 +1004,7 @@ function handleResize() {
 
 <style scoped>
 .sidebar {
-  width: 300px;
-  max-width: 300px;
+  position: relative;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -916,8 +1014,157 @@ function handleResize() {
     max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     opacity 0.2s ease;
   overflow: hidden;
-  background: rgba(var(--bg-rgb), 0.5);
-  backdrop-filter: blur(10px);
+  background: var(--bg);
+  padding: 0;
+}
+
+/* Disable transition during resize for smooth dragging */
+.sidebar.resizing {
+  transition: none;
+}
+
+/* Sidebar content panel */
+.sidebar-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Sidebar Header with traffic lights space */
+.sidebar-header {
+  flex-shrink: 0;
+  padding: 0 12px;
+}
+
+.traffic-lights-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  height: 52px;
+  padding-top: 10px; /* Align toggle with traffic lights center */
+  -webkit-app-region: drag;
+}
+
+.traffic-lights-space {
+  width: 70px; /* Space for macOS traffic lights */
+  flex-shrink: 0;
+}
+
+.sidebar-toggle-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+html[data-theme='light'] .sidebar-toggle-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 0px;
+}
+
+.search-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+html[data-theme='light'] .search-wrapper {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.search-wrapper:focus-within {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.search-icon {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+  min-width: 0;
+}
+
+.search-input::placeholder {
+  color: var(--muted);
+}
+
+.new-chat-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--accent);
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.new-chat-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.new-chat-btn:active {
+  transform: scale(0.95);
+}
+
+/* Resize Handle */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s ease;
+  z-index: 10;
+}
+
+.resize-handle:hover {
+  background: var(--accent);
 }
 
 .sidebar.collapsed {
@@ -940,7 +1187,7 @@ function handleResize() {
   overflow-x: hidden;
   min-height: 0;
   min-width: 0;
-  padding: 12px 8px 60px; /* Restored and added bottom padding */
+  padding: 6px 8px 60px; /* Restored and added bottom padding */
   /* Prevent width jump when scrollbar appears/disappears */
   scrollbar-gutter: stable;
   /* Background dashed line separator */
@@ -967,7 +1214,7 @@ function handleResize() {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 12px 10px 4px;
+  padding: 6px 10px 4px;
   font-size: 10px;
   font-weight: 700;
   color: var(--muted);
