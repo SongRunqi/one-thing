@@ -635,7 +635,7 @@ html[data-theme='light'] .settings-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .header-title h2 {
@@ -650,7 +650,7 @@ html[data-theme='light'] .settings-header {
   border: none;
   background: transparent;
   border-radius: 10px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -660,7 +660,7 @@ html[data-theme='light'] .settings-header {
 
 .close-btn:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 /* Tab Navigation */
@@ -686,14 +686,14 @@ html[data-theme='light'] .tabs-nav {
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .tab-btn:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .tab-btn.active {

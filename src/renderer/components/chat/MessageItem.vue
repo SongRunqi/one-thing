@@ -296,7 +296,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { marked } from 'marked'
+import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import type { ChatMessage, ToolCall, AgentVoice } from '@/types'
 import ToolCallGroup from './ToolCallGroup.vue'
@@ -493,35 +493,49 @@ function stopThinkingTimer() {
   }
 }
 
-// Configure marked with highlight.js
-marked.setOptions({
+// Configure markdown-it with highlight.js
+const md = new MarkdownIt({
+  html: true,
   breaks: true,
-  gfm: true,
+  linkify: true,
+  typographer: true,
 })
 
-// Custom renderer for code blocks
-const renderer = new marked.Renderer()
+// Custom fence (code block) renderer
+md.renderer.rules.fence = (tokens, idx) => {
+  const token = tokens[idx]
+  const code = token.content
+  const lang = token.info.trim() || 'text'
 
-renderer.code = ({ text, lang }: { text: string; lang?: string }) => {
-  const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext'
-  const highlighted = hljs.highlight(text, { language }).value
+  let highlighted: string
+  if (lang && hljs.getLanguage(lang)) {
+    try {
+      highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+    } catch (e) {
+      console.error('Highlight error:', e)
+      highlighted = md.utils.escapeHtml(code)
+    }
+  } else {
+    highlighted = md.utils.escapeHtml(code)
+  }
+
   return `<div class="code-block-container">
     <div class="code-block-header">
-      <div class="code-block-lang">${language}</div>
-      <button class="code-block-copy" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.textContent); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 2000)">
+      <div class="code-block-lang">${lang}</div>
+      <button class="code-block-copy" onclick="navigator.clipboard.writeText(decodeURIComponent(this.getAttribute('data-code'))); this.querySelector('span').textContent='Copied!'; setTimeout(() => this.querySelector('span').textContent='Copy', 2000)" data-code="${encodeURIComponent(code)}">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         <span>Copy</span>
       </button>
     </div>
-    <pre><code class="hljs language-${language}">${highlighted}</code></pre>
+    <pre><code class="hljs language-${lang}">${highlighted}</code></pre>
   </div>`
 }
 
-renderer.codespan = ({ text }: { text: string }) => {
-  return `<code class="inline-code">${text}</code>`
+// Custom inline code renderer
+md.renderer.rules.code_inline = (tokens, idx) => {
+  const token = tokens[idx]
+  return `<code class="inline-code">${md.utils.escapeHtml(token.content)}</code>`
 }
-
-marked.use({ renderer })
 
 // Get content to render (either typed content or full content)
 const contentToRender = computed(() => {
@@ -536,7 +550,7 @@ function renderMarkdown(content: string): string {
   if (props.message.role === 'user') {
     return escapeHtml(content).replace(/\n/g, '<br>')
   }
-  return marked.parse(content) as string
+  return md.render(content)
 }
 
 const renderedContent = computed(() => {
@@ -572,7 +586,7 @@ const renderedReasoning = computed(() => {
   // Clean XML tags before parsing markdown
   const cleanedContent = cleanReasoningContent(props.message.reasoning)
 
-  return marked.parse(cleanedContent) as string
+  return md.render(cleanedContent)
 })
 
 // Typewriter effect logic
@@ -1196,7 +1210,7 @@ html[data-theme='light'] .message.user .bubble {
 
 .message.user .content {
   line-height: 1.5;
-  color: var(--text);
+  color: var(--text-user-primary);
 }
 
 .content.typing::after {

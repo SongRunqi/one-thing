@@ -76,7 +76,7 @@ defineEmits<{
 .dialog-message {
   padding: 20px 24px;
   font-size: 14px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin: 0;
 }
 
@@ -114,7 +114,7 @@ defineEmits<{
 .btn.secondary {
   background: var(--panel);
   border: 1px solid var(--border);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .btn.secondary:hover {

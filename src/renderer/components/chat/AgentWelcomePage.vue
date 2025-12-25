@@ -140,13 +140,13 @@ function getImageSrc(value: string): string {
 .agent-name {
   font-size: 28px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   margin: 0 0 8px;
 }
 
 .agent-tagline {
   font-size: 16px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin: 0 0 16px;
   line-height: 1.5;
 }
@@ -170,7 +170,7 @@ function getImageSrc(value: string): string {
 
 .system-prompt-preview {
   font-size: 14px;
-  color: var(--muted);
+  color: var(--text-muted);
   line-height: 1.6;
   margin: 0 0 32px;
   padding: 16px 20px;
@@ -213,7 +213,7 @@ function getImageSrc(value: string): string {
 .btn.secondary {
   background: var(--hover);
   border: 1px solid var(--border);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .btn.secondary:hover {

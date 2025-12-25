@@ -266,7 +266,7 @@ function updateLocalModel(model: string) {
 .section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin: 0 0 8px 0;
@@ -275,7 +275,7 @@ function updateLocalModel(model: string) {
 
 .section-description {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin: 0 0 16px 0;
   line-height: 1.5;
 }
@@ -339,12 +339,12 @@ function updateLocalModel(model: string) {
 .provider-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .provider-desc {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .provider-check {
@@ -373,13 +373,13 @@ function updateLocalModel(model: string) {
   gap: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
 .label-hint {
   font-weight: 400;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -390,7 +390,7 @@ function updateLocalModel(model: string) {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 13px;
   transition: all 0.15s ease;
 }
@@ -403,7 +403,7 @@ function updateLocalModel(model: string) {
 }
 
 .form-input::placeholder {
-  color: var(--muted);
+  color: var(--text-muted);
   opacity: 0.7;
 }
 
@@ -419,7 +419,7 @@ function updateLocalModel(model: string) {
 
 .form-hint {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin: 6px 0 0 0;
   line-height: 1.4;
 }
@@ -434,7 +434,7 @@ function updateLocalModel(model: string) {
   border: 1px solid rgba(var(--accent-rgb), 0.2);
   border-radius: 10px;
   font-size: 13px;
-  color: var(--text);
+  color: var(--text-primary);
   line-height: 1.5;
   margin-bottom: 16px;
 }
@@ -460,7 +460,7 @@ function updateLocalModel(model: string) {
   align-items: center;
   gap: 8px;
   padding: 10px 0;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 13px;
   cursor: pointer;
   transition: color 0.15s ease;
@@ -468,7 +468,7 @@ function updateLocalModel(model: string) {
 }
 
 .advanced-toggle:hover {
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .advanced-toggle svg {

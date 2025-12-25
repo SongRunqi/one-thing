@@ -54,31 +54,6 @@
       </div>
     </section>
 
-    <!-- Base Theme -->
-    <section class="settings-section">
-      <h3 class="section-title">Base Theme</h3>
-
-      <div class="base-theme-grid">
-        <button
-          v-for="theme in baseThemes"
-          :key="theme.id"
-          :class="['base-theme-btn', { active: currentBaseTheme === theme.id }]"
-          @click="updateBaseTheme(theme.id)"
-          :title="theme.name"
-        >
-          <div class="base-theme-preview" :style="{ '--preview-bg': theme.darkBg, '--preview-panel': theme.darkPanel, '--preview-accent': theme.accent }">
-            <div class="preview-sidebar-mini"></div>
-            <div class="preview-content-mini">
-              <div class="preview-line-mini"></div>
-              <div class="preview-line-mini accent"></div>
-            </div>
-          </div>
-          <span class="base-theme-name">{{ theme.name }}</span>
-          <span class="base-theme-desc">{{ theme.desc }}</span>
-        </button>
-      </div>
-    </section>
-
     <!-- Accent Color -->
     <section class="settings-section">
       <h3 class="section-title">Accent Color</h3>
@@ -88,11 +63,14 @@
           v-for="color in colorThemes"
           :key="color.id"
           :class="['color-theme-btn', { active: currentColorTheme === color.id }]"
-          :style="{ '--theme-color': color.value, '--theme-color-rgb': color.rgb }"
+          :style="{ '--theme-main': color.main, '--theme-sub': color.sub }"
           @click="updateColorTheme(color.id)"
           :title="color.name"
         >
-          <span class="color-dot"></span>
+          <div class="color-dots">
+            <span class="color-dot main" title="Main (300)"></span>
+            <span class="color-dot sub" title="Sub (100)"></span>
+          </div>
           <span class="color-name">{{ color.name }}</span>
         </button>
       </div>
@@ -128,7 +106,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AppSettings, ColorTheme, BaseTheme } from '@/types'
+import type { AppSettings, ColorTheme } from '@/types'
 
 const props = defineProps<{
   settings: AppSettings
@@ -138,39 +116,16 @@ const emit = defineEmits<{
   'update:settings': [settings: AppSettings]
 }>()
 
-// Base theme definitions
-const baseThemes = [
-  // Original themes
-  { id: 'obsidian' as BaseTheme, name: 'Obsidian', desc: 'Neutral gray', darkBg: '#111214', darkPanel: '#1b1c1f', accent: '#357aff' },
-  { id: 'ocean' as BaseTheme, name: 'Ocean', desc: 'Deep blue', darkBg: '#0d1117', darkPanel: '#161b22', accent: '#58a6ff' },
-  { id: 'forest' as BaseTheme, name: 'Forest', desc: 'Natural green', darkBg: '#0f1512', darkPanel: '#171f1a', accent: '#34d399' },
-  { id: 'rose' as BaseTheme, name: 'Rose', desc: 'Elegant pink', darkBg: '#15111a', darkPanel: '#201a26', accent: '#ec4899' },
-  { id: 'ember' as BaseTheme, name: 'Ember', desc: 'Warm earth', darkBg: '#161412', darkPanel: '#211e1a', accent: '#f97316' },
-  // Classic themes
-  { id: 'nord' as BaseTheme, name: 'Nord', desc: 'Arctic blue', darkBg: '#2e3440', darkPanel: '#434c5e', accent: '#88c0d0' },
-  { id: 'dracula' as BaseTheme, name: 'Dracula', desc: 'Vampire purple', darkBg: '#21222c', darkPanel: '#2d303d', accent: '#bd93f9' },
-  { id: 'tokyo' as BaseTheme, name: 'Tokyo Night', desc: 'City night', darkBg: '#1a1b26', darkPanel: '#24283b', accent: '#7aa2f7' },
-  { id: 'catppuccin' as BaseTheme, name: 'Catppuccin', desc: 'Soothing pastel', darkBg: '#1e1e2e', darkPanel: '#28283d', accent: '#cba6f7' },
-  { id: 'gruvbox' as BaseTheme, name: 'Gruvbox', desc: 'Retro warm', darkBg: '#1d2021', darkPanel: '#32302f', accent: '#fe8019' },
-  { id: 'onedark' as BaseTheme, name: 'One Dark', desc: 'Atom editor', darkBg: '#21252b', darkPanel: '#2c323c', accent: '#61afef' },
-  { id: 'github' as BaseTheme, name: 'GitHub', desc: 'GitHub Dark', darkBg: '#0d1117', darkPanel: '#21262d', accent: '#58a6ff' },
-  { id: 'rosepine' as BaseTheme, name: 'Rosé Pine', desc: 'Elegant rose', darkBg: '#191724', darkPanel: '#26233a', accent: '#ebbcba' },
-]
-
-// Color theme definitions
+// Color theme definitions with Flexoki 300 (main) and 100 (sub) shades
 const colorThemes = [
-  { id: 'blue' as ColorTheme, name: 'Blue', value: '#357aff', rgb: '53, 122, 255' },
-  { id: 'purple' as ColorTheme, name: 'Purple', value: '#8b5cf6', rgb: '139, 92, 246' },
-  { id: 'green' as ColorTheme, name: 'Green', value: '#10b981', rgb: '16, 185, 129' },
-  { id: 'orange' as ColorTheme, name: 'Orange', value: '#f97316', rgb: '249, 115, 22' },
-  { id: 'pink' as ColorTheme, name: 'Pink', value: '#ec4899', rgb: '236, 72, 153' },
-  { id: 'cyan' as ColorTheme, name: 'Cyan', value: '#06b6d4', rgb: '6, 182, 212' },
-  { id: 'red' as ColorTheme, name: 'Red', value: '#ef4444', rgb: '239, 68, 68' },
+  { id: 'blue' as ColorTheme, name: 'Blue', main: '#4385BE', sub: '#C1D9EC' },
+  { id: 'purple' as ColorTheme, name: 'Purple', main: '#8B7EC8', sub: '#DCD3EC' },
+  { id: 'green' as ColorTheme, name: 'Green', main: '#879A39', sub: '#DDE6C1' },
+  { id: 'orange' as ColorTheme, name: 'Orange', main: '#EF9351', sub: '#FADBC5' },
+  { id: 'pink' as ColorTheme, name: 'Pink', main: '#CE5D97', sub: '#F2D0E1' },
+  { id: 'cyan' as ColorTheme, name: 'Cyan', main: '#3AA99F', sub: '#C1E5E3' },
+  { id: 'red' as ColorTheme, name: 'Red', main: '#E67F75', sub: '#F7D6D1' },
 ]
-
-const currentBaseTheme = computed(() => {
-  return props.settings.general?.baseTheme || 'obsidian'
-})
 
 const currentColorTheme = computed(() => {
   return props.settings.general?.colorTheme || 'blue'
@@ -187,24 +142,10 @@ function updateColorTheme(colorTheme: ColorTheme) {
   })
 }
 
-function updateBaseTheme(baseTheme: BaseTheme) {
-  emit('update:settings', {
-    ...props.settings,
-    general: { ...props.settings.general, baseTheme }
-  })
-}
-
 function updateAnimationSpeed(speed: number) {
   emit('update:settings', {
     ...props.settings,
     general: { ...props.settings.general, animationSpeed: speed }
-  })
-}
-
-function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
-  emit('update:settings', {
-    ...props.settings,
-    general: { ...props.settings.general, sendShortcut: shortcut }
   })
 }
 </script>
@@ -230,7 +171,7 @@ function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
 .section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin: 0 0 12px 0;
@@ -254,7 +195,7 @@ function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
   gap: 8px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
@@ -286,7 +227,7 @@ function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
 
 .theme-card.active {
   border-color: var(--accent);
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .theme-card span {
@@ -370,88 +311,10 @@ function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
   width: 60%;
 }
 
-/* Base Theme Grid */
-.base-theme-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 12px;
-}
-
-.base-theme-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 8px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.base-theme-btn:hover {
-  border-color: var(--accent);
-  background: var(--hover);
-}
-
-.base-theme-btn.active {
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
-}
-
-.base-theme-preview {
-  width: 100%;
-  height: 48px;
-  border-radius: 8px;
-  background: var(--preview-bg);
-  display: flex;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.preview-sidebar-mini {
-  width: 28%;
-  background: var(--preview-panel);
-}
-
-.preview-content-mini {
-  flex: 1;
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 5px;
-}
-
-.preview-line-mini {
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.15);
-  width: 80%;
-}
-
-.preview-line-mini.accent {
-  width: 50%;
-  background: var(--preview-accent);
-}
-
-.base-theme-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.base-theme-desc {
-  font-size: 10px;
-  color: var(--muted);
-  text-align: center;
-}
-
 /* Color Theme Grid */
 .color-theme-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: 10px;
 }
 
@@ -459,8 +322,8 @@ function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 12px 8px;
+  gap: 10px;
+  padding: 14px 10px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: transparent;
@@ -469,36 +332,50 @@ function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
 }
 
 .color-theme-btn:hover {
-  border-color: rgba(var(--theme-color-rgb), 0.4);
-  background: rgba(var(--theme-color-rgb), 0.05);
+  border-color: var(--theme-main);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .color-theme-btn.active {
-  border-color: var(--theme-color);
-  background: rgba(var(--theme-color-rgb), 0.1);
+  border-color: var(--theme-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.color-dots {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
 .color-dot {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background: var(--theme-color);
-  box-shadow: 0 2px 8px rgba(var(--theme-color-rgb), 0.3);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.color-theme-btn:hover .color-dot {
-  transform: scale(1.1);
+.color-dot.main {
+  background: var(--theme-main);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
-.color-theme-btn.active .color-dot {
-  box-shadow: 0 0 0 3px rgba(var(--theme-color-rgb), 0.2), 0 2px 8px rgba(var(--theme-color-rgb), 0.4);
+.color-dot.sub {
+  background: var(--theme-sub);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.color-theme-btn:hover .color-dot {
+  transform: scale(1.08);
+}
+
+.color-theme-btn.active .color-dot.main {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .color-name {
   font-size: 12px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 /* Slider */
@@ -526,7 +403,7 @@ function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
   justify-content: space-between;
   margin-top: 8px;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* Radio Group */
@@ -567,45 +444,28 @@ function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
 .radio-label {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   margin-bottom: 2px;
 }
 
 .radio-desc {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* Responsive */
 @media (max-width: 480px) {
-  .theme-cards {
-    gap: 8px;
+  .color-theme-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
   }
 
-  .theme-card {
-    padding: 8px;
+  .color-theme-btn {
+    padding: 10px 8px;
   }
 
-  .theme-card span {
-    font-size: 11px;
-  }
-
-  .theme-preview {
-    height: 50px;
-    border-radius: 6px;
-  }
-
-  .radio-item {
-    padding: 10px 12px;
-    border-radius: 10px;
-  }
-
-  .radio-label {
-    font-size: 13px;
-  }
-
-  .radio-desc {
-    font-size: 11px;
+  .color-dot {
+    width: 20px;
+    height: 20px;
   }
 }
 

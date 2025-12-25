@@ -194,7 +194,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 9px 16px; /* Slightly reduced height */
+  padding: 6px 16px;
   background: transparent;
 }
 
@@ -322,6 +322,11 @@ html[data-theme='light'] .workspace-switcher::before {
   color: var(--accent);
   filter: none;
   opacity: 1;
+}
+
+.workspace-icon.active:hover {
+  background: rgba(128, 128, 128, 0.15);
+  transform: translateY(-1px) scale(1.1);
 }
 
 .workspace-emoji,

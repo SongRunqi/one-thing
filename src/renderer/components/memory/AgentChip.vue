@@ -103,7 +103,7 @@ defineEmits<{
 .agent-name {
   font-size: 11px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   max-width: 60px;
   overflow: hidden;
   text-overflow: ellipsis;

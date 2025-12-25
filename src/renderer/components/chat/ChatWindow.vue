@@ -382,6 +382,19 @@ defineExpose({
   position: relative;
   border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme='light'] .chat {
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 /* Chat Header / Title Bar */
@@ -434,7 +447,7 @@ defineExpose({
 .chat-header-title {
   font-size: 14px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--accent-main);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

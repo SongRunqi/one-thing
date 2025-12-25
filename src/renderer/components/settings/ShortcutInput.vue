@@ -142,12 +142,12 @@ function clearShortcut() {
 }
 
 .shortcut-input.empty .shortcut-display {
-  color: var(--muted);
+  color: var(--text-muted);
   font-style: italic;
 }
 
 .shortcut-display {
-  color: var(--text);
+  color: var(--text-primary);
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-weight: 500;
 }
@@ -169,14 +169,14 @@ function clearShortcut() {
   padding: 2px;
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   border-radius: 4px;
   transition: all 0.15s ease;
 }
 
 .clear-btn:hover {
-  color: var(--text);
+  color: var(--text-primary);
   background: rgba(255, 255, 255, 0.1);
 }
 

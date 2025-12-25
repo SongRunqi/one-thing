@@ -190,7 +190,7 @@ export interface ElectronAPI {
   onSkillActivated: (callback: (data: { sessionId: string; messageId: string; skillName: string }) => void) => () => void
   onStepAdded: (callback: (data: { sessionId: string; messageId: string; step: any }) => void) => () => void
   onStepUpdated: (callback: (data: { sessionId: string; messageId: string; stepId: string; updates: any }) => void) => () => void
-  onImageGenerated: (callback: (data: { id: string; url: string; prompt: string; revisedPrompt?: string; model: string; sessionId: string; messageId: string; createdAt: number }) => void) => () => void
+  onImageGenerated: (callback: (data: { id: string; url?: string; base64?: string; prompt: string; revisedPrompt?: string; model: string; sessionId: string; messageId: string; createdAt: number }) => void) => () => void
   getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
   generateTitle: (message: string) => Promise<GenerateTitleResponse>
   editAndResend: (sessionId: string, messageId: string, newContent: string) => Promise<EditAndResendResponse>
@@ -202,6 +202,7 @@ export interface ElectronAPI {
   renameSession: (sessionId: string, newName: string) => Promise<RenameSessionResponse>
   createBranch: (parentSessionId: string, branchFromMessageId: string) => Promise<CreateBranchResponse>
   updateSessionPin: (sessionId: string, isPinned: boolean) => Promise<UpdateSessionPinResponse>
+  updateSessionModel: (sessionId: string, provider: string, model: string) => Promise<{ success: boolean; error?: string }>
   getSettings: () => Promise<GetSettingsResponse>
   saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>
   fetchModels: (
@@ -285,6 +286,12 @@ export interface ElectronAPI {
   // Shell methods
   openPath: (filePath: string) => Promise<string>
   getDataPath: () => Promise<string>
+
+  // Media methods
+  saveImage: (data: { url?: string; base64?: string; prompt: string; revisedPrompt?: string; model: string; sessionId: string; messageId: string }) => Promise<{ id: string; type: 'image'; filePath: string; prompt: string; revisedPrompt?: string; model: string; createdAt: number; sessionId: string; messageId: string }>
+  loadAllMedia: () => Promise<{ id: string; type: 'image'; filePath: string; prompt: string; revisedPrompt?: string; model: string; createdAt: number; sessionId: string; messageId: string }[]>
+  deleteMedia: (id: string) => Promise<boolean>
+  clearAllMedia: () => Promise<void>
 }
 
 declare global {

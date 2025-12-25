@@ -7,6 +7,7 @@ import {
   GetCachedModelsRequest,
   GetCachedModelsResponse,
   ModelInfo,
+  ModelType,
 } from '../../shared/ipc.js'
 import { getCachedModels, setCachedModels } from '../store.js'
 
@@ -56,20 +57,13 @@ const OPENROUTER_FALLBACK_MODELS: ModelInfo[] = [
   { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', description: 'Meta Llama 3.1 70B Instruct' },
 ]
 
-// Predefined DALL-E image generation models
-const DALLE_MODELS: ModelInfo[] = [
-  { id: 'dall-e-3', name: 'DALL-E 3', description: 'Latest image generation model, best quality' },
-  { id: 'dall-e-2', name: 'DALL-E 2', description: 'Fast image generation model' },
-]
-
-// Predefined OpenAI models as fallback (includes GPT and DALL-E)
+// Predefined OpenAI models as fallback (chat models only)
 const OPENAI_FALLBACK_MODELS: ModelInfo[] = [
   { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable GPT-4 model' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable' },
   { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'GPT-4 Turbo with vision' },
   { id: 'gpt-4', name: 'GPT-4', description: 'Most capable GPT-4' },
   { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and cost-effective' },
-  ...DALLE_MODELS,
 ]
 
 async function fetchOpenAIModels(apiKey: string, baseUrl: string): Promise<ModelInfo[]> {
@@ -84,17 +78,40 @@ async function fetchOpenAIModels(apiKey: string, baseUrl: string): Promise<Model
   }
 
   const data = await response.json()
-  const chatModels = (data.data || [])
-    .filter((m: any) => m.id.includes('gpt') || m.id.includes('text'))
-    .map((m: any) => ({
-      id: m.id,
-      name: m.id,
-      createdAt: m.created ? new Date(m.created * 1000).toISOString() : undefined,
-    }))
-    .sort((a: ModelInfo, b: ModelInfo) => a.id.localeCompare(b.id))
 
-  // Add DALL-E image models at the end
-  return [...chatModels, ...DALLE_MODELS]
+  // Detect model type based on ID
+  function detectModelType(id: string): ModelType {
+    const lowerId = id.toLowerCase()
+    if (lowerId.includes('dall-e') || lowerId.includes('gpt-image') || lowerId.includes('chatgpt-image')) return 'image'
+    if (lowerId.includes('embedding') || lowerId.includes('text-embedding')) return 'embedding'
+    if (lowerId.includes('whisper')) return 'audio'
+    if (lowerId.includes('tts')) return 'tts'
+    if (lowerId.includes('gpt') || lowerId.includes('o1') || lowerId.includes('o3')) return 'chat'
+    return 'other'
+  }
+
+  // Filter for relevant models (chat + image)
+  const relevantTypes: ModelType[] = ['chat', 'image']
+  const models = (data.data || [])
+    .map((m: any) => {
+      const type = detectModelType(m.id)
+      return {
+        id: m.id,
+        name: m.id,
+        type,
+        createdAt: m.created ? new Date(m.created * 1000).toISOString() : undefined,
+      }
+    })
+    .filter((m: ModelInfo) => relevantTypes.includes(m.type!))
+    .sort((a: ModelInfo, b: ModelInfo) => {
+      // Sort by type first (chat before image), then by id
+      if (a.type !== b.type) {
+        return a.type === 'chat' ? -1 : 1
+      }
+      return a.id.localeCompare(b.id)
+    })
+
+  return models
 }
 
 async function fetchClaudeModels(apiKey: string, baseUrl: string): Promise<ModelInfo[]> {

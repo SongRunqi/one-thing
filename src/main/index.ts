@@ -1,12 +1,13 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, protocol, net } from 'electron'
 import path from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 import { createWindow } from './window.js'
 import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills } from './ipc/handlers.js'
 import { initializeStores } from './store.js'
 import { initializeToolRegistry } from './tools/index.js'
 import { initializeStorage, closeStorage } from './storage/index.js'
 import { startMemoryScheduler, stopMemoryScheduler } from './services/memory-scheduler.js'
+import { getMediaImagesDir } from './stores/paths.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -21,6 +22,13 @@ if (process.env.NODE_ENV === 'development') {
 let mainWindow: BrowserWindow | null = null
 
 app.on('ready', async () => {
+  // Register custom protocol for media files
+  protocol.handle('media', (request) => {
+    const filename = decodeURIComponent(request.url.slice('media://'.length))
+    const filePath = path.join(getMediaImagesDir(), filename)
+    return net.fetch(pathToFileURL(filePath).toString())
+  })
+
   // Initialize stores and migrate data if needed
   initializeStores()
 

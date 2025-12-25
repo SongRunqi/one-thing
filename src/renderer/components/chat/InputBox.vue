@@ -764,8 +764,8 @@ function handleSkillPickerClose() {
 }
 
 html[data-theme='light'] .composer {
-  background: rgba(255, 255, 255, 0.7);
-  border-color: rgba(0, 0, 0, 0.06);
+  background: rgba(242, 240, 229, 0.85);
+  border-color: rgba(0, 0, 0, 0.08);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
 }
 
@@ -785,7 +785,7 @@ html[data-theme='light'] .composer.focused {
   border: none;
   outline: none;
   background: transparent;
-  color: var(--text);
+  color: var(--text-input);
   font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.6;
@@ -851,7 +851,7 @@ html[data-theme='light'] .caret-main {
 }
 
 .composer-input::placeholder {
-  color: var(--muted);
+  color: var(--text-input-placeholder);
   user-select: none;
   -webkit-user-select: none;
 }

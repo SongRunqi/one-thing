@@ -1,7 +1,7 @@
 <template>
   <aside
-    :class="['sidebar', { collapsed, resizing: isResizing }]"
-    :style="{ width: collapsed ? '0' : actualWidth + 'px', maxWidth: collapsed ? '0' : actualWidth + 'px' }"
+    :class="['sidebar', { collapsed, floating, 'floating-closing': floatingClosing, resizing: isResizing }]"
+    :style="sidebarStyle"
   >
     <div class="sidebar-content">
       <!-- Expanded State (only shown when not collapsed) -->
@@ -49,7 +49,7 @@
 
       <!-- Agent Grid at top -->
       <AgentGrid
-        v-if="agentsStore.pinnedAgents.length > 0 || true"
+        v-if="agentsStore.pinnedAgents.length > 0"
         :selected-agent-id="null"
         @select-agent="handleSelectAgent"
         @edit-agent="(agent) => $emit('edit-agent', agent)"
@@ -252,17 +252,44 @@ import type { ChatSession, Workspace, Agent } from '@/types'
 
 interface Props {
   collapsed?: boolean
+  floating?: boolean
+  floatingClosing?: boolean
+  noTransition?: boolean
   mediaPanelOpen?: boolean
   width?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
   collapsed: false,
+  floating: false,
+  floatingClosing: false,
+  noTransition: false,
   width: 300,
 })
 
-// Make collapsed available in template
+// Make collapsed and floating available in template
 const collapsed = computed(() => props.collapsed)
+const floating = computed(() => props.floating)
+const floatingClosing = computed(() => props.floatingClosing)
+
+// Computed style for sidebar - floating mode keeps 0 width in layout (overlay handles display)
+const sidebarStyle = computed(() => {
+  // When floating, force width to 0 (the CSS .floating class handles the visual width)
+  if (floating.value || floatingClosing.value) {
+    return {
+      width: '0',
+      maxWidth: '0',
+      transition: 'none'
+    }
+  }
+
+  // Normal mode
+  return {
+    width: collapsed.value ? '0' : props.width + 'px',
+    maxWidth: collapsed.value ? '0' : props.width + 'px',
+    transition: props.noTransition ? 'none' : undefined
+  }
+})
 
 const emit = defineEmits<{
   toggleCollapse: []
@@ -1023,14 +1050,75 @@ function handleWindowResize() {
   transition: none;
 }
 
+/* Floating sidebar mode */
+.sidebar.floating {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 300px !important;
+  max-width: 300px !important;
+  height: 100%;
+  z-index: 500; /* Higher than InputBox (100) */
+  background: transparent;
+  animation: slideInLeft 0.2s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  overflow: visible;
+  /* Disable width transition - use animation instead */
+  transition: none;
+}
+
+/* Floating mode only needs height adjustment since base styles already have margin */
+.sidebar.floating .sidebar-content {
+  height: calc(100% - 12px);
+  margin: 6px;
+  padding-bottom: 0;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.sidebar.floating .traffic-lights-row {
+  margin-top: 3px; /* Compensate for smaller top margin to keep button aligned */
+}
+
+html[data-theme='light'] .sidebar.floating .sidebar-content {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+
+.sidebar.floating.floating-closing {
+  animation: slideOutLeft 0.2s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutLeft {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+}
+
 /* Sidebar content panel */
 .sidebar-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  margin-top: 12px;
   background: var(--bg);
-  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -1045,7 +1133,7 @@ function handleWindowResize() {
   align-items: flex-start;
   gap: 8px;
   height: 52px;
-  padding-top: 10px; /* Align toggle with traffic lights center */
+  margin-top: -3px; /* Pull up to align with traffic lights */
   -webkit-app-region: drag;
 }
 
@@ -1404,12 +1492,12 @@ html[data-theme='light'] .session-name {
 }
 
 .session-item:hover .session-name {
-  color: var(--text);
+  color: var(--accent-sub);
 }
 
 .session-item.active .session-name {
   font-weight: 500;
-  color: var(--text);
+  color: var(--accent-main);
 }
 
 .session-name-input {
@@ -1566,7 +1654,7 @@ html[data-theme='light'] .action-btn:hover {
 
 /* Footer */
 .sidebar-footer {
-  padding: 16px 12px 20px;
+  padding: 0 6px;
   display: flex;
   justify-content: center;
   pointer-events: none; /* Allow events through to background if necessary, but pill will override */

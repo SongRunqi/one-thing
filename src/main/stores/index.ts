@@ -25,6 +25,7 @@ export {
   updateMessageStep,
   updateSessionPin,
   updateSessionAgent,
+  updateSessionModel,
   deleteSessionsByWorkspace,
 } from './sessions.js'
 

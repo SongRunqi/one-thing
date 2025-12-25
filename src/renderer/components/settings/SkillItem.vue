@@ -122,13 +122,13 @@ defineEmits<{
 .skill-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   font-family: 'SF Mono', 'Monaco', monospace;
 }
 
 .skill-description {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 4px;
   line-height: 1.4;
   display: -webkit-box;
@@ -146,7 +146,7 @@ defineEmits<{
 
 .expand-chevron {
   transition: transform 0.2s ease;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .skill-item.expanded .expand-chevron {
@@ -178,12 +178,12 @@ defineEmits<{
 }
 
 .meta-label {
-  color: var(--muted);
+  color: var(--text-muted);
   font-weight: 500;
 }
 
 .meta-value {
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .meta-value.description-full {
@@ -207,7 +207,7 @@ defineEmits<{
   margin: 8px 0 0 0;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text);
+  color: var(--text-primary);
   max-height: 200px;
   overflow-y: auto;
 }
@@ -270,7 +270,7 @@ defineEmits<{
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -280,7 +280,7 @@ defineEmits<{
 
 .icon-btn:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .icon-btn.danger:hover {

@@ -1,15 +1,5 @@
 <template>
   <div class="memory-content">
-    <!-- Header -->
-    <div class="memory-header">
-      <h2 class="memory-title">Memory</h2>
-      <button class="open-folder-btn" @click="openDataFolder" title="Open data folder">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-        </svg>
-      </button>
-    </div>
-
     <!-- Tabs -->
     <div class="memory-tabs">
       <button
@@ -32,6 +22,11 @@
           <path d="M12 2a8 8 0 0 0-8 8c0 2 .8 3.7 2 5l6 7 6-7a7.2 7.2 0 0 0 2-5 8 8 0 0 0-8-8z"/>
         </svg>
         Agent Memory
+      </button>
+      <button class="open-folder-btn" @click="openDataFolder" title="Open data folder">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
       </button>
     </div>
 
@@ -468,20 +463,12 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-/* Header */
-.memory-header {
+/* Tabs */
+.memory-tabs {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-.memory-title {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0;
-  color: var(--text);
+  gap: 4px;
+  padding: 12px 20px;
 }
 
 .open-folder-btn {
@@ -490,25 +477,18 @@ onMounted(async () => {
   justify-content: center;
   width: 32px;
   height: 32px;
+  margin-left: auto;
   border: none;
   border-radius: 8px;
-  background: var(--hover);
-  color: var(--muted);
+  background: transparent;
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .open-folder-btn:hover {
-  background: var(--active);
-  color: var(--text);
-}
-
-/* Tabs */
-.memory-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--border);
+  background: var(--hover);
+  color: var(--text-primary);
 }
 
 .tab-btn {
@@ -519,7 +499,7 @@ onMounted(async () => {
   border: none;
   border-radius: 10px;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -528,12 +508,12 @@ onMounted(async () => {
 
 .tab-btn:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .tab-btn.active {
-  background: var(--accent);
-  color: white;
+  background: var(--accent-main);
+  color: var(--bg-app);
 }
 
 /* Tab Content */
@@ -561,14 +541,14 @@ onMounted(async () => {
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .search-input {
   width: 100%;
   padding: 10px 12px 10px 36px;
   font-size: 13px;
-  color: var(--text);
+  color: var(--text-primary);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -581,7 +561,7 @@ onMounted(async () => {
 }
 
 .search-input::placeholder {
-  color: var(--muted);
+  color: var(--text-faint);
 }
 
 .add-btn {
@@ -617,7 +597,7 @@ onMounted(async () => {
   justify-content: center;
   padding: 60px 20px;
   gap: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .loading-spinner {
@@ -648,7 +628,7 @@ onMounted(async () => {
 }
 
 .empty-icon {
-  color: var(--muted);
+  color: var(--text-muted);
   opacity: 0.4;
   margin-bottom: 16px;
 }
@@ -656,13 +636,13 @@ onMounted(async () => {
 .empty-title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   margin: 0 0 6px;
 }
 
 .empty-desc {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text-secondary);
   margin: 0 0 20px;
   max-width: 280px;
 }
@@ -716,7 +696,7 @@ onMounted(async () => {
 }
 
 .chevron {
-  color: var(--muted);
+  color: var(--text-muted);
   transition: transform 0.2s ease;
 }
 
@@ -732,7 +712,7 @@ onMounted(async () => {
   flex: 1;
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .category-count {
@@ -740,7 +720,7 @@ onMounted(async () => {
   padding: 2px 8px;
   border-radius: 10px;
   background: var(--hover);
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .category-content {
@@ -774,7 +754,7 @@ onMounted(async () => {
   display: block;
   font-size: 12px;
   font-weight: 500;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-bottom: 10px;
 }
 
@@ -809,7 +789,7 @@ onMounted(async () => {
 .section-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .mood-badge {
@@ -845,7 +825,7 @@ onMounted(async () => {
 .mood-notes {
   font-size: 13px;
   font-style: italic;
-  color: var(--muted);
+  color: var(--text-secondary);
   margin: 0 0 16px;
   padding: 10px 14px;
   background: var(--hover);
@@ -877,13 +857,13 @@ onMounted(async () => {
 
 .stat-label {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .stat-value {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .stat-bar {

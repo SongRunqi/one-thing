@@ -243,7 +243,12 @@
             </svg>
           </div>
           <div class="model-info-content">
-            <div class="model-name">{{ model.name || model.id }}</div>
+            <div class="model-name">
+              {{ model.name || model.id }}
+              <span v-if="model.type && model.type !== 'chat'" class="model-type-badge" :class="model.type">
+                {{ model.type }}
+              </span>
+            </div>
             <div v-if="model.description" class="model-desc">{{ model.description }}</div>
           </div>
           <div v-if="settings.ai.providers[viewingProvider]?.model === model.id" class="model-active-badge">
@@ -675,7 +680,7 @@ onUnmounted(() => {
 .section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin: 0 0 12px 0;
@@ -721,7 +726,7 @@ onUnmounted(() => {
 
 .model-info {
   font-size: 10px;
-  color: var(--muted);
+  color: var(--text-muted);
   font-weight: 400;
 }
 
@@ -734,14 +739,14 @@ onUnmounted(() => {
   border-radius: 6px;
   background: transparent;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .refresh-btn:hover:not(:disabled) {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .refresh-btn:disabled {
@@ -775,7 +780,7 @@ onUnmounted(() => {
 
 .section-hint {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin: 0 0 12px 0;
 }
 
@@ -793,13 +798,13 @@ onUnmounted(() => {
   gap: 8px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
 .label-hint {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
   font-weight: 400;
 }
 
@@ -811,7 +816,7 @@ onUnmounted(() => {
 
 .form-hint {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 4px;
 }
 
@@ -821,7 +826,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 13px;
   transition: all 0.15s ease;
 }
@@ -833,7 +838,7 @@ onUnmounted(() => {
 }
 
 .form-input::placeholder {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .input-wrapper {
@@ -854,7 +859,7 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -864,7 +869,7 @@ onUnmounted(() => {
 
 .input-action:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 /* Custom Select */
@@ -881,7 +886,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -915,7 +920,7 @@ onUnmounted(() => {
 }
 
 .select-chevron {
-  color: var(--muted);
+  color: var(--text-muted);
   transition: transform 0.2s ease;
 }
 
@@ -975,12 +980,12 @@ onUnmounted(() => {
 .option-name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .option-desc {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1031,7 +1036,7 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1137,7 +1142,7 @@ onUnmounted(() => {
 
 .toggle-text {
   font-size: 13px;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 /* Model Search */
@@ -1151,7 +1156,7 @@ onUnmounted(() => {
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .search-input {
@@ -1160,7 +1165,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 13px;
   transition: all 0.15s ease;
 }
@@ -1171,7 +1176,7 @@ onUnmounted(() => {
 }
 
 .search-input::placeholder {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .search-clear {
@@ -1184,7 +1189,7 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1194,7 +1199,7 @@ onUnmounted(() => {
 
 .search-clear:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .no-results {
@@ -1203,7 +1208,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 24px;
-  color: var(--muted);
+  color: var(--text-muted);
   text-align: center;
 }
 
@@ -1275,13 +1280,50 @@ onUnmounted(() => {
 .model-name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   word-break: break-word;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.model-type-badge {
+  font-size: 9px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.model-type-badge.image {
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+}
+
+.model-type-badge.embedding {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.model-type-badge.audio {
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+}
+
+.model-type-badge.tts {
+  background: rgba(236, 72, 153, 0.15);
+  color: #ec4899;
+}
+
+.model-type-badge.other {
+  background: rgba(107, 114, 128, 0.15);
+  color: #6b7280;
 }
 
 .model-desc {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 2px;
 }
 
@@ -1350,7 +1392,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 12px;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .model-chip.active {
@@ -1364,7 +1406,7 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1402,7 +1444,7 @@ onUnmounted(() => {
   justify-content: space-between;
   margin-top: 8px;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* Responsive */

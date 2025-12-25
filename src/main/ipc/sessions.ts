@@ -48,6 +48,15 @@ export function registerSessionHandlers() {
     return { success: true }
   })
 
+  // 更新会话模型
+  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_MODEL, async (_event, { sessionId, provider, model }) => {
+    const success = store.updateSessionModel(sessionId, provider, model)
+    if (!success) {
+      return { success: false, error: 'Session not found' }
+    }
+    return { success: true }
+  })
+
   // 创建分支会话
   ipcMain.handle(
     IPC_CHANNELS.CREATE_BRANCH,

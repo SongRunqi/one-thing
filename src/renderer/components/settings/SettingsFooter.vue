@@ -87,7 +87,7 @@ defineEmits<{
 .btn.secondary {
   background: transparent;
   border: 1px solid var(--border);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .btn.secondary:hover {

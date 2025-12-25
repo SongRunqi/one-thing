@@ -185,7 +185,7 @@ function removeDirectory(index: number) {
 .section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin: 0 0 16px 0;
@@ -203,14 +203,14 @@ function removeDirectory(index: number) {
 .form-label {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   display: block;
   margin-bottom: 6px;
 }
 
 .form-hint {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 4px;
   margin-bottom: 0;
 }
@@ -257,7 +257,7 @@ function removeDirectory(index: number) {
   width: 18px;
   left: 2px;
   bottom: 2px;
-  background-color: var(--text);
+  background-color: var(--text-primary);
   border-radius: 50%;
   transition: 0.15s;
 }
@@ -277,7 +277,7 @@ function removeDirectory(index: number) {
   width: 100%;
   padding: 10px 12px;
   font-size: 13px;
-  color: var(--text);
+  color: var(--text-primary);
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -290,7 +290,7 @@ function removeDirectory(index: number) {
 }
 
 .text-input::placeholder {
-  color: var(--muted);
+  color: var(--text-muted);
   opacity: 0.7;
 }
 
@@ -308,7 +308,7 @@ function removeDirectory(index: number) {
   padding: 10px 16px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -344,7 +344,7 @@ function removeDirectory(index: number) {
 
 .directory-path {
   font-size: 13px;
-  color: var(--text);
+  color: var(--text-primary);
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -359,7 +359,7 @@ function removeDirectory(index: number) {
   background: transparent;
   border: none;
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -371,7 +371,7 @@ function removeDirectory(index: number) {
 
 .empty-hint {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   padding: 12px;
   background: var(--hover);
   border-radius: 8px;

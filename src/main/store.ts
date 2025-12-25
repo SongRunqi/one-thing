@@ -37,6 +37,7 @@ export {
   addMessageStep,
   updateMessageStep,
   updateSessionAgent,
+  updateSessionModel,
   deleteSessionsByWorkspace,
 
   // Workspaces

@@ -23,6 +23,10 @@ export function registerShellHandlers() {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && process.platform === 'darwin') {
       win.setWindowButtonVisibility(visible)
+      // Restore traffic light position after showing (macOS resets position on visibility change)
+      if (visible) {
+        win.setWindowButtonPosition({ x: 16, y: 17 })
+      }
     }
   })
 }

@@ -1,4 +1,4 @@
-import { BrowserWindow, session } from 'electron'
+import { BrowserWindow, session, shell } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { getWindowStatePath, readJsonFile, writeJsonFile } from './stores/paths.js'
@@ -20,8 +20,8 @@ function setupContentSecurityPolicy() {
         : "script-src 'self'",
       // Styles: self and unsafe-inline (Vue uses inline styles)
       "style-src 'self' 'unsafe-inline'",
-      // Images: self, data URIs, and https
-      "img-src 'self' data: https:",
+      // Images: self, data URIs, https, and media protocol for local images
+      "img-src 'self' data: https: media:",
       // Fonts: self and data URIs
       "font-src 'self' data:",
       // Connect: allow API calls to various AI providers
@@ -86,6 +86,7 @@ export function createWindow() {
   // Setup Content Security Policy before creating window
   setupContentSecurityPolicy()
 
+  const isDevelopment = process.env.NODE_ENV === 'development'
   const isMac = process.platform === 'darwin'
   const windowState = getWindowState()
 
@@ -118,7 +119,21 @@ export function createWindow() {
   mainWindow.on('move', () => saveWindowState(mainWindow))
   mainWindow.on('close', () => saveWindowState(mainWindow))
 
-  const isDevelopment = process.env.NODE_ENV === 'development'
+  // Handle external links - open in system browser instead of navigating away
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const appUrl = isDevelopment ? 'http://127.0.0.1:5173' : 'file://'
+    // Allow navigation within the app, block external navigation
+    if (!url.startsWith(appUrl)) {
+      event.preventDefault()
+      shell.openExternal(url)
+    }
+  })
+
+  // Handle window.open() calls - open in system browser
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
 
   if (isDevelopment) {
     // Load from Vite dev server

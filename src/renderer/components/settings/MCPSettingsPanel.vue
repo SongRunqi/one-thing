@@ -1280,7 +1280,7 @@ async function importSelectedServers() {
 .section-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0;
@@ -1318,13 +1318,13 @@ async function importSelectedServers() {
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
 .form-hint {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 6px;
 }
 
@@ -1411,7 +1411,7 @@ async function importSelectedServers() {
 }
 
 .empty-state svg {
-  color: var(--muted);
+  color: var(--text-muted);
   opacity: 0.5;
   margin-bottom: 16px;
 }
@@ -1419,12 +1419,12 @@ async function importSelectedServers() {
 .empty-state p {
   margin: 0;
   font-size: 14px;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .empty-state .hint {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 4px;
 }
 
@@ -1476,7 +1476,7 @@ async function importSelectedServers() {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--text-muted);
 }
 
 .server-status.connected .status-dot {
@@ -1504,7 +1504,7 @@ async function importSelectedServers() {
 .server-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1523,7 +1523,7 @@ async function importSelectedServers() {
   padding: 2px 6px;
   border-radius: 4px;
   background: rgba(120, 120, 128, 0.2);
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .transport-badge.stdio {
@@ -1538,7 +1538,7 @@ async function importSelectedServers() {
 
 .capability-count {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .server-actions {
@@ -1553,7 +1553,7 @@ async function importSelectedServers() {
   border: none;
   background: transparent;
   border-radius: 8px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1568,7 +1568,7 @@ async function importSelectedServers() {
 
 .icon-btn:hover:not(:disabled) {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .icon-btn:disabled {
@@ -1592,7 +1592,7 @@ async function importSelectedServers() {
 
 .expand-chevron {
   transition: transform 0.2s ease;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .server-item.expanded .expand-chevron {
@@ -1656,14 +1656,14 @@ async function importSelectedServers() {
 .info-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-muted);
   flex-shrink: 0;
   width: 80px;
 }
 
 .info-value {
   font-size: 12px;
-  color: var(--text);
+  color: var(--text-primary);
   word-break: break-all;
 }
 
@@ -1686,7 +1686,7 @@ code.info-value {
 .capabilities-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -1712,13 +1712,13 @@ code.info-value {
 .resource-name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .tool-desc,
 .resource-uri {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* Dialog styles */
@@ -1771,7 +1771,7 @@ code.info-value {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .close-btn {
@@ -1780,7 +1780,7 @@ code.info-value {
   border: none;
   background: transparent;
   border-radius: 8px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1790,7 +1790,7 @@ code.info-value {
 
 .close-btn:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .dialog-content {
@@ -1800,7 +1800,7 @@ code.info-value {
 .dialog-content p {
   margin: 0;
   font-size: 14px;
-  color: var(--text);
+  color: var(--text-primary);
   line-height: 1.6;
 }
 
@@ -1820,7 +1820,7 @@ code.info-value {
   border-radius: 10px;
   font-size: 14px;
   background: var(--panel-2);
-  color: var(--text);
+  color: var(--text-primary);
   transition: all 0.15s ease;
 }
 
@@ -1831,7 +1831,7 @@ code.info-value {
 }
 
 .form-input::placeholder {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* Transport selector */
@@ -1867,13 +1867,13 @@ code.info-value {
 .transport-option span {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .transport-desc {
   font-size: 12px !important;
   font-weight: 400 !important;
-  color: var(--muted) !important;
+  color: var(--text-muted) !important;
 }
 
 /* Error message */
@@ -1916,7 +1916,7 @@ code.info-value {
 
 .btn.secondary {
   background: var(--panel-2);
-  color: var(--text);
+  color: var(--text-primary);
   border: 1px solid var(--border);
 }
 
@@ -1946,7 +1946,7 @@ code.info-value {
   padding: 8px 14px;
   border: 1px solid var(--border);
   background: var(--panel-2);
-  color: var(--text);
+  color: var(--text-primary);
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
@@ -1994,14 +1994,14 @@ code.info-value {
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .import-tab:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .import-tab.active {
@@ -2018,7 +2018,7 @@ code.info-value {
 
 .import-description {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin: 0 0 16px 0;
   line-height: 1.5;
 }
@@ -2036,7 +2036,7 @@ code.info-value {
   border-radius: 12px;
   font-size: 14px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -2061,7 +2061,7 @@ code.info-value {
 .file-name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .server-count {
@@ -2079,7 +2079,7 @@ code.info-value {
   font-size: 13px;
   font-family: 'SF Mono', 'Monaco', monospace;
   background: var(--panel-2);
-  color: var(--text);
+  color: var(--text-primary);
   resize: vertical;
   line-height: 1.5;
 }
@@ -2091,7 +2091,7 @@ code.info-value {
 }
 
 .form-textarea::placeholder {
-  color: var(--muted);
+  color: var(--text-muted);
   font-family: 'SF Mono', 'Monaco', monospace;
 }
 
@@ -2134,14 +2134,14 @@ code.info-value {
   background: transparent;
   border-radius: 20px;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .category-btn:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .category-btn.active {
@@ -2203,14 +2203,14 @@ code.info-value {
   display: block;
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   margin-bottom: 2px;
 }
 
 .preset-desc {
   display: block;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -2235,7 +2235,7 @@ code.info-value {
 .preset-params h4 {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   margin: 0 0 12px 0;
 }
 
@@ -2252,7 +2252,7 @@ code.info-value {
   padding: 0 14px;
   border: 1px solid var(--border);
   background: var(--panel-2);
-  color: var(--text);
+  color: var(--text-primary);
   border-radius: 10px;
   font-size: 13px;
   cursor: pointer;
@@ -2277,7 +2277,7 @@ code.info-value {
 .import-preview h4 {
   font-size: 12px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0 0 12px 0;
@@ -2328,13 +2328,13 @@ code.info-value {
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .preview-command {
   display: block;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

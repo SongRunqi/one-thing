@@ -388,6 +388,7 @@ export const useChatStore = defineStore('chat', () => {
         addMessage(errorMessage)
 
         isLoading.value = false
+        generatingSessionId.value = null  // Reset generating state on error
         return false
       }
 
@@ -828,6 +829,7 @@ export const useChatStore = defineStore('chat', () => {
         addMessage(errorMessage)
 
         isLoading.value = false
+        generatingSessionId.value = null  // Reset generating state on error
         return false
       }
 

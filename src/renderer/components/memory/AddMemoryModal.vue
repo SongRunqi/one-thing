@@ -168,7 +168,7 @@ watch(() => props.visible, (isVisible) => {
   font-size: 16px;
   font-weight: 600;
   margin: 0;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .close-btn {
@@ -180,14 +180,14 @@ watch(() => props.visible, (isVisible) => {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .close-btn:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .modal-body {
@@ -206,7 +206,7 @@ watch(() => props.visible, (isVisible) => {
 .form-label {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 /* Category Options */
@@ -223,14 +223,14 @@ watch(() => props.visible, (isVisible) => {
   border: 1px solid var(--border);
   border-radius: 20px;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .category-btn:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .category-btn.selected {
@@ -244,7 +244,7 @@ watch(() => props.visible, (isVisible) => {
   padding: 12px;
   font-size: 14px;
   line-height: 1.5;
-  color: var(--text);
+  color: var(--text-primary);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -258,7 +258,7 @@ watch(() => props.visible, (isVisible) => {
 }
 
 .form-textarea::placeholder {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* Slider */
@@ -284,7 +284,7 @@ watch(() => props.visible, (isVisible) => {
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* Footer */
@@ -309,7 +309,7 @@ watch(() => props.visible, (isVisible) => {
 
 .btn-cancel {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .btn-cancel:hover {

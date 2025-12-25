@@ -263,7 +263,7 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
 .section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin: 0 0 12px 0;
@@ -284,12 +284,12 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
 .form-label {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .form-hint {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 4px;
 }
 
@@ -315,7 +315,7 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
   display: block;
   font-size: 11px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 6px;
@@ -326,7 +326,7 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
   padding: 10px 32px 10px 12px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   background-color: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -352,7 +352,7 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
 .form-select option {
   padding: 8px;
   background: var(--panel);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 @media (max-width: 480px) {
@@ -408,7 +408,7 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
   width: 18px;
   left: 2px;
   bottom: 2px;
-  background-color: var(--text);
+  background-color: var(--text-primary);
   border-radius: 50%;
   transition: 0.15s;
 }
@@ -441,7 +441,7 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
 .empty-state {
   padding: 24px;
   text-align: center;
-  color: var(--muted);
+  color: var(--text-muted);
   background: var(--hover);
   border-radius: 8px;
 }
@@ -477,7 +477,7 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
 
 .tool-name {
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .tool-category {
@@ -495,7 +495,7 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
 
 .tool-description {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin: 0;
   line-height: 1.4;
 }
@@ -513,7 +513,7 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
 
 .control-label {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   min-width: 80px;
 }
 

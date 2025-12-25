@@ -256,7 +256,7 @@ function handleSave() {
   display: block;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
@@ -270,7 +270,7 @@ function handleSave() {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 14px;
   outline: none;
   transition: border-color 0.15s ease;
@@ -281,12 +281,12 @@ function handleSave() {
 }
 
 .form-input::placeholder {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .form-hint {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 6px;
 }
 
@@ -305,7 +305,7 @@ function handleSave() {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -313,7 +313,7 @@ function handleSave() {
 
 .api-type-btn:hover {
   border-color: var(--accent);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .api-type-btn.active {
@@ -358,7 +358,7 @@ function handleSave() {
 .btn.secondary {
   background: var(--panel);
   border: 1px solid var(--border);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .btn.secondary:hover {

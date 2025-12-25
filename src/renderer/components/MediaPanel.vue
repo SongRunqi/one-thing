@@ -3,6 +3,8 @@
     <div v-if="visible" class="media-panel">
       <!-- Navigation -->
       <div class="media-nav">
+        <!-- Traffic lights space -->
+        <div class="traffic-lights-space"></div>
         <div class="nav-items">
           <button
             v-for="item in navItems"
@@ -53,7 +55,7 @@
                 class="media-item"
                 @click="openImage(image)"
               >
-                <img :src="image.url" :alt="image.prompt" class="media-thumbnail" />
+                <img :src="mediaStore.getImageUrl(image)" :alt="image.prompt" class="media-thumbnail" />
                 <div class="media-overlay">
                   <p class="media-prompt">{{ image.prompt }}</p>
                   <span class="media-model">{{ image.model }}</span>
@@ -135,25 +137,28 @@ const filteredImages = computed(() => {
   )
 })
 
-// Open image in new window/tab
+// Open image using system default viewer
 function openImage(image: GeneratedMedia) {
-  window.open(image.url, '_blank')
+  window.electronAPI.openPath(image.filePath)
 }
 
 // Listen for image generation events
 let unsubscribe: (() => void) | null = null
 
-onMounted(() => {
-  unsubscribe = window.electronAPI.onImageGenerated((data) => {
+onMounted(async () => {
+  // Load saved media from disk
+  await mediaStore.loadMedia()
+
+  // Listen for new image generation events
+  unsubscribe = window.electronAPI.onImageGenerated(async (data) => {
     console.log('[MediaPanel] Image generated:', data)
-    mediaStore.addMedia({
-      id: data.id,
-      type: 'image',
+    // Save image to disk (supports both url and base64)
+    await mediaStore.saveImage({
       url: data.url,
+      base64: data.base64,
       prompt: data.prompt,
       revisedPrompt: data.revisedPrompt,
       model: data.model,
-      createdAt: data.createdAt,
       sessionId: data.sessionId,
       messageId: data.messageId,
     })
@@ -315,6 +320,12 @@ const navItems = [
   border-right: 1px solid var(--border);
 }
 
+.traffic-lights-space {
+  height: 52px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
 .nav-items {
   flex: 1;
   display: flex;
@@ -325,7 +336,6 @@ const navItems = [
 
 .nav-footer {
   padding: 8px;
-  border-top: 1px solid var(--border);
 }
 
 .nav-close-btn {

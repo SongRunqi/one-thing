@@ -169,7 +169,7 @@ function confirmDelete() {
   margin: 0 0 10px;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 /* Meta Row */
@@ -214,7 +214,7 @@ function confirmDelete() {
   padding: 2px 8px;
   border-radius: 10px;
   background: rgba(107, 114, 128, 0.2);
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: capitalize;
 }
 
@@ -244,7 +244,7 @@ function confirmDelete() {
   padding: 2px 8px;
   border-radius: 10px;
   background: var(--hover);
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: capitalize;
 }
 
@@ -265,11 +265,11 @@ function confirmDelete() {
 }
 
 .detail-label {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .detail-value {
-  color: var(--text);
+  color: var(--text-secondary);
 }
 
 /* Actions */
@@ -290,7 +290,7 @@ function confirmDelete() {
   border: none;
   border-radius: 6px;
   background: var(--bg-elevated);
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }

@@ -81,6 +81,19 @@ export function getAgentMemoryPath(agentId: string): string {
   return path.join(getAgentMemoryDir(), `${agentId}.json`)
 }
 
+// Media paths for generated images
+export function getMediaDir(): string {
+  return path.join(getStorePath(), 'media')
+}
+
+export function getMediaImagesDir(): string {
+  return path.join(getMediaDir(), 'images')
+}
+
+export function getMediaIndexPath(): string {
+  return path.join(getMediaDir(), 'index.json')
+}
+
 // SQLite database path for vector storage
 export function getDatabasePath(): string {
   return path.join(getStorePath(), 'memory.db')
@@ -97,6 +110,8 @@ export function ensureStoreDirs(): void {
     getAgentAvatarsDir(),
     getUserProfileDir(),
     getAgentMemoryDir(),
+    getMediaDir(),
+    getMediaImagesDir(),
   ]
 
   for (const dir of dirs) {

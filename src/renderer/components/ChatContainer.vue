@@ -1,5 +1,11 @@
 <template>
   <div :class="['chat-container-wrapper', { 'sidebar-collapsed': sidebarCollapsed }]">
+    <!-- Hover trigger for floating sidebar -->
+    <div
+      v-if="showHoverTrigger"
+      class="sidebar-hover-trigger"
+      @mouseenter="$emit('show-floating-sidebar')"
+    ></div>
     <div class="chat-panels">
       <ChatWindow
         v-for="(panel, index) in panels"
@@ -93,6 +99,7 @@ const props = defineProps<{
   showSettings?: boolean
   showAgentSettings?: boolean
   sidebarCollapsed?: boolean
+  showHoverTrigger?: boolean
 }>()
 
 defineEmits<{
@@ -101,6 +108,7 @@ defineEmits<{
   'close-agent-settings': []
   'open-agent-settings': []
   'toggle-sidebar': []
+  'show-floating-sidebar': []
 }>()
 
 const sessionsStore = useSessionsStore()
@@ -295,10 +303,23 @@ onUnmounted(() => {
   min-width: 0;
   display: flex;
   transition: padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
 }
 
 .chat-container-wrapper.sidebar-collapsed {
   padding-left: 12px;
+}
+
+/* Hover trigger for floating sidebar */
+.sidebar-hover-trigger {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 12px;
+  height: 100%;
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+  z-index: 10;
 }
 
 .chat-panels {
@@ -308,21 +329,7 @@ onUnmounted(() => {
   gap: 8px;
   -webkit-app-region: no-drag;
   position: relative;
-  border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.12),
-    0 8px 24px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-html[data-theme='light'] .chat-panels {
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.06),
-    0 8px 24px rgba(0, 0, 0, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .panel-resizer {

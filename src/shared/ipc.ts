@@ -36,6 +36,7 @@ export const IPC_CHANNELS = {
   RENAME_SESSION: 'sessions:rename',
   CREATE_BRANCH: 'sessions:create-branch',
   UPDATE_SESSION_PIN: 'sessions:update-pin',
+  UPDATE_SESSION_MODEL: 'sessions:update-model',
 
   // Settings related
   GET_SETTINGS: 'settings:get',
@@ -198,6 +199,7 @@ export interface ChatSession {
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string
+  lastProvider?: string
   isPinned?: boolean
   workspaceId?: string  // Associated workspace ID, null/undefined = default mode
   agentId?: string      // Associated agent ID for system prompt injection
@@ -450,11 +452,14 @@ export interface GenerateTitleResponse {
 }
 
 // Models related types
+export type ModelType = 'chat' | 'image' | 'embedding' | 'audio' | 'tts' | 'other'
+
 export interface ModelInfo {
   id: string
   name: string
   description?: string
   createdAt?: string
+  type?: ModelType
 }
 
 export interface CachedModels {

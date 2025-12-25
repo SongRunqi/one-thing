@@ -136,7 +136,7 @@ async function saveSettings() {
 .settings-header h3 {
   margin: 0;
   font-size: 20px;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .close-button {
@@ -144,7 +144,7 @@ async function saveSettings() {
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: var(--muted);
+  color: var(--text-muted);
   padding: 0;
   width: 32px;
   height: 32px;
@@ -154,7 +154,7 @@ async function saveSettings() {
 }
 
 .close-button:hover {
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .settings-content {
@@ -171,7 +171,7 @@ async function saveSettings() {
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 14px;
 }
 
@@ -201,7 +201,7 @@ async function saveSettings() {
 .help-text {
   margin: 8px 0 0 0;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .settings-footer {
@@ -226,7 +226,7 @@ async function saveSettings() {
 
 .cancel-button {
   background: transparent;
-  color: var(--text);
+  color: var(--text-primary);
   border: 1px solid var(--border);
 }
 
@@ -236,7 +236,7 @@ async function saveSettings() {
 
 .save-button {
   background: rgba(59, 130, 246, 0.22);
-  color: var(--text);
+  color: var(--text-primary);
   border: 1px solid rgba(59, 130, 246, 0.3);
 }
 

@@ -181,7 +181,7 @@ function confirmDelete() {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .fact-meta {
@@ -197,7 +197,7 @@ function confirmDelete() {
   padding: 2px 8px;
   border-radius: 10px;
   background: rgba(107, 114, 128, 0.2);
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .confidence-badge.high {
@@ -217,12 +217,12 @@ function confirmDelete() {
 
 .sources {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .timestamp {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
   opacity: 0.7;
 }
 
@@ -247,13 +247,13 @@ function confirmDelete() {
   border: none;
   border-radius: 6px;
   background: var(--bg-elevated);
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .action-btn:hover {
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .edit-btn:hover {
@@ -278,7 +278,7 @@ function confirmDelete() {
   padding: 10px 12px;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--text);
+  color: var(--text-primary);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -307,7 +307,7 @@ function confirmDelete() {
 
 .confidence-slider label {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -346,13 +346,13 @@ function confirmDelete() {
 
 .btn-cancel {
   background: var(--bg);
-  color: var(--muted);
+  color: var(--text-muted);
   border: 1px solid var(--border);
 }
 
 .btn-cancel:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .btn-save {

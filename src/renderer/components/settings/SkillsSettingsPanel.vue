@@ -282,13 +282,13 @@ onMounted(() => {
 .section-title {
   font-size: 16px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   margin: 0 0 4px 0;
 }
 
 .section-description {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin: 0;
 }
 
@@ -314,7 +314,7 @@ onMounted(() => {
   background: transparent;
   border-radius: 8px;
   font-size: 13px;
-  color: var(--text);
+  color: var(--text-primary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -366,7 +366,7 @@ onMounted(() => {
 }
 
 .loading-state p {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 14px;
 }
 
@@ -384,7 +384,7 @@ onMounted(() => {
 }
 
 .empty-state svg {
-  color: var(--muted);
+  color: var(--text-muted);
   opacity: 0.5;
   margin-bottom: 16px;
 }
@@ -392,12 +392,12 @@ onMounted(() => {
 .empty-state p {
   margin: 0;
   font-size: 14px;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .empty-state .hint {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 4px;
   margin-bottom: 20px;
 }
@@ -421,12 +421,12 @@ onMounted(() => {
 .group-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .group-path {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   font-family: 'SF Mono', 'Monaco', monospace;
 }
 
@@ -435,7 +435,7 @@ onMounted(() => {
   padding: 2px 6px;
   background: var(--hover);
   border-radius: 10px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-left: auto;
 }
 
@@ -480,13 +480,13 @@ onMounted(() => {
 :deep(.skill-name) {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   font-family: 'SF Mono', 'Monaco', monospace;
 }
 
 :deep(.skill-description) {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 4px;
   line-height: 1.4;
   display: -webkit-box;
@@ -504,7 +504,7 @@ onMounted(() => {
 
 :deep(.expand-chevron) {
   transition: transform 0.2s ease;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 :deep(.skill-item.expanded .expand-chevron) {
@@ -536,12 +536,12 @@ onMounted(() => {
 }
 
 :deep(.meta-label) {
-  color: var(--muted);
+  color: var(--text-muted);
   font-weight: 500;
 }
 
 :deep(.meta-value) {
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 :deep(.meta-value.description-full) {
@@ -565,7 +565,7 @@ onMounted(() => {
   margin: 8px 0 0 0;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text);
+  color: var(--text-primary);
   max-height: 200px;
   overflow-y: auto;
 }
@@ -628,7 +628,7 @@ onMounted(() => {
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -638,7 +638,7 @@ onMounted(() => {
 
 :deep(.icon-btn:hover) {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 :deep(.icon-btn.danger:hover) {
@@ -698,7 +698,7 @@ onMounted(() => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .close-btn {
@@ -707,7 +707,7 @@ onMounted(() => {
   border: none;
   background: transparent;
   border-radius: 8px;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -717,7 +717,7 @@ onMounted(() => {
 
 .close-btn:hover {
   background: var(--hover);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .dialog-content {
@@ -727,7 +727,7 @@ onMounted(() => {
 .dialog-content p {
   margin: 0;
   font-size: 14px;
-  color: var(--text);
+  color: var(--text-primary);
   line-height: 1.6;
 }
 
@@ -758,13 +758,13 @@ onMounted(() => {
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
 .form-hint {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-top: 6px;
 }
 
@@ -776,7 +776,7 @@ onMounted(() => {
   border-radius: 10px;
   font-size: 14px;
   background: var(--panel-2);
-  color: var(--text);
+  color: var(--text-primary);
   transition: all 0.15s ease;
 }
 
@@ -799,7 +799,7 @@ onMounted(() => {
 
 .form-input::placeholder,
 .form-textarea::placeholder {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* Radio group */
@@ -842,12 +842,12 @@ onMounted(() => {
 .radio-title {
   font-size: 14px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .radio-desc {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* Error message */
@@ -890,7 +890,7 @@ onMounted(() => {
 
 .btn.secondary {
   background: var(--panel-2);
-  color: var(--text);
+  color: var(--text-primary);
   border: 1px solid var(--border);
 }
 

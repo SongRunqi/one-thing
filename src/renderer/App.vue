@@ -9,12 +9,22 @@
         @close="showMediaPanel = false"
       />
 
+      <!-- Floating sidebar overlay backdrop -->
+      <div
+        v-if="sidebarFloating"
+        :class="['sidebar-floating-backdrop', { closing: sidebarFloatingClosing }]"
+        @click="closeFloatingSidebar"
+      ></div>
+
       <Sidebar
-        :collapsed="sidebarCollapsed"
+        :collapsed="sidebarCollapsed && !sidebarFloating"
+        :floating="sidebarFloating"
+        :floating-closing="sidebarFloatingClosing"
+        :no-transition="sidebarNoTransition"
         :width="sidebarWidth"
         :media-panel-open="showMediaPanel"
         @open-settings="showSettings = true"
-        @toggle-collapse="sidebarCollapsed = !sidebarCollapsed"
+        @toggle-collapse="handleSidebarToggle"
         @open-search="openSearch"
         @create-new-chat="createNewChat"
         @toggle-media-panel="toggleMediaPanel"
@@ -24,17 +34,20 @@
         @edit-agent="openAgentDialog"
         @select-agent="handleSelectAgent"
         @resize="handleSidebarResize"
+        @mouseleave="handleSidebarMouseLeave"
       />
       <ChatContainer
         ref="chatContainerRef"
         :show-settings="showSettings"
         :show-agent-settings="showAgentSettings"
         :sidebar-collapsed="sidebarCollapsed"
+        :show-hover-trigger="sidebarCollapsed && !sidebarFloating && !showMediaPanel"
         @close-settings="showSettings = false"
         @open-settings="showSettings = true"
         @close-agent-settings="showAgentSettings = false"
         @open-agent-settings="showAgentSettings = true"
         @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
+        @show-floating-sidebar="handleTriggerEnter"
       />
     </div>
 
@@ -205,10 +218,69 @@ useShortcuts({
 
 // Persist sidebar collapsed state and control traffic lights visibility
 const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
+const sidebarFloating = ref(false)
+const sidebarFloatingClosing = ref(false)
+const sidebarNoTransition = ref(false) // Disable transition during/after floating
+
+// Close floating sidebar with animation
+function closeFloatingSidebar() {
+  if (!sidebarFloating.value || sidebarFloatingClosing.value) return
+  sidebarFloatingClosing.value = true
+  sidebarNoTransition.value = true
+  setTimeout(() => {
+    sidebarFloating.value = false
+    sidebarFloatingClosing.value = false
+    // Keep transition disabled a bit longer to prevent flash
+    setTimeout(() => {
+      sidebarNoTransition.value = false
+    }, 50)
+  }, 200) // Match animation duration
+}
+
+// Handle sidebar toggle - if floating, just close floating mode
+function handleSidebarToggle() {
+  if (sidebarFloating.value) {
+    closeFloatingSidebar()
+  } else {
+    sidebarCollapsed.value = !sidebarCollapsed.value
+  }
+}
+
+// Handle hover trigger enter
+function handleTriggerEnter() {
+  if (sidebarFloatingClosing.value) return
+  sidebarNoTransition.value = true
+  sidebarFloating.value = true
+}
+
+// Handle mouse leaving the floating sidebar
+function handleSidebarMouseLeave(event: MouseEvent) {
+  if (!sidebarFloating.value) return
+
+  // Don't close if mouse is in the traffic lights area (top-left corner)
+  // Traffic lights are approximately at x: 0-80, y: 0-50
+  if (event.clientX < 100 && event.clientY < 60) {
+    return
+  }
+
+  closeFloatingSidebar()
+}
+
+// Close floating mode when sidebar is expanded permanently
 watch(sidebarCollapsed, (collapsed) => {
+  if (!collapsed) {
+    sidebarFloating.value = false
+  }
+})
+
+// Update traffic lights when sidebar state changes
+watch([sidebarCollapsed, sidebarFloating, showMediaPanel], ([collapsed, floating, mediaOpen]) => {
   localStorage.setItem('sidebarCollapsed', String(collapsed))
-  // Hide/show traffic lights when sidebar collapses/expands (macOS only)
-  window.electronAPI?.setWindowButtonVisibility?.(!collapsed)
+  // Show traffic lights when sidebar is visible (expanded or floating) or media panel is open
+  const showTrafficLights = !collapsed || floating || mediaOpen
+  window.electronAPI?.setWindowButtonVisibility?.(showTrafficLights).catch(() => {
+    // Handler may not be registered yet during initial load
+  })
 }, { immediate: true })
 
 
@@ -294,6 +366,32 @@ watchEffect(() => {
   display: flex;
   min-height: 0;
   min-width: 0;
+  position: relative;
+}
+
+/* Floating sidebar backdrop */
+.sidebar-floating-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 499; /* Just below floating sidebar (500) */
+  animation: fadeIn 0.2s ease forwards;
+}
+
+.sidebar-floating-backdrop.closing {
+  animation: fadeOut 0.2s ease forwards;
+}
+
+html[data-theme='light'] .sidebar-floating-backdrop {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 /* Search Overlay */

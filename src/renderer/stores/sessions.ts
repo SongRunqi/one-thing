@@ -4,6 +4,7 @@ import type { ChatSession } from '@/types'
 import { useChatStore } from './chat'
 import { useWorkspacesStore } from './workspaces'
 import { useAgentsStore } from './agents'
+import { useSettingsStore } from './settings'
 
 export const useSessionsStore = defineStore('sessions', () => {
   const sessions = ref<ChatSession[]>([])
@@ -84,11 +85,22 @@ export const useSessionsStore = defineStore('sessions', () => {
       if (response.success && response.session) {
         const chatStore = useChatStore()
         const agentsStore = useAgentsStore()
+        const settingsStore = useSettingsStore()
 
         currentSessionId.value = sessionId
 
         // Clear selected agent when switching sessions (the temporary "welcome page" state)
         agentsStore.selectAgent(null)
+
+        // Sync model selection based on session's saved model or global defaults
+        if (response.session.lastProvider && response.session.lastModel) {
+          // Session has saved model - show it in UI
+          settingsStore.updateAIProvider(response.session.lastProvider as any)
+          settingsStore.updateModel(response.session.lastModel, response.session.lastProvider as any)
+        } else {
+          // Session has no saved model - reload global settings to show defaults
+          await settingsStore.loadSettings()
+        }
 
         // 1. FIRST: Set the current view session to allow new chunks to be processed
         chatStore.setCurrentViewSession(sessionId)

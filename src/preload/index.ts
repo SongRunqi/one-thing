@@ -108,6 +108,9 @@ const electronAPI = {
   updateSessionPin: (sessionId: string, isPinned: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_PIN, { sessionId, isPinned }),
 
+  updateSessionModel: (sessionId: string, provider: string, model: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_MODEL, { sessionId, provider, model }),
+
   // Settings methods
   getSettings: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS),
@@ -351,6 +354,26 @@ const electronAPI = {
   // Window methods
   setWindowButtonVisibility: (visible: boolean) =>
     ipcRenderer.invoke('window:set-button-visibility', visible),
+
+  // Media methods
+  saveImage: (data: {
+    url?: string
+    base64?: string
+    prompt: string
+    revisedPrompt?: string
+    model: string
+    sessionId: string
+    messageId: string
+  }) => ipcRenderer.invoke('media:save-image', data),
+
+  loadAllMedia: () =>
+    ipcRenderer.invoke('media:load-all'),
+
+  deleteMedia: (id: string) =>
+    ipcRenderer.invoke('media:delete', id),
+
+  clearAllMedia: () =>
+    ipcRenderer.invoke('media:clear-all'),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

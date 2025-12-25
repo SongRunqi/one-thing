@@ -11,6 +11,7 @@ import { registerAgentHandlers } from './agents.js'
 import { registerUserProfileHandlers } from './user-profile.js'
 import { registerAgentMemoryHandlers } from './agent-memory.js'
 import { registerShellHandlers } from './shell.js'
+import { registerMediaHandlers } from './media.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -26,6 +27,7 @@ export function initializeIPC() {
   registerUserProfileHandlers()
   registerAgentMemoryHandlers()
   registerShellHandlers()
+  registerMediaHandlers()
 }
 
 export { initializeMCP, shutdownMCP, initializeSkills }

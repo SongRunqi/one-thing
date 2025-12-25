@@ -3,6 +3,8 @@ import * as store from '../store.js'
 import type { ChatMessage, AppSettings, ProviderConfig, CustomProviderConfig, UserFact, AgentUserRelationship, AgentMood, AgentMemory, Step, StepType, ContentPart, MessageAttachment } from '../../shared/ipc.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
+import { experimental_generateImage as aiGenerateImage } from 'ai'
+import { createOpenAI } from '@ai-sdk/openai'
 import {
   generateChatResponseWithReasoning,
   generateChatTitle,
@@ -36,10 +38,10 @@ triggerManager.register(memoryExtractionTrigger)
 triggerManager.register(contextCompactingTrigger)
 
 // Image generation model detection
-// Supports both formats: 'dall-e-3' and 'DALL-E 3'
+// Supports: 'dall-e-2', 'dall-e-3', 'gpt-image-1', 'chatgpt-image-latest', etc.
 function isImageGenerationModel(modelId: string): boolean {
-  const normalized = modelId.toLowerCase().replace(/[\s-]+/g, '')  // 'DALL-E 3' -> 'dalle3', 'dall-e-3' -> 'dalle3'
-  return normalized.includes('dalle2') || normalized.includes('dalle3')
+  const normalized = modelId.toLowerCase().replace(/[\s-]+/g, '')
+  return normalized.includes('dalle') || normalized.includes('gptimage') || normalized.includes('chatgptimage')
 }
 
 // Normalize model ID for API call
@@ -47,13 +49,17 @@ function normalizeImageModelId(modelId: string): string {
   const normalized = modelId.toLowerCase().replace(/[\s-]+/g, '')
   if (normalized.includes('dalle3')) return 'dall-e-3'
   if (normalized.includes('dalle2')) return 'dall-e-2'
+  // chatgpt-image-latest should use gpt-image-1 (the API-accessible version)
+  if (normalized.includes('chatgptimage')) return 'gpt-image-1'
+  // gpt-image models use their original ID
   return modelId
 }
 
-// Image generation using OpenAI API
+// Image generation using AI SDK
 interface ImageGenerationResult {
   success: boolean
   imageUrl?: string
+  imageBase64?: string
   revisedPrompt?: string
   error?: string
 }
@@ -66,51 +72,43 @@ async function generateImage(
   options: { size?: string; quality?: string; style?: string } = {}
 ): Promise<ImageGenerationResult> {
   try {
-    const url = `${baseUrl || 'https://api.openai.com/v1'}/images/generations`
-
-    const body: Record<string, any> = {
-      model,
-      prompt,
-      n: 1,
-      response_format: 'url', // Can be 'url' or 'b64_json'
-    }
-
-    // DALL-E 3 specific options
-    if (model === 'dall-e-3') {
-      body.size = options.size || '1024x1024' // 1024x1024, 1792x1024, or 1024x1792
-      body.quality = options.quality || 'standard' // 'standard' or 'hd'
-      body.style = options.style || 'vivid' // 'vivid' or 'natural'
-    } else {
-      // DALL-E 2
-      body.size = options.size || '1024x1024' // 256x256, 512x512, or 1024x1024
-    }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(body),
+    // Create OpenAI provider with custom settings
+    const openai = createOpenAI({
+      apiKey,
+      baseURL: baseUrl || 'https://api.openai.com/v1',
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: { message: response.statusText } }))
-      return {
-        success: false,
-        error: error.error?.message || `API error: ${response.status}`,
+    // Build provider options based on model
+    const providerOptions: Record<string, any> = {}
+    if (model === 'dall-e-3') {
+      providerOptions.openai = {
+        style: options.style || 'vivid',
+        quality: options.quality || 'standard',
+      }
+    } else if (model.includes('gpt-image')) {
+      providerOptions.openai = {
+        quality: options.quality || 'auto',
       }
     }
 
-    const data = await response.json()
-    const imageData = data.data?.[0]
+    // Generate image using AI SDK
+    const result = await aiGenerateImage({
+      model: openai.image(model),
+      prompt,
+      size: (options.size || '1024x1024') as `${number}x${number}`,
+      providerOptions: Object.keys(providerOptions).length > 0 ? providerOptions : undefined,
+    })
+
+    // Get the first image
+    const image = result.image
 
     return {
       success: true,
-      imageUrl: imageData?.url,
-      revisedPrompt: imageData?.revised_prompt, // DALL-E 3 may revise the prompt
+      imageBase64: image.base64,
+      revisedPrompt: (result as any).providerMetadata?.openai?.revisedPrompt,
     }
   } catch (error: any) {
+    console.error('[Image Generation] Error:', error)
     return {
       success: false,
       error: error.message || 'Failed to generate image',
@@ -477,6 +475,41 @@ function extractErrorDetails(error: any): string | undefined {
 // Helper to get current provider config
 function getProviderConfig(settings: AppSettings): ProviderConfig | undefined {
   return settings.ai.providers[settings.ai.provider]
+}
+
+// Get effective provider and model for a session (session-level overrides global)
+function getEffectiveProviderConfig(
+  settings: AppSettings,
+  sessionId: string
+): { providerId: string; providerConfig: ProviderConfig | undefined; model: string } {
+  const session = store.getSession(sessionId)
+
+  // If session has saved provider/model, use those
+  if (session?.lastProvider && session?.lastModel) {
+    const providerId = session.lastProvider
+    const providerConfig = settings.ai.providers[providerId]
+
+    if (providerConfig) {
+      // Return a modified config with the session's model
+      return {
+        providerId,
+        providerConfig: {
+          ...providerConfig,
+          model: session.lastModel,
+        },
+        model: session.lastModel,
+      }
+    }
+  }
+
+  // Fall back to global settings
+  const providerId = settings.ai.provider
+  const providerConfig = settings.ai.providers[providerId]
+  return {
+    providerId,
+    providerConfig,
+    model: providerConfig?.model || '',
+  }
 }
 
 // Helper to get custom provider config by ID
@@ -1437,10 +1470,9 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
       return { success: false, error: 'Message not found' }
     }
 
-    // Get settings and validate
+    // Get settings and validate (use session-level model if available)
     const settings = store.getSettings()
-    const providerId = settings.ai.provider
-    const providerConfig = getProviderConfig(settings)
+    const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
     if (!providerConfig || !providerConfig.apiKey) {
       return {
@@ -1461,7 +1493,7 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
     const assistantMessage: ChatMessage = {
       id: assistantMessageId,
       role: 'assistant',
-      model: providerConfig.model,
+      model: effectiveModel,
       content: '',
       timestamp: Date.now(),
       isStreaming: true,
@@ -1688,10 +1720,9 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       store.renameSession(sessionId, newTitle)
     }
 
-    // Get settings and validate
+    // Get settings and validate (use session-level model if available)
     const settings = store.getSettings()
-    const providerId = settings.ai.provider
-    const providerConfig = getProviderConfig(settings)
+    const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
     if (!providerConfig || !providerConfig.apiKey) {
       return {
@@ -1707,12 +1738,14 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       }
     }
 
+    console.log(`[Backend] Using provider: ${providerId}, model: ${effectiveModel}`)
+
     // Create assistant message
     const assistantMessageId = uuidv4()
     const assistantMessage: ChatMessage = {
       id: assistantMessageId,
       role: 'assistant',
-      model: providerConfig.model,
+      model: effectiveModel,
       content: '',
       timestamp: Date.now(),
       isStreaming: true,
@@ -1763,7 +1796,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
             prompt
           )
 
-          if (result.success && result.imageUrl) {
+          if (result.success && result.imageBase64) {
             // Format the response with markdown image and revised prompt info
             let responseContent = ''
 
@@ -1771,7 +1804,9 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
               responseContent += `**优化后的提示词:** ${result.revisedPrompt}\n\n`
             }
 
-            responseContent += `![Generated Image](${result.imageUrl})`
+            // Use base64 data URL for displaying the image
+            const imageDataUrl = `data:image/png;base64,${result.imageBase64}`
+            responseContent += `![Generated Image](${imageDataUrl})`
 
             // Update message with image
             store.updateMessageContent(sessionId, assistantMessageId, responseContent)
@@ -1787,9 +1822,10 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
             })
 
             // Notify frontend about the generated image for Media Panel
+            // Send base64 data for saving to disk
             sender.send(IPC_CHANNELS.IMAGE_GENERATED, {
               id: `img-${Date.now()}`,
-              url: result.imageUrl,
+              base64: result.imageBase64,
               prompt: prompt,
               revisedPrompt: result.revisedPrompt,
               model: normalizedModel,
@@ -1883,10 +1919,9 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       return { success: false, error: 'Still have pending tool calls awaiting confirmation' }
     }
 
-    // Get settings and validate
+    // Get settings and validate (use session-level model if available)
     const settings = store.getSettings()
-    const providerId = settings.ai.provider
-    const providerConfig = getProviderConfig(settings)
+    const { providerId, providerConfig } = getEffectiveProviderConfig(settings, sessionId)
 
     if (!providerConfig || !providerConfig.apiKey) {
       return { success: false, error: 'API Key not configured' }

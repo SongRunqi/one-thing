@@ -18,6 +18,7 @@ interface SessionMeta {
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string
+  lastProvider?: string
   isPinned?: boolean
   workspaceId?: string  // Associated workspace ID
   agentId?: string  // Associated agent ID for system prompt
@@ -653,4 +654,29 @@ export function deleteSessionsByWorkspace(workspaceId: string): number {
   }
 
   return sessionsToDelete.length
+}
+
+// Update session model and provider
+export function updateSessionModel(sessionId: string, provider: string, model: string): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  session.lastProvider = provider
+  session.lastModel = model
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.lastProvider = provider
+    meta.lastModel = model
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
 }

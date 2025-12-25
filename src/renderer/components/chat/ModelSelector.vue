@@ -58,10 +58,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
+import { useSessionsStore } from '@/stores/sessions'
 import { AIProvider } from '../../../shared/ipc'
 import ProviderIcon from '../settings/ProviderIcon.vue'
 
 const settingsStore = useSettingsStore()
+const sessionsStore = useSessionsStore()
 
 const showDropdown = ref(false)
 const selectorRef = ref<HTMLElement | null>(null)
@@ -173,11 +175,18 @@ async function selectProvider(provider: AIProvider) {
 }
 
 async function selectModel(provider: AIProvider, model: string) {
+  // Update UI state only (don't save to global settings)
   if (provider !== currentProvider.value) {
     settingsStore.updateAIProvider(provider)
   }
   settingsStore.updateModel(model, provider)
-  await settingsStore.saveSettings(settingsStore.settings)
+
+  // Save to current session for per-session persistence (this is what matters)
+  const currentSessionId = sessionsStore.currentSessionId
+  if (currentSessionId) {
+    await window.electronAPI.updateSessionModel(currentSessionId, provider, model)
+  }
+
   showDropdown.value = false
 }
 
