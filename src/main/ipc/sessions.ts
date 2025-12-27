@@ -1,7 +1,37 @@
 import { ipcMain } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import type { TokenUsage, SessionTokenUsage } from '../../shared/ipc.js'
 import * as store from '../store.js'
+
+/**
+ * Update session usage (called from chat.ts when finish chunk is received)
+ * Persists to disk for durability across app restarts
+ */
+export function updateSessionUsage(sessionId: string, usage: TokenUsage): void {
+  store.updateSessionTokenUsage(sessionId, usage)
+}
+
+/**
+ * Get session usage from persisted storage
+ */
+export function getSessionUsage(sessionId: string): SessionTokenUsage {
+  const usage = store.getSessionTokenUsage(sessionId)
+  return {
+    totalInputTokens: usage?.totalInputTokens ?? 0,
+    totalOutputTokens: usage?.totalOutputTokens ?? 0,
+    totalTokens: usage?.totalTokens ?? 0,
+    maxTokens: 128000, // Not used anymore, context length comes from model
+  }
+}
+
+/**
+ * Clear session usage (called when session is deleted)
+ * Note: Session deletion already removes the session file with its usage data
+ */
+export function clearSessionUsage(_sessionId: string): void {
+  // No-op: session file deletion handles this
+}
 
 export function registerSessionHandlers() {
   // 获取所有会话
@@ -26,6 +56,15 @@ export function registerSessionHandlers() {
     return { success: true, session }
   })
 
+  // 获取单个会话（不切换）
+  ipcMain.handle(IPC_CHANNELS.GET_SESSION, async (_event, { sessionId }) => {
+    const session = store.getSession(sessionId)
+    if (!session) {
+      return { success: false, error: 'Session not found' }
+    }
+    return { success: true, session }
+  })
+
   // 删除会话 (包括级联删除子会话)
   ipcMain.handle(IPC_CHANNELS.DELETE_SESSION, async (_event, { sessionId }) => {
     const result = store.deleteSession(sessionId)
@@ -45,6 +84,24 @@ export function registerSessionHandlers() {
   // 置顶/取消置顶会话
   ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_PIN, async (_event, { sessionId, isPinned }) => {
     store.updateSessionPin(sessionId, isPinned)
+    return { success: true }
+  })
+
+  // 归档/取消归档会话
+  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_ARCHIVED, async (_event, { sessionId, isArchived, archivedAt }) => {
+    store.updateSessionArchived(sessionId, isArchived, archivedAt)
+    return { success: true }
+  })
+
+  // 更新会话关联的Agent
+  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_AGENT, async (_event, { sessionId, agentId }) => {
+    store.updateSessionAgent(sessionId, agentId)
+    return { success: true }
+  })
+
+  // 更新会话工作目录 (sandbox boundary)
+  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY, async (_event, { sessionId, workingDirectory }) => {
+    store.updateSessionWorkingDirectory(sessionId, workingDirectory)
     return { success: true }
   })
 
@@ -98,4 +155,10 @@ export function registerSessionHandlers() {
       }
     }
   )
+
+  // 获取会话的 token 使用统计
+  ipcMain.handle(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, async (_event, sessionId: string) => {
+    const usage = getSessionUsage(sessionId)
+    return { success: true, usage }
+  })
 }

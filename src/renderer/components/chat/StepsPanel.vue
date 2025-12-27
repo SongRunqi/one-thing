@@ -3,141 +3,98 @@
     <div
       v-for="step in steps"
       :key="step.id"
-      class="step-card"
-      :class="stepCardClass(step)"
+      :class="['step-inline', stepClass(step), { expanded: expandedSteps.has(step.id) }]"
     >
-      <!-- Header Row -->
-      <div class="step-header" @click="toggleExpand(step.id)">
-        <div class="step-icon">
-          <component :is="getStepIcon(step)" />
+      <!-- Main Row -->
+      <div class="step-row" @click="toggleExpand(step.id)">
+        <!-- Status dot -->
+        <div class="status-dot">
+          <div v-if="step.status === 'running'" class="dot spinning"></div>
+          <div v-else-if="step.status === 'completed'" class="dot success"></div>
+          <div v-else-if="step.status === 'failed'" class="dot error"></div>
+          <div v-else-if="step.status === 'awaiting-confirmation'" class="dot warning"></div>
+          <div v-else class="dot pending"></div>
         </div>
-        <div class="step-info">
-          <div class="step-title-row">
-            <span class="step-title">{{ step.title }}</span>
+
+        <!-- Step title -->
+        <span class="step-title">{{ step.title }}</span>
+
+        <!-- Preview -->
+        <span class="step-preview">{{ getPreview(step) }}</span>
+
+        <!-- Spacer -->
+        <div class="spacer"></div>
+
+        <!-- Status / Buttons -->
+        <template v-if="step.status === 'awaiting-confirmation'">
+          <div class="confirm-buttons" @click.stop>
+            <button class="btn-inline btn-allow" @click="handleConfirm(step, 'once')">允许</button>
+            <button class="btn-inline btn-always" @click="handleConfirm(step, 'always')">永久</button>
+            <button class="btn-inline btn-reject" @click="handleReject(step)">拒绝</button>
           </div>
-          <div class="step-preview" v-if="getPreview(step)">{{ getPreview(step) }}</div>
-        </div>
-        <div class="step-status-area">
-          <!-- Status indicator -->
-          <div class="step-status" :class="step.status">
-            <div v-if="step.status === 'running'" class="status-spinner"></div>
-            <svg v-else-if="step.status === 'completed'" class="status-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            <svg v-else-if="step.status === 'failed'" class="status-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-            <svg v-else-if="step.status === 'awaiting-confirmation'" class="status-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/>
-              <line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
-            <span class="status-text">{{ getStatusText(step) }}</span>
-          </div>
-          <!-- Expand chevron -->
-          <svg
-            v-if="hasExpandableContent(step)"
-            class="expand-chevron"
-            :class="{ expanded: expandedSteps.has(step.id) }"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
+        </template>
+        <span v-else class="status-text" :class="step.status">
+          {{ getStatusText(step) }}
+        </span>
+
+        <!-- Expand icon -->
+        <svg
+          v-if="hasExpandableContent(step)"
+          :class="['expand-icon', { rotated: expandedSteps.has(step.id) }]"
+          width="12" height="12" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2"
+        >
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
       </div>
 
-      <!-- Expandable Content -->
-      <Transition name="expand">
-        <div v-if="shouldShowContent(step)" class="step-content">
-          <!-- Confirmation UI -->
-          <div v-if="step.status === 'awaiting-confirmation'" class="step-confirmation">
-            <div class="confirmation-warning">
-              <div class="warning-header">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                  <line x1="12" y1="9" x2="12" y2="13"/>
-                  <line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
-                <span>这是一个可能危险的命令</span>
-              </div>
-              <div class="command-preview" v-if="step.toolCall?.arguments?.command">
-                <code>{{ step.toolCall.arguments.command }}</code>
-              </div>
-            </div>
-            <div class="confirmation-actions">
-              <button class="confirm-btn" @click.stop="handleConfirm(step)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                确认执行
-              </button>
-              <button class="reject-btn" @click.stop="handleReject(step)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-                取消
-              </button>
-            </div>
+      <!-- Expanded Content -->
+      <Transition name="slide">
+        <div v-if="shouldShowContent(step)" class="step-details">
+          <!-- Live output for running -->
+          <div v-if="step.status === 'running' && step.result" class="detail-section live">
+            <pre>{{ truncateOutput(step.result) }}</pre>
           </div>
 
-          <!-- Thinking section -->
-          <div v-if="step.thinking && expandedSteps.has(step.id)" class="detail-section thinking">
-            <div class="detail-header">💭 思考</div>
-            <div class="thinking-content">{{ step.thinking }}</div>
+          <!-- Thinking -->
+          <div v-if="step.thinking && expandedSteps.has(step.id)" class="detail-section">
+            <div class="detail-label">💭 思考</div>
+            <pre class="thinking">{{ step.thinking }}</pre>
           </div>
 
           <!-- Tool Agent Result -->
-          <div v-if="step.toolAgentResult && expandedSteps.has(step.id)" class="tool-agent-result">
-            <div class="agent-result-header">
-              <span :class="['agent-status', step.toolAgentResult.success ? 'success' : 'failed']">
-                {{ step.toolAgentResult.success ? 'Success' : 'Failed' }}
+          <div v-if="step.toolAgentResult && expandedSteps.has(step.id)" class="detail-section">
+            <div class="agent-header">
+              <span :class="['agent-badge', step.toolAgentResult.success ? 'success' : 'failed']">
+                {{ step.toolAgentResult.success ? '成功' : '失败' }}
               </span>
-              <span class="agent-stats">{{ step.toolAgentResult.toolCallCount }} tool calls</span>
+              <span class="agent-stats">{{ step.toolAgentResult.toolCallCount }} 次调用</span>
             </div>
-            <div class="agent-summary">{{ step.toolAgentResult.summary }}</div>
-            <div v-if="step.toolAgentResult.filesModified?.length" class="agent-files">
-              <div class="detail-header">Files Modified</div>
-              <ul class="files-list">
-                <li v-for="file in step.toolAgentResult.filesModified" :key="file">{{ file }}</li>
-              </ul>
-            </div>
-            <div v-if="step.toolAgentResult.errors?.length" class="agent-errors">
-              <div class="detail-header">Errors</div>
-              <ul class="errors-list">
-                <li v-for="(error, idx) in step.toolAgentResult.errors" :key="idx">{{ error }}</li>
-              </ul>
-            </div>
+            <pre>{{ step.toolAgentResult.summary }}</pre>
           </div>
 
-          <!-- Arguments (only when expanded manually) -->
-          <div v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && Object.keys(step.toolCall.arguments).length > 0" class="detail-section">
-            <div class="detail-header">参数</div>
-            <ResultBlock :content="formatArgs(step.toolCall.arguments)" label="Arguments" />
+          <!-- Arguments -->
+          <div v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasNonCommandArgs(step)" class="detail-section">
+            <div class="detail-label">参数</div>
+            <pre>{{ formatArgs(step.toolCall.arguments) }}</pre>
           </div>
 
-          <!-- Result (using new ResultBlock) -->
-          <ResultBlock
-            v-if="step.result && expandedSteps.has(step.id)"
-            :content="step.result"
-            label="结果"
-          />
+          <!-- Result -->
+          <div v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running'" class="detail-section">
+            <div class="detail-label">结果</div>
+            <pre>{{ step.result }}</pre>
+          </div>
 
           <!-- Summary -->
-          <div v-if="step.summary && expandedSteps.has(step.id)" class="detail-section summary">
-            <div class="detail-header">📝 分析</div>
-            <div class="summary-content">{{ step.summary }}</div>
+          <div v-if="step.summary && expandedSteps.has(step.id)" class="detail-section">
+            <div class="detail-label">📝 分析</div>
+            <pre class="summary">{{ step.summary }}</pre>
           </div>
 
-          <!-- Error (using new ErrorBlock, auto-show when failed) -->
-          <ErrorBlock
-            v-if="step.error"
-            :error="step.error"
-          />
+          <!-- Error -->
+          <div v-if="step.error" class="detail-section error">
+            <pre>{{ step.error }}</pre>
+          </div>
         </div>
       </Transition>
     </div>
@@ -145,35 +102,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { h, type FunctionalComponent } from 'vue'
+import { ref, watch } from 'vue'
 import type { Step, ToolCall } from '@/types'
-import ResultBlock from './ResultBlock.vue'
-import ErrorBlock from './ErrorBlock.vue'
 
 const props = defineProps<{
   steps: Step[]
 }>()
 
 const emit = defineEmits<{
-  confirm: [toolCall: ToolCall]
+  confirm: [toolCall: ToolCall, response: 'once' | 'always']
   reject: [toolCall: ToolCall]
 }>()
 
 const expandedSteps = ref<Set<string>>(new Set())
 
-// Auto-expand failed steps and steps awaiting confirmation
+// Auto-expand failed and awaiting-confirmation steps
 watch(() => props.steps, (steps) => {
   for (const step of steps) {
-    // Auto-expand failed steps
-    if (step.status === 'failed' && step.error && !expandedSteps.value.has(step.id)) {
-      expandedSteps.value.add(step.id)
-      expandedSteps.value = new Set(expandedSteps.value)
-    }
-    // Auto-expand awaiting confirmation
-    if (step.status === 'awaiting-confirmation' && !expandedSteps.value.has(step.id)) {
-      expandedSteps.value.add(step.id)
-      expandedSteps.value = new Set(expandedSteps.value)
+    if ((step.status === 'failed' && step.error) || step.status === 'awaiting-confirmation') {
+      if (!expandedSteps.value.has(step.id)) {
+        expandedSteps.value.add(step.id)
+        expandedSteps.value = new Set(expandedSteps.value)
+      }
     }
   }
 }, { deep: true, immediate: true })
@@ -187,6 +137,15 @@ function toggleExpand(stepId: string) {
   expandedSteps.value = new Set(expandedSteps.value)
 }
 
+function stepClass(step: Step): Record<string, boolean> {
+  return {
+    'status-running': step.status === 'running',
+    'status-completed': step.status === 'completed',
+    'status-failed': step.status === 'failed',
+    'needs-confirm': step.status === 'awaiting-confirmation',
+  }
+}
+
 function hasExpandableContent(step: Step): boolean {
   return !!(
     step.thinking ||
@@ -194,99 +153,46 @@ function hasExpandableContent(step: Step): boolean {
     step.result ||
     step.summary ||
     step.error ||
-    step.toolAgentResult ||
-    step.status === 'awaiting-confirmation'
+    step.toolAgentResult
   )
 }
 
 function shouldShowContent(step: Step): boolean {
-  // Always show for awaiting-confirmation (needs buttons)
-  if (step.status === 'awaiting-confirmation') return true
-  // Always show error when failed
+  if (step.status === 'awaiting-confirmation') return false // buttons are inline
   if (step.status === 'failed' && step.error) return true
-  // Otherwise only when expanded
+  if (step.status === 'running' && step.result) return true
   return expandedSteps.value.has(step.id)
-}
-
-function stepCardClass(step: Step): Record<string, boolean> {
-  return {
-    'step-running': step.status === 'running',
-    'step-completed': step.status === 'completed',
-    'step-failed': step.status === 'failed',
-    'step-awaiting': step.status === 'awaiting-confirmation',
-    [`step-type-${step.type}`]: true,
-  }
 }
 
 function getStatusText(step: Step): string {
   if (step.status === 'running') return '执行中'
-  if (step.status === 'awaiting-confirmation') return '待确认'
-  if (step.status === 'failed') return '失败'
-  if (step.status === 'completed') {
-    // Calculate and display duration
-    const duration = getDuration(step)
-    if (duration) return duration
-    return '完成'
+  if (step.status === 'failed') return '✗'
+  if (step.status === 'completed') return '✓'
+  return ''
+}
+
+function getPreview(step: Step): string {
+  // For bash commands - title already contains the command, skip preview
+  if (step.toolCall?.arguments?.command) {
+    return ''
+  }
+  // For file operations
+  if (step.toolCall?.arguments?.path) {
+    const path = step.toolCall.arguments.path as string
+    return path.length > 40 ? '...' + path.slice(-37) : path
   }
   return ''
 }
 
-function getDuration(step: Step): string | null {
-  // For now, we don't have endTime stored, so we can't calculate duration
-  // This would need backend support to track end time
-  // For demonstration, we could use a placeholder
-  return null
+function hasNonCommandArgs(step: Step): boolean {
+  const args = step.toolCall?.arguments
+  if (!args) return false
+  return Object.keys(args).filter(k => k !== 'command').length > 0
 }
 
-function getPreview(step: Step): string {
-  // For bash commands, show the command
-  if (step.toolCall?.arguments?.command) {
-    const cmd = step.toolCall.arguments.command as string
-    // Truncate long commands
-    const maxLen = 60
-    if (cmd.length > maxLen) {
-      return cmd.substring(0, maxLen) + '...'
-    }
-    return cmd
-  }
-
-  // For file operations, show the path
-  if (step.toolCall?.arguments?.path) {
-    const path = step.toolCall.arguments.path as string
-    // Truncate long paths
-    const maxLen = 50
-    if (path.length > maxLen) {
-      return '...' + path.substring(path.length - maxLen)
-    }
-    return path
-  }
-
-  // Show thinking preview
-  if (step.thinking) {
-    const firstLine = step.thinking.split('\n')[0].trim()
-    const maxLen = 50
-    if (firstLine.length > maxLen) {
-      return '💭 ' + firstLine.substring(0, maxLen) + '...'
-    }
-    return '💭 ' + firstLine
-  }
-
-  // Show summary preview
-  if (step.summary) {
-    const firstLine = step.summary.split('\n')[0].trim()
-    const maxLen = 50
-    if (firstLine.length > maxLen) {
-      return '📝 ' + firstLine.substring(0, maxLen) + '...'
-    }
-    return '📝 ' + firstLine
-  }
-
-  return step.description || ''
-}
-
-function handleConfirm(step: Step) {
+function handleConfirm(step: Step, response: 'once' | 'always') {
   if (step.toolCall) {
-    emit('confirm', step.toolCall)
+    emit('confirm', step.toolCall, response)
   }
 }
 
@@ -297,79 +203,19 @@ function handleReject(step: Step) {
 }
 
 function formatArgs(args: Record<string, any>): string {
-  // For bash commands, show the command directly
   if (args.command && Object.keys(args).length === 1) {
     return args.command
   }
-  return JSON.stringify(args, null, 2)
+  const filtered = Object.fromEntries(
+    Object.entries(args).filter(([k]) => k !== 'command')
+  )
+  return JSON.stringify(filtered, null, 2)
 }
 
-// Icon components for different step types
-const SkillIcon: FunctionalComponent = () =>
-  h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('path', { d: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z' })
-  ])
-
-const CommandIcon: FunctionalComponent = () =>
-  h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('polyline', { points: '4 17 10 11 4 5' }),
-    h('line', { x1: '12', y1: '19', x2: '20', y2: '19' })
-  ])
-
-const FileReadIcon: FunctionalComponent = () =>
-  h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('path', { d: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' }),
-    h('polyline', { points: '14 2 14 8 20 8' }),
-    h('line', { x1: '16', y1: '13', x2: '8', y2: '13' }),
-    h('line', { x1: '16', y1: '17', x2: '8', y2: '17' }),
-    h('polyline', { points: '10 9 9 9 8 9' })
-  ])
-
-const FileWriteIcon: FunctionalComponent = () =>
-  h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' }),
-    h('path', { d: 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' })
-  ])
-
-const ToolIcon: FunctionalComponent = () =>
-  h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('path', { d: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z' })
-  ])
-
-const ThinkingIcon: FunctionalComponent = () =>
-  h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('circle', { cx: '12', cy: '12', r: '10' }),
-    h('path', { d: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3' }),
-    h('line', { x1: '12', y1: '17', x2: '12.01', y2: '17' })
-  ])
-
-const ToolAgentIcon: FunctionalComponent = () =>
-  h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
-    h('rect', { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' }),
-    h('circle', { cx: '8.5', cy: '8.5', r: '1.5' }),
-    h('circle', { cx: '15.5', cy: '8.5', r: '1.5' }),
-    h('path', { d: 'M9 14s.5 2 3 2 3-2 3-2' })
-  ])
-
-function getStepIcon(step: Step): FunctionalComponent {
-  switch (step.type) {
-    case 'skill-read':
-      return SkillIcon
-    case 'command':
-      return CommandIcon
-    case 'file-read':
-      return FileReadIcon
-    case 'file-write':
-      return FileWriteIcon
-    case 'tool-call':
-      return ToolIcon
-    case 'thinking':
-      return ThinkingIcon
-    case 'tool-agent':
-      return ToolAgentIcon
-    default:
-      return CommandIcon
-  }
+function truncateOutput(output: string, maxLines: number = 8): string {
+  const lines = output.split('\n')
+  if (lines.length <= maxLines) return output
+  return '...\n' + lines.slice(-maxLines).join('\n')
 }
 </script>
 
@@ -377,144 +223,72 @@ function getStepIcon(step: Step): FunctionalComponent {
 .steps-panel {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
-/* Card Design */
-.step-card {
-  background: var(--step-card-bg, rgba(255, 255, 255, 0.03));
-  border: 1px solid var(--step-card-border, rgba(255, 255, 255, 0.08));
-  border-radius: 8px;
-  overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+/* Inline step row */
+.step-inline {
+  font-size: 13px;
+  border-radius: 6px;
+  background: transparent;
+  transition: background 0.15s ease;
 }
 
-.step-card:hover {
-  background: var(--step-card-hover, rgba(255, 255, 255, 0.05));
+.step-inline:hover {
+  background: rgba(255, 255, 255, 0.03);
 }
 
-/* Running state */
-.step-card.step-running {
-  border-color: rgba(59, 130, 246, 0.4);
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.1);
+.step-inline.needs-confirm {
+  background: rgba(208, 162, 21, 0.06);
+  border: 1px solid rgba(208, 162, 21, 0.15);
+  border-radius: var(--radius-sm, 8px);
 }
 
-/* Failed state */
-.step-card.step-failed {
-  border-color: rgba(239, 68, 68, 0.4);
+.step-inline.needs-confirm:hover {
+  background: rgba(208, 162, 21, 0.1);
+  border-color: rgba(208, 162, 21, 0.25);
 }
 
-/* Awaiting confirmation state */
-.step-card.step-awaiting {
-  border-color: rgba(245, 158, 11, 0.4);
-  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.1);
-}
-
-/* Header Row */
-.step-header {
+/* Main row */
+.step-row {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
   cursor: pointer;
-  user-select: none;
+  min-height: 32px;
 }
 
-.step-icon {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
+/* Status dot */
+.status-dot {
+  width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary, #888);
-  margin-top: 1px;
-}
-
-.step-icon svg {
-  width: 100%;
-  height: 100%;
-}
-
-/* Step type colors */
-.step-type-skill-read .step-icon { color: var(--color-purple, #a855f7); }
-.step-type-command .step-icon { color: var(--color-green, #22c55e); }
-.step-type-file-read .step-icon { color: var(--color-blue, #3b82f6); }
-.step-type-file-write .step-icon { color: var(--color-orange, #f97316); }
-.step-type-tool-call .step-icon { color: var(--color-cyan, #06b6d4); }
-.step-type-tool-agent .step-icon { color: var(--color-pink, #ec4899); }
-
-/* Info area (title + preview) */
-.step-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.step-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.step-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary, #fff);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.step-preview {
-  font-size: 11px;
-  color: var(--text-tertiary, #666);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-}
-
-/* Status Area */
-.step-status-area {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   flex-shrink: 0;
 }
 
-.step-status {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.step-status.running {
-  color: var(--color-blue, #3b82f6);
-}
-
-.step-status.completed {
-  color: var(--color-green, #22c55e);
-}
-
-.step-status.failed {
-  color: var(--color-red, #ef4444);
-}
-
-.step-status.awaiting-confirmation {
-  color: var(--color-warning, #f59e0b);
-}
-
-.status-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(59, 130, 246, 0.25);
-  border-top-color: #3b82f6;
+.dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
+}
+
+.dot.pending { background: #6b7280; }
+.dot.success { background: #22c55e; }
+.dot.error { background: #ef4444; }
+.dot.warning {
+  background: #f59e0b;
+  animation: pulse 1.5s infinite;
+}
+
+.dot.spinning {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-top-color: #3b82f6;
+  background: transparent;
   animation: spin 0.8s linear infinite;
 }
 
@@ -522,283 +296,255 @@ function getStepIcon(step: Step): FunctionalComponent {
   to { transform: rotate(360deg); }
 }
 
-.status-check,
-.status-x,
-.status-warning {
-  width: 14px;
-  height: 14px;
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
-.status-text {
-  white-space: nowrap;
-}
-
-.expand-chevron {
-  width: 14px;
-  height: 14px;
-  color: var(--text-tertiary, #666);
-  transition: transform 0.2s ease;
+/* Step title */
+.step-title {
+  font-weight: 500;
+  color: var(--text-secondary, #888);
   flex-shrink: 0;
 }
 
-.expand-chevron.expanded {
+/* Preview */
+.step-preview {
+  color: var(--text-primary, #e5e5e5);
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.spacer { flex: 1; }
+
+/* Status text */
+.status-text {
+  font-size: 12px;
+  color: var(--text-tertiary, #666);
+  flex-shrink: 0;
+}
+
+.status-text.running { color: #3b82f6; }
+.status-text.completed { color: #22c55e; }
+.status-text.failed { color: #ef4444; }
+
+/* Confirm buttons */
+.confirm-buttons {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-inline {
+  padding: 4px 10px;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  background: transparent;
+}
+
+.btn-allow {
+  color: var(--text-success, #879A39);
+  border-color: rgba(135, 154, 57, 0.3);
+  background: rgba(135, 154, 57, 0.08);
+}
+
+.btn-allow:hover {
+  background: rgba(135, 154, 57, 0.15);
+  border-color: rgba(135, 154, 57, 0.5);
+}
+
+.btn-always {
+  color: var(--accent, #4385BE);
+  border-color: rgba(67, 133, 190, 0.3);
+  background: rgba(67, 133, 190, 0.08);
+}
+
+.btn-always:hover {
+  background: rgba(67, 133, 190, 0.15);
+  border-color: rgba(67, 133, 190, 0.5);
+}
+
+.btn-reject {
+  color: var(--text-muted, #9F9D96);
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn-reject:hover {
+  color: var(--text-error, #D14D41);
+  background: rgba(209, 77, 65, 0.08);
+}
+
+/* Expand icon */
+.expand-icon {
+  color: var(--text-tertiary, #666);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.expand-icon.rotated {
   transform: rotate(180deg);
 }
 
-/* Expandable Content */
-.step-content {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 10px 12px;
+/* Expanded details */
+.step-details {
+  padding: 0 10px 8px 34px;
 }
 
-/* Expand animation */
-.expand-enter-active,
-.expand-leave-active {
-  transition: all 0.2s ease-out;
-  overflow: hidden;
-}
-
-.expand-enter-from,
-.expand-leave-to {
-  opacity: 0;
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-/* Confirmation section */
-.step-confirmation {
-  margin-bottom: 8px;
-}
-
-.confirmation-warning {
-  margin-bottom: 10px;
-}
-
-.warning-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  color: rgb(245, 158, 11);
-  margin-bottom: 8px;
-}
-
-.command-preview {
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.command-preview code {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 12px;
-  color: rgb(251, 191, 36);
-  word-break: break-all;
-}
-
-.confirmation-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.confirm-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 6px;
-  border: none;
-  background: rgb(34, 197, 94);
-  color: white;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.confirm-btn:hover {
-  background: rgb(22, 163, 74);
-}
-
-.reject-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 6px;
-  border: 1px solid rgba(239, 68, 68, 0.5);
-  background: transparent;
-  color: rgb(239, 68, 68);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.reject-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgb(239, 68, 68);
-}
-
-/* Detail sections */
 .detail-section {
-  margin-bottom: 10px;
+  margin-top: 6px;
 }
 
-.detail-section:last-child {
-  margin-bottom: 0;
+.detail-section.live {
+  border-left: 2px solid #3b82f6;
+  padding-left: 8px;
 }
 
-.detail-header {
+.detail-section.error {
+  border-left: 2px solid #ef4444;
+  padding-left: 8px;
+}
+
+.detail-section.error pre {
+  color: #ef4444;
+}
+
+.detail-label {
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-secondary, #888);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  color: var(--text-tertiary, #666);
+  margin-bottom: 4px;
 }
 
-/* Thinking section */
-.thinking-content {
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: rgba(147, 51, 234, 0.1);
-  border-left: 3px solid rgba(147, 51, 234, 0.5);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-primary, #fff);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* Summary section */
-.summary-content {
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: rgba(34, 197, 94, 0.1);
-  border-left: 3px solid rgba(34, 197, 94, 0.5);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-primary, #fff);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* Tool Agent result */
-.tool-agent-result {
-  margin-bottom: 10px;
-}
-
-.agent-result-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.agent-status {
-  padding: 3px 8px;
+.detail-section pre {
+  margin: 0;
+  padding: 8px 10px;
   border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.agent-status.success {
-  background: rgba(34, 197, 94, 0.15);
-  color: rgb(34, 197, 94);
-}
-
-.agent-status.failed {
-  background: rgba(239, 68, 68, 0.15);
-  color: rgb(239, 68, 68);
-}
-
-.agent-stats {
-  font-size: 11px;
-  color: var(--text-secondary, #888);
-}
-
-.agent-summary {
-  padding: 10px;
-  border-radius: 6px;
   background: rgba(0, 0, 0, 0.2);
-  font-size: 12px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 11px;
   line-height: 1.5;
-  color: var(--text-primary, #fff);
+  color: var(--text-primary, #e5e5e5);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 200px;
   overflow-y: auto;
 }
 
-.agent-files,
-.agent-errors {
-  margin-top: 10px;
+pre.thinking {
+  background: rgba(147, 51, 234, 0.1);
+  border-left: 2px solid rgba(147, 51, 234, 0.5);
 }
 
-.files-list,
-.errors-list {
-  margin: 4px 0 0 0;
-  padding-left: 20px;
+pre.summary {
+  background: rgba(34, 197, 94, 0.1);
+  border-left: 2px solid rgba(34, 197, 94, 0.5);
 }
 
-.files-list li,
-.errors-list li {
+/* Agent result */
+.agent-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.agent-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.agent-badge.success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.agent-badge.failed {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.agent-stats {
   font-size: 11px;
-  margin: 2px 0;
+  color: var(--text-tertiary, #666);
 }
 
-.files-list li {
-  color: var(--color-blue, #3b82f6);
+/* Slide animation */
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
 }
 
-.errors-list li {
-  color: rgb(239, 68, 68);
+.slide-enter-from,
+.slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.slide-enter-to,
+.slide-leave-from {
+  max-height: 400px;
 }
 
 /* Light theme */
-html[data-theme='light'] .step-card {
-  background: rgba(0, 0, 0, 0.02);
-  border-color: rgba(0, 0, 0, 0.08);
+html[data-theme='light'] .step-inline:hover {
+  background: rgba(0, 0, 0, 0.03);
 }
 
-html[data-theme='light'] .step-card:hover {
-  background: rgba(0, 0, 0, 0.04);
+html[data-theme='light'] .step-inline.needs-confirm {
+  background: rgba(173, 131, 1, 0.06);
+  border-color: rgba(173, 131, 1, 0.15);
 }
 
-html[data-theme='light'] .step-card.step-running {
-  border-color: rgba(59, 130, 246, 0.3);
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.08);
+html[data-theme='light'] .step-inline.needs-confirm:hover {
+  background: rgba(173, 131, 1, 0.1);
+  border-color: rgba(173, 131, 1, 0.25);
 }
 
-html[data-theme='light'] .step-card.step-failed {
-  border-color: rgba(239, 68, 68, 0.3);
+html[data-theme='light'] .btn-allow {
+  color: #66800B;
+  border-color: rgba(102, 128, 11, 0.3);
+  background: rgba(102, 128, 11, 0.08);
 }
 
-html[data-theme='light'] .step-card.step-awaiting {
-  border-color: rgba(245, 158, 11, 0.3);
+html[data-theme='light'] .btn-allow:hover {
+  background: rgba(102, 128, 11, 0.15);
+  border-color: rgba(102, 128, 11, 0.5);
 }
 
-html[data-theme='light'] .step-content {
-  border-top-color: rgba(0, 0, 0, 0.06);
+html[data-theme='light'] .btn-always {
+  color: #205EA6;
+  border-color: rgba(32, 94, 166, 0.3);
+  background: rgba(32, 94, 166, 0.08);
 }
 
-html[data-theme='light'] .command-preview {
-  background: rgba(0, 0, 0, 0.06);
+html[data-theme='light'] .btn-always:hover {
+  background: rgba(32, 94, 166, 0.15);
+  border-color: rgba(32, 94, 166, 0.5);
 }
 
-html[data-theme='light'] .thinking-content {
-  background: rgba(147, 51, 234, 0.08);
+html[data-theme='light'] .btn-reject {
+  color: #878580;
 }
 
-html[data-theme='light'] .summary-content {
-  background: rgba(34, 197, 94, 0.08);
+html[data-theme='light'] .btn-reject:hover {
+  color: #AF3029;
+  background: rgba(175, 48, 41, 0.08);
 }
 
-html[data-theme='light'] .agent-summary {
+html[data-theme='light'] .detail-section pre {
   background: rgba(0, 0, 0, 0.04);
 }
 </style>

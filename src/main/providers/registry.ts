@@ -9,6 +9,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { builtinProviders } from './builtin/index.js'
 import type { ProviderDefinition, ProviderInfo, ProviderInstance, ProviderConfig } from './types.js'
+import { oauthManager } from '../services/oauth-manager.js'
 
 // Registry storage
 const providers = new Map<string, ProviderDefinition>()
@@ -71,6 +72,21 @@ export function requiresSystemMerge(providerId: string): boolean {
 }
 
 /**
+ * Check if a provider requires OAuth
+ */
+export function requiresOAuth(providerId: string): boolean {
+  const definition = providers.get(providerId)
+  return definition?.info.requiresOAuth === true
+}
+
+/**
+ * Get the provider definition
+ */
+export function getProviderDefinition(providerId: string): ProviderDefinition | undefined {
+  return providers.get(providerId)
+}
+
+/**
  * Create a provider instance
  *
  * @param providerId - The provider ID (built-in or custom-*)
@@ -90,6 +106,43 @@ export function createProviderInstance(
   const definition = providers.get(providerId)
   if (!definition) {
     throw new Error(`Unsupported provider: ${providerId}`)
+  }
+
+  return definition.create(config)
+}
+
+/**
+ * Create a provider instance with OAuth support (async)
+ * For OAuth providers, this fetches the token first
+ */
+export async function createProviderInstanceAsync(
+  providerId: string,
+  config: ProviderConfig & { apiType?: 'openai' | 'anthropic' }
+): Promise<ProviderInstance> {
+  // Handle user-defined custom providers
+  if (providerId.startsWith('custom-')) {
+    return createCustomProviderInstance(config)
+  }
+
+  // Look up registered provider
+  const definition = providers.get(providerId)
+  if (!definition) {
+    throw new Error(`Unsupported provider: ${providerId}`)
+  }
+
+  // Check if this is an OAuth provider
+  if (definition.info.requiresOAuth) {
+    // Fetch OAuth token
+    const token = await oauthManager.refreshTokenIfNeeded(providerId)
+    if (!token) {
+      throw new Error(`Not logged in to ${definition.info.name}. Please login first.`)
+    }
+
+    // Create provider with OAuth token
+    return definition.create({
+      ...config,
+      oauthToken: token,
+    })
   }
 
   return definition.create(config)

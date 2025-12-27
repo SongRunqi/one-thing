@@ -6,10 +6,7 @@
           <div class="modal-header">
             <h3 class="modal-title">Add New Fact</h3>
             <button class="close-btn" @click="$emit('close')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <X :size="18" :stroke-width="2" />
             </button>
           </div>
 
@@ -74,6 +71,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import type { UserFactCategory } from '@/types'
+import { X } from 'lucide-vue-next'
 
 const props = defineProps<{
   visible: boolean

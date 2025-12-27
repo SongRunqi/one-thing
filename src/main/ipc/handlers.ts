@@ -12,6 +12,8 @@ import { registerUserProfileHandlers } from './user-profile.js'
 import { registerAgentMemoryHandlers } from './agent-memory.js'
 import { registerShellHandlers } from './shell.js'
 import { registerMediaHandlers } from './media.js'
+import { registerPermissionHandlers } from './permission.js'
+import { registerOAuthHandlers, cleanupOAuth } from './oauth.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -28,6 +30,8 @@ export function initializeIPC() {
   registerAgentMemoryHandlers()
   registerShellHandlers()
   registerMediaHandlers()
+  registerPermissionHandlers()
+  registerOAuthHandlers()
 }
 
-export { initializeMCP, shutdownMCP, initializeSkills }
+export { initializeMCP, shutdownMCP, initializeSkills, cleanupOAuth }

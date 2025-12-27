@@ -117,6 +117,23 @@ export const useAgentMemoryStore = defineStore('agentMemory', () => {
     }
   }
 
+  // Delete a memory
+  async function deleteMemory(memoryId: string): Promise<boolean> {
+    try {
+      const response = await window.electronAPI.deleteAgentMemory(memoryId)
+      if (response.success && currentRelationship.value) {
+        // Remove from local state
+        currentRelationship.value.observations = currentRelationship.value.observations.filter(
+          m => m.id !== memoryId
+        )
+        return true
+      }
+    } catch (error) {
+      console.error('Failed to delete memory:', error)
+    }
+    return false
+  }
+
   // Recall (strengthen) a memory
   async function recallMemory(agentId: string, memoryId: string): Promise<boolean> {
     try {
@@ -190,6 +207,7 @@ export const useAgentMemoryStore = defineStore('agentMemory', () => {
     loadRelationship,
     clearRelationship,
     addMemory,
+    deleteMemory,
     recallMemory,
     recordInteraction,
     updateRelationship,

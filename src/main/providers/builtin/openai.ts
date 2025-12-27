@@ -17,6 +17,7 @@ const openaiProvider: ProviderDefinition = {
     icon: 'openai',
     supportsCustomBaseUrl: true,
     requiresApiKey: true,
+    // Models fetched dynamically from OpenRouter API
   },
 
   create: ({ apiKey, baseUrl }) => {

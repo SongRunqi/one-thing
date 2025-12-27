@@ -35,151 +35,123 @@
               @keydown.escape="localSearchQuery = ''"
             />
           </div>
-          <button
-            class="new-chat-btn"
-            title="New chat"
-            @click="$emit('create-new-chat')"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-          </button>
         </div>
       </div>
 
       <!-- Agent Grid at top -->
       <AgentGrid
         v-if="agentsStore.pinnedAgents.length > 0"
-        :selected-agent-id="null"
-        @select-agent="handleSelectAgent"
         @edit-agent="(agent) => $emit('edit-agent', agent)"
         @open-create-dialog="$emit('open-agent-dialog')"
       />
 
+      <!-- Top scroll indicator line -->
+      <div :class="['scroll-indicator-top', { visible: isSessionsOverflowing }]"></div>
       <div
         ref="sessionsListRef"
-        :class="['sessions-list', { 'is-overflowing': isSessionsOverflowing }]"
+        class="sessions-list"
         role="list"
         @scroll="checkSessionsOverflow"
       >
-        <div v-for="group in groupedSessions" :key="group.label" class="session-group">
-          <div
-            class="group-header"
-            :class="{ collapsed: collapsedGroups.has(group.label) }"
-            @click="toggleGroupCollapse(group.label)"
+        <!-- New Chat item - always at top -->
+        <div
+          class="session-item new-chat-item"
+          @click="$emit('create-new-chat')"
+        >
+          <svg class="new-chat-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span class="session-name">New Chat</span>
+        </div>
+
+        <!-- Flat session list sorted by updatedAt -->
+        <div
+          v-for="session in flatSessions"
+          :key="session.id"
+          :class="[
+            'session-item',
+            {
+              active: session.id === sessionsStore.currentSessionId,
+              generating: session.id === chatStore.generatingSessionId,
+              pinned: session.isPinned,
+              editing: editingSessionId === session.id,
+              branch: session.depth > 0,
+              hidden: session.isHidden
+            }
+          ]"
+          :style="{ paddingLeft: `${12 + session.depth * 16}px` }"
+          :title="session.name || 'New chat'"
+          @click="handleSessionClickWithToggle(session)"
+          @contextmenu.prevent="openContextMenu($event, session)"
+        >
+          <!-- Collapse/Expand toggle for parent sessions -->
+          <button
+            v-if="session.hasBranches"
+            class="collapse-btn"
+            :class="{ collapsed: session.isCollapsed }"
+            @click.stop="toggleCollapse(session.id)"
           >
-            <svg class="group-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 12 15 18 9"/>
             </svg>
-            <span class="group-label">{{ group.label }}</span>
-            <span class="group-count">{{ group.sessions.filter(s => !s.isHidden).length }}</span>
-          </div>
-          <div class="group-sessions" :class="{ collapsed: collapsedGroups.has(group.label) }">
-            <div
-              v-for="session in group.sessions"
-              :key="session.id"
-              :class="[
-                'session-item',
-                {
-                  active: session.id === sessionsStore.currentSessionId,
-                  generating: session.id === chatStore.generatingSessionId,
-                  pinned: session.isPinned,
-                  editing: editingSessionId === session.id,
-                  branch: session.depth > 0,
-                  hidden: session.isHidden
-                }
-              ]"
-              :style="{ paddingLeft: `${12 + session.depth * 16}px` }"
-              :title="session.name || 'New chat'"
-              @click="handleSessionClickWithToggle(session)"
-              @contextmenu.prevent="openContextMenu($event, session)"
+          </button>
+
+          <!-- Branch indicator -->
+          <span v-if="session.depth > 0" class="branch-indicator">↳</span>
+
+          <!-- Generating indicator -->
+          <div v-if="session.id === chatStore.generatingSessionId" class="generating-dot"></div>
+
+          <!-- Pin indicator -->
+          <svg v-if="session.isPinned && session.depth === 0" class="pin-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
+          </svg>
+
+          <!-- Agent avatar or chat icon -->
+          <span v-if="getSessionAgent(session)?.avatar.type === 'emoji'" class="session-agent-avatar">
+            {{ getSessionAgent(session)?.avatar.value }}
+          </span>
+          <img
+            v-else-if="getSessionAgent(session)"
+            :src="'file://' + getSessionAgent(session)?.avatar.value"
+            class="session-agent-img"
+            alt=""
+          />
+
+          <!-- Session name -->
+          <input
+            v-if="editingSessionId === session.id"
+            ref="inlineInputRef"
+            v-model="editingName"
+            class="session-name-input"
+            maxlength="50"
+            @click.stop
+            @keydown.enter="confirmInlineRename"
+            @keydown.esc="cancelInlineRename"
+            @blur="confirmInlineRename"
+          />
+          <span v-else class="session-name" @click.stop="startInlineRename(session)">{{ session.name || 'New chat' }}</span>
+
+          <!-- Session time -->
+          <span v-if="editingSessionId !== session.id" class="session-time">{{ formatSessionTime(session.updatedAt) }}</span>
+
+          <!-- Hover actions -->
+          <div class="session-actions">
+            <button
+              :class="['action-btn', 'danger', { 'confirm': pendingDeleteId === session.id }]"
+              :title="getDeleteTitle(session)"
+              @click.stop="deleteSessionById(session.id)"
             >
-              <!-- Collapse/Expand toggle for parent sessions -->
-              <button
-                v-if="session.hasBranches"
-                class="collapse-btn"
-                :class="{ collapsed: session.isCollapsed }"
-                @click.stop="toggleCollapse(session.id)"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
-
-              <!-- Branch indicator -->
-              <span v-if="session.depth > 0" class="branch-indicator">↳</span>
-
-              <!-- Generating indicator -->
-              <div v-if="session.id === chatStore.generatingSessionId" class="generating-dot"></div>
-
-              <!-- Pin indicator -->
-              <svg v-if="session.isPinned && session.depth === 0" class="pin-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
+              <svg v-if="pendingDeleteId !== session.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
               </svg>
-
-              <!-- Agent avatar or chat icon -->
-              <span v-if="getSessionAgent(session)?.avatar.type === 'emoji'" class="session-agent-avatar">
-                {{ getSessionAgent(session)?.avatar.value }}
-              </span>
-              <img
-                v-else-if="getSessionAgent(session)"
-                :src="'file://' + getSessionAgent(session)?.avatar.value"
-                class="session-agent-img"
-                alt=""
-              />
-
-              <!-- Session name -->
-              <input
-                v-if="editingSessionId === session.id"
-                ref="inlineInputRef"
-                v-model="editingName"
-                class="session-name-input"
-                maxlength="50"
-                @click.stop
-                @keydown.enter="confirmInlineRename"
-                @keydown.esc="cancelInlineRename"
-                @blur="confirmInlineRename"
-              />
-              <span v-else class="session-name">{{ session.name || 'New chat' }}</span>
-
-              <!-- Hover actions -->
-              <div class="session-actions">
-                <button
-                  class="action-btn"
-                  title="Rename"
-                  @click.stop="startInlineRename(session)"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-                <button
-                  class="action-btn"
-                  :title="session.isPinned ? 'Unpin' : 'Pin'"
-                  @click.stop="togglePin(session)"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
-                  </svg>
-                </button>
-                <button
-                  :class="['action-btn', 'danger', { 'confirm': pendingDeleteId === session.id }]"
-                  :title="getDeleteTitle(session)"
-                  @click.stop="deleteSessionById(session.id)"
-                >
-                  <svg v-if="pendingDeleteId !== session.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                  </svg>
-                  <template v-else>
-                    <span v-if="session.hasBranches" class="delete-count">{{ session.branchCount + 1 }}</span>
-                    <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M5 13l4 4L19 7"/>
-                    </svg>
-                  </template>
-                </button>
-              </div>
-            </div>
+              <template v-else>
+                <span v-if="session.hasBranches" class="delete-count">{{ session.branchCount + 1 }}</span>
+                <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 13l4 4L19 7"/>
+                </svg>
+              </template>
+            </button>
           </div>
         </div>
 
@@ -198,38 +170,37 @@
         >
           <button class="context-item" @click="handleRename">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
             </svg>
             Rename
           </button>
           <button class="context-item" @click="handlePin">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2v20M2 12h20"/>
+              <path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
             </svg>
-            Pin
+            {{ contextMenu.session?.isPinned ? 'Unpin' : 'Pin' }}
           </button>
           <div class="context-divider"></div>
           <button class="context-item danger" @click="handleDelete">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+              <path d="M18 6L6 18M6 6l12 12"/>
             </svg>
-            Delete
+            Close
           </button>
         </div>
         <div v-if="contextMenu.show" class="context-overlay" @click="closeContextMenu"></div>
       </Teleport>
 
-    </template>
-
       <!-- Workspace Switcher -->
       <WorkspaceSwitcher
         :media-panel-open="mediaPanelOpen"
-        :show-separator="isSessionsOverflowing"
+        :show-separator="hasContentBelow"
         @toggle-media-panel="$emit('toggle-media-panel')"
         @open-create-dialog="$emit('open-workspace-dialog')"
+        @open-agent-dialog="$emit('open-agent-dialog')"
         @edit-workspace="(workspace) => $emit('edit-workspace', workspace)"
       />
+    </template>
     </div>
 
     <!-- Resize Handle -->
@@ -298,7 +269,6 @@ const emit = defineEmits<{
   'edit-workspace': [workspace: Workspace]
   'open-agent-dialog': []
   'edit-agent': [agent: Agent]
-  'select-agent': [agent: Agent]
   'create-new-chat': []
   'open-search': []
   'resize': [width: number]
@@ -308,10 +278,6 @@ const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const agentsStore = useAgentsStore()
-
-function handleSelectAgent(agent: Agent) {
-  emit('select-agent', agent)
-}
 
 // Sidebar width management
 const actualWidth = computed(() => props.width)
@@ -359,18 +325,21 @@ const animationSpeed = computed(() => {
 })
 const inlineInputRef = ref<HTMLInputElement | null>(null)
 const sessionsListRef = ref<HTMLElement | null>(null)
-const isSessionsOverflowing = ref(false)
+const isSessionsOverflowing = ref(false)  // Content scrolled above (for top line)
+const hasContentBelow = ref(false)  // Content below viewport (for bottom line)
 let mutationObserver: MutationObserver | null = null
 let resizeObserver: ResizeObserver | null = null
 
-// Check if sessions list content overlaps with the bottom area
+// Check scroll state for both top and bottom separators
 function checkSessionsOverflow() {
   if (sessionsListRef.value) {
     const el = sessionsListRef.value
-    // Logic: content is "covered" if there is more content below the current scroll view
-    // Using a 2px threshold for sub-pixel precision issues
-    const hasMoreContentBelow = el.scrollHeight > Math.ceil(el.scrollTop + el.clientHeight) + 2
-    isSessionsOverflowing.value = hasMoreContentBelow
+    // Top separator: show only when content is actually scrolled above (not at top)
+    isSessionsOverflowing.value = el.scrollTop > 0
+    // Bottom separator: show only when there's more content below the visible area
+    const hasMore = el.scrollHeight > el.clientHeight &&
+                    el.scrollHeight > Math.ceil(el.scrollTop + el.clientHeight) + 2
+    hasContentBelow.value = hasMore
   }
 }
 
@@ -782,6 +751,69 @@ const groupedSessions = computed(() => {
   return groups.filter((g) => g.sessions.length > 0)
 })
 
+// Flat session list: pinned first, then by updatedAt (no date grouping)
+const flatSessions = computed(() => {
+  const organizedSessions = organizeSessionsWithBranches(filteredSessions.value)
+
+  // Separate pinned and unpinned sessions
+  const pinned: SessionWithBranches[] = []
+  const unpinned: SessionWithBranches[] = []
+
+  for (const session of organizedSessions) {
+    // Find root to check if pinned
+    let root = session
+    while (root.parentSessionId) {
+      const parent = organizedSessions.find(s => s.id === root.parentSessionId)
+      if (!parent) break
+      root = parent
+    }
+
+    if (root.isPinned) {
+      pinned.push(session)
+    } else {
+      unpinned.push(session)
+    }
+  }
+
+  // Return pinned first, then unpinned (both already sorted by updatedAt in organizeSessionsWithBranches)
+  return [...pinned, ...unpinned]
+})
+
+// Format session time for display
+function formatSessionTime(timestamp: number): string {
+  const now = Date.now()
+  const diff = now - timestamp
+  const date = new Date(timestamp)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+
+  // Less than 1 minute
+  if (diff < 60000) return 'now'
+
+  // Less than 1 hour
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`
+
+  // Today - show time
+  if (timestamp >= today.getTime()) {
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  }
+
+  // Yesterday
+  if (timestamp >= yesterday.getTime()) {
+    return 'Yesterday'
+  }
+
+  // Within a week
+  if (diff < 7 * 24 * 3600000) {
+    return date.toLocaleDateString('en-US', { weekday: 'short' })
+  }
+
+  // Older - show date
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 function getSessionPreview(session: ChatSession): string {
   if (!session.messages || session.messages.length === 0) {
     return 'No messages yet'
@@ -977,7 +1009,7 @@ function handleClearClick() {
 onMounted(() => {
   window.addEventListener('resize', handleWindowResize)
   // Don't call handleWindowResize() on mount - respect saved sidebar state from localStorage
-  
+
   // Set up observers to detect DOM and size changes
   if (sessionsListRef.value) {
     // 1. MutationObserver for content changes (group toggle etc.)
@@ -1275,11 +1307,28 @@ html[data-theme='light'] .search-wrapper {
   overflow-x: hidden;
   min-height: 0;
   min-width: 0;
-  padding: 6px 8px 60px; /* Restored and added bottom padding */
+  padding: 6px 0 60px 8px; /* top right bottom left */
   /* Prevent width jump when scrollbar appears/disappears */
   scrollbar-gutter: stable;
-  /* Background dashed line separator */
-  border-bottom: none;
+}
+
+/* Top scroll indicator line - outside scroll container */
+.scroll-indicator-top {
+  height: 1px;
+  margin: 0 16px;
+  background: rgba(255, 255, 255, 0.06);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+html[data-theme='light'] .scroll-indicator-top {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.scroll-indicator-top.visible {
+  opacity: 1;
 }
 
 .session-group {
@@ -1483,7 +1532,7 @@ html[data-theme='light'] .collapse-btn:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 70px; /* Reserve space for hover actions */
+  padding-right: 30px; /* Reserve space for hover actions */
   transition: color 0.15s ease;
 }
 
@@ -1506,12 +1555,25 @@ html[data-theme='light'] .session-name {
   padding: 0;
   margin: 0;
   border: none;
-  border-bottom: 1px solid var(--accent);
   background: transparent;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
   color: var(--text);
   outline: none;
+}
+
+/* Session time */
+.session-time {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.6;
+  margin-left: 4px;
+  transition: opacity 0.15s ease;
+}
+
+.session-item:hover .session-time {
+  opacity: 0;
 }
 
 /* Hover actions */
@@ -1598,6 +1660,31 @@ html[data-theme='light'] .action-btn:hover {
   text-align: center;
   color: var(--muted);
   font-size: 13px;
+}
+
+/* New Chat item - always at top of session list */
+.session-item.new-chat-item {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+  padding-bottom: 12px;
+}
+
+.session-item.new-chat-item .new-chat-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.session-item.new-chat-item .session-name {
+  color: var(--accent);
+  padding-right: 12px;
+}
+
+.session-item.new-chat-item:hover {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.session-item.new-chat-item:hover .session-name {
+  color: var(--accent);
 }
 
 /* Context Menu */

@@ -10,7 +10,8 @@
  * That's it! The provider will be automatically registered and available.
  */
 
-import { generateText, streamText } from 'ai'
+import { generateText, streamText, convertToModelMessages } from 'ai'
+import type { UIMessage as AISDKUIMessage } from 'ai'
 import { z } from 'zod'
 import {
   initializeRegistry,
@@ -18,15 +19,19 @@ import {
   getProviderInfo as getInfoFromRegistry,
   isProviderSupported as isSupportedFromRegistry,
   createProviderInstance,
+  createProviderInstanceAsync,
   requiresSystemMerge as requiresSystemMergeFromRegistry,
+  requiresOAuth as requiresOAuthFromRegistry,
+  getProviderDefinition,
 } from './registry.js'
 import type { ProviderInfo, ProviderConfig } from './types.js'
+import { oauthManager } from '../services/oauth-manager.js'
 
-// Multimodal content type for AI messages (Vercel AI SDK format)
+// Multimodal content type for AI messages (Vercel AI SDK 5.x format)
 export type AIMessageContent = string | Array<
   | { type: 'text'; text: string }
-  | { type: 'image'; image: string; mimeType?: string }
-  | { type: 'file'; data: string; mimeType: string }
+  | { type: 'image'; image: string; mediaType?: string }  // AI SDK 5.x uses 'mediaType'
+  | { type: 'file'; data: string; mediaType: string }      // AI SDK 5.x uses 'mediaType'
 >
 
 // Initialize registry on module load
@@ -58,14 +63,60 @@ export function isProviderSupported(providerId: string): boolean {
 }
 
 /**
+ * Check if a provider requires OAuth authentication
+ */
+export function requiresOAuth(providerId: string): boolean {
+  return requiresOAuthFromRegistry(providerId)
+}
+
+/**
+ * Get OAuth config for an OAuth provider
+ * Returns the OAuth token as apiKey for providers that support it
+ */
+export async function getOAuthProviderConfig(
+  providerId: string,
+  baseConfig: { baseUrl?: string; model?: string }
+): Promise<{ apiKey: string; baseUrl?: string } | null> {
+  if (!requiresOAuth(providerId)) {
+    return null
+  }
+
+  try {
+    const token = await oauthManager.refreshTokenIfNeeded(providerId)
+    if (!token) {
+      return null
+    }
+
+    return {
+      apiKey: token.accessToken,
+      baseUrl: baseConfig.baseUrl,
+    }
+  } catch (error) {
+    console.error(`Failed to get OAuth config for ${providerId}:`, error)
+    return null
+  }
+}
+
+/**
  * Create a provider instance
  * For user-defined custom providers (IDs starting with 'custom-'), use apiType to determine the SDK
  */
 export function createProvider(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; apiType?: 'openai' | 'anthropic' }
+  config: { apiKey?: string; baseUrl?: string; apiType?: 'openai' | 'anthropic' }
 ) {
-  return createProviderInstance(providerId, config)
+  return createProviderInstance(providerId, config as ProviderConfig & { apiType?: 'openai' | 'anthropic' })
+}
+
+/**
+ * Create a provider instance with OAuth support (async)
+ * For OAuth providers, automatically fetches and refreshes tokens
+ */
+export async function createProviderAsync(
+  providerId: string,
+  config: { apiKey?: string; baseUrl?: string; apiType?: 'openai' | 'anthropic' }
+) {
+  return createProviderInstanceAsync(providerId, config as ProviderConfig & { apiType?: 'openai' | 'anthropic' })
 }
 
 /**
@@ -111,13 +162,18 @@ export interface ChatResponseResult {
  * Stream chunk types for tool-enabled responses
  */
 export interface StreamChunkWithTools {
-  type: 'text' | 'reasoning' | 'tool-call' | 'tool-result'
+  type: 'text' | 'reasoning' | 'tool-call' | 'tool-result' | 'finish'
   text?: string
   reasoning?: string
   toolCall?: AIToolCall
   toolResult?: {
     toolCallId: string
     result: any
+  }
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
   }
 }
 
@@ -545,8 +601,18 @@ export async function* streamChatResponseWithTools(
   // For DeepSeek Reasoner, reasoning must be included as { type: 'reasoning', text: ... } parts
   // in the content array, not as a separate reasoning_content field
   let convertedMessages: any[] = messages.map(msg => {
-    if (msg.role === 'user' || msg.role === 'system') {
-      return { role: msg.role, content: msg.content }
+    if (msg.role === 'system') {
+      // AI SDK 5.x requires system content to be a string
+      const content = typeof msg.content === 'string'
+        ? msg.content
+        : Array.isArray(msg.content)
+          ? msg.content.filter((p: any) => p.type === 'text').map((p: any) => p.text).join('\n')
+          : String(msg.content)
+      return { role: 'system', content }
+    }
+    if (msg.role === 'user') {
+      // User messages can be string or array of content parts
+      return { role: 'user', content: msg.content }
     }
     if (msg.role === 'assistant') {
       // Check if we need complex content format (reasoning or tool calls)
@@ -568,19 +634,31 @@ export async function* streamChatResponseWithTools(
         content.push({ type: 'reasoning', text: msg.reasoningContent })
       }
 
-      // Add text content
+      // Add text content (handle both string and array content)
       if (msg.content) {
-        content.push({ type: 'text', text: msg.content })
+        if (typeof msg.content === 'string') {
+          content.push({ type: 'text', text: msg.content })
+        } else if (Array.isArray(msg.content)) {
+          // Content is already an array of content parts (multimodal)
+          content.push(...msg.content)
+        }
       }
 
       // Add tool calls
       if (hasToolCalls) {
         for (const tc of msg.toolCalls!) {
+          // Sanitize args to ensure valid JSON (remove undefined values)
+          let sanitizedInput: any
+          try {
+            sanitizedInput = JSON.parse(JSON.stringify(tc.args ?? {}))
+          } catch {
+            sanitizedInput = {}
+          }
           content.push({
             type: 'tool-call',
             toolCallId: tc.toolCallId,
             toolName: tc.toolName,
-            input: tc.args || {},  // DeepSeek provider expects 'input' not 'args'
+            input: sanitizedInput,  // AI SDK 5.x requires 'input', not 'args'
           })
         }
       }
@@ -593,16 +671,27 @@ export async function* streamChatResponseWithTools(
       return { role: 'assistant', content }
     }
     if (msg.role === 'tool') {
-      // Tool result message - convert to AI SDK expected format
-      // output must have { type: 'text'|'json', value: ... } structure
+      // Tool result message - convert to AI SDK 5.x format
+      // AI SDK 5.x requires 'output' with { type: 'json', value: ... } structure
+      // IMPORTANT: Must sanitize the result to remove undefined values (not valid JSON)
       return {
         role: 'tool',
-        content: msg.content.map((item: any) => ({
-          type: item.type,
-          toolCallId: item.toolCallId,
-          toolName: item.toolName,
-          output: { type: 'json', value: item.result },
-        })),
+        content: msg.content.map((item: any) => {
+          // Sanitize the result by going through JSON serialization
+          // This removes undefined values and ensures it's valid JSON
+          let sanitizedResult: any
+          try {
+            sanitizedResult = JSON.parse(JSON.stringify(item.result ?? null))
+          } catch {
+            sanitizedResult = String(item.result)
+          }
+          return {
+            type: item.type,
+            toolCallId: item.toolCallId,
+            toolName: item.toolName,
+            output: { type: 'json', value: sanitizedResult },
+          }
+        }),
       }
     }
     return msg
@@ -655,16 +744,23 @@ export async function* streamChatResponseWithTools(
     streamOptions.abortSignal = options.abortSignal
   }
 
-  console.log(`[Provider] Starting stream with ${Object.keys(aiTools).length} tools`)
-  console.log(`[Provider] Messages count: ${convertedMessages.length}`)
-  console.log(`[Provider] Messages:`, JSON.stringify(convertedMessages, null, 2))
+  // Log actual tool schemas that will be sent to API
+  if (streamOptions.tools) {
+    const toolsJson: Record<string, any> = {}
+    for (const [id, tool] of Object.entries(streamOptions.tools)) {
+      const t = tool as any
+      toolsJson[id] = {
+        description: t.description,
+        parameters: t.inputSchema?.toJSONSchema ? t.inputSchema.toJSONSchema() : null,
+      }
+    }
+  }
 
   const stream = await streamText(streamOptions)
 
   // Process the full stream to capture all types of chunks
   for await (const chunk of stream.fullStream) {
     const chunkAny = chunk as any
-    console.log(`[Provider] Stream chunk type:`, chunk.type)
 
     switch (chunk.type) {
       case 'text-delta':
@@ -707,19 +803,43 @@ export async function* streamChatResponseWithTools(
 
       case 'error':
         // Handle stream errors - throw to be caught by caller
-        const streamError = chunkAny.error || new Error('Unknown stream error')
-        console.error(`[Provider] Stream error chunk received:`, streamError)
-        console.error(`[Provider] Error details:`, JSON.stringify({
-          message: streamError.message,
-          name: streamError.name,
-          data: streamError.data,
-          responseBody: streamError.responseBody,
-        }, null, 2))
+        // OpenAI Responses API error structure: { type: 'error', error: { message, code, type } }
+        const rawError = chunkAny.error || chunkAny
+        console.error(`[Provider] Stream error chunk received:`, rawError)
+
+        // Extract error message from various possible structures
+        const errorMessage = rawError?.message ||
+          rawError?.error?.message ||
+          (typeof rawError === 'string' ? rawError : 'Unknown stream error')
+        const errorCode = rawError?.code || rawError?.error?.code || rawError?.error?.type
+
+        console.error(`[Provider] Error message:`, errorMessage, `Code:`, errorCode)
+
+        // Create a proper Error with the message
+        const streamError = new Error(errorMessage)
+        ;(streamError as any).code = errorCode
+        ;(streamError as any).data = rawError
         throw streamError
     }
   }
 
-  console.log(`[Provider] Stream with tools completed`)
+  // Get usage data after stream completes and yield finish chunk
+  try {
+    const usage = await stream.usage
+    yield {
+      type: 'finish',
+      usage: {
+        inputTokens: usage.inputTokens ?? 0,
+        outputTokens: usage.outputTokens ?? 0,
+        totalTokens: usage.totalTokens ?? 0,
+      },
+    }
+    console.log(`[Provider] Stream with tools completed, usage:`, usage)
+  } catch (usageError) {
+    console.warn(`[Provider] Failed to get usage data:`, usageError)
+    // Yield finish chunk without usage if we can't get it
+    yield { type: 'finish' }
+  }
 }
 
 /**
@@ -743,6 +863,241 @@ export function convertToolDefinitionsForAI(
   }
 
   return result
+}
+
+// ============================================================================
+// UIMessage-based streaming (AI SDK 5.x native format)
+// ============================================================================
+
+/**
+ * UIMessage 格式的消息（兼容 AI SDK 5.x）
+ * 我们的 UIMessage 类型需要转换为 AI SDK 期望的格式
+ */
+import type { UIMessage } from '../../shared/ipc.js'
+
+/**
+ * 将我们的 UIMessage 转换为 AI SDK 期望的格式
+ * AI SDK 的 convertToModelMessages 期望 { id, role, parts } 格式
+ */
+function convertOurUIMessageToAISDK(messages: UIMessage[]): AISDKUIMessage[] {
+  return messages.map(msg => {
+    // 将我们的 parts 转换为 AI SDK 格式
+    const parts = msg.parts.map(part => {
+      switch (part.type) {
+        case 'text':
+          return { type: 'text' as const, text: part.text }
+        case 'reasoning':
+          return { type: 'reasoning' as const, text: part.text }
+        case 'file':
+          return {
+            type: 'file' as const,
+            mediaType: part.mediaType,
+            url: part.url,
+          }
+        default:
+          // 工具调用 parts (type 以 'tool-' 开头)
+          if (part.type.startsWith('tool-')) {
+            const toolPart = part as any
+            return {
+              type: `tool-${toolPart.toolName}` as const,
+              toolInvocation: {
+                toolCallId: toolPart.toolCallId,
+                toolName: toolPart.toolName,
+                state: toolPart.state,
+                args: toolPart.input,
+                result: toolPart.output,
+              },
+            }
+          }
+          // 跳过 steps 和 error parts（它们是我们自定义的扩展）
+          return null
+      }
+    }).filter(Boolean) as any[]
+
+    return {
+      id: msg.id,
+      role: msg.role,
+      parts,
+    } as AISDKUIMessage
+  })
+}
+
+/**
+ * Stream chat response using UIMessage format directly
+ * Uses AI SDK's convertToModelMessages for proper message conversion
+ *
+ * This is the new preferred way to stream chat responses
+ */
+export async function* streamChatWithUIMessages(
+  providerId: string,
+  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  uiMessages: UIMessage[],
+  tools: Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }>,
+  options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
+): AsyncGenerator<StreamChunkWithTools, void, unknown> {
+  const provider = createProvider(providerId, config)
+  const model = provider.createModel(config.model)
+
+  const isReasoning = isReasoningModel(config.model)
+
+  // Convert our tool definitions to AI SDK format
+  const aiTools: Record<string, any> = {}
+  for (const [toolId, toolDef] of Object.entries(tools)) {
+    aiTools[toolId] = {
+      description: toolDef.description,
+      inputSchema: createZodSchema(toolDef.parameters),
+    }
+  }
+
+  // Convert our UIMessage to AI SDK UIMessage format
+  const aiSDKMessages = convertOurUIMessageToAISDK(uiMessages)
+
+  // Use AI SDK's convertToModelMessages to convert UIMessages to ModelMessages
+  // This handles all the complexity of converting parts to the correct format
+  let modelMessages
+  try {
+    modelMessages = convertToModelMessages(aiSDKMessages)
+    console.log(`[Provider] UIMessage -> ModelMessage conversion successful`)
+    console.log(`[Provider] ModelMessages:`, JSON.stringify(modelMessages, null, 2))
+  } catch (error) {
+    console.error(`[Provider] Failed to convert UIMessages to ModelMessages:`, error)
+    throw error
+  }
+
+  // Check if this provider requires system messages to be merged into user messages
+  const needsSystemMerge = requiresSystemMergeFromRegistry(providerId)
+
+  // For providers that require system merge, handle it
+  if (needsSystemMerge && modelMessages.length > 0) {
+    const systemMessages: string[] = []
+    const nonSystemMessages: any[] = []
+
+    for (const msg of modelMessages) {
+      if (msg.role === 'system') {
+        systemMessages.push(typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content))
+      } else {
+        nonSystemMessages.push(msg)
+      }
+    }
+
+    if (systemMessages.length > 0 && nonSystemMessages.length > 0) {
+      const firstUserIndex = nonSystemMessages.findIndex(m => m.role === 'user')
+      if (firstUserIndex !== -1) {
+        const systemPrefix = systemMessages.join('\n\n')
+        const originalContent = nonSystemMessages[firstUserIndex].content
+        const mergedContent = typeof originalContent === 'string'
+          ? `[System Instructions]\n${systemPrefix}\n\n[User Message]\n${originalContent}`
+          : [{ type: 'text', text: `[System Instructions]\n${systemPrefix}\n\n[User Message]\n` }, ...originalContent]
+        nonSystemMessages[firstUserIndex] = {
+          ...nonSystemMessages[firstUserIndex],
+          content: mergedContent,
+        }
+        modelMessages = nonSystemMessages
+        console.log(`[Provider] Merged ${systemMessages.length} system message(s) for ${providerId}`)
+      }
+    }
+  }
+
+  // Build streamText options
+  const streamOptions: Parameters<typeof streamText>[0] = {
+    model,
+    messages: modelMessages,
+    tools: Object.keys(aiTools).length > 0 ? aiTools : undefined,
+    maxOutputTokens: options.maxTokens || 4096,
+  }
+
+  // Only add temperature for non-reasoning models
+  if (!isReasoning && options.temperature !== undefined) {
+    streamOptions.temperature = options.temperature
+  }
+
+  // Add abort signal if provided
+  if (options.abortSignal) {
+    streamOptions.abortSignal = options.abortSignal
+  }
+
+  console.log(`[Provider] Starting stream with UIMessages - model: ${config.model}`)
+
+  const stream = await streamText(streamOptions)
+
+  // Process the full stream to capture all types of chunks
+  for await (const chunk of stream.fullStream) {
+    const chunkAny = chunk as any
+
+    switch (chunk.type) {
+      case 'text-delta':
+        const text = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
+        if (text) {
+          yield { type: 'text', text }
+        }
+        break
+
+      case 'reasoning-delta':
+        const reasoning = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
+        if (reasoning) {
+          yield { type: 'reasoning', reasoning }
+        }
+        break
+
+      case 'tool-call':
+        yield {
+          type: 'tool-call',
+          toolCall: {
+            toolCallId: chunkAny.toolCallId,
+            toolName: chunkAny.toolName,
+            args: chunkAny.input || chunkAny.args || {},
+          },
+        }
+        break
+
+      case 'tool-result':
+        yield {
+          type: 'tool-result',
+          toolResult: {
+            toolCallId: chunkAny.toolCallId,
+            result: chunkAny.result,
+          },
+        }
+        break
+
+      case 'error':
+        // OpenAI Responses API error structure: { type: 'error', error: { message, code, type } }
+        const rawStreamError = chunkAny.error || chunkAny
+        console.error(`[Provider] Stream error:`, rawStreamError)
+
+        // Extract error message from various possible structures
+        const streamErrorMessage = rawStreamError?.message ||
+          rawStreamError?.error?.message ||
+          (typeof rawStreamError === 'string' ? rawStreamError : 'Unknown stream error')
+        const streamErrorCode = rawStreamError?.code || rawStreamError?.error?.code || rawStreamError?.error?.type
+
+        console.error(`[Provider] Error message:`, streamErrorMessage, `Code:`, streamErrorCode)
+
+        // Create a proper Error with the message
+        const uiStreamError = new Error(streamErrorMessage)
+        ;(uiStreamError as any).code = streamErrorCode
+        ;(uiStreamError as any).data = rawStreamError
+        throw uiStreamError
+    }
+  }
+
+  // Get usage data after stream completes and yield finish chunk
+  try {
+    const usage = await stream.usage
+    yield {
+      type: 'finish',
+      usage: {
+        inputTokens: usage.inputTokens ?? 0,
+        outputTokens: usage.outputTokens ?? 0,
+        totalTokens: usage.totalTokens ?? 0,
+      },
+    }
+    console.log(`[Provider] UIMessage stream completed, usage:`, usage)
+  } catch (usageError) {
+    console.warn(`[Provider] Failed to get usage data:`, usageError)
+    // Yield finish chunk without usage if we can't get it
+    yield { type: 'finish' }
+  }
 }
 
 // Legacy export for backward compatibility

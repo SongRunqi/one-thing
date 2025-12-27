@@ -38,12 +38,13 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
   async function createWorkspace(
     name: string,
     avatar: WorkspaceAvatar,
-    systemPrompt: string
+    systemPrompt: string,
+    workingDirectory?: string
   ): Promise<Workspace | undefined> {
     try {
       // Use toRaw to convert reactive proxy to plain object for IPC
       const plainAvatar = toRaw(avatar)
-      const response = await window.electronAPI.createWorkspace(name, plainAvatar, systemPrompt)
+      const response = await window.electronAPI.createWorkspace(name, plainAvatar, workingDirectory, systemPrompt)
       if (response.success && response.workspace) {
         workspaces.value.push(response.workspace)
         return response.workspace
@@ -56,7 +57,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
   // Update an existing workspace
   async function updateWorkspace(
     id: string,
-    updates: { name?: string; avatar?: WorkspaceAvatar; systemPrompt?: string }
+    updates: { name?: string; avatar?: WorkspaceAvatar; workingDirectory?: string; systemPrompt?: string }
   ): Promise<boolean> {
     try {
       // Use toRaw to convert reactive proxy to plain object for IPC

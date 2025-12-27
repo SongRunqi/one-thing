@@ -12,9 +12,10 @@
 import type { Trigger, TriggerContext } from './index.js'
 import { extractAndSaveMemories, extractAndSaveUserFactsOnly } from '../memory-extractor.js'
 import { shouldExtractMemory } from './smart-extraction.js'
+import { getSettings } from '../../stores/index.js'
 
 // Minimum message lengths to consider for extraction
-const MIN_USER_MESSAGE_LENGTH = 10
+const MIN_USER_MESSAGE_LENGTH = 4
 const MIN_ASSISTANT_MESSAGE_LENGTH = 20
 
 /**
@@ -27,6 +28,14 @@ export const memoryExtractionTrigger: Trigger = {
 
   async shouldTrigger(ctx: TriggerContext): Promise<boolean> {
     const { lastUserMessage, lastAssistantMessage } = ctx
+
+    // Check if memory is enabled in settings
+    const settings = getSettings()
+    const memoryEnabled = settings.embedding?.memoryEnabled !== false  // Default to true
+    if (!memoryEnabled) {
+      console.log('[MemoryExtraction] Skipped: Memory is disabled in settings')
+      return false
+    }
 
     // Skip if messages are too short
     if (lastUserMessage.length < MIN_USER_MESSAGE_LENGTH) {

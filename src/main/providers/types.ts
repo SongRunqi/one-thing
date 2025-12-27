@@ -5,6 +5,10 @@
  */
 
 import type { LanguageModel } from 'ai'
+import type { OAuthFlowType, OAuthToken, OpenRouterModel } from '../../shared/ipc.js'
+
+// Re-export from shared for consistency
+export type { OpenRouterModel } from '../../shared/ipc.js'
 
 /**
  * Provider metadata for UI display
@@ -21,14 +25,22 @@ export interface ProviderInfo {
   supportsCustomBaseUrl: boolean
   /** Whether this provider requires an API key */
   requiresApiKey: boolean
+  /** Whether this provider uses OAuth instead of API key */
+  requiresOAuth?: boolean
+  /** Type of OAuth flow (PKCE or Device) */
+  oauthFlow?: OAuthFlowType
+  /** Available models with their capabilities (fetched dynamically from OpenRouter) */
+  models?: OpenRouterModel[]
 }
 
 /**
  * Configuration passed when creating a provider instance
  */
 export interface ProviderConfig {
-  apiKey: string
+  apiKey?: string  // Optional for OAuth providers
   baseUrl?: string
+  /** OAuth token (for OAuth providers) */
+  oauthToken?: OAuthToken
 }
 
 /**

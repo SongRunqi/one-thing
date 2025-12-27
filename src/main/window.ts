@@ -1,7 +1,8 @@
-import { BrowserWindow, session, shell } from 'electron'
+import { BrowserWindow, session, shell, Menu, app } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { getWindowStatePath, readJsonFile, writeJsonFile } from './stores/paths.js'
+import { getSettings } from './stores/settings.js'
 
 /**
  * Configure Content Security Policy
@@ -50,6 +51,106 @@ function setupContentSecurityPolicy() {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+/**
+ * Setup application menu with keyboard shortcuts
+ */
+function setupApplicationMenu(mainWindow: BrowserWindow) {
+  const isMac = process.platform === 'darwin'
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    // App menu (macOS only)
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' as const },
+        { type: 'separator' as const },
+        { role: 'services' as const },
+        { type: 'separator' as const },
+        { role: 'hide' as const },
+        { role: 'hideOthers' as const },
+        { role: 'unhide' as const },
+        { type: 'separator' as const },
+        { role: 'quit' as const },
+      ],
+    }] : []),
+    // File menu
+    // Note: Keyboard shortcuts are handled by useShortcuts in the renderer
+    // for configurability. Menu items are click-only.
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'New Chat',
+          click: () => {
+            mainWindow.webContents.send('menu:new-chat')
+          },
+        },
+        {
+          label: 'Close Chat',
+          click: () => {
+            mainWindow.webContents.send('menu:close-chat')
+          },
+        },
+        { type: 'separator' },
+        isMac ? { role: 'close' as const } : { role: 'quit' as const },
+      ],
+    },
+    // Edit menu
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' as const },
+        { role: 'redo' as const },
+        { type: 'separator' as const },
+        { role: 'cut' as const },
+        { role: 'copy' as const },
+        { role: 'paste' as const },
+        ...(isMac ? [
+          { role: 'pasteAndMatchStyle' as const },
+          { role: 'delete' as const },
+          { role: 'selectAll' as const },
+        ] : [
+          { role: 'delete' as const },
+          { type: 'separator' as const },
+          { role: 'selectAll' as const },
+        ]),
+      ],
+    },
+    // View menu
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' as const },
+        { role: 'forceReload' as const },
+        { role: 'toggleDevTools' as const },
+        { type: 'separator' as const },
+        { role: 'resetZoom' as const },
+        { role: 'zoomIn' as const },
+        { role: 'zoomOut' as const },
+        { type: 'separator' as const },
+        { role: 'togglefullscreen' as const },
+      ],
+    },
+    // Window menu
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' as const },
+        { role: 'zoom' as const },
+        ...(isMac ? [
+          { type: 'separator' as const },
+          { role: 'front' as const },
+        ] : [
+          { role: 'close' as const },
+        ]),
+      ],
+    },
+  ]
+
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
+}
+
 interface WindowState {
   width: number
   height: number
@@ -82,6 +183,66 @@ function saveWindowState(window: BrowserWindow): void {
   }
 }
 
+// Keep track of the settings window
+let settingsWindow: BrowserWindow | null = null
+
+/**
+ * Create or focus the settings window
+ */
+export function openSettingsWindow(parentWindow?: BrowserWindow) {
+  // If settings window already exists, focus it
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.focus()
+    return settingsWindow
+  }
+
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  const isMac = process.platform === 'darwin'
+
+  // Read theme from settings to set correct background color
+  const settings = getSettings()
+  const isLightTheme = settings.theme === 'light'
+  const backgroundColor = isLightTheme ? '#FFFCF0' : '#1C1B1A'
+
+  settingsWindow = new BrowserWindow({
+    width: 900,
+    height: 620,
+    minWidth: 700,
+    minHeight: 500,
+    show: false,
+    backgroundColor,
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
+    parent: parentWindow,
+    modal: false,
+    resizable: true,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+
+  settingsWindow.once('ready-to-show', () => {
+    settingsWindow?.show()
+  })
+
+  settingsWindow.on('closed', () => {
+    settingsWindow = null
+  })
+
+  // Load settings page
+  if (isDevelopment) {
+    settingsWindow.loadURL('http://127.0.0.1:5173/#/settings')
+  } else {
+    settingsWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      hash: '/settings'
+    })
+  }
+
+  return settingsWindow
+}
+
 export function createWindow() {
   // Setup Content Security Policy before creating window
   setupContentSecurityPolicy()
@@ -90,6 +251,11 @@ export function createWindow() {
   const isMac = process.platform === 'darwin'
   const windowState = getWindowState()
 
+  // Read theme from settings to set correct background color
+  const settings = getSettings()
+  const isLightTheme = settings.theme === 'light'
+  const backgroundColor = isLightTheme ? '#FFFCF0' : '#1C1B1A'
+
   const mainWindow = new BrowserWindow({
     width: windowState.width,
     height: windowState.height,
@@ -97,6 +263,9 @@ export function createWindow() {
     y: windowState.y,
     minWidth: 600,
     minHeight: 600,
+    // Prevent flash: don't show until ready, use theme-aware background
+    show: false,
+    backgroundColor,
     // Use hidden title bar on macOS to keep traffic lights
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     // Position traffic lights - in sidebar header area
@@ -109,10 +278,14 @@ export function createWindow() {
     },
   })
 
-  // Restore maximized state
-  if (windowState.isMaximized) {
-    mainWindow.maximize()
-  }
+  // Show window only after content is ready (prevents white flash)
+  mainWindow.once('ready-to-show', () => {
+    // Restore maximized state before showing
+    if (windowState.isMaximized) {
+      mainWindow.maximize()
+    }
+    mainWindow.show()
+  })
 
   // Save window state on resize and move
   mainWindow.on('resize', () => saveWindowState(mainWindow))
@@ -143,6 +316,9 @@ export function createWindow() {
     // Load from built files
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
+
+  // Setup application menu with keyboard shortcuts
+  setupApplicationMenu(mainWindow)
 
   return mainWindow
 }

@@ -29,6 +29,17 @@
 
         <div class="shortcut-row">
           <div class="shortcut-info">
+            <span class="shortcut-name">Close Chat</span>
+            <span class="shortcut-desc">Close the current conversation</span>
+          </div>
+          <ShortcutInput
+            :model-value="settings.general.shortcuts?.closeChat"
+            @update:model-value="updateShortcut('closeChat', $event)"
+          />
+        </div>
+
+        <div class="shortcut-row">
+          <div class="shortcut-info">
             <span class="shortcut-name">Toggle Sidebar</span>
             <span class="shortcut-desc">Show or hide the sidebar</span>
           </div>
@@ -69,6 +80,7 @@ function updateShortcut(key: keyof ShortcutSettings, shortcut: KeyboardShortcut 
   const currentShortcuts = props.settings.general.shortcuts || {
     sendMessage: { key: 'Enter' },
     newChat: { key: 'n', metaKey: true },
+    closeChat: { key: 'w', metaKey: true },
     toggleSidebar: { key: 'b', metaKey: true },
     focusInput: { key: '/' },
   }

@@ -231,7 +231,34 @@ export function registerSkillHandlers() {
 
 /**
  * Get all loaded skills (for use in chat context)
+ * @deprecated Use getSkillsForSession for session-aware skill loading
  */
 export function getLoadedSkills(): SkillDefinition[] {
   return skillsCache.filter(s => s.enabled)
+}
+
+/**
+ * Get skills for a specific session, including project skills based on workingDirectory
+ * This function dynamically loads project skills using upward traversal
+ *
+ * @param workingDirectory - Session's working directory for project skill discovery
+ * @returns Array of enabled skills (user + project + plugin)
+ */
+export function getSkillsForSession(workingDirectory?: string): SkillDefinition[] {
+  // Load skills with workingDirectory for upward traversal
+  const allSkills = loadAllSkills(workingDirectory)
+
+  // Apply enabled state from settings
+  const settings = getSettings()
+  if (settings.skills?.skills) {
+    for (const skill of allSkills) {
+      const skillSettings = settings.skills.skills[skill.id]
+      if (skillSettings !== undefined) {
+        skill.enabled = skillSettings.enabled
+      }
+    }
+  }
+
+  // Return only enabled skills
+  return allSkills.filter(s => s.enabled)
 }

@@ -7,10 +7,7 @@
         :class="{ active: activeTab === 'profile' }"
         @click="activeTab = 'profile'"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-          <circle cx="12" cy="7" r="4"/>
-        </svg>
+        <User :size="14" :stroke-width="2" />
         User Profile
       </button>
       <button
@@ -18,15 +15,11 @@
         :class="{ active: activeTab === 'agent' }"
         @click="activeTab = 'agent'"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 2a8 8 0 0 0-8 8c0 2 .8 3.7 2 5l6 7 6-7a7.2 7.2 0 0 0 2-5 8 8 0 0 0-8-8z"/>
-        </svg>
+        <Heart :size="14" :stroke-width="2" />
         Agent Memory
       </button>
       <button class="open-folder-btn" @click="openDataFolder" title="Open data folder">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-        </svg>
+        <FolderOpen :size="16" :stroke-width="2" />
       </button>
     </div>
 
@@ -35,10 +28,7 @@
       <!-- Search & Add -->
       <div class="content-toolbar">
         <div class="search-wrapper">
-          <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="m21 21-4.35-4.35"/>
-          </svg>
+          <Search class="search-icon" :size="14" :stroke-width="2" />
           <input
             v-model="factSearch"
             type="text"
@@ -47,10 +37,7 @@
           />
         </div>
         <button class="add-btn" @click="showAddFactModal = true">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
+          <Plus :size="14" :stroke-width="2" />
           Add Fact
         </button>
       </div>
@@ -64,18 +51,12 @@
       <!-- Empty State -->
       <div v-else-if="!profile || filteredFacts.length === 0" class="empty-state">
         <div class="empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-            <circle cx="12" cy="7" r="4"/>
-          </svg>
+          <User :size="48" :stroke-width="1.5" />
         </div>
         <p class="empty-title">No facts yet</p>
         <p class="empty-desc">Facts are learned from your conversations, or you can add them manually.</p>
         <button class="empty-action" @click="showAddFactModal = true">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
+          <Plus :size="14" :stroke-width="2" />
           Add Your First Fact
         </button>
       </div>
@@ -87,18 +68,13 @@
             class="category-header"
             @click="toggleCategory(category)"
           >
-            <svg
+            <ChevronRight
               class="chevron"
               :class="{ expanded: expandedCategories.has(category) }"
-              width="16" height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-            <span class="category-icon">{{ getCategoryIcon(category) }}</span>
+              :size="16"
+              :stroke-width="2"
+            />
+            <component :is="getCategoryIcon(category)" class="category-icon" :size="16" :stroke-width="2" />
             <span class="category-name">{{ getCategoryLabel(category) }}</span>
             <span class="category-count">{{ getFactsByCategory(category).length }}</span>
           </div>
@@ -137,9 +113,7 @@
       <!-- No Agent Selected -->
       <div v-if="!selectedAgentId" class="empty-state">
         <div class="empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M12 2a8 8 0 0 0-8 8c0 2 .8 3.7 2 5l6 7 6-7a7.2 7.2 0 0 0 2-5 8 8 0 0 0-8-8z"/>
-          </svg>
+          <Heart :size="48" :stroke-width="1.5" />
         </div>
         <p class="empty-title">Select an agent</p>
         <p class="empty-desc">Choose an agent above to view your shared memories.</p>
@@ -154,9 +128,7 @@
       <!-- No Relationship -->
       <div v-else-if="!relationship" class="empty-state">
         <div class="empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M12 2a8 8 0 0 0-8 8c0 2 .8 3.7 2 5l6 7 6-7a7.2 7.2 0 0 0 2-5 8 8 0 0 0-8-8z"/>
-          </svg>
+          <Heart :size="48" :stroke-width="1.5" />
         </div>
         <p class="empty-title">No memories yet</p>
         <p class="empty-desc">Start chatting with this agent to build memories together.</p>
@@ -222,20 +194,14 @@
           <div class="section-header">
             <span class="section-title">Memories ({{ memories.length }})</span>
             <button class="add-btn small" @click="showAddMemoryModal = true">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
+              <Plus :size="12" :stroke-width="2" />
               Add
             </button>
           </div>
 
           <!-- Search Memories -->
           <div class="search-wrapper" v-if="memories.length > 0">
-            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.35-4.35"/>
-            </svg>
+            <Search class="search-icon" :size="14" :stroke-width="2" />
             <input
               v-model="memorySearch"
               type="text"
@@ -287,6 +253,18 @@ import MemoryCard from './memory/MemoryCard.vue'
 import AgentChip from './memory/AgentChip.vue'
 import AddFactModal from './memory/AddFactModal.vue'
 import AddMemoryModal from './memory/AddMemoryModal.vue'
+import {
+  User,
+  Heart,
+  FolderOpen,
+  Search,
+  Plus,
+  ChevronRight,
+  CircleUser,
+  Flag,
+  Fingerprint,
+  SlidersHorizontal
+} from 'lucide-vue-next'
 
 const userProfileStore = useUserProfileStore()
 const agentMemoryStore = useAgentMemoryStore()
@@ -341,14 +319,15 @@ function getCategoryLabel(category: UserFactCategory): string {
   return labels[category]
 }
 
-function getCategoryIcon(category: UserFactCategory): string {
-  const icons: Record<UserFactCategory, string> = {
-    personal: '👤',
-    preference: '💜',
-    goal: '🎯',
-    trait: '✨'
-  }
-  return icons[category]
+const categoryIcons = {
+  personal: CircleUser,
+  preference: SlidersHorizontal,
+  goal: Flag,
+  trait: Fingerprint
+} as const
+
+function getCategoryIcon(category: UserFactCategory) {
+  return categoryIcons[category]
 }
 
 function getFactsByCategory(category: UserFactCategory) {
@@ -429,8 +408,10 @@ async function handleAddMemory(data: { content: string; category: AgentMemoryCat
 }
 
 async function handleDeleteMemory(memoryId: string) {
-  console.log('Delete memory:', memoryId)
-  // TODO: Implement when backend handler is ready
+  const success = await agentMemoryStore.deleteMemory(memoryId)
+  if (!success) {
+    console.error('Failed to delete memory:', memoryId)
+  }
 }
 
 // Open folder
@@ -705,7 +686,8 @@ onMounted(async () => {
 }
 
 .category-icon {
-  font-size: 16px;
+  color: var(--accent);
+  flex-shrink: 0;
 }
 
 .category-name {

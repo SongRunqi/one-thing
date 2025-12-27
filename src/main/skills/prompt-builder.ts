@@ -83,6 +83,35 @@ ${skillsContent}`
 }
 
 /**
+ * Build skills prompt for SkillTool usage (OpenCode pattern)
+ * Instead of exposing paths, directs the agent to use the skill tool
+ */
+export function buildSkillToolPrompt(skills: SkillDefinition[]): string {
+  if (skills.length === 0) return ''
+
+  const skillsList = skills
+    .map(skill => `- **${skill.name}**: ${skill.description}`)
+    .join('\n')
+
+  return `## Available Skills
+
+You have access to specialized skills through the \`skill\` tool.
+
+### How to Use Skills
+
+When a user's request relates to a skill:
+1. Use the \`skill\` tool with the skill name: \`skill({ name: "skill-name" })\`
+2. The tool will return the full skill instructions
+3. Follow the returned instructions to complete the task
+
+### Available Skills
+
+${skillsList}
+
+**Note**: Use the skill tool to load instructions - do not try to read skill files directly.`
+}
+
+/**
  * Format skill list for error messages
  */
 export function formatSkillsList(skills: SkillDefinition[]): string {

@@ -2,9 +2,11 @@ import { ipcMain, BrowserWindow } from 'electron'
 import * as store from '../store.js'
 import type { ChatMessage, AppSettings, ProviderConfig, CustomProviderConfig, UserFact, AgentUserRelationship, AgentMood, AgentMemory, Step, StepType, ContentPart, MessageAttachment } from '../../shared/ipc.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import type { UIMessage, UIMessagePart, UIMessageChunk, UIMessageStreamData, TextUIPart, ReasoningUIPart, ToolUIPart, ToolUIState } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
-import { experimental_generateImage as aiGenerateImage } from 'ai'
+import { experimental_generateImage as aiGenerateImage, generateText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
+import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import {
   generateChatResponseWithReasoning,
   generateChatTitle,
@@ -12,39 +14,154 @@ import {
   streamChatResponseWithReasoning,
   streamChatResponseWithTools,
   convertToolDefinitionsForAI,
+  requiresOAuth,
   type ToolChatMessage,
   type AIMessageContent,
 } from '../providers/index.js'
+import { oauthManager } from '../services/oauth-manager.js'
 import {
-  getEnabledTools,
+  getEnabledToolsAsync,
   executeTool,
-  canAutoExecute,
   createToolCall,
+  setInitContext,
+  initializeAsyncTools,
 } from '../tools/index.js'
 import type { ToolCall, ToolSettings } from '../../shared/ipc.js'
 import { getMCPToolsForAI, isMCPTool, executeMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '../mcp/index.js'
-import { getLoadedSkills } from './skills.js'
-import { buildSkillsAwarenessPrompt, buildSkillsDirectPrompt } from '../skills/prompt-builder.js'
+import { getSkillsForSession } from './skills.js'
+import { updateSessionUsage } from './sessions.js'
+import { buildSkillToolPrompt } from '../skills/prompt-builder.js'
 import type { SkillDefinition } from '../../shared/ipc.js'
 import { getStorage } from '../storage/index.js'
+import type { IStorageProvider } from '../storage/interfaces.js'
 import { triggerManager, type TriggerContext } from '../services/triggers/index.js'
 import { memoryExtractionTrigger } from '../services/triggers/memory-extraction.js'
 import { contextCompactingTrigger } from '../services/triggers/context-compacting.js'
 import type { ToolExecutionContext, ToolExecutionResult } from '../tools/types.js'
 import { getTool } from '../tools/index.js'
+import { Permission } from '../permission/index.js'
+import * as modelRegistry from '../services/model-registry.js'
 
 // Register triggers on module load
 triggerManager.register(memoryExtractionTrigger)
 triggerManager.register(contextCompactingTrigger)
 
-// Image generation model detection
-// Supports: 'dall-e-2', 'dall-e-3', 'gpt-image-1', 'chatgpt-image-latest', etc.
-function isImageGenerationModel(modelId: string): boolean {
-  const normalized = modelId.toLowerCase().replace(/[\s-]+/g, '')
-  return normalized.includes('dalle') || normalized.includes('gptimage') || normalized.includes('chatgptimage')
+// ============================================================================
+// UIMessage Streaming Helpers
+// ============================================================================
+
+/**
+ * Send a UIMessage part chunk to the renderer
+ */
+function sendUIMessagePart(
+  sender: Electron.WebContents,
+  sessionId: string,
+  messageId: string,
+  part: UIMessagePart,
+  partIndex?: number
+) {
+  const data: UIMessageStreamData = {
+    sessionId,
+    messageId,
+    chunk: {
+      type: 'part',
+      messageId,
+      part,
+      partIndex,
+    },
+  }
+  sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, data)
 }
 
-// Normalize model ID for API call
+/**
+ * Send a UIMessage finish chunk to the renderer
+ */
+function sendUIMessageFinish(
+  sender: Electron.WebContents,
+  sessionId: string,
+  messageId: string,
+  finishReason: 'stop' | 'length' | 'tool-calls' | 'content-filter' | 'error' | 'other' = 'stop',
+  usage?: { inputTokens: number; outputTokens: number; totalTokens: number }
+) {
+  const data: UIMessageStreamData = {
+    sessionId,
+    messageId,
+    chunk: {
+      type: 'finish',
+      messageId,
+      finishReason,
+      usage,
+    },
+  }
+  sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, data)
+}
+
+/**
+ * Send a text delta as UIMessage part
+ */
+function sendUITextDelta(
+  sender: Electron.WebContents,
+  sessionId: string,
+  messageId: string,
+  text: string,
+  partIndex?: number,
+  state: 'streaming' | 'done' = 'streaming'
+) {
+  const part: TextUIPart = {
+    type: 'text',
+    text,
+    state,
+  }
+  sendUIMessagePart(sender, sessionId, messageId, part, partIndex)
+}
+
+/**
+ * Send a reasoning delta as UIMessage part
+ */
+function sendUIReasoningDelta(
+  sender: Electron.WebContents,
+  sessionId: string,
+  messageId: string,
+  text: string,
+  partIndex?: number,
+  state: 'streaming' | 'done' = 'streaming'
+) {
+  const part: ReasoningUIPart = {
+    type: 'reasoning',
+    text,
+    state,
+  }
+  sendUIMessagePart(sender, sessionId, messageId, part, partIndex)
+}
+
+/**
+ * Send a tool call as UIMessage part
+ */
+function sendUIToolCall(
+  sender: Electron.WebContents,
+  sessionId: string,
+  messageId: string,
+  toolCallId: string,
+  toolName: string,
+  state: ToolUIState,
+  input?: Record<string, unknown>,
+  output?: unknown,
+  errorText?: string,
+  partIndex?: number
+) {
+  const part: ToolUIPart = {
+    type: `tool-${toolName}`,
+    toolCallId,
+    toolName,
+    state,
+    input,
+    output,
+    errorText,
+  }
+  sendUIMessagePart(sender, sessionId, messageId, part, partIndex)
+}
+
+// Normalize model ID for API call (for OpenAI image models)
 function normalizeImageModelId(modelId: string): string {
   const normalized = modelId.toLowerCase().replace(/[\s-]+/g, '')
   if (normalized.includes('dalle3')) return 'dall-e-3'
@@ -116,6 +233,59 @@ async function generateImage(
   }
 }
 
+// Gemini image generation using generateText with files response
+// Gemini 2.5 Flash Image uses generateText and returns images in result.files
+async function generateGeminiImage(
+  apiKey: string,
+  model: string,
+  prompt: string
+): Promise<ImageGenerationResult> {
+  try {
+    console.log(`[Gemini Image] Generating image with model: ${model}`)
+    const google = createGoogleGenerativeAI({ apiKey })
+
+    const result = await generateText({
+      model: google(model),
+      prompt,
+    })
+
+    console.log(`[Gemini Image] Response received, files: ${result.files?.length ?? 0}`)
+
+    // Extract image from result.files
+    if (result.files && result.files.length > 0) {
+      for (const file of result.files) {
+        if (file.mediaType?.startsWith('image/')) {
+          console.log(`[Gemini Image] Found image: ${file.mediaType}`)
+          return {
+            success: true,
+            imageBase64: file.base64,
+          }
+        }
+      }
+    }
+
+    // No image in files - check if model returned text instead
+    if (result.text) {
+      console.log(`[Gemini Image] No image generated, got text: ${result.text.substring(0, 100)}...`)
+      return {
+        success: false,
+        error: `Model returned text instead of image: ${result.text.substring(0, 200)}`,
+      }
+    }
+
+    return {
+      success: false,
+      error: 'No image generated',
+    }
+  } catch (error: any) {
+    console.error('[Gemini Image] Error:', error)
+    return {
+      success: false,
+      error: error.message || 'Failed to generate image',
+    }
+  }
+}
+
 // Helper function to format user profile into a readable prompt
 function formatUserProfilePrompt(facts: UserFact[]): string | undefined {
   if (!facts || facts.length === 0) return undefined
@@ -179,8 +349,33 @@ async function retrieveRelevantFacts(
   }
 }
 
+// Helper function to retrieve relevant agent memories using semantic search
+async function retrieveRelevantAgentMemories(
+  storage: IStorageProvider,
+  agentId: string,
+  userMessage: string,
+  limit = 5,
+  minSimilarity = 0.3
+): Promise<AgentMemory[]> {
+  try {
+    const memories = await storage.agentMemory.hybridRetrieveMemories(
+      agentId,
+      userMessage,
+      limit,
+      { minSimilarity }
+    )
+    return memories
+  } catch (error) {
+    console.error('[Chat] Failed to retrieve agent memories:', error)
+    return []
+  }
+}
+
 // Helper function to format agent memories into a readable prompt
-function formatAgentMemoryPrompt(relationship: AgentUserRelationship): string | undefined {
+function formatAgentMemoryPrompt(
+  relationship: AgentUserRelationship,
+  relevantMemories?: AgentMemory[]
+): string | undefined {
   if (!relationship) return undefined
 
   const sections: string[] = []
@@ -203,11 +398,13 @@ function formatAgentMemoryPrompt(relationship: AgentUserRelationship): string | 
   sections.push(`## 当前状态
 - 心情: ${moodMap[mood.currentMood]}${mood.notes ? `\n- 备注: ${mood.notes}` : ''}`)
 
-  // Active memories (filter by strength > 10, sort by strength, top 5)
-  const activeMemories = relationship.observations
-    .filter(m => m.strength > 10)
-    .sort((a, b) => b.strength - a.strength)
-    .slice(0, 5)
+  // Use provided relevant memories, or fallback to strength-based filtering
+  const activeMemories = relevantMemories && relevantMemories.length > 0
+    ? relevantMemories
+    : relationship.observations
+        .filter(m => m.strength > 10)
+        .sort((a, b) => b.strength - a.strength)
+        .slice(0, 5)
 
   if (activeMemories.length > 0) {
     const memoryLines = activeMemories.map(m => {
@@ -258,14 +455,14 @@ function buildMessageContent(message: ChatMessage): AIMessageContent {
       contentParts.push({
         type: 'image',
         image: attachment.base64Data,
-        mimeType: attachment.mimeType,
+        mediaType: attachment.mimeType,  // AI SDK 5.x uses 'mediaType'
       })
     } else if (attachment.base64Data) {
       // For non-image files, add as file type
       contentParts.push({
         type: 'file',
         data: attachment.base64Data,
-        mimeType: attachment.mimeType,
+        mediaType: attachment.mimeType,  // AI SDK 5.x uses 'mediaType'
       })
     }
   }
@@ -312,6 +509,8 @@ function buildHistoryMessages(
       for (const m of recentMessages) {
         if (m.role !== 'user' && m.role !== 'assistant') continue
         if (m.isStreaming) continue
+        // Skip messages with empty content (causes API error)
+        if (!m.content && (!m.attachments || m.attachments.length === 0)) continue
 
         const msg: { role: 'user' | 'assistant'; content: AIMessageContent; reasoningContent?: string } = {
           role: m.role as 'user' | 'assistant',
@@ -335,6 +534,8 @@ function buildHistoryMessages(
       if (m.role !== 'user' && m.role !== 'assistant') return false
       // Exclude streaming messages (current message being generated)
       if (m.isStreaming) return false
+      // Exclude messages with empty content (causes API error)
+      if (!m.content && (!m.attachments || m.attachments.length === 0)) return false
       return true
     })
     .map(m => {
@@ -355,7 +556,7 @@ function buildHistoryMessages(
 const activeStreams = new Map<string, AbortController>()
 
 // Base system prompt to control tool usage behavior
-const BASE_SYSTEM_PROMPT = `
+const BASE_SYSTEM_PROMPT_WITH_TOOLS = `
 You are a helpful assistant. You have access to tools, but you should ONLY use them when the user's request specifically requires their functionality.
 Important guidelines:
 - DO NOT mention your available tools or capabilities unless the user explicitly asks what you can do
@@ -369,6 +570,14 @@ Never start your response with a tool call directly. Always output some text fir
 After obtaining the tool results, inform the user of the findings and explain the next steps.
 `
 
+// Base system prompt for models without tool support
+const BASE_SYSTEM_PROMPT_NO_TOOLS = `
+You are a helpful assistant.
+`
+
+
+// Claude Code OAuth requires this specific system prompt header
+const CLAUDE_CODE_SYSTEM_HEADER = "You are Claude Code, Anthropic's official CLI for Claude."
 
 /**
  * Build dynamic system prompt with optional skills awareness and workspace character
@@ -379,9 +588,16 @@ function buildSystemPrompt(options: {
   workspaceSystemPrompt?: string
   userProfilePrompt?: string
   agentMemoryPrompt?: string
+  providerId?: string
 }): string {
-  const { hasTools, skills, workspaceSystemPrompt, userProfilePrompt, agentMemoryPrompt } = options
-  let prompt = BASE_SYSTEM_PROMPT
+  const { hasTools, skills, workspaceSystemPrompt, userProfilePrompt, agentMemoryPrompt, providerId } = options
+  // Use appropriate base prompt based on tool support
+  let prompt = hasTools ? BASE_SYSTEM_PROMPT_WITH_TOOLS : BASE_SYSTEM_PROMPT_NO_TOOLS
+
+  // Claude Code OAuth requires specific system prompt header
+  if (providerId === 'claude-code') {
+    prompt = CLAUDE_CODE_SYSTEM_HEADER + '\n\n' + prompt
+  }
 
   // Prepend workspace/agent system prompt if provided (for character/persona)
   if (workspaceSystemPrompt && workspaceSystemPrompt.trim()) {
@@ -413,15 +629,10 @@ CRITICAL: The facts above are ALREADY KNOWN. You MUST:
     prompt += '\n\n# Your Relationship and Memories with the User\nThe following is your understanding of the user and the state of your relationship. These are your private memories as a character with memory:\n\n' + agentMemoryPrompt.trim()
   }
 
-  // Add skills awareness when tools are enabled
-  if (skills.length > 0) {
-    if (hasTools) {
-      // Tools enabled - add awareness prompt (Claude can use Bash to read SKILL.md)
-      prompt += '\n\n' + buildSkillsAwarenessPrompt(skills)
-    } else {
-      // Tools disabled - include abbreviated instructions directly
-      prompt += '\n\n' + buildSkillsDirectPrompt(skills)
-    }
+  // Add skills awareness only when tools are enabled
+  // Models without tool support cannot use skills (no bash, no tool calls)
+  if (skills.length > 0 && hasTools) {
+    prompt += '\n\n' + buildSkillToolPrompt(skills)
   }
 
   return prompt
@@ -475,6 +686,35 @@ function extractErrorDetails(error: any): string | undefined {
 // Helper to get current provider config
 function getProviderConfig(settings: AppSettings): ProviderConfig | undefined {
   return settings.ai.providers[settings.ai.provider]
+}
+
+/**
+ * Get the API key for a provider, handling OAuth providers
+ * For OAuth providers, returns the OAuth access token
+ * For regular providers, returns the configured API key
+ */
+async function getApiKeyForProvider(providerId: string, providerConfig: ProviderConfig | undefined): Promise<string | null> {
+  // Check if this is an OAuth provider
+  if (requiresOAuth(providerId)) {
+    try {
+      const token = await oauthManager.refreshTokenIfNeeded(providerId)
+      return token.accessToken
+    } catch (error) {
+      console.error(`Failed to get OAuth token for ${providerId}:`, error)
+      return null
+    }
+  }
+
+  // Regular provider - use API key from config
+  return providerConfig?.apiKey || null
+}
+
+/**
+ * Check if a provider has valid credentials (API key or OAuth token)
+ */
+async function hasValidCredentials(providerId: string, providerConfig: ProviderConfig | undefined): Promise<boolean> {
+  const apiKey = await getApiKeyForProvider(providerId, providerConfig)
+  return !!apiKey
 }
 
 // Get effective provider and model for a session (session-level overrides global)
@@ -543,6 +783,8 @@ interface StreamContext {
   providerId: string
   toolSettings: ToolSettings | undefined
   // Note: skills are passed separately to runToolLoop/executeToolAndUpdate, not stored here
+  // Accumulated token usage across all turns
+  accumulatedUsage?: { inputTokens: number; outputTokens: number; totalTokens: number }
 }
 
 /**
@@ -741,7 +983,14 @@ function generateStepTitle(toolName: string, args: Record<string, any>, skillNam
 async function executeToolDirectly(
   toolName: string,
   args: Record<string, any>,
-  context: { sessionId: string; messageId: string; abortSignal?: AbortSignal }
+  context: {
+    sessionId: string
+    messageId: string
+    toolCallId?: string
+    workingDirectory?: string  // Session's working directory (sandbox boundary)
+    abortSignal?: AbortSignal
+    onMetadata?: (update: { title?: string; metadata?: Record<string, unknown> }) => void
+  }
 ): Promise<ToolExecutionResult> {
   try {
     // 1. Check if it's an MCP tool
@@ -756,7 +1005,10 @@ async function executeToolDirectly(
     const execContext: ToolExecutionContext = {
       sessionId: context.sessionId,
       messageId: context.messageId,
+      toolCallId: context.toolCallId,
+      workingDirectory: context.workingDirectory,
       abortSignal: context.abortSignal,
+      onMetadata: context.onMetadata,
     }
     const result = await executeTool(toolName, args, execContext)
     return result
@@ -838,6 +1090,10 @@ async function executeToolAndUpdate(
     commandType?: 'read-only' | 'dangerous' | 'forbidden'
   }
 
+  // Get session's workingDirectory for sandbox boundary
+  const session = store.getSession(ctx.sessionId)
+  const workingDirectory = session?.workingDirectory
+
   // Execute tool directly (no LLM overhead)
   result = await executeToolDirectly(
     toolCallData.toolName,
@@ -845,7 +1101,33 @@ async function executeToolAndUpdate(
     {
       sessionId: ctx.sessionId,
       messageId: ctx.assistantMessageId,
+      toolCallId: toolCall.id,
+      workingDirectory,  // Pass session's working directory for sandbox
       abortSignal: ctx.abortSignal,
+      // V2 tool metadata streaming callback
+      onMetadata: (update) => {
+        // Update step with real-time metadata
+        const metadataUpdates: Partial<Step> = {}
+        if (update.title) {
+          metadataUpdates.title = update.title
+        }
+        if (update.metadata) {
+          // Store metadata in step for later use
+          metadataUpdates.result = typeof update.metadata.output === 'string'
+            ? update.metadata.output
+            : JSON.stringify(update.metadata)
+        }
+        // Only send update if there are changes
+        if (Object.keys(metadataUpdates).length > 0) {
+          store.updateMessageStep(ctx.sessionId, ctx.assistantMessageId, step.id, metadataUpdates)
+          ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
+            sessionId: ctx.sessionId,
+            messageId: ctx.assistantMessageId,
+            stepId: step.id,
+            updates: metadataUpdates,
+          })
+        }
+      },
     }
   )
 
@@ -874,8 +1156,11 @@ async function executeToolAndUpdate(
     toolCall.error = result.error
     // Update step status based on result, include result/error
     const stepStatus = result.success ? 'completed' : 'failed'
+    // Extract title from result.data if available (V2 tools return title in data)
+    const finalTitle = result.data?.title || step.title
     const stepUpdates: Partial<Step> = {
       status: stepStatus,
+      title: finalTitle,  // Update title with final result title
       toolCall: { ...toolCall },  // Update toolCall with result
       result: typeof result.data === 'string' ? result.data : JSON.stringify(result.data),
       error: result.error,
@@ -941,6 +1226,8 @@ async function runToolLoop(
       { temperature: ctx.settings.ai.temperature, abortSignal: ctx.abortSignal }
     )
 
+    let turnUsage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined
+
     for await (const chunk of stream) {
       if (chunk.type === 'text' && chunk.text) {
         processor.handleTextChunk(chunk.text, turnContent)
@@ -954,18 +1241,24 @@ async function runToolLoop(
         const toolCall = processor.handleToolCallChunk(chunk.toolCall)
         toolCallsThisTurn.push(toolCall)
 
-        // Use resolved toolId (from handleToolCallChunk) for checking,
-        // as AI models may return short names that we've resolved to full IDs
-        const shouldAutoExecute = isMCPTool(toolCall.toolId) ||
-          canAutoExecute(toolCall.toolId, ctx.toolSettings?.tools)
+        // Always execute tools - the tool will decide if it needs confirmation
+        // by returning requiresConfirmation: true (e.g., bash for dangerous commands)
+        // Pass the resolved toolId for execution, include skills for Tool Agent
+        await executeToolAndUpdate(ctx, toolCall, {
+          toolName: toolCall.toolId,
+          args: chunk.toolCall.args
+        }, processor.toolCalls, enabledSkills, currentTurn)
+      }
 
-        if (shouldAutoExecute) {
-          // Pass the resolved toolId for execution, include skills for Tool Agent
-          await executeToolAndUpdate(ctx, toolCall, {
-            toolName: toolCall.toolId,
-            args: chunk.toolCall.args
-          }, processor.toolCalls, enabledSkills, currentTurn)
-        }
+      // Capture usage data from finish chunk
+      if (chunk.type === 'finish' && chunk.usage) {
+        turnUsage = chunk.usage
+        // Accumulate usage to context for final reporting
+        ctx.accumulatedUsage = ctx.accumulatedUsage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+        ctx.accumulatedUsage.inputTokens += chunk.usage.inputTokens
+        ctx.accumulatedUsage.outputTokens += chunk.usage.outputTokens
+        ctx.accumulatedUsage.totalTokens += chunk.usage.totalTokens
+        console.log(`[Backend] Turn ${currentTurn} usage:`, chunk.usage, `Total accumulated:`, ctx.accumulatedUsage)
       }
     }
 
@@ -987,7 +1280,7 @@ async function runToolLoop(
 
     if (toolCallsThisTurn.length > 0) {
       store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
-        type: 'steps',
+        type: 'data-steps',
         turnIndex: currentTurn,
       })
       ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
@@ -995,7 +1288,7 @@ async function runToolLoop(
         content: '',
         messageId: ctx.assistantMessageId,
         sessionId: ctx.sessionId,
-        contentPart: { type: 'steps', turnIndex: currentTurn },
+        contentPart: { type: 'data-steps', turnIndex: currentTurn },
       })
     }
 
@@ -1110,20 +1403,65 @@ async function executeStreamGeneration(
   try {
     console.log('[Backend] Starting streaming for message:', ctx.assistantMessageId)
 
-    // Get enabled tools (filter out MCP tools since they're handled separately with sanitized names)
-    const allEnabledTools = ctx.toolSettings?.enableToolCalls ? getEnabledTools() : []
-    const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
-    const mcpTools = ctx.toolSettings?.enableToolCalls ? getMCPToolsForAI() : {}
-    const hasTools = enabledTools.length > 0 || Object.keys(mcpTools).length > 0
+    // Get session and agent info first (needed for tool init context)
+    const session = store.getSession(ctx.sessionId)
+    let currentAgent: ReturnType<typeof store.getAgent> | undefined
+    if (session?.agentId) {
+      currentAgent = store.getAgent(session.agentId)
+    }
 
-    // Get enabled skills
+    // Get enabled skills based on session's workingDirectory (needed for tool init context and system prompt)
+    // This uses upward traversal to find project skills
     const skillsSettings = ctx.settings.skills
     const skillsEnabled = skillsSettings?.enableSkills !== false
-    const enabledSkills = skillsEnabled ? getLoadedSkills().filter(s => s.enabled) : []
+    const sessionWorkingDir = session?.workingDirectory
+    const enabledSkills = skillsEnabled ? getSkillsForSession(sessionWorkingDir) : []
+
+    if (sessionWorkingDir) {
+      console.log(`[Chat] Loading skills for session working directory: ${sessionWorkingDir}`)
+    }
+
+    // Set init context for async tools (like SkillTool)
+    // This provides agent permissions and available skills to tools that need them
+    if (ctx.toolSettings?.enableToolCalls) {
+      setInitContext({
+        agent: currentAgent ? {
+          id: currentAgent.id,
+          name: currentAgent.name,
+          permissions: currentAgent.permissions,
+        } : undefined,
+        skills: enabledSkills.map(s => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          source: s.source,
+          path: s.path,
+          directoryPath: s.directoryPath,
+          enabled: s.enabled,
+          instructions: s.instructions,
+          files: s.files?.map(f => ({ name: f.name, path: f.path, type: f.type as 'markdown' | 'script' | 'template' | 'other' })),
+        })),
+      })
+      // Initialize async tools with the new context
+      await initializeAsyncTools()
+    }
+
+    // Get enabled tools (filter out MCP tools since they're handled separately with sanitized names)
+    // Use async version to include tools with dynamic descriptions
+    const allEnabledTools = ctx.toolSettings?.enableToolCalls ? await getEnabledToolsAsync() : []
+    const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
+    const mcpTools = ctx.toolSettings?.enableToolCalls ? getMCPToolsForAI() : {}
+
+    // Check if the current model supports tools using Models.dev tool_call field
+    const supportsTools = await modelRegistry.modelSupportsTools(ctx.providerConfig.model, ctx.providerId)
+    if (!supportsTools) {
+      console.log(`[Chat] Model ${ctx.providerConfig.model} does not support tools, skipping tool calls`)
+    }
+
+    const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
 
     // Get system prompt from agent (preferred) or workspace (fallback)
     let characterSystemPrompt: string | undefined
-    const session = store.getSession(ctx.sessionId)
 
     // First, try to get system prompt from agent
     if (session?.agentId) {
@@ -1171,7 +1509,14 @@ async function executeStreamGeneration(
         const storage = getStorage()
         const relationship = await storage.agentMemory.getRelationship(session.agentId)
         if (relationship) {
-          agentMemoryPrompt = formatAgentMemoryPrompt(relationship)
+          // Use semantic search to retrieve context-relevant memories
+          const relevantMemories = await retrieveRelevantAgentMemories(
+            storage, session.agentId, lastUserMessage, 5, 0.3
+          )
+          if (relevantMemories.length > 0) {
+            console.log(`[Chat] Retrieved ${relevantMemories.length} relevant agent memories for context`)
+          }
+          agentMemoryPrompt = formatAgentMemoryPrompt(relationship, relevantMemories)
         }
       } catch (error) {
         console.error('Failed to load agent memory:', error)
@@ -1184,6 +1529,7 @@ async function executeStreamGeneration(
       workspaceSystemPrompt: characterSystemPrompt,
       userProfilePrompt,
       agentMemoryPrompt,
+      providerId: ctx.providerId,
     })
 
     let pausedForConfirmation = false
@@ -1217,8 +1563,15 @@ async function executeStreamGeneration(
         messageId: ctx.assistantMessageId,
         sessionId: ctx.sessionId,
         sessionName: updatedSession?.name || sessionName,
+        usage: ctx.accumulatedUsage,
       })
-      console.log('[Backend] Streaming complete')
+      // Also send UIMessage finish chunk with usage for new clients
+      sendUIMessageFinish(ctx.sender, ctx.sessionId, ctx.assistantMessageId, 'stop', ctx.accumulatedUsage)
+      // Update session usage cache
+      if (ctx.accumulatedUsage) {
+        updateSessionUsage(ctx.sessionId, ctx.accumulatedUsage)
+      }
+      console.log('[Backend] Streaming complete, total usage:', ctx.accumulatedUsage)
 
       // Record interaction for agent sessions (update relationship stats)
       if (agentIdForInteraction) {
@@ -1358,8 +1711,12 @@ export function registerChatHandlers() {
         console.log(`[Backend] Aborting stream for session: ${sessionId}`)
         controller.abort()
         activeStreams.delete(sessionId)
+        // Clear any pending permission requests for this session
+        Permission.clearSession(sessionId)
         return { success: true }
       }
+      // Even if no active stream, still clear pending permissions
+      Permission.clearSession(sessionId)
       return { success: false, error: 'No active stream for this session' }
     } else {
       // Abort all streams (backwards compatibility)
@@ -1367,6 +1724,8 @@ export function registerChatHandlers() {
         console.log(`[Backend] Aborting all active streams (${activeStreams.size})`)
         for (const [sid, controller] of activeStreams) {
           controller.abort()
+          // Clear any pending permission requests for each session
+          Permission.clearSession(sid)
         }
         activeStreams.clear()
         return { success: true }
@@ -1403,10 +1762,15 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
-    if (!providerConfig || !providerConfig.apiKey) {
+    // Get API key (handles OAuth providers)
+    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
+    if (!apiKey) {
+      const isOAuth = requiresOAuth(providerId)
       return {
         success: false,
-        error: 'API Key not configured. Please configure your AI settings.',
+        error: isOAuth
+          ? `Not logged in to ${providerId}. Please login in settings.`
+          : 'API Key not configured. Please configure your AI settings.',
       }
     }
 
@@ -1421,14 +1785,14 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
     const session = store.getSession(sessionId)
     const historyMessages = buildHistoryMessages(session?.messages || [], session)
 
-    // Use AI SDK to generate response
+    // Use AI SDK to generate response (use OAuth token as apiKey)
     const apiType = getProviderApiType(settings, providerId)
     const response = await generateChatResponseWithReasoning(
       providerId,
       {
-        apiKey: providerConfig.apiKey,
-        baseUrl: providerConfig.baseUrl,
-        model: providerConfig.model,
+        apiKey,  // Use the apiKey we got (OAuth token or regular API key)
+        baseUrl: providerConfig?.baseUrl,
+        model: providerConfig?.model || '',
         apiType,
       },
       historyMessages,
@@ -1474,11 +1838,22 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
     const settings = store.getSettings()
     const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
-    if (!providerConfig || !providerConfig.apiKey) {
+    // Get API key (handles OAuth providers)
+    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
+    if (!apiKey) {
+      const isOAuth = requiresOAuth(providerId)
       return {
         success: false,
-        error: 'API Key not configured. Please configure your AI settings.',
+        error: isOAuth
+          ? `Not logged in to ${providerId}. Please login in settings.`
+          : 'API Key not configured. Please configure your AI settings.',
       }
+    }
+
+    // Create config with the API key (for OAuth providers, this is the OAuth token)
+    const configWithApiKey = {
+      ...providerConfig,
+      apiKey,
     }
 
     if (!isProviderSupported(providerId)) {
@@ -1523,7 +1898,7 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
         assistantMessageId,
         abortSignal: abortController.signal,
         settings,
-        providerConfig,
+        providerConfig: configWithApiKey,
         providerId,
         toolSettings: settings.tools,
       }
@@ -1591,10 +1966,15 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
-    if (!providerConfig || !providerConfig.apiKey) {
+    // Get API key (handles OAuth providers)
+    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
+    if (!apiKey) {
+      const isOAuth = requiresOAuth(providerId)
       return {
         success: false,
-        error: 'API Key not configured. Please configure your AI settings.',
+        error: isOAuth
+          ? `Not logged in to ${providerId}. Please login in settings.`
+          : 'API Key not configured. Please configure your AI settings.',
       }
     }
 
@@ -1613,9 +1993,9 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     const response = await generateChatResponseWithReasoning(
       providerId,
       {
-        apiKey: providerConfig.apiKey,
-        baseUrl: providerConfig.baseUrl,
-        model: providerConfig.model,
+        apiKey,
+        baseUrl: providerConfig?.baseUrl,
+        model: providerConfig?.model || '',
         apiType,
       },
       historyMessages,
@@ -1625,7 +2005,7 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     const assistantMessage: ChatMessage = {
       id: uuidv4(),
       role: 'assistant',
-      model: providerConfig.model,
+      model: providerConfig?.model || '',
       content: response.text,
       timestamp: Date.now(),
       reasoning: response.reasoning,
@@ -1661,7 +2041,9 @@ async function handleGenerateTitle(userMessage: string) {
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
-    if (!providerConfig.apiKey || !isProviderSupported(providerId)) {
+    // Get API key (handles OAuth providers)
+    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
+    if (!apiKey || !isProviderSupported(providerId)) {
       // Fallback to simple truncation
       return {
         success: true,
@@ -1673,9 +2055,9 @@ async function handleGenerateTitle(userMessage: string) {
     const title = await generateChatTitle(
       providerId,
       {
-        apiKey: providerConfig.apiKey,
-        baseUrl: providerConfig.baseUrl,
-        model: providerConfig.model,
+        apiKey,
+        baseUrl: providerConfig?.baseUrl,
+        model: providerConfig?.model || '',
         apiType,
       },
       userMessage
@@ -1724,11 +2106,22 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     const settings = store.getSettings()
     const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
-    if (!providerConfig || !providerConfig.apiKey) {
+    // Get API key (handles OAuth providers)
+    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
+    if (!apiKey) {
+      const isOAuth = requiresOAuth(providerId)
       return {
         success: false,
-        error: 'API Key not configured. Please configure your AI settings.',
+        error: isOAuth
+          ? `Not logged in to ${providerId}. Please login in settings.`
+          : 'API Key not configured. Please configure your AI settings.',
       }
+    }
+
+    // Create config with the API key (for OAuth providers, this is the OAuth token)
+    const configWithApiKey = {
+      ...providerConfig,
+      apiKey,
     }
 
     if (!isProviderSupported(providerId)) {
@@ -1769,9 +2162,11 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       activeStreams.set(sessionId, abortController)
 
       try {
-        // Check if this is an image generation model (DALL-E)
-        if (isImageGenerationModel(providerConfig.model)) {
-          console.log(`[Backend] Detected image generation model: ${providerConfig.model}`)
+        // Check if this is an image generation model using Models.dev capability
+        const supportsImageGen = await modelRegistry.modelSupportsImageGeneration(configWithApiKey.model, providerId)
+
+        if (supportsImageGen) {
+          console.log(`[Backend] Detected image generation model: ${configWithApiKey.model} (provider: ${providerId})`)
 
           // For image generation, we don't need history - just the prompt
           const prompt = messageContent
@@ -1785,16 +2180,31 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
           })
           store.updateMessageContent(sessionId, assistantMessageId, '正在生成图片...\n\n')
 
-          // Generate image - normalize model ID for API
-          const normalizedModel = normalizeImageModelId(providerConfig.model)
-          console.log(`[Backend] Using normalized model ID: ${normalizedModel}`)
+          let result: ImageGenerationResult
+          let modelForDisplay: string
 
-          const result = await generateImage(
-            providerConfig.apiKey,
-            providerConfig.baseUrl || 'https://api.openai.com/v1',
-            normalizedModel,
-            prompt
-          )
+          // Use provider ID to determine which image generation API to use
+          if (providerId === 'gemini') {
+            // Gemini image generation (uses generateText with files output)
+            console.log(`[Backend] Using Gemini image generation`)
+            modelForDisplay = configWithApiKey.model
+            result = await generateGeminiImage(
+              configWithApiKey.apiKey,
+              configWithApiKey.model,
+              prompt
+            )
+          } else {
+            // OpenAI-compatible image generation (DALL-E, etc.)
+            const normalizedModel = normalizeImageModelId(configWithApiKey.model)
+            console.log(`[Backend] Using OpenAI image generation: ${normalizedModel}`)
+            modelForDisplay = normalizedModel
+            result = await generateImage(
+              configWithApiKey.apiKey,
+              configWithApiKey.baseUrl || 'https://api.openai.com/v1',
+              normalizedModel,
+              prompt
+            )
+          }
 
           if (result.success && result.imageBase64) {
             // Format the response with markdown image and revised prompt info
@@ -1828,7 +2238,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
               base64: result.imageBase64,
               prompt: prompt,
               revisedPrompt: result.revisedPrompt,
-              model: normalizedModel,
+              model: modelForDisplay,
               sessionId,
               messageId: assistantMessageId,
               createdAt: Date.now(),
@@ -1864,7 +2274,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
             assistantMessageId,
             abortSignal: abortController.signal,
             settings,
-            providerConfig,
+            providerConfig: configWithApiKey,
             providerId,
             toolSettings: settings.tools,
           }
@@ -1923,8 +2333,22 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     const settings = store.getSettings()
     const { providerId, providerConfig } = getEffectiveProviderConfig(settings, sessionId)
 
-    if (!providerConfig || !providerConfig.apiKey) {
-      return { success: false, error: 'API Key not configured' }
+    // Get API key (handles OAuth providers)
+    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
+    if (!apiKey) {
+      const isOAuth = requiresOAuth(providerId)
+      return {
+        success: false,
+        error: isOAuth
+          ? `Not logged in to ${providerId}. Please login in settings.`
+          : 'API Key not configured',
+      }
+    }
+
+    // Create config with the API key (for OAuth providers, this is the OAuth token)
+    const configWithApiKey = {
+      ...providerConfig,
+      apiKey,
     }
 
     if (!isProviderSupported(providerId)) {
@@ -1945,15 +2369,50 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     // Build tool-aware conversation messages
     const conversationMessages: ToolChatMessage[] = []
 
-    // Add system prompt
-    const allEnabledTools = settings.tools?.enableToolCalls ? getEnabledTools() : []
-    const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
-    const mcpTools = settings.tools?.enableToolCalls ? getMCPToolsForAI() : {}
-    const hasTools = enabledTools.length > 0 || Object.keys(mcpTools).length > 0
-
+    // Load skills first (before tools, as SkillTool needs them in InitContext)
     const skillsSettings = settings.skills
     const skillsEnabled = skillsSettings?.enableSkills !== false
-    const enabledSkills = skillsEnabled ? getLoadedSkills().filter(s => s.enabled) : []
+    const enabledSkills = skillsEnabled ? getSkillsForSession(session.workingDirectory) : []
+
+    // Get agent for permission context
+    const currentAgent = session.agentId ? store.getAgent(session.agentId) : undefined
+
+    // Set init context for async tools (like SkillTool)
+    if (settings.tools?.enableToolCalls) {
+      setInitContext({
+        agent: currentAgent ? {
+          id: currentAgent.id,
+          name: currentAgent.name,
+          permissions: currentAgent.permissions,
+        } : undefined,
+        skills: enabledSkills.map(s => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          source: s.source,
+          path: s.path,
+          directoryPath: s.directoryPath,
+          enabled: s.enabled,
+          instructions: s.instructions,
+          files: s.files?.map(f => ({ name: f.name, path: f.path, type: f.type as 'markdown' | 'script' | 'template' | 'other' })),
+        })),
+      })
+      await initializeAsyncTools()
+    }
+
+    // Add system prompt
+    // Use async version to include tools with dynamic descriptions
+    const allEnabledTools = settings.tools?.enableToolCalls ? await getEnabledToolsAsync() : []
+    const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
+    const mcpTools = settings.tools?.enableToolCalls ? getMCPToolsForAI() : {}
+
+    // Check if the current model supports tools using Models.dev tool_call field
+    const supportsTools = await modelRegistry.modelSupportsTools(providerConfig.model, providerId)
+    if (!supportsTools) {
+      console.log(`[Chat] Model ${providerConfig.model} does not support tools, skipping tool calls`)
+    }
+
+    const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
 
     // Load user profile (shared) and agent memory (per-agent) for system prompt
     let userProfilePrompt: string | undefined
@@ -1984,7 +2443,14 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
         const storage = getStorage()
         const agentRelationship = await storage.agentMemory.getRelationship(agentId)
         if (agentRelationship) {
-          agentMemoryPrompt = formatAgentMemoryPrompt(agentRelationship)
+          // Use semantic search to retrieve context-relevant memories
+          const relevantMemories = await retrieveRelevantAgentMemories(
+            storage, agentId, lastUserMsg, 5, 0.3
+          )
+          if (relevantMemories.length > 0) {
+            console.log(`[Chat] Retrieved ${relevantMemories.length} relevant agent memories for resume context`)
+          }
+          agentMemoryPrompt = formatAgentMemoryPrompt(agentRelationship, relevantMemories)
         }
       } catch (error) {
         console.error('Failed to load agent memory:', error)
@@ -2007,6 +2473,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       workspaceSystemPrompt: characterSystemPrompt,
       userProfilePrompt,
       agentMemoryPrompt,
+      providerId,
     })
 
     conversationMessages.push({ role: 'system', content: systemPrompt })
@@ -2054,7 +2521,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
         assistantMessageId: messageId,
         abortSignal: abortController.signal,
         settings,
-        providerConfig,
+        providerConfig: configWithApiKey,
         providerId,
         toolSettings: settings.tools,
       }

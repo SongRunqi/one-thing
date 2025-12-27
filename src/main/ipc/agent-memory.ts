@@ -45,6 +45,21 @@ export function registerAgentMemoryHandlers() {
     }
   )
 
+  // Delete a memory
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_MEMORY_DELETE,
+    async (_event, { memoryId }) => {
+      try {
+        const storage = getStorage()
+        const success = await storage.agentMemory.deleteMemory(memoryId)
+        return { success }
+      } catch (error: any) {
+        console.error('Error deleting agent memory:', error)
+        return { success: false, error: error.message || 'Failed to delete memory' }
+      }
+    }
+  )
+
   // Recall a memory (strengthen it)
   ipcMain.handle(
     IPC_CHANNELS.AGENT_MEMORY_RECALL,

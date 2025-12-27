@@ -1,9 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark" data-color-theme="blue" data-base-theme="obsidian">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Chat</title>
+    <style>
+      /* Prevent flash of unstyled content - apply background immediately */
+      html, body {
+        background-color: #1C1B1A;
+        margin: 0;
+        padding: 0;
+      }
+      html[data-theme="light"], html[data-theme="light"] body {
+        background-color: #FFFCF0;
+      }
+    </style>
+    <script>
+      // Apply system theme preference immediately before CSS loads
+      // This prevents flash of wrong theme on startup
+      (function() {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (!prefersDark) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

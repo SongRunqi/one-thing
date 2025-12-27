@@ -56,6 +56,7 @@ export function formatShortcut(shortcut: KeyboardShortcut | undefined): string {
 
 export interface ShortcutHandlers {
   onNewChat?: () => void
+  onCloseChat?: () => void
   onToggleSidebar?: () => void
   onFocusInput?: () => void
   onOpenSettings?: () => void
@@ -86,6 +87,26 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       } else {
         // Default: create new session
         sessionsStore.createSession('')
+      }
+      return
+    }
+
+    // Close Chat - works everywhere
+    if (matchShortcut(event, shortcuts.closeChat)) {
+      event.preventDefault()
+      // In settings window, close the window instead of closing chat
+      if (window.location.hash === '#/settings') {
+        window.close()
+        return
+      }
+      if (handlers.onCloseChat) {
+        handlers.onCloseChat()
+      } else {
+        // Default: delete current session
+        const currentId = sessionsStore.currentSessionId
+        if (currentId) {
+          sessionsStore.deleteSession(currentId)
+        }
       }
       return
     }

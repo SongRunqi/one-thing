@@ -109,7 +109,7 @@ export function getUserSkillsPath(): string {
 }
 
 /**
- * Get the project skills directory path
+ * Get the project skills directory path (single directory, no traversal)
  */
 export function getProjectSkillsPath(cwd?: string): string {
   const workingDir = cwd || process.cwd()
@@ -121,6 +121,59 @@ export function getProjectSkillsPath(cwd?: string): string {
  */
 export function getPluginSkillsPath(): string {
   return path.join(os.homedir(), '.claude', 'plugins', 'cache', 'claude-plugins-official')
+}
+
+/**
+ * Environment variable for additional skills directory
+ */
+const SKILLS_DIR_ENV = 'CLAUDE_SKILLS_DIR'
+
+/**
+ * Traverse upward from a directory to find all .claude directories
+ * Similar to how git finds .git directories
+ *
+ * @param startDir - Directory to start traversal from
+ * @param stopAt - Optional directory to stop at (e.g., home directory)
+ * @returns Array of .claude/skills paths found (closest first)
+ */
+export function findProjectSkillPaths(startDir: string, stopAt?: string): string[] {
+  const skillsPaths: string[] = []
+  const homeDir = os.homedir()
+  const stopDirectory = stopAt || homeDir
+
+  let currentDir = path.resolve(startDir)
+  const visitedDirs = new Set<string>()
+
+  while (currentDir && !visitedDirs.has(currentDir)) {
+    visitedDirs.add(currentDir)
+
+    // Check for .claude/skills in current directory
+    const skillsPath = path.join(currentDir, '.claude', 'skills')
+    if (fs.existsSync(skillsPath) && fs.statSync(skillsPath).isDirectory()) {
+      skillsPaths.push(skillsPath)
+    }
+
+    // Stop if we've reached the stop directory or root
+    if (currentDir === stopDirectory || currentDir === path.dirname(currentDir)) {
+      break
+    }
+
+    // Move up one directory
+    currentDir = path.dirname(currentDir)
+  }
+
+  return skillsPaths
+}
+
+/**
+ * Get skills directory from environment variable
+ */
+export function getEnvSkillsPath(): string | null {
+  const envPath = process.env[SKILLS_DIR_ENV]
+  if (envPath && fs.existsSync(envPath) && fs.statSync(envPath).isDirectory()) {
+    return envPath
+  }
+  return null
 }
 
 /**
@@ -234,9 +287,22 @@ function loadSkillsFromPath(skillsDir: string, source: SkillSource): SkillDefini
     const entries = fs.readdirSync(skillsDir, { withFileTypes: true })
 
     for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const skillDir = path.join(skillsDir, entry.name)
-        const skill = loadSkillFromDirectory(skillDir, source)
+      const fullPath = path.join(skillsDir, entry.name)
+
+      // Check if it's a directory or a symlink pointing to a directory
+      let isDir = entry.isDirectory()
+      if (!isDir && entry.isSymbolicLink()) {
+        try {
+          const stat = fs.statSync(fullPath) // statSync follows symlinks
+          isDir = stat.isDirectory()
+        } catch {
+          // Symlink target doesn't exist, skip
+          continue
+        }
+      }
+
+      if (isDir) {
+        const skill = loadSkillFromDirectory(fullPath, source)
         if (skill) {
           skills.push(skill)
         }
@@ -304,15 +370,49 @@ function loadPluginSkills(): SkillDefinition[] {
 
 /**
  * Load all skills from user, project, and plugin directories
+ * Uses upward traversal for project skills when workingDirectory is provided
+ *
+ * @param workingDirectory - Optional working directory for project skills (enables upward traversal)
  */
-export function loadAllSkills(projectPath?: string): SkillDefinition[] {
+export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
+  // 1. User skills (global)
   const userSkills = loadSkillsFromPath(getUserSkillsPath(), 'user')
-  const projectSkills = loadSkillsFromPath(getProjectSkillsPath(projectPath), 'project')
+
+  // 2. Project skills (with upward traversal if workingDirectory provided)
+  let projectSkills: SkillDefinition[] = []
+  if (workingDirectory) {
+    // Use upward traversal to find all .claude/skills directories
+    const projectSkillPaths = findProjectSkillPaths(workingDirectory)
+    const seenSkillIds = new Set<string>()
+
+    for (const skillPath of projectSkillPaths) {
+      const skills = loadSkillsFromPath(skillPath, 'project')
+      // Deduplicate: closer skills take precedence
+      for (const skill of skills) {
+        if (!seenSkillIds.has(skill.id)) {
+          seenSkillIds.add(skill.id)
+          projectSkills.push(skill)
+        }
+      }
+    }
+
+    console.log(`[Skills] Found ${projectSkillPaths.length} project skill directories via upward traversal`)
+  }
+
+  // 3. Environment variable skills
+  let envSkills: SkillDefinition[] = []
+  const envSkillsPath = getEnvSkillsPath()
+  if (envSkillsPath) {
+    envSkills = loadSkillsFromPath(envSkillsPath, 'user') // Treat as user-level
+    console.log(`[Skills] Loaded ${envSkills.length} skills from ${SKILLS_DIR_ENV}`)
+  }
+
+  // 4. Plugin skills
   const pluginSkills = loadPluginSkills()
 
-  console.log(`[Skills] Loaded ${userSkills.length} user, ${projectSkills.length} project, ${pluginSkills.length} plugin skills`)
+  console.log(`[Skills] Loaded ${userSkills.length} user, ${projectSkills.length} project, ${envSkills.length} env, ${pluginSkills.length} plugin skills`)
 
-  return [...userSkills, ...projectSkills, ...pluginSkills]
+  return [...userSkills, ...projectSkills, ...envSkills, ...pluginSkills]
 }
 
 /**

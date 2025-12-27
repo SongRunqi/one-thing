@@ -130,6 +130,20 @@ export interface IAgentMemoryStorage {
    * 删除记忆
    */
   deleteMemory(memoryId: string): Promise<boolean>
+
+  /**
+   * 混合检索记忆（语义相似度 + 记忆强度）
+   */
+  hybridRetrieveMemories(
+    agentId: string,
+    query: string,
+    limit?: number,
+    options?: {
+      similarityWeight?: number
+      strengthWeight?: number
+      minSimilarity?: number
+    }
+  ): Promise<AgentMemory[]>
 }
 
 // ============================================

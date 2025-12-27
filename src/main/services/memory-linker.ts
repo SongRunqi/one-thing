@@ -89,7 +89,13 @@ export async function linkNewMemory(
       continue
     }
 
-    const similarity = cosineSimilarity(newEmbedding, existingEmbedding)
+    let similarity = 0
+    try {
+      similarity = cosineSimilarity(newEmbedding, existingEmbedding)
+    } catch (e) {
+      console.warn('[MemoryLinker] Embedding dimension mismatch, skipping comparison')
+      continue
+    }
 
     if (similarity >= VERY_SIMILAR_THRESHOLD) {
       // Very similar - might be update or duplicate
@@ -249,7 +255,13 @@ export async function buildMemoryGraph(agentId: string): Promise<LinkingStats> {
       const embedding2 = memoryEmbeddings.get(memory2.id)
       if (!embedding2) continue
 
-      const similarity = cosineSimilarity(embedding1, embedding2)
+      let similarity = 0
+      try {
+        similarity = cosineSimilarity(embedding1, embedding2)
+      } catch (e) {
+        console.warn('[MemoryLinker] Embedding dimension mismatch in graph building, skipping pair')
+        continue
+      }
 
       let relationship: MemoryLinkRelationship | null = null
 

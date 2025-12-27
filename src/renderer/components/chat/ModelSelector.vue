@@ -1,57 +1,26 @@
 <template>
-  <div class="model-selector" ref="selectorRef">
-    <button class="model-selector-btn" @click="toggleDropdown" :title="currentModel || 'Select model'">
+  <div class="model-selector" ref="selectorRef" :class="{ compact: isCompact }">
+    <button class="model-selector-btn" @click="openPanel" :title="displayName || 'Select model'">
       <!-- Provider icon -->
-      <span class="provider-icon" :class="currentProvider">
+      <span class="provider-icon">
         <ProviderIcon :provider="currentProvider" :size="18" />
       </span>
-      <!-- Model name -->
-      <span class="model-text">{{ currentModel || 'Select model' }}</span>
+      <!-- Model name (hidden in compact mode) -->
+      <span class="model-text">{{ displayName }}</span>
+      <!-- Chevron -->
+      <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
     </button>
 
-    <!-- Model dropdown menu -->
-    <Teleport to="body">
-      <div
-        v-if="showDropdown"
-        class="model-dropdown"
-        :style="dropdownPosition"
-        @click.stop
-      >
-        <div v-for="provider in availableProviders" :key="provider.key" class="provider-group">
-          <div
-            class="provider-header"
-            :class="{ active: provider.key === currentProvider }"
-            @click="handleProviderClick(provider.key, provider.selectedModels.length > 0)"
-          >
-            <svg
-              v-if="provider.selectedModels.length > 0"
-              class="expand-chevron"
-              :class="{ expanded: expandedProviders.has(provider.key) }"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
-            <span class="provider-name">{{ provider.name }}</span>
-          </div>
-          <div v-if="provider.selectedModels.length > 0 && expandedProviders.has(provider.key)" class="model-list">
-            <div
-              v-for="model in provider.selectedModels"
-              :key="model"
-              class="model-item"
-              :class="{ active: provider.key === currentProvider && model === currentModel }"
-              @click="selectModel(provider.key, model)"
-            >
-              <span class="model-name">{{ model }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <!-- New two-column panel -->
+    <ModelSelectorPanel
+      v-model:visible="showPanel"
+      :position="panelPosition"
+      :current-provider="currentProvider"
+      :current-model="currentModel"
+      @select="handleSelect"
+    />
   </div>
 </template>
 
@@ -59,154 +28,158 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
-import { AIProvider } from '../../../shared/ipc'
+import type { AIProvider } from '../../../shared/ipc'
 import ProviderIcon from '../settings/ProviderIcon.vue'
+import ModelSelectorPanel from './ModelSelectorPanel.vue'
+
+interface Props {
+  sessionId?: string
+}
+
+const props = defineProps<Props>()
 
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
 
-const showDropdown = ref(false)
+const showPanel = ref(false)
 const selectorRef = ref<HTMLElement | null>(null)
-const dropdownPosition = ref<{ top?: string; bottom?: string; left: string }>({ bottom: '0px', left: '0px' })
-const expandedProviders = ref<Set<string>>(new Set([settingsStore.settings?.ai?.provider || 'claude']))
+const panelPosition = ref<{ bottom: string; left: string }>({ bottom: '0px', left: '0px' })
 
-const currentProvider = computed(() => settingsStore.settings?.ai?.provider || 'claude')
-const currentModel = computed(() => settingsStore.settings?.ai?.providers?.[currentProvider.value]?.model || '')
+// Compact mode when there's not enough space
+const isCompact = ref(false)
+let resizeObserver: ResizeObserver | null = null
 
-const availableProviders = computed(() => {
-  const settings = settingsStore.settings
-  if (!settings?.ai?.providers) return []
+// Check if the button is being clipped or has very little space
+function checkCompactMode() {
+  if (!selectorRef.value) return
 
-  // Built-in providers
-  const builtInProviders = [
-    {
-      key: AIProvider.OpenAI,
-      name: 'OpenAI',
-      selectedModels: settings.ai.providers[AIProvider.OpenAI]?.selectedModels || [],
-    },
-    {
-      key: AIProvider.Claude,
-      name: 'Anthropic',
-      selectedModels: settings.ai.providers[AIProvider.Claude]?.selectedModels || [],
-    },
-    {
-      key: AIProvider.DeepSeek,
-      name: 'DeepSeek',
-      selectedModels: settings.ai.providers[AIProvider.DeepSeek]?.selectedModels || [],
-    },
-    {
-      key: AIProvider.Kimi,
-      name: 'Kimi',
-      selectedModels: settings.ai.providers[AIProvider.Kimi]?.selectedModels || [],
-    },
-    {
-      key: AIProvider.Zhipu,
-      name: 'Zhipu',
-      selectedModels: settings.ai.providers[AIProvider.Zhipu]?.selectedModels || [],
-    },
-    {
-      key: AIProvider.OpenRouter,
-      name: 'OpenRouter',
-      selectedModels: settings.ai.providers[AIProvider.OpenRouter]?.selectedModels || [],
-    },
-  ].filter(p => {
-    const config = settings.ai.providers[p.key]
-    return config?.enabled !== false
-  })
+  // Get the parent toolbar-left container
+  const parent = selectorRef.value.closest('.toolbar-left') as HTMLElement
+  if (!parent) {
+    // Fallback to window-based check
+    isCompact.value = window.innerWidth < 550
+    return
+  }
 
-  // Custom providers from settings
-  const customProviders = (settings.ai.customProviders || []).map(cp => ({
-    key: cp.id,
-    name: cp.name,
-    selectedModels: settings.ai.providers[cp.id]?.selectedModels || cp.selectedModels || [],
-  }))
+  // Calculate available width: parent width minus other siblings
+  const parentRect = parent.getBoundingClientRect()
+  const siblings = Array.from(parent.children) as HTMLElement[]
+  let usedWidth = 0
 
-  return [...builtInProviders, ...customProviders]
+  for (const sibling of siblings) {
+    if (sibling !== selectorRef.value) {
+      usedWidth += sibling.getBoundingClientRect().width + 4 // 4px gap
+    }
+  }
+
+  const availableForSelector = parentRect.width - usedWidth
+  // If available width is less than 120px, go compact (just show icon)
+  // The full selector needs about 150-180px for icon + text + chevron
+  isCompact.value = availableForSelector < 120
+}
+
+onMounted(() => {
+  checkCompactMode()
+
+  // Use ResizeObserver on the parent toolbar to detect size changes
+  if (selectorRef.value) {
+    const parent = selectorRef.value.closest('.toolbar-left')
+    if (parent) {
+      resizeObserver = new ResizeObserver(() => {
+        checkCompactMode()
+      })
+      resizeObserver.observe(parent)
+    }
+  }
+
+  // Also listen for window resize as fallback
+  window.addEventListener('resize', checkCompactMode)
 })
 
-function toggleDropdown() {
-  if (!showDropdown.value && selectorRef.value) {
+onUnmounted(() => {
+  window.removeEventListener('resize', checkCompactMode)
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+})
+
+// Get the session for this selector (if sessionId provided)
+const currentSession = computed(() => {
+  const sid = props.sessionId
+  if (!sid) return null
+  return sessionsStore.sessions.find(s => s.id === sid) || null
+})
+
+// Use session's lastProvider if available, otherwise fall back to global settings
+const currentProvider = computed(() => {
+  const session = currentSession.value
+  if (session?.lastProvider) {
+    return session.lastProvider as AIProvider
+  }
+  return settingsStore.settings?.ai?.provider || 'claude'
+})
+
+// Use session's lastModel if available, otherwise fall back to global settings
+const currentModel = computed(() => {
+  const session = currentSession.value
+  if (session?.lastModel) {
+    return session.lastModel
+  }
+  return settingsStore.settings?.ai?.providers?.[currentProvider.value]?.model || ''
+})
+
+// Display name with alias support
+const displayName = computed(() => {
+  if (!currentModel.value) return 'Select model'
+  return settingsStore.getModelDisplayName(currentModel.value)
+})
+
+function openPanel() {
+  if (selectorRef.value) {
     const rect = selectorRef.value.getBoundingClientRect()
-    const panelWidth = 240
+    const panelWidth = 480
 
     let left = rect.left + (rect.width / 2) - (panelWidth / 2)
-    const bottom = window.innerHeight - rect.top + 4
+    const bottom = window.innerHeight - rect.top + 8
 
-    if (left < 8) {
-      left = 8
+    // Keep panel within viewport
+    if (left < 16) {
+      left = 16
     }
-    if (left + panelWidth > window.innerWidth - 8) {
-      left = window.innerWidth - panelWidth - 8
+    if (left + panelWidth > window.innerWidth - 16) {
+      left = window.innerWidth - panelWidth - 16
     }
 
-    dropdownPosition.value = {
+    panelPosition.value = {
       bottom: `${bottom}px`,
       left: `${left}px`
     }
   }
-  showDropdown.value = !showDropdown.value
-
-  if (showDropdown.value) {
-    expandedProviders.value = new Set([currentProvider.value])
-  }
+  showPanel.value = true
 }
 
-function toggleProviderExpanded(providerKey: string) {
-  if (expandedProviders.value.has(providerKey)) {
-    expandedProviders.value.delete(providerKey)
-  } else {
-    expandedProviders.value.add(providerKey)
-  }
-  expandedProviders.value = new Set(expandedProviders.value)
-}
+async function handleSelect(provider: string, model: string) {
+  // Get the effective session ID (props or current)
+  const effectiveSessionId = props.sessionId || sessionsStore.currentSessionId
 
-function handleProviderClick(providerKey: string, hasModels: boolean) {
-  if (hasModels) {
-    toggleProviderExpanded(providerKey)
-  } else {
-    selectProvider(providerKey as AIProvider)
-    showDropdown.value = false
-  }
-}
-
-async function selectProvider(provider: AIProvider) {
-  settingsStore.updateAIProvider(provider)
-  await settingsStore.saveSettings(settingsStore.settings)
-}
-
-async function selectModel(provider: AIProvider, model: string) {
-  // Update UI state only (don't save to global settings)
+  // Update UI state
   if (provider !== currentProvider.value) {
-    settingsStore.updateAIProvider(provider)
+    settingsStore.updateAIProvider(provider as AIProvider)
   }
-  settingsStore.updateModel(model, provider)
+  settingsStore.updateModel(model, provider as AIProvider)
 
-  // Save to current session for per-session persistence (this is what matters)
-  const currentSessionId = sessionsStore.currentSessionId
-  if (currentSessionId) {
-    await window.electronAPI.updateSessionModel(currentSessionId, provider, model)
-  }
-
-  showDropdown.value = false
-}
-
-function handleClickOutside(event: MouseEvent) {
-  const target = event.target as HTMLElement
-  if (showDropdown.value && selectorRef.value && !selectorRef.value.contains(target)) {
-    const dropdown = document.querySelector('.model-dropdown')
-    if (!dropdown?.contains(target)) {
-      showDropdown.value = false
+  // Save to session for per-session persistence
+  if (effectiveSessionId) {
+    await window.electronAPI.updateSessionModel(effectiveSessionId, provider, model)
+    // Update local session cache in store
+    const session = sessionsStore.sessions.find(s => s.id === effectiveSessionId)
+    if (session) {
+      session.lastProvider = provider
+      session.lastModel = model
     }
   }
 }
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
 </script>
 
 <style scoped>
@@ -217,22 +190,22 @@ onUnmounted(() => {
 .model-selector-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  background: var(--hover);
-  border-radius: 10px;
+  gap: 6px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
-  color: var(--text);
-  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  height: 34px;
+  color: var(--muted);
+  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  height: 32px;
 }
 
 .model-selector-btn:hover {
-  background: var(--active);
-  border-color: var(--accent);
-  transform: translateY(-1px);
+  background: var(--hover);
+  color: var(--text);
+  transform: scale(1.02);
 }
 
 .model-selector-btn:active {
@@ -250,149 +223,35 @@ html[data-theme='light'] .model-selector-btn:hover {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-}
-
-.provider-icon {
   color: var(--text);
 }
 
 .model-text {
   white-space: nowrap;
-  max-width: 200px;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.model-dropdown {
-  position: fixed;
-  width: 240px;
-  max-height: 320px;
-  overflow-y: auto;
-  background: var(--bg-elevated);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: var(--shadow);
-  z-index: 9999;
-  padding: 6px;
-  animation: menuSlideUp 0.15s ease-out;
-}
-
-@keyframes menuSlideUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-html[data-theme='light'] .model-dropdown {
-  box-shadow:
-    0 8px 40px rgba(0, 0, 0, 0.12),
-    0 0 0 1px rgba(0, 0, 0, 0.05);
-}
-
-.provider-group {
-  margin-bottom: 4px;
-}
-
-.provider-group:last-child {
-  margin-bottom: 0;
-}
-
-.provider-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  transition: background 0.15s ease;
-  cursor: pointer;
-}
-
-.provider-header:hover {
-  background: var(--hover);
-}
-
-.provider-header .provider-name {
-  font-weight: 600;
-  letter-spacing: 0.2px;
-}
-
-.provider-header.active {
-  background: rgba(var(--accent-rgb), 0.1);
-}
-
-.provider-header.active .provider-name {
-  color: var(--accent);
-}
-
-.expand-chevron {
+.chevron-icon {
+  color: var(--muted);
+  flex-shrink: 0;
   transition: transform 0.2s ease;
 }
 
-.expand-chevron.expanded {
-  transform: rotate(90deg);
-}
-
-.provider-name {
-  flex: 1;
-}
-
-.model-list {
-  padding-left: 12px;
-  border-left: 1px solid rgba(255, 255, 255, 0.06);
-  margin-left: 21px;
-  margin-top: 4px;
-  margin-bottom: 8px;
-  animation: slideDown 0.15s ease;
-  overflow: hidden;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    max-height: 0;
-  }
-  to {
-    opacity: 1;
-    max-height: 500px;
-  }
-}
-
-.model-item {
-  display: flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--muted);
-  transition: all 0.15s ease;
-}
-
-.model-item:hover {
-  background: var(--hover);
+.model-selector-btn:hover .chevron-icon {
   color: var(--text);
 }
 
-.model-item.active {
-  background: rgba(var(--accent-rgb), 0.15);
-  color: var(--accent);
-  font-weight: 600;
-  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.2);
+/* Compact mode - hide text and chevron, show only icon */
+.model-selector.compact .model-text,
+.model-selector.compact .chevron-icon {
+  display: none;
 }
 
-.model-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.model-selector.compact .model-selector-btn {
+  padding: 0;
+  width: 32px;
+  justify-content: center;
 }
 </style>

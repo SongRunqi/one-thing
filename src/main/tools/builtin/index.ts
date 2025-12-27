@@ -1,35 +1,61 @@
 /**
  * Built-in Tools Registration
  *
- * This file exports all built-in tools and provides a function to register them.
- * To add a new built-in tool:
- * 1. Create a new file in this directory (e.g., my-tool.ts)
- * 2. Export `definition` and `handler` from that file
- * 3. Import and add them to the `builtinTools` array below
+ * All tools use the V2 format (Tool.define() pattern):
+ * 1. Create a new file using Tool.define()
+ * 2. Export the tool (e.g., `export const MyTool = Tool.define(...)`)
+ * 3. Import and add to the `builtinTools` array below
  */
 
-import { registerTool } from '../registry.js'
+import { registerToolV2 } from '../registry.js'
 
-// Import built-in tools
-import * as getCurrentTime from './get-current-time.js'
-import * as calculator from './calculator.js'
-import * as bash from './bash.js'
+// Import built-in tools (V2 format)
+import { BashTool } from './bash-v2.js'
+import { EditTool } from './edit.js'
+import { ReadTool } from './read.js'
+import { WriteTool } from './write.js'
+import { GlobTool } from './glob.js'
+import { GrepTool } from './grep.js'
+import { SkillTool } from './skill.js'
 
-// List of all built-in tools
-// Note: delegate tool removed - Tool Agent now handles all tool execution internally
+// All built-in tools (Tool.define() format)
+// Note: SkillTool is async and needs separate initialization
 const builtinTools = [
-  getCurrentTime,
-  calculator,
-  bash,
+  BashTool,
+  EditTool,
+  ReadTool,
+  WriteTool,
+  GlobTool,
+  GrepTool,
+]
+
+// Async tools that need initialization with context
+export const asyncBuiltinTools = [
+  SkillTool,
 ]
 
 /**
  * Register all built-in tools with the registry
+ * @deprecated Use registerBuiltinToolsV2 instead
  */
 export function registerBuiltinTools(): void {
+  // No-op - legacy tools removed
+  console.log('[BuiltinTools] Legacy registration skipped (all tools migrated to V2)')
+}
+
+/**
+ * Register all V2 built-in tools with the registry
+ */
+export function registerBuiltinToolsV2(): void {
+  // Register static tools
   for (const tool of builtinTools) {
-    registerTool(tool.definition, tool.handler)
+    registerToolV2(tool)
   }
 
-  console.log(`[BuiltinTools] Registered ${builtinTools.length} built-in tools`)
+  // Register async tools (e.g., SkillTool)
+  for (const tool of asyncBuiltinTools) {
+    registerToolV2(tool)
+  }
+
+  console.log(`[BuiltinTools] Registered ${builtinTools.length + asyncBuiltinTools.length} built-in tools (${asyncBuiltinTools.length} async)`)
 }

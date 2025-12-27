@@ -13,10 +13,10 @@ export function registerWorkspaceHandlers() {
   })
 
   // Create new workspace
-  ipcMain.handle(IPC_CHANNELS.WORKSPACE_CREATE, async (_event, { name, avatar, systemPrompt }) => {
+  ipcMain.handle(IPC_CHANNELS.WORKSPACE_CREATE, async (_event, { name, avatar, workingDirectory, systemPrompt }) => {
     try {
       const workspaceId = uuidv4()
-      const workspace = workspacesStore.createWorkspace(workspaceId, name, avatar, systemPrompt)
+      const workspace = workspacesStore.createWorkspace(workspaceId, name, avatar, workingDirectory, systemPrompt)
       return { success: true, workspace }
     } catch (error: any) {
       console.error('Error creating workspace:', error)
@@ -25,9 +25,9 @@ export function registerWorkspaceHandlers() {
   })
 
   // Update workspace
-  ipcMain.handle(IPC_CHANNELS.WORKSPACE_UPDATE, async (_event, { id, name, avatar, systemPrompt }) => {
+  ipcMain.handle(IPC_CHANNELS.WORKSPACE_UPDATE, async (_event, { id, name, avatar, workingDirectory, systemPrompt }) => {
     try {
-      const workspace = workspacesStore.updateWorkspace(id, { name, avatar, systemPrompt })
+      const workspace = workspacesStore.updateWorkspace(id, { name, avatar, workingDirectory, systemPrompt })
       if (!workspace) {
         return { success: false, error: 'Workspace not found' }
       }

@@ -7,11 +7,7 @@
       title="Media"
       @click="$emit('toggle-media-panel')"
     >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-        <circle cx="8.5" cy="8.5" r="1.5"/>
-        <polyline points="21 15 16 10 5 21"/>
-      </svg>
+      <Images :size="18" :stroke-width="1.5" />
     </button>
 
     <!-- Center: Workspace Icons -->
@@ -23,9 +19,7 @@
         title="Default Chat"
         @click="switchToDefault"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        </svg>
+        <MessageSquare :size="16" :stroke-width="1.5" />
       </button>
 
       <!-- Workspace avatars -->
@@ -56,22 +50,31 @@
 
     <!-- Right: Add Button -->
     <button
+      ref="addBtnRef"
       class="switcher-btn add-btn"
-      title="New Workspace"
-      @click="$emit('open-create-dialog')"
+      :class="{ active: showCreatePanel }"
+      title="Create"
+      @click.stop="toggleCreatePanel"
     >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <line x1="12" y1="5" x2="12" y2="19"/>
-        <line x1="5" y1="12" x2="19" y2="12"/>
-      </svg>
+      <Plus :size="18" :stroke-width="1.5" />
     </button>
+
+    <!-- Create Panel -->
+    <CreatePanel
+      :visible="showCreatePanel"
+      :trigger-rect="addBtnRect"
+      @close="closeCreatePanel"
+      @create-agent="handleCreateAgent"
+      @create-workspace="handleCreateWorkspace"
+    />
 
     <!-- Context Menu -->
     <Teleport to="body">
       <div
         v-if="contextMenu.visible"
+        ref="contextMenuRef"
         class="context-menu"
-        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+        :style="contextMenuStyle"
         @click.stop
       >
         <button class="context-menu-item" @click="editWorkspace">
@@ -94,10 +97,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useSessionsStore } from '@/stores/sessions'
 import type { Workspace } from '@/types'
+import CreatePanel from './CreatePanel.vue'
+import { Images, MessageSquare, Plus } from 'lucide-vue-next'
 
 defineProps<{
   mediaPanelOpen?: boolean,
@@ -107,8 +112,33 @@ defineProps<{
 const emit = defineEmits<{
   'toggle-media-panel': []
   'open-create-dialog': []
+  'open-agent-dialog': []
   'edit-workspace': [workspace: Workspace]
 }>()
+
+// Create panel state
+const showCreatePanel = ref(false)
+const addBtnRef = ref<HTMLButtonElement | null>(null)
+const addBtnRect = ref<DOMRect | null>(null)
+
+function toggleCreatePanel() {
+  if (addBtnRef.value) {
+    addBtnRect.value = addBtnRef.value.getBoundingClientRect()
+  }
+  showCreatePanel.value = !showCreatePanel.value
+}
+
+function closeCreatePanel() {
+  showCreatePanel.value = false
+}
+
+function handleCreateAgent() {
+  emit('open-agent-dialog')
+}
+
+function handleCreateWorkspace() {
+  emit('open-create-dialog')
+}
 
 const workspacesStore = useWorkspacesStore()
 const sessionsStore = useSessionsStore()
@@ -119,6 +149,36 @@ const contextMenu = reactive({
   x: 0,
   y: 0,
   workspace: null as Workspace | null
+})
+const contextMenuRef = ref<HTMLDivElement | null>(null)
+
+// Computed style for context menu with boundary checking
+const contextMenuStyle = computed(() => {
+  const menuHeight = 90 // Approximate height of the menu
+  const menuWidth = 140
+  const padding = 8
+
+  let x = contextMenu.x
+  let y = contextMenu.y
+
+  // Check right boundary
+  if (x + menuWidth + padding > window.innerWidth) {
+    x = window.innerWidth - menuWidth - padding
+  }
+
+  // Check bottom boundary - if menu would overflow, show it above the cursor
+  if (y + menuHeight + padding > window.innerHeight) {
+    y = contextMenu.y - menuHeight
+  }
+
+  // Ensure minimum bounds
+  x = Math.max(padding, x)
+  y = Math.max(padding, y)
+
+  return {
+    left: x + 'px',
+    top: y + 'px'
+  }
 })
 
 async function switchToDefault() {
@@ -172,10 +232,18 @@ async function deleteWorkspace() {
   closeContextMenu()
 }
 
-// Close context menu when clicking outside
+// Close context menu and create panel when clicking outside
 function handleClickOutside(event: MouseEvent) {
   if (contextMenu.visible) {
     closeContextMenu()
+  }
+  if (showCreatePanel.value) {
+    const target = event.target as HTMLElement
+    const panel = document.querySelector('.create-panel')
+    const btn = addBtnRef.value
+    if (!panel?.contains(target) && !btn?.contains(target)) {
+      closeCreatePanel()
+    }
   }
 }
 
@@ -198,22 +266,22 @@ onUnmounted(() => {
   background: transparent;
 }
 
-/* Top dashed separator line */
+/* Top separator line - subtle, only shows when scrolled */
 .workspace-switcher::before {
   content: '';
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  left: 16px;
+  right: 16px;
   height: 1px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
   opacity: 0;
-  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.3s ease;
   pointer-events: none;
 }
 
 html[data-theme='light'] .workspace-switcher::before {
-  border-top-color: rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .workspace-switcher.has-separator::before {

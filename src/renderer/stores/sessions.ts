@@ -3,7 +3,6 @@ import { ref, computed } from 'vue'
 import type { ChatSession } from '@/types'
 import { useChatStore } from './chat'
 import { useWorkspacesStore } from './workspaces'
-import { useAgentsStore } from './agents'
 import { useSettingsStore } from './settings'
 
 export const useSessionsStore = defineStore('sessions', () => {
@@ -17,18 +16,33 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   const sessionCount = computed(() => sessions.value.length)
 
-  // Filter sessions by current workspace
+  // Filter sessions by current workspace (excluding archived), sorted by updatedAt desc
   const filteredSessions = computed(() => {
     const workspacesStore = useWorkspacesStore()
     const workspaceId = workspacesStore.currentWorkspaceId
 
+    let filtered: ChatSession[]
     if (workspaceId === null) {
-      // Default mode: show sessions without workspace
-      return sessions.value.filter(s => !s.workspaceId)
+      // Default mode: show sessions without workspace (exclude archived)
+      filtered = sessions.value.filter(s => !s.workspaceId && !s.isArchived)
     } else {
-      // Workspace mode: show sessions for this workspace
-      return sessions.value.filter(s => s.workspaceId === workspaceId)
+      // Workspace mode: show sessions for this workspace (exclude archived)
+      filtered = sessions.value.filter(s => s.workspaceId === workspaceId && !s.isArchived)
     }
+
+    // Sort by pinned first, then by updatedAt descending
+    return filtered.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1
+      if (!a.isPinned && b.isPinned) return 1
+      return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
+    })
+  })
+
+  // Get all archived sessions
+  const archivedSessions = computed(() => {
+    return sessions.value
+      .filter(s => s.isArchived)
+      .sort((a, b) => (b.archivedAt || b.updatedAt) - (a.archivedAt || a.updatedAt))
   })
 
   const filteredSessionCount = computed(() => filteredSessions.value.length)
@@ -64,6 +78,10 @@ export const useSessionsStore = defineStore('sessions', () => {
         if (existingEmptySession) {
           // Switch to existing empty session instead of creating a new one
           await switchSession(existingEmptySession.id)
+          // Update timestamp AFTER switchSession so it won't be overwritten by backend data
+          existingEmptySession.updatedAt = Date.now()
+          // Trigger reactivity for the sort to update
+          sessions.value = [...sessions.value]
           return existingEmptySession
         }
       }
@@ -79,18 +97,40 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  /**
+   * Create a new session without switching to it
+   * Used for split view where we want to create a new chat in a split panel
+   */
+  async function createSessionWithoutSwitch(name: string, agentId?: string) {
+    try {
+      const workspacesStore = useWorkspacesStore()
+      const workspaceId = workspacesStore.currentWorkspaceId
+
+      const response = await window.electronAPI.createSession(name, workspaceId || undefined, agentId)
+      if (response.success && response.session) {
+        sessions.value.unshift(response.session)
+        return response.session
+      }
+    } catch (error) {
+      console.error('Failed to create session:', error)
+    }
+  }
+
   async function switchSession(sessionId: string) {
     try {
       const response = await window.electronAPI.switchSession(sessionId)
       if (response.success && response.session) {
         const chatStore = useChatStore()
-        const agentsStore = useAgentsStore()
         const settingsStore = useSettingsStore()
 
         currentSessionId.value = sessionId
 
-        // Clear selected agent when switching sessions (the temporary "welcome page" state)
-        agentsStore.selectAgent(null)
+        // Update local session data with latest from backend
+        // This ensures workingDirectory and other fields are in sync
+        const localSession = sessions.value.find(s => s.id === sessionId)
+        if (localSession) {
+          Object.assign(localSession, response.session)
+        }
 
         // Sync model selection based on session's saved model or global defaults
         if (response.session.lastProvider && response.session.lastModel) {
@@ -102,24 +142,14 @@ export const useSessionsStore = defineStore('sessions', () => {
           await settingsStore.loadSettings()
         }
 
-        // 1. FIRST: Set the current view session to allow new chunks to be processed
-        chatStore.setCurrentViewSession(sessionId)
+        // Load messages for this session from backend
+        // The chat store now manages per-session state in Maps
+        // If the session already has messages loaded (e.g., from streaming),
+        // we merge with backend data to get the latest state
+        await chatStore.loadMessages(sessionId)
 
-        // 2. Check if the target session has an active stream
-        const hasActiveStream = chatStore.activeSessionStreams.has(sessionId)
-        const streamingMessageId = chatStore.activeSessionStreams.get(sessionId)
-
-        // 3. Load from backend (which has accumulated content)
-        chatStore.setMessages(response.session.messages || [])
-
-        // 4. If there's an active stream, ensure contentParts is rebuilt
-        // (in case setMessages didn't fully reconstruct it)
-        if (hasActiveStream && streamingMessageId) {
-          chatStore.mergeBackendMessageToStreaming(
-            streamingMessageId,
-            response.session.messages || []
-          )
-        }
+        // Also load usage data for this session
+        await chatStore.loadSessionUsage(sessionId)
 
         return response.session
       }
@@ -129,16 +159,137 @@ export const useSessionsStore = defineStore('sessions', () => {
   }
 
   async function deleteSession(sessionId: string) {
+    const session = sessions.value.find(s => s.id === sessionId)
+
+    // If session has no messages, permanently delete instead of archiving
+    if (!session || !session.messages || session.messages.length === 0) {
+      // Check if this is the only session - if so, close the window
+      const activeSessions = filteredSessions.value
+      if (activeSessions.length === 1 && activeSessions[0].id === sessionId) {
+        // Only one empty session left, close the window
+        window.close()
+        return
+      }
+
+      await permanentlyDeleteSession(sessionId)
+      // Switch to another session if needed
+      if (currentSessionId.value === sessionId) {
+        const remaining = filteredSessions.value
+        if (remaining.length > 0) {
+          await switchSession(remaining[0].id)
+        } else {
+          await createSession('New Chat')
+        }
+      }
+      return
+    }
+
+    // Archive the session (soft delete) if it has messages
+    await archiveSession(sessionId)
+  }
+
+  async function archiveSession(sessionId: string) {
     try {
-      const response = await window.electronAPI.deleteSession(sessionId)
-      if (response.success) {
-        sessions.value = sessions.value.filter(s => s.id !== sessionId)
-        if (currentSessionId.value === sessionId && sessions.value.length > 0) {
-          await switchSession(sessions.value[0].id)
+      const session = sessions.value.find(s => s.id === sessionId)
+      if (!session) return
+
+      const archivedAt = Date.now()
+
+      // Collect all child sessions (branches) recursively
+      function collectChildSessionIds(parentId: string): string[] {
+        const children = sessions.value.filter(s => s.parentSessionId === parentId)
+        let ids: string[] = []
+        for (const child of children) {
+          ids.push(child.id)
+          ids = ids.concat(collectChildSessionIds(child.id))
+        }
+        return ids
+      }
+
+      const childIds = collectChildSessionIds(sessionId)
+      const allIdsToArchive = [sessionId, ...childIds]
+
+      // Mark all sessions as archived
+      for (const id of allIdsToArchive) {
+        const s = sessions.value.find(ses => ses.id === id)
+        if (s) {
+          s.isArchived = true
+          s.archivedAt = archivedAt
+          await window.electronAPI.updateSessionArchived(id, true, archivedAt)
+        }
+      }
+
+      // Switch to another session if current was archived
+      if (allIdsToArchive.includes(currentSessionId.value)) {
+        const activeSessions = filteredSessions.value
+        if (activeSessions.length > 0) {
+          await switchSession(activeSessions[0].id)
+        } else {
+          // Create a new session if no active sessions left
+          await createSession('New Chat')
         }
       }
     } catch (error) {
-      console.error('Failed to delete session:', error)
+      console.error('Failed to archive session:', error)
+    }
+  }
+
+  async function restoreSession(sessionId: string) {
+    try {
+      const session = sessions.value.find(s => s.id === sessionId)
+      if (!session) return
+
+      // Collect all child sessions (branches) recursively
+      function collectChildSessionIds(parentId: string): string[] {
+        const children = sessions.value.filter(s => s.parentSessionId === parentId)
+        let ids: string[] = []
+        for (const child of children) {
+          ids.push(child.id)
+          ids = ids.concat(collectChildSessionIds(child.id))
+        }
+        return ids
+      }
+
+      const childIds = collectChildSessionIds(sessionId)
+      const allIdsToRestore = [sessionId, ...childIds]
+
+      // Unarchive all sessions
+      for (const id of allIdsToRestore) {
+        const s = sessions.value.find(ses => ses.id === id)
+        if (s) {
+          s.isArchived = false
+          s.archivedAt = undefined
+          await window.electronAPI.updateSessionArchived(id, false, null)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to restore session:', error)
+    }
+  }
+
+  async function permanentlyDeleteSession(sessionId: string) {
+    try {
+      // Collect all child sessions before delete (backend cascade deletes them)
+      function collectChildSessionIds(parentId: string): string[] {
+        const children = sessions.value.filter(s => s.parentSessionId === parentId)
+        let ids: string[] = []
+        for (const child of children) {
+          ids.push(child.id)
+          ids = ids.concat(collectChildSessionIds(child.id))
+        }
+        return ids
+      }
+
+      const childIds = collectChildSessionIds(sessionId)
+      const allIdsToDelete = [sessionId, ...childIds]
+
+      const response = await window.electronAPI.deleteSession(sessionId)
+      if (response.success) {
+        // Remove all deleted sessions from local state
+        sessions.value = sessions.value.filter(s => !allIdsToDelete.includes(s.id))
+      }
+    } catch (error) {
+      console.error('Failed to permanently delete session:', error)
     }
   }
 
@@ -185,6 +336,24 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  async function updateSessionWorkingDirectory(sessionId: string, workingDirectory: string | null) {
+    try {
+      const response = await window.electronAPI.updateSessionWorkingDirectory(sessionId, workingDirectory)
+      if (response.success) {
+        const session = sessions.value.find(s => s.id === sessionId)
+        if (session) {
+          if (workingDirectory === null || workingDirectory === '') {
+            delete session.workingDirectory
+          } else {
+            session.workingDirectory = workingDirectory
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update session working directory:', error)
+    }
+  }
+
   return {
     sessions,
     currentSessionId,
@@ -193,12 +362,18 @@ export const useSessionsStore = defineStore('sessions', () => {
     sessionCount,
     filteredSessions,
     filteredSessionCount,
+    archivedSessions,
     loadSessions,
     createSession,
+    createSessionWithoutSwitch,
     switchSession,
     deleteSession,
+    archiveSession,
+    restoreSession,
+    permanentlyDeleteSession,
     renameSession,
     createBranch,
     updateSessionPin,
+    updateSessionWorkingDirectory,
   }
 })

@@ -19,6 +19,7 @@ const deepseekProvider: ProviderDefinition = {
     icon: 'deepseek',
     supportsCustomBaseUrl: true,
     requiresApiKey: true,
+    // Models fetched dynamically from OpenRouter API
   },
 
   create: ({ apiKey, baseUrl }) => {

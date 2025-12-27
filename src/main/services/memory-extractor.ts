@@ -94,7 +94,7 @@ export async function extractMemoriesFromConversation(
   assistantMessage: string
 ): Promise<ExtractedMemories | null> {
   // Skip if messages are too short (likely not meaningful)
-  if (userMessage.length < 10 || assistantMessage.length < 20) {
+  if (userMessage.length < 4 || assistantMessage.length < 20) {
     return null
   }
 

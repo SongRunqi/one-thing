@@ -6,9 +6,7 @@
       :title="skillsEnabled ? 'Skills enabled' : 'Skills disabled'"
       @click="togglePanel"
     >
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-      </svg>
+      <SquareFunction :size="18" :stroke-width="2" />
       <span v-if="skillsEnabled" class="skills-status-dot"></span>
     </button>
 
@@ -22,9 +20,7 @@
         <!-- Master toggle -->
         <div class="skills-menu-header">
           <div class="skills-menu-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-            </svg>
+            <SquareFunction :size="16" :stroke-width="2" />
             <span>Skills</span>
           </div>
           <label class="skills-toggle">
@@ -41,9 +37,7 @@
               :class="{ collapsed: group.collapsed, disabled: !skillsEnabled }"
             >
               <div class="group-header-left" @click="toggleGroupCollapse(group.id)">
-                <svg class="group-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
+                <ChevronDown class="group-chevron" :size="12" :stroke-width="2" />
                 <span class="group-name">{{ group.name }}</span>
                 <span class="group-badge" :class="group.source">{{ group.sourceLabel }}</span>
                 <span class="group-count">{{ group.skills.length }}</span>
@@ -76,10 +70,7 @@
 
         <!-- Settings link -->
         <button class="skills-menu-settings" @click="openSettings">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
+          <Settings :size="14" :stroke-width="2" />
           <span>Advanced Settings</span>
         </button>
       </div>
@@ -91,6 +82,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import type { SkillDefinition } from '@/types'
+import { SquareFunction, ChevronDown, Settings } from 'lucide-vue-next'
 
 interface SkillGroup {
   id: string

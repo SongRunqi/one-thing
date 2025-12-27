@@ -1,12 +1,18 @@
 <template>
-  <ErrorBoundary>
+  <!-- Settings Window Mode -->
+  <SettingsPage v-if="isSettingsWindow" />
+
+  <!-- Main App Mode -->
+  <ErrorBoundary v-else>
     <div class="app-shell">
     <!-- Main Content - No Header -->
     <div class="app-content">
       <!-- Media Panel (left side) -->
       <MediaPanel
         :visible="showMediaPanel"
-        @close="showMediaPanel = false"
+        @close="closeMediaPanel"
+        @create-agent="openAgentDialog()"
+        @edit-agent="openAgentDialog"
       />
 
       <!-- Floating sidebar overlay backdrop -->
@@ -32,7 +38,6 @@
         @edit-workspace="openWorkspaceDialog"
         @open-agent-dialog="openAgentDialog()"
         @edit-agent="openAgentDialog"
-        @select-agent="handleSelectAgent"
         @resize="handleSidebarResize"
         @mouseleave="handleSidebarMouseLeave"
       />
@@ -42,11 +47,12 @@
         :show-agent-settings="showAgentSettings"
         :sidebar-collapsed="sidebarCollapsed"
         :show-hover-trigger="sidebarCollapsed && !sidebarFloating && !showMediaPanel"
+        :media-panel-open="showMediaPanel"
         @close-settings="showSettings = false"
         @open-settings="showSettings = true"
         @close-agent-settings="showAgentSettings = false"
         @open-agent-settings="showAgentSettings = true"
-        @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
+        @toggle-sidebar="handleSidebarToggle"
         @show-floating-sidebar="handleTriggerEnter"
       />
     </div>
@@ -109,7 +115,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, watchEffect, ref, computed, watch, nextTick } from 'vue'
+import { onMounted, onUnmounted, watchEffect, ref, computed, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
@@ -122,7 +128,11 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import WorkspaceDialog from '@/components/WorkspaceDialog.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
 import MediaPanel from '@/components/MediaPanel.vue'
+import SettingsPage from '@/components/SettingsPage.vue'
 import type { Workspace, Agent } from '@/types'
+
+// Detect if this is the settings window
+const isSettingsWindow = window.location.hash === '#/settings'
 
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
@@ -144,7 +154,6 @@ function handleSidebarResize(width: number) {
 const showWorkspaceDialog = ref(false)
 const editingWorkspace = ref<Workspace | null>(null)
 const showMediaPanel = ref(false)
-const sidebarStateBeforeMediaPanel = ref<boolean | null>(null)
 
 // Agent state
 const showAgentDialog = ref(false)
@@ -171,48 +180,37 @@ function closeAgentDialog() {
   editingAgent.value = null
 }
 
-async function handleSelectAgent(agent: Agent) {
-  // If current session has messages, create a new empty session first
-  // so the agent welcome page can be displayed
-  if (chatStore.messages.length > 0) {
-    await sessionsStore.createSession('')
-  }
-  // Select this agent to show the welcome page
-  agentsStore.selectAgent(agent.id)
-}
-
 function toggleMediaPanel() {
-  showMediaPanel.value = !showMediaPanel.value
+  if (showMediaPanel.value) {
+    closeMediaPanel()
+  } else {
+    // 关闭 floating sidebar
+    if (sidebarFloating.value) {
+      sidebarFloating.value = false
+    }
+    showMediaPanel.value = true
+    sidebarCollapsed.value = true
+  }
 }
 
-// Auto-collapse sidebar when MediaPanel opens, restore when it closes
-watch(showMediaPanel, (isOpen) => {
-  if (isOpen) {
-    // Save current sidebar state and collapse it
-    sidebarStateBeforeMediaPanel.value = sidebarCollapsed.value
-    sidebarCollapsed.value = true
-  } else {
-    // Restore sidebar to previous state
-    if (sidebarStateBeforeMediaPanel.value !== null) {
-      sidebarCollapsed.value = sidebarStateBeforeMediaPanel.value
-      sidebarStateBeforeMediaPanel.value = null
-    }
-  }
-})
+function closeMediaPanel() {
+  showMediaPanel.value = false
+  floatingCooldown.value = true
+  setTimeout(() => {
+    floatingCooldown.value = false
+  }, 400)
+}
+
 
 // Setup global keyboard shortcuts
 useShortcuts({
-  onNewChat: async () => {
-    await sessionsStore.createSession('')
-  },
-  onToggleSidebar: () => {
-    sidebarCollapsed.value = !sidebarCollapsed.value
-  },
+  onNewChat: createNewChat,
+  onToggleSidebar: handleSidebarToggle,
   onFocusInput: () => {
     chatContainerRef.value?.focusInput()
   },
   onOpenSettings: () => {
-    showSettings.value = true
+    window.electronAPI.openSettingsWindow()
   },
 })
 
@@ -221,34 +219,48 @@ const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true'
 const sidebarFloating = ref(false)
 const sidebarFloatingClosing = ref(false)
 const sidebarNoTransition = ref(false) // Disable transition during/after floating
+const floatingCooldown = ref(false) // Prevent re-expansion after toggle
 
 // Close floating sidebar with animation
 function closeFloatingSidebar() {
   if (!sidebarFloating.value || sidebarFloatingClosing.value) return
   sidebarFloatingClosing.value = true
   sidebarNoTransition.value = true
+  floatingCooldown.value = true
   setTimeout(() => {
     sidebarFloating.value = false
     sidebarFloatingClosing.value = false
     // Keep transition disabled a bit longer to prevent flash
     setTimeout(() => {
       sidebarNoTransition.value = false
-    }, 50)
+      floatingCooldown.value = false
+    }, 300)
   }, 200) // Match animation duration
 }
 
 // Handle sidebar toggle - if floating, just close floating mode
 function handleSidebarToggle() {
+  // If MediaPanel is open, close it instead of toggling sidebar
+  if (showMediaPanel.value) {
+    showMediaPanel.value = false
+    return
+  }
   if (sidebarFloating.value) {
     closeFloatingSidebar()
   } else {
+    // Prevent floating from triggering during collapse animation
+    floatingCooldown.value = true
     sidebarCollapsed.value = !sidebarCollapsed.value
+    setTimeout(() => {
+      floatingCooldown.value = false
+    }, 400)
   }
 }
 
 // Handle hover trigger enter
 function handleTriggerEnter() {
-  if (sidebarFloatingClosing.value) return
+  // Don't expand if in cooldown period (after toggle or close)
+  if (sidebarFloatingClosing.value || floatingCooldown.value) return
   sidebarNoTransition.value = true
   sidebarFloating.value = true
 }
@@ -257,9 +269,11 @@ function handleTriggerEnter() {
 function handleSidebarMouseLeave(event: MouseEvent) {
   if (!sidebarFloating.value) return
 
-  // Don't close if mouse is in the traffic lights area (top-left corner)
-  // Traffic lights are approximately at x: 0-80, y: 0-50
-  if (event.clientX < 100 && event.clientY < 60) {
+  // Only close if mouse is leaving to the right (outside the sidebar)
+  // Check if mouse is moving towards the content area
+  const sidebarWidth = sidebarFloating.value ? 280 : 0
+  if (event.clientX <= sidebarWidth + 10) {
+    // Mouse is still near/inside the sidebar area, don't close
     return
   }
 
@@ -273,9 +287,11 @@ watch(sidebarCollapsed, (collapsed) => {
   }
 })
 
-// Update traffic lights when sidebar state changes
+// Update traffic lights when sidebar state changes (main window only)
 watch([sidebarCollapsed, sidebarFloating, showMediaPanel], ([collapsed, floating, mediaOpen]) => {
   localStorage.setItem('sidebarCollapsed', String(collapsed))
+  // Skip traffic light control for settings window - always show there
+  if (isSettingsWindow) return
   // Show traffic lights when sidebar is visible (expanded or floating) or media panel is open
   const showTrafficLights = !collapsed || floating || mediaOpen
   window.electronAPI?.setWindowButtonVisibility?.(showTrafficLights).catch(() => {
@@ -327,10 +343,34 @@ watch(showSearchOverlay, (val) => {
   }
 })
 
-// Create new chat
+// Create new chat (respects selected agent)
+// If there's already an empty "New Chat", reuse it and update agent if needed
 async function createNewChat() {
-  await sessionsStore.createSession('')
+  const agentId = agentsStore.selectedAgentId || null
+
+  // Check if there's an existing empty session in current workspace
+  const existingEmptySession = sessionsStore.filteredSessions.find(
+    s => (s.name === 'New Chat' || s.name === '') && (!s.messages || s.messages.length === 0)
+  )
+
+  if (existingEmptySession) {
+    // Switch to existing empty session
+    await sessionsStore.switchSession(existingEmptySession.id)
+    // Update agent if different
+    if (existingEmptySession.agentId !== agentId) {
+      await window.electronAPI.updateSessionAgent(existingEmptySession.id, agentId)
+      existingEmptySession.agentId = agentId || undefined
+    }
+  } else {
+    // Create a new session with the selected agent
+    await sessionsStore.createSession('New Chat', agentId || undefined)
+  }
+  // Keep agent selected for future chats
 }
+
+let unsubscribeSettingsChanged: (() => void) | null = null
+let unsubscribeMenuNewChat: (() => void) | null = null
+let unsubscribeMenuCloseChat: (() => void) | null = null
 
 onMounted(async () => {
   // Load initial data
@@ -342,6 +382,36 @@ onMounted(async () => {
   // Create a default session if none exist
   if (sessionsStore.sessionCount === 0) {
     await sessionsStore.createSession('New Chat')
+  }
+
+  // Listen for settings changes from other windows (e.g., settings window)
+  unsubscribeSettingsChanged = window.electronAPI.onSettingsChanged((newSettings) => {
+    console.log('[App] Settings changed from another window, updating store')
+    settingsStore.settings = newSettings
+  })
+
+  // Listen for menu shortcuts
+  unsubscribeMenuNewChat = window.electronAPI.onMenuNewChat(() => {
+    createNewChat()
+  })
+
+  unsubscribeMenuCloseChat = window.electronAPI.onMenuCloseChat(async () => {
+    const currentId = sessionsStore.currentSessionId
+    if (currentId) {
+      await sessionsStore.deleteSession(currentId)
+    }
+  })
+})
+
+onUnmounted(() => {
+  if (unsubscribeSettingsChanged) {
+    unsubscribeSettingsChanged()
+  }
+  if (unsubscribeMenuNewChat) {
+    unsubscribeMenuNewChat()
+  }
+  if (unsubscribeMenuCloseChat) {
+    unsubscribeMenuCloseChat()
   }
 })
 

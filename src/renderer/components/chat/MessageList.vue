@@ -1,5 +1,6 @@
 <template>
-  <div class="message-list" ref="messageListRef">
+  <div class="message-list-wrapper">
+    <div class="message-list" ref="messageListRef">
     <div v-if="messages.length === 0 && !isLoading" class="empty-state futuristic-christmas">
       <!-- Starry Background Particles -->
       <div class="star-field">
@@ -68,25 +69,9 @@
       />
     </TransitionGroup>
 
-    <!-- Loading indicator (only show if no streaming message exists to avoid duplicate indicators) -->
-    <div v-if="isLoading && !hasStreamingMessage" class="thinking-indicator">
-      <div class="thinking-avatar">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M12 6v6l4 2"/>
-        </svg>
-      </div>
-      <div class="thinking-content">
-        <div class="thinking-dots">
-          <span class="dot"></span>
-          <span class="dot"></span>
-          <span class="dot"></span>
-        </div>
-        <span class="thinking-text">Thinking...</span>
-      </div>
     </div>
 
-    <!-- User message navigation buttons -->
+    <!-- User message navigation buttons (outside scrollable area, inside wrapper) -->
     <div v-if="userMessageIndices.length >= 1" class="nav-buttons">
       <Tooltip text="Previous (double-click for first)" position="left">
         <button
@@ -116,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw } from 'vue'
 import type { ChatMessage, AgentVoice } from '@/types'
 import MessageItem from './MessageItem.vue'
 import Tooltip from '../common/Tooltip.vue'
@@ -132,6 +117,7 @@ interface BranchInfo {
 interface Props {
   messages: ChatMessage[]
   isLoading?: boolean
+  sessionId?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -150,12 +136,20 @@ const sessionsStore = useSessionsStore()
 const agentsStore = useAgentsStore()
 const messageListRef = ref<HTMLElement | null>(null)
 
+// Get the effective session for this panel (props.sessionId or fallback to global)
+const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
+const panelSession = computed(() => {
+  const sid = effectiveSessionId.value
+  if (!sid) return null
+  return sessionsStore.sessions.find(s => s.id === sid) || null
+})
+
 // Get current agent's voice config (if session is associated with an agent)
 const currentAgentVoiceConfig = computed<AgentVoice | undefined>(() => {
-  const currentSession = sessionsStore.currentSession
-  if (!currentSession?.agentId) return undefined
+  const session = panelSession.value
+  if (!session?.agentId) return undefined
 
-  const agent = agentsStore.agents.find(a => a.id === currentSession.agentId)
+  const agent = agentsStore.agents.find(a => a.id === session.agentId)
   return agent?.voice
 })
 
@@ -367,7 +361,7 @@ function scrollToUserMessage(navIndex: number) {
 
 // Check if current session can create branches (only root sessions can)
 const canCreateBranch = computed(() => {
-  const currentSession = sessionsStore.currentSession
+  const currentSession = panelSession.value
   if (!currentSession) return false
   // Only allow branching from root sessions (no parent)
   return !currentSession.parentSessionId
@@ -382,7 +376,7 @@ const hasStreamingMessage = computed(() => {
 // Returns a map of messageId -> branches created from that message
 const messageBranches = computed(() => {
   const branchMap = new Map<string, BranchInfo[]>()
-  const currentSession = sessionsStore.currentSession
+  const currentSession = panelSession.value
   if (!currentSession) return branchMap
 
   // Find all sessions that branched from the current session
@@ -500,12 +494,85 @@ function handleScroll() {
   lastScrollTop = scrollTop
 }
 
+// Track permission request cleanup function
+let cleanupPermissionListener: (() => void) | null = null
+
+// Handle incoming permission requests from backend
+function handlePermissionRequest(info: {
+  id: string
+  type: string
+  pattern?: string | string[]
+  sessionId: string
+  messageId: string
+  callId?: string
+  title: string
+  metadata: Record<string, unknown>
+  createdAt: number
+}) {
+  console.log('[Frontend] Received permission request:', info)
+
+  // Use effectiveSessionId (from props or global) instead of just global currentSession
+  // This ensures each panel only handles its own session's permission requests
+  const panelSessionId = effectiveSessionId.value
+  if (!panelSessionId || panelSessionId !== info.sessionId) {
+    console.log('[Frontend] Permission request for different session, ignoring. Expected:', panelSessionId, 'Got:', info.sessionId)
+    return
+  }
+
+  // Find the message and tool call that needs confirmation
+  // Use props.messages (from useChatSession composable) instead of chatStore.messages
+  const message = props.messages.find(m => m.id === info.messageId)
+  if (!message) {
+    console.log('[Frontend] Message not found for permission request, messageId:', info.messageId)
+    console.log('[Frontend] Available messages:', props.messages.map(m => m.id))
+    return
+  }
+
+  // Find the tool call by callId or by matching command in metadata
+  let toolCall = message.toolCalls?.find(tc => tc.id === info.callId)
+  if (!toolCall && info.metadata.command) {
+    // Try to find by command match
+    toolCall = message.toolCalls?.find(tc =>
+      tc.arguments?.command === info.metadata.command
+    )
+  }
+
+  if (toolCall) {
+    // Store permission ID on tool call for later response
+    (toolCall as any).permissionId = info.id
+    toolCall.requiresConfirmation = true
+    toolCall.status = 'pending'
+
+    // Update corresponding step
+    const step = message.steps?.find(s => s.toolCallId === toolCall!.id)
+    if (step) {
+      step.status = 'awaiting-confirmation'
+      if (step.toolCall) {
+        (step.toolCall as any).permissionId = info.id
+        step.toolCall.requiresConfirmation = true
+        step.toolCall.status = 'pending'
+      }
+      // Force reactivity
+      if (message.steps) {
+        message.steps = [...message.steps]
+      }
+    }
+
+    console.log('[Frontend] Updated tool call with permission request:', toolCall.id)
+  } else {
+    console.log('[Frontend] No matching tool call found for permission request')
+  }
+}
+
 // Setup event listeners
 onMounted(() => {
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
     messageListRef.value.addEventListener('wheel', handleWheel, { passive: true })
   }
+
+  // Listen for permission requests from backend
+  cleanupPermissionListener = window.electronAPI.onPermissionRequest(handlePermissionRequest)
 })
 
 onUnmounted(() => {
@@ -524,6 +591,11 @@ onUnmounted(() => {
   }
   if (navigationCooldownTimer) {
     clearTimeout(navigationCooldownTimer)
+  }
+  // Cleanup permission listener
+  if (cleanupPermissionListener) {
+    cleanupPermissionListener()
+    cleanupPermissionListener = null
   }
 })
 
@@ -558,7 +630,7 @@ function handleEdit(messageId: string, newContent: string) {
 
 // Handle branch creation event
 async function handleBranch(messageId: string, quotedText?: string) {
-  const currentSession = sessionsStore.currentSession
+  const currentSession = panelSession.value
   if (!currentSession) return
 
   // Create the branch
@@ -591,11 +663,11 @@ function handleSuggestion(text: string) {
 
 // Handle tool execution
 async function handleExecuteTool(toolCall: any) {
-  const currentSession = sessionsStore.currentSession
+  const currentSession = panelSession.value
   if (!currentSession) return
 
   // Find the message containing this tool call
-  const message = chatStore.messages.find(m =>
+  const message = props.messages.find(m =>
     m.toolCalls?.some(tc => tc.id === toolCall.id)
   )
   const tc = message?.toolCalls?.find(t => t.id === toolCall.id)
@@ -608,9 +680,11 @@ async function handleExecuteTool(toolCall: any) {
   }
 
   try {
+    // Deep clone to unwrap all Vue reactive proxies - IPC cannot serialize Proxy objects
+    const rawArguments = JSON.parse(JSON.stringify(toRaw(toolCall.arguments) || {}))
     const result = await window.electronAPI.executeTool(
       toolCall.toolId,
-      toolCall.arguments,
+      rawArguments,
       toolCall.id,
       currentSession.id
     )
@@ -656,12 +730,13 @@ async function handleExecuteTool(toolCall: any) {
 }
 
 // Handle tool confirmation (for dangerous bash commands)
-async function handleConfirmTool(toolCall: any) {
-  const currentSession = sessionsStore.currentSession
+// response: 'once' = allow this time, 'always' = always allow this pattern
+async function handleConfirmTool(toolCall: any, response: 'once' | 'always' = 'once') {
+  const currentSession = panelSession.value
   if (!currentSession) return
 
   // Find the message containing this tool call
-  const message = chatStore.messages.find(m =>
+  const message = props.messages.find(m =>
     m.toolCalls?.some(tc => tc.id === toolCall.id)
   )
   const tc = message?.toolCalls?.find(t => t.id === toolCall.id)
@@ -669,6 +744,39 @@ async function handleConfirmTool(toolCall: any) {
   // Find and update the corresponding step
   const step = message?.steps?.find(s => s.toolCallId === toolCall.id)
 
+  // Check if there's a pending permission request for this tool call
+  const permissionId = (toolCall as any).permissionId
+  if (permissionId) {
+    // Use Permission system to respond
+    console.log(`[Frontend] Responding to permission ${permissionId} with ${response}`)
+    try {
+      await window.electronAPI.respondToPermission({
+        sessionId: currentSession.id,
+        permissionId,
+        response,
+      })
+      // The backend will handle execution and resume - just update UI state
+      if (tc) {
+        tc.status = 'executing'
+        tc.requiresConfirmation = false
+      }
+      if (step) {
+        step.status = 'running'
+        if (step.toolCall) {
+          step.toolCall.status = 'executing'
+          step.toolCall.requiresConfirmation = false
+        }
+        if (message?.steps) {
+          message.steps = [...message.steps]
+        }
+      }
+      return
+    } catch (error) {
+      console.error('Failed to respond to permission:', error)
+    }
+  }
+
+  // Fallback: Legacy flow - re-execute tool directly with confirmed: true
   // Record start time
   const startTime = Date.now()
   if (tc) {
@@ -776,15 +884,32 @@ async function handleConfirmTool(toolCall: any) {
 }
 
 // Handle tool rejection
-function handleRejectTool(toolCall: any) {
+async function handleRejectTool(toolCall: any) {
   // Update the tool call status to cancelled/rejected
-  const currentSession = sessionsStore.currentSession
+  const currentSession = panelSession.value
   if (!currentSession) return
 
   // Find the message containing this tool call and update its status
-  const message = chatStore.messages.find(m =>
+  const message = props.messages.find(m =>
     m.toolCalls?.some(tc => tc.id === toolCall.id)
   )
+
+  // Check if there's a pending permission request for this tool call
+  const permissionId = (toolCall as any).permissionId
+  if (permissionId) {
+    // Use Permission system to respond with reject
+    console.log(`[Frontend] Rejecting permission ${permissionId}`)
+    try {
+      await window.electronAPI.respondToPermission({
+        sessionId: currentSession.id,
+        permissionId,
+        response: 'reject',
+      })
+    } catch (error) {
+      console.error('Failed to respond to permission:', error)
+    }
+  }
+
   if (message) {
     const tc = message.toolCalls?.find(t => t.id === toolCall.id)
     if (tc) {
@@ -813,12 +938,12 @@ function handleRejectTool(toolCall: any) {
 
 // Handle updating thinking time for a message
 async function handleUpdateThinkingTime(messageId: string, thinkingTime: number) {
-  const currentSession = sessionsStore.currentSession
+  const currentSession = panelSession.value
   if (!currentSession) return
 
   try {
     // Update local message
-    const message = chatStore.messages.find(m => m.id === messageId)
+    const message = props.messages.find(m => m.id === messageId)
     if (message) {
       message.thinkingTime = thinkingTime
     }
@@ -832,6 +957,18 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
 </script>
 
 <style scoped>
+.message-list-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-height: 0;
+  /* Inherit parent's bottom border-radius for proper clipping */
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
 .message-list {
   flex: 1;
   overflow-y: auto;
@@ -841,6 +978,9 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   gap: 14px;
   padding: 18px 18px var(--composer-height, 140px);
   background: transparent;
+  /* Match parent container's border-radius for proper clipping at bottom corners */
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
 }
 
 /* Futuristic Geometric Christmas Theme */
@@ -1024,30 +1164,6 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
 
 .holo-icon { font-size: 20px; }
 
-/* Thinking indicator */
-.thinking-indicator {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  width: min(860px, 100%);
-  padding: 16px 20px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
 /* List Transitions */
 .msg-list-enter-active {
   transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -1058,65 +1174,16 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   transform: translateY(20px) scale(0.95);
 }
 
-.thinking-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-top: 4px;
-}
-
-.thinking-dots {
-  display: flex;
-  gap: 4px;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  background: rgb(59, 130, 246);
-  border-radius: 50%;
-  animation: bounce 1.4s ease-in-out infinite;
-}
-
-.dot:nth-child(1) {
-  animation-delay: 0s;
-}
-
-.dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes bounce {
-  0%, 60%, 100% {
-    transform: translateY(0);
-    opacity: 0.4;
-  }
-  30% {
-    transform: translateY(-6px);
-    opacity: 1;
-  }
-}
-
-.thinking-text {
-  font-size: 14px;
-  color: var(--muted);
-  font-style: italic;
-}
-
 /* User message navigation buttons */
 .nav-buttons {
-  position: fixed;
+  position: absolute;
   bottom: 140px;
-  right: 24px;
+  right: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  z-index: 1000;
+  z-index: 100;
 }
 
 .nav-position {
@@ -1173,13 +1240,8 @@ html[data-theme='light'] .nav-btn {
     gap: 12px;
   }
 
-  .thinking-indicator {
-    padding: 14px 16px;
-    border-radius: 14px;
-  }
-
   .nav-buttons {
-    right: 16px;
+    right: 12px;
     bottom: 120px;
   }
 
@@ -1202,21 +1264,6 @@ html[data-theme='light'] .nav-btn {
 
   .empty-subtitle {
     font-size: 14px;
-  }
-
-  .thinking-indicator {
-    padding: 12px 14px;
-    border-radius: 12px;
-  }
-
-  .thinking-avatar {
-    width: 28px;
-    height: 28px;
-  }
-
-  .thinking-avatar svg {
-    width: 16px;
-    height: 16px;
   }
 
   .nav-buttons {

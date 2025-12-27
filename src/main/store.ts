@@ -23,6 +23,7 @@ export {
   deleteSession,
   renameSession,
   updateSessionPin,
+  updateSessionArchived,
   addMessage,
   deleteMessage,
   updateMessageAndTruncate,
@@ -38,6 +39,9 @@ export {
   updateMessageStep,
   updateSessionAgent,
   updateSessionModel,
+  updateSessionWorkingDirectory,
+  updateSessionTokenUsage,
+  getSessionTokenUsage,
   deleteSessionsByWorkspace,
 
   // Workspaces

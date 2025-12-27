@@ -15,9 +15,7 @@
         alt=""
       />
       <div v-if="selected" class="selected-indicator">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
+        <Check :size="10" :stroke-width="3" />
       </div>
     </div>
     <span class="agent-name">{{ agent.name }}</span>
@@ -26,6 +24,7 @@
 
 <script setup lang="ts">
 import type { Agent } from '@/types'
+import { Check } from 'lucide-vue-next'
 
 defineProps<{
   agent: Agent

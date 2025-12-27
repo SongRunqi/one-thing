@@ -133,7 +133,7 @@
                 <!-- Steps panel - rendered inline where tool agent was called -->
                 <!-- Filter steps by turnIndex to show only steps for this specific turn -->
                 <StepsPanel
-                  v-else-if="part.type === 'steps' && message.steps && message.steps.length > 0"
+                  v-else-if="part.type === 'data-steps' && message.steps && message.steps.length > 0"
                   :steps="getStepsForTurn(part.turnIndex)"
                   @confirm="handleToolConfirm"
                   @reject="handleToolReject"
@@ -165,9 +165,9 @@
             </template>
           </div>
         <!-- Steps panel fallback - only for legacy messages without contentParts -->
-        <!-- (Normal messages render StepsPanel inline via contentParts type='steps') -->
+        <!-- (Normal messages render StepsPanel inline via contentParts type='data-steps') -->
         <StepsPanel
-          v-if="message.role === 'assistant' && message.steps && message.steps.length > 0 && (!message.contentParts || !message.contentParts.some(p => p.type === 'steps'))"
+          v-if="message.role === 'assistant' && message.steps && message.steps.length > 0 && (!message.contentParts || !message.contentParts.some(p => p.type === 'data-steps'))"
           :steps="message.steps"
           @confirm="handleToolConfirm"
           @reject="handleToolReject"
@@ -326,7 +326,7 @@ const emit = defineEmits<{
   goToBranch: [sessionId: string]
   quote: [quotedText: string]
   executeTool: [toolCall: ToolCall]
-  confirmTool: [toolCall: ToolCall]
+  confirmTool: [toolCall: ToolCall, response: 'once' | 'always']
   rejectTool: [toolCall: ToolCall]
   updateThinkingTime: [messageId: string, thinkingTime: number]
 }>()
@@ -955,8 +955,8 @@ function handleToolExecute(toolCall: ToolCall) {
 }
 
 // Handle tool confirmation (for dangerous bash commands)
-function handleToolConfirm(toolCall: ToolCall) {
-  emit('confirmTool', toolCall)
+function handleToolConfirm(toolCall: ToolCall, response: 'once' | 'always' = 'once') {
+  emit('confirmTool', toolCall, response)
 }
 
 // Handle tool rejection

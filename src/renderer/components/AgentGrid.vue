@@ -1,25 +1,41 @@
 <template>
   <div class="agent-grid">
     <!-- Pinned Agents (max 3) -->
-    <button
+    <div
       v-for="agent in displayedAgents"
       :key="agent.id"
-      class="agent-icon"
-      :class="{ active: selectedAgentId === agent.id }"
-      :title="agent.name"
-      @click="$emit('select-agent', agent)"
-      @contextmenu.prevent="openContextMenu($event, agent)"
+      class="agent-icon-wrapper"
     >
-      <span v-if="agent.avatar.type === 'emoji'" class="agent-emoji">
-        {{ agent.avatar.value }}
-      </span>
-      <img
-        v-else
-        :src="getImageSrc(agent.avatar.value)"
-        class="agent-image"
-        alt=""
-      />
-    </button>
+      <button
+        class="agent-icon"
+        :class="{ active: selectedAgentId === agent.id }"
+        :title="agent.name"
+        @click="handleAgentClick(agent)"
+        @contextmenu.prevent="openContextMenu($event, agent)"
+      >
+        <span v-if="agent.avatar.type === 'emoji'" class="agent-emoji">
+          {{ agent.avatar.value }}
+        </span>
+        <img
+          v-else
+          :src="getImageSrc(agent.avatar.value)"
+          class="agent-image"
+          alt=""
+        />
+      </button>
+      <!-- Deselect button (shown on hover when selected) -->
+      <button
+        v-if="selectedAgentId === agent.id"
+        class="deselect-btn"
+        title="Deselect agent"
+        @click.stop="deselectAgent"
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
 
     <!-- Context Menu -->
     <Teleport to="body">
@@ -89,6 +105,22 @@ function getImageSrc(value: string): string {
   return 'file://' + value
 }
 
+// Handle agent click - toggle selection
+function handleAgentClick(agent: Agent) {
+  if (selectedAgentId.value === agent.id) {
+    // Already selected, deselect it
+    agentsStore.selectAgent(null)
+  } else {
+    // Select this agent
+    agentsStore.selectAgent(agent.id)
+  }
+}
+
+// Deselect the current agent
+function deselectAgent() {
+  agentsStore.selectAgent(null)
+}
+
 function openContextMenu(event: MouseEvent, agent: Agent) {
   contextMenu.visible = true
   contextMenu.x = event.clientX
@@ -146,15 +178,19 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
+}
+
+.agent-icon-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
 }
 
 .agent-icon {
-  flex: 1;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 0;
   height: 40px;
   border: none;
   border-radius: 12px;
@@ -172,6 +208,36 @@ onUnmounted(() => {
 .agent-icon.active {
   background: rgba(var(--accent-rgb), 0.15);
   box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* Deselect button */
+.deselect-btn {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.15s ease;
+  z-index: 1;
+}
+
+.agent-icon-wrapper:hover .deselect-btn {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.deselect-btn:hover {
+  background: #ef4444;
 }
 
 .agent-emoji {

@@ -15,10 +15,11 @@ const kimiProvider: ProviderDefinition = {
     name: 'Kimi',
     description: 'Moonshot AI Kimi models with long context support',
     defaultBaseUrl: 'https://api.moonshot.cn/v1',
-    defaultModel: 'moonshot-v1-8k',
+    defaultModel: 'moonshot-v1-128k',
     icon: 'kimi',
     supportsCustomBaseUrl: true,
     requiresApiKey: true,
+    // Models fetched dynamically from OpenRouter API (if available)
   },
 
   create: ({ apiKey, baseUrl }) => {

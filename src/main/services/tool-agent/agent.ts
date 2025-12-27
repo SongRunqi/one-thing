@@ -15,6 +15,7 @@ import {
 } from '../../providers/index.js'
 import {
   getEnabledTools,
+  getEnabledToolsAsync,
   executeTool,
 } from '../../tools/index.js'
 import { getMCPToolsForAI, isMCPTool, executeMCPTool, findMCPToolIdByShortName } from '../../mcp/index.js'
@@ -68,7 +69,8 @@ export async function executeToolAgent(
   }
 
   // Get all enabled tools for the Tool Agent
-  const allEnabledTools = getEnabledTools()
+  // Use async version to include tools with dynamic descriptions
+  const allEnabledTools = await getEnabledToolsAsync()
   const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
   const mcpTools = getMCPToolsForAI()
   const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)

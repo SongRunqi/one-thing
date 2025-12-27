@@ -630,6 +630,7 @@ const zhipuProvider: ProviderDefinition = {
     icon: 'zhipu',
     supportsCustomBaseUrl: true,
     requiresApiKey: true,
+    // Models fetched dynamically from OpenRouter API (if available)
   },
 
   create: ({ apiKey, baseUrl }) => {

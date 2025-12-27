@@ -27,7 +27,7 @@ import type {
 import { getDatabasePath, ensureStoreDirs } from '../stores/paths.js'
 import {
   getEmbeddingService,
-  EMBEDDING_DIM,
+  DEFAULT_EMBEDDING_DIM,
   cosineSimilarity,
 } from '../services/embedding-service.js'
 
@@ -97,6 +97,7 @@ export class SQLiteUserProfileStorage implements IUserProfileStorage {
         sources: JSON.parse(f.sources || '[]'),
         createdAt: f.created_at,
         updatedAt: f.updated_at,
+        embedding: f.embedding ? deserializeEmbedding(f.embedding) : undefined,
       })),
       createdAt: profileRow.created_at,
       updatedAt: profileRow.updated_at,
@@ -114,13 +115,15 @@ export class SQLiteUserProfileStorage implements IUserProfileStorage {
     const sources = sourceAgentId ? [sourceAgentId] : []
 
     // Generate embedding for semantic search
-    let embedding: number[] | null = null
+    // If embedding fails, cancel the storage operation (per user requirement)
+    let embedding: number[]
     try {
       const embeddingService = getEmbeddingService()
       const result = await embeddingService.embed(content)
       embedding = result.embedding
     } catch (error) {
-      console.warn('[SQLiteStorage] Failed to generate embedding for fact:', error)
+      console.error('[SQLiteStorage] Failed to generate embedding for fact, cancelling storage:', error)
+      throw new Error('Embedding failed, memory storage cancelled')
     }
 
     this.db.prepare(`
@@ -132,7 +135,7 @@ export class SQLiteUserProfileStorage implements IUserProfileStorage {
       category,
       confidence,
       JSON.stringify(sources),
-      embedding ? serializeEmbedding(embedding) : null,
+      serializeEmbedding(embedding),
       now,
       now
     )
@@ -171,6 +174,7 @@ export class SQLiteUserProfileStorage implements IUserProfileStorage {
     const newConfidence = updates.confidence ?? existing.confidence
 
     // Re-generate embedding if content changed
+    // If embedding fails, cancel the update operation (per user requirement)
     let embedding = existing.embedding
     if (updates.content && updates.content !== existing.content) {
       try {
@@ -178,7 +182,8 @@ export class SQLiteUserProfileStorage implements IUserProfileStorage {
         const result = await embeddingService.embed(updates.content)
         embedding = serializeEmbedding(result.embedding)
       } catch (error) {
-        console.warn('[SQLiteStorage] Failed to update fact embedding:', error)
+        console.error('[SQLiteStorage] Failed to update fact embedding, cancelling update:', error)
+        throw new Error('Embedding failed, memory update cancelled')
       }
     }
 
@@ -217,6 +222,7 @@ export class SQLiteUserProfileStorage implements IUserProfileStorage {
       sources: JSON.parse(f.sources || '[]'),
       createdAt: f.created_at,
       updatedAt: f.updated_at,
+      embedding: f.embedding ? deserializeEmbedding(f.embedding) : undefined,
     }))
   }
 
@@ -271,10 +277,17 @@ export class SQLiteUserProfileStorage implements IUserProfileStorage {
       SELECT * FROM user_facts WHERE embedding IS NOT NULL
     `).all() as any[]
 
-    // Calculate similarity scores
+    // Calculate similarity scores (handle dimension mismatches gracefully)
     const scored = rows.map(f => {
       const embedding = deserializeEmbedding(f.embedding)
-      const similarity = embedding ? cosineSimilarity(queryEmbedding, embedding) : 0
+      let similarity = 0
+      if (embedding) {
+        try {
+          similarity = cosineSimilarity(queryEmbedding, embedding)
+        } catch (e) {
+          // Dimension mismatch - skip this fact
+        }
+      }
       return { fact: f, similarity }
     })
 
@@ -401,13 +414,15 @@ export class SQLiteAgentMemoryStorage implements IAgentMemoryStorage {
     }
 
     // Generate embedding
-    let embedding: number[] | null = null
+    // If embedding fails, cancel the storage operation (per user requirement)
+    let embedding: number[]
     try {
       const embeddingService = getEmbeddingService()
       const result = await embeddingService.embed(memory.content)
       embedding = result.embedding
     } catch (error) {
-      console.warn('[SQLiteStorage] Failed to generate memory embedding:', error)
+      console.error('[SQLiteStorage] Failed to generate memory embedding, cancelling storage:', error)
+      throw new Error('Embedding failed, memory storage cancelled')
     }
 
     const newMemory: AgentMemory = {
@@ -433,7 +448,7 @@ export class SQLiteAgentMemoryStorage implements IAgentMemoryStorage {
       memory.recallCount,
       JSON.stringify(memory.linkedMemories),
       memory.vividness,
-      embedding ? serializeEmbedding(embedding) : null,
+      serializeEmbedding(embedding),
       null,
       null
     )
@@ -500,6 +515,7 @@ export class SQLiteAgentMemoryStorage implements IAgentMemoryStorage {
       recallCount: row.recall_count,
       linkedMemories: JSON.parse(row.linked_memories || '[]'),
       vividness: row.vividness,
+      embedding: row.embedding ? deserializeEmbedding(row.embedding) : undefined,
     }))
   }
 
@@ -518,10 +534,17 @@ export class SQLiteAgentMemoryStorage implements IAgentMemoryStorage {
       WHERE agent_id = ? AND embedding IS NOT NULL AND superseded_by IS NULL
     `).all(agentId) as any[]
 
-    // Calculate similarity scores
+    // Calculate similarity scores (handle dimension mismatches gracefully)
     const scored = rows.map(row => {
       const embedding = deserializeEmbedding(row.embedding)
-      const similarity = embedding ? cosineSimilarity(queryEmbedding, embedding) : 0
+      let similarity = 0
+      if (embedding) {
+        try {
+          similarity = cosineSimilarity(queryEmbedding, embedding)
+        } catch (e) {
+          // Dimension mismatch - skip this memory
+        }
+      }
       return { row, similarity }
     })
 
@@ -574,10 +597,17 @@ export class SQLiteAgentMemoryStorage implements IAgentMemoryStorage {
       WHERE agent_id = ? AND embedding IS NOT NULL AND superseded_by IS NULL
     `).all(agentId) as any[]
 
-    // Calculate hybrid scores
+    // Calculate hybrid scores (handle dimension mismatches gracefully)
     const scored = rows.map(row => {
       const embedding = deserializeEmbedding(row.embedding)
-      const similarity = embedding ? cosineSimilarity(queryResult.embedding, embedding) : 0
+      let similarity = 0
+      if (embedding) {
+        try {
+          similarity = cosineSimilarity(queryResult.embedding, embedding)
+        } catch (e) {
+          // Dimension mismatch - skip this memory
+        }
+      }
       const normalizedStrength = row.strength / 100
 
       const hybridScore = (similarity * similarityWeight) + (normalizedStrength * strengthWeight)

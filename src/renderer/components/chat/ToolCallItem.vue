@@ -1,115 +1,70 @@
 <template>
-  <div :class="['tool-call', statusClass, { 'requires-confirmation': toolCall.requiresConfirmation }]">
-    <div class="tool-header">
-      <div class="tool-icon">
-        <!-- Warning icon for confirmation required -->
-        <svg v-if="toolCall.requiresConfirmation" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-          <line x1="12" y1="9" x2="12" y2="13"/>
-          <line x1="12" y1="17" x2="12.01" y2="17"/>
-        </svg>
-        <svg v-else-if="toolCall.status === 'pending'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <polyline points="12 6 12 12 16 14"/>
-        </svg>
-        <svg v-else-if="toolCall.status === 'executing'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <polyline points="12 6 12 12 16 14"/>
-        </svg>
-        <svg v-else-if="toolCall.status === 'completed'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-          <polyline points="22 4 12 14.01 9 11.01"/>
-        </svg>
-        <svg v-else-if="toolCall.status === 'failed'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="15" y1="9" x2="9" y2="15"/>
-          <line x1="9" y1="9" x2="15" y2="15"/>
-        </svg>
-        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="18" height="18" rx="2"/>
-          <path d="M12 8v8"/>
-          <path d="M8 12h8"/>
-        </svg>
+  <div :class="['tool-inline', statusClass, { expanded: isExpanded, 'needs-confirm': toolCall.requiresConfirmation }]">
+    <!-- Main Row (always visible) -->
+    <div class="tool-row" @click="toggleExpand">
+      <!-- Status dot -->
+      <div class="status-dot">
+        <div v-if="toolCall.status === 'executing'" class="dot spinning"></div>
+        <div v-else-if="toolCall.status === 'completed'" class="dot success"></div>
+        <div v-else-if="toolCall.status === 'failed'" class="dot error"></div>
+        <div v-else-if="toolCall.requiresConfirmation" class="dot warning"></div>
+        <div v-else class="dot pending"></div>
       </div>
-      <div class="tool-info">
-        <span class="tool-name">{{ toolCall.toolName }}</span>
-        <span :class="['tool-status', { 'has-dots': toolCall.status === 'pending' || toolCall.status === 'executing' }]">
-          {{ statusText }}<span v-if="toolCall.status === 'pending' || toolCall.status === 'executing'" class="animated-dots"><span>.</span><span>.</span><span>.</span></span>
-        </span>
+
+      <!-- Tool name -->
+      <span class="tool-name">{{ toolCall.toolName }}</span>
+
+      <!-- Command/Args preview -->
+      <span class="tool-preview">{{ previewText }}</span>
+
+      <!-- Spacer -->
+      <div class="spacer"></div>
+
+      <!-- Status text -->
+      <span v-if="!toolCall.requiresConfirmation" class="status-text">
+        {{ statusText }}
+        <span v-if="executionTime" class="exec-time">{{ executionTime }}</span>
+      </span>
+
+      <!-- Confirmation buttons (stop propagation to prevent expand) -->
+      <div v-if="toolCall.requiresConfirmation" class="confirm-buttons" @click.stop>
+        <button class="btn-inline btn-allow" @click="$emit('confirm', toolCall, 'once')">允许</button>
+        <button class="btn-inline btn-always" @click="$emit('confirm', toolCall, 'always')">永久</button>
+        <button class="btn-inline btn-reject" @click="$emit('reject', toolCall)">拒绝</button>
       </div>
-      <!-- Confirmation buttons for dangerous commands -->
-      <template v-if="toolCall.requiresConfirmation">
-        <button
-          class="confirm-btn"
-          @click="$emit('confirm', toolCall)"
-          title="Confirm and execute"
-        >
-          Confirm
-        </button>
-        <button
-          class="reject-btn"
-          @click="$emit('reject', toolCall)"
-          title="Reject command"
-        >
-          Reject
-        </button>
-      </template>
-      <button
-        v-else-if="toolCall.status === 'pending'"
-        class="execute-btn"
-        @click="$emit('execute', toolCall)"
-        title="Execute tool"
-      >
-        Run
-      </button>
+
+      <!-- Expand indicator -->
+      <svg v-if="hasExpandableContent" :class="['expand-icon', { rotated: isExpanded }]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
     </div>
 
-    <!-- Confirmation warning for dangerous commands -->
-    <div v-if="toolCall.requiresConfirmation" class="confirmation-warning">
-      <div class="warning-header">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-          <line x1="12" y1="9" x2="12" y2="13"/>
-          <line x1="12" y1="17" x2="12.01" y2="17"/>
-        </svg>
-        <span>This command requires your confirmation</span>
-      </div>
-      <div class="command-preview">
-        <code>{{ toolCall.arguments.command }}</code>
-      </div>
-      <div class="warning-hint">
-        This is a potentially dangerous command that may modify or delete files.
-      </div>
-    </div>
+    <!-- Expanded content -->
+    <Transition name="slide">
+      <div v-if="isExpanded && hasExpandableContent" class="tool-details">
+        <!-- Live output for executing -->
+        <div v-if="toolCall.status === 'executing' && toolCall.result" class="detail-section live">
+          <pre>{{ truncateOutput(String(toolCall.result)) }}</pre>
+        </div>
 
-    <div v-if="showArguments && Object.keys(toolCall.arguments).length > 0" class="tool-arguments">
-      <div class="arguments-header" @click="toggleArguments">
-        <span>Arguments</span>
-        <svg :class="['chevron', { expanded: argumentsExpanded }]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </div>
-      <div v-if="argumentsExpanded" class="arguments-content">
-        <pre>{{ JSON.stringify(toolCall.arguments, null, 2) }}</pre>
-      </div>
-    </div>
+        <!-- Arguments (if not just command) -->
+        <div v-if="hasNonCommandArgs" class="detail-section">
+          <div class="detail-label">参数</div>
+          <pre>{{ formatNonCommandArgs() }}</pre>
+        </div>
 
-    <div v-if="toolCall.result !== undefined" class="tool-result">
-      <div class="result-header" @click="toggleResult">
-        <span>Result</span>
-        <svg :class="['chevron', { expanded: resultExpanded }]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </div>
-      <div v-if="resultExpanded" class="result-content">
-        <pre>{{ formatResult(toolCall.result) }}</pre>
-      </div>
-    </div>
+        <!-- Result -->
+        <div v-if="toolCall.result && toolCall.status !== 'executing'" class="detail-section">
+          <div class="detail-label">结果</div>
+          <pre>{{ formatResult(toolCall.result) }}</pre>
+        </div>
 
-    <div v-if="toolCall.error" class="tool-error">
-      <span class="error-icon">!</span>
-      <span class="error-text">{{ toolCall.error }}</span>
-    </div>
+        <!-- Error -->
+        <div v-if="toolCall.error" class="detail-section error">
+          <pre>{{ toolCall.error }}</pre>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -128,434 +83,434 @@ const props = withDefaults(defineProps<Props>(), {
 
 defineEmits<{
   execute: [toolCall: ToolCall]
-  confirm: [toolCall: ToolCall]
+  confirm: [toolCall: ToolCall, response: 'once' | 'always']
   reject: [toolCall: ToolCall]
 }>()
 
-const argumentsExpanded = ref(false)
-const resultExpanded = ref(false) // Default to collapsed
+const isExpanded = ref(false)
 
-const statusClass = computed(() => {
-  return `status-${props.toolCall.status}`
+const statusClass = computed(() => `status-${props.toolCall.status}`)
+
+// Preview text - command or first arg
+const previewText = computed(() => {
+  const args = props.toolCall.arguments
+  if (!args) return ''
+
+  // For bash, show command
+  if (args.command) {
+    const cmd = String(args.command)
+    return cmd.length > 60 ? cmd.slice(0, 57) + '...' : cmd
+  }
+
+  // For file operations, show path (check multiple possible field names)
+  const pathField = args.path || args.file_path || args.filePath
+  if (pathField) {
+    const path = String(pathField)
+    return path.length > 50 ? '...' + path.slice(-47) : path
+  }
+
+  // For glob/grep patterns
+  if (args.pattern) {
+    const pattern = String(args.pattern)
+    return pattern.length > 50 ? pattern.slice(0, 47) + '...' : pattern
+  }
+
+  // Default: stringify first value
+  const firstVal = Object.values(args)[0]
+  if (firstVal) {
+    const str = String(firstVal)
+    return str.length > 50 ? str.slice(0, 47) + '...' : str
+  }
+
+  return ''
 })
 
-// Calculate execution time with appropriate precision
+// Check for non-command args
+const hasNonCommandArgs = computed(() => {
+  const args = props.toolCall.arguments
+  if (!args) return false
+  return Object.keys(args).filter(k => k !== 'command').length > 0
+})
+
+// Check if there's content to expand
+const hasExpandableContent = computed(() => {
+  return hasNonCommandArgs.value ||
+         props.toolCall.result !== undefined ||
+         props.toolCall.error
+})
+
+// Execution time
 const executionTime = computed(() => {
   const { startTime, endTime } = props.toolCall
   if (startTime && endTime) {
     const ms = endTime - startTime
-    if (ms < 1000) {
-      // Show milliseconds for very fast executions
-      return `${ms}ms`
-    } else {
-      // Show seconds with 1 decimal for longer executions
-      return `${(ms / 1000).toFixed(1)}s`
-    }
+    return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
   }
   return null
 })
 
+// Status text
 const statusText = computed(() => {
-  // Check for confirmation required first
-  if (props.toolCall.requiresConfirmation) {
-    return 'Awaiting Confirmation'
-  }
-
-  // Format execution time suffix (unit already included in executionTime)
-  const timeSuffix = executionTime.value ? ` (${executionTime.value})` : ''
-
   switch (props.toolCall.status) {
-    case 'pending':
-      return 'Waiting'
-    case 'executing':
-      return 'Calling'
-    case 'completed':
-      return `Completed${timeSuffix}`
-    case 'failed':
-      return `Failed${timeSuffix}`
-    case 'cancelled':
-      return 'Cancelled'
-    default:
-      return props.toolCall.status
+    case 'pending': return '等待'
+    case 'executing': return '执行中'
+    case 'completed': return '✓'
+    case 'failed': return '✗'
+    case 'cancelled': return '已取消'
+    default: return ''
   }
 })
 
-function toggleArguments() {
-  argumentsExpanded.value = !argumentsExpanded.value
+function toggleExpand() {
+  if (hasExpandableContent.value) {
+    isExpanded.value = !isExpanded.value
+  }
 }
 
-function toggleResult() {
-  resultExpanded.value = !resultExpanded.value
+function formatNonCommandArgs(): string {
+  const args = props.toolCall.arguments
+  if (!args) return ''
+  const filtered = Object.fromEntries(
+    Object.entries(args).filter(([k]) => k !== 'command')
+  )
+  return JSON.stringify(filtered, null, 2)
 }
 
 function formatResult(result: any): string {
-  if (typeof result === 'string') {
-    return result
-  }
+  if (typeof result === 'string') return result
   return JSON.stringify(result, null, 2)
+}
+
+function truncateOutput(output: string, maxLines: number = 8): string {
+  const lines = output.split('\n')
+  if (lines.length <= maxLines) return output
+  return '...\n' + lines.slice(-maxLines).join('\n')
 }
 </script>
 
 <style scoped>
-.tool-call {
-  margin: 0;
-  margin-bottom: 6px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: transparent;
-  border: none;
-  border-left: 3px solid transparent;
+.tool-inline {
   font-size: 13px;
+  border-radius: 6px;
+  background: transparent;
   transition: background 0.15s ease;
+  margin: 2px 0;
 }
 
-.tool-call:last-child {
-  margin-bottom: 0;
-}
-
-.tool-call:hover {
+.tool-inline:hover {
   background: rgba(255, 255, 255, 0.03);
 }
 
-.tool-call.status-pending {
-  border-left-color: rgba(251, 191, 36, 0.6);
-  background: transparent;
+.tool-inline.needs-confirm {
+  background: rgba(208, 162, 21, 0.06);
+  border: 1px solid rgba(208, 162, 21, 0.15);
+  border-radius: var(--radius-sm, 8px);
 }
 
-.tool-call.status-pending:hover {
-  background: rgba(251, 191, 36, 0.04);
+.tool-inline.needs-confirm:hover {
+  background: rgba(208, 162, 21, 0.1);
+  border-color: rgba(208, 162, 21, 0.25);
 }
 
-.tool-call.status-executing {
-  border-left-color: rgba(59, 130, 246, 0.6);
-  background: rgba(59, 130, 246, 0.04);
-}
-
-.tool-call.status-completed {
-  border-left-color: rgba(59, 130, 246, 0.6);
-  background: transparent;
-}
-
-.tool-call.status-completed:hover {
-  background: rgba(59, 130, 246, 0.04);
-}
-
-.tool-call.status-failed {
-  border-left-color: rgba(239, 68, 68, 0.6);
-  background: rgba(239, 68, 68, 0.04);
-}
-
-/* Confirmation required state */
-.tool-call.requires-confirmation {
-  border-left-color: rgba(245, 158, 11, 0.8);
-  background: rgba(245, 158, 11, 0.08);
-}
-
-.tool-call.requires-confirmation .tool-icon svg {
-  color: rgb(245, 158, 11);
-}
-
-.tool-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.tool-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.tool-icon svg {
-  color: var(--muted);
-}
-
-.status-pending .tool-icon svg {
-  color: rgb(251, 191, 36);
-}
-
-.status-executing .tool-icon svg {
-  color: rgb(59, 130, 246);
-}
-
-.status-completed .tool-icon svg {
-  color: rgb(59, 130, 246);
-}
-
-.status-failed .tool-icon svg {
-  color: rgb(239, 68, 68);
-}
-
-.tool-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.tool-name {
-  font-weight: 500;
-  color: var(--text);
-}
-
-.tool-status {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-/* Status colors for pending/executing */
-.status-pending .tool-status {
-  color: rgb(251, 191, 36);
-}
-
-.status-executing .tool-status {
-  color: rgb(59, 130, 246);
-}
-
-/* Animated dots */
-.animated-dots {
-  display: inline-block;
-  margin-left: 1px;
-}
-
-.animated-dots span {
-  opacity: 0;
-  animation: dot-fade 1.4s infinite;
-}
-
-.animated-dots span:nth-child(1) {
-  animation-delay: 0s;
-}
-
-.animated-dots span:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.animated-dots span:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes dot-fade {
-  0%, 20% {
-    opacity: 0;
-  }
-  40% {
-    opacity: 1;
-  }
-  60%, 100% {
-    opacity: 0;
-  }
-}
-
-.execute-btn {
-  padding: 4px 12px;
-  border-radius: 6px;
-  border: none;
-  background: var(--accent);
-  color: white;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.execute-btn:hover {
-  background: #0d8e6f;
-}
-
-/* Confirmation buttons */
-.confirm-btn {
-  padding: 4px 12px;
-  border-radius: 6px;
-  border: none;
-  background: rgb(34, 197, 94);
-  color: white;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.confirm-btn:hover {
-  background: rgb(22, 163, 74);
-}
-
-.reject-btn {
-  padding: 4px 12px;
-  border-radius: 6px;
-  border: 1px solid rgba(239, 68, 68, 0.5);
-  background: transparent;
-  color: rgb(239, 68, 68);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.reject-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgb(239, 68, 68);
-}
-
-/* Confirmation warning box */
-.confirmation-warning {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-}
-
-.warning-header {
+/* Main row */
+.tool-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  color: rgb(245, 158, 11);
-  margin-bottom: 8px;
-}
-
-.command-preview {
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.3);
-  margin-bottom: 8px;
-}
-
-.command-preview code {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 12px;
-  color: rgb(251, 191, 36);
-  word-break: break-all;
-}
-
-.warning-hint {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.tool-arguments,
-.tool-result {
-  margin-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  padding-top: 8px;
-}
-
-.arguments-header,
-.result-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  padding: 6px 10px;
   cursor: pointer;
-  font-size: 12px;
-  color: var(--muted);
-  padding: 4px 0;
+  min-height: 32px;
+  flex-wrap: wrap;
 }
 
-.arguments-header:hover,
-.result-header:hover {
-  color: var(--text);
-}
-
-.chevron {
-  transition: transform 0.15s ease;
-}
-
-.chevron.expanded {
-  transform: rotate(180deg);
-}
-
-.arguments-content,
-.result-content {
-  margin-top: 6px;
-}
-
-.arguments-content pre,
-.result-content pre {
-  margin: 0;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.2);
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-x: auto;
-}
-
-.tool-error {
-  margin-top: 8px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: rgba(239, 68, 68, 0.1);
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.error-icon {
+/* Status dot */
+.status-dot {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
-  background: rgb(239, 68, 68);
-  color: white;
-  font-size: 11px;
-  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.error-text {
-  font-size: 12px;
-  color: rgb(239, 68, 68);
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
-/* Light theme */
-html[data-theme='light'] .tool-call {
+.dot.pending {
+  background: #6b7280;
+}
+
+.dot.spinning {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-top-color: #3b82f6;
+  background: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+.dot.success {
+  background: #22c55e;
+}
+
+.dot.error {
+  background: #ef4444;
+}
+
+.dot.warning {
+  background: var(--fx-yellow, #D0A215);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Tool name */
+.tool-name {
+  font-weight: 500;
+  color: var(--text-secondary, #888);
+  flex-shrink: 0;
+}
+
+/* Preview */
+.tool-preview {
+  color: var(--text-primary, #e5e5e5);
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+/* Status text */
+.status-text {
+  font-size: 12px;
+  color: var(--text-tertiary, #666);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-completed .status-text {
+  color: #22c55e;
+}
+
+.status-failed .status-text {
+  color: #ef4444;
+}
+
+.status-executing .status-text {
+  color: #3b82f6;
+}
+
+.exec-time {
+  opacity: 0.7;
+}
+
+/* Confirm buttons */
+.confirm-buttons {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.btn-inline {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  background: transparent;
+  white-space: nowrap;
+}
+
+/* Compact buttons on small screens */
+@media (max-width: 500px) {
+  .confirm-buttons {
+    gap: 3px;
+  }
+  .btn-inline {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+}
+
+.btn-allow {
+  color: var(--text-success, #879A39);
+  border-color: rgba(135, 154, 57, 0.3);
+  background: rgba(135, 154, 57, 0.08);
+}
+
+.btn-allow:hover {
+  background: rgba(135, 154, 57, 0.15);
+  border-color: rgba(135, 154, 57, 0.5);
+}
+
+.btn-always {
+  color: var(--accent, #4385BE);
+  border-color: rgba(67, 133, 190, 0.3);
+  background: rgba(67, 133, 190, 0.08);
+}
+
+.btn-always:hover {
+  background: rgba(67, 133, 190, 0.15);
+  border-color: rgba(67, 133, 190, 0.5);
+}
+
+.btn-reject {
+  color: var(--text-muted, #9F9D96);
+  border-color: transparent;
   background: transparent;
 }
 
-html[data-theme='light'] .tool-call:hover {
-  background: rgba(0, 0, 0, 0.02);
+.btn-reject:hover {
+  color: var(--text-error, #D14D41);
+  background: rgba(209, 77, 65, 0.08);
 }
 
-html[data-theme='light'] .tool-call.status-pending:hover {
-  background: rgba(251, 191, 36, 0.05);
+/* Expand icon */
+.expand-icon {
+  color: var(--text-tertiary, #666);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
 }
 
-html[data-theme='light'] .tool-call.status-executing {
-  background: rgba(59, 130, 246, 0.05);
+.expand-icon.rotated {
+  transform: rotate(180deg);
 }
 
-html[data-theme='light'] .tool-call.status-completed:hover {
-  background: rgba(59, 130, 246, 0.05);
+/* Expanded details */
+.tool-details {
+  padding: 0 10px 8px 34px;
 }
 
-html[data-theme='light'] .tool-call.status-failed {
-  background: rgba(239, 68, 68, 0.05);
+.detail-section {
+  margin-top: 6px;
 }
 
-html[data-theme='light'] .tool-icon {
-  background: rgba(0, 0, 0, 0.05);
+.detail-section.live {
+  border-left: 2px solid #3b82f6;
+  padding-left: 8px;
 }
 
-html[data-theme='light'] .tool-arguments,
-html[data-theme='light'] .tool-result {
-  border-top-color: rgba(0, 0, 0, 0.06);
+.detail-section.error {
+  border-left: 2px solid #ef4444;
+  padding-left: 8px;
 }
 
-html[data-theme='light'] .arguments-content pre,
-html[data-theme='light'] .result-content pre {
+.detail-section.error pre {
+  color: #ef4444;
+}
+
+.detail-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary, #666);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.detail-section pre {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-primary, #e5e5e5);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Slide animation */
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.slide-enter-from,
+.slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.slide-enter-to,
+.slide-leave-from {
+  max-height: 300px;
+}
+
+/* Light theme */
+html[data-theme='light'] .tool-inline:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+html[data-theme='light'] .tool-inline.needs-confirm {
+  background: rgba(173, 131, 1, 0.06);
+  border-color: rgba(173, 131, 1, 0.15);
+}
+
+html[data-theme='light'] .tool-inline.needs-confirm:hover {
+  background: rgba(173, 131, 1, 0.1);
+  border-color: rgba(173, 131, 1, 0.25);
+}
+
+html[data-theme='light'] .detail-section pre {
   background: rgba(0, 0, 0, 0.04);
+}
+
+html[data-theme='light'] .btn-allow {
+  color: #66800B;
+  border-color: rgba(102, 128, 11, 0.3);
+  background: rgba(102, 128, 11, 0.08);
+}
+
+html[data-theme='light'] .btn-allow:hover {
+  background: rgba(102, 128, 11, 0.15);
+  border-color: rgba(102, 128, 11, 0.5);
+}
+
+html[data-theme='light'] .btn-always {
+  color: #205EA6;
+  border-color: rgba(32, 94, 166, 0.3);
+  background: rgba(32, 94, 166, 0.08);
+}
+
+html[data-theme='light'] .btn-always:hover {
+  background: rgba(32, 94, 166, 0.15);
+  border-color: rgba(32, 94, 166, 0.5);
+}
+
+html[data-theme='light'] .btn-reject {
+  color: #878580;
+}
+
+html[data-theme='light'] .btn-reject:hover {
+  color: #AF3029;
+  background: rgba(175, 48, 41, 0.08);
 }
 </style>

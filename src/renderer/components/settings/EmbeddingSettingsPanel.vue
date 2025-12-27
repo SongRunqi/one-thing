@@ -1,180 +1,142 @@
 <template>
   <div class="tab-content">
-    <!-- Provider Selection -->
-    <section class="settings-section">
-      <h3 class="section-title">Embedding Provider</h3>
-      <p class="section-description">
-        Select the embedding provider for memory semantic search. OpenAI provides higher quality embeddings but requires an API key.
-      </p>
-
-      <div class="provider-cards">
-        <div
-          :class="['provider-card', { active: localSettings.provider === 'openai' }]"
-          @click="updateProvider('openai')"
-        >
-          <div class="provider-icon openai">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.8956zm16.5963 3.8558L13.1038 8.364l2.0201-1.1685a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.4018-.6814zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997z"/>
-            </svg>
-          </div>
-          <div class="provider-info">
-            <span class="provider-name">OpenAI</span>
-            <span class="provider-desc">Higher quality, requires API key</span>
-          </div>
-          <div class="provider-check" v-if="localSettings.provider === 'openai'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-          </div>
+    <!-- Memory Hero Section -->
+    <section class="hero-section">
+      <div class="hero-content">
+        <div class="hero-icon" :class="{ active: isMemoryEnabled }">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.54"/>
+            <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.54"/>
+          </svg>
         </div>
-
-        <div
-          :class="['provider-card', { active: localSettings.provider === 'local' }]"
-          @click="updateProvider('local')"
-        >
-          <div class="provider-icon local">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-              <line x1="8" y1="21" x2="16" y2="21"/>
-              <line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-          </div>
-          <div class="provider-info">
-            <span class="provider-name">Local</span>
-            <span class="provider-desc">Runs offline, no API key needed</span>
-          </div>
-          <div class="provider-check" v-if="localSettings.provider === 'local'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-          </div>
+        <div class="hero-text">
+          <h2 class="hero-title">Memory</h2>
+          <p class="hero-desc">让 AI 记住对话上下文，提供更个性化的回复</p>
         </div>
-      </div>
-    </section>
-
-    <!-- OpenAI Settings -->
-    <section class="settings-section" v-if="localSettings.provider === 'openai'">
-      <h3 class="section-title">OpenAI Embedding Settings</h3>
-
-      <!-- Info: Uses OpenAI Provider settings -->
-      <div class="info-box info-success">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-          <polyline points="22 4 12 14.01 9 11.01"/>
-        </svg>
-        <span>Automatically uses your OpenAI Provider API Key and Base URL from AI settings</span>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Model</label>
-        <select
-          class="form-select"
-          :value="localSettings.openai?.model || 'text-embedding-3-small'"
-          @change="updateOpenAIModel(($event.target as HTMLSelectElement).value)"
-        >
-          <option value="text-embedding-3-small">text-embedding-3-small (Recommended)</option>
-          <option value="text-embedding-3-large">text-embedding-3-large (Higher quality)</option>
-          <option value="text-embedding-ada-002">text-embedding-ada-002 (Legacy)</option>
-        </select>
-        <p class="form-hint">text-embedding-3-small offers a good balance of quality and cost</p>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Dimensions</label>
-        <select
-          class="form-select"
-          :value="localSettings.openai?.dimensions || 384"
-          @change="updateOpenAIDimensions(Number(($event.target as HTMLSelectElement).value))"
-        >
-          <option :value="256">256 (Smallest, fastest)</option>
-          <option :value="384">384 (Balanced, recommended)</option>
-          <option :value="512">512 (Better quality)</option>
-          <option :value="1024">1024 (High quality)</option>
-          <option :value="1536">1536 (Maximum quality)</option>
-        </select>
-        <p class="form-hint">Lower dimensions = faster & cheaper. 384 is recommended for most use cases.</p>
-      </div>
-
-      <!-- Advanced Settings (collapsible) -->
-      <div class="advanced-toggle" @click="showAdvanced = !showAdvanced">
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          :class="{ rotated: showAdvanced }"
-        >
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-        <span>Advanced Settings</span>
-      </div>
-
-      <div v-if="showAdvanced" class="advanced-settings">
-        <div class="form-group">
-          <label class="form-label">
-            Custom API Key
-            <span class="label-hint">(Override)</span>
-          </label>
+        <label class="memory-toggle">
           <input
-            type="password"
-            class="form-input"
-            :value="localSettings.openai?.apiKey || ''"
-            @input="updateOpenAIApiKey(($event.target as HTMLInputElement).value)"
-            placeholder="Leave empty to use OpenAI provider key"
+            type="checkbox"
+            :checked="isMemoryEnabled"
+            @change="toggleMemory"
           />
-          <p class="form-hint">Only set this if you want to use a different API key for embeddings</p>
-        </div>
+          <span class="memory-toggle-track"></span>
+        </label>
+      </div>
 
-        <div class="form-group">
-          <label class="form-label">
-            Custom Base URL
-            <span class="label-hint">(Override)</span>
-          </label>
-          <input
-            type="text"
-            class="form-input"
-            :value="localSettings.openai?.baseUrl || ''"
-            @input="updateOpenAIBaseUrl(($event.target as HTMLInputElement).value)"
-            placeholder="Leave empty to use OpenAI provider base URL"
-          />
-          <p class="form-hint">Only set this if you want to use a different endpoint for embeddings</p>
-        </div>
+      <div class="status-bar" :class="{ active: isMemoryEnabled }">
+        <span class="status-dot"></span>
+        <span class="status-text">{{ isMemoryEnabled ? '已启用' : '已关闭' }}</span>
       </div>
     </section>
 
-    <!-- Local Settings -->
-    <section class="settings-section" v-if="localSettings.provider === 'local'">
-      <h3 class="section-title">Local Embedding Settings</h3>
+    <!-- Settings Content - Two Column Layout -->
+    <Transition name="fade-slide">
+      <div v-if="isMemoryEnabled" class="settings-content">
+        <div class="panel-content">
+          <!-- Left: Provider list -->
+          <div class="provider-list">
+            <div
+              v-for="provider in availableProviders"
+              :key="provider.id"
+              class="provider-item"
+              :class="{
+                previewing: previewProviderId === provider.id,
+                selected: localSettings.provider === provider.id
+              }"
+              @click="previewProviderModels(provider.id)"
+            >
+              <ProviderIcon :provider="provider.aiProvider || provider.id" :size="16" />
+              <span class="provider-name">{{ provider.name }}</span>
+              <span v-if="localSettings.provider === provider.id" class="selected-badge">✓</span>
+              <span v-else-if="provider.models.length > 0" class="model-count">{{ provider.models.length }}</span>
+              <span v-else-if="!provider.configured && provider.id !== 'local'" class="config-badge">未配置</span>
+            </div>
+          </div>
 
-      <div class="form-group">
-        <label class="form-label">Model</label>
-        <select
-          class="form-select"
-          :value="localSettings.local?.model || 'all-MiniLM-L6-v2'"
-          @change="updateLocalModel(($event.target as HTMLSelectElement).value)"
-        >
-          <option value="all-MiniLM-L6-v2">all-MiniLM-L6-v2 (384 dims, fastest)</option>
-        </select>
-        <p class="form-hint">Local model runs entirely on your device without sending data to any server</p>
-      </div>
+          <!-- Right: Model list -->
+          <div class="model-list">
+            <!-- Header with refresh button -->
+            <div class="model-list-header">
+              <span class="header-title">{{ previewProvider?.name || '' }} 模型</span>
+              <button
+                class="refresh-btn"
+                :disabled="loadingModels"
+                @click="refreshModelsForProvider(previewProviderId)"
+                title="刷新模型列表"
+              >
+                <svg :class="{ spinning: loadingModels }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+                  <path d="M21 3v5h-5"/>
+                </svg>
+              </button>
+            </div>
 
-      <div class="info-box">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M12 16v-4"/>
-          <path d="M12 8h.01"/>
-        </svg>
-        <span>The local model will be downloaded automatically on first use (~23MB)</span>
+            <div v-if="loadingModels" class="loading-state">
+              <span class="loading-spinner"></span>
+              <span>加载模型...</span>
+            </div>
+
+            <div v-else-if="!previewProvider || previewProvider.models.length === 0" class="empty-state">
+              <span v-if="!isProviderConfigured(previewProviderId)">请先配置 {{ previewProvider?.name || '' }} 的 API Key</span>
+              <span v-else>未找到 Embedding 模型</span>
+            </div>
+
+            <template v-else>
+              <div
+                v-for="model in previewProvider.models"
+                :key="model.id"
+                class="model-card"
+                :class="{
+                  active: localSettings.provider === previewProviderId && currentModel === model.id
+                }"
+                @click="selectModel(previewProviderId, model.id)"
+              >
+                <div class="model-header">
+                  <span class="model-name">{{ model.name }}</span>
+                  <span v-if="localSettings.provider === previewProviderId && currentModel === model.id" class="current-badge">当前</span>
+                </div>
+                <!-- TODO: Dimension badge temporarily hidden -->
+              </div>
+
+              <!-- TODO: Dimension info temporarily hidden - need API source for dimensions -->
+            </template>
+
+            <!-- Local model notice -->
+            <div v-if="localSettings.provider === 'local'" class="notice-card info">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 16v-4"/>
+                <path d="M12 8h.01"/>
+              </svg>
+              <span>首次使用时将自动下载模型文件 (~23MB)</span>
+            </div>
+          </div>
+        </div>
       </div>
-    </section>
+    </Transition>
+
+    <!-- TODO: Dimension warning dialog removed - needs API source for dimension info -->
+
+    <!-- Disabled State -->
+    <Transition name="fade">
+      <div v-if="!isMemoryEnabled" class="disabled-state">
+        <div class="disabled-icon">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+            <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.54" opacity="0.3"/>
+            <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.54" opacity="0.3"/>
+          </svg>
+        </div>
+        <p class="disabled-text">启用 Memory 后可配置 Embedding 模型</p>
+      </div>
+    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
-import type { EmbeddingSettings } from '@/types'
+import { ref, watch, computed, onMounted } from 'vue'
+import type { EmbeddingSettings, EmbeddingProviderType, ModelInfo } from '@/types'
+import { useSettingsStore } from '@/stores/settings'
+import ProviderIcon from './ProviderIcon.vue'
 
 const props = defineProps<{
   settings: EmbeddingSettings
@@ -184,337 +146,873 @@ const emit = defineEmits<{
   'update:settings': [settings: EmbeddingSettings]
 }>()
 
+const settingsStore = useSettingsStore()
+
 // Local copy of settings
 const localSettings = ref<EmbeddingSettings>({ ...props.settings })
 
-// UI state
-const showAdvanced = ref(false)
+// Memory enabled state
+const isMemoryEnabled = computed(() => localSettings.value.memoryEnabled !== false)
 
 // Watch for external changes
 watch(() => props.settings, (newSettings) => {
   localSettings.value = { ...newSettings }
 }, { deep: true })
 
+// Providers that may have embedding models
+const EMBEDDING_CAPABLE_PROVIDERS: { id: EmbeddingProviderType; name: string; aiProvider: string }[] = [
+  { id: 'openai', name: 'OpenAI', aiProvider: 'openai' },
+  { id: 'gemini', name: 'Gemini', aiProvider: 'gemini' },
+  { id: 'zhipu', name: '智谱 AI', aiProvider: 'zhipu' },
+]
+
+// TODO: Dimension info temporarily disabled - need API source
+// Dimension warning dialog removed until dimension info is available
+
+// Local model fallback
+const LOCAL_PROVIDER = {
+  id: 'local' as EmbeddingProviderType,
+  name: '本地模型',
+  models: [{ id: 'all-MiniLM-L6-v2', name: 'all-MiniLM-L6-v2', type: 'embedding' as const }]
+}
+
+// LocalStorage cache for embedding models (persists across window reopens)
+const CACHE_KEY = 'embeddingModelsCache'
+
+function loadFromCache(): Map<string, ModelInfo[]> {
+  try {
+    const cached = localStorage.getItem(CACHE_KEY)
+    if (cached) {
+      const models: Record<string, ModelInfo[]> = JSON.parse(cached)
+      return new Map(Object.entries(models))
+    }
+  } catch (e) {
+    console.warn('[EmbeddingSettings] Failed to load cache:', e)
+  }
+  return new Map()
+}
+
+function saveToCache(models: Map<string, ModelInfo[]>) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(Object.fromEntries(models)))
+  } catch (e) {
+    console.warn('[EmbeddingSettings] Failed to save cache:', e)
+  }
+}
+
+// Reactive wrapper for the cached models
+const providerEmbeddingModels = ref<Map<string, ModelInfo[]>>(loadFromCache())
+const loadingModels = ref(false)
+
+// Preview provider (separate from selected provider)
+// Allows browsing models without changing settings
+const previewProviderId = ref<EmbeddingProviderType>(localSettings.value.provider)
+
+// Fetch embedding models from provider APIs
+async function fetchEmbeddingModels() {
+  loadingModels.value = true
+  const modelMap = new Map<string, ModelInfo[]>()
+
+  console.log('[EmbeddingSettings] Fetching embedding models from provider APIs...')
+
+  for (const provider of EMBEDDING_CAPABLE_PROVIDERS) {
+    try {
+      const models = await settingsStore.getEmbeddingModels(provider.aiProvider)
+      console.log(`[EmbeddingSettings] ${provider.id}: ${models.length} embedding models`)
+      if (models.length > 0) {
+        modelMap.set(provider.id, models as ModelInfo[])
+      }
+    } catch (error) {
+      console.warn(`[EmbeddingSettings] Failed to fetch for ${provider.id}:`, error)
+    }
+  }
+
+  // Update reactive ref and persist to localStorage
+  providerEmbeddingModels.value = modelMap
+  saveToCache(modelMap)
+  loadingModels.value = false
+  console.log('[EmbeddingSettings] Final model map:', Object.fromEntries(modelMap))
+}
+
+// Refresh models for a specific provider (manual refresh button)
+async function refreshModelsForProvider(providerId: string) {
+  loadingModels.value = true
+  try {
+    const models = await settingsStore.getEmbeddingModels(providerId)
+    console.log(`[EmbeddingSettings] Refreshed ${providerId}: ${models.length} models`)
+    if (models.length > 0) {
+      // Update reactive ref and persist
+      const updated = new Map(providerEmbeddingModels.value)
+      updated.set(providerId as EmbeddingProviderType, models as ModelInfo[])
+      providerEmbeddingModels.value = updated
+      saveToCache(updated)
+    }
+  } catch (error) {
+    console.warn(`[EmbeddingSettings] Failed to refresh for ${providerId}:`, error)
+  }
+  loadingModels.value = false
+}
+
+onMounted(() => {
+  // Cache is already loaded from localStorage during initialization
+  // Only fetch if cache is empty (expired or first time)
+  if (providerEmbeddingModels.value.size === 0) {
+    fetchEmbeddingModels()
+  }
+})
+
+// Note: No longer watching provider config changes since Models.dev is static registry
+// Models are fetched once on mount and can be refreshed manually
+
+// Sync preview with actual selection when settings change externally
+watch(() => localSettings.value.provider, (newProvider) => {
+  previewProviderId.value = newProvider
+})
+
+function isProviderConfigured(providerId: string): boolean {
+  if (providerId === 'local') return true
+  const aiSettings = settingsStore.settings?.ai
+  if (!aiSettings) return false
+  const providerConfig = aiSettings.providers?.[providerId]
+  return !!(providerConfig?.apiKey || providerConfig?.oauthToken)
+}
+
+const availableProviders = computed(() => {
+  const providers: { id: EmbeddingProviderType; name: string; configured: boolean; models: ModelInfo[]; aiProvider: string }[] = []
+
+  for (const provider of EMBEDDING_CAPABLE_PROVIDERS) {
+    const models = providerEmbeddingModels.value.get(provider.id) || []
+    providers.push({
+      id: provider.id,
+      name: provider.name,
+      configured: isProviderConfigured(provider.id),
+      models,
+      aiProvider: provider.aiProvider,
+    })
+  }
+
+  providers.push({
+    id: LOCAL_PROVIDER.id,
+    name: LOCAL_PROVIDER.name,
+    configured: true,
+    models: LOCAL_PROVIDER.models as ModelInfo[],
+    aiProvider: 'local',
+  })
+
+  return providers
+})
+
+// Preview provider (for browsing, not the selected one)
+const previewProvider = computed(() => {
+  return availableProviders.value.find(p => p.id === previewProviderId.value)
+})
+
+// Actually selected provider
+const selectedProvider = computed(() => {
+  return availableProviders.value.find(p => p.id === localSettings.value.provider)
+})
+
+const currentModel = computed(() => {
+  return localSettings.value.model || selectedProvider.value?.models[0]?.id || ''
+})
+
+// Check if previewing a different provider than selected
+const isPreviewingDifferent = computed(() => {
+  return previewProviderId.value !== localSettings.value.provider
+})
+
+const isCurrentProviderConfigured = computed(() => {
+  return isProviderConfigured(localSettings.value.provider)
+})
+
+// TODO: Dimension-related code temporarily disabled - need API source for dimensions
+// supportsCustomDimensions, currentDimensionInfo, getDimensionForModel removed
+
 function emitUpdate() {
   emit('update:settings', { ...localSettings.value })
 }
 
-function updateProvider(provider: 'openai' | 'local') {
-  localSettings.value.provider = provider
+function toggleMemory() {
+  localSettings.value.memoryEnabled = !isMemoryEnabled.value
   emitUpdate()
 }
 
-function updateOpenAIModel(model: string) {
-  if (!localSettings.value.openai) {
-    localSettings.value.openai = { model: 'text-embedding-3-small' }
-  }
-  localSettings.value.openai.model = model
+// Preview a provider (just browse, don't select)
+function previewProviderModels(providerId: EmbeddingProviderType) {
+  previewProviderId.value = providerId
+}
+
+// Select a specific model (this actually changes the settings)
+function selectModel(providerId: EmbeddingProviderType, modelId: string) {
+  localSettings.value.provider = providerId
+  localSettings.value.model = modelId
+  // Sync preview with selection
+  previewProviderId.value = providerId
   emitUpdate()
 }
 
-function updateOpenAIDimensions(dimensions: number) {
-  if (!localSettings.value.openai) {
-    localSettings.value.openai = { model: 'text-embedding-3-small' }
-  }
-  localSettings.value.openai.dimensions = dimensions
+function updateModel(model: string) {
+  localSettings.value.model = model
   emitUpdate()
 }
 
-function updateOpenAIApiKey(apiKey: string) {
-  if (!localSettings.value.openai) {
-    localSettings.value.openai = { model: 'text-embedding-3-small' }
-  }
-  localSettings.value.openai.apiKey = apiKey || undefined
-  emitUpdate()
-}
-
-function updateOpenAIBaseUrl(baseUrl: string) {
-  if (!localSettings.value.openai) {
-    localSettings.value.openai = { model: 'text-embedding-3-small' }
-  }
-  localSettings.value.openai.baseUrl = baseUrl || undefined
-  emitUpdate()
-}
-
-function updateLocalModel(model: string) {
-  if (!localSettings.value.local) {
-    localSettings.value.local = { model: 'all-MiniLM-L6-v2' }
-  }
-  localSettings.value.local.model = model
+function updateDimensions(dimensions: number) {
+  localSettings.value.dimensions = dimensions
   emitUpdate()
 }
 </script>
 
 <style scoped>
 .tab-content {
-  animation: fadeIn 0.15s ease;
+  animation: fadeIn 0.2s ease;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.settings-section {
-  margin-bottom: 28px;
+/* Hero Section */
+.hero-section {
+  background: linear-gradient(135deg,
+    rgba(var(--accent-rgb), 0.08) 0%,
+    rgba(var(--accent-rgb), 0.02) 100%
+  );
+  border: 1px solid rgba(var(--accent-rgb), 0.15);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
 }
 
-.settings-section:last-child {
-  margin-bottom: 0;
-}
-
-.section-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin: 0 0 8px 0;
-  opacity: 0.8;
-}
-
-.section-description {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin: 0 0 16px 0;
-  line-height: 1.5;
-}
-
-/* Provider Cards */
-.provider-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.provider-card {
+.hero-content {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
+  gap: 16px;
+}
+
+.hero-icon {
+  width: 48px;
+  height: 48px;
   border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  background: transparent;
-}
-
-.provider-card:hover {
-  border-color: rgba(var(--accent-rgb), 0.4);
-  background: var(--hover);
-}
-
-.provider-card.active {
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.08);
-}
-
-.provider-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  transition: all 0.3s ease;
   flex-shrink: 0;
 }
 
-.provider-icon.openai {
-  background: linear-gradient(135deg, #10a37f 0%, #0d8c6d 100%);
-  color: white;
-}
-
-.provider-icon.local {
-  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-  color: white;
-}
-
-.provider-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.provider-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.provider-desc {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.provider-check {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
+.hero-icon.active {
   background: var(--accent);
   color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-/* Form Elements */
-.form-group {
-  margin-bottom: 16px;
+.hero-text {
+  flex: 1;
+  min-width: 0;
 }
 
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-.form-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
+.hero-title {
+  font-size: 16px;
+  font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 8px;
+  margin: 0 0 2px 0;
 }
 
-.label-hint {
-  font-weight: 400;
-  color: var(--text-muted);
+.hero-desc {
   font-size: 12px;
-}
-
-.form-input,
-.form-select {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--text-primary);
-  font-size: 13px;
-  transition: all 0.15s ease;
-}
-
-.form-input:focus,
-.form-select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
-}
-
-.form-input::placeholder {
   color: var(--text-muted);
-  opacity: 0.7;
+  margin: 0;
 }
 
-.form-select {
+/* Memory Toggle */
+.memory-toggle {
+  position: relative;
   cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 8px center;
-  background-repeat: no-repeat;
-  background-size: 20px;
-  padding-right: 36px;
-}
-
-.form-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin: 6px 0 0 0;
-  line-height: 1.4;
-}
-
-/* Info Box */
-.info-box {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  background: rgba(var(--accent-rgb), 0.08);
-  border: 1px solid rgba(var(--accent-rgb), 0.2);
-  border-radius: 10px;
-  font-size: 13px;
-  color: var(--text-primary);
-  line-height: 1.5;
-  margin-bottom: 16px;
-}
-
-.info-box svg {
   flex-shrink: 0;
-  color: var(--accent);
-  margin-top: 1px;
+  display: block;
 }
 
-.info-box.info-success {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.2);
+.memory-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
 }
 
-.info-box.info-success svg {
-  color: #10b981;
+.memory-toggle-track {
+  display: block;
+  width: 44px;
+  height: 24px;
+  background: var(--border);
+  border-radius: 12px;
+  transition: background 0.25s ease;
+  position: relative;
 }
 
-/* Advanced Toggle */
-.advanced-toggle {
+.memory-toggle-track::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 10px;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.memory-toggle input:checked + .memory-toggle-track {
+  background: var(--accent);
+}
+
+.memory-toggle input:checked + .memory-toggle-track::before {
+  transform: translateX(20px);
+}
+
+/* Status Bar */
+.status-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 0;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(var(--accent-rgb), 0.1);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all 0.3s ease;
+}
+
+.status-bar.active .status-dot {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+.status-text {
+  font-size: 11px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Settings Content */
+.settings-content {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Two-column layout (matching ModelSelectorPanel) */
+.panel-content {
+  display: flex;
+  height: 280px;
+}
+
+/* Provider list */
+.provider-list {
+  width: 140px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 6px;
+  flex-shrink: 0;
+}
+
+.provider-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: color 0.15s ease;
-  user-select: none;
+  transition: background-color 0.1s ease;
 }
 
-.advanced-toggle:hover {
-  color: var(--text-primary);
+.provider-item:hover {
+  background-color: var(--hover);
 }
 
-.advanced-toggle svg {
-  transition: transform 0.2s ease;
+.provider-item.previewing {
+  background-color: rgba(var(--accent-rgb, 59, 130, 246), 0.1);
 }
 
-.advanced-toggle svg.rotated {
-  transform: rotate(90deg);
+.provider-item.previewing .provider-name {
+  color: var(--accent);
 }
 
-.advanced-settings {
-  padding-left: 22px;
-  border-left: 2px solid var(--border);
+.provider-item.selected {
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+}
+
+.provider-item.selected .provider-name {
+  font-weight: 600;
+}
+
+.selected-badge {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.provider-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-count {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--hover);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.config-badge {
+  font-size: 9px;
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.15);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+/* Model list */
+.model-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+}
+
+.model-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.header-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.refresh-btn:hover {
+  background: var(--hover);
+  color: var(--accent);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.refresh-btn svg.spinning {
+  animation: spin 1s linear infinite;
+}
+
+.current-badge {
+  font-size: 10px;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.loading-state,
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Model card */
+.model-card {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+.model-card:hover {
+  background-color: var(--hover);
+}
+
+.model-card.active {
+  background-color: rgba(var(--accent-rgb, 59, 130, 246), 0.1);
+  border-color: var(--accent);
+}
+
+.model-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.model-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.model-card.active .model-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Model badges */
+.model-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.badge.dims {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+/* Dimension section */
+.dimension-section {
   margin-top: 8px;
-  animation: slideDown 0.15s ease;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  border: 1px solid var(--border);
 }
 
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.dimension-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.dimension-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dim-chip {
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.dim-chip:hover {
+  border-color: rgba(var(--accent-rgb), 0.4);
+}
+
+.dim-chip.selected {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* Readonly dimension display */
+.dimension-section.readonly {
+  background: var(--bg);
+  border: 1px dashed var(--border);
+}
+
+.dimension-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dimension-number {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.dimension-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Warning Dialog */
+.warning-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.warning-dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  width: 90%;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+.warning-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  color: #f59e0b;
+}
+
+.warning-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 8px 0;
+}
+
+.warning-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 8px 0;
+  line-height: 1.5;
+}
+
+.warning-text strong {
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.warning-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0 0 20px 0;
+  line-height: 1.5;
+  padding: 10px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.warning-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.btn-cancel,
+.btn-confirm {
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+}
+
+.btn-cancel {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.btn-cancel:hover {
+  background: var(--hover);
+}
+
+.btn-confirm {
+  background: #f59e0b;
+  color: white;
+}
+
+.btn-confirm:hover {
+  background: #d97706;
+}
+
+/* Notice Cards */
+.notice-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.notice-card svg {
+  flex-shrink: 0;
+}
+
+.notice-card.info {
+  background: rgba(var(--accent-rgb), 0.08);
+  border: 1px solid rgba(var(--accent-rgb), 0.15);
+  color: var(--text);
+}
+
+.notice-card.info svg {
+  color: var(--accent);
+}
+
+/* Disabled State */
+.disabled-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  text-align: center;
+}
+
+.disabled-icon {
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  opacity: 0.3;
+}
+
+.disabled-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Transitions */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.2s ease;
+}
+
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 /* Responsive */
 @media (max-width: 480px) {
-  .provider-card {
-    padding: 12px 14px;
-    gap: 12px;
+  .hero-content {
+    flex-wrap: wrap;
   }
 
-  .provider-icon {
-    width: 40px;
-    height: 40px;
+  .hero-text {
+    order: 3;
+    flex-basis: 100%;
+    margin-top: 6px;
   }
 
-  .provider-name {
-    font-size: 13px;
+  .memory-toggle {
+    margin-left: auto;
   }
 
-  .provider-desc {
-    font-size: 11px;
+  .panel-content {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .provider-list {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .provider-item {
+    flex: 0 0 auto;
+    padding: 6px 10px;
+  }
+
+  .model-list {
+    min-height: 160px;
   }
 }
 </style>

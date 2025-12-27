@@ -544,10 +544,23 @@ function handleClose() {
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  animation: overlayFadeIn 0.2s ease;
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(4px);
+  }
 }
 
 .dialog {
@@ -557,29 +570,53 @@ function handleClose() {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.2),
+    0 8px 16px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  animation: dialogSlideIn 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes dialogSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .dialog-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   padding: 20px 24px;
   border-bottom: 1px solid var(--border);
+  background: linear-gradient(
+    180deg,
+    rgba(var(--accent-rgb), 0.04) 0%,
+    transparent 100%
+  );
 }
 
 .dialog-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: rgba(var(--accent-rgb), 0.1);
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(var(--accent-rgb), 0.12);
   color: var(--accent);
+  transition: transform 0.2s ease;
+}
+
+.dialog:hover .dialog-icon {
+  transform: scale(1.05);
 }
 
 .dialog-header h3 {
@@ -613,20 +650,26 @@ function handleClose() {
 .form-input,
 .form-textarea {
   width: 100%;
-  padding: 10px 14px;
+  padding: 12px 16px;
   font-size: 14px;
   color: var(--text);
   background: var(--hover);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  transition: all 0.15s ease;
+  border-radius: var(--radius-md);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.form-input:hover,
+.form-textarea:hover {
+  border-color: var(--border-strong, var(--muted));
 }
 
 .form-input:focus,
 .form-textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15);
+  box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.12);
+  background: var(--bg-elevated);
 }
 
 .form-input::placeholder,
@@ -837,31 +880,47 @@ function handleClose() {
 /* Avatar Picker */
 .avatar-picker {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 16px;
 }
 
 .avatar-preview {
-  width: 64px;
-  height: 64px;
-  border-radius: 16px;
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
   background: var(--hover);
   border: 2px dashed var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.avatar-preview::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(var(--accent-rgb), 0);
+  transition: background 0.2s ease;
+  border-radius: 16px;
 }
 
 .avatar-preview:hover {
   border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.05);
+  border-style: solid;
+  transform: scale(1.02);
+}
+
+.avatar-preview:hover::after {
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 .preview-emoji {
-  font-size: 32px;
+  font-size: 36px;
   line-height: 1;
 }
 
@@ -869,7 +928,7 @@ function handleClose() {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 14px;
+  border-radius: 16px;
 }
 
 .preview-placeholder {
@@ -905,39 +964,42 @@ function handleClose() {
 
 /* Emoji Picker */
 .emoji-picker {
-  margin-top: 12px;
-  padding: 12px;
+  margin-top: 16px;
+  padding: 16px;
   background: var(--hover);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
 }
 
 .emoji-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 4px;
+  gap: 6px;
 }
 
 .emoji-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  font-size: 22px;
+  width: 44px;
+  height: 44px;
+  font-size: 24px;
   background: transparent;
   border: 2px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .emoji-btn:hover {
   background: var(--active);
+  transform: scale(1.1);
 }
 
 .emoji-btn.selected {
-  background: rgba(var(--accent-rgb), 0.1);
+  background: rgba(var(--accent-rgb), 0.15);
   border-color: var(--accent);
+  transform: scale(1.05);
 }
 
 /* Dialog Actions */
@@ -945,8 +1007,13 @@ function handleClose() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
+  padding: 18px 24px;
   border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+html[data-theme='light'] .dialog-actions {
+  background: rgba(0, 0, 0, 0.02);
 }
 
 .dialog-actions-right {
@@ -961,12 +1028,12 @@ function handleClose() {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 18px;
+  padding: 11px 20px;
   font-size: 14px;
   font-weight: 500;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border: none;
 }
 
@@ -978,20 +1045,28 @@ function handleClose() {
 .btn.primary {
   background: var(--accent);
   color: white;
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.3);
 }
 
 .btn.primary:hover:not(:disabled) {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
+}
+
+.btn.primary:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .btn.secondary {
-  background: var(--panel);
+  background: var(--hover);
   border: 1px solid var(--border);
   color: var(--text);
 }
 
 .btn.secondary:hover:not(:disabled) {
-  background: var(--hover);
+  background: var(--active);
+  border-color: var(--border-strong, var(--muted));
 }
 
 .btn.danger-ghost {
@@ -1002,5 +1077,6 @@ function handleClose() {
 
 .btn.danger-ghost:hover:not(:disabled) {
   background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.6);
 }
 </style>

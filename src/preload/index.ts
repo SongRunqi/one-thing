@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS, AIProvider, MessageAttachment } from '../shared/ipc.js'
+import type { UIMessageStreamData } from '../shared/ipc.js'
 
 const electronAPI = {
   // Chat methods
@@ -29,7 +30,7 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_TEXT_DELTA, listener)
   },
 
-  onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string; sessionId?: string; sessionName?: string }) => void) => {
+  onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string; sessionId?: string; sessionName?: string; usage?: { inputTokens: number; outputTokens: number; totalTokens: number } }) => void) => {
     const listener = (_event: any, data: any) => callback(data)
     ipcRenderer.on(IPC_CHANNELS.STREAM_COMPLETE, listener)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_COMPLETE, listener)
@@ -65,6 +66,13 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.IMAGE_GENERATED, listener)
   },
 
+  // UIMessage stream (AI SDK 5.x compatible)
+  onUIMessageStream: (callback: (data: UIMessageStreamData) => void) => {
+    const listener = (_event: any, data: UIMessageStreamData) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.UI_MESSAGE_STREAM, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UI_MESSAGE_STREAM, listener)
+  },
+
   abortStream: (sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.ABORT_STREAM, { sessionId }),
 
@@ -96,6 +104,9 @@ const electronAPI = {
   switchSession: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.SWITCH_SESSION, { sessionId }),
 
+  getSession: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION, { sessionId }),
+
   deleteSession: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.DELETE_SESSION, { sessionId }),
 
@@ -111,6 +122,21 @@ const electronAPI = {
   updateSessionModel: (sessionId: string, provider: string, model: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_MODEL, { sessionId, provider, model }),
 
+  updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_ARCHIVED, { sessionId, isArchived, archivedAt }),
+
+  updateSessionAgent: (sessionId: string, agentId: string | null) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_AGENT, { sessionId, agentId }),
+
+  updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY, { sessionId, workingDirectory }),
+
+  getSessionTokenUsage: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, sessionId),
+
+  updateSessionMaxTokens: (sessionId: string, maxTokens: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_MAX_TOKENS, sessionId, maxTokens),
+
   // Settings methods
   getSettings: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS),
@@ -118,12 +144,50 @@ const electronAPI = {
   saveSettings: (settings: any) =>
     ipcRenderer.invoke(IPC_CHANNELS.SAVE_SETTINGS, settings),
 
-  // Models methods
+  openSettingsWindow: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.OPEN_SETTINGS_WINDOW),
+
+  onSettingsChanged: (callback: (settings: any) => void) => {
+    const listener = (_event: any, settings: any) => callback(settings)
+    ipcRenderer.on(IPC_CHANNELS.SETTINGS_CHANGED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SETTINGS_CHANGED, listener)
+  },
+
+  // Models methods (legacy)
   fetchModels: (provider: AIProvider, apiKey: string, baseUrl?: string, forceRefresh?: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.FETCH_MODELS, { provider, apiKey, baseUrl, forceRefresh }),
 
   getCachedModels: (provider: AIProvider) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_CACHED_MODELS, { provider }),
+
+  // Model registry methods (OpenRouter-based with capabilities)
+  getModelsWithCapabilities: (providerId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_MODELS_WITH_CAPABILITIES, { providerId }),
+
+  getAllModels: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_MODELS),
+
+  searchModels: (query: string, providerId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_MODELS, { query, providerId }),
+
+  refreshModelRegistry: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.REFRESH_MODEL_REGISTRY),
+
+  getModelNameAliases: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_MODEL_NAME_ALIASES),
+
+  getModelDisplayName: (modelId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_MODEL_DISPLAY_NAME, { modelId }),
+
+  // Embedding models methods (from Models.dev registry)
+  getEmbeddingModels: (providerId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_EMBEDDING_MODELS, { providerId }),
+
+  getAllEmbeddingModels: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_EMBEDDING_MODELS),
+
+  getEmbeddingDimension: (modelId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_EMBEDDING_DIMENSION, { modelId }),
 
   // Providers methods
   getProviders: () =>
@@ -222,10 +286,10 @@ const electronAPI = {
   getWorkspaces: () =>
     ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_GET_ALL),
 
-  createWorkspace: (name: string, avatar: { type: 'emoji' | 'image'; value: string }, systemPrompt: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_CREATE, { name, avatar, systemPrompt }),
+  createWorkspace: (name: string, avatar: { type: 'emoji' | 'image'; value: string }, workingDirectory: string | undefined, systemPrompt: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_CREATE, { name, avatar, workingDirectory, systemPrompt }),
 
-  updateWorkspace: (id: string, updates: { name?: string; avatar?: { type: 'emoji' | 'image'; value: string }; systemPrompt?: string }) =>
+  updateWorkspace: (id: string, updates: { name?: string; avatar?: { type: 'emoji' | 'image'; value: string }; workingDirectory?: string; systemPrompt?: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_UPDATE, { id, ...updates }),
 
   deleteWorkspace: (workspaceId: string) =>
@@ -324,6 +388,9 @@ const electronAPI = {
       emotionalWeight,
     }),
 
+  deleteAgentMemory: (memoryId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_DELETE, { memoryId }),
+
   recallAgentMemory: (agentId: string, memoryId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_RECALL, { agentId, memoryId }),
 
@@ -374,6 +441,84 @@ const electronAPI = {
 
   clearAllMedia: () =>
     ipcRenderer.invoke('media:clear-all'),
+
+  // Permission methods
+  respondToPermission: (request: {
+    sessionId: string
+    permissionId: string
+    response: 'once' | 'always' | 'reject'
+  }) => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_RESPOND, request),
+
+  getPendingPermissions: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_GET_PENDING, sessionId),
+
+  clearSessionPermissions: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_CLEAR_SESSION, sessionId),
+
+  onPermissionRequest: (callback: (info: {
+    id: string
+    type: string
+    pattern?: string | string[]
+    sessionId: string
+    messageId: string
+    callId?: string
+    title: string
+    metadata: Record<string, unknown>
+    createdAt: number
+  }) => void) => {
+    const listener = (_event: any, info: any) => callback(info)
+    ipcRenderer.on(IPC_CHANNELS.PERMISSION_REQUEST, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.PERMISSION_REQUEST, listener)
+  },
+
+  // OAuth methods
+  oauthStart: (providerId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.OAUTH_START, { providerId }),
+
+  oauthLogout: (providerId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.OAUTH_LOGOUT, { providerId }),
+
+  oauthGetStatus: (providerId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.OAUTH_STATUS, { providerId }),
+
+  oauthDevicePoll: (providerId: string, deviceCode: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.OAUTH_DEVICE_POLL, { providerId, deviceCode }),
+
+  oauthRefresh: (providerId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.OAUTH_REFRESH, { providerId }),
+
+  oauthCallback: (providerId: string, code: string, state: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.OAUTH_CALLBACK, { providerId, code, state }),
+
+  // Test OAuth API directly (for debugging)
+  oauthTestDirect: (providerId: string) =>
+    ipcRenderer.invoke('oauth:test-direct', providerId),
+
+  // OAuth event listeners
+  onOAuthTokenRefreshed: (callback: (data: { providerId: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.OAUTH_TOKEN_REFRESHED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.OAUTH_TOKEN_REFRESHED, listener)
+  },
+
+  onOAuthTokenExpired: (callback: (data: { providerId: string; error?: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.OAUTH_TOKEN_EXPIRED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.OAUTH_TOKEN_EXPIRED, listener)
+  },
+
+  // Menu event listeners
+  onMenuNewChat: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('menu:new-chat', listener)
+    return () => ipcRenderer.removeListener('menu:new-chat', listener)
+  },
+
+  onMenuCloseChat: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('menu:close-chat', listener)
+    return () => ipcRenderer.removeListener('menu:close-chat', listener)
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

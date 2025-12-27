@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, toRaw, computed } from 'vue'
-import type { AppSettings, ProviderInfo, CustomProviderConfig } from '@/types'
+import type { AppSettings, ProviderInfo, CustomProviderConfig, OpenRouterModel } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
-import type { AIProvider } from '../../shared/ipc'
+import type { AIProvider, ModelInfo } from '../../shared/ipc'
 
 const defaultSettings: AppSettings = {
   ai: {
@@ -45,6 +45,21 @@ const defaultSettings: AppSettings = {
           'meta-llama/llama-3.1-70b-instruct',
         ],
       },
+      [AIProviderEnum.Gemini]: {
+        apiKey: '',
+        model: 'gemini-2.0-flash-exp',
+        selectedModels: ['gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+      },
+      [AIProviderEnum.ClaudeCode]: {
+        model: 'claude-sonnet-4-20250514',
+        selectedModels: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022', 'claude-opus-4-20250514'],
+        authType: 'oauth',
+      },
+      [AIProviderEnum.GitHubCopilot]: {
+        model: 'gpt-4o',
+        selectedModels: ['gpt-4o', 'gpt-4o-mini', 'o1-preview', 'o1-mini'],
+        authType: 'oauth',
+      },
       [AIProviderEnum.Custom]: {
         apiKey: '',
         baseUrl: '',
@@ -76,6 +91,13 @@ const defaultSettings: AppSettings = {
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>(JSON.parse(JSON.stringify(defaultSettings)))
   const availableProviders = ref<ProviderInfo[]>([])
+
+  // Model name cache: model ID -> display name
+  const modelNameCache = ref<Map<string, string>>(new Map())
+
+  // Model list cache: provider ID -> full model list (with capabilities)
+  const providerModels = ref<Map<string, OpenRouterModel[]>>(new Map())
+  const modelsLoading = ref<Map<string, boolean>>(new Map())
 
   const isLoading = ref(false)
 
@@ -124,10 +146,11 @@ export const useSettingsStore = defineStore('settings', () => {
   async function loadSettings() {
     isLoading.value = true
     try {
-      // Load settings and providers in parallel
-      const [settingsResponse, providersResponse] = await Promise.all([
+      // Load settings, providers, and model aliases in parallel
+      const [settingsResponse, providersResponse, aliasesResponse] = await Promise.all([
         window.electronAPI.getSettings(),
         window.electronAPI.getProviders(),
+        window.electronAPI.getModelNameAliases(),
       ])
 
       if (settingsResponse.success) {
@@ -142,6 +165,13 @@ export const useSettingsStore = defineStore('settings', () => {
       if (providersResponse.success && providersResponse.providers) {
         // Merge built-in providers with custom providers
         updateAvailableProviders(providersResponse.providers)
+      }
+
+      // Load model name aliases into cache
+      if (aliasesResponse.success && aliasesResponse.aliases) {
+        for (const [modelId, displayName] of Object.entries(aliasesResponse.aliases)) {
+          modelNameCache.value.set(modelId, displayName as string)
+        }
       }
     } finally {
       isLoading.value = false
@@ -319,6 +349,276 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  // Update model name cache with fetched models
+  function updateModelNameCache(models: Array<{ id: string; name: string }>) {
+    for (const model of models) {
+      if (model.id && model.name) {
+        modelNameCache.value.set(model.id, model.name)
+      }
+    }
+  }
+
+  // Get display name for a model ID
+  function getModelDisplayName(modelId: string): string {
+    return modelNameCache.value.get(modelId) || modelId
+  }
+
+  // ========== Unified Model List Management ==========
+
+  /**
+   * Check if models are loading for a provider
+   */
+  function isModelsLoading(providerId: string): boolean {
+    return modelsLoading.value.get(providerId) || false
+  }
+
+  /**
+   * Get cached models for a provider (returns empty array if not cached)
+   */
+  function getCachedModels(providerId: string): OpenRouterModel[] {
+    return providerModels.value.get(providerId) || []
+  }
+
+  /**
+   * Check if models are cached for a provider
+   */
+  function hasModelsCache(providerId: string): boolean {
+    return providerModels.value.has(providerId)
+  }
+
+  /**
+   * Fetch models for a provider with caching
+   * @param providerId - The provider ID
+   * @param forceRefresh - If true, bypass cache and fetch fresh data
+   * @returns The model list
+   */
+  async function fetchModelsForProvider(
+    providerId: string,
+    forceRefresh = false
+  ): Promise<OpenRouterModel[]> {
+    // Return cached if available and not forcing refresh
+    if (!forceRefresh && providerModels.value.has(providerId)) {
+      return providerModels.value.get(providerId)!
+    }
+
+    // Check if already loading
+    if (modelsLoading.value.get(providerId)) {
+      // Wait for existing request to complete
+      return new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (!modelsLoading.value.get(providerId)) {
+            clearInterval(checkInterval)
+            resolve(providerModels.value.get(providerId) || [])
+          }
+        }, 100)
+      })
+    }
+
+    modelsLoading.value.set(providerId, true)
+
+    try {
+      // First try to get from capabilities cache (faster)
+      const cachedResponse = await window.electronAPI.getModelsWithCapabilities(providerId)
+
+      if (cachedResponse.success && cachedResponse.models && cachedResponse.models.length > 0) {
+        const models = cachedResponse.models
+        providerModels.value.set(providerId, models)
+        // Update name cache
+        updateModelNameCache(models)
+        return models
+      }
+
+      // If no cache, fetch from API
+      const providerConfig = settings.value.ai.providers[providerId]
+      if (!providerConfig?.apiKey && !providerConfig?.oauthToken) {
+        // No credentials, return empty
+        providerModels.value.set(providerId, [])
+        return []
+      }
+
+      const response = await window.electronAPI.fetchModels(
+        providerId as AIProvider,
+        providerConfig.apiKey || '',
+        providerConfig.baseUrl
+      )
+
+      if (response.success && response.models) {
+        const models = response.models as OpenRouterModel[]
+        providerModels.value.set(providerId, models)
+        // Update name cache
+        updateModelNameCache(models)
+        return models
+      }
+
+      // Fallback to empty
+      providerModels.value.set(providerId, [])
+      return []
+    } catch (error) {
+      console.error(`[SettingsStore] Failed to fetch models for ${providerId}:`, error)
+      providerModels.value.set(providerId, [])
+      return []
+    } finally {
+      modelsLoading.value.set(providerId, false)
+    }
+  }
+
+  /**
+   * Refresh model registry and fetch fresh models for a provider
+   */
+  async function refreshModelsForProvider(providerId: string): Promise<OpenRouterModel[]> {
+    try {
+      await window.electronAPI.refreshModelRegistry()
+    } catch (error) {
+      console.warn('[SettingsStore] Failed to refresh model registry:', error)
+    }
+    return fetchModelsForProvider(providerId, true)
+  }
+
+  /**
+   * Get embedding models for a provider (filtered from full list)
+   * Uses provider's own API (not Models.dev) since embedding models are often not in Models.dev
+   * Returns ModelInfo[] with type='embedding' field
+   */
+  async function getEmbeddingModels(providerId: string): Promise<ModelInfo[]> {
+    // Get provider config
+    const providerConfig = settings.value.ai.providers[providerId]
+    console.log(`[SettingsStore] getEmbeddingModels: providerId=${providerId}, hasConfig=${!!providerConfig}, hasApiKey=${!!providerConfig?.apiKey}, hasOAuth=${!!providerConfig?.oauthToken}`)
+
+    if (!providerConfig?.apiKey && !providerConfig?.oauthToken) {
+      console.log(`[SettingsStore] No credentials for ${providerId}, returning empty`)
+      return []
+    }
+
+    try {
+      // Directly call provider's API to get models (bypasses Models.dev cache)
+      // Force refresh to get fresh data with type field
+      console.log(`[SettingsStore] Calling fetchModels for ${providerId} (forceRefresh=true)...`)
+      const response = await window.electronAPI.fetchModels(
+        providerId as AIProvider,
+        providerConfig.apiKey || '',
+        providerConfig.baseUrl,
+        true  // forceRefresh - bypass cache to get fresh data with type field
+      )
+
+      console.log(`[SettingsStore] fetchModels response for ${providerId}:`, response.success, response.models?.length, response.error)
+
+      if (!response.success || !response.models) {
+        console.log(`[SettingsStore] fetchModels failed for ${providerId}:`, response.error)
+        return []
+      }
+
+      // Log all models before filtering
+      console.log(`[SettingsStore] All models for ${providerId}:`, response.models.map(m => ({ id: m.id, type: m.type })))
+
+      // Filter for embedding models
+      // ModelInfo has 'type' field set by fetchOpenAIModels, fetchGeminiModels, fetchZhipuModels
+      const embeddingModels = response.models.filter(m => {
+        // Check type field (set by our fetch*Models functions)
+        if (m.type === 'embedding') {
+          return true
+        }
+        // Fallback: check model ID for known embedding patterns
+        const embeddingPatterns = ['embedding', 'text-embedding', 'ada-002']
+        return embeddingPatterns.some(p => m.id.toLowerCase().includes(p))
+      })
+
+      console.log(`[SettingsStore] Filtered embedding models for ${providerId}:`, embeddingModels.length)
+      return embeddingModels
+    } catch (error) {
+      console.error(`[SettingsStore] Failed to fetch embedding models for ${providerId}:`, error)
+      return []
+    }
+  }
+
+  /**
+   * Get chat models for a provider (filtered from full list)
+   * Excludes embedding and image-only models
+   */
+  async function getChatModels(providerId: string): Promise<OpenRouterModel[]> {
+    const models = await fetchModelsForProvider(providerId)
+    return models.filter(m => {
+      // Exclude embedding models
+      if (m.architecture?.output_modalities?.includes('embeddings')) {
+        return false
+      }
+      const embeddingPatterns = ['embedding', 'text-embedding', 'ada-002']
+      if (embeddingPatterns.some(p => m.id.toLowerCase().includes(p))) {
+        return false
+      }
+      // Include if has text output
+      return m.architecture?.output_modalities?.includes('text') ?? true
+    })
+  }
+
+  /**
+   * Get selected models for a provider (from user's selectedModels list)
+   * Returns full model info for each selected model ID
+   */
+  async function getSelectedModels(providerId: string): Promise<OpenRouterModel[]> {
+    const allModels = await fetchModelsForProvider(providerId)
+    const selectedIds = settings.value.ai.providers[providerId]?.selectedModels || []
+
+    // Map selected IDs to full model objects, preserving order
+    const selectedModels: OpenRouterModel[] = []
+    for (const id of selectedIds) {
+      const model = allModels.find(m => m.id === id)
+      if (model) {
+        selectedModels.push({
+          ...model,
+          name: getModelDisplayName(model.id) || model.name,
+        })
+      } else {
+        // Create placeholder for models not in the full list
+        selectedModels.push({
+          id,
+          name: getModelDisplayName(id) || id,
+          context_length: 0,
+          architecture: {
+            modality: 'text' as const,
+            input_modalities: ['text'],
+            output_modalities: ['text'],
+            tokenizer: 'unknown',
+          },
+          pricing: { prompt: '0', completion: '0', request: '0', image: '0' },
+          top_provider: { context_length: 0, max_completion_tokens: 0, is_moderated: false },
+          supported_parameters: [],
+        })
+      }
+    }
+
+    return selectedModels
+  }
+
+  /**
+   * Clear model cache for a provider (or all if no provider specified)
+   */
+  function clearModelsCache(providerId?: string) {
+    if (providerId) {
+      providerModels.value.delete(providerId)
+    } else {
+      providerModels.value.clear()
+    }
+  }
+
+  /**
+   * Add a custom model to the cache for a provider
+   */
+  function addCustomModelToCache(providerId: string, model: OpenRouterModel) {
+    const existing = providerModels.value.get(providerId) || []
+    if (!existing.find(m => m.id === model.id)) {
+      providerModels.value.set(providerId, [...existing, model])
+    }
+  }
+
+  /**
+   * Preload models for multiple providers in background
+   */
+  async function preloadModels(providerIds: string[]) {
+    await Promise.all(
+      providerIds.map(id => fetchModelsForProvider(id))
+    )
+  }
+
   return {
     settings,
     availableProviders,
@@ -346,5 +646,21 @@ export const useSettingsStore = defineStore('settings', () => {
     applyBaseTheme,
     updateColorTheme,
     updateBaseTheme,
+    // Model name cache
+    updateModelNameCache,
+    getModelDisplayName,
+    // Unified model list management
+    providerModels,
+    isModelsLoading,
+    getCachedModels,
+    hasModelsCache,
+    fetchModelsForProvider,
+    refreshModelsForProvider,
+    getEmbeddingModels,
+    getChatModels,
+    getSelectedModels,
+    clearModelsCache,
+    addCustomModelToCache,
+    preloadModels,
   }
 })

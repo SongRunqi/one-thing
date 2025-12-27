@@ -13,10 +13,11 @@ const claudeProvider: ProviderDefinition = {
     name: 'Claude',
     description: 'Claude 3.5, Claude 3 and other Anthropic models',
     defaultBaseUrl: 'https://api.anthropic.com/v1',
-    defaultModel: 'claude-3-5-sonnet-20241022',
+    defaultModel: 'claude-sonnet-4-20250514',
     icon: 'claude',
     supportsCustomBaseUrl: true,
     requiresApiKey: true,
+    // Models fetched dynamically from OpenRouter API
   },
 
   create: ({ apiKey, baseUrl }) => {

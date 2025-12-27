@@ -10,13 +10,50 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS, type ToolDefinition, type ToolCall } from '../../shared/ipc.js'
 import {
-  getAllTools,
+  getAllToolsV2,
+  getAllToolsV2Async,
+  getAllToolsAsync,
   executeTool,
   initializeToolRegistry,
   isInitialized,
+  zodToJsonSchema,
 } from '../tools/index.js'
-import type { ToolExecutionContext } from '../tools/index.js'
+import type { ToolExecutionContext, ToolInfo, ToolInfoAsync, ToolInitResult } from '../tools/index.js'
 import * as store from '../store.js'
+
+/**
+ * Convert V2 tool to ToolDefinition for frontend
+ */
+function toolInfoToDefinition(tool: ToolInfo): ToolDefinition {
+  const jsonSchema = zodToJsonSchema(tool.parameters)
+  const parameters: ToolDefinition['parameters'] = []
+
+  for (const [name, prop] of Object.entries(jsonSchema.properties)) {
+    const propObj = prop as Record<string, unknown>
+    const rawType = (propObj.type as string) || 'string'
+    // Map JSON Schema types to our supported types
+    const type = (['string', 'number', 'boolean', 'object', 'array'].includes(rawType)
+      ? rawType
+      : 'string') as 'string' | 'number' | 'boolean' | 'object' | 'array'
+    parameters.push({
+      name,
+      type,
+      description: (propObj.description as string) || '',
+      required: jsonSchema.required.includes(name),
+      enum: propObj.enum as string[] | undefined,
+    })
+  }
+
+  return {
+    id: tool.id,
+    name: tool.name,
+    description: tool.description,
+    parameters,
+    enabled: tool.enabled ?? true,
+    autoExecute: tool.autoExecute ?? false,
+    category: tool.category === 'mcp' ? 'custom' : tool.category,
+  }
+}
 
 /**
  * Register all tool-related IPC handlers
@@ -28,10 +65,12 @@ export function registerToolHandlers() {
   }
 
   // Get builtin tools only (MCP tools are managed in MCP settings page)
+  // Uses async version to include tools with dynamic descriptions
   ipcMain.handle(IPC_CHANNELS.GET_TOOLS, async () => {
     try {
-      // Get builtin tools only (filter out MCP tools)
-      const builtinTools: ToolDefinition[] = getAllTools()
+      // Get all tools (legacy + V2 static + V2 async) and filter out MCP tools
+      const allTools = await getAllToolsAsync()
+      const builtinTools: ToolDefinition[] = allTools
         .filter(t => !t.id.startsWith('mcp:'))
         .map(t => ({
           ...t,

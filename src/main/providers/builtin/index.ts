@@ -15,6 +15,9 @@ import deepseek from './deepseek.js'
 import kimi from './kimi.js'
 import zhipu from './zhipu.js'
 import openrouter from './openrouter.js'
+import gemini from './gemini.js'
+import claudeCode from './claude-code.js'
+import githubCopilot from './github-copilot.js'
 
 import type { ProviderDefinition } from '../types.js'
 
@@ -26,6 +29,9 @@ export const builtinProviders: ProviderDefinition[] = [
   kimi,
   zhipu,
   openrouter,
+  gemini,
+  claudeCode,
+  githubCopilot,
 ]
 
 export default builtinProviders

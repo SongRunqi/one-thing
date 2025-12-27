@@ -13,11 +13,22 @@ import type { ToolDefinition, ToolCall, ToolParameter, ProviderConfig, ToolSetti
 export type { ToolDefinition, ToolCall, ToolParameter }
 
 /**
+ * Metadata update payload from V2 tools
+ */
+export interface ToolMetadataUpdate {
+  title?: string
+  metadata?: Record<string, unknown>
+}
+
+/**
  * Context provided to tool handlers during execution
  */
 export interface ToolExecutionContext {
   sessionId: string
   messageId: string
+  toolCallId?: string  // ID of the tool call for metadata updates
+  // Sandbox boundary for file access restrictions
+  workingDirectory?: string  // Session's working directory (sandbox boundary)
   // Extended context for Tool Agent delegation
   providerId?: string
   providerConfig?: ProviderConfig
@@ -27,6 +38,8 @@ export interface ToolExecutionContext {
   // Step event callbacks for delegate tool (Tool Agent forwards its steps)
   onStepStart?: (step: Step) => void
   onStepComplete?: (step: Step) => void
+  // V2 tool metadata streaming callback
+  onMetadata?: (update: ToolMetadataUpdate) => void
 }
 
 /**

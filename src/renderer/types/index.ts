@@ -8,11 +8,16 @@ import type {
   CustomProviderConfig,
   ProviderInfo,
   ModelInfo,
+  EmbeddingModelInfo,
+  OpenRouterModel,
   ColorTheme,
   BaseTheme,
   KeyboardShortcut,
   ShortcutSettings,
+  ChatSettings,
   EmbeddingSettings,
+  EmbeddingProviderType,
+  EmbeddingProviderMeta,
   MessageAttachment,
   AttachmentMediaType,
   SendMessageResponse,
@@ -40,6 +45,19 @@ import type {
   ContentPart,
   Step,
   StepType,
+  // UIMessage types (AI SDK 5.x compatible)
+  UIMessage,
+  UIMessagePart,
+  TextUIPart,
+  ReasoningUIPart,
+  ToolUIPart,
+  ToolUIState,
+  FileUIPart,
+  StepUIPart,
+  ErrorUIPart,
+  MessageMetadata,
+  UIMessageChunk,
+  UIMessageStreamData,
   // MCP types
   MCPServerConfig,
   MCPServerState,
@@ -84,6 +102,8 @@ import type {
   Agent,
   AgentAvatar,
   AgentVoice,
+  AgentPermissions,
+  SkillPermission,
   GetAgentsResponse,
   CreateAgentResponse,
   UpdateAgentResponse,
@@ -107,6 +127,7 @@ import type {
   MemoryVividness,
   GetAgentRelationshipResponse,
   AddAgentMemoryResponse,
+  DeleteAgentMemoryResponse,
   RecallAgentMemoryResponse,
   GetActiveMemoriesResponse,
   UpdateAgentRelationshipResponse,
@@ -123,11 +144,16 @@ export type {
   CustomProviderConfig,
   ProviderInfo,
   ModelInfo,
+  EmbeddingModelInfo,
+  OpenRouterModel,
   ColorTheme,
   BaseTheme,
   KeyboardShortcut,
   ShortcutSettings,
+  ChatSettings,
   EmbeddingSettings,
+  EmbeddingProviderType,
+  EmbeddingProviderMeta,
   MessageAttachment,
   AttachmentMediaType,
   ToolDefinition,
@@ -137,6 +163,19 @@ export type {
   ContentPart,
   Step,
   StepType,
+  // UIMessage types (AI SDK 5.x compatible)
+  UIMessage,
+  UIMessagePart,
+  TextUIPart,
+  ReasoningUIPart,
+  ToolUIPart,
+  ToolUIState,
+  FileUIPart,
+  StepUIPart,
+  ErrorUIPart,
+  MessageMetadata,
+  UIMessageChunk,
+  UIMessageStreamData,
   // MCP types
   MCPServerConfig,
   MCPServerState,
@@ -156,6 +195,8 @@ export type {
   Agent,
   AgentAvatar,
   AgentVoice,
+  AgentPermissions,
+  SkillPermission,
   // User Profile types
   UserProfile,
   UserFact,
@@ -191,6 +232,8 @@ export interface ElectronAPI {
   onStepAdded: (callback: (data: { sessionId: string; messageId: string; step: any }) => void) => () => void
   onStepUpdated: (callback: (data: { sessionId: string; messageId: string; stepId: string; updates: any }) => void) => () => void
   onImageGenerated: (callback: (data: { id: string; url?: string; base64?: string; prompt: string; revisedPrompt?: string; model: string; sessionId: string; messageId: string; createdAt: number }) => void) => () => void
+  // UIMessage stream (AI SDK 5.x compatible)
+  onUIMessageStream: (callback: (data: UIMessageStreamData) => void) => () => void
   getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
   generateTitle: (message: string) => Promise<GenerateTitleResponse>
   editAndResend: (sessionId: string, messageId: string, newContent: string) => Promise<EditAndResendResponse>
@@ -198,13 +241,21 @@ export interface ElectronAPI {
   getSessions: () => Promise<GetSessionsResponse>
   createSession: (name: string, workspaceId?: string, agentId?: string) => Promise<CreateSessionResponse>
   switchSession: (sessionId: string) => Promise<SwitchSessionResponse>
+  getSession: (sessionId: string) => Promise<SwitchSessionResponse>
   deleteSession: (sessionId: string) => Promise<DeleteSessionResponse>
   renameSession: (sessionId: string, newName: string) => Promise<RenameSessionResponse>
   createBranch: (parentSessionId: string, branchFromMessageId: string) => Promise<CreateBranchResponse>
   updateSessionPin: (sessionId: string, isPinned: boolean) => Promise<UpdateSessionPinResponse>
   updateSessionModel: (sessionId: string, provider: string, model: string) => Promise<{ success: boolean; error?: string }>
+  updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) => Promise<{ success: boolean; error?: string }>
+  updateSessionAgent: (sessionId: string, agentId: string | null) => Promise<{ success: boolean; error?: string }>
+  updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
+  getSessionTokenUsage: (sessionId: string) => Promise<{ success: boolean; usage?: { totalInputTokens: number; totalOutputTokens: number; totalTokens: number; maxTokens: number }; error?: string }>
+  updateSessionMaxTokens: (sessionId: string, maxTokens: number) => Promise<{ success: boolean; error?: string }>
   getSettings: () => Promise<GetSettingsResponse>
   saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>
+  openSettingsWindow: () => Promise<{ success: boolean }>
+  onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void
   fetchModels: (
     provider: AIProvider,
     apiKey: string,
@@ -213,13 +264,24 @@ export interface ElectronAPI {
   ) => Promise<FetchModelsResponse>
   getCachedModels: (provider: AIProvider) => Promise<GetCachedModelsResponse>
   getProviders: () => Promise<GetProvidersResponse>
+  // New OpenRouter-based model API
+  getModelsWithCapabilities: (providerId: string) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
+  getAllModels: () => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
+  searchModels: (query: string, providerId?: string) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
+  refreshModelRegistry: () => Promise<{ success: boolean; error?: string }>
+  getModelNameAliases: () => Promise<{ success: boolean; aliases?: Record<string, string>; error?: string }>
+  getModelDisplayName: (modelId: string) => Promise<{ success: boolean; displayName?: string; error?: string }>
+  // Embedding models (from Models.dev registry)
+  getEmbeddingModels: (providerId: string) => Promise<{ success: boolean; models?: EmbeddingModelInfo[]; error?: string }>
+  getAllEmbeddingModels: () => Promise<{ success: boolean; models?: EmbeddingModelInfo[]; error?: string }>
+  getEmbeddingDimension: (modelId: string) => Promise<{ success: boolean; dimension?: number | null; error?: string }>
   // Tools methods
   getTools: () => Promise<GetToolsResponse>
   executeTool: (toolId: string, args: Record<string, any>, messageId: string, sessionId: string) => Promise<ExecuteToolResponse>
   cancelTool: (toolCallId: string) => Promise<{ success: boolean }>
   updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolCall>) => Promise<{ success: boolean }>
   updateContentParts: (sessionId: string, messageId: string, contentParts: ContentPart[]) => Promise<{ success: boolean }>
-  abortStream: () => Promise<{ success: boolean }>
+  abortStream: (sessionId?: string) => Promise<{ success: boolean }>
 
   // MCP methods
   mcpGetServers: () => Promise<MCPGetServersResponse>
@@ -278,6 +340,7 @@ export interface ElectronAPI {
   // Agent Memory methods
   getAgentRelationship: (agentId: string) => Promise<GetAgentRelationshipResponse>
   addAgentMemory: (agentId: string, content: string, category: AgentMemoryCategory, emotionalWeight?: number) => Promise<AddAgentMemoryResponse>
+  deleteAgentMemory: (memoryId: string) => Promise<DeleteAgentMemoryResponse>
   recallAgentMemory: (agentId: string, memoryId: string) => Promise<RecallAgentMemoryResponse>
   getActiveAgentMemories: (agentId: string, limit?: number) => Promise<GetActiveMemoriesResponse>
   updateAgentRelationship: (agentId: string, updates: { trustLevel?: number; familiarity?: number; mood?: AgentMood; moodNotes?: string }) => Promise<UpdateAgentRelationshipResponse>
@@ -292,6 +355,44 @@ export interface ElectronAPI {
   loadAllMedia: () => Promise<{ id: string; type: 'image'; filePath: string; prompt: string; revisedPrompt?: string; model: string; createdAt: number; sessionId: string; messageId: string }[]>
   deleteMedia: (id: string) => Promise<boolean>
   clearAllMedia: () => Promise<void>
+
+  // OAuth methods
+  oauthStart: (providerId: string) => Promise<{
+    success: boolean
+    error?: string
+    // For device flow (GitHub Copilot)
+    userCode?: string
+    verificationUri?: string
+    deviceCode?: string
+    // For manual code entry flow (Claude Code)
+    requiresCodeEntry?: boolean
+    state?: string
+    instructions?: string
+  }>
+  oauthCallback: (providerId: string, code: string, state: string) => Promise<{
+    success: boolean
+    error?: string
+  }>
+  oauthLogout: (providerId: string) => Promise<{ success: boolean; error?: string }>
+  oauthGetStatus: (providerId: string) => Promise<{
+    success: boolean
+    isLoggedIn: boolean
+    expiresAt?: number
+    error?: string
+  }>
+  oauthDevicePoll: (providerId: string, deviceCode: string) => Promise<{
+    success: boolean
+    completed?: boolean
+    error?: string
+  }>
+  oauthRefresh: (providerId: string) => Promise<{ success: boolean; error?: string }>
+  oauthTestDirect: (providerId: string) => Promise<{ success: boolean; error?: string; response?: any }>
+  onOAuthTokenRefreshed: (callback: (data: { providerId: string }) => void) => () => void
+  onOAuthTokenExpired: (callback: (data: { providerId: string; error?: string }) => void) => () => void
+
+  // Menu event listeners
+  onMenuNewChat: (callback: () => void) => () => void
+  onMenuCloseChat: (callback: () => void) => () => void
 }
 
 declare global {

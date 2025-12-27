@@ -16,7 +16,7 @@
         :style="{ flex: panel.flex }"
         :show-settings="index === 0 && showSettings"
         :show-agent-settings="index === 0 && showAgentSettings"
-        :show-sidebar-toggle="index === 0 && sidebarCollapsed"
+        :show-sidebar-toggle="index === 0 && sidebarCollapsed && !mediaPanelOpen"
         @close="closePanel(panel.id)"
         @split="openSessionPicker(panel.id)"
         @close-settings="$emit('close-settings')"
@@ -61,6 +61,20 @@
             />
           </div>
           <div class="session-picker-list">
+            <!-- New Chat option (only show when not searching) -->
+            <button
+              v-if="!sessionSearchQuery.trim()"
+              class="session-picker-item new-chat-item"
+              @click="createNewChatForSplit"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+              <span class="session-name">New Chat</span>
+              <span class="new-badge">Create</span>
+            </button>
+
+            <!-- Existing sessions -->
             <button
               v-for="session in filteredSessions"
               :key="session.id"
@@ -100,6 +114,7 @@ const props = defineProps<{
   showAgentSettings?: boolean
   sidebarCollapsed?: boolean
   showHoverTrigger?: boolean
+  mediaPanelOpen?: boolean
 }>()
 
 defineEmits<{
@@ -179,6 +194,18 @@ function closeSessionPicker() {
 function selectSessionForSplit(sessionId: string) {
   if (!splitFromPanelId.value) return
   splitPanel(splitFromPanelId.value, sessionId)
+  closeSessionPicker()
+}
+
+// Create new chat for split view
+async function createNewChatForSplit() {
+  if (!splitFromPanelId.value) return
+
+  // Create new session without switching to it
+  const newSession = await sessionsStore.createSessionWithoutSwitch('New Chat')
+  if (newSession) {
+    splitPanel(splitFromPanelId.value, newSession.id)
+  }
   closeSessionPicker()
 }
 
@@ -330,6 +357,8 @@ onUnmounted(() => {
   -webkit-app-region: no-drag;
   position: relative;
   overflow: hidden;
+  /* Ensure proper border-radius clipping for child panels */
+  border-radius: var(--radius-lg);
 }
 
 .panel-resizer {
@@ -494,6 +523,29 @@ onUnmounted(() => {
 }
 
 .session-picker-item .current-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--accent);
+  color: white;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.session-picker-item.new-chat-item {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  padding-bottom: 10px;
+}
+
+.session-picker-item.new-chat-item svg {
+  color: var(--accent);
+}
+
+.session-picker-item.new-chat-item:hover {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.session-picker-item .new-badge {
   font-size: 11px;
   padding: 2px 6px;
   background: var(--accent);

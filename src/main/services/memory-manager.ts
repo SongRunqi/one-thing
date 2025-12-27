@@ -100,7 +100,13 @@ async function findSimilarMemories(
       }
     }
 
-    const similarity = cosineSimilarity(newEmbedding, existingEmbedding)
+    let similarity = 0
+    try {
+      similarity = cosineSimilarity(newEmbedding, existingEmbedding)
+    } catch (e) {
+      console.warn('[MemoryManager] Embedding dimension mismatch, treating as 0 similarity')
+      continue
+    }
 
     // Use lower threshold for same-category facts (they're more likely to be related)
     const isSameCategory = targetCategory && memory.category === targetCategory
@@ -151,7 +157,7 @@ async function decideMemoryOperation(
         model: providerConfig.model,
       },
       [{ role: 'user', content: prompt }],
-      { temperature: 0.1, maxTokens: 300 }
+      { temperature: 0.1, maxTokens: 800 }  // Increased for UPDATE operations with long mergedContent
     )
 
     console.log(`[MemoryManager] LLM raw response: ${response.slice(0, 200)}...`)
@@ -212,6 +218,7 @@ export async function processUserFact(
     id: f.id,
     content: f.content,
     category: f.category,  // Include category for same-category matching
+    embedding: f.embedding,  // Include embedding to avoid re-embedding
   }))
 
   // Step 2: Find similar facts using embedding (with category awareness)
@@ -319,6 +326,7 @@ export async function processAgentMemory(
     id: m.id,
     content: m.content,
     category: m.category,  // Include category for same-category matching
+    embedding: m.embedding,  // Include embedding to avoid re-embedding
   }))
 
   // Step 2: Find similar memories using embedding (with category awareness)

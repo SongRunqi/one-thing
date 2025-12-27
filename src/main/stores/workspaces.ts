@@ -43,12 +43,14 @@ export function createWorkspace(
   workspaceId: string,
   name: string,
   avatar: WorkspaceAvatar,
+  workingDirectory?: string,
   systemPrompt?: string  // Optional: deprecated, use Agent instead
 ): Workspace {
   const workspace: Workspace = {
     id: workspaceId,
     name,
     avatar,
+    ...(workingDirectory && { workingDirectory }),
     ...(systemPrompt && { systemPrompt }),  // Only include if provided (for migration)
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -65,7 +67,7 @@ export function createWorkspace(
 // Update an existing workspace
 export function updateWorkspace(
   workspaceId: string,
-  updates: Partial<Pick<Workspace, 'name' | 'avatar' | 'systemPrompt'>>
+  updates: Partial<Pick<Workspace, 'name' | 'avatar' | 'workingDirectory' | 'systemPrompt'>>
 ): Workspace | undefined {
   const workspaces = loadWorkspacesIndex()
   const index = workspaces.findIndex(w => w.id === workspaceId)
@@ -79,6 +81,9 @@ export function updateWorkspace(
   }
   if (updates.avatar !== undefined) {
     workspace.avatar = updates.avatar
+  }
+  if (updates.workingDirectory !== undefined) {
+    workspace.workingDirectory = updates.workingDirectory || undefined
   }
   if (updates.systemPrompt !== undefined) {
     workspace.systemPrompt = updates.systemPrompt

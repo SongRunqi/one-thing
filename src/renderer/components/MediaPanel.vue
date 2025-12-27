@@ -13,7 +13,7 @@
             :class="{ active: activeNav === item.id }"
             @click="activeNav = item.id"
           >
-            <component :is="item.icon" class="nav-icon" />
+            <component :is="item.icon" :size="20" :stroke-width="1.5" class="nav-icon" />
             <span class="nav-label">{{ item.label }}</span>
             <span v-if="item.id === 'media' && mediaStore.images.length > 0" class="nav-badge">
               {{ mediaStore.images.length }}
@@ -34,6 +34,13 @@
       <div class="media-content">
         <!-- Memory Content -->
         <MemoryContent v-if="activeNav === 'memory'" />
+
+        <!-- Agents Content -->
+        <AgentsContent
+          v-else-if="activeNav === 'agents'"
+          @create-agent="$emit('create-agent')"
+          @edit-agent="(agent) => $emit('edit-agent', agent)"
+        />
 
         <!-- Media Content -->
         <template v-else-if="activeNav === 'media'">
@@ -78,6 +85,9 @@
           </div>
         </template>
 
+        <!-- Archived Chats Content -->
+        <ArchivedChatsContent v-else-if="activeNav === 'archive'" />
+
         <!-- Other content (Downloads, etc.) -->
         <template v-else>
           <div class="content-header">
@@ -108,9 +118,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, h, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import MemoryContent from './MemoryContent.vue'
+import AgentsContent from './AgentsContent.vue'
+import ArchivedChatsContent from './ArchivedChatsContent.vue'
 import { useMediaStore, type GeneratedMedia } from '@/stores/media'
+import type { Agent } from '@/types'
+import {
+  Sparkles,
+  Bot,
+  Images,
+  Download,
+  PanelTop,
+  LayoutGrid,
+  Zap,
+  Archive
+} from 'lucide-vue-next'
 
 const props = defineProps<{
   visible: boolean
@@ -119,6 +142,8 @@ const props = defineProps<{
 
 defineEmits<{
   close: []
+  'create-agent': []
+  'edit-agent': [agent: Agent]
 }>()
 
 const mediaStore = useMediaStore()
@@ -172,134 +197,16 @@ onUnmounted(() => {
 // Keep the last selected tab when panel is reopened
 // (activeNav persists between visibility toggles since it's not reset)
 
-// Icon components
-const MediaIcon = {
-  render() {
-    return h('svg', {
-      width: 20,
-      height: 20,
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': 2
-    }, [
-      h('rect', { x: 3, y: 3, width: 18, height: 18, rx: 2, ry: 2 }),
-      h('circle', { cx: 8.5, cy: 8.5, r: 1.5 }),
-      h('polyline', { points: '21 15 16 10 5 21' })
-    ])
-  }
-}
-
-const DownloadsIcon = {
-  render() {
-    return h('svg', {
-      width: 20,
-      height: 20,
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': 2
-    }, [
-      h('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
-      h('polyline', { points: '7 10 12 15 17 10' }),
-      h('line', { x1: 12, y1: 15, x2: 12, y2: 3 })
-    ])
-  }
-}
-
-const EaselsIcon = {
-  render() {
-    return h('svg', {
-      width: 20,
-      height: 20,
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': 2
-    }, [
-      h('rect', { x: 2, y: 3, width: 20, height: 14, rx: 2, ry: 2 }),
-      h('line', { x1: 8, y1: 21, x2: 16, y2: 21 }),
-      h('line', { x1: 12, y1: 17, x2: 12, y2: 21 })
-    ])
-  }
-}
-
-const SpacesIcon = {
-  render() {
-    return h('svg', {
-      width: 20,
-      height: 20,
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': 2
-    }, [
-      h('rect', { x: 3, y: 3, width: 7, height: 7 }),
-      h('rect', { x: 14, y: 3, width: 7, height: 7 }),
-      h('rect', { x: 14, y: 14, width: 7, height: 7 }),
-      h('rect', { x: 3, y: 14, width: 7, height: 7 })
-    ])
-  }
-}
-
-const BoostsIcon = {
-  render() {
-    return h('svg', {
-      width: 20,
-      height: 20,
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': 2
-    }, [
-      h('polygon', { points: '13 2 3 14 12 14 11 22 21 10 12 10 13 2' })
-    ])
-  }
-}
-
-const ArchiveIcon = {
-  render() {
-    return h('svg', {
-      width: 20,
-      height: 20,
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': 2
-    }, [
-      h('polyline', { points: '21 8 21 21 3 21 3 8' }),
-      h('rect', { x: 1, y: 3, width: 22, height: 5 }),
-      h('line', { x1: 10, y1: 12, x2: 14, y2: 12 })
-    ])
-  }
-}
-
-const MemoryIcon = {
-  render() {
-    return h('svg', {
-      width: 20,
-      height: 20,
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      'stroke-width': 2
-    }, [
-      // Brain icon
-      h('path', { d: 'M12 2a8 8 0 0 0-8 8c0 2 .8 3.7 2 5l6 7 6-7a7.2 7.2 0 0 0 2-5 8 8 0 0 0-8-8z' }),
-      h('path', { d: 'M12 2v8' }),
-      h('path', { d: 'M8 6h8' })
-    ])
-  }
-}
-
+// Navigation items with lucide-vue-next icons
 const navItems = [
-  { id: 'memory', label: 'Memory', icon: MemoryIcon },
-  { id: 'media', label: 'Media', icon: MediaIcon },
-  { id: 'downloads', label: 'Downloads', icon: DownloadsIcon },
-  { id: 'easels', label: 'Easels', icon: EaselsIcon },
-  { id: 'spaces', label: 'Spaces', icon: SpacesIcon },
-  { id: 'boosts', label: 'Boosts', icon: BoostsIcon },
-  { id: 'archive', label: 'Archived Tabs', icon: ArchiveIcon },
+  { id: 'memory', label: 'Memory', icon: Sparkles },
+  { id: 'agents', label: 'Agents', icon: Bot },
+  { id: 'media', label: 'Media', icon: Images },
+  { id: 'downloads', label: 'Downloads', icon: Download },
+  { id: 'easels', label: 'Easels', icon: PanelTop },
+  { id: 'spaces', label: 'Spaces', icon: LayoutGrid },
+  { id: 'boosts', label: 'Boosts', icon: Zap },
+  { id: 'archive', label: 'Archived Chats', icon: Archive },
 ]
 </script>
 
@@ -308,16 +215,26 @@ const navItems = [
   width: 500px;
   flex-shrink: 0;
   display: flex;
-  background: var(--bg-elevated);
-  border-right: 1px solid var(--border);
+  background: var(--bg);
   overflow: hidden;
 }
 
-/* Navigation */
+/* Navigation - elevated sidebar */
 .media-nav {
   display: flex;
   flex-direction: column;
+  background: var(--bg-elevated);
   border-right: 1px solid var(--border);
+  box-shadow:
+    2px 0 8px rgba(0, 0, 0, 0.1),
+    4px 0 16px rgba(0, 0, 0, 0.05);
+  z-index: 1;
+}
+
+html[data-theme='light'] .media-nav {
+  box-shadow:
+    2px 0 8px rgba(0, 0, 0, 0.04),
+    4px 0 16px rgba(0, 0, 0, 0.02);
 }
 
 .traffic-lights-space {
@@ -410,16 +327,18 @@ const navItems = [
   justify-content: center;
 }
 
-/* Content */
+/* Content Container */
 .media-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding: 12px;
+  padding-top: 0;
 }
 
 .content-header {
-  padding: 16px;
+  padding: 16px 4px;
 }
 
 .search-input {
@@ -445,7 +364,7 @@ const navItems = [
 .content-body {
   flex: 1;
   overflow-y: auto;
-  padding: 0 16px;
+  padding: 0 4px;
 }
 
 /* Empty State */
@@ -537,10 +456,11 @@ const navItems = [
   text-transform: uppercase;
 }
 
-/* Transition */
+/* Transition - width-based for proper flexbox layout */
 .media-panel-enter-active,
 .media-panel-leave-active {
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
 }
 
 .media-panel-enter-from,

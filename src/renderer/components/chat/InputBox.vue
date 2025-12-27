@@ -20,17 +20,11 @@
       >
         <img v-if="file.preview" :src="file.preview" :alt="file.name" class="attachment-thumb" />
         <div v-else class="attachment-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
+          <FileText :size="20" :stroke-width="2" />
         </div>
         <span class="attachment-name">{{ file.name }}</span>
         <button class="attachment-remove" @click="removeAttachment(file.id)" title="Remove">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <X :size="14" :stroke-width="2.5" />
         </button>
       </div>
     </div>
@@ -41,10 +35,7 @@
       <div class="quoted-content-wrapper">
         <div class="quoted-text">{{ quotedText }}</div>
         <button class="remove-quote-btn" @click="clearQuotedText" title="Remove">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <X :size="16" :stroke-width="2.5" />
         </button>
       </div>
     </div>
@@ -61,17 +52,16 @@
 
       <!-- Input area - full width -->
       <div class="input-area">
-        <!-- Mirror div for caret coordinate calculation -->
-        <div ref="mirrorRef" class="textarea-mirror" aria-hidden="true"></div>
+        <!-- Mirror div for caret coordinate calculation (with pre-created probe) -->
+        <div ref="mirrorRef" class="textarea-mirror" aria-hidden="true"><span ref="probeRef">&#8203;</span></div>
 
         <!-- Custom animated caret -->
         <div
-          v-if="isFocused && !isLoading"
+          v-if="isFocused && caretVisible"
           class="custom-caret"
           :style="caretStyle"
         >
           <div class="caret-main"></div>
-          <div class="caret-tail"></div>
         </div>
 
         <textarea
@@ -80,11 +70,9 @@
           class="composer-input"
           placeholder="Ask anything..."
           @keydown="handleKeyDown"
-          @focus="isFocused = true"
-          @blur="isFocused = false"
+          @focus="handleFocus"
+          @blur="handleBlur"
           @input="handleInput"
-          @click="updateCaret"
-          @keyup="updateCaret"
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
           rows="1"
@@ -96,9 +84,7 @@
         <!-- Left side: attach and tools -->
         <div class="toolbar-left">
           <button class="toolbar-btn" title="Attach file" @click="handleAttach">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-            </svg>
+            <Paperclip :size="18" :stroke-width="2" />
           </button>
 
           <!-- Tools menu component -->
@@ -111,7 +97,10 @@
           <SkillsMenu @open-settings="openToolSettings" />
 
           <!-- Model selector component -->
-          <ModelSelector />
+          <ModelSelector :session-id="props.sessionId" />
+
+          <!-- Context indicator component -->
+          <ContextIndicator :session-id="props.sessionId" />
         </div>
 
         <!-- Right side: send/stop button -->
@@ -122,9 +111,7 @@
             @click="stopGeneration"
             title="Stop generation"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-            </svg>
+            <Square :size="16" fill="currentColor" :stroke-width="0" />
           </button>
           <button
             v-else
@@ -133,10 +120,7 @@
             :disabled="!canSend"
             title="Send message"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+            <Send :size="18" :stroke-width="2" />
           </button>
         </div>
       </div>
@@ -151,8 +135,10 @@ import { useSessionsStore } from '@/stores/sessions'
 import type { SkillDefinition, MessageAttachment, AttachmentMediaType } from '@/types'
 import SkillPicker from './SkillPicker.vue'
 import ModelSelector from './ModelSelector.vue'
+import ContextIndicator from './ContextIndicator.vue'
 import ToolsMenu from './ToolsMenu.vue'
 import SkillsMenu from './SkillsMenu.vue'
+import { FileText, X, Paperclip, Square, Send } from 'lucide-vue-next'
 
 // Local interface for file preview (extends MessageAttachment with preview)
 interface AttachedFile extends Omit<MessageAttachment, 'base64Data'> {
@@ -163,6 +149,7 @@ interface AttachedFile extends Omit<MessageAttachment, 'base64Data'> {
 interface Props {
   isLoading?: boolean
   maxChars?: number
+  sessionId?: string
 }
 
 interface Emits {
@@ -181,6 +168,9 @@ const emit = defineEmits<Emits>()
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
 
+// Get the effective session ID for this panel
+const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
+
 // Cache input text per session
 const sessionInputCache = new Map<string, string>()
 
@@ -190,73 +180,124 @@ const isFocused = ref(false)
 const isSending = ref(false)
 const isComposing = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const mirrorRef = ref<HTMLDivElement | null>(null)
 const composerWrapperRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const attachedFiles = ref<AttachedFile[]>([])
 
+// Custom caret refs
+const mirrorRef = ref<HTMLDivElement | null>(null)
+const probeRef = ref<HTMLSpanElement | null>(null)
+
 // ResizeObserver for dynamic height tracking
 let composerResizeObserver: ResizeObserver | null = null
 
-// Caret position state
+// Caret position state with optimizations
 const caretPos = ref({ x: 0, y: 0, height: 20 })
+const caretVisible = ref(true)
+let cachedMirrorStyle = false
+let cachedCaretHeight = 20
+let cachedLineHeight = 24
+let cachedYOffset = 0
+let pendingCaretUpdate = false
 
 const caretStyle = computed(() => ({
   transform: `translate3d(${caretPos.value.x}px, ${caretPos.value.y}px, 0)`,
   height: `${caretPos.value.height}px`
 }))
 
-function updateCaret() {
+// Schedule caret update with requestAnimationFrame (throttled)
+function scheduleCaretUpdate() {
+  if (pendingCaretUpdate) return
+  pendingCaretUpdate = true
+  requestAnimationFrame(() => {
+    pendingCaretUpdate = false
+    updateCaretPosition()
+  })
+}
+
+// Optimized caret position update
+function updateCaretPosition() {
+  const textarea = textareaRef.value
+  const mirror = mirrorRef.value
+  const probe = probeRef.value
+  if (!textarea || !mirror || !probe) return
+
+  const { selectionStart, selectionEnd } = textarea
+
+  // Hide caret when there's a selection
+  if (selectionStart !== selectionEnd) {
+    caretVisible.value = false
+    return
+  }
+  caretVisible.value = true
+
+  // Only sync mirror style once (until cache is invalidated)
+  if (!cachedMirrorStyle) {
+    syncMirrorStyle()
+    cachedMirrorStyle = true
+  }
+
+  // Update mirror content (probe is already inside)
+  const content = textarea.value.substring(0, selectionStart)
+
+  // Clear all text nodes before probe, then add new content
+  while (mirror.firstChild && mirror.firstChild !== probe) {
+    mirror.removeChild(mirror.firstChild)
+  }
+  // Insert text node before probe (even if empty - creates proper positioning)
+  const textNode = document.createTextNode(content)
+  mirror.insertBefore(textNode, probe)
+
+  // Read position (single reflow)
+  const x = probe.offsetLeft - textarea.scrollLeft
+  const y = probe.offsetTop - textarea.scrollTop + cachedYOffset
+
+  caretPos.value = { x, y, height: cachedCaretHeight }
+}
+
+// Sync mirror style with textarea (called only when cache is invalid)
+function syncMirrorStyle() {
   const textarea = textareaRef.value
   const mirror = mirrorRef.value
   if (!textarea || !mirror) return
 
-  const { selectionStart, selectionEnd } = textarea
-  if (selectionStart !== selectionEnd) {
-    caretPos.value = { ...caretPos.value, opacity: 0 } as any
-    return
-  }
-
-  const style = window.getComputedStyle(textarea)
-  const properties = [
-    'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing',
-    'textTransform', 'wordSpacing', 'textIndent', 'whiteSpace', 'wordBreak',
-    'wordWrap', 'paddingLeft', 'paddingRight', 'paddingBottom',
-    'borderLeftWidth', 'borderRightWidth', 'lineHeight', 'width'
-  ]
-
-  properties.forEach(prop => {
-    (mirror.style as any)[prop] = (style as any)[prop]
+  const style = getComputedStyle(textarea)
+  const props = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'width', 'paddingLeft', 'paddingRight', 'whiteSpace', 'wordBreak', 'wordWrap'] as const
+  props.forEach(p => {
+    (mirror.style as any)[p] = style[p]
   })
 
-  const content = textarea.value.substring(0, selectionStart)
-  mirror.textContent = content
-
-  const probe = document.createElement('span')
-  probe.textContent = '\u200b'
-  mirror.appendChild(probe)
-
   const fontSize = parseFloat(style.fontSize) || 16
-  const lineHeight = parseFloat(style.lineHeight) || 24
-  const caretHeight = fontSize * 1.6
-  const yOffset = (lineHeight - caretHeight) / 2 - 2
+  cachedLineHeight = parseFloat(style.lineHeight) || 24
+  cachedCaretHeight = fontSize * 1.4
+  cachedYOffset = (cachedLineHeight - cachedCaretHeight) / 2 - 2
+}
 
-  const x = probe.offsetLeft - textarea.scrollLeft
-  const y = probe.offsetTop - textarea.scrollTop + yOffset
+// Handle selection change (fires on any cursor movement)
+function handleSelectionChange() {
+  if (document.activeElement === textareaRef.value) {
+    scheduleCaretUpdate()
+  }
+}
 
-  caretPos.value = { x, y, height: caretHeight }
+// Invalidate cache on focus
+function handleFocus() {
+  isFocused.value = true
+  cachedMirrorStyle = false
+  scheduleCaretUpdate()
+  // Listen for selection changes while focused
+  document.addEventListener('selectionchange', handleSelectionChange)
+}
+
+function handleBlur() {
+  isFocused.value = false
+  document.removeEventListener('selectionchange', handleSelectionChange)
 }
 
 function handleInput() {
   adjustHeight()
-  updateCaret()
+  scheduleCaretUpdate()
 }
-
-watch(isFocused, (val) => {
-  if (val) {
-    nextTick(updateCaret)
-  }
-})
 
 // Skills state
 const availableSkills = ref<SkillDefinition[]>([])
@@ -272,7 +313,7 @@ watch(() => props.isLoading, (loading) => {
 
 // Cache input text when switching sessions
 let previousSessionId: string | null = null
-watch(() => sessionsStore.currentSessionId, (newSessionId, oldSessionId) => {
+watch(effectiveSessionId, (newSessionId, oldSessionId) => {
   // Save current input to cache for the old session
   if (oldSessionId && messageInput.value) {
     sessionInputCache.set(oldSessionId, messageInput.value)
@@ -288,11 +329,11 @@ watch(() => sessionsStore.currentSessionId, (newSessionId, oldSessionId) => {
       messageInput.value = cachedInput
       nextTick(() => {
         adjustHeight()
-        updateCaret()
+        scheduleCaretUpdate()
       })
     }
   }
-  previousSessionId = newSessionId
+  previousSessionId = newSessionId ?? null
 }, { immediate: true })
 
 function handleToolsEnabledChange(enabled: boolean) {
@@ -372,11 +413,19 @@ function sendMessage() {
     quotedText.value = ''
     attachedFiles.value = [] // Clear attachments after sending
     // Clear the cache for this session since message was sent
-    if (sessionsStore.currentSessionId) {
-      sessionInputCache.delete(sessionsStore.currentSessionId)
+    if (effectiveSessionId.value) {
+      sessionInputCache.delete(effectiveSessionId.value)
     }
     nextTick(() => {
       adjustHeight()
+      // Reset scroll position to top
+      if (textareaRef.value) {
+        textareaRef.value.scrollTop = 0
+      }
+      // Refocus the textarea after sending
+      textareaRef.value?.focus()
+      // Reset caret position to start
+      scheduleCaretUpdate()
     })
   }
 }
@@ -392,6 +441,8 @@ function adjustHeight() {
   textarea.style.height = 'auto'
   const newHeight = Math.min(Math.max(textarea.scrollHeight, 24), 200)
   textarea.style.height = `${newHeight}px`
+  // Invalidate mirror cache when height changes
+  cachedMirrorStyle = false
 }
 
 function handleAttach() {
@@ -510,7 +561,7 @@ function setMessageInput(text: string) {
   nextTick(() => {
     adjustHeight()
     textareaRef.value?.focus()
-    updateCaret()
+    scheduleCaretUpdate()
   })
 }
 
@@ -521,20 +572,32 @@ defineExpose({
   focus: focusTextarea,
 })
 
+// Invalidate caret cache on window resize
+function handleWindowResize() {
+  cachedMirrorStyle = false
+}
+
 onMounted(async () => {
   adjustHeight()
   await loadSkills()
+
+  // Listen for window resize to invalidate caret cache
+  window.addEventListener('resize', handleWindowResize)
 
   if (composerWrapperRef.value) {
     composerResizeObserver = new ResizeObserver((entries) => {
       const height = entries[0].contentRect.height
       document.documentElement.style.setProperty('--composer-height', `${height + 40}px`)
+      // Also invalidate caret cache when composer resizes
+      cachedMirrorStyle = false
     })
     composerResizeObserver.observe(composerWrapperRef.value)
   }
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleWindowResize)
+  document.removeEventListener('selectionchange', handleSelectionChange)
   if (composerResizeObserver) {
     composerResizeObserver.disconnect()
     composerResizeObserver = null
@@ -776,7 +839,50 @@ html[data-theme='light'] .composer.focused {
 
 /* Input area */
 .input-area {
+  position: relative;
   padding: 0 18px 6px 18px;
+}
+
+/* Mirror div for caret position calculation */
+.textarea-mirror {
+  position: absolute;
+  top: 12px;
+  left: 18px;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: hidden;
+  z-index: -1;
+}
+
+/* Custom animated caret */
+.custom-caret {
+  position: absolute;
+  top: 12px;
+  left: 18px;
+  width: 2px;
+  pointer-events: none;
+  z-index: 10;
+  transition: transform 0.06s ease-out;
+}
+
+.caret-main {
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 1px;
+  box-shadow: 0 0 8px var(--accent), 0 0 12px rgba(59, 130, 246, 0.3);
+  animation: caret-blink 0.9s ease-in-out infinite;
+}
+
+@keyframes caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+html[data-theme='light'] .caret-main {
+  box-shadow: 0 0 6px rgba(37, 99, 235, 0.4);
 }
 
 .composer-input {
@@ -793,61 +899,7 @@ html[data-theme='light'] .composer.focused {
   min-height: 28px;
   max-height: 200px;
   overflow-y: auto;
-  caret-color: transparent !important;
-}
-
-.textarea-mirror {
-  position: absolute;
-  top: 12px;
-  left: 18px;
-  visibility: hidden;
-  pointer-events: none;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  overflow: hidden;
-  z-index: -1;
-}
-
-.custom-caret {
-  position: absolute;
-  top: 12px;
-  left: 18px;
-  width: 2px;
-  pointer-events: none;
-  z-index: 10;
-  transition: transform 0.12s cubic-bezier(0.18, 0.89, 0.32, 1.15), opacity 0.15s ease;
-}
-
-.caret-main {
-  width: 100%;
-  height: 100%;
-  background: var(--accent);
-  border-radius: 1px;
-  box-shadow: 0 0 8px var(--accent), 0 0 15px rgba(59, 130, 246, 0.4);
-  animation: caret-blink 0.8s ease-in-out infinite;
-}
-
-.caret-tail {
-  position: absolute;
-  top: 0;
-  left: -2px;
-  width: 8px;
-  height: 100%;
-  background: linear-gradient(to right, var(--accent), transparent);
-  opacity: 0.4;
-  filter: blur(4px);
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
-}
-
-@keyframes caret-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-html[data-theme='light'] .caret-main {
-  box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
+  caret-color: transparent;
 }
 
 .composer-input::placeholder {
@@ -868,17 +920,23 @@ html[data-theme='light'] .caret-main {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
+  gap: 8px;
 }
 
-.toolbar-left,
-.toolbar-right {
+.toolbar-left {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .toolbar-right {
+  display: flex;
+  align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 /* Toolbar buttons */
@@ -976,17 +1034,24 @@ html[data-theme='light'] .send-btn:disabled {
 
 /* Responsive styles */
 @media (max-width: 768px) {
-  .composer-wrapper { max-width: 100%; }
+  .composer-wrapper { max-width: 100%; width: 95%; }
   .composer { border-radius: 14px; }
   .composer-input { font-size: 15px; }
-  .toolbar-btn { width: 34px; height: 34px; }
+  .toolbar-btn { width: 32px; height: 32px; }
   .send-btn { width: 36px; height: 36px; }
+}
+
+@media (max-width: 600px) {
+  .composer-wrapper { width: 100%; }
+  .toolbar-left { gap: 2px; }
+  .toolbar-btn { width: 30px; height: 30px; }
 }
 
 @media (max-width: 480px) {
   .composer { border-radius: 12px; }
   .input-area { padding: 10px 12px 0; }
-  .composer-toolbar { padding: 6px 10px; }
+  .composer-toolbar { padding: 6px 8px; }
   .composer-input { font-size: 15px; }
+  .send-btn { width: 34px; height: 34px; }
 }
 </style>

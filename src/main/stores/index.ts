@@ -24,8 +24,12 @@ export {
   addMessageStep,
   updateMessageStep,
   updateSessionPin,
+  updateSessionArchived,
   updateSessionAgent,
   updateSessionModel,
+  updateSessionWorkingDirectory,
+  updateSessionTokenUsage,
+  getSessionTokenUsage,
   deleteSessionsByWorkspace,
 } from './sessions.js'
 

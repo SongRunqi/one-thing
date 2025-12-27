@@ -8,6 +8,62 @@ import {
   deleteJsonFile,
 } from './paths.js'
 import { getCurrentSessionId, setCurrentSessionId } from './app-state.js'
+import { getWorkspace } from './workspaces.js'
+
+/**
+ * Sanitize a session after loading - clean up any interrupted states
+ * This handles cases where the app was closed while tools were running
+ */
+function sanitizeSession(session: ChatSession): ChatSession {
+  let modified = false
+
+  for (const message of session.messages) {
+    // Clean up streaming state
+    if (message.isStreaming) {
+      message.isStreaming = false
+      modified = true
+    }
+
+    // Clean up interrupted steps
+    if (message.steps) {
+      for (const step of message.steps) {
+        if (step.status === 'running' || step.status === 'pending') {
+          step.status = 'failed'
+          step.error = step.error || 'Interrupted: app was closed'
+          // Clean up "Running:" or "调用工具:" prefix in title
+          if (step.title.startsWith('Running:') || step.title.startsWith('调用工具:')) {
+            step.title = step.title.replace(/^(Running:|调用工具:)\s*/, 'Interrupted: ')
+          }
+          modified = true
+        }
+        if (step.status === 'awaiting-confirmation') {
+          step.status = 'failed'
+          step.error = 'Interrupted: permission request was not answered'
+          modified = true
+        }
+        // Clean up toolCall status within step
+        if (step.toolCall) {
+          if (step.toolCall.status === 'executing' || step.toolCall.status === 'pending') {
+            step.toolCall.status = 'cancelled'
+            modified = true
+          }
+        }
+      }
+    }
+
+    // Clean up interrupted toolCalls
+    if (message.toolCalls) {
+      for (const tc of message.toolCalls) {
+        if (tc.status === 'executing' || tc.status === 'pending') {
+          tc.status = 'cancelled'
+          modified = true
+        }
+      }
+    }
+  }
+
+  return session
+}
 
 // Session metadata stored in index for quick listing
 interface SessionMeta {
@@ -20,6 +76,8 @@ interface SessionMeta {
   lastModel?: string
   lastProvider?: string
   isPinned?: boolean
+  isArchived?: boolean  // Archived (soft-deleted) session
+  archivedAt?: number   // Timestamp when session was archived
   workspaceId?: string  // Associated workspace ID
   agentId?: string  // Associated agent ID for system prompt
 }
@@ -58,11 +116,21 @@ export function getSessions(): ChatSession[] {
 export function getSession(sessionId: string): ChatSession | undefined {
   const sessionPath = getSessionPath(sessionId)
   const session = readJsonFile<ChatSession | null>(sessionPath, null)
-  return session || undefined
+  if (!session) return undefined
+
+  // Sanitize session to clean up interrupted states
+  return sanitizeSession(session)
 }
 
 // Create a new session
 export function createSession(sessionId: string, name: string, workspaceId?: string, agentId?: string): ChatSession {
+  // Inherit workingDirectory from workspace if available
+  let workingDirectory: string | undefined
+  if (workspaceId) {
+    const workspace = getWorkspace(workspaceId)
+    workingDirectory = workspace?.workingDirectory
+  }
+
   const session: ChatSession = {
     id: sessionId,
     name,
@@ -71,6 +139,7 @@ export function createSession(sessionId: string, name: string, workspaceId?: str
     updatedAt: Date.now(),
     workspaceId,
     agentId,
+    workingDirectory,
   }
 
   // Save session file
@@ -237,6 +306,37 @@ export function updateSessionPin(sessionId: string, isPinned: boolean): void {
   }
 }
 
+// Update session archived status
+export function updateSessionArchived(sessionId: string, isArchived: boolean, archivedAt?: number | null): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  session.isArchived = isArchived
+  if (isArchived && archivedAt) {
+    session.archivedAt = archivedAt
+  } else if (!isArchived) {
+    delete session.archivedAt
+  }
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.isArchived = isArchived
+    if (isArchived && archivedAt) {
+      meta.archivedAt = archivedAt
+    } else if (!isArchived) {
+      delete meta.archivedAt
+    }
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+}
+
 // Update session agent
 export function updateSessionAgent(sessionId: string, agentId: string | null): void {
   const session = getSession(sessionId)
@@ -263,6 +363,64 @@ export function updateSessionAgent(sessionId: string, agentId: string | null): v
     }
     meta.updatedAt = session.updatedAt
     saveSessionsIndex(index)
+  }
+}
+
+// Update session working directory (sandbox boundary)
+export function updateSessionWorkingDirectory(sessionId: string, workingDirectory: string | null): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  if (workingDirectory === null || workingDirectory === '') {
+    delete session.workingDirectory
+  } else {
+    session.workingDirectory = workingDirectory
+  }
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  // Update index timestamp
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+}
+
+// Update session token usage (accumulates tokens)
+export function updateSessionTokenUsage(
+  sessionId: string,
+  usage: { inputTokens: number; outputTokens: number; totalTokens: number }
+): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  // Accumulate token usage
+  session.totalInputTokens = (session.totalInputTokens || 0) + usage.inputTokens
+  session.totalOutputTokens = (session.totalOutputTokens || 0) + usage.outputTokens
+  session.totalTokens = (session.totalTokens || 0) + usage.totalTokens
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+}
+
+// Get session token usage
+export function getSessionTokenUsage(sessionId: string): {
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalTokens: number
+} | null {
+  const session = getSession(sessionId)
+  if (!session) return null
+
+  return {
+    totalInputTokens: session.totalInputTokens || 0,
+    totalOutputTokens: session.totalOutputTokens || 0,
+    totalTokens: session.totalTokens || 0,
   }
 }
 

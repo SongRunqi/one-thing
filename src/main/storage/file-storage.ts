@@ -327,6 +327,21 @@ export class FileAgentMemoryStorage implements IAgentMemoryStorage {
     console.log(`[FileStorage] deleteMemory not implemented: ${memoryId}`)
     return false
   }
+
+  async hybridRetrieveMemories(
+    agentId: string,
+    query: string,
+    limit = 5,
+    options?: {
+      similarityWeight?: number
+      strengthWeight?: number
+      minSimilarity?: number
+    }
+  ): Promise<AgentMemory[]> {
+    // File storage doesn't support semantic search, fall back to strength-based retrieval
+    console.log(`[FileStorage] hybridRetrieveMemories: falling back to strength-based retrieval`)
+    return this.getActiveMemories(agentId, limit)
+  }
 }
 
 // ============================================

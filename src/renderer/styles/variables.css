@@ -124,57 +124,57 @@
   --bg-active: rgba(255, 255, 255, 0.08);
 
   /* ============================================
-     Text Colors - Dark Theme (Low Contrast)
+     Text Colors - Dark Theme (Higher Contrast)
      ============================================ */
 
   /* --- Primary Text --- */
-  --text-primary: #CECDC3;
-  --text-secondary: #B7B5AC;
-  --text-muted: #9F9D96;
-  --text-faint: #878580;
+  --text-primary: #E6E4D9;
+  --text-secondary: #CECDC3;
+  --text-muted: #B7B5AC;
+  --text-faint: #9F9D96;
 
   /* --- Message Text --- */
-  --text-user-primary: #CECDC3;
-  --text-user-secondary: #B7B5AC;
-  --text-ai-primary: #B7B5AC;
-  --text-ai-secondary: #9F9D96;
-  --text-ai-thinking: #878580;
-  --text-system: #878580;
+  --text-user-primary: #E6E4D9;
+  --text-user-secondary: #CECDC3;
+  --text-ai-primary: #DAD8CE;
+  --text-ai-secondary: #B7B5AC;
+  --text-ai-thinking: #9F9D96;
+  --text-system: #9F9D96;
   --text-error: #D14D41;
   --text-warning: #DA702C;
   --text-success: #879A39;
 
   /* --- Status Text --- */
-  --text-llm-waiting: #878580;
+  --text-llm-waiting: #9F9D96;
   --text-tool-calling: #3AA99F;
-  --text-tool-waiting: #878580;
-  --text-streaming: #9F9D96;
-  --text-timestamp: #878580;
-  --text-timestamp-hover: #9F9D96;
+  --text-tool-waiting: #9F9D96;
+  --text-streaming: #B7B5AC;
+  --text-timestamp: #9F9D96;
+  --text-timestamp-hover: #B7B5AC;
 
   /* --- Tool Call Text --- */
   --text-tool-name: #8B7EC8;
-  --text-tool-args: #878580;
-  --text-tool-result: #9F9D96;
+  --text-tool-args: #9F9D96;
+  --text-tool-result: #B7B5AC;
   --text-tool-error: #D14D41;
-  --text-tool-label: #878580;
+  --text-tool-label: #9F9D96;
 
   /* --- Sidebar Text --- */
-  --text-sidebar-title: #B7B5AC;
-  --text-sidebar-item: #9F9D96;
+  --text-sidebar-title: #CECDC3;
+  --text-sidebar-item: #B7B5AC;
   --text-sidebar-item-active: var(--accent);
-  --text-sidebar-item-hover: #CECDC3;
-  --text-sidebar-muted: #878580;
-  --text-sidebar-count: #878580;
+  --text-sidebar-item-hover: #E6E4D9;
+  --text-sidebar-muted: #9F9D96;
+  --text-sidebar-count: #9F9D96;
 
   /* --- Input Text --- */
-  --text-input: #CECDC3;
-  --text-input-placeholder: #878580;
-  --text-input-disabled: #878580;
+  --text-input: #E6E4D9;
+  --text-input-placeholder: #9F9D96;
+  --text-input-disabled: #9F9D96;
 
   /* --- Code Text --- */
   --text-code-inline: #CE5D97;
-  --text-code-block: #B7B5AC;
+  --text-code-block: #CECDC3;
   --text-code-comment: #878580;
   --text-code-keyword: #8B7EC8;
   --text-code-string: #879A39;
@@ -191,25 +191,25 @@
 
   /* --- Button Text --- */
   --text-btn-primary: #100F0F;
-  --text-btn-secondary: #B7B5AC;
-  --text-btn-ghost: #9F9D96;
+  --text-btn-secondary: #CECDC3;
+  --text-btn-ghost: #B7B5AC;
   --text-btn-danger: #100F0F;
-  --text-btn-disabled: #878580;
+  --text-btn-disabled: #9F9D96;
 
   /* --- Form Text --- */
-  --text-label: #9F9D96;
-  --text-helper: #878580;
+  --text-label: #B7B5AC;
+  --text-helper: #9F9D96;
   --text-validation-error: #D14D41;
   --text-validation-success: #879A39;
 
   /* --- Menu Text --- */
-  --text-menu-item: #9F9D96;
-  --text-menu-item-hover: #B7B5AC;
+  --text-menu-item: #B7B5AC;
+  --text-menu-item-hover: #CECDC3;
   --text-menu-item-active: var(--accent);
-  --text-menu-header: #878580;
+  --text-menu-header: #9F9D96;
   --text-tooltip: #100F0F;
-  --text-modal-title: #B7B5AC;
-  --text-modal-body: #9F9D96;
+  --text-modal-title: #CECDC3;
+  --text-modal-body: #B7B5AC;
 
   /* ============================================
      Border Colors - Dark Theme

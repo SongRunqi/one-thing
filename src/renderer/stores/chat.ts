@@ -1,171 +1,148 @@
+/**
+ * Chat Store - Centralized state management for all chat sessions
+ *
+ * 架构说明:
+ * - 所有状态按 sessionId 索引（Per-session 状态）
+ * - 事件处理器由全局 IPC Hub 调用
+ * - useChatSession composable 作为 per-session 视图
+ */
 import { defineStore } from 'pinia'
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, triggerRef } from 'vue'
 import type { ChatMessage, MessageAttachment } from '@/types'
 
+// Stream chunk type from IPC
+interface StreamChunk {
+  type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace'
+  content: string
+  messageId: string
+  sessionId?: string
+  reasoning?: string
+  toolCall?: any
+  replace?: boolean
+}
+
+// Stream complete data from IPC
+interface StreamCompleteData {
+  messageId: string
+  text: string
+  reasoning?: string
+  sessionId?: string
+  sessionName?: string
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+  }
+}
+
+// Stream error data from IPC
+interface StreamErrorData {
+  messageId?: string
+  sessionId?: string
+  error: string
+  errorDetails?: string
+}
+
+// Step data from IPC
+interface StepData {
+  sessionId: string
+  messageId: string
+  step: any
+}
+
+interface StepUpdateData {
+  sessionId: string
+  messageId: string
+  stepId: string
+  updates: any
+}
+
+// Skill activation data from IPC
+interface SkillActivatedData {
+  sessionId: string
+  messageId: string
+  skillName: string
+}
+
 export const useChatStore = defineStore('chat', () => {
-  const messages = ref<ChatMessage[]>([])
-  const isLoading = ref(false)
-  const error = ref<string | null>(null)
-  const errorDetails = ref<string | null>(null) // Original API error details
-  const generatingSessionId = ref<string | null>(null)
+  // ============ Per-session 状态 ============
 
-  // Track currently viewed session (for filtering stream chunks)
-  const currentViewSessionId = ref<string | null>(null)
+  // Messages per session
+  const sessionMessages = ref<Map<string, ChatMessage[]>>(new Map())
 
-  // Track all sessions with active streams (sessionId -> messageId)
-  const activeSessionStreams = ref<Map<string, string>>(new Map())
+  // Loading state per session
+  const sessionLoading = ref<Map<string, boolean>>(new Map())
 
-  // Stream cleanup functions
-  const streamCleanups = ref<(() => void)[]>([])
+  // Generating state per session
+  const sessionGenerating = ref<Map<string, boolean>>(new Map())
 
-  const messageCount = computed(() => messages.value.length)
+  // Error state per session
+  const sessionError = ref<Map<string, string | null>>(new Map())
 
-  const userMessages = computed(() =>
-    messages.value.filter(m => m.role === 'user')
-  )
+  // Error details per session
+  const sessionErrorDetails = ref<Map<string, string | null>>(new Map())
 
-  const assistantMessages = computed(() =>
-    messages.value.filter(m => m.role === 'assistant')
-  )
+  // Token usage per session
+  const sessionUsageMap = ref<Map<string, {
+    totalInputTokens: number
+    totalOutputTokens: number
+    totalTokens: number
+  }>>(new Map())
 
-  // True when ANY session is generating (for global state tracking)
-  // Uses generatingSessionId which persists throughout the entire generation process
-  const isGenerating = computed(() =>
-    generatingSessionId.value !== null || messages.value.some(m => m.isStreaming)
-  )
+  // Active streams (sessionId -> messageId)
+  const activeStreams = ref<Map<string, string>>(new Map())
 
-  // True when the CURRENT session is generating (for input box state)
-  // This ensures input state is per-session, not shared across all sessions
-  const isCurrentSessionGenerating = computed(() => {
-    if (!currentViewSessionId.value) return false
-    return generatingSessionId.value === currentViewSessionId.value ||
-           activeSessionStreams.value.has(currentViewSessionId.value) ||
-           messages.value.some(m => m.isStreaming)
-  })
+  // ============ Getters ============
 
-  // Check if a specific session has an active stream
+  /**
+   * Get session state for a specific session
+   * Returns reactive computed properties
+   */
+  function getSessionState(sessionId: string) {
+    return {
+      messages: computed(() => sessionMessages.value.get(sessionId) || []),
+      isLoading: computed(() => sessionLoading.value.get(sessionId) || false),
+      isGenerating: computed(() => sessionGenerating.value.get(sessionId) || false),
+      error: computed(() => sessionError.value.get(sessionId) || null),
+      errorDetails: computed(() => sessionErrorDetails.value.get(sessionId) || null),
+      usage: computed(() => sessionUsageMap.value.get(sessionId) || null),
+    }
+  }
+
+  /**
+   * Get usage for a specific session
+   */
+  function getSessionUsage(sessionId: string) {
+    return sessionUsageMap.value.get(sessionId) || null
+  }
+
+  /**
+   * Check if a specific session is generating
+   */
   function isSessionGenerating(sessionId: string): boolean {
-    return activeSessionStreams.value.has(sessionId)
+    return sessionGenerating.value.get(sessionId) || activeStreams.value.has(sessionId)
   }
 
-  // Set the currently viewed session (called when switching sessions)
-  function setCurrentViewSession(sessionId: string | null) {
-    currentViewSessionId.value = sessionId
-  }
-
-  /**
-   * Rebuild contentParts from content and toolCalls for a streaming message
-   * This is used when switching back to a session that has an active stream
-   */
-  function rebuildContentPartsFromMessage(message: ChatMessage): ChatMessage['contentParts'] {
-    const parts: ChatMessage['contentParts'] = []
-
-    // Add text part if there's content
-    if (message.content) {
-      parts.push({ type: 'text', content: message.content })
-    }
-
-    // Add tool-call part if there are tool calls
-    if (message.toolCalls && message.toolCalls.length > 0) {
-      parts.push({ type: 'tool-call', toolCalls: [...message.toolCalls] })
-    }
-
-    // If message is still streaming and has tool calls with results,
-    // add a waiting indicator (AI is continuing after tool execution)
-    if (message.isStreaming && message.toolCalls && message.toolCalls.length > 0) {
-      const lastToolCall = message.toolCalls[message.toolCalls.length - 1]
-      // If the last tool call has a result, AI might be continuing
-      if (lastToolCall.result !== undefined) {
-        parts.push({ type: 'waiting' })
-      }
-    }
-
-    return parts
-  }
-
-  /**
-   * Merge backend message data into the current streaming message
-   * Called when switching back to a session with an active stream
-   */
-  function mergeBackendMessageToStreaming(
-    streamingMessageId: string,
-    backendMessages: ChatMessage[]
-  ) {
-    console.log('[Chat] mergeBackendMessageToStreaming called:', {
-      streamingMessageId,
-      backendMessagesCount: backendMessages.length,
-      backendMessageIds: backendMessages.map(m => m.id)
-    })
-
-    const backendMessage = backendMessages.find(m => m.id === streamingMessageId)
-    if (!backendMessage) {
-      console.warn('[Chat] Backend message not found for streaming ID:', streamingMessageId)
-      return
-    }
-
-    console.log('[Chat] Found backend message:', {
-      id: backendMessage.id,
-      contentLength: backendMessage.content?.length,
-      hasContentParts: !!backendMessage.contentParts?.length
-    })
-
-    const currentMessage = messages.value.find(m => m.id === streamingMessageId)
-    if (!currentMessage) {
-      console.warn('[Chat] Current message not found for streaming ID:', streamingMessageId)
-      return
-    }
-
-    // Update with accumulated content from backend
-    currentMessage.content = backendMessage.content
-    currentMessage.reasoning = backendMessage.reasoning
-    currentMessage.toolCalls = backendMessage.toolCalls
-
-    // Preserve thinkingStartTime for timer calculation
-    if (backendMessage.thinkingStartTime) {
-      currentMessage.thinkingStartTime = backendMessage.thinkingStartTime
-    }
-
-    // Preserve thinkingTime for display after thinking ends
-    if (backendMessage.thinkingTime) {
-      currentMessage.thinkingTime = backendMessage.thinkingTime
-    }
-
-    // Rebuild contentParts from the accumulated data
-    currentMessage.contentParts = rebuildContentPartsFromMessage(backendMessage)
-
-    // Keep streaming flag
-    currentMessage.isStreaming = true
-
-    console.log('[Chat] Updated streaming message:', {
-      contentLength: currentMessage.content?.length,
-      contentPartsCount: currentMessage.contentParts?.length,
-      hasThinkingStartTime: !!currentMessage.thinkingStartTime
-    })
-  }
+  // ============ Helper Functions ============
 
   /**
    * Rebuild contentParts for a message from content and/or toolCalls
    * This is needed when loading historical messages from storage
-   * Returns a new message object to ensure Vue reactivity
    */
   function rebuildContentParts(message: ChatMessage): ChatMessage {
     if (message.role !== 'assistant') return message
     if (message.contentParts && message.contentParts.length > 0) return message
 
-    // Rebuild contentParts from content and/or toolCalls
     const parts: ChatMessage['contentParts'] = []
 
-    // Add text part if there's content
     if (message.content) {
       parts.push({ type: 'text', content: message.content })
     }
 
-    // Add tool-call part if there are tool calls
     if (message.toolCalls && message.toolCalls.length > 0) {
       parts.push({ type: 'tool-call', toolCalls: [...message.toolCalls] })
     }
 
-    // Only return new object if we rebuilt something
     if (parts.length > 0) {
       return { ...message, contentParts: parts }
     }
@@ -173,945 +150,684 @@ export const useChatStore = defineStore('chat', () => {
     return message
   }
 
-  function setMessages(newMessages: ChatMessage[]) {
-    // Rebuild contentParts for messages with toolCalls, creating new objects
-    const processedMessages = newMessages.map((msg, i) => {
-      const processed = rebuildContentParts(msg)
-      if (processed.contentParts && processed.contentParts.length > 0) {
-        console.log(`[Chat Store] Message ${i} contentParts rebuilt:`, processed.contentParts.length, 'parts')
-      }
-      return processed
-    })
-    messages.value = processedMessages
+  /**
+   * Update messages for a session and trigger reactivity
+   */
+  function setSessionMessages(sessionId: string, messages: ChatMessage[]) {
+    sessionMessages.value.set(sessionId, messages)
+    triggerRef(sessionMessages)
   }
 
-  function addMessage(message: ChatMessage) {
-    messages.value.push(message)
-  }
-
-  function clearMessages() {
-    messages.value = []
-  }
-
-  function updateMessage(messageId: string, updates: Partial<ChatMessage>) {
-    const index = messages.value.findIndex((m) => m.id === messageId)
-    if (index !== -1) {
-      messages.value[index] = { ...messages.value[index], ...updates }
+  /**
+   * Get messages for a session (mutable reference)
+   */
+  function getSessionMessagesRef(sessionId: string): ChatMessage[] {
+    let messages = sessionMessages.value.get(sessionId)
+    if (!messages) {
+      messages = []
+      sessionMessages.value.set(sessionId, messages)
     }
+    return messages
   }
 
-  // Append content to a message (for streaming)
-  function appendToMessage(messageId: string, field: 'content' | 'reasoning', delta: string) {
-    const index = messages.value.findIndex((m) => m.id === messageId)
-    if (index !== -1) {
-      const currentValue = messages.value[index][field] || ''
-      messages.value[index] = {
-        ...messages.value[index],
-        [field]: currentValue + delta,
-      }
+  // ============ Event Handlers (Called by IPC Hub) ============
+
+  /**
+   * Handle stream chunk event
+   */
+  function handleStreamChunk(chunk: StreamChunk) {
+    const sessionId = chunk.sessionId
+    if (!sessionId) {
+      console.warn('[Chat Store] Stream chunk missing sessionId')
+      return
     }
-  }
 
-  // Clean up stream listeners
-  function cleanupStreamListeners() {
-    streamCleanups.value.forEach(cleanup => cleanup())
-    streamCleanups.value = []
-  }
-
-  // Setup stream listeners for a specific message
-  function setupStreamListeners(messageId: string) {
-    cleanupStreamListeners()
-
-    // Listen for reasoning deltas
-    const cleanupReasoning = window.electronAPI.onStreamReasoningDelta((data) => {
-      if (data.messageId === messageId) {
-        appendToMessage(messageId, 'reasoning', data.delta)
-      }
-    })
-    streamCleanups.value.push(cleanupReasoning)
-
-    // Listen for text deltas
-    const cleanupText = window.electronAPI.onStreamTextDelta((data) => {
-      if (data.messageId === messageId) {
-        // When we start receiving text, thinking is done
-        updateMessage(messageId, { isThinking: false })
-        appendToMessage(messageId, 'content', data.delta)
-      }
-    })
-    streamCleanups.value.push(cleanupText)
-
-    // Listen for completion
-    const cleanupComplete = window.electronAPI.onStreamComplete((data) => {
-      if (data.messageId === messageId) {
-        updateMessage(messageId, {
-          content: data.text,
-          reasoning: data.reasoning,
-          isStreaming: false,
-          isThinking: false,
-        })
-        cleanupStreamListeners()
-      }
-    })
-    streamCleanups.value.push(cleanupComplete)
-
-    // Listen for errors
-    const cleanupError = window.electronAPI.onStreamError((data) => {
-      if (!data.messageId || data.messageId === messageId) {
-        error.value = data.error
-        errorDetails.value = data.errorDetails || null
-        updateMessage(messageId, { isStreaming: false, isThinking: false })
-        cleanupStreamListeners()
-      }
-    })
-    streamCleanups.value.push(cleanupError)
-  }
-
-
-  async function sendMessage(sessionId: string, content: string) {
-    error.value = null
-    errorDetails.value = null
-
-    // Create and show user message immediately (before API call)
-    const tempUserMessage: ChatMessage = {
-      id: `temp-${Date.now()}`,
-      role: 'user',
-      content,
-      timestamp: Date.now(),
+    const messages = getSessionMessagesRef(sessionId)
+    const messageIndex = messages.findIndex(m => m.id === chunk.messageId)
+    if (messageIndex === -1) {
+      console.warn('[Chat Store] Message not found for chunk:', chunk.messageId)
+      return
     }
-    addMessage(tempUserMessage)
 
-    // Set loading state after user message is shown
-    isLoading.value = true
+    const message = messages[messageIndex]
 
-    try {
-      const response = await window.electronAPI.sendMessage(sessionId, content)
+    // Initialize contentParts if not exists
+    if (!message.contentParts) {
+      message.contentParts = []
+    }
 
-      if (!response.success) {
-        error.value = response.error || 'Failed to send message'
-        errorDetails.value = response.errorDetails || null
-
-        // Add error as a display-only message in the chat (not saved to backend)
-        const errorMessage: ChatMessage = {
-          id: `error-${Date.now()}`,
-          role: 'error',
-          content: response.error || 'Failed to send message',
-          timestamp: Date.now(),
-          errorDetails: response.errorDetails,
-        }
-        addMessage(errorMessage)
-
-        isLoading.value = false
-        return false
-      }
-
-      // Replace temp user message with actual message from server
-      if (response.userMessage) {
-        console.log('[Frontend] Received user message from backend with id:', response.userMessage.id)
-        const tempIndex = messages.value.findIndex((m) => m.id === tempUserMessage.id)
-        console.log('[Frontend] Found temp message at index:', tempIndex)
-        if (tempIndex !== -1) {
-          messages.value[tempIndex] = response.userMessage
-          console.log('[Frontend] Successfully replaced temp message')
-        } else {
-          console.log('[Frontend] WARNING: Could not find temp message to replace')
-        }
+    if (chunk.type === 'text') {
+      if (chunk.replace) {
+        // Replace entire content
+        message.content = chunk.content
+        message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
       } else {
-        console.log('[Frontend] WARNING: No userMessage in response')
+        // Append text
+        message.content = (message.content || '') + chunk.content
+
+        const parts = message.contentParts!
+        let lastPart = parts[parts.length - 1]
+
+        // Remove waiting indicator if present
+        if (lastPart && lastPart.type === 'waiting') {
+          parts.pop()
+          lastPart = parts[parts.length - 1]
+        }
+
+        // Append to existing text part or create new one
+        if (lastPart && lastPart.type === 'text') {
+          lastPart.content += chunk.content
+        } else {
+          parts.push({ type: 'text', content: chunk.content })
+        }
+        message.contentParts = [...parts]
       }
+    } else if (chunk.type === 'reasoning') {
+      message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
+    } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
+      if (chunk.toolCall) {
+        // Update toolCalls array
+        if (!message.toolCalls) {
+          message.toolCalls = []
+        }
+        const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
+        if (existingIndex >= 0) {
+          message.toolCalls[existingIndex] = chunk.toolCall
+        } else {
+          message.toolCalls.push(chunk.toolCall)
+        }
 
-      // Add assistant message with streaming flag for typewriter effect
-      if (response.assistantMessage) {
-        const streamingMessage = { ...response.assistantMessage, isStreaming: true }
-        addMessage(streamingMessage)
+        // Update contentParts
+        const parts = message.contentParts!
+        let lastPart = parts[parts.length - 1]
 
-        // After typewriter animation, mark as not streaming
-        setTimeout(() => {
-          updateMessage(response.assistantMessage!.id, { isStreaming: false })
-        }, Math.min(response.assistantMessage.content.length * 10, 3000))
+        if (lastPart && lastPart.type === 'waiting') {
+          parts.pop()
+          lastPart = parts[parts.length - 1]
+        }
+
+        if (lastPart && lastPart.type === 'tool-call') {
+          const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
+          if (existingTcIndex >= 0) {
+            lastPart.toolCalls[existingTcIndex] = chunk.toolCall
+          } else {
+            lastPart.toolCalls.push(chunk.toolCall)
+          }
+        } else {
+          parts.push({ type: 'tool-call', toolCalls: [chunk.toolCall] })
+        }
+        message.contentParts = [...parts]
       }
-
-      // Return session name if it was updated (for sidebar to update)
-      return response.sessionName || true
-    } catch (err: any) {
-      error.value = err.message || 'An error occurred'
-      // Remove the temp user message on error
-      messages.value = messages.value.filter((m) => m.id !== tempUserMessage.id)
-      return false
-    } finally {
-      isLoading.value = false
-      generatingSessionId.value = null
+    } else if (chunk.type === 'continuation') {
+      // AI continuing after tool execution
+      const parts = message.contentParts!
+      parts.push({ type: 'waiting' })
+      message.contentParts = [...parts]
+    } else if (chunk.type === 'replace') {
+      // Replace entire message content
+      message.content = chunk.content
+      message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
     }
+
+    // Trigger reactivity
+    setSessionMessages(sessionId, [...messages])
   }
 
-  async function sendMessageStream(sessionId: string, content: string, attachments?: MessageAttachment[]) {
-    error.value = null
-    errorDetails.value = null
-
-    // Create and show user message immediately (before API call)
-    const tempUserMessage: ChatMessage = {
-      id: `temp-${Date.now()}`,
-      role: 'user',
-      content,
-      timestamp: Date.now(),
-      attachments, // Include attachments in the temp message for display
+  /**
+   * Handle stream complete event
+   */
+  async function handleStreamComplete(data: StreamCompleteData) {
+    const sessionId = data.sessionId
+    if (!sessionId) {
+      console.warn('[Chat Store] Stream complete missing sessionId')
+      return
     }
-    console.log('[Frontend] Created temp user message with id:', tempUserMessage.id, 'attachments:', attachments?.length || 0)
-    addMessage(tempUserMessage)
 
-    // Set loading state after user message is shown
-    isLoading.value = true
+    console.log('[Chat Store] Stream complete:', sessionId, 'usage:', data.usage)
 
-    let assistantMessageId: string | null = null
-    let unsubscribeChunk: (() => void) | null = null
-    let unsubscribeComplete: (() => void) | null = null
-    let unsubscribeError: (() => void) | null = null
-    let unsubscribeSkill: (() => void) | null = null
-    let unsubscribeStepAdded: (() => void) | null = null
-    let unsubscribeStepUpdated: (() => void) | null = null
+    // Update usage
+    if (data.usage) {
+      const currentUsage = sessionUsageMap.value.get(sessionId) || {
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalTokens: 0,
+      }
+      sessionUsageMap.value.set(sessionId, {
+        totalInputTokens: currentUsage.totalInputTokens + data.usage.inputTokens,
+        totalOutputTokens: currentUsage.totalOutputTokens + data.usage.outputTokens,
+        totalTokens: currentUsage.totalTokens + data.usage.totalTokens,
+      })
+      triggerRef(sessionUsageMap)
+      console.log('[Chat Store] Updated usage for', sessionId, ':', sessionUsageMap.value.get(sessionId))
+    }
 
-    try {
-      generatingSessionId.value = sessionId
-      const response = await window.electronAPI.sendMessageStream(sessionId, content, attachments)
+    // Update message
+    const messages = getSessionMessagesRef(sessionId)
+    const messageIndex = messages.findIndex(m => m.id === data.messageId)
+    if (messageIndex !== -1) {
+      const message = messages[messageIndex]
 
-      if (!response.success) {
-        error.value = response.error || 'Failed to send message'
-        errorDetails.value = response.errorDetails || null
-
-        // Add error as a display-only message in the chat (not saved to backend)
-        const errorMessage: ChatMessage = {
-          id: `error-${Date.now()}`,
-          role: 'error',
-          content: response.error || 'Failed to send message',
-          timestamp: Date.now(),
-          errorDetails: response.errorDetails,
+      // Remove waiting indicator
+      if (message.contentParts) {
+        const lastPart = message.contentParts[message.contentParts.length - 1]
+        if (lastPart && lastPart.type === 'waiting') {
+          message.contentParts.pop()
         }
-        addMessage(errorMessage)
 
-        isLoading.value = false
-        generatingSessionId.value = null  // Reset generating state on error
-        return false
+        // Save contentParts to backend
+        if (message.contentParts.length > 0) {
+          const plainContentParts = JSON.parse(JSON.stringify(message.contentParts))
+          await window.electronAPI.updateContentParts(sessionId, data.messageId, plainContentParts)
+        }
       }
 
-      assistantMessageId = response.messageId
+      // Mark message as not streaming
+      message.isStreaming = false
+      setSessionMessages(sessionId, [...messages])
+    }
 
-      // Track this session's active stream
-      activeSessionStreams.value.set(sessionId, assistantMessageId)
+    // Clear generating state
+    sessionGenerating.value.set(sessionId, false)
+    sessionLoading.value.set(sessionId, false)
+    activeStreams.value.delete(sessionId)
+    triggerRef(sessionGenerating)
+    triggerRef(sessionLoading)
+    triggerRef(activeStreams)
 
-      // Replace temp user message with actual message from server
-      if (response.userMessage) {
-        console.log('[Frontend] Received user message from backend with id:', response.userMessage.id)
-        const tempIndex = messages.value.findIndex((m) => m.id === tempUserMessage.id)
-        console.log('[Frontend] Found temp message at index:', tempIndex)
-        if (tempIndex !== -1) {
-          messages.value[tempIndex] = response.userMessage
-          console.log('[Frontend] Successfully replaced temp message')
-        } else {
-          console.log('[Frontend] WARNING: Could not find temp message to replace')
-        }
-      } else {
-        console.log('[Frontend] WARNING: No userMessage in response')
-      }
-
-      // Update session name immediately if it was renamed (don't wait for stream complete)
-      if (response.sessionName) {
-        // Import sessions store dynamically to avoid circular dependency
+    // Update session name if provided
+    if (data.sessionName) {
+      try {
         const { useSessionsStore } = await import('./sessions')
         const sessionsStore = useSessionsStore()
         const sessionInStore = sessionsStore.sessions.find(s => s.id === sessionId)
         if (sessionInStore) {
-          sessionInStore.name = response.sessionName
-          sessionInStore.updatedAt = Date.now() // Move to top of list
+          sessionInStore.name = data.sessionName
+          sessionInStore.updatedAt = Date.now()
         }
+      } catch (e) {
+        console.error('[Chat Store] Failed to update session name:', e)
       }
+    }
+  }
 
-      // Create empty assistant message for streaming
-      const streamingMessage: ChatMessage = {
-        id: assistantMessageId,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-        isStreaming: true,
-        contentParts: [],  // Initialize empty content parts
+  /**
+   * Handle stream error event
+   */
+  function handleStreamError(data: StreamErrorData) {
+    const sessionId = data.sessionId
+    if (!sessionId) {
+      console.warn('[Chat Store] Stream error missing sessionId')
+      return
+    }
+
+    console.log('[Chat Store] Stream error:', sessionId, data.error)
+
+    // Set error state
+    sessionError.value.set(sessionId, data.error || 'Streaming error')
+    sessionErrorDetails.value.set(sessionId, data.errorDetails || null)
+    triggerRef(sessionError)
+    triggerRef(sessionErrorDetails)
+
+    // Add error message
+    const messages = getSessionMessagesRef(sessionId)
+    const errorMessage: ChatMessage = {
+      id: `error-${Date.now()}`,
+      role: 'error',
+      content: data.error || 'Streaming error',
+      timestamp: Date.now(),
+      errorDetails: data.errorDetails,
+    }
+    messages.push(errorMessage)
+
+    // Remove the streaming assistant message if it exists
+    if (data.messageId) {
+      const streamingIndex = messages.findIndex(m => m.id === data.messageId)
+      if (streamingIndex !== -1) {
+        messages.splice(streamingIndex, 1)
       }
-      addMessage(streamingMessage)
+    }
 
-      // Track if we have pending tool calls that haven't been followed by text yet
-      let hasToolCallsInCurrentSegment = false
+    setSessionMessages(sessionId, [...messages])
 
-      // Hide the independent "Thinking..." indicator now that we have the message bubble
-      // The message bubble will show its own thinking state
-      isLoading.value = false
+    // Clear generating state
+    sessionGenerating.value.set(sessionId, false)
+    sessionLoading.value.set(sessionId, false)
+    activeStreams.value.delete(sessionId)
+    triggerRef(sessionGenerating)
+    triggerRef(sessionLoading)
+    triggerRef(activeStreams)
+  }
 
-      // Set up event listeners for streaming
-      unsubscribeChunk = window.electronAPI.onStreamChunk((chunk) => {
-        console.log('[Frontend] Received stream chunk:', chunk)
-        // Only update UI if this chunk is for the currently viewed session
-        // (Backend already saves content regardless of which session is viewed)
-        if (chunk.sessionId && chunk.sessionId !== currentViewSessionId.value) {
-          console.log('[Frontend] Chunk for different session, skipping UI update')
-          return
+  /**
+   * Handle step added event
+   */
+  function handleStepAdded(data: StepData) {
+    const { sessionId, messageId, step } = data
+
+    const messages = getSessionMessagesRef(sessionId)
+    const message = messages.find(m => m.id === messageId)
+    if (!message) return
+
+    // Initialize steps array if needed
+    if (!message.steps) message.steps = []
+    message.steps.push(step)
+    message.steps = [...message.steps]
+
+    // Add steps placeholder to contentParts if needed
+    if (message.contentParts) {
+      const stepTurnIndex = step.turnIndex
+      const parts = message.contentParts
+      const hasPlaceholderForTurn = parts.some(
+        p => p.type === 'data-steps' && (p as any).turnIndex === stepTurnIndex
+      )
+
+      if (!hasPlaceholderForTurn) {
+        const lastPart = parts[parts.length - 1]
+        if (lastPart && lastPart.type === 'waiting') {
+          parts.pop()
         }
-        if (chunk.messageId === assistantMessageId) {
-          const message = messages.value.find(m => m.id === assistantMessageId)
-          if (!message) return
+        parts.push({ type: 'data-steps', turnIndex: stepTurnIndex } as any)
+        message.contentParts = [...parts]
+      }
+    }
 
-          // Initialize contentParts if not exists
-          if (!message.contentParts) {
-            message.contentParts = []
-          }
+    setSessionMessages(sessionId, [...messages])
+  }
 
-          if (chunk.type === 'text') {
-            console.log('[Frontend] Text chunk:', chunk.content, 'replace:', chunk.replace)
+  /**
+   * Handle step updated event
+   */
+  function handleStepUpdated(data: StepUpdateData) {
+    const { sessionId, messageId, stepId, updates } = data
 
-            // Check if this is a replace operation (used for image generation)
-            if (chunk.replace) {
-              // Replace entire content instead of appending
-              message.content = chunk.content
-              message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
-              console.log('[Frontend] Replaced content with:', chunk.content?.substring(0, 50))
-            } else {
-              // Append text to message content (for backward compat)
-              message.content += chunk.content
+    const messages = getSessionMessagesRef(sessionId)
+    const message = messages.find(m => m.id === messageId)
+    if (!message?.steps) return
 
-              // Also update contentParts for sequential display
-              const parts = message.contentParts!
-              let lastPart = parts[parts.length - 1]
+    const stepIndex = message.steps.findIndex(s => s.id === stepId)
+    if (stepIndex !== -1) {
+      message.steps[stepIndex] = { ...message.steps[stepIndex], ...updates }
+      message.steps = [...message.steps]
+      setSessionMessages(sessionId, [...messages])
+    }
+  }
 
-              // Remove waiting indicator if present
-              if (lastPart && lastPart.type === 'waiting') {
-                parts.pop()
-                lastPart = parts[parts.length - 1]
-              }
+  /**
+   * Handle skill activated event
+   */
+  function handleSkillActivated(data: SkillActivatedData) {
+    const { sessionId, messageId, skillName } = data
 
-              // If last part is text, append to it. Otherwise create new text part.
-              if (lastPart && lastPart.type === 'text') {
-                lastPart.content += chunk.content
-              } else {
-                // Create new text part (this happens after tool calls)
-                parts.push({ type: 'text', content: chunk.content })
-                hasToolCallsInCurrentSegment = false
-              }
-              // Force Vue reactivity by reassigning array
-              message.contentParts = [...parts]
-              console.log('[Frontend] Updated contentParts, count:', message.contentParts.length)
-            }
-          } else if (chunk.type === 'reasoning') {
-            console.log('[Frontend] Reasoning chunk:', chunk.reasoning)
-            message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
-            console.log('[Frontend] Updated reasoning length:', message.reasoning.length)
-          } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
-            console.log('[Frontend] Tool chunk:', chunk.type, chunk.toolCall)
-            if (chunk.toolCall) {
-              // Update toolCalls array (for backward compat)
-              if (!message.toolCalls) {
-                message.toolCalls = []
-              }
-              const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
-              if (existingIndex >= 0) {
-                message.toolCalls[existingIndex] = chunk.toolCall
-              } else {
-                message.toolCalls.push(chunk.toolCall)
-              }
+    const messages = getSessionMessagesRef(sessionId)
+    const message = messages.find(m => m.id === messageId)
+    if (message) {
+      message.skillUsed = skillName
+      setSessionMessages(sessionId, [...messages])
+    }
+  }
 
-              // Update contentParts for sequential display
-              const parts = message.contentParts!
-              let lastPart = parts[parts.length - 1]
+  // ============ Actions ============
 
-              // Remove waiting indicator if present (tool call replaces waiting)
-              if (lastPart && lastPart.type === 'waiting') {
-                parts.pop()
-                lastPart = parts[parts.length - 1]
-              }
+  /**
+   * Load messages for a session from backend
+   */
+  async function loadMessages(sessionId: string) {
+    try {
+      const response = await window.electronAPI.getSession(sessionId)
+      if (response.success && response.session) {
+        const messages = (response.session.messages || []).map(rebuildContentParts)
+        setSessionMessages(sessionId, messages)
+      }
+    } catch (error) {
+      console.error('[Chat Store] Failed to load messages:', error)
+    }
+  }
 
-              // Check if we should add tool-call to existing tool-call part or create new one
-              if (lastPart && lastPart.type === 'tool-call') {
-                // Add to existing tool-call part
-                const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
-                if (existingTcIndex >= 0) {
-                  lastPart.toolCalls[existingTcIndex] = chunk.toolCall
-                } else {
-                  lastPart.toolCalls.push(chunk.toolCall)
-                }
-              } else {
-                // Create new tool-call part
-                parts.push({ type: 'tool-call', toolCalls: [chunk.toolCall] })
-              }
-              hasToolCallsInCurrentSegment = true
-              // Force Vue reactivity by reassigning array
-              message.contentParts = [...parts]
-              console.log('[Frontend] Updated contentParts with tool call, count:', message.contentParts.length)
-            }
-          } else if (chunk.type === 'continuation') {
-            console.log('[Frontend] AI continuing after tool execution')
-            // Mark that tool calls are complete, next text will be new part
-            hasToolCallsInCurrentSegment = true
-            // Add waiting indicator
-            const parts = message.contentParts!
-            parts.push({ type: 'waiting' })
-            // Force Vue reactivity by reassigning array
-            message.contentParts = [...parts]
-          } else if (chunk.type === 'replace') {
-            console.log('[Frontend] Replacing message content (removing delegation marker)')
-            // Replace entire message content (used to remove delegation markers)
-            message.content = chunk.content
-            // Also reset contentParts
-            message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
-          }
-        } else {
-          console.log('[Frontend] Chunk for different message:', chunk.messageId, 'expected:', assistantMessageId)
-        }
-      })
-
-      // Note: We don't set up a separate complete listener here
-      // because we handle it in the Promise below
-
-      unsubscribeError = window.electronAPI.onStreamError((data) => {
-        console.log('[Frontend] Received stream error:', data)
-        if (data.messageId === assistantMessageId) {
-          console.log('[Frontend] Stream error for current message:', data.error)
-
-          // Remove from active streams
-          if (data.sessionId) {
-            activeSessionStreams.value.delete(data.sessionId)
-          }
-
-          // Only update UI if this is for the currently viewed session
-          if (data.sessionId && data.sessionId !== currentViewSessionId.value) {
-            console.log('[Frontend] Error for different session, skipping UI update')
-            // Still clean up listeners and reset state
-            if (unsubscribeChunk) unsubscribeChunk()
-            if (unsubscribeComplete) unsubscribeComplete()
-            if (unsubscribeError) unsubscribeError()
-            if (unsubscribeSkill) unsubscribeSkill()
-            if (unsubscribeStepAdded) unsubscribeStepAdded()
-            if (unsubscribeStepUpdated) unsubscribeStepUpdated()
-            isLoading.value = false
-            generatingSessionId.value = null
-            return
-          }
-
-          error.value = data.error || 'Streaming error'
-          errorDetails.value = data.errorDetails || null
-
-          // Add error as a display-only message
-          const errorMessage: ChatMessage = {
-            id: `error-${Date.now()}`,
-            role: 'error',
-            content: data.error || 'Streaming error',
-            timestamp: Date.now(),
-            errorDetails: data.errorDetails,
-          }
-          addMessage(errorMessage)
-
-          // Remove the streaming assistant message
-          messages.value = messages.value.filter((m) => m.id !== assistantMessageId)
-
-          // Clean up listeners
-          if (unsubscribeChunk) unsubscribeChunk()
-          if (unsubscribeComplete) unsubscribeComplete()
-          if (unsubscribeError) unsubscribeError()
-          if (unsubscribeSkill) unsubscribeSkill()
-          if (unsubscribeStepAdded) unsubscribeStepAdded()
-          if (unsubscribeStepUpdated) unsubscribeStepUpdated()
-
-          isLoading.value = false
-          generatingSessionId.value = null
-          return false
-        } else {
-          console.log('[Frontend] Error for different message:', data.messageId, 'expected:', assistantMessageId)
-        }
-      })
-
-      // Listen for skill activation events
-      unsubscribeSkill = window.electronAPI.onSkillActivated((data) => {
-        console.log('[Frontend] Skill activated:', data)
-        if (data.messageId === assistantMessageId) {
-          const message = messages.value.find(m => m.id === assistantMessageId)
-          if (message) {
-            message.skillUsed = data.skillName
-          }
-        }
-      })
-
-      // Listen for step events
-      unsubscribeStepAdded = window.electronAPI.onStepAdded((data) => {
-        console.log('[Frontend] Step added:', data)
-        if (data.messageId === assistantMessageId) {
-          const message = messages.value.find(m => m.id === assistantMessageId)
-          if (message) {
-            // Initialize steps array if needed
-            if (!message.steps) message.steps = []
-            message.steps.push(data.step)
-            // Force reactivity
-            message.steps = [...message.steps]
-
-            // Check if we need to add a steps placeholder for this turn
-            // Each turn should have its own steps placeholder so steps are interleaved with text
-            if (message.contentParts) {
-              const stepTurnIndex = data.step.turnIndex
-              const parts = message.contentParts
-
-              // Check if we already have a steps placeholder for this turnIndex
-              const hasPlaceholderForTurn = parts.some(
-                p => p.type === 'steps' && (p as any).turnIndex === stepTurnIndex
-              )
-
-              if (!hasPlaceholderForTurn) {
-                // Remove waiting indicator if present (step replaces waiting)
-                const lastPart = parts[parts.length - 1]
-                if (lastPart && lastPart.type === 'waiting') {
-                  parts.pop()
-                }
-                // Add steps placeholder with turnIndex
-                parts.push({ type: 'steps', turnIndex: stepTurnIndex } as any)
-                message.contentParts = [...parts]
-                console.log('[Frontend] Added steps placeholder for turn:', stepTurnIndex)
-              }
-            }
-          }
-        }
-      })
-
-      unsubscribeStepUpdated = window.electronAPI.onStepUpdated((data) => {
-        console.log('[Frontend] Step updated:', data)
-        if (data.messageId === assistantMessageId) {
-          const message = messages.value.find(m => m.id === assistantMessageId)
-          if (message?.steps) {
-            const step = message.steps.find(s => s.id === data.stepId)
-            if (step) {
-              Object.assign(step, data.updates)
-              // Force reactivity
-              message.steps = [...message.steps]
-            }
-          }
-        }
-      })
-
-      // Return a promise that resolves when streaming is complete
-      return new Promise((resolve) => {
-        // We'll resolve this promise when we get the complete event
-        const completeListener = window.electronAPI.onStreamComplete(async (data) => {
-          console.log('[Frontend] Received stream complete:', data)
-          if (data.messageId === assistantMessageId) {
-            console.log('[Frontend] Stream complete for current message')
-
-            // Remove from active streams
-            if (data.sessionId) {
-              activeSessionStreams.value.delete(data.sessionId)
-            }
-
-            // Only update UI if this is for the currently viewed session
-            const isCurrentSession = !data.sessionId || data.sessionId === currentViewSessionId.value
-
-            if (isCurrentSession) {
-              // Remove any remaining waiting indicator from contentParts
-              const message = messages.value.find(m => m.id === assistantMessageId)
-              if (message?.contentParts) {
-                const lastPart = message.contentParts[message.contentParts.length - 1]
-                if (lastPart && lastPart.type === 'waiting') {
-                  message.contentParts.pop()
-                }
-
-                // Save contentParts to backend if there are any
-                if (message.contentParts.length > 0) {
-                  console.log('[Frontend] Saving contentParts to backend:', message.contentParts.length, 'parts')
-                  // Deep clone to remove Vue reactive proxy (can't be cloned by IPC)
-                  const plainContentParts = JSON.parse(JSON.stringify(message.contentParts))
-                  await window.electronAPI.updateContentParts(sessionId, assistantMessageId!, plainContentParts)
-                }
-              }
-
-              // Mark message as not streaming
-              updateMessage(assistantMessageId!, { isStreaming: false })
-            }
-
-            // Clean up listeners
-            if (unsubscribeChunk) unsubscribeChunk()
-            if (unsubscribeComplete) unsubscribeComplete()
-            if (unsubscribeError) unsubscribeError()
-            if (unsubscribeSkill) unsubscribeSkill()
-            if (unsubscribeStepAdded) unsubscribeStepAdded()
-            if (unsubscribeStepUpdated) unsubscribeStepUpdated()
-
-            isLoading.value = false
-            generatingSessionId.value = null
-            completeListener() // Clean up this listener
-            resolve(data.sessionName || true)
-          } else {
-            console.log('[Frontend] Complete for different message:', data.messageId, 'expected:', assistantMessageId)
-          }
+  /**
+   * Load session usage from backend
+   */
+  async function loadSessionUsage(sessionId: string) {
+    try {
+      const response = await window.electronAPI.getSessionTokenUsage(sessionId)
+      if (response.success && response.usage) {
+        sessionUsageMap.value.set(sessionId, {
+          totalInputTokens: response.usage.totalInputTokens,
+          totalOutputTokens: response.usage.totalOutputTokens,
+          totalTokens: response.usage.totalTokens,
         })
-      })
-
-    } catch (err: any) {
-      error.value = err.message || 'An error occurred'
-      // Remove the temp user message on error
-      messages.value = messages.value.filter((m) => m.id !== tempUserMessage.id)
-
-      // Clean up listeners if they were set up
-      if (unsubscribeChunk) unsubscribeChunk()
-      if (unsubscribeComplete) unsubscribeComplete()
-      if (unsubscribeError) unsubscribeError()
-      if (unsubscribeSkill) unsubscribeSkill()
-      if (unsubscribeStepAdded) unsubscribeStepAdded()
-      if (unsubscribeStepUpdated) unsubscribeStepUpdated()
-
-      isLoading.value = false
-      return false
-    }
-  }
-
-  function clearError() {
-    error.value = null
-    errorDetails.value = null
-  }
-
-  // Stop the current streaming generation
-  async function stopGeneration() {
-    // Don't check isGenerating - just try to abort
-    // This allows stopping even during the brief gap between button appearing
-    // (isRegenerating = true) and store state updating (generatingSessionId being set)
-    try {
-      const response = await window.electronAPI.abortStream()
-      return response.success
-    } catch (err: any) {
-      console.error('Failed to stop generation:', err)
-      return false
-    }
-  }
-
-  async function editAndResend(sessionId: string, messageId: string, newContent: string) {
-    error.value = null
-    errorDetails.value = null
-
-    // Immediately update the UI: update message content and truncate messages after it
-    const messageIndex = messages.value.findIndex((m) => m.id === messageId)
-    if (messageIndex !== -1) {
-      // Update the message content
-      messages.value[messageIndex] = {
-        ...messages.value[messageIndex],
-        content: newContent,
-        timestamp: Date.now(),
+        triggerRef(sessionUsageMap)
       }
-      // Remove all messages after this one (including old assistant response)
-      messages.value = messages.value.slice(0, messageIndex + 1)
+    } catch (error) {
+      console.error('[Chat Store] Failed to load session usage:', error)
+    }
+  }
+
+  /**
+   * Send a message (streaming mode)
+   */
+  async function sendMessage(sessionId: string, content: string, attachments?: MessageAttachment[]) {
+    // Clear error state
+    sessionError.value.set(sessionId, null)
+    sessionErrorDetails.value.set(sessionId, null)
+    triggerRef(sessionError)
+    triggerRef(sessionErrorDetails)
+
+    // Create user message
+    const userMessage: ChatMessage = {
+      id: `temp-${Date.now()}`,
+      role: 'user',
+      content,
+      timestamp: Date.now(),
+      attachments,
     }
 
-    // Now show loading state
-    isLoading.value = true
-    generatingSessionId.value = sessionId
+    // Add to session messages
+    const messages = getSessionMessagesRef(sessionId)
+    messages.push(userMessage)
+    setSessionMessages(sessionId, [...messages])
 
-    // Clean up any existing listeners
-    cleanupStreamListeners()
-
-    let unsubscribeChunk: (() => void) | null = null
-    let unsubscribeComplete: (() => void) | null = null
-    let unsubscribeError: (() => void) | null = null
-    let unsubscribeSkill: (() => void) | null = null
-    let unsubscribeStepAdded: (() => void) | null = null
-    let unsubscribeStepUpdated: (() => void) | null = null
-    let assistantMessageId: string | null = null
+    // Set states
+    sessionLoading.value.set(sessionId, true)
+    sessionGenerating.value.set(sessionId, true)
+    triggerRef(sessionLoading)
+    triggerRef(sessionGenerating)
 
     try {
-      const response = await window.electronAPI.editAndResendStream(sessionId, messageId, newContent)
+      // Call IPC (listeners already set up globally by IPC Hub)
+      const response = await window.electronAPI.sendMessageStream(sessionId, content, attachments)
 
       if (!response.success) {
-        error.value = response.error || 'Failed to edit and resend message'
-        errorDetails.value = response.errorDetails || null
+        sessionError.value.set(sessionId, response.error || 'Failed to send message')
+        sessionErrorDetails.value.set(sessionId, response.errorDetails || null)
+        triggerRef(sessionError)
+        triggerRef(sessionErrorDetails)
 
+        // Add error message
         const errorMessage: ChatMessage = {
           id: `error-${Date.now()}`,
           role: 'error',
-          content: response.error || 'Failed to edit and resend message',
+          content: response.error || 'Failed to send message',
           timestamp: Date.now(),
           errorDetails: response.errorDetails,
         }
-        addMessage(errorMessage)
+        messages.push(errorMessage)
+        setSessionMessages(sessionId, [...messages])
 
-        isLoading.value = false
-        generatingSessionId.value = null  // Reset generating state on error
+        sessionLoading.value.set(sessionId, false)
+        sessionGenerating.value.set(sessionId, false)
+        triggerRef(sessionLoading)
+        triggerRef(sessionGenerating)
         return false
       }
 
-      assistantMessageId = response.messageId
+      // Replace temp user message with actual message from server
+      if (response.userMessage) {
+        const tempIndex = messages.findIndex(m => m.id === userMessage.id)
+        if (tempIndex !== -1) {
+          messages[tempIndex] = response.userMessage
+        }
+      }
+
+      // Update session name immediately if it was renamed
+      if (response.sessionName) {
+        try {
+          const { useSessionsStore } = await import('./sessions')
+          const sessionsStore = useSessionsStore()
+          const sessionInStore = sessionsStore.sessions.find(s => s.id === sessionId)
+          if (sessionInStore) {
+            sessionInStore.name = response.sessionName
+            sessionInStore.updatedAt = Date.now()
+          }
+        } catch (e) {
+          console.error('[Chat Store] Failed to update session name:', e)
+        }
+      }
 
       // Create streaming assistant message
       const assistantMessage: ChatMessage = {
-        id: assistantMessageId,
+        id: response.messageId,
         role: 'assistant',
         content: '',
         timestamp: Date.now(),
         isStreaming: true,
         contentParts: [],
       }
-      addMessage(assistantMessage)
+      messages.push(assistantMessage)
+      setSessionMessages(sessionId, [...messages])
 
-      // Hide the global loading indicator - the message bubble shows its own streaming state
-      isLoading.value = false
+      // Record active stream
+      activeStreams.value.set(sessionId, response.messageId)
+      triggerRef(activeStreams)
 
-      let hasToolCallsInCurrentSegment = false
+      // Hide loading (message bubble shows its own streaming state)
+      sessionLoading.value.set(sessionId, false)
+      triggerRef(sessionLoading)
 
-      // Set up chunk listener
-      unsubscribeChunk = window.electronAPI.onStreamChunk((chunk) => {
-        if (chunk.messageId === assistantMessageId) {
-          const message = messages.value.find(m => m.id === assistantMessageId)
-          if (!message) return
+      return true
+    } catch (error: any) {
+      sessionError.value.set(sessionId, error.message || 'An error occurred')
+      triggerRef(sessionError)
 
-          if (chunk.type === 'text') {
-            // Check if this is a replace operation (used for image generation)
-            if (chunk.replace) {
-              message.content = chunk.content
-              message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
-            } else {
-              message.content += chunk.content
+      // Remove temp user message
+      const tempIndex = messages.findIndex(m => m.id === userMessage.id)
+      if (tempIndex !== -1) {
+        messages.splice(tempIndex, 1)
+        setSessionMessages(sessionId, [...messages])
+      }
 
-              // Update contentParts
-              if (!message.contentParts) message.contentParts = []
-              const parts = message.contentParts
-
-              if (hasToolCallsInCurrentSegment || parts.length === 0 || parts[parts.length - 1].type !== 'text') {
-                // Remove waiting indicator if present
-                if (parts.length > 0 && parts[parts.length - 1].type === 'waiting') {
-                  parts.pop()
-                }
-                parts.push({ type: 'text', content: chunk.content })
-                hasToolCallsInCurrentSegment = false
-              } else {
-                const lastPart = parts[parts.length - 1]
-                if (lastPart.type === 'text') {
-                  lastPart.content += chunk.content
-                }
-              }
-              message.contentParts = [...parts]
-            }
-          } else if (chunk.type === 'reasoning') {
-            message.reasoning = (message.reasoning || '') + chunk.reasoning
-          } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
-            if (chunk.toolCall) {
-              if (!message.toolCalls) message.toolCalls = []
-              const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
-              if (existingIndex >= 0) {
-                message.toolCalls[existingIndex] = chunk.toolCall
-              } else {
-                message.toolCalls.push(chunk.toolCall)
-              }
-
-              const parts = message.contentParts!
-              let lastPart = parts[parts.length - 1]
-
-              if (lastPart && lastPart.type === 'waiting') {
-                parts.pop()
-                lastPart = parts[parts.length - 1]
-              }
-
-              if (lastPart && lastPart.type === 'tool-call') {
-                const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
-                if (existingTcIndex >= 0) {
-                  lastPart.toolCalls[existingTcIndex] = chunk.toolCall
-                } else {
-                  lastPart.toolCalls.push(chunk.toolCall)
-                }
-              } else {
-                parts.push({ type: 'tool-call', toolCalls: [chunk.toolCall] })
-              }
-              hasToolCallsInCurrentSegment = true
-              message.contentParts = [...parts]
-            }
-          } else if (chunk.type === 'continuation') {
-            hasToolCallsInCurrentSegment = true
-            const parts = message.contentParts!
-            parts.push({ type: 'waiting' })
-            message.contentParts = [...parts]
-          } else if (chunk.type === 'replace') {
-            // Replace entire message content (used to remove delegation markers)
-            message.content = chunk.content
-            message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
-          }
-        }
-      })
-
-      // Set up error listener
-      unsubscribeError = window.electronAPI.onStreamError((data) => {
-        if (data.messageId === assistantMessageId) {
-          error.value = data.error || 'Streaming error'
-          errorDetails.value = data.errorDetails || null
-
-          const errorMessage: ChatMessage = {
-            id: `error-${Date.now()}`,
-            role: 'error',
-            content: data.error || 'Streaming error',
-            timestamp: Date.now(),
-            errorDetails: data.errorDetails,
-          }
-          addMessage(errorMessage)
-
-          messages.value = messages.value.filter((m) => m.id !== assistantMessageId)
-
-          if (unsubscribeChunk) unsubscribeChunk()
-          if (unsubscribeComplete) unsubscribeComplete()
-          if (unsubscribeError) unsubscribeError()
-          if (unsubscribeSkill) unsubscribeSkill()
-          if (unsubscribeStepAdded) unsubscribeStepAdded()
-          if (unsubscribeStepUpdated) unsubscribeStepUpdated()
-
-          isLoading.value = false
-          generatingSessionId.value = null
-        }
-      })
-
-      // Listen for skill activation events
-      unsubscribeSkill = window.electronAPI.onSkillActivated((data) => {
-        if (data.messageId === assistantMessageId) {
-          const message = messages.value.find(m => m.id === assistantMessageId)
-          if (message) {
-            message.skillUsed = data.skillName
-          }
-        }
-      })
-
-      // Listen for step events
-      unsubscribeStepAdded = window.electronAPI.onStepAdded((data) => {
-        if (data.messageId === assistantMessageId) {
-          const message = messages.value.find(m => m.id === assistantMessageId)
-          if (message) {
-            // Initialize steps array if needed
-            if (!message.steps) message.steps = []
-            message.steps.push(data.step)
-            message.steps = [...message.steps]
-
-            // Check if we need to add a steps placeholder for this turn
-            if (message.contentParts) {
-              const stepTurnIndex = data.step.turnIndex
-              const parts = message.contentParts
-
-              // Check if we already have a steps placeholder for this turnIndex
-              const hasPlaceholderForTurn = parts.some(
-                p => p.type === 'steps' && (p as any).turnIndex === stepTurnIndex
-              )
-
-              if (!hasPlaceholderForTurn) {
-                const lastPart = parts[parts.length - 1]
-                if (lastPart && lastPart.type === 'waiting') {
-                  parts.pop()
-                }
-                parts.push({ type: 'steps', turnIndex: stepTurnIndex } as any)
-                message.contentParts = [...parts]
-              }
-            }
-          }
-        }
-      })
-
-      unsubscribeStepUpdated = window.electronAPI.onStepUpdated((data) => {
-        if (data.messageId === assistantMessageId) {
-          const message = messages.value.find(m => m.id === assistantMessageId)
-          if (message?.steps) {
-            const step = message.steps.find(s => s.id === data.stepId)
-            if (step) {
-              Object.assign(step, data.updates)
-              message.steps = [...message.steps]
-            }
-          }
-        }
-      })
-
-      // Return a promise that resolves when streaming is complete
-      return new Promise((resolve) => {
-        const completeListener = window.electronAPI.onStreamComplete(async (data) => {
-          if (data.messageId === assistantMessageId) {
-            const message = messages.value.find(m => m.id === assistantMessageId)
-            if (message?.contentParts) {
-              const lastPart = message.contentParts[message.contentParts.length - 1]
-              if (lastPart && lastPart.type === 'waiting') {
-                message.contentParts.pop()
-              }
-
-              if (message.contentParts.length > 0) {
-                const plainContentParts = JSON.parse(JSON.stringify(message.contentParts))
-                await window.electronAPI.updateContentParts(sessionId, assistantMessageId!, plainContentParts)
-              }
-            }
-
-            updateMessage(assistantMessageId!, { isStreaming: false })
-
-            if (unsubscribeChunk) unsubscribeChunk()
-            if (unsubscribeComplete) unsubscribeComplete()
-            if (unsubscribeError) unsubscribeError()
-            if (unsubscribeSkill) unsubscribeSkill()
-            if (unsubscribeStepAdded) unsubscribeStepAdded()
-            if (unsubscribeStepUpdated) unsubscribeStepUpdated()
-
-            isLoading.value = false
-            generatingSessionId.value = null
-            completeListener()
-            resolve(data.sessionName || true)
-          }
-        })
-      })
-
-    } catch (err: any) {
-      error.value = err.message || 'An error occurred'
-      messages.value = messages.value.filter((m) => m.id !== assistantMessageId)
-
-      if (unsubscribeChunk) unsubscribeChunk()
-      if (unsubscribeComplete) unsubscribeComplete()
-      if (unsubscribeError) unsubscribeError()
-      if (unsubscribeSkill) unsubscribeSkill()
-      if (unsubscribeStepAdded) unsubscribeStepAdded()
-      if (unsubscribeStepUpdated) unsubscribeStepUpdated()
-
-      isLoading.value = false
+      sessionLoading.value.set(sessionId, false)
+      sessionGenerating.value.set(sessionId, false)
+      triggerRef(sessionLoading)
+      triggerRef(sessionGenerating)
       return false
     }
   }
 
+  /**
+   * Edit and resend a message
+   */
+  async function editAndResend(sessionId: string, messageId: string, newContent: string) {
+    // Clear error state
+    sessionError.value.set(sessionId, null)
+    sessionErrorDetails.value.set(sessionId, null)
+    triggerRef(sessionError)
+    triggerRef(sessionErrorDetails)
+
+    // Update message in UI immediately
+    const messages = getSessionMessagesRef(sessionId)
+    const messageIndex = messages.findIndex(m => m.id === messageId)
+    if (messageIndex !== -1) {
+      messages[messageIndex] = {
+        ...messages[messageIndex],
+        content: newContent,
+        timestamp: Date.now(),
+      }
+      // Remove all messages after this one
+      messages.splice(messageIndex + 1)
+      setSessionMessages(sessionId, [...messages])
+    }
+
+    // Set states
+    sessionLoading.value.set(sessionId, true)
+    sessionGenerating.value.set(sessionId, true)
+    triggerRef(sessionLoading)
+    triggerRef(sessionGenerating)
+
+    try {
+      const response = await window.electronAPI.editAndResendStream(sessionId, messageId, newContent)
+
+      if (!response.success) {
+        sessionError.value.set(sessionId, response.error || 'Failed to edit and resend')
+        sessionErrorDetails.value.set(sessionId, response.errorDetails || null)
+        triggerRef(sessionError)
+        triggerRef(sessionErrorDetails)
+
+        const errorMessage: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: 'error',
+          content: response.error || 'Failed to edit and resend',
+          timestamp: Date.now(),
+          errorDetails: response.errorDetails,
+        }
+        messages.push(errorMessage)
+        setSessionMessages(sessionId, [...messages])
+
+        sessionLoading.value.set(sessionId, false)
+        sessionGenerating.value.set(sessionId, false)
+        triggerRef(sessionLoading)
+        triggerRef(sessionGenerating)
+        return false
+      }
+
+      // Create streaming assistant message
+      const assistantMessage: ChatMessage = {
+        id: response.messageId,
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        isStreaming: true,
+        contentParts: [],
+      }
+      messages.push(assistantMessage)
+      setSessionMessages(sessionId, [...messages])
+
+      // Record active stream
+      activeStreams.value.set(sessionId, response.messageId)
+      triggerRef(activeStreams)
+
+      // Hide loading
+      sessionLoading.value.set(sessionId, false)
+      triggerRef(sessionLoading)
+
+      return true
+    } catch (error: any) {
+      sessionError.value.set(sessionId, error.message || 'An error occurred')
+      triggerRef(sessionError)
+
+      sessionLoading.value.set(sessionId, false)
+      sessionGenerating.value.set(sessionId, false)
+      triggerRef(sessionLoading)
+      triggerRef(sessionGenerating)
+      return false
+    }
+  }
+
+  /**
+   * Regenerate from a message
+   */
   async function regenerate(sessionId: string, messageId: string) {
-    const message = messages.value.find(m => m.id === messageId)
-    if (!message) return
+    const messages = getSessionMessagesRef(sessionId)
+    const message = messages.find(m => m.id === messageId)
+    if (!message) return false
 
     // If regenerating from an assistant message, find the preceding user message
     if (message.role === 'assistant') {
-      const messageIndex = messages.value.findIndex(m => m.id === messageId)
-      // Find the most recent user message before this assistant message
+      const messageIndex = messages.findIndex(m => m.id === messageId)
       for (let i = messageIndex - 1; i >= 0; i--) {
-        if (messages.value[i].role === 'user') {
-          return await editAndResend(sessionId, messages.value[i].id, messages.value[i].content)
+        if (messages[i].role === 'user') {
+          return await editAndResend(sessionId, messages[i].id, messages[i].content)
         }
       }
-      // No preceding user message found
-      return
+      return false
     }
 
     // For user messages, just resend with same content
     return await editAndResend(sessionId, messageId, message.content)
   }
 
+  /**
+   * Stop generation for a session
+   */
+  async function stopGeneration(sessionId?: string) {
+    try {
+      const response = await window.electronAPI.abortStream(sessionId)
+      if (response.success && sessionId) {
+        // Mark current streaming message as not streaming
+        const currentMessageId = activeStreams.value.get(sessionId)
+        if (currentMessageId) {
+          const messages = getSessionMessagesRef(sessionId)
+          const messageIndex = messages.findIndex(m => m.id === currentMessageId)
+          if (messageIndex !== -1) {
+            messages[messageIndex] = { ...messages[messageIndex], isStreaming: false }
+            setSessionMessages(sessionId, [...messages])
+          }
+        }
+
+        // Clear states
+        sessionGenerating.value.set(sessionId, false)
+        activeStreams.value.delete(sessionId)
+        triggerRef(sessionGenerating)
+        triggerRef(activeStreams)
+      }
+      return response.success
+    } catch (error) {
+      console.error('[Chat Store] Failed to stop generation:', error)
+      return false
+    }
+  }
+
+  /**
+   * Update a message in a session
+   */
+  function updateSessionMessage(sessionId: string, messageId: string, updates: Partial<ChatMessage>) {
+    const messages = getSessionMessagesRef(sessionId)
+    const messageIndex = messages.findIndex(m => m.id === messageId)
+    if (messageIndex !== -1) {
+      messages[messageIndex] = { ...messages[messageIndex], ...updates }
+      setSessionMessages(sessionId, [...messages])
+    }
+  }
+
+  /**
+   * Clear error for a session
+   */
+  function clearSessionError(sessionId: string) {
+    sessionError.value.set(sessionId, null)
+    sessionErrorDetails.value.set(sessionId, null)
+    triggerRef(sessionError)
+    triggerRef(sessionErrorDetails)
+  }
+
+  /**
+   * Clear all messages for a session
+   */
+  function clearSessionMessages(sessionId: string) {
+    sessionMessages.value.set(sessionId, [])
+    triggerRef(sessionMessages)
+  }
+
   return {
-    messages,
-    isLoading,
-    isGenerating,
-    isCurrentSessionGenerating,
-    generatingSessionId,
-    activeSessionStreams,
-    currentViewSessionId,
-    error,
-    errorDetails,
-    messageCount,
-    userMessages,
-    assistantMessages,
-    setMessages,
-    addMessage,
-    updateMessage,
-    clearMessages,
-    clearError,
+    // Per-session state maps
+    sessionMessages,
+    sessionLoading,
+    sessionGenerating,
+    sessionError,
+    sessionErrorDetails,
+    sessionUsageMap,
+    activeStreams,
+
+    // Getters
+    getSessionState,
+    getSessionUsage,
+    isSessionGenerating,
+
+    // Event handlers (called by IPC Hub)
+    handleStreamChunk,
+    handleStreamComplete,
+    handleStreamError,
+    handleStepAdded,
+    handleStepUpdated,
+    handleSkillActivated,
+
+    // Actions
+    loadMessages,
+    loadSessionUsage,
     sendMessage,
-    sendMessageStream,
-    stopGeneration,
     editAndResend,
     regenerate,
-    cleanupStreamListeners,
-    isSessionGenerating,
-    setCurrentViewSession,
-    mergeBackendMessageToStreaming,
+    stopGeneration,
+    updateSessionMessage,
+    clearSessionError,
+    clearSessionMessages,
   }
 })
