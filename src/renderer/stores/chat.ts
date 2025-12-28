@@ -321,8 +321,11 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
 
-      // Mark message as not streaming
+      // Mark message as not streaming and save usage
       message.isStreaming = false
+      if (data.usage) {
+        message.usage = data.usage
+      }
       setSessionMessages(sessionId, [...messages])
     }
 
@@ -646,6 +649,9 @@ export const useChatStore = defineStore('chat', () => {
       messages.splice(messageIndex + 1)
       setSessionMessages(sessionId, [...messages])
     }
+
+    // Reload session usage after truncation (backend subtracts deleted messages' tokens)
+    await loadSessionUsage(sessionId)
 
     // Set states
     sessionLoading.value.set(sessionId, true)

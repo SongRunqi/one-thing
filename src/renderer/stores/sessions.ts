@@ -16,7 +16,7 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   const sessionCount = computed(() => sessions.value.length)
 
-  // Filter sessions by current workspace (excluding archived), sorted by updatedAt desc
+  // Filter sessions by current workspace (excluding archived), sorted by createdAt desc (stable order)
   const filteredSessions = computed(() => {
     const workspacesStore = useWorkspacesStore()
     const workspaceId = workspacesStore.currentWorkspaceId
@@ -30,12 +30,10 @@ export const useSessionsStore = defineStore('sessions', () => {
       filtered = sessions.value.filter(s => s.workspaceId === workspaceId && !s.isArchived)
     }
 
-    // Sort by pinned first, then by updatedAt descending
-    return filtered.sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1
-      if (!a.isPinned && b.isPinned) return 1
-      return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
-    })
+    // Only group by pinned, keep array order (new sessions are unshifted to top)
+    const pinned = filtered.filter(s => s.isPinned)
+    const unpinned = filtered.filter(s => !s.isPinned)
+    return [...pinned, ...unpinned]
   })
 
   // Get all archived sessions
@@ -132,15 +130,14 @@ export const useSessionsStore = defineStore('sessions', () => {
           Object.assign(localSession, response.session)
         }
 
-        // Sync model selection based on session's saved model or global defaults
+        // Sync model selection if session has a saved model
         if (response.session.lastProvider && response.session.lastModel) {
           // Session has saved model - show it in UI
           settingsStore.updateAIProvider(response.session.lastProvider as any)
           settingsStore.updateModel(response.session.lastModel, response.session.lastProvider as any)
-        } else {
-          // Session has no saved model - reload global settings to show defaults
-          await settingsStore.loadSettings()
         }
+        // If session has no saved model, keep using current global settings
+        // (already loaded at app startup, no need to reload)
 
         // Load messages for this session from backend
         // The chat store now manages per-session state in Maps
@@ -313,13 +310,13 @@ export const useSessionsStore = defineStore('sessions', () => {
       if (response.success && response.session) {
         // Add the new branch session to the list
         sessions.value.unshift(response.session)
-        // Switch to the new branch session
-        await switchSession(response.session.id)
+        // Return the session - caller decides whether to switch or split
         return response.session
       }
     } catch (error) {
       console.error('Failed to create branch:', error)
     }
+    return null
   }
 
   async function updateSessionPin(sessionId: string, isPinned: boolean) {

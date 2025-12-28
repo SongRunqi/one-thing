@@ -111,8 +111,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, h } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, h } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
+import { matchShortcut } from '@/composables/useShortcuts'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'
 
 // Tab Components
@@ -140,6 +141,7 @@ const showCustomProviderDialog = ref(false)
 const editingProvider = ref<CustomProviderConfig | null>(null)
 const showUnsavedDialog = ref(false)
 const tools = ref<ToolDefinition[]>([])
+const isInitialLoad = ref(true) // Prevent auto-save during initial load
 
 // Navigation items with inline SVG icons
 const navItems = [
@@ -276,6 +278,10 @@ async function loadSettings() {
     console.error('Failed to load settings:', err)
   } finally {
     isLoading.value = false
+    // Allow auto-save after initial load is complete
+    setTimeout(() => {
+      isInitialLoad.value = false
+    }, 100)
   }
 }
 
@@ -319,6 +325,7 @@ function handleEmbeddingSettingsUpdate(embeddingSettings: any) {
 let saveTimeout: number | null = null
 watch(localSettings, (newSettings) => {
   if (!newSettings) return
+  if (isInitialLoad.value) return // Skip auto-save during initial load
 
   if (saveTimeout) clearTimeout(saveTimeout)
   saveTimeout = window.setTimeout(async () => {
@@ -386,9 +393,25 @@ function handleBeforeUnload(e: BeforeUnloadEvent) {
   }
 }
 
+// Handle keyboard shortcuts
+function handleKeydown(e: KeyboardEvent) {
+  // Close window with Escape or configured close shortcut
+  const closeShortcut = localSettings.value?.general?.shortcuts?.closeChat
+  if (e.key === 'Escape' || matchShortcut(e, closeShortcut)) {
+    e.preventDefault()
+    window.close()
+  }
+}
+
 onMounted(async () => {
   await loadSettings()
   window.addEventListener('beforeunload', handleBeforeUnload)
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  document.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
@@ -398,8 +421,8 @@ onMounted(async () => {
   width: 100vw;
   display: flex;
   flex-direction: column;
-  background: var(--bg, #1C1B1A);
-  color: var(--text-primary, #CECDC3);
+  background: var(--bg-app);
+  color: var(--text-primary);
   overflow: hidden;
 }
 
@@ -424,8 +447,8 @@ onMounted(async () => {
 .settings-nav {
   width: 220px;
   min-width: 220px;
-  background: var(--bg-secondary, #282726);
-  border-right: 1px solid var(--border, #343331);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
   padding: 60px 12px 20px;
   display: flex;
   flex-direction: column;
@@ -456,13 +479,13 @@ onMounted(async () => {
 }
 
 .nav-item:hover {
-  background: var(--hover, rgba(255,255,255,0.05));
-  color: var(--text-primary, #CECDC3);
+  background: var(--hover);
+  color: var(--text-primary);
 }
 
 .nav-item.active {
-  background: var(--accent, #4385BE);
-  color: white;
+  background: var(--accent);
+  color: var(--text-btn-primary);
 }
 
 .nav-icon {
@@ -527,14 +550,6 @@ onMounted(async () => {
   background: var(--text-muted);
 }
 
-/* Dark/Light mode adjustments */
-html[data-theme='light'] .settings-nav {
-  background: #f5f5f4;
-}
-
-html[data-theme='light'] .nav-item:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
 
 /* Loading State */
 .loading-state {

@@ -6,8 +6,9 @@
     <title>AI Chat</title>
     <style>
       /* Prevent flash of unstyled content - apply background immediately */
+      /* Using Flexoki colors: dark=#282726 (base-900), light=#FFFCF0 (paper) */
       html, body {
-        background-color: #1C1B1A;
+        background-color: #282726;
         margin: 0;
         padding: 0;
       }
@@ -16,12 +17,26 @@
       }
     </style>
     <script>
-      // Apply system theme preference immediately before CSS loads
-      // This prevents flash of wrong theme on startup
+      // Sync read theme from URL hash (set by main process) or localStorage cache
       (function() {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (!prefersDark) {
-          document.documentElement.setAttribute('data-theme', 'light');
+        var hash = window.location.hash;
+        var theme = null;
+        var source = 'default';
+        // Check URL hash for theme parameter (e.g., #theme=light or #/settings?theme=dark)
+        if (hash.includes('theme=light')) {
+          theme = 'light';
+          source = 'url-hash';
+        } else if (hash.includes('theme=dark')) {
+          theme = 'dark';
+          source = 'url-hash';
+        } else {
+          // Fallback to localStorage cache
+          theme = localStorage.getItem('cached-theme');
+          source = theme ? 'localStorage' : 'none';
+        }
+        console.log('[Theme] index.html:', { hash: hash, theme: theme, source: source });
+        if (theme === 'light' || theme === 'dark') {
+          document.documentElement.setAttribute('data-theme', theme);
         }
       })();
     </script>

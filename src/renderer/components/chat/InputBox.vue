@@ -18,11 +18,11 @@
         class="attachment-item"
         :class="{ 'is-image': file.mediaType === 'image' }"
       >
-        <img v-if="file.preview" :src="file.preview" :alt="file.name" class="attachment-thumb" />
+        <img v-if="file.preview" :src="file.preview" :alt="file.fileName" class="attachment-thumb" />
         <div v-else class="attachment-icon">
           <FileText :size="20" :stroke-width="2" />
         </div>
-        <span class="attachment-name">{{ file.name }}</span>
+        <span class="attachment-name">{{ file.fileName }}</span>
         <button class="attachment-remove" @click="removeAttachment(file.id)" title="Remove">
           <X :size="14" :stroke-width="2.5" />
         </button>
@@ -52,18 +52,6 @@
 
       <!-- Input area - full width -->
       <div class="input-area">
-        <!-- Mirror div for caret coordinate calculation (with pre-created probe) -->
-        <div ref="mirrorRef" class="textarea-mirror" aria-hidden="true"><span ref="probeRef">&#8203;</span></div>
-
-        <!-- Custom animated caret -->
-        <div
-          v-if="isFocused && caretVisible"
-          class="custom-caret"
-          :style="caretStyle"
-        >
-          <div class="caret-main"></div>
-        </div>
-
         <textarea
           ref="textareaRef"
           v-model="messageInput"
@@ -73,6 +61,7 @@
           @focus="handleFocus"
           @blur="handleBlur"
           @input="handleInput"
+          @paste="handlePaste"
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
           rows="1"
@@ -184,119 +173,19 @@ const composerWrapperRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const attachedFiles = ref<AttachedFile[]>([])
 
-// Custom caret refs
-const mirrorRef = ref<HTMLDivElement | null>(null)
-const probeRef = ref<HTMLSpanElement | null>(null)
-
 // ResizeObserver for dynamic height tracking
 let composerResizeObserver: ResizeObserver | null = null
 
-// Caret position state with optimizations
-const caretPos = ref({ x: 0, y: 0, height: 20 })
-const caretVisible = ref(true)
-let cachedMirrorStyle = false
-let cachedCaretHeight = 20
-let cachedLineHeight = 24
-let cachedYOffset = 0
-let pendingCaretUpdate = false
-
-const caretStyle = computed(() => ({
-  transform: `translate3d(${caretPos.value.x}px, ${caretPos.value.y}px, 0)`,
-  height: `${caretPos.value.height}px`
-}))
-
-// Schedule caret update with requestAnimationFrame (throttled)
-function scheduleCaretUpdate() {
-  if (pendingCaretUpdate) return
-  pendingCaretUpdate = true
-  requestAnimationFrame(() => {
-    pendingCaretUpdate = false
-    updateCaretPosition()
-  })
-}
-
-// Optimized caret position update
-function updateCaretPosition() {
-  const textarea = textareaRef.value
-  const mirror = mirrorRef.value
-  const probe = probeRef.value
-  if (!textarea || !mirror || !probe) return
-
-  const { selectionStart, selectionEnd } = textarea
-
-  // Hide caret when there's a selection
-  if (selectionStart !== selectionEnd) {
-    caretVisible.value = false
-    return
-  }
-  caretVisible.value = true
-
-  // Only sync mirror style once (until cache is invalidated)
-  if (!cachedMirrorStyle) {
-    syncMirrorStyle()
-    cachedMirrorStyle = true
-  }
-
-  // Update mirror content (probe is already inside)
-  const content = textarea.value.substring(0, selectionStart)
-
-  // Clear all text nodes before probe, then add new content
-  while (mirror.firstChild && mirror.firstChild !== probe) {
-    mirror.removeChild(mirror.firstChild)
-  }
-  // Insert text node before probe (even if empty - creates proper positioning)
-  const textNode = document.createTextNode(content)
-  mirror.insertBefore(textNode, probe)
-
-  // Read position (single reflow)
-  const x = probe.offsetLeft - textarea.scrollLeft
-  const y = probe.offsetTop - textarea.scrollTop + cachedYOffset
-
-  caretPos.value = { x, y, height: cachedCaretHeight }
-}
-
-// Sync mirror style with textarea (called only when cache is invalid)
-function syncMirrorStyle() {
-  const textarea = textareaRef.value
-  const mirror = mirrorRef.value
-  if (!textarea || !mirror) return
-
-  const style = getComputedStyle(textarea)
-  const props = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'width', 'paddingLeft', 'paddingRight', 'whiteSpace', 'wordBreak', 'wordWrap'] as const
-  props.forEach(p => {
-    (mirror.style as any)[p] = style[p]
-  })
-
-  const fontSize = parseFloat(style.fontSize) || 16
-  cachedLineHeight = parseFloat(style.lineHeight) || 24
-  cachedCaretHeight = fontSize * 1.4
-  cachedYOffset = (cachedLineHeight - cachedCaretHeight) / 2 - 2
-}
-
-// Handle selection change (fires on any cursor movement)
-function handleSelectionChange() {
-  if (document.activeElement === textareaRef.value) {
-    scheduleCaretUpdate()
-  }
-}
-
-// Invalidate cache on focus
 function handleFocus() {
   isFocused.value = true
-  cachedMirrorStyle = false
-  scheduleCaretUpdate()
-  // Listen for selection changes while focused
-  document.addEventListener('selectionchange', handleSelectionChange)
 }
 
 function handleBlur() {
   isFocused.value = false
-  document.removeEventListener('selectionchange', handleSelectionChange)
 }
 
 function handleInput() {
   adjustHeight()
-  scheduleCaretUpdate()
 }
 
 // Skills state
@@ -329,7 +218,6 @@ watch(effectiveSessionId, (newSessionId, oldSessionId) => {
       messageInput.value = cachedInput
       nextTick(() => {
         adjustHeight()
-        scheduleCaretUpdate()
       })
     }
   }
@@ -347,6 +235,15 @@ function openToolSettings() {
 const canSend = computed(() => {
   const hasContent = messageInput.value.trim().length > 0 || attachedFiles.value.length > 0
   return hasContent && !props.isLoading
+})
+
+// Check if current model supports image input (vision capability)
+const currentModelSupportsVision = computed(() => {
+  const provider = settingsStore.settings.ai.provider
+  const modelId = settingsStore.settings.ai.providers[provider]?.model
+  const models = settingsStore.getCachedModels(provider)
+  const model = models.find(m => m.id === modelId)
+  return model?.architecture?.input_modalities?.includes('image') || false
 })
 
 function handleKeyDown(e: KeyboardEvent) {
@@ -424,8 +321,6 @@ function sendMessage() {
       }
       // Refocus the textarea after sending
       textareaRef.value?.focus()
-      // Reset caret position to start
-      scheduleCaretUpdate()
     })
   }
 }
@@ -441,8 +336,6 @@ function adjustHeight() {
   textarea.style.height = 'auto'
   const newHeight = Math.min(Math.max(textarea.scrollHeight, 24), 200)
   textarea.style.height = `${newHeight}px`
-  // Invalidate mirror cache when height changes
-  cachedMirrorStyle = false
 }
 
 function handleAttach() {
@@ -458,48 +351,81 @@ function getMediaType(mimeType: string): AttachmentMediaType {
   return 'file'
 }
 
+// Process a single file and add to attachments
+async function processFile(file: File): Promise<boolean> {
+  const maxFileSize = 10 * 1024 * 1024 // 10MB limit
+  if (file.size > maxFileSize) {
+    console.warn(`File ${file.name} is too large (max 10MB)`)
+    return false
+  }
+
+  const id = `attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const mediaType = getMediaType(file.type)
+  const base64Data = await readFileAsBase64(file)
+
+  const attachedFile: AttachedFile = {
+    id,
+    fileName: file.name,
+    mimeType: file.type || 'application/octet-stream',
+    size: file.size,
+    mediaType,
+    base64Data,
+  }
+
+  // Generate preview for images
+  if (mediaType === 'image') {
+    attachedFile.preview = await createImagePreview(file)
+    const dimensions = await getImageDimensions(attachedFile.preview)
+    attachedFile.width = dimensions.width
+    attachedFile.height = dimensions.height
+  }
+
+  attachedFiles.value = [...attachedFiles.value, attachedFile]
+  return true
+}
+
+// Handle paste event - allow image paste only if model supports vision
+async function handlePaste(event: ClipboardEvent) {
+  const items = event.clipboardData?.items
+  if (!items) return
+
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      // Check if current model supports image input
+      if (!currentModelSupportsVision.value) {
+        // Debug: output current model info
+        const provider = settingsStore.settings.ai.provider
+        const modelId = settingsStore.settings.ai.providers[provider]?.model
+        const models = settingsStore.getCachedModels(provider)
+        const model = models.find(m => m.id === modelId)
+        console.warn('[InputBox] Current model does not support image input:', {
+          provider,
+          modelId,
+          modelFound: !!model,
+          inputModalities: model?.architecture?.input_modalities,
+          cachedModelsCount: models.length,
+        })
+        return // Don't prevent default - allow text to be pasted normally
+      }
+
+      event.preventDefault()
+      const file = item.getAsFile()
+      if (file) {
+        await processFile(file)
+      }
+      return // Only process first image
+    }
+  }
+}
+
 async function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement
   const files = input.files
   if (!files || files.length === 0) return
 
-  const maxFileSize = 10 * 1024 * 1024 // 10MB limit
-  const newFiles: AttachedFile[] = []
-
   for (const file of Array.from(files)) {
-    if (file.size > maxFileSize) {
-      console.warn(`File ${file.name} is too large (max 10MB)`)
-      continue
-    }
-
-    const id = `attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    const mediaType = getMediaType(file.type)
-
-    // Read file as base64
-    const base64Data = await readFileAsBase64(file)
-
-    const attachedFile: AttachedFile = {
-      id,
-      fileName: file.name,
-      mimeType: file.type || 'application/octet-stream',
-      size: file.size,
-      mediaType,
-      base64Data,
-    }
-
-    // Generate preview for images
-    if (mediaType === 'image') {
-      attachedFile.preview = await createImagePreview(file)
-      // Get image dimensions
-      const dimensions = await getImageDimensions(attachedFile.preview)
-      attachedFile.width = dimensions.width
-      attachedFile.height = dimensions.height
-    }
-
-    newFiles.push(attachedFile)
+    await processFile(file)
   }
-
-  attachedFiles.value = [...attachedFiles.value, ...newFiles]
 
   // Reset input for re-selection
   input.value = ''
@@ -561,7 +487,6 @@ function setMessageInput(text: string) {
   nextTick(() => {
     adjustHeight()
     textareaRef.value?.focus()
-    scheduleCaretUpdate()
   })
 }
 
@@ -572,32 +497,20 @@ defineExpose({
   focus: focusTextarea,
 })
 
-// Invalidate caret cache on window resize
-function handleWindowResize() {
-  cachedMirrorStyle = false
-}
-
 onMounted(async () => {
   adjustHeight()
   await loadSkills()
-
-  // Listen for window resize to invalidate caret cache
-  window.addEventListener('resize', handleWindowResize)
 
   if (composerWrapperRef.value) {
     composerResizeObserver = new ResizeObserver((entries) => {
       const height = entries[0].contentRect.height
       document.documentElement.style.setProperty('--composer-height', `${height + 40}px`)
-      // Also invalidate caret cache when composer resizes
-      cachedMirrorStyle = false
     })
     composerResizeObserver.observe(composerWrapperRef.value)
   }
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleWindowResize)
-  document.removeEventListener('selectionchange', handleSelectionChange)
   if (composerResizeObserver) {
     composerResizeObserver.disconnect()
     composerResizeObserver = null
@@ -843,48 +756,6 @@ html[data-theme='light'] .composer.focused {
   padding: 0 18px 6px 18px;
 }
 
-/* Mirror div for caret position calculation */
-.textarea-mirror {
-  position: absolute;
-  top: 12px;
-  left: 18px;
-  visibility: hidden;
-  pointer-events: none;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  overflow: hidden;
-  z-index: -1;
-}
-
-/* Custom animated caret */
-.custom-caret {
-  position: absolute;
-  top: 12px;
-  left: 18px;
-  width: 2px;
-  pointer-events: none;
-  z-index: 10;
-  transition: transform 0.06s ease-out;
-}
-
-.caret-main {
-  width: 100%;
-  height: 100%;
-  background: var(--accent);
-  border-radius: 1px;
-  box-shadow: 0 0 8px var(--accent), 0 0 12px rgba(59, 130, 246, 0.3);
-  animation: caret-blink 0.9s ease-in-out infinite;
-}
-
-@keyframes caret-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-html[data-theme='light'] .caret-main {
-  box-shadow: 0 0 6px rgba(37, 99, 235, 0.4);
-}
-
 .composer-input {
   width: 100%;
   padding: 12px 0 0 0;
@@ -899,7 +770,7 @@ html[data-theme='light'] .caret-main {
   min-height: 28px;
   max-height: 200px;
   overflow-y: auto;
-  caret-color: transparent;
+  caret-color: var(--accent);
 }
 
 .composer-input::placeholder {

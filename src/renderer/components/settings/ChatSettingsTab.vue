@@ -91,6 +91,25 @@
       </div>
     </section>
 
+    <!-- Branch Settings -->
+    <section class="settings-section">
+      <h3 class="section-title">Branch Settings</h3>
+      <p class="section-desc">控制分支会话的创建行为。</p>
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <span class="toggle-label">分屏打开分支</span>
+          <span class="toggle-desc">创建分支时在分屏中打开，而不是切换到新会话</span>
+        </div>
+        <button
+          :class="['toggle-switch', { active: chatSettings.branchOpenInSplitScreen }]"
+          @click="updateBranchOpenInSplitScreen(!chatSettings.branchOpenInSplitScreen)"
+        >
+          <span class="toggle-knob"></span>
+        </button>
+      </div>
+    </section>
+
     <!-- Advanced Settings (collapsed by default) -->
     <section class="settings-section">
       <button class="advanced-toggle" @click="showAdvanced = !showAdvanced">
@@ -207,6 +226,7 @@ const defaults: ChatSettings = {
   topP: 1,
   presencePenalty: 0,
   frequencyPenalty: 0,
+  branchOpenInSplitScreen: true,
 }
 
 // Get current chat settings with defaults
@@ -216,6 +236,7 @@ const chatSettings = computed<ChatSettings>(() => ({
   topP: props.settings.chat?.topP ?? defaults.topP,
   presencePenalty: props.settings.chat?.presencePenalty ?? defaults.presencePenalty,
   frequencyPenalty: props.settings.chat?.frequencyPenalty ?? defaults.frequencyPenalty,
+  branchOpenInSplitScreen: props.settings.chat?.branchOpenInSplitScreen ?? defaults.branchOpenInSplitScreen,
 }))
 
 // Presets
@@ -271,6 +292,10 @@ function updatePresencePenalty(value: number) {
 
 function updateFrequencyPenalty(value: number) {
   updateChatSettings({ frequencyPenalty: Math.max(-2, Math.min(2, value)) })
+}
+
+function updateBranchOpenInSplitScreen(value: boolean) {
+  updateChatSettings({ branchOpenInSplitScreen: value })
 }
 
 function resetToDefaults() {
@@ -512,5 +537,62 @@ function resetToDefaults() {
 .slide-enter-to,
 .slide-leave-from {
   max-height: 500px;
+}
+
+/* Toggle row for boolean settings */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+}
+
+.toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toggle-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.toggle-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border: none;
+  border-radius: 12px;
+  background: var(--border);
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.toggle-switch.active {
+  background: var(--accent);
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+
+.toggle-switch.active .toggle-knob {
+  transform: translateX(20px);
 }
 </style>

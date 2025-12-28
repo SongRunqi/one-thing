@@ -153,6 +153,15 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.SETTINGS_CHANGED, listener)
   },
 
+  getSystemTheme: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SYSTEM_THEME),
+
+  onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => {
+    const listener = (_event: any, theme: 'light' | 'dark') => callback(theme)
+    ipcRenderer.on(IPC_CHANNELS.SYSTEM_THEME_CHANGED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SYSTEM_THEME_CHANGED, listener)
+  },
+
   // Models methods (legacy)
   fetchModels: (provider: AIProvider, apiKey: string, baseUrl?: string, forceRefresh?: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.FETCH_MODELS, { provider, apiKey, baseUrl, forceRefresh }),
@@ -441,6 +450,33 @@ const electronAPI = {
 
   clearAllMedia: () =>
     ipcRenderer.invoke('media:clear-all'),
+
+  readImageBase64: (filePath: string) =>
+    ipcRenderer.invoke('media:read-image-base64', filePath),
+
+  // Image preview methods
+  openImagePreview: (src: string, alt?: string) => {
+    console.log('[Preload] openImagePreview called:', { src: src.substring(0, 50), alt })
+    return ipcRenderer.invoke(IPC_CHANNELS.OPEN_IMAGE_PREVIEW, { src, alt })
+  },
+
+  onImagePreviewUpdate: (callback: (data: { mode: 'single'; src: string; alt?: string }) => void) => {
+    const listener = (_event: any, data: { mode: 'single'; src: string; alt?: string }) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, listener)
+  },
+
+  // Image gallery methods
+  openImageGallery: (images: Array<{ id: string; src: string; alt?: string; thumbnail?: string }>, initialIndex?: number) => {
+    console.log('[Preload] openImageGallery called:', { count: images.length, initialIndex })
+    return ipcRenderer.invoke(IPC_CHANNELS.OPEN_IMAGE_GALLERY, { images, initialIndex })
+  },
+
+  onImageGalleryUpdate: (callback: (data: { mode: 'gallery'; images: Array<{ id: string; src: string; alt?: string; thumbnail?: string }>; currentIndex: number }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.IMAGE_GALLERY_UPDATE, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.IMAGE_GALLERY_UPDATE, listener)
+  },
 
   // Permission methods
   respondToPermission: (request: {

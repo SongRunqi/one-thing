@@ -16,6 +16,8 @@ import {
   readJsonFile,
   writeJsonFile,
 } from '../stores/paths.js'
+import { openImagePreviewWindow } from '../window.js'
+import { IPC_CHANNELS } from '../../shared/ipc.js'
 
 export interface MediaItem {
   id: string
@@ -179,5 +181,45 @@ export function registerMediaHandlers() {
 
     // Clear index
     saveMediaIndex({ items: [] })
+  })
+
+  // Open image preview window (single image)
+  ipcMain.handle(IPC_CHANNELS.OPEN_IMAGE_PREVIEW, async (_, data: {
+    src: string
+    alt?: string
+  }) => {
+    console.log('[Media IPC] Opening image preview window:', { src: data.src.substring(0, 50), alt: data.alt })
+    openImagePreviewWindow({ mode: 'single', src: data.src, alt: data.alt })
+    return { success: true }
+  })
+
+  // Open image gallery window (multiple images)
+  ipcMain.handle(IPC_CHANNELS.OPEN_IMAGE_GALLERY, async (_, data: {
+    images: Array<{ id: string; src: string; alt?: string; thumbnail?: string }>
+    initialIndex?: number
+  }) => {
+    console.log('[Media IPC] Opening image gallery:', { count: data.images.length, initialIndex: data.initialIndex })
+    openImagePreviewWindow({ mode: 'gallery', images: data.images, currentIndex: data.initialIndex || 0 })
+    return { success: true }
+  })
+
+  // Read image file and return as base64 data URL
+  ipcMain.handle('media:read-image-base64', async (_, filePath: string): Promise<string> => {
+    try {
+      const buffer = fs.readFileSync(filePath)
+      const ext = path.extname(filePath).toLowerCase()
+      let mimeType = 'image/png'
+      if (ext === '.jpg' || ext === '.jpeg') {
+        mimeType = 'image/jpeg'
+      } else if (ext === '.gif') {
+        mimeType = 'image/gif'
+      } else if (ext === '.webp') {
+        mimeType = 'image/webp'
+      }
+      return `data:${mimeType};base64,${buffer.toString('base64')}`
+    } catch (error) {
+      console.error('[Media IPC] Failed to read image:', filePath, error)
+      throw error
+    }
   })
 }

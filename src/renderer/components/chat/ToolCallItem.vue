@@ -91,35 +91,31 @@ const isExpanded = ref(false)
 
 const statusClass = computed(() => `status-${props.toolCall.status}`)
 
-// Preview text - command or first arg
+// Preview text - command or first arg (no truncation, CSS handles wrapping)
 const previewText = computed(() => {
   const args = props.toolCall.arguments
   if (!args) return ''
 
   // For bash, show command
   if (args.command) {
-    const cmd = String(args.command)
-    return cmd.length > 60 ? cmd.slice(0, 57) + '...' : cmd
+    return String(args.command)
   }
 
   // For file operations, show path (check multiple possible field names)
   const pathField = args.path || args.file_path || args.filePath
   if (pathField) {
-    const path = String(pathField)
-    return path.length > 50 ? '...' + path.slice(-47) : path
+    return String(pathField)
   }
 
   // For glob/grep patterns
   if (args.pattern) {
-    const pattern = String(args.pattern)
-    return pattern.length > 50 ? pattern.slice(0, 47) + '...' : pattern
+    return String(args.pattern)
   }
 
   // Default: stringify first value
   const firstVal = Object.values(args)[0]
   if (firstVal) {
-    const str = String(firstVal)
-    return str.length > 50 ? str.slice(0, 47) + '...' : str
+    return String(firstVal)
   }
 
   return ''
@@ -278,7 +274,7 @@ function truncateOutput(output: string, maxLines: number = 8): string {
 .tool-name {
   font-weight: 500;
   color: var(--text-secondary, #888);
-  flex-shrink: 0;
+  word-break: break-word;
 }
 
 /* Preview */
@@ -286,9 +282,8 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   color: var(--text-primary, #e5e5e5);
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: pre-wrap;
+  word-break: break-all;
   min-width: 0;
   flex: 1;
 }

@@ -52,6 +52,8 @@ export const IPC_CHANNELS = {
   SAVE_SETTINGS: 'settings:save',
   OPEN_SETTINGS_WINDOW: 'settings:open-window',
   SETTINGS_CHANGED: 'settings:changed',
+  GET_SYSTEM_THEME: 'settings:get-system-theme',
+  SYSTEM_THEME_CHANGED: 'settings:system-theme-changed',
 
   // Models related
   FETCH_MODELS: 'models:fetch',
@@ -107,6 +109,12 @@ export const IPC_CHANNELS = {
 
   // Dialog related
   SHOW_OPEN_DIALOG: 'dialog:show-open',
+
+  // Image Preview related
+  OPEN_IMAGE_PREVIEW: 'media:open-image-preview',
+  OPEN_IMAGE_GALLERY: 'media:open-image-gallery',
+  IMAGE_PREVIEW_UPDATE: 'image-preview:update',
+  IMAGE_GALLERY_UPDATE: 'image-gallery:update',
 
   // Skills related (Official Claude Code Skills)
   SKILLS_GET_ALL: 'skills:get-all',
@@ -228,6 +236,12 @@ export interface ChatMessage {
   skillUsed?: string  // Name of the skill used by the assistant (e.g., "agent-plan")
   steps?: Step[]  // Steps showing AI reasoning process
   attachments?: MessageAttachment[]  // File/image attachments
+  // Token usage for this message (for assistant messages)
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+  }
 }
 
 export interface ChatSession {
@@ -404,6 +418,7 @@ export interface ChatSettings {
   topP?: number                // Nucleus sampling, 0-1, default 1
   presencePenalty?: number     // -2 to 2, default 0
   frequencyPenalty?: number    // -2 to 2, default 0
+  branchOpenInSplitScreen?: boolean  // Whether branches open in split screen, default true
 }
 
 // Supported embedding provider types

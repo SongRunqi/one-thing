@@ -209,6 +209,14 @@ export type {
   MemoryVividness,
 }
 
+// Gallery image type for image preview window
+export interface GalleryImage {
+  id: string
+  src: string        // Full image URL or data URL
+  alt?: string       // Image description/title
+  thumbnail?: string // Optional thumbnail URL
+}
+
 // Streaming response types
 export interface StreamSendMessageResponse {
   success: boolean
@@ -256,6 +264,8 @@ export interface ElectronAPI {
   saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>
   openSettingsWindow: () => Promise<{ success: boolean }>
   onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void
+  getSystemTheme: () => Promise<{ success: boolean; theme?: 'light' | 'dark' }>
+  onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void
   fetchModels: (
     provider: AIProvider,
     apiKey: string,
@@ -355,6 +365,13 @@ export interface ElectronAPI {
   loadAllMedia: () => Promise<{ id: string; type: 'image'; filePath: string; prompt: string; revisedPrompt?: string; model: string; createdAt: number; sessionId: string; messageId: string }[]>
   deleteMedia: (id: string) => Promise<boolean>
   clearAllMedia: () => Promise<void>
+  readImageBase64: (filePath: string) => Promise<string>
+
+  // Image preview methods
+  openImagePreview: (src: string, alt?: string) => Promise<{ success: boolean }>
+  openImageGallery: (images: GalleryImage[], initialIndex?: number) => Promise<{ success: boolean }>
+  onImagePreviewUpdate: (callback: (data: { src: string; alt?: string }) => void) => () => void
+  onImageGalleryUpdate: (callback: (data: { images: GalleryImage[]; currentIndex: number }) => void) => () => void
 
   // OAuth methods
   oauthStart: (providerId: string) => Promise<{

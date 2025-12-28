@@ -19,6 +19,7 @@
         :show-sidebar-toggle="index === 0 && sidebarCollapsed && !mediaPanelOpen"
         @close="closePanel(panel.id)"
         @split="openSessionPicker(panel.id)"
+        @split-with-branch="(sessionId) => splitPanel(panel.id, sessionId)"
         @close-settings="$emit('close-settings')"
         @open-settings="$emit('open-settings')"
         @close-agent-settings="$emit('close-agent-settings')"

@@ -252,9 +252,32 @@ export async function* listFiles(options: {
     throw error
   }
 
+  console.log(`[Ripgrep] Spawning: ${rgPath} ${args.join(' ')}`)
+  console.log(`[Ripgrep] cwd: ${options.cwd}`)
+
   const proc = spawn(rgPath, args, {
     cwd: options.cwd,
     stdio: ['ignore', 'pipe', 'ignore'],
+  })
+
+  // Track if process has closed (to handle race condition)
+  let processClosed = false
+  let closeResolve: (() => void) | null = null
+  const closePromise = new Promise<void>((resolve) => {
+    closeResolve = resolve
+  })
+
+  proc.on('close', (code) => {
+    console.log(`[Ripgrep] Process closed with code: ${code}`)
+    processClosed = true
+    if (closeResolve) closeResolve()
+  })
+
+  // Handle spawn errors
+  proc.on('error', (err) => {
+    console.error('[Ripgrep] Spawn error:', err)
+    processClosed = true
+    if (closeResolve) closeResolve()
   })
 
   let buffer = ''
@@ -271,9 +294,10 @@ export async function* listFiles(options: {
 
   if (buffer) yield buffer
 
-  await new Promise<void>((resolve) => {
-    proc.on('close', () => resolve())
-  })
+  // Only wait if process hasn't closed yet
+  if (!processClosed) {
+    await closePromise
+  }
 }
 
 /**

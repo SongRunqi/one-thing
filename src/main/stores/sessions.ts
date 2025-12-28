@@ -177,6 +177,19 @@ export function createBranchSession(
   const inheritedWorkspaceId = parentSession?.workspaceId
   const inheritedAgentId = agentId ?? parentSession?.agentId
 
+  // Calculate token usage from inherited messages
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+  let totalTokens = 0
+
+  for (const message of inheritedMessages) {
+    if (message.usage) {
+      totalInputTokens += message.usage.inputTokens
+      totalOutputTokens += message.usage.outputTokens
+      totalTokens += message.usage.totalTokens
+    }
+  }
+
   const session: ChatSession = {
     id: sessionId,
     name,
@@ -187,6 +200,9 @@ export function createBranchSession(
     branchFromMessageId,
     workspaceId: inheritedWorkspaceId,
     agentId: inheritedAgentId,
+    totalInputTokens,
+    totalOutputTokens,
+    totalTokens,
   }
 
   // Save session file
@@ -264,34 +280,31 @@ export function deleteSession(sessionId: string): DeleteSessionResult {
   return { deletedIds: allIdsToDelete, parentSessionId }
 }
 
-// Rename a session
+// Rename a session (does not update updatedAt to avoid reordering)
 export function renameSession(sessionId: string, newName: string): void {
   const session = getSession(sessionId)
   if (!session) return
 
   session.name = newName
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
 
-  // Update index
+  // Update index (only name, not updatedAt)
   const index = loadSessionsIndex()
   const meta = index.find((s) => s.id === sessionId)
   if (meta) {
     meta.name = newName
-    meta.updatedAt = session.updatedAt
     saveSessionsIndex(index)
   }
 }
 
-// Update session pin status
+// Update session pin status (does not affect sort order)
 export function updateSessionPin(sessionId: string, isPinned: boolean): void {
   const session = getSession(sessionId)
   if (!session) return
 
   session.isPinned = isPinned
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
@@ -301,12 +314,11 @@ export function updateSessionPin(sessionId: string, isPinned: boolean): void {
   const meta = index.find((s) => s.id === sessionId)
   if (meta) {
     meta.isPinned = isPinned
-    meta.updatedAt = session.updatedAt
     saveSessionsIndex(index)
   }
 }
 
-// Update session archived status
+// Update session archived status (does not affect sort order)
 export function updateSessionArchived(sessionId: string, isArchived: boolean, archivedAt?: number | null): void {
   const session = getSession(sessionId)
   if (!session) return
@@ -317,7 +329,6 @@ export function updateSessionArchived(sessionId: string, isArchived: boolean, ar
   } else if (!isArchived) {
     delete session.archivedAt
   }
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
@@ -332,12 +343,11 @@ export function updateSessionArchived(sessionId: string, isArchived: boolean, ar
     } else if (!isArchived) {
       delete meta.archivedAt
     }
-    meta.updatedAt = session.updatedAt
     saveSessionsIndex(index)
   }
 }
 
-// Update session agent
+// Update session agent (does not affect sort order)
 export function updateSessionAgent(sessionId: string, agentId: string | null): void {
   const session = getSession(sessionId)
   if (!session) return
@@ -347,7 +357,6 @@ export function updateSessionAgent(sessionId: string, agentId: string | null): v
   } else {
     session.agentId = agentId
   }
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
@@ -361,12 +370,11 @@ export function updateSessionAgent(sessionId: string, agentId: string | null): v
     } else {
       meta.agentId = agentId
     }
-    meta.updatedAt = session.updatedAt
     saveSessionsIndex(index)
   }
 }
 
-// Update session working directory (sandbox boundary)
+// Update session working directory (does not affect sort order)
 export function updateSessionWorkingDirectory(sessionId: string, workingDirectory: string | null): void {
   const session = getSession(sessionId)
   if (!session) return
@@ -376,21 +384,23 @@ export function updateSessionWorkingDirectory(sessionId: string, workingDirector
   } else {
     session.workingDirectory = workingDirectory
   }
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
-
-  // Update index timestamp
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.updatedAt = session.updatedAt
-    saveSessionsIndex(index)
-  }
 }
 
-// Update session token usage (accumulates tokens)
+// Inherit working directory from workspace (does not update updatedAt)
+export function inheritSessionWorkingDirectory(sessionId: string, workingDirectory: string): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  session.workingDirectory = workingDirectory
+
+  // Save session file without updating timestamp
+  writeJsonFile(getSessionPath(sessionId), session)
+}
+
+// Update session token usage (does not affect sort order)
 export function updateSessionTokenUsage(
   sessionId: string,
   usage: { inputTokens: number; outputTokens: number; totalTokens: number }
@@ -402,7 +412,6 @@ export function updateSessionTokenUsage(
   session.totalInputTokens = (session.totalInputTokens || 0) + usage.inputTokens
   session.totalOutputTokens = (session.totalOutputTokens || 0) + usage.outputTokens
   session.totalTokens = (session.totalTokens || 0) + usage.totalTokens
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
@@ -466,6 +475,7 @@ export function deleteMessage(sessionId: string, messageId: string): boolean {
 }
 
 // Update a message and remove all messages after it
+// Returns true if successful, also subtracts token usage of deleted messages from session total
 export function updateMessageAndTruncate(
   sessionId: string,
   messageId: string,
@@ -476,6 +486,29 @@ export function updateMessageAndTruncate(
 
   const messageIndex = session.messages.findIndex((m) => m.id === messageId)
   if (messageIndex === -1) return false
+
+  // Calculate token usage of messages that will be deleted
+  const messagesToDelete = session.messages.slice(messageIndex + 1)
+  let tokensToSubtract = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+  for (const msg of messagesToDelete) {
+    if (msg.usage) {
+      tokensToSubtract.inputTokens += msg.usage.inputTokens
+      tokensToSubtract.outputTokens += msg.usage.outputTokens
+      tokensToSubtract.totalTokens += msg.usage.totalTokens
+    }
+  }
+
+  // Subtract deleted messages' token usage from session total
+  if (tokensToSubtract.totalTokens > 0) {
+    session.totalInputTokens = Math.max(0, (session.totalInputTokens || 0) - tokensToSubtract.inputTokens)
+    session.totalOutputTokens = Math.max(0, (session.totalOutputTokens || 0) - tokensToSubtract.outputTokens)
+    session.totalTokens = Math.max(0, (session.totalTokens || 0) - tokensToSubtract.totalTokens)
+    console.log('[Sessions] Subtracted tokens from deleted messages:', tokensToSubtract, 'New session totals:', {
+      totalInputTokens: session.totalInputTokens,
+      totalOutputTokens: session.totalOutputTokens,
+      totalTokens: session.totalTokens,
+    })
+  }
 
   // Update the message content
   session.messages[messageIndex].content = newContent
@@ -499,7 +532,7 @@ export function updateMessageAndTruncate(
   return true
 }
 
-// Update message content (for streaming)
+// Update message content (for streaming, does not affect sort order)
 export function updateMessageContent(sessionId: string, messageId: string, newContent: string): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -508,23 +541,14 @@ export function updateMessageContent(sessionId: string, messageId: string, newCo
   if (!message) return false
 
   message.content = newContent
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
 
-  // Update index timestamp
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.updatedAt = session.updatedAt
-    saveSessionsIndex(index)
-  }
-
   return true
 }
 
-// Update message reasoning (for streaming)
+// Update message reasoning (for streaming, does not affect sort order)
 export function updateMessageReasoning(sessionId: string, messageId: string, reasoning: string): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -533,23 +557,14 @@ export function updateMessageReasoning(sessionId: string, messageId: string, rea
   if (!message) return false
 
   message.reasoning = reasoning
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
 
-  // Update index timestamp
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.updatedAt = session.updatedAt
-    saveSessionsIndex(index)
-  }
-
   return true
 }
 
-// Update message streaming status
+// Update message streaming status (does not affect sort order)
 export function updateMessageStreaming(sessionId: string, messageId: string, isStreaming: boolean): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -558,23 +573,34 @@ export function updateMessageStreaming(sessionId: string, messageId: string, isS
   if (!message) return false
 
   message.isStreaming = isStreaming
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
 
-  // Update index timestamp
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.updatedAt = session.updatedAt
-    saveSessionsIndex(index)
-  }
+  return true
+}
+
+// Update message usage (does not affect sort order)
+export function updateMessageUsage(
+  sessionId: string,
+  messageId: string,
+  usage: { inputTokens: number; outputTokens: number; totalTokens: number }
+): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  message.usage = usage
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
 
   return true
 }
 
-// Update message tool calls
+// Update message tool calls (does not affect sort order)
 export function updateMessageToolCalls(sessionId: string, messageId: string, toolCalls: ToolCall[]): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -583,23 +609,14 @@ export function updateMessageToolCalls(sessionId: string, messageId: string, too
   if (!message) return false
 
   message.toolCalls = toolCalls
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
 
-  // Update index timestamp
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.updatedAt = session.updatedAt
-    saveSessionsIndex(index)
-  }
-
   return true
 }
 
-// Update message content parts (for sequential tool call display)
+// Update message content parts (does not affect sort order)
 export function updateMessageContentParts(sessionId: string, messageId: string, contentParts: ChatMessage['contentParts']): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -608,23 +625,14 @@ export function updateMessageContentParts(sessionId: string, messageId: string, 
   if (!message) return false
 
   message.contentParts = contentParts
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
 
-  // Update index timestamp
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.updatedAt = session.updatedAt
-    saveSessionsIndex(index)
-  }
-
   return true
 }
 
-// Add a single content part to message (for streaming)
+// Add a single content part to message (does not affect sort order)
 export function addMessageContentPart(sessionId: string, messageId: string, part: ContentPart): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -638,23 +646,14 @@ export function addMessageContentPart(sessionId: string, messageId: string, part
   }
 
   message.contentParts.push(part)
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
 
-  // Update index timestamp
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.updatedAt = session.updatedAt
-    saveSessionsIndex(index)
-  }
-
   return true
 }
 
-// Update message thinking time (for persisting thinking duration after streaming completes)
+// Update message thinking time (does not affect sort order)
 export function updateMessageThinkingTime(sessionId: string, messageId: string, thinkingTime: number): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -663,23 +662,14 @@ export function updateMessageThinkingTime(sessionId: string, messageId: string, 
   if (!message) return false
 
   message.thinkingTime = thinkingTime
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
 
-  // Update index timestamp
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.updatedAt = session.updatedAt
-    saveSessionsIndex(index)
-  }
-
   return true
 }
 
-// Update message skill used
+// Update message skill used (does not affect sort order)
 export function updateMessageSkill(sessionId: string, messageId: string, skillUsed: string): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -688,23 +678,14 @@ export function updateMessageSkill(sessionId: string, messageId: string, skillUs
   if (!message) return false
 
   message.skillUsed = skillUsed
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
 
-  // Update index timestamp
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.updatedAt = session.updatedAt
-    saveSessionsIndex(index)
-  }
-
   return true
 }
 
-// Add a step to a message
+// Add a step to a message (does not affect sort order)
 export function addMessageStep(sessionId: string, messageId: string, step: Step): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -716,23 +697,14 @@ export function addMessageStep(sessionId: string, messageId: string, step: Step)
     message.steps = []
   }
   message.steps.push(step)
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
 
-  // Update index timestamp
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.updatedAt = session.updatedAt
-    saveSessionsIndex(index)
-  }
-
   return true
 }
 
-// Update a step in a message
+// Update a step in a message (does not affect sort order)
 export function updateMessageStep(sessionId: string, messageId: string, stepId: string, updates: Partial<Step>): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -745,18 +717,9 @@ export function updateMessageStep(sessionId: string, messageId: string, stepId: 
 
   // Apply updates
   Object.assign(step, updates)
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
-
-  // Update index timestamp
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.updatedAt = session.updatedAt
-    saveSessionsIndex(index)
-  }
 
   return true
 }
@@ -814,25 +777,23 @@ export function deleteSessionsByWorkspace(workspaceId: string): number {
   return sessionsToDelete.length
 }
 
-// Update session model and provider
+// Update session model and provider (does not affect sort order)
 export function updateSessionModel(sessionId: string, provider: string, model: string): boolean {
   const session = getSession(sessionId)
   if (!session) return false
 
   session.lastProvider = provider
   session.lastModel = model
-  session.updatedAt = Date.now()
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
 
-  // Update index
+  // Update index (without changing updatedAt)
   const index = loadSessionsIndex()
   const meta = index.find((s) => s.id === sessionId)
   if (meta) {
     meta.lastProvider = provider
     meta.lastModel = model
-    meta.updatedAt = session.updatedAt
     saveSessionsIndex(index)
   }
 

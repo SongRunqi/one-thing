@@ -12,30 +12,9 @@
         >
           <PanelLeft :size="16" :stroke-width="2" />
         </button>
+      </div>
 
-        <!-- Agent Selector (icon position) -->
-        <button
-          class="agent-icon-btn"
-          :class="{ 'has-agent': sessionAgent }"
-          @click="toggleAgentDropdown"
-          title="Select agent"
-        >
-          <template v-if="sessionAgent">
-            <span v-if="sessionAgent.avatar.type === 'emoji'" class="agent-icon-avatar">
-              {{ sessionAgent.avatar.value }}
-            </span>
-            <img
-              v-else
-              :src="'file://' + sessionAgent.avatar.value"
-              class="agent-icon-avatar-img"
-              alt=""
-            />
-          </template>
-          <MessageSquare v-else :size="16" :stroke-width="2" />
-          <ChevronDown class="agent-icon-chevron" :size="10" :stroke-width="2.5" />
-        </button>
-
-        <!-- Agent Dropdown -->
+      <!-- Agent Dropdown -->
         <Teleport to="body">
           <div
             v-if="showAgentDropdown"
@@ -83,36 +62,63 @@
           </div>
         </Teleport>
 
-        <!-- Working Directory Button -->
-        <button
-          class="working-dir-btn"
-          :class="{ 'has-dir': currentSession?.workingDirectory }"
-          :title="currentSession?.workingDirectory || 'Set working directory'"
-          @click="openWorkingDirectoryPicker"
-        >
-          <Folder :size="14" :stroke-width="2" />
-          <span v-if="currentSession?.workingDirectory" class="working-dir-name">
-            {{ workingDirName }}
-          </span>
-        </button>
+      <!-- Address Bar Style Container (centered) -->
+      <div class="address-bar">
+          <!-- Working Directory Prefix -->
+          <button
+            class="address-bar-prefix"
+            :class="{ 'has-dir': currentSession?.workingDirectory }"
+            :title="currentSession?.workingDirectory || 'Set working directory'"
+            @click="openWorkingDirectoryPicker"
+          >
+            <Folder :size="12" :stroke-width="2" />
+            <span v-if="currentSession?.workingDirectory" class="prefix-name">
+              {{ workingDirName }}
+            </span>
+          </button>
 
-        <!-- Title (editable) -->
-        <input
-          v-if="isEditingTitle"
-          ref="titleInputRef"
-          v-model="editingTitleValue"
-          class="chat-header-title-input"
-          @blur="saveTitle"
-          @keydown.enter="saveTitle"
-          @keydown.escape="cancelEditTitle"
-        />
-        <span
-          v-else
-          class="chat-header-title"
-          @click="startEditTitle"
-        >
-          {{ currentSession?.name || 'New chat' }}
-        </span>
+          <!-- Separator -->
+          <span v-if="currentSession?.workingDirectory" class="address-bar-separator">/</span>
+
+          <!-- Title (editable) -->
+          <input
+            v-if="isEditingTitle"
+            ref="titleInputRef"
+            v-model="editingTitleValue"
+            class="address-bar-input"
+            @blur="saveTitle"
+            @keydown.enter="saveTitle"
+            @keydown.escape="cancelEditTitle"
+          />
+          <span
+            v-else
+            class="address-bar-title"
+            @click="startEditTitle"
+          >
+            {{ currentSession?.name || 'New chat' }}
+          </span>
+
+          <!-- Agent Selector (at end of address bar) -->
+          <button
+            class="address-bar-agent"
+            :class="{ 'has-agent': sessionAgent }"
+            @click="toggleAgentDropdown"
+            title="Select agent"
+          >
+            <template v-if="sessionAgent">
+              <span v-if="sessionAgent.avatar.type === 'emoji'" class="agent-avatar-emoji">
+                {{ sessionAgent.avatar.value }}
+              </span>
+              <img
+                v-else
+                :src="'file://' + sessionAgent.avatar.value"
+                class="agent-avatar-img"
+                alt=""
+              />
+            </template>
+            <MessageSquare v-else :size="14" :stroke-width="2" />
+            <ChevronDown class="agent-chevron" :size="10" :stroke-width="2.5" />
+          </button>
       </div>
 
       <div class="chat-header-right">
@@ -125,9 +131,6 @@
         >
           <ArrowLeft :size="14" :stroke-width="2" />
         </button>
-
-        <!-- Message count -->
-        <span class="chat-header-meta">{{ messageCount }} msg</span>
 
         <!-- Split button -->
         <button
@@ -170,6 +173,7 @@
           @set-input-text="handleSetInputText"
           @regenerate="handleRegenerate"
           @edit-and-resend="handleEditAndResend"
+          @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
         />
 
         <div class="composer">
@@ -227,6 +231,7 @@ const emit = defineEmits<{
   openAgentSettings: []
   close: []
   split: []
+  splitWithBranch: [sessionId: string]
   toggleSidebar: []
 }>()
 
@@ -263,9 +268,6 @@ const sessionAgent = computed(() => {
   if (!agentId) return null
   return agentsStore.agents.find(a => a.id === agentId) || null
 })
-
-// Message count
-const messageCount = computed(() => panelMessages.value.length)
 
 // Check if current session is a branch
 const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)
@@ -470,14 +472,17 @@ html[data-theme='light'] .chat {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 0;
-  flex: 1;
+  min-width: 60px;
+  flex-shrink: 0;
 }
 
 .chat-header-right {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+  min-width: 60px;
+  flex-shrink: 0;
 }
 
 .chat-header-icon {
@@ -500,122 +505,149 @@ html[data-theme='light'] .chat {
   flex-shrink: 0;
 }
 
-.chat-header-title {
-  font-size: 14px;
+/* Address Bar Container (browser URL bar style) */
+.address-bar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  min-width: 120px;
+  flex: 1;
+  max-width: 400px;
+  -webkit-app-region: no-drag;
+  margin: 0 auto;
+}
+
+html[data-theme='light'] .address-bar {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* Address Bar Prefix (folder) */
+.address-bar-prefix {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  max-width: 140px;
+}
+
+.address-bar-prefix:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.address-bar-prefix.has-dir {
+  color: var(--accent);
+}
+
+html[data-theme='light'] .address-bar-prefix:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.prefix-name {
+  font-size: 12px;
   font-weight: 500;
-  color: var(--accent-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.address-bar-separator {
+  color: var(--muted);
+  opacity: 0.4;
+  font-size: 12px;
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+/* Address Bar Title */
+.address-bar-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: text;
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 3px 6px;
+  border-radius: 5px;
   transition: background 0.15s ease;
-  -webkit-app-region: no-drag;
+  flex: 1;
+  min-width: 0;
 }
 
-.chat-header-title:hover {
-  background: rgba(255, 255, 255, 0.05);
+.address-bar-title:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
-html[data-theme='light'] .chat-header-title:hover {
+html[data-theme='light'] .address-bar-title:hover {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.chat-header-title-input {
-  width: auto;
-  min-width: 100px;
-  max-width: 200px;
-  padding: 4px 8px;
+.address-bar-input {
+  flex: 1;
+  min-width: 80px;
+  padding: 3px 6px;
   border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-radius: 5px;
   background: transparent;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text);
   outline: none;
-  -webkit-app-region: no-drag;
 }
 
-/* Working Directory Button */
-.working-dir-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  -webkit-app-region: no-drag;
-  max-width: 180px;
-}
-
-.working-dir-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text);
-}
-
-.working-dir-btn.has-dir {
-  color: var(--accent);
-}
-
-html[data-theme='light'] .working-dir-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-}
-
-.working-dir-name {
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 120px;
-}
-
-/* Agent Icon Button */
-.agent-icon-btn {
-  position: relative;
+/* Agent Button in Address Bar */
+.address-bar-agent {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 4px;
+  padding: 3px 6px;
   border: none;
-  border-radius: 8px;
+  border-radius: 5px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   transition: all 0.15s ease;
-  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+  margin-left: 4px;
 }
 
-.agent-icon-btn:hover {
+.address-bar-agent:hover {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text);
 }
 
-.agent-icon-btn.has-agent {
+.address-bar-agent.has-agent {
   color: var(--text);
 }
 
-html[data-theme='light'] .agent-icon-btn:hover {
+html[data-theme='light'] .address-bar-agent:hover {
   background: rgba(0, 0, 0, 0.06);
 }
 
-.agent-icon-avatar {
-  font-size: 16px;
+.agent-avatar-emoji {
+  font-size: 14px;
   line-height: 1;
 }
 
-.agent-icon-avatar-img {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+.agent-avatar-img {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
   object-fit: cover;
 }
 
-.agent-icon-chevron {
+.agent-chevron {
   opacity: 0.4;
   flex-shrink: 0;
   margin-left: -1px;
@@ -750,11 +782,6 @@ html[data-theme='light'] .agent-dropdown-emoji {
   text-overflow: ellipsis;
 }
 
-.chat-header-meta {
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-}
 
 .chat-header-btn {
   width: 28px;

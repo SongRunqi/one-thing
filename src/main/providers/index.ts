@@ -34,6 +34,26 @@ export type AIMessageContent = string | Array<
   | { type: 'file'; data: string; mediaType: string }      // AI SDK 5.x uses 'mediaType'
 >
 
+// Format messages for logging without full base64 data
+function formatMessagesForLog(messages: unknown[]): unknown[] {
+  return messages.map(msg => {
+    const m = msg as Record<string, unknown>
+    if (Array.isArray(m.content)) {
+      return {
+        ...m,
+        content: m.content.map((part: Record<string, unknown>) => {
+          if (part.type === 'image' && typeof part.image === 'string') {
+            const imgStr = part.image as string
+            return { ...part, image: imgStr.substring(0, 50) + `... (${imgStr.length} chars)` }
+          }
+          return part
+        }),
+      }
+    }
+    return m
+  })
+}
+
 // Initialize registry on module load
 initializeRegistry()
 
@@ -321,7 +341,7 @@ export async function* streamChatResponseWithReasoning(
   }
 
   console.log(`[Provider] streamChatResponseWithReasoning - providerId: ${providerId}, model: ${config.model}`)
-  console.log(`[Provider] Messages being sent:`, JSON.stringify(convertedMessages, null, 2))
+  console.log(`[Provider] Messages being sent:`, JSON.stringify(formatMessagesForLog(convertedMessages), null, 2))
 
   const stream = await streamText(streamOptions)
 
@@ -383,12 +403,31 @@ export async function* streamChatResponseWithReasoning(
     for await (const chunk of stream.fullStream) {
       chunkCount++
       const chunkAny = chunk as any
+      console.log(`[Provider] Chunk ${chunkCount} type: ${chunk.type}, keys: ${Object.keys(chunkAny).join(', ')}`)
 
       if (chunk.type === 'text-delta') {
         const text = chunkAny.textDelta || ''
         if (text) {
           console.log(`[Provider] Text stream chunk ${chunkCount}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`)
           yield { text }
+        }
+      } else if (chunk.type === 'file') {
+        // Handle file chunks (e.g., generated images from Gemini)
+        const file = chunkAny.file
+        console.log(`[Provider] File chunk: mediaType=${file?.mediaType}, dataLength=${file?.base64?.length || file?.uint8Array?.length || 'unknown'}`)
+        if (file) {
+          // Convert to base64 data URL for display
+          let base64Data = file.base64
+          if (!base64Data && file.uint8Array) {
+            // Convert Uint8Array to base64
+            base64Data = Buffer.from(file.uint8Array).toString('base64')
+          }
+          if (base64Data) {
+            const mediaType = file.mediaType || 'image/png'
+            const dataUrl = `data:${mediaType};base64,${base64Data}`
+            // Yield as markdown image for display
+            yield { text: `![Generated Image](${dataUrl})` }
+          }
         }
       } else if (chunk.type === 'error') {
         // Handle stream errors - throw to be caught by caller
@@ -958,7 +997,7 @@ export async function* streamChatWithUIMessages(
   try {
     modelMessages = convertToModelMessages(aiSDKMessages)
     console.log(`[Provider] UIMessage -> ModelMessage conversion successful`)
-    console.log(`[Provider] ModelMessages:`, JSON.stringify(modelMessages, null, 2))
+    console.log(`[Provider] ModelMessages:`, JSON.stringify(formatMessagesForLog(modelMessages), null, 2))
   } catch (error) {
     console.error(`[Provider] Failed to convert UIMessages to ModelMessages:`, error)
     throw error

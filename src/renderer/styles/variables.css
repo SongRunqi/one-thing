@@ -62,59 +62,64 @@
 }
 
 /* ============================================
-   DARK THEME (Default)
+   DARK THEME - Using Flexoki palette
+   NOTE: In dark mode, Flexoki INVERTS the scale:
+   - base-50 = #1C1B1A (darkest)
+   - base-100 = #282726
+   - base-150 = #343331
+   - base-950 = #F2F0E5 (lightest)
    ============================================ */
-:root {
-  /* --- Layer Backgrounds --- */
-  --bg-app: #1C1B1A;
-  --bg-sidebar: #282726;
-  --bg-chat: #282726;
-  --bg-panel: #282726;
-  --bg-elevated: #343331;
-  --bg-floating: #403E3C;
+[data-theme='dark'] {
+  /* --- Layer Backgrounds (using inverted Flexoki scale) --- */
+  --bg-app: var(--fx-base-100);          /* #282726 */
+  --bg-sidebar: var(--fx-base-150);      /* #343331 */
+  --bg-chat: var(--fx-base-150);         /* #343331 */
+  --bg-panel: var(--fx-base-150);        /* #343331 */
+  --bg-elevated: var(--fx-base-200);     /* #403E3C */
+  --bg-floating: var(--fx-base-300);     /* #575653 */
 
   /* --- Message Backgrounds --- */
-  --bg-message-user: linear-gradient(135deg, #343331 0%, #282726 100%);
-  --bg-message-user-solid: #343331;
+  --bg-message-user: linear-gradient(135deg, var(--fx-base-200) 0%, var(--fx-base-150) 100%);
+  --bg-message-user-solid: var(--fx-base-200);
   --bg-message-ai: transparent;
-  --bg-message-system: #282726;
-  --bg-message-error: rgba(209, 77, 65, 0.1);
-  --bg-message-hover: rgba(255, 255, 255, 0.02);
+  --bg-message-system: var(--fx-base-150);
+  --bg-message-error: rgba(209, 77, 65, 0.12);
+  --bg-message-hover: rgba(255, 255, 255, 0.03);
 
   /* --- Tool Call Backgrounds --- */
-  --bg-tool-call: #282726;
-  --bg-tool-call-hover: #343331;
-  --bg-tool-result: #282726;
-  --bg-tool-error: rgba(209, 77, 65, 0.1);
-  --bg-tool-success: rgba(135, 154, 57, 0.1);
+  --bg-tool-call: var(--fx-base-150);
+  --bg-tool-call-hover: var(--fx-base-200);
+  --bg-tool-result: var(--fx-base-150);
+  --bg-tool-error: rgba(209, 77, 65, 0.12);
+  --bg-tool-success: rgba(135, 154, 57, 0.12);
 
   /* --- Input Backgrounds --- */
-  --bg-input: #282726;
-  --bg-input-focus: #343331;
-  --bg-input-disabled: #403E3C;
+  --bg-input: var(--fx-base-150);
+  --bg-input-focus: var(--fx-base-200);
+  --bg-input-disabled: var(--fx-base-300);
 
   /* --- Button Backgrounds --- */
   --bg-btn-primary: var(--accent);
   --bg-btn-primary-hover: var(--accent-light);
-  --bg-btn-secondary: #403E3C;
-  --bg-btn-secondary-hover: #575653;
+  --bg-btn-secondary: var(--fx-base-300);
+  --bg-btn-secondary-hover: var(--fx-base-400);
   --bg-btn-ghost: transparent;
-  --bg-btn-ghost-hover: #343331;
+  --bg-btn-ghost-hover: var(--fx-base-200);
   --bg-btn-danger: #D14D41;
   --bg-btn-danger-hover: #AF3029;
 
   /* --- Code Backgrounds --- */
-  --bg-code-inline: #343331;
-  --bg-code-block: #282726;
-  --bg-code-header: #343331;
+  --bg-code-inline: var(--fx-base-200);
+  --bg-code-block: var(--fx-base-150);
+  --bg-code-header: var(--fx-base-200);
 
   /* --- Menu & Popup Backgrounds --- */
-  --bg-menu: #343331;
-  --bg-menu-item-hover: #403E3C;
-  --bg-menu-item-active: #575653;
-  --bg-tooltip: #CECDC3;
-  --bg-modal: #282726;
-  --bg-modal-overlay: rgba(0, 0, 0, 0.7);
+  --bg-menu: var(--fx-base-200);
+  --bg-menu-item-hover: var(--fx-base-300);
+  --bg-menu-item-active: var(--fx-base-400);
+  --bg-tooltip: var(--fx-base-800);
+  --bg-modal: var(--fx-base-150);
+  --bg-modal-overlay: rgba(0, 0, 0, 0.6);
 
   /* --- Selection & Highlight --- */
   --bg-selected: rgba(67, 133, 190, 0.15);
@@ -124,110 +129,111 @@
   --bg-active: rgba(255, 255, 255, 0.08);
 
   /* ============================================
-     Text Colors - Dark Theme (Higher Contrast)
+     Text Colors - Dark Theme (using inverted Flexoki)
+     For light text, use high numbers (800-950)
      ============================================ */
 
   /* --- Primary Text --- */
-  --text-primary: #E6E4D9;
-  --text-secondary: #CECDC3;
-  --text-muted: #B7B5AC;
-  --text-faint: #9F9D96;
+  --text-primary: var(--fx-base-950);     /* #F2F0E5 */
+  --text-secondary: var(--fx-base-900);   /* #E6E4D9 */
+  --text-muted: var(--fx-base-800);       /* #CECDC3 */
+  --text-faint: var(--fx-base-700);       /* #B7B5AC */
 
   /* --- Message Text --- */
-  --text-user-primary: #E6E4D9;
-  --text-user-secondary: #CECDC3;
-  --text-ai-primary: #DAD8CE;
-  --text-ai-secondary: #B7B5AC;
-  --text-ai-thinking: #9F9D96;
-  --text-system: #9F9D96;
-  --text-error: #D14D41;
-  --text-warning: #DA702C;
-  --text-success: #879A39;
+  --text-user-primary: var(--fx-base-950);
+  --text-user-secondary: var(--fx-base-900);
+  --text-ai-primary: var(--fx-base-900);
+  --text-ai-secondary: var(--fx-base-800);
+  --text-ai-thinking: var(--fx-base-700);
+  --text-system: var(--fx-base-700);
+  --text-error: var(--fx-red);
+  --text-warning: var(--fx-orange);
+  --text-success: var(--fx-green);
 
   /* --- Status Text --- */
-  --text-llm-waiting: #9F9D96;
-  --text-tool-calling: #3AA99F;
-  --text-tool-waiting: #9F9D96;
-  --text-streaming: #B7B5AC;
-  --text-timestamp: #9F9D96;
-  --text-timestamp-hover: #B7B5AC;
+  --text-llm-waiting: var(--fx-base-700);
+  --text-tool-calling: var(--fx-cyan);
+  --text-tool-waiting: var(--fx-base-700);
+  --text-streaming: var(--fx-base-800);
+  --text-timestamp: var(--fx-base-700);
+  --text-timestamp-hover: var(--fx-base-800);
 
   /* --- Tool Call Text --- */
-  --text-tool-name: #8B7EC8;
-  --text-tool-args: #9F9D96;
-  --text-tool-result: #B7B5AC;
-  --text-tool-error: #D14D41;
-  --text-tool-label: #9F9D96;
+  --text-tool-name: var(--fx-purple);
+  --text-tool-args: var(--fx-base-700);
+  --text-tool-result: var(--fx-base-800);
+  --text-tool-error: var(--fx-red);
+  --text-tool-label: var(--fx-base-700);
 
   /* --- Sidebar Text --- */
-  --text-sidebar-title: #CECDC3;
-  --text-sidebar-item: #B7B5AC;
+  --text-sidebar-title: var(--fx-base-900);
+  --text-sidebar-item: var(--fx-base-800);
   --text-sidebar-item-active: var(--accent);
-  --text-sidebar-item-hover: #E6E4D9;
-  --text-sidebar-muted: #9F9D96;
-  --text-sidebar-count: #9F9D96;
+  --text-sidebar-item-hover: var(--fx-base-950);
+  --text-sidebar-muted: var(--fx-base-700);
+  --text-sidebar-count: var(--fx-base-700);
 
   /* --- Input Text --- */
-  --text-input: #E6E4D9;
-  --text-input-placeholder: #9F9D96;
-  --text-input-disabled: #9F9D96;
+  --text-input: var(--fx-base-950);
+  --text-input-placeholder: var(--fx-base-700);
+  --text-input-disabled: var(--fx-base-700);
 
   /* --- Code Text --- */
-  --text-code-inline: #CE5D97;
-  --text-code-block: #CECDC3;
-  --text-code-comment: #878580;
-  --text-code-keyword: #8B7EC8;
-  --text-code-string: #879A39;
-  --text-code-number: #DA702C;
-  --text-code-function: #4385BE;
-  --text-code-variable: #3AA99F;
-  --text-code-operator: #9F9D96;
+  --text-code-inline: var(--fx-magenta);
+  --text-code-block: var(--fx-base-900);
+  --text-code-comment: var(--fx-base-500);
+  --text-code-keyword: var(--fx-purple);
+  --text-code-string: var(--fx-green);
+  --text-code-number: var(--fx-orange);
+  --text-code-function: var(--fx-blue);
+  --text-code-variable: var(--fx-cyan);
+  --text-code-operator: var(--fx-base-700);
 
   /* --- Link Text --- */
-  --text-link: #3AA99F;
-  --text-link-hover: #24837B;
-  --text-link-visited: #8B7EC8;
-  --text-link-external: #3AA99F;
+  --text-link: var(--fx-cyan);
+  --text-link-hover: var(--fx-cyan-light);
+  --text-link-visited: var(--fx-purple);
+  --text-link-external: var(--fx-cyan);
 
   /* --- Button Text --- */
-  --text-btn-primary: #100F0F;
-  --text-btn-secondary: #CECDC3;
-  --text-btn-ghost: #B7B5AC;
-  --text-btn-danger: #100F0F;
-  --text-btn-disabled: #9F9D96;
+  --text-btn-primary: var(--fx-black);
+  --text-btn-secondary: var(--fx-base-900);
+  --text-btn-ghost: var(--fx-base-800);
+  --text-btn-danger: var(--fx-black);
+  --text-btn-disabled: var(--fx-base-700);
 
   /* --- Form Text --- */
-  --text-label: #B7B5AC;
-  --text-helper: #9F9D96;
-  --text-validation-error: #D14D41;
-  --text-validation-success: #879A39;
+  --text-label: var(--fx-base-800);
+  --text-helper: var(--fx-base-700);
+  --text-validation-error: var(--fx-red);
+  --text-validation-success: var(--fx-green);
 
   /* --- Menu Text --- */
-  --text-menu-item: #B7B5AC;
-  --text-menu-item-hover: #CECDC3;
+  --text-menu-item: var(--fx-base-800);
+  --text-menu-item-hover: var(--fx-base-900);
   --text-menu-item-active: var(--accent);
-  --text-menu-header: #9F9D96;
-  --text-tooltip: #100F0F;
-  --text-modal-title: #CECDC3;
-  --text-modal-body: #B7B5AC;
+  --text-menu-header: var(--fx-base-700);
+  --text-tooltip: var(--fx-black);
+  --text-modal-title: var(--fx-base-900);
+  --text-modal-body: var(--fx-base-800);
 
   /* ============================================
-     Border Colors - Dark Theme
+     Border Colors - Dark Theme (using inverted Flexoki)
      ============================================ */
-  --border-default: #403E3C;
-  --border-subtle: #343331;
-  --border-strong: #575653;
+  --border-default: var(--fx-base-300);   /* #575653 */
+  --border-subtle: var(--fx-base-200);    /* #403E3C */
+  --border-strong: var(--fx-base-400);    /* #6F6E69 */
   --border-accent: var(--accent);
-  --border-error: #D14D41;
-  --border-success: #879A39;
-  --border-warning: #DA702C;
-  --border-input: #403E3C;
+  --border-error: var(--fx-red);
+  --border-success: var(--fx-green);
+  --border-warning: var(--fx-orange);
+  --border-input: var(--fx-base-300);
   --border-input-focus: var(--accent);
-  --border-input-error: #D14D41;
-  --border-message: #343331;
-  --border-message-user: #403E3C;
-  --border-code: #403E3C;
-  --border-divider: #343331;
+  --border-input-error: var(--fx-red);
+  --border-message: var(--fx-base-200);
+  --border-message-user: var(--fx-base-300);
+  --border-code: var(--fx-base-300);
+  --border-divider: var(--fx-base-200);
 
   /* ============================================
      Shadows - Dark Theme
@@ -246,7 +252,7 @@
   /* ============================================
      Effects - Dark Theme
      ============================================ */
-  --gradient-user-bubble: linear-gradient(135deg, #343331 0%, #282726 100%);
+  --gradient-user-bubble: linear-gradient(135deg, var(--fx-base-200) 0%, var(--fx-base-150) 100%);
   --gradient-ai-bubble: linear-gradient(135deg, transparent 0%, transparent 100%);
   --gradient-accent: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
   --overlay-hover: rgba(255, 255, 255, 0.04);
@@ -258,9 +264,9 @@
      Legacy Compatibility Variables
      ============================================ */
   --bg: var(--bg-app);
-  --bg-rgb: 28, 27, 26;
+  --bg-rgb: 40, 39, 38;        /* fx-base-100 in dark mode */
   --chat-canvas: var(--bg-chat);
-  --chat-canvas-rgb: 16, 15, 15;
+  --chat-canvas-rgb: 52, 51, 49;  /* fx-base-150 in dark mode */
   --panel: var(--bg-panel);
   --panel-2: var(--bg-sidebar);
   --muted: var(--text-muted);
@@ -271,7 +277,7 @@
   --shadow: var(--shadow-lg);
   --shadow-glow: var(--shadow-glow-accent);
   --accent-secondary: var(--accent-light);
-  --danger: #D14D41;
+  --danger: var(--fx-red);
   --user-bubble: var(--bg-message-user);
   --user-bubble-border: var(--border-message-user);
   --ai-text: var(--text-ai-primary);

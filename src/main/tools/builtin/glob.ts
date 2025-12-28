@@ -82,6 +82,9 @@ Use this tool when you need to find files by name patterns.`,
     const files: Array<{ path: string; mtime: number }> = []
     let truncated = false
 
+    console.log(`[Glob] Starting search: pattern="${pattern}" path="${searchPath}"`)
+    const startTime = Date.now()
+
     try {
       for await (const file of Ripgrep.files({
         cwd: searchPath,
@@ -89,6 +92,7 @@ Use this tool when you need to find files by name patterns.`,
       })) {
         if (files.length >= DEFAULT_LIMIT) {
           truncated = true
+          console.log(`[Glob] Truncating at ${DEFAULT_LIMIT} files`)
           break
         }
 
@@ -104,7 +108,9 @@ Use this tool when you need to find files by name patterns.`,
 
         files.push({ path: fullPath, mtime })
       }
+      console.log(`[Glob] Search completed: found ${files.length} files in ${Date.now() - startTime}ms`)
     } catch (error: any) {
+      console.error(`[Glob] Search failed:`, error)
       throw new Error(`Glob search failed: ${error.message}`)
     }
 

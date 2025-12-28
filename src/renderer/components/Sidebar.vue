@@ -81,7 +81,7 @@
           ]"
           :style="{ paddingLeft: `${12 + session.depth * 16}px` }"
           :title="session.name || 'New chat'"
-          @click="handleSessionClickWithToggle(session)"
+          @click="handleSessionClickWithToggle($event, session)"
           @contextmenu.prevent="openContextMenu($event, session)"
         >
           <!-- Collapse/Expand toggle for parent sessions -->
@@ -107,16 +107,6 @@
             <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
           </svg>
 
-          <!-- Agent avatar or chat icon -->
-          <span v-if="getSessionAgent(session)?.avatar.type === 'emoji'" class="session-agent-avatar">
-            {{ getSessionAgent(session)?.avatar.value }}
-          </span>
-          <img
-            v-else-if="getSessionAgent(session)"
-            :src="'file://' + getSessionAgent(session)?.avatar.value"
-            class="session-agent-img"
-            alt=""
-          />
 
           <!-- Session name -->
           <input
@@ -130,7 +120,9 @@
             @keydown.esc="cancelInlineRename"
             @blur="confirmInlineRename"
           />
-          <span v-else class="session-name" @click.stop="startInlineRename(session)">{{ session.name || 'New chat' }}</span>
+          <Tooltip v-else :text="session.name || 'New chat'" position="right" :delay="600">
+            <span class="session-name" @dblclick.stop="startInlineRename(session)">{{ session.name || 'New chat' }}</span>
+          </Tooltip>
 
           <!-- Session time -->
           <span v-if="editingSessionId !== session.id" class="session-time">{{ formatSessionTime(session.updatedAt) }}</span>
@@ -219,6 +211,7 @@ import { useChatStore } from '@/stores/chat'
 import { useAgentsStore } from '@/stores/agents'
 import WorkspaceSwitcher from '@/components/WorkspaceSwitcher.vue'
 import AgentGrid from '@/components/AgentGrid.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import type { ChatSession, Workspace, Agent } from '@/types'
 
 interface Props {
@@ -312,12 +305,6 @@ function stopResize() {
 
 // Local search query for filtering sessions
 const localSearchQuery = ref('')
-
-// Get the agent for a session (if it has one)
-function getSessionAgent(session: ChatSession) {
-  if (!session.agentId) return null
-  return agentsStore.agents.find(a => a.id === session.agentId) || null
-}
 
 // Computed animation speed from settings
 const animationSpeed = computed(() => {
@@ -857,24 +844,27 @@ function handleSessionClick(sessionId: string) {
 }
 
 // Handle session click - check for double-click to toggle collapse
-function handleSessionClickWithToggle(session: SessionWithBranches) {
+function handleSessionClickWithToggle(event: MouseEvent, session: SessionWithBranches) {
   // Don't switch if we're editing
   if (editingSessionId.value) return
 
   const now = Date.now()
   const lastClick = lastClickInfo.value
 
+  // Check if click was on session-name (which has its own @dblclick for rename)
+  const target = event.target as HTMLElement
+  const isOnSessionName = target.classList.contains('session-name') ||
+    target.closest('.session-name') !== null
+
   // Check if this is a double-click (same session clicked within threshold)
   if (lastClick && lastClick.sessionId === session.id && (now - lastClick.time) < DOUBLE_CLICK_THRESHOLD) {
     // Double-click detected - toggle collapse
     lastClickInfo.value = null // Reset click tracking
 
-    if (session.hasBranches) {
-      // Parent session: toggle its own collapse state
+    // Don't toggle collapse if clicking on session-name (let rename work)
+    // Only toggle for parent sessions with branches when not on the name
+    if (session.hasBranches && !isOnSessionName) {
       toggleCollapse(session.id)
-    } else if (session.parentSessionId) {
-      // Child session: collapse its parent
-      toggleCollapse(session.parentSessionId)
     }
     return // Don't switch session on double-click
   }
@@ -926,12 +916,17 @@ async function confirmInlineRename() {
   if (!editingSessionId.value) return
   const id = editingSessionId.value
   const newName = editingName.value.trim()
-  
+
+  // Get original name to compare
+  const session = sessions.value.find(s => s.id === id)
+  const originalName = session?.name || ''
+
   // Clear editing state first
   editingSessionId.value = null
   editingName.value = ''
 
-  if (newName) {
+  // Only call rename if name actually changed
+  if (newName && newName !== originalName) {
     await sessionsStore.renameSession(id, newName)
   }
 }
@@ -1075,6 +1070,9 @@ function handleWindowResize() {
   overflow: hidden;
   background: var(--bg);
   padding: 0;
+  /* Optimize rendering to prevent tile memory issues */
+  contain: layout style;
+  will-change: width;
 }
 
 /* Disable transition during resize for smooth dragging */
@@ -1105,6 +1103,8 @@ function handleWindowResize() {
   padding-bottom: 0;
   border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  /* Optimize floating mode rendering */
+  will-change: transform, opacity;
 }
 
 .sidebar.floating .traffic-lights-row {
@@ -1152,6 +1152,8 @@ html[data-theme='light'] .sidebar.floating .sidebar-content {
   margin-top: 12px;
   background: var(--bg);
   overflow: hidden;
+  /* Optimize rendering */
+  contain: layout style paint;
 }
 
 /* Sidebar Header with traffic lights space */
@@ -1310,6 +1312,9 @@ html[data-theme='light'] .search-wrapper {
   padding: 6px 0 60px 8px; /* top right bottom left */
   /* Prevent width jump when scrollbar appears/disappears */
   scrollbar-gutter: stable;
+  /* Optimize rendering for large lists */
+  contain: strict;
+  content-visibility: auto;
 }
 
 /* Top scroll indicator line - outside scroll container */
@@ -1505,19 +1510,12 @@ html[data-theme='light'] .collapse-btn:hover {
   opacity: 0.5;
 }
 
-/* Agent avatar */
-.session-agent-avatar {
-  flex-shrink: 0;
-  font-size: 14px;
-  line-height: 1;
-}
 
-.session-agent-img {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  object-fit: cover;
+/* Session name tooltip wrapper - override default tooltip-wrapper styles */
+.session-item :deep(.tooltip-wrapper) {
+  flex: 1;
+  min-width: 0;
+  display: flex;
 }
 
 /* Session name */
@@ -1528,7 +1526,7 @@ html[data-theme='light'] .collapse-btn:hover {
   font-size: 14px;
   font-weight: 400;
   letter-spacing: -0.01em;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-sidebar-item);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1536,17 +1534,13 @@ html[data-theme='light'] .collapse-btn:hover {
   transition: color 0.15s ease;
 }
 
-html[data-theme='light'] .session-name {
-  color: rgba(0, 0, 0, 0.5);
-}
-
 .session-item:hover .session-name {
-  color: var(--accent-sub);
+  color: var(--text-sidebar-item-hover);
 }
 
 .session-item.active .session-name {
   font-weight: 500;
-  color: var(--accent-main);
+  color: var(--text-primary);
 }
 
 .session-name-input {

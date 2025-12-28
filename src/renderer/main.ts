@@ -4,32 +4,28 @@ import App from './App.vue'
 import { initializeIPCHub } from './services/ipc-hub'
 import './styles/main.css'
 
-// Apply theme immediately before mounting to prevent FOUC (Flash of Unstyled Content)
-// This runs synchronously before Vue renders, ensuring correct theme from the start
-function applyInitialTheme() {
-  const html = document.documentElement
+// Note: Initial theme is handled by index.html inline script to prevent FOUC
+// The settings store will apply the user's saved preference after loading
 
-  // Check system preference
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-  const systemTheme = prefersDark ? 'dark' : 'light'
-
-  // Apply system theme if not already set correctly
-  const currentTheme = html.getAttribute('data-theme')
-  if (currentTheme !== systemTheme) {
-    html.setAttribute('data-theme', systemTheme)
-  }
-
-  // Ensure default color theme and base theme are set
-  if (!html.getAttribute('data-color-theme')) {
-    html.setAttribute('data-color-theme', 'blue')
-  }
-  if (!html.getAttribute('data-base-theme')) {
-    html.setAttribute('data-base-theme', 'obsidian')
-  }
+// Ensure theme attribute is valid (fixes HMR issues where 'system' might persist)
+const html = document.documentElement
+const currentTheme = html.getAttribute('data-theme')
+if (currentTheme !== 'light' && currentTheme !== 'dark') {
+  // Invalid theme value (e.g., 'system' from old code or HMR state)
+  // Fall back to cached theme or default
+  const cached = localStorage.getItem('cached-theme')
+  const fixedTheme = (cached === 'light' || cached === 'dark') ? cached : 'dark'
+  console.log('[Theme] main.ts: Fixing invalid data-theme:', currentTheme, '->', fixedTheme)
+  html.setAttribute('data-theme', fixedTheme)
 }
 
-// Apply theme before CSS is fully evaluated
-applyInitialTheme()
+// Ensure default color theme and base theme are set if not already
+if (!html.getAttribute('data-color-theme')) {
+  html.setAttribute('data-color-theme', 'blue')
+}
+if (!html.getAttribute('data-base-theme')) {
+  html.setAttribute('data-base-theme', 'obsidian')
+}
 
 const app = createApp(App)
 const pinia = createPinia()

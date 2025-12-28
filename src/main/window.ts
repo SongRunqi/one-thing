@@ -1,8 +1,34 @@
-import { BrowserWindow, session, shell, Menu, app } from 'electron'
+import { BrowserWindow, session, shell, Menu, app, nativeTheme } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { getWindowStatePath, readJsonFile, writeJsonFile } from './stores/paths.js'
 import { getSettings } from './stores/settings.js'
+import { IPC_CHANNELS } from '../shared/ipc.js'
+
+/**
+ * Get the effective theme (resolves 'system' to actual theme)
+ * This is called before window creation to set correct background color
+ */
+function getEffectiveTheme(): 'light' | 'dark' {
+  const settings = getSettings()
+  const settingsTheme = settings.theme
+  const nativeIsDark = nativeTheme.shouldUseDarkColors
+
+  let effectiveTheme: 'light' | 'dark'
+  if (settingsTheme === 'system') {
+    effectiveTheme = nativeIsDark ? 'dark' : 'light'
+  } else {
+    effectiveTheme = settingsTheme === 'light' ? 'light' : 'dark'
+  }
+
+  console.log('[Theme] getEffectiveTheme:', {
+    settingsTheme,
+    nativeIsDark,
+    effectiveTheme
+  })
+
+  return effectiveTheme
+}
 
 /**
  * Configure Content Security Policy
@@ -21,8 +47,8 @@ function setupContentSecurityPolicy() {
         : "script-src 'self'",
       // Styles: self and unsafe-inline (Vue uses inline styles)
       "style-src 'self' 'unsafe-inline'",
-      // Images: self, data URIs, https, and media protocol for local images
-      "img-src 'self' data: https: media:",
+      // Images: self, data URIs, https, file, and media protocol for local images
+      "img-src 'self' data: https: file: media:",
       // Fonts: self and data URIs
       "font-src 'self' data:",
       // Connect: allow API calls to various AI providers
@@ -199,10 +225,10 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
   const isDevelopment = process.env.NODE_ENV === 'development'
   const isMac = process.platform === 'darwin'
 
-  // Read theme from settings to set correct background color
-  const settings = getSettings()
-  const isLightTheme = settings.theme === 'light'
-  const backgroundColor = isLightTheme ? '#FFFCF0' : '#1C1B1A'
+  // Get effective theme (resolves 'system' to actual theme)
+  // Using Flexoki colors: dark=#282726 (base-900), light=#FFFCF0 (paper)
+  const effectiveTheme = getEffectiveTheme()
+  const backgroundColor = effectiveTheme === 'light' ? '#FFFCF0' : '#282726'
 
   settingsWindow = new BrowserWindow({
     width: 900,
@@ -231,12 +257,12 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
     settingsWindow = null
   })
 
-  // Load settings page
+  // Load settings page with theme parameter
   if (isDevelopment) {
-    settingsWindow.loadURL('http://127.0.0.1:5173/#/settings')
+    settingsWindow.loadURL(`http://127.0.0.1:5173/#/settings?theme=${effectiveTheme}`)
   } else {
     settingsWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
-      hash: '/settings'
+      hash: `/settings?theme=${effectiveTheme}`
     })
   }
 
@@ -251,10 +277,10 @@ export function createWindow() {
   const isMac = process.platform === 'darwin'
   const windowState = getWindowState()
 
-  // Read theme from settings to set correct background color
-  const settings = getSettings()
-  const isLightTheme = settings.theme === 'light'
-  const backgroundColor = isLightTheme ? '#FFFCF0' : '#1C1B1A'
+  // Get effective theme (resolves 'system' to actual theme)
+  // Using Flexoki colors: dark=#282726 (base-900), light=#FFFCF0 (paper)
+  const effectiveTheme = getEffectiveTheme()
+  const backgroundColor = effectiveTheme === 'light' ? '#FFFCF0' : '#282726'
 
   const mainWindow = new BrowserWindow({
     width: windowState.width,
@@ -309,16 +335,116 @@ export function createWindow() {
   })
 
   if (isDevelopment) {
-    // Load from Vite dev server
-    mainWindow.loadURL('http://127.0.0.1:5173')
+    // Load from Vite dev server with theme parameter
+    mainWindow.loadURL(`http://127.0.0.1:5173#theme=${effectiveTheme}`)
     mainWindow.webContents.openDevTools()
   } else {
-    // Load from built files
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+    // Load from built files with theme parameter
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      hash: `theme=${effectiveTheme}`
+    })
   }
 
   // Setup application menu with keyboard shortcuts
   setupApplicationMenu(mainWindow)
 
   return mainWindow
+}
+
+// Keep track of the image preview window
+let imagePreviewWindow: BrowserWindow | null = null
+
+// Types for image preview
+interface GalleryImage {
+  id: string
+  src: string
+  alt?: string
+  thumbnail?: string
+}
+
+type ImagePreviewData =
+  | { mode: 'single'; src: string; alt?: string }
+  | { mode: 'gallery'; images: GalleryImage[]; currentIndex: number }
+
+/**
+ * Open or update the image preview window
+ */
+export function openImagePreviewWindow(data: ImagePreviewData) {
+  const logInfo = data.mode === 'single'
+    ? { mode: 'single', src: data.src.substring(0, 50), alt: data.alt }
+    : { mode: 'gallery', count: data.images.length, currentIndex: data.currentIndex }
+  console.log('[Window] openImagePreviewWindow called:', logInfo)
+
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  const isMac = process.platform === 'darwin'
+
+  // Determine IPC channel based on mode
+  const ipcChannel = data.mode === 'single' ? IPC_CHANNELS.IMAGE_PREVIEW_UPDATE : IPC_CHANNELS.IMAGE_GALLERY_UPDATE
+
+  // If window already exists, send update and focus
+  if (imagePreviewWindow && !imagePreviewWindow.isDestroyed()) {
+    console.log('[Window] Updating existing preview window, visible:', imagePreviewWindow.isVisible(), 'minimized:', imagePreviewWindow.isMinimized())
+    imagePreviewWindow.webContents.send(ipcChannel, data)
+    if (imagePreviewWindow.isMinimized()) {
+      imagePreviewWindow.restore()
+    }
+    imagePreviewWindow.show()
+    imagePreviewWindow.focus()
+    return imagePreviewWindow
+  }
+  console.log('[Window] Creating new preview window')
+
+  // Get effective theme
+  const effectiveTheme = getEffectiveTheme()
+  const backgroundColor = effectiveTheme === 'light' ? '#FFFCF0' : '#100F0F'
+
+  // Gallery mode needs wider window for sidebar
+  const windowWidth = data.mode === 'gallery' ? 1100 : 900
+
+  imagePreviewWindow = new BrowserWindow({
+    width: windowWidth,
+    height: 700,
+    minWidth: data.mode === 'gallery' ? 700 : 500,
+    minHeight: 400,
+    show: false, // Show after ready to ensure proper initialization
+    backgroundColor,
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+
+  // Use dom-ready to ensure Vue has mounted before sending data
+  imagePreviewWindow.webContents.once('dom-ready', () => {
+    console.log('[Window] Preview window dom-ready, sending data')
+    // Small delay to ensure Vue component is mounted
+    setTimeout(() => {
+      imagePreviewWindow?.webContents.send(ipcChannel, data)
+    }, 50)
+  })
+
+  imagePreviewWindow.once('ready-to-show', () => {
+    console.log('[Window] Preview window ready-to-show')
+    imagePreviewWindow?.show()
+  })
+
+  imagePreviewWindow.on('closed', () => {
+    imagePreviewWindow = null
+  })
+
+  // Load image preview page (without data in URL - data sent via IPC after ready)
+  if (isDevelopment) {
+    console.log('[Window] Loading preview URL (dev)')
+    imagePreviewWindow.loadURL(`http://127.0.0.1:5173/#/image-preview?theme=${effectiveTheme}`)
+  } else {
+    console.log('[Window] Loading preview file (prod)')
+    imagePreviewWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      hash: `/image-preview?theme=${effectiveTheme}`
+    })
+  }
+
+  return imagePreviewWindow
 }

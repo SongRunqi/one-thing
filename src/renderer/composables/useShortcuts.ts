@@ -94,8 +94,9 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
     // Close Chat - works everywhere
     if (matchShortcut(event, shortcuts.closeChat)) {
       event.preventDefault()
-      // In settings window, close the window instead of closing chat
-      if (window.location.hash === '#/settings') {
+      // In settings or image preview window, close the window instead of closing chat
+      const hash = window.location.hash
+      if (hash.startsWith('#/settings') || hash.startsWith('#/image-preview')) {
         window.close()
         return
       }

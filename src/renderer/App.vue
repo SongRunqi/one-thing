@@ -2,6 +2,9 @@
   <!-- Settings Window Mode -->
   <SettingsPage v-if="isSettingsWindow" />
 
+  <!-- Image Preview Window Mode -->
+  <ImagePreviewWindow v-else-if="isImagePreviewWindow" />
+
   <!-- Main App Mode -->
   <ErrorBoundary v-else>
     <div class="app-shell">
@@ -129,10 +132,12 @@ import WorkspaceDialog from '@/components/WorkspaceDialog.vue'
 import AgentDialog from '@/components/AgentDialog.vue'
 import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
+import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
 import type { Workspace, Agent } from '@/types'
 
-// Detect if this is the settings window
-const isSettingsWindow = window.location.hash === '#/settings'
+// Detect if this is the settings window or image preview window
+const isSettingsWindow = window.location.hash.startsWith('#/settings')
+const isImagePreviewWindow = window.location.hash.startsWith('#/image-preview')
 
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
@@ -290,8 +295,8 @@ watch(sidebarCollapsed, (collapsed) => {
 // Update traffic lights when sidebar state changes (main window only)
 watch([sidebarCollapsed, sidebarFloating, showMediaPanel], ([collapsed, floating, mediaOpen]) => {
   localStorage.setItem('sidebarCollapsed', String(collapsed))
-  // Skip traffic light control for settings window - always show there
-  if (isSettingsWindow) return
+  // Skip traffic light control for settings/preview windows - always show there
+  if (isSettingsWindow || isImagePreviewWindow) return
   // Show traffic lights when sidebar is visible (expanded or floating) or media panel is open
   const showTrafficLights = !collapsed || floating || mediaOpen
   window.electronAPI?.setWindowButtonVisibility?.(showTrafficLights).catch(() => {
@@ -449,6 +454,9 @@ watchEffect(() => {
   background: rgba(0, 0, 0, 0.3);
   z-index: 499; /* Just below floating sidebar (500) */
   animation: fadeIn 0.2s ease forwards;
+  /* Optimize rendering */
+  contain: strict;
+  will-change: opacity;
 }
 
 .sidebar-floating-backdrop.closing {

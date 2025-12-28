@@ -4,6 +4,29 @@ import type { AppSettings, ProviderInfo, CustomProviderConfig, OpenRouterModel }
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
 import type { AIProvider, ModelInfo } from '../../shared/ipc'
 
+// Read initial theme from what index.html already set (via URL hash or localStorage)
+// This prevents the flash where Vue overwrites the correct theme with defaults
+function getInitialTheme(): 'light' | 'dark' | 'system' {
+  // First check what index.html already set on the document
+  const docTheme = document.documentElement.getAttribute('data-theme')
+  if (docTheme === 'light' || docTheme === 'dark') {
+    console.log('[Theme] getInitialTheme: using document data-theme:', docTheme)
+    // We don't know if user setting is 'system' or explicit, so return the effective theme
+    // loadSettings() will later update this to the actual setting
+    return docTheme
+  }
+  // Fallback to localStorage cache
+  const cached = localStorage.getItem('cached-theme')
+  if (cached === 'light' || cached === 'dark') {
+    console.log('[Theme] getInitialTheme: using localStorage cache:', cached)
+    return cached
+  }
+  console.log('[Theme] getInitialTheme: no cached value, defaulting to dark')
+  return 'dark'
+}
+
+const initialTheme = getInitialTheme()
+
 const defaultSettings: AppSettings = {
   ai: {
     provider: AIProviderEnum.OpenAI,
@@ -69,7 +92,8 @@ const defaultSettings: AppSettings = {
     },
     customProviders: [],
   },
-  theme: 'dark',
+  // Use the initial theme read from document/localStorage to avoid flash
+  theme: initialTheme,
   general: {
     animationSpeed: 0.25,
     sendShortcut: 'enter',
@@ -101,18 +125,32 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const isLoading = ref(false)
 
-  // System theme detection
+  // System theme detection - use Electron's nativeTheme via IPC
+  // Initialize from what index.html set (instead of hardcoding 'dark') to avoid flash
   const systemTheme = ref<'light' | 'dark'>(
-    window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    initialTheme === 'system' ? 'dark' : (initialTheme as 'light' | 'dark')
   )
 
-  // Listen for system theme changes
-  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-  const handleSystemThemeChange = (e: MediaQueryListEvent) => {
-    systemTheme.value = e.matches ? 'dark' : 'light'
-    applyTheme()
+  // Fetch system theme from main process (uses nativeTheme.shouldUseDarkColors)
+  async function fetchSystemTheme() {
+    try {
+      const response = await window.electronAPI.getSystemTheme()
+      if (response.success && response.theme) {
+        systemTheme.value = response.theme
+      }
+    } catch (error) {
+      console.error('Failed to get system theme:', error)
+    }
   }
-  mediaQuery.addEventListener('change', handleSystemThemeChange)
+
+  // Listen for system theme changes from main process
+  window.electronAPI.onSystemThemeChanged((theme: 'light' | 'dark') => {
+    systemTheme.value = theme
+    // Only apply if current setting is 'system'
+    if (settings.value.theme === 'system') {
+      applyTheme()
+    }
+  })
 
   // Computed: actual theme to apply (resolves 'system' to actual theme)
   const effectiveTheme = computed(() => {
@@ -125,7 +163,23 @@ export const useSettingsStore = defineStore('settings', () => {
   // Apply theme to document
   function applyTheme() {
     const theme = effectiveTheme.value
+    const currentTheme = document.documentElement.getAttribute('data-theme')
+    console.log('[Theme] applyTheme called:', {
+      effectiveTheme: theme,
+      currentDataTheme: currentTheme,
+      settingsTheme: settings.value.theme,
+      systemTheme: systemTheme.value,
+      stack: new Error().stack?.split('\n').slice(1, 4).join('\n')
+    })
+    // Safety check: only set valid theme values
+    // Skip if theme is already correct (avoid unnecessary DOM changes that can cause flash)
+    if (currentTheme === theme) {
+      console.log('[Theme] Skipping - theme already correct:', theme)
+      return
+    }
     document.documentElement.setAttribute('data-theme', theme)
+    // Cache effective theme to localStorage for instant startup
+    localStorage.setItem('cached-theme', theme)
     // Also apply color theme and base theme
     applyColorTheme()
     applyBaseTheme()
@@ -158,6 +212,10 @@ export const useSettingsStore = defineStore('settings', () => {
         // Ensure customProviders array exists
         if (!settings.value.ai.customProviders) {
           settings.value.ai.customProviders = []
+        }
+        // If theme is 'system', fetch system theme first before applying
+        if (settings.value.theme === 'system') {
+          await fetchSystemTheme()
         }
         applyTheme()
       }

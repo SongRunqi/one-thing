@@ -108,6 +108,7 @@ import Tooltip from '../common/Tooltip.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useAgentsStore } from '@/stores/agents'
+import { useSettingsStore } from '@/stores/settings'
 
 interface BranchInfo {
   id: string
@@ -129,11 +130,13 @@ const emit = defineEmits<{
   setInputText: [text: string]
   regenerate: [messageId: string]
   editAndResend: [messageId: string, newContent: string]
+  splitWithBranch: [sessionId: string]
 }>()
 
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
 const agentsStore = useAgentsStore()
+const settingsStore = useSettingsStore()
 const messageListRef = ref<HTMLElement | null>(null)
 
 // Get the effective session for this panel (props.sessionId or fallback to global)
@@ -634,7 +637,19 @@ async function handleBranch(messageId: string, quotedText?: string) {
   if (!currentSession) return
 
   // Create the branch
-  await sessionsStore.createBranch(currentSession.id, messageId)
+  const branchSession = await sessionsStore.createBranch(currentSession.id, messageId)
+
+  if (branchSession) {
+    // Check setting for split screen behavior
+    const splitEnabled = settingsStore.settings.chat?.branchOpenInSplitScreen ?? true
+    if (splitEnabled) {
+      // Emit event to open branch in split view
+      emit('splitWithBranch', branchSession.id)
+    } else {
+      // Just switch to the branch session
+      await sessionsStore.switchSession(branchSession.id)
+    }
+  }
 
   // If we have quoted text, we need to pass it to InputBox
   // We'll emit this to the parent so it can handle setting the quoted text

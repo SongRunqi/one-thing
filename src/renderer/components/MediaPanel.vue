@@ -57,16 +57,29 @@
             <!-- Image Grid -->
             <div v-if="filteredImages.length > 0" class="media-grid">
               <div
-                v-for="image in filteredImages"
+                v-for="(image, index) in filteredImages"
                 :key="image.id"
                 class="media-item"
-                @click="openImage(image)"
+                @click="openImage(image, index)"
               >
                 <img :src="mediaStore.getImageUrl(image)" :alt="image.prompt" class="media-thumbnail" />
                 <div class="media-overlay">
                   <p class="media-prompt">{{ image.prompt }}</p>
                   <span class="media-model">{{ image.model }}</span>
                 </div>
+                <!-- Delete button -->
+                <button
+                  class="delete-btn"
+                  @click.stop="deleteImage(image.id)"
+                  title="Delete image"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    <line x1="10" y1="11" x2="10" y2="17"/>
+                    <line x1="14" y1="11" x2="14" y2="17"/>
+                  </svg>
+                </button>
               </div>
             </div>
 
@@ -162,9 +175,34 @@ const filteredImages = computed(() => {
   )
 })
 
-// Open image using system default viewer
-function openImage(image: GeneratedMedia) {
-  window.electronAPI.openPath(image.filePath)
+// Open image in gallery preview window
+async function openImage(image: GeneratedMedia, index: number) {
+  console.log('[MediaPanel] Loading images for gallery...')
+
+  // Read all images and convert to base64
+  const galleryImages = await Promise.all(
+    filteredImages.value.map(async (img) => {
+      // If already a data URL, use directly; otherwise read from file
+      const src = img.filePath.startsWith('data:')
+        ? img.filePath
+        : await window.electronAPI.readImageBase64(img.filePath)
+      return {
+        id: img.id,
+        src,
+        alt: img.prompt || 'Generated Image',
+      }
+    })
+  )
+
+  console.log('[MediaPanel] Opening image gallery:', { count: galleryImages.length, index })
+  window.electronAPI.openImageGallery(galleryImages, index)
+}
+
+// Delete an image
+async function deleteImage(id: string) {
+  if (confirm('Delete this image?')) {
+    await mediaStore.removeMedia(id)
+  }
 }
 
 // Listen for image generation events
@@ -438,6 +476,32 @@ html[data-theme='light'] .media-nav {
 
 .media-item:hover .media-overlay {
   opacity: 1;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.media-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  background: rgba(220, 38, 38, 0.9);
 }
 
 .media-prompt {

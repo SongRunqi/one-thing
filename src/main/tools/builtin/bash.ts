@@ -49,7 +49,7 @@ const FORBIDDEN_COMMANDS = new Set([
 // Dangerous patterns in commands
 const DANGEROUS_PATTERNS = [
   /\brm\s+-rf?\s+[\/~]/, // rm -rf / or ~
-  />\s*\/dev\//, // write to /dev
+  />\s*\/dev\/(?!null\b)/, // write to /dev (but allow /dev/null)
   /\|\s*sh\b/, // pipe to shell
   /\|\s*bash\b/,
   /`.*`/, // command substitution

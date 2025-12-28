@@ -47,6 +47,32 @@ triggerManager.register(memoryExtractionTrigger)
 triggerManager.register(contextCompactingTrigger)
 
 // ============================================================================
+// Logging Helpers
+
+// Format messages for logging without full base64 data
+function formatMessagesForLog(messages: unknown[]): unknown[] {
+  return messages.map(msg => {
+    const m = msg as Record<string, unknown>
+    if (Array.isArray(m.content)) {
+      return {
+        ...m,
+        content: m.content.map((part: Record<string, unknown>) => {
+          if (part.type === 'image' && typeof part.image === 'string') {
+            const imgStr = part.image as string
+            return {
+              ...part,
+              image: imgStr.substring(0, 50) + `... (${imgStr.length} chars)`,
+            }
+          }
+          return part
+        }),
+      }
+    }
+    return m
+  })
+}
+
+// ============================================================================
 // UIMessage Streaming Helpers
 // ============================================================================
 
@@ -452,10 +478,17 @@ function buildMessageContent(message: ChatMessage): AIMessageContent {
   // Add attachments
   for (const attachment of message.attachments) {
     if (attachment.mediaType === 'image' && attachment.base64Data) {
+      // Use Data URL format for better compatibility across providers
+      const dataUrl = `data:${attachment.mimeType};base64,${attachment.base64Data}`
+      console.log('[Chat] Adding image attachment:', {
+        mimeType: attachment.mimeType,
+        base64Length: attachment.base64Data.length,
+        dataUrlPrefix: dataUrl.substring(0, 50) + '...',
+      })
       contentParts.push({
         type: 'image',
-        image: attachment.base64Data,
-        mediaType: attachment.mimeType,  // AI SDK 5.x uses 'mediaType'
+        image: dataUrl,
+        // mediaType is auto-detected from Data URL by AI SDK
       })
     } else if (attachment.base64Data) {
       // For non-image files, add as file type
@@ -557,27 +590,13 @@ const activeStreams = new Map<string, AbortController>()
 
 // Base system prompt to control tool usage behavior
 const BASE_SYSTEM_PROMPT_WITH_TOOLS = `
-You are a helpful assistant. You have access to tools, but you should ONLY use them when the user's request specifically requires their functionality.
-Important guidelines:
-- DO NOT mention your available tools or capabilities unless the user explicitly asks what you can do
-- DO NOT offer to use tools proactively - wait for the user to make a request that requires them
-- For casual conversation (greetings, general questions, etc.), respond naturally without referring to tools
-- Only call a tool when the user's message clearly requires that tool's specific functionality
-- If unsure whether a tool is needed, prefer responding conversationally first
-### Important
-Before calling any tool, briefly explain what you're about to do.
-Never start your response with a tool call directly. Always output some text first.
-After obtaining the tool results, inform the user of the findings and explain the next steps.
+You are a helpful assistant. Your name is "贝贝".
 `
-
 // Base system prompt for models without tool support
 const BASE_SYSTEM_PROMPT_NO_TOOLS = `
 You are a helpful assistant.
 `
 
-
-// Claude Code OAuth requires this specific system prompt header
-const CLAUDE_CODE_SYSTEM_HEADER = "You are Claude Code, Anthropic's official CLI for Claude."
 
 /**
  * Build dynamic system prompt with optional skills awareness and workspace character
@@ -594,15 +613,13 @@ function buildSystemPrompt(options: {
   // Use appropriate base prompt based on tool support
   let prompt = hasTools ? BASE_SYSTEM_PROMPT_WITH_TOOLS : BASE_SYSTEM_PROMPT_NO_TOOLS
 
-  // Claude Code OAuth requires specific system prompt header
-  if (providerId === 'claude-code') {
-    prompt = CLAUDE_CODE_SYSTEM_HEADER + '\n\n' + prompt
-  }
-
   // Prepend workspace/agent system prompt if provided (for character/persona)
   if (workspaceSystemPrompt && workspaceSystemPrompt.trim()) {
     prompt = workspaceSystemPrompt.trim() + '\n\n' + prompt
   }
+
+  // Note: Claude Code OAuth header is handled by claude-code.ts createOAuthFetch
+  // which properly formats the system prompt with the required header
 
   // Add user profile information if available
   // Using XML tags and strong emphasis based on best practices research
@@ -961,9 +978,8 @@ function generateStepTitle(toolName: string, args: Record<string, any>, skillNam
 
   if (toolName === 'bash') {
     const command = args.command as string || ''
-    // Truncate long commands
-    const shortCommand = command.length > 40 ? command.slice(0, 40) + '...' : command
-    return `执行命令: ${shortCommand}`
+    // Show full command (CSS handles wrapping for long commands)
+    return `执行命令: ${command}`
   }
 
   // For MCP tools, show a cleaner name
@@ -1213,6 +1229,17 @@ async function runToolLoop(
 
     console.log(`[Backend] Starting tool turn ${currentTurn}`)
 
+    // Send continuation at the START of each turn (except first) to show waiting indicator
+    // This ensures waiting is displayed BEFORE the LLM call starts
+    if (currentTurn > 1) {
+      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+        type: 'continuation',
+        content: '',
+        messageId: ctx.assistantMessageId,
+        sessionId: ctx.sessionId,
+      })
+    }
+
     const stream = streamChatResponseWithTools(
       ctx.providerId,
       {
@@ -1340,13 +1367,8 @@ async function runToolLoop(
       })),
     }
     conversationMessages.push(toolResultMsg)
-
-    ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-      type: 'continuation',
-      content: '',
-      messageId: ctx.assistantMessageId,
-      sessionId: ctx.sessionId,
-    })
+    // Continuation is now sent at the START of the next turn (line 1234-1240)
+    // This ensures waiting is displayed BEFORE the LLM call starts
   }
 
   if (currentTurn >= MAX_TOOL_TURNS) {
@@ -1490,36 +1512,44 @@ async function executeStreamGeneration(
       .pop()?.content
     const lastUserMessage = lastUserMessageContent ? getTextFromContent(lastUserMessageContent) : ''
 
+    // Check if memory is enabled in settings
+    const memorySettings = store.getSettings()
+    const memoryEnabled = memorySettings.embedding?.memoryEnabled !== false
+
     // Retrieve relevant user facts based on conversation context (semantic search)
-    try {
-      const storage = getStorage()
-      const relevantFacts = await retrieveRelevantFacts(storage, lastUserMessage, 10, 0.3)
-      userProfilePrompt = formatUserProfilePrompt(relevantFacts)
-      if (relevantFacts.length > 0) {
-        console.log(`[Chat] Retrieved ${relevantFacts.length} relevant facts for context`)
+    if (memoryEnabled) {
+      try {
+        const storage = getStorage()
+        const relevantFacts = await retrieveRelevantFacts(storage, lastUserMessage, 10, 0.3)
+        userProfilePrompt = formatUserProfilePrompt(relevantFacts)
+        if (relevantFacts.length > 0) {
+          console.log(`[Chat] Retrieved ${relevantFacts.length} relevant facts for context`)
+        }
+      } catch (error) {
+        console.error('Failed to retrieve relevant facts:', error)
       }
-    } catch (error) {
-      console.error('Failed to retrieve relevant facts:', error)
     }
 
     // Load agent-specific memory only for agent sessions
     if (session?.agentId) {
       agentIdForInteraction = session.agentId
-      try {
-        const storage = getStorage()
-        const relationship = await storage.agentMemory.getRelationship(session.agentId)
-        if (relationship) {
-          // Use semantic search to retrieve context-relevant memories
-          const relevantMemories = await retrieveRelevantAgentMemories(
-            storage, session.agentId, lastUserMessage, 5, 0.3
-          )
-          if (relevantMemories.length > 0) {
-            console.log(`[Chat] Retrieved ${relevantMemories.length} relevant agent memories for context`)
+      if (memoryEnabled) {
+        try {
+          const storage = getStorage()
+          const relationship = await storage.agentMemory.getRelationship(session.agentId)
+          if (relationship) {
+            // Use semantic search to retrieve context-relevant memories
+            const relevantMemories = await retrieveRelevantAgentMemories(
+              storage, session.agentId, lastUserMessage, 5, 0.3
+            )
+            if (relevantMemories.length > 0) {
+              console.log(`[Chat] Retrieved ${relevantMemories.length} relevant agent memories for context`)
+            }
+            agentMemoryPrompt = formatAgentMemoryPrompt(relationship, relevantMemories)
           }
-          agentMemoryPrompt = formatAgentMemoryPrompt(relationship, relevantMemories)
+        } catch (error) {
+          console.error('Failed to load agent memory:', error)
         }
-      } catch (error) {
-        console.error('Failed to load agent memory:', error)
       }
     }
 
@@ -1533,6 +1563,15 @@ async function executeStreamGeneration(
     })
 
     let pausedForConfirmation = false
+
+    // Log request start
+    const requestStartTime = Date.now()
+    console.log('[Chat] ===== Request Start =====')
+    console.log('[Chat] Time:', new Date(requestStartTime).toISOString())
+    console.log('[Chat] Provider:', ctx.providerId)
+    console.log('[Chat] Model:', ctx.providerConfig.model)
+    console.log('[Chat] System Prompt:', systemPrompt)
+    console.log('[Chat] Messages:', JSON.stringify(formatMessagesForLog(historyMessages), null, 2))
 
     if (hasTools) {
       // Main LLM sees all tools, Tool Agent handles execution
@@ -1555,6 +1594,13 @@ async function executeStreamGeneration(
       await runSimpleStream(ctx, conversationMessages, processor)
     }
 
+    // Log request end
+    const requestEndTime = Date.now()
+    const requestDuration = (requestEndTime - requestStartTime) / 1000
+    console.log('[Chat] ===== Request End =====')
+    console.log('[Chat] End Time:', new Date(requestEndTime).toISOString())
+    console.log('[Chat] Duration:', requestDuration.toFixed(2), 'seconds')
+
     // Only finalize and run post-processing if not paused for tool confirmation
     if (!pausedForConfirmation) {
       processor.finalize()
@@ -1567,8 +1613,10 @@ async function executeStreamGeneration(
       })
       // Also send UIMessage finish chunk with usage for new clients
       sendUIMessageFinish(ctx.sender, ctx.sessionId, ctx.assistantMessageId, 'stop', ctx.accumulatedUsage)
-      // Update session usage cache
+      // Save usage to message for future token subtraction on edit/regenerate
       if (ctx.accumulatedUsage) {
+        store.updateMessageUsage(ctx.sessionId, ctx.assistantMessageId, ctx.accumulatedUsage)
+        // Update session usage cache
         updateSessionUsage(ctx.sessionId, ctx.accumulatedUsage)
       }
       console.log('[Backend] Streaming complete, total usage:', ctx.accumulatedUsage)
@@ -2425,20 +2473,26 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       .pop()?.content
     const lastUserMsg = lastUserMsgContent ? getTextFromContent(lastUserMsgContent) : ''
 
+    // Check if memory is enabled in settings
+    const memorySettings = store.getSettings()
+    const memoryEnabled = memorySettings.embedding?.memoryEnabled !== false
+
     // Retrieve relevant user facts based on conversation context (semantic search)
-    try {
-      const storage = getStorage()
-      const relevantFacts = await retrieveRelevantFacts(storage, lastUserMsg, 10, 0.3)
-      if (relevantFacts.length > 0) {
-        userProfilePrompt = formatUserProfilePrompt(relevantFacts)
-        console.log(`[Chat] Retrieved ${relevantFacts.length} relevant facts for resume context`)
+    if (memoryEnabled) {
+      try {
+        const storage = getStorage()
+        const relevantFacts = await retrieveRelevantFacts(storage, lastUserMsg, 10, 0.3)
+        if (relevantFacts.length > 0) {
+          userProfilePrompt = formatUserProfilePrompt(relevantFacts)
+          console.log(`[Chat] Retrieved ${relevantFacts.length} relevant facts for resume context`)
+        }
+      } catch (error) {
+        console.error('Failed to retrieve relevant facts:', error)
       }
-    } catch (error) {
-      console.error('Failed to retrieve relevant facts:', error)
     }
 
     // Load agent-specific memory only for agent sessions
-    if (agentId) {
+    if (agentId && memoryEnabled) {
       try {
         const storage = getStorage()
         const agentRelationship = await storage.agentMemory.getRelationship(agentId)
@@ -2510,6 +2564,14 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       })),
     })
 
+    // Send continuation chunk immediately to show waiting indicator
+    sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+      type: 'continuation',
+      content: '',
+      messageId,
+      sessionId,
+    })
+
     // Start streaming continuation in background
     process.nextTick(async () => {
       const abortController = new AbortController()
@@ -2535,12 +2597,28 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       try {
         console.log('[Backend] Continuing tool loop after confirmation')
 
+        // Log request start
+        const requestStartTime = Date.now()
+        console.log('[Chat] ===== Resume Request Start =====')
+        console.log('[Chat] Time:', new Date(requestStartTime).toISOString())
+        console.log('[Chat] Provider:', providerId)
+        console.log('[Chat] Model:', configWithApiKey.model)
+        console.log('[Chat] System Prompt:', systemPrompt)
+        console.log('[Chat] Messages:', JSON.stringify(formatMessagesForLog(conversationMessages), null, 2))
+
         // Build tools for AI
         const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
         const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
 
         // Continue the tool loop
         const result = await runToolLoop(ctx, conversationMessages, toolsForAI, processor, enabledSkills)
+
+        // Log request end
+        const requestEndTime = Date.now()
+        const requestDuration = (requestEndTime - requestStartTime) / 1000
+        console.log('[Chat] ===== Resume Request End =====')
+        console.log('[Chat] End Time:', new Date(requestEndTime).toISOString())
+        console.log('[Chat] Duration:', requestDuration.toFixed(2), 'seconds')
 
         // Only finalize and send complete if not paused for another confirmation
         if (!result.pausedForConfirmation) {

@@ -56,8 +56,8 @@
   <!-- Normal user/assistant message -->
   <div v-else :class="['message', message.role, { highlighted: isHighlighted }]" :data-message-id="message.id">
     <div class="message-content-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
-      <!-- Waiting status (streaming, no content yet, no reasoning) -->
-      <div v-if="message.isStreaming && !message.content && !message.reasoning" class="thinking-status">
+      <!-- Waiting status (streaming, no content yet, no reasoning, no contentParts) -->
+      <div v-if="message.isStreaming && !message.content && !message.reasoning && (!message.contentParts || message.contentParts.length === 0)" class="thinking-status">
         <div class="thinking-status-row">
           <span class="thinking-text flowing">Waiting</span>
           <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
@@ -88,6 +88,30 @@
 
       <!-- Message bubble - show if there's content, contentParts, or streaming is done -->
       <div v-if="message.content || (message.contentParts && message.contentParts.length > 0) || !message.isStreaming" class="bubble" :class="{ editing: isEditing }" ref="bubbleRef" @mouseup="handleTextSelection">
+        <!-- Attachments preview (shown above text for user messages) -->
+        <div v-if="message.attachments && message.attachments.length > 0" class="message-attachments">
+          <div
+            v-for="attachment in message.attachments"
+            :key="attachment.id"
+            class="message-attachment"
+            :class="{ 'is-image': attachment.mediaType === 'image' }"
+          >
+            <img
+              v-if="attachment.mediaType === 'image' && attachment.base64Data"
+              :src="`data:${attachment.mimeType};base64,${attachment.base64Data}`"
+              :alt="attachment.fileName"
+              class="attachment-image"
+              @click="openImagePreview(attachment)"
+            />
+            <div v-else class="attachment-file">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span class="attachment-file-name">{{ attachment.fileName }}</span>
+            </div>
+          </div>
+        </div>
         <!-- Skill usage badge -->
         <div v-if="message.skillUsed && message.role === 'assistant'" class="skill-badge">
           <svg class="skill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -108,7 +132,7 @@
           ></textarea>
         </div>
         <!-- Normal display -->
-        <div v-else class="content-display">
+        <div v-else class="content-display" @click="handleContentClick">
             <!-- Sequential content parts (text and tool calls interleaved) -->
             <template v-if="message.contentParts && message.contentParts.length > 0">
               <template v-for="(part, index) in message.contentParts" :key="index">
@@ -287,10 +311,60 @@
               </svg>
             </button>
           </Tooltip>
+          <!-- More menu button (for assistant messages with usage info) -->
+          <div v-if="message.role === 'assistant'" class="more-btn-wrapper" ref="moreBtnRef">
+            <Tooltip text="More info">
+              <button
+                class="action-btn more-btn"
+                @click.stop="toggleMoreMenu"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="1"/>
+                  <circle cx="19" cy="12" r="1"/>
+                  <circle cx="5" cy="12" r="1"/>
+                </svg>
+              </button>
+            </Tooltip>
+            <!-- More menu dropdown -->
+            <div v-if="showMoreMenu" class="more-menu" :style="moreMenuStyle">
+              <div class="more-menu-section">
+                <div class="more-menu-title">Token Usage</div>
+                <div v-if="message.usage" class="token-usage-info">
+                  <div class="token-row">
+                    <span class="token-label">Input</span>
+                    <span class="token-value">{{ formatNumber(message.usage.inputTokens) }}</span>
+                  </div>
+                  <div class="token-row">
+                    <span class="token-label">Output</span>
+                    <span class="token-value">{{ formatNumber(message.usage.outputTokens) }}</span>
+                  </div>
+                  <div class="token-row total">
+                    <span class="token-label">Total</span>
+                    <span class="token-value">{{ formatNumber(message.usage.totalTokens) }}</span>
+                  </div>
+                </div>
+                <div v-else class="token-usage-empty">
+                  No usage data
+                </div>
+              </div>
+              <div v-if="message.model" class="more-menu-section">
+                <div class="more-menu-title">Model</div>
+                <div class="model-info">{{ message.model }}</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Image Preview Modal -->
+  <ImagePreview
+    :visible="previewVisible"
+    :src="previewImage.src"
+    :alt="previewImage.alt"
+    @close="closeImagePreview"
+  />
   </div>
 </template>
 
@@ -303,6 +377,7 @@ import ToolCallGroup from './ToolCallGroup.vue'
 import ToolCallItem from './ToolCallItem.vue'
 import StepsPanel from './StepsPanel.vue'
 import Tooltip from '../common/Tooltip.vue'
+import ImagePreview from '../common/ImagePreview.vue'
 import { useTTS } from '@/composables/useTTS'
 
 interface BranchInfo {
@@ -405,9 +480,16 @@ function getPlainTextContent(): string {
 const showActions = ref(false)
 const copied = ref(false)
 const showBranchMenu = ref(false)
+const showMoreMenu = ref(false)
+
+// Image preview state
+const previewVisible = ref(false)
+const previewImage = ref({ src: '', alt: '' })
 const branchBtnRef = ref<HTMLElement | null>(null)
+const moreBtnRef = ref<HTMLElement | null>(null)
 const bubbleRef = ref<HTMLElement | null>(null)
 const branchMenuPosition = ref({ top: 0, left: 0 })
+const moreMenuPosition = ref({ top: 0, left: 0 })
 
 // Text selection toolbar state
 const showSelectionToolbar = ref(false)
@@ -426,6 +508,12 @@ const isHighlighted = computed(() => props.isHighlighted || false)
 const branchMenuStyle = computed(() => ({
   top: `${branchMenuPosition.value.top}px`,
   left: `${branchMenuPosition.value.left}px`
+}))
+
+// Computed style for more menu positioning
+const moreMenuStyle = computed(() => ({
+  top: `${moreMenuPosition.value.top}px`,
+  left: `${moreMenuPosition.value.left}px`
 }))
 
 // Edit mode state
@@ -710,6 +798,31 @@ function formatTime(timestamp: number): string {
   return `${hours}:${minutes}`
 }
 
+// Open image in new window
+function openImagePreview(attachment: { fileName: string; mimeType: string; base64Data?: string }) {
+  if (attachment.base64Data) {
+    const src = `data:${attachment.mimeType};base64,${attachment.base64Data}`
+    window.electronAPI?.openImagePreview(src, attachment.fileName)
+  }
+}
+
+// Handle clicks on content area (for generated images in markdown)
+function handleContentClick(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  console.log('[MessageItem] Content clicked, target:', target.tagName)
+  if (target.tagName === 'IMG') {
+    const img = target as HTMLImageElement
+    console.log('[MessageItem] Opening image preview:', { src: img.src.substring(0, 50), alt: img.alt })
+    // Open image in new window
+    window.electronAPI?.openImagePreview(img.src, img.alt || 'Generated Image')
+  }
+}
+
+// Close image preview
+function closeImagePreview() {
+  previewVisible.value = false
+}
+
 async function copyContent() {
   try {
     await navigator.clipboard.writeText(props.message.content)
@@ -853,11 +966,58 @@ function goToBranch(sessionId: string) {
   emit('goToBranch', sessionId)
 }
 
+// Toggle more menu
+function toggleMoreMenu() {
+  if (showMoreMenu.value) {
+    showMoreMenu.value = false
+    return
+  }
+
+  // Calculate menu position based on more button position
+  if (moreBtnRef.value) {
+    const btnRect = moreBtnRef.value.getBoundingClientRect()
+    const menuWidth = 180 // approximate menu width
+    const menuHeight = 120 // approximate menu height
+    const padding = 4
+
+    // Position: below the button, menu's left edge aligns with button's left edge
+    let top = btnRect.bottom + padding
+    let left = btnRect.left
+
+    // If menu would go off the right edge, shift left
+    if (left + menuWidth > window.innerWidth - padding) {
+      left = window.innerWidth - menuWidth - padding
+    }
+
+    // If menu would go off the left edge
+    if (left < padding) {
+      left = padding
+    }
+
+    // If menu would go off the bottom, show above the button
+    if (top + menuHeight > window.innerHeight - padding) {
+      top = btnRect.top - menuHeight - padding
+    }
+
+    moreMenuPosition.value = { top, left }
+  }
+
+  showMoreMenu.value = true
+}
+
+// Format number with thousands separator
+function formatNumber(num: number): string {
+  return num.toLocaleString()
+}
+
 // Close branch menu when clicking outside
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement
   if (!target.closest('.branch-btn-wrapper')) {
     showBranchMenu.value = false
+  }
+  if (!target.closest('.more-btn-wrapper')) {
+    showMoreMenu.value = false
   }
   // Also close selection toolbar if clicking outside
   if (!target.closest('.selection-toolbar') && !target.closest('.bubble')) {
@@ -1195,6 +1355,66 @@ html[data-theme='light'] .message.user .bubble {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
+/* Message attachments (images shown above text) */
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.message-attachment {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.message-attachment.is-image {
+  max-width: 300px;
+  max-height: 300px;
+}
+
+.attachment-image {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.attachment-image:hover {
+  transform: scale(1.02);
+  opacity: 0.95;
+}
+
+.attachment-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.attachment-file svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.attachment-file-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-theme='light'] .attachment-file {
+  background: rgba(0, 0, 0, 0.05);
+}
+
 .content {
   word-wrap: break-word;
   line-height: 1.6;
@@ -1449,56 +1669,46 @@ html[data-theme='light'] .content :deep(.inline-code) {
   color: var(--muted);
 }
 
+/* Actions - minimal icon-only style */
 .actions {
   display: flex;
-  gap: 2px;
+  gap: 4px;
   opacity: 0;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  background: rgba(30, 30, 35, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 12px;
-  padding: 4px;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.2),
-    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  transition: opacity 0.15s ease;
 }
 
 .actions.visible {
   opacity: 1;
 }
 
-/* User message actions - now unified with AI actions style */
-
 .action-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: all 0.15s ease;
   flex-shrink: 0;
   position: relative;
 }
 
 .action-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.9);
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
 }
 
 .action-btn:active {
-  background: rgba(255, 255, 255, 0.15);
+  transform: scale(0.92);
 }
 
 .action-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
 }
 
 /* Copy button success state */
@@ -1509,41 +1719,10 @@ html[data-theme='light'] .content :deep(.inline-code) {
 /* Speak button speaking state */
 .speak-btn.speaking {
   color: var(--accent);
-  background: rgba(59, 130, 246, 0.15);
 }
 
 .speak-btn.speaking:hover {
-  background: rgba(59, 130, 246, 0.25);
-}
-
-html[data-theme='light'] .speak-btn.speaking {
-  color: var(--accent);
-  background: rgba(59, 130, 246, 0.1);
-}
-
-html[data-theme='light'] .speak-btn.speaking:hover {
-  background: rgba(59, 130, 246, 0.18);
-}
-
-html[data-theme='light'] .actions {
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.1),
-    0 0 0 1px rgba(0, 0, 0, 0.05) inset;
-}
-
-
-html[data-theme='light'] .action-btn {
-  color: rgba(0, 0, 0, 0.45);
-}
-
-html[data-theme='light'] .action-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: rgba(0, 0, 0, 0.85);
-}
-
-html[data-theme='light'] .action-btn:active {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(var(--accent-rgb), 0.15);
 }
 
 @keyframes fadeIn {
@@ -1824,6 +2003,95 @@ html[data-theme='light'] .message.user .bubble.editing {
 
 .branch-menu-new:hover {
   background: rgba(59, 130, 246, 0.1);
+}
+
+/* More menu styles */
+.more-btn-wrapper {
+  position: relative;
+}
+
+.more-menu {
+  position: fixed;
+  min-width: 160px;
+  max-width: 200px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 1000;
+}
+
+.more-menu-section {
+  padding: 6px 0;
+}
+
+.more-menu-section:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  padding-bottom: 10px;
+}
+
+.more-menu-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  padding: 0 4px;
+}
+
+.token-usage-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.token-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.token-row.total {
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 2px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.token-label {
+  color: var(--muted);
+}
+
+.token-value {
+  font-family: 'SF Mono', Monaco, monospace;
+  color: var(--text-secondary);
+}
+
+.token-row.total .token-value {
+  color: var(--accent);
+}
+
+.token-usage-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 4px;
+}
+
+.model-info {
+  font-size: 11px;
+  font-family: 'SF Mono', Monaco, monospace;
+  color: var(--text-secondary);
+  padding: 2px 4px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  word-break: break-all;
 }
 
 .regenerate-btn svg {

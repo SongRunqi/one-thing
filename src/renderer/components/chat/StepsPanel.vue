@@ -16,8 +16,11 @@
           <div v-else class="dot pending"></div>
         </div>
 
+        <!-- Tool name badge -->
+        <span v-if="step.toolCall?.toolName" class="tool-badge">{{ step.toolCall.toolName }}</span>
+
         <!-- Step title -->
-        <span class="step-title">{{ step.title }}</span>
+        <span class="step-title">{{ truncateTitle(step.title) }}</span>
 
         <!-- Preview -->
         <span class="step-preview">{{ getPreview(step) }}</span>
@@ -74,7 +77,7 @@
           </div>
 
           <!-- Arguments -->
-          <div v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasNonCommandArgs(step)" class="detail-section">
+          <div v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step)" class="detail-section">
             <div class="detail-label">参数</div>
             <pre>{{ formatArgs(step.toolCall.arguments) }}</pre>
           </div>
@@ -82,7 +85,7 @@
           <!-- Result -->
           <div v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running'" class="detail-section">
             <div class="detail-label">结果</div>
-            <pre>{{ step.result }}</pre>
+            <pre>{{ formatResult(step.result) }}</pre>
           </div>
 
           <!-- Summary -->
@@ -158,7 +161,6 @@ function hasExpandableContent(step: Step): boolean {
 }
 
 function shouldShowContent(step: Step): boolean {
-  if (step.status === 'awaiting-confirmation') return false // buttons are inline
   if (step.status === 'failed' && step.error) return true
   if (step.status === 'running' && step.result) return true
   return expandedSteps.value.has(step.id)
@@ -184,10 +186,10 @@ function getPreview(step: Step): string {
   return ''
 }
 
-function hasNonCommandArgs(step: Step): boolean {
+function hasArgs(step: Step): boolean {
   const args = step.toolCall?.arguments
   if (!args) return false
-  return Object.keys(args).filter(k => k !== 'command').length > 0
+  return Object.keys(args).length > 0
 }
 
 function handleConfirm(step: Step, response: 'once' | 'always') {
@@ -203,13 +205,58 @@ function handleReject(step: Step) {
 }
 
 function formatArgs(args: Record<string, any>): string {
-  if (args.command && Object.keys(args).length === 1) {
+  // For bash, show command directly without label
+  if (args.command) {
     return args.command
   }
-  const filtered = Object.fromEntries(
-    Object.entries(args).filter(([k]) => k !== 'command')
-  )
-  return JSON.stringify(filtered, null, 2)
+
+  // For file operations, show path directly
+  const pathField = args.path || args.file_path || args.filePath
+  if (pathField) {
+    return pathField
+  }
+
+  // For pattern-based tools (glob, grep)
+  if (args.pattern) {
+    return args.pattern
+  }
+
+  // For other tools, show key: value format
+  const lines: string[] = []
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value === 'string') {
+      lines.push(`${key}: ${value}`)
+    } else {
+      lines.push(`${key}: ${JSON.stringify(value)}`)
+    }
+  }
+  return lines.join('\n')
+}
+
+function truncateTitle(title: string, maxLen: number = 50): string {
+  if (!title) return ''
+  if (title.length <= maxLen) return title
+  return title.slice(0, maxLen) + '...'
+}
+
+function formatResult(result: string): string {
+  // Try to parse as JSON and extract output
+  try {
+    const parsed = JSON.parse(result)
+    // If it has output field, use that
+    if (parsed.output !== undefined) {
+      return String(parsed.output)
+    }
+    // If it has data field with output
+    if (parsed.data?.output !== undefined) {
+      return String(parsed.data.output)
+    }
+    // Otherwise return formatted JSON
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    // Not JSON, return as-is
+    return result
+  }
 }
 
 function truncateOutput(output: string, maxLines: number = 8): string {
@@ -301,11 +348,27 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   50% { opacity: 0.5; }
 }
 
+/* Tool badge */
+.tool-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(100, 100, 100, 0.2);
+  color: var(--text-secondary, #888);
+  flex-shrink: 0;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
 /* Step title */
 .step-title {
   font-weight: 500;
   color: var(--text-secondary, #888);
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Preview */
@@ -319,7 +382,7 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   min-width: 0;
 }
 
-.spacer { flex: 1; }
+.spacer { flex: 0; }
 
 /* Status text */
 .status-text {

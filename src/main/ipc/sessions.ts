@@ -52,6 +52,17 @@ export function registerSessionHandlers() {
     if (!session) {
       return { success: false, error: 'Session not found' }
     }
+
+    // If session has no workingDirectory but its workspace does, inherit it
+    // Note: Use inheritSessionWorkingDirectory to avoid updating updatedAt
+    if (!session.workingDirectory && session.workspaceId) {
+      const workspace = store.getWorkspace(session.workspaceId)
+      if (workspace?.workingDirectory) {
+        store.inheritSessionWorkingDirectory(sessionId, workspace.workingDirectory)
+        session.workingDirectory = workspace.workingDirectory
+      }
+    }
+
     store.setCurrentSessionId(sessionId)
     return { success: true, session }
   })

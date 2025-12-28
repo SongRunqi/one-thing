@@ -208,6 +208,9 @@ export const SkillTool = Tool.define(
           }
         }
 
+        // Replace {baseDir} placeholder with actual skill directory path
+        const instructions = skill.instructions.replace(/\{baseDir\}/g, skill.directoryPath)
+
         // Build output with skill information
         const output = `# Skill: ${skill.name}
 
@@ -215,11 +218,12 @@ ${skill.description}
 
 ---
 
-${skill.instructions}
+${instructions}
 
 ---
 
-${skill.files?.length ? `\nAdditional files in this skill directory:\n${skill.files.map(f => `- ${f.name}`).join('\n')}\n` : ''}
+Skill directory: ${skill.directoryPath}
+${skill.files?.length ? `Additional files:\n${skill.files.map(f => `- ${skill.directoryPath}/${f.name}`).join('\n')}\n` : ''}
 Follow the instructions above to complete the task.`
 
         return {

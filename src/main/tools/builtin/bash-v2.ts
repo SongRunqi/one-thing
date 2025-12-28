@@ -74,7 +74,7 @@ const FORBIDDEN_COMMANDS = new Set([
 // Dangerous patterns
 const DANGEROUS_PATTERNS = [
   /\brm\s+-rf?\s+[\/~]/, // rm -rf / or ~
-  />\s*\/dev\//, // write to /dev
+  />\s*\/dev\/(?!null\b)/, // write to /dev (but allow /dev/null)
   /\|\s*sh\b/, // pipe to shell
   /\|\s*bash\b/,
 ]
@@ -262,7 +262,7 @@ The sandbox restricts file access to allowed directories only.`,
 
     // Update metadata with initial state
     ctx.metadata({
-      title: `Running: ${command.slice(0, 50)}${command.length > 50 ? '...' : ''}`,
+      title: `Running: ${command}`,
       metadata: {
         command,
         workingDirectory: workingDir,
@@ -369,8 +369,8 @@ The sandbox restricts file access to allowed directories only.`,
 
     return {
       title: result.exitCode === 0
-        ? `Executed: ${command.slice(0, 40)}${command.length > 40 ? '...' : ''}`
-        : `Failed (exit ${result.exitCode}): ${command.slice(0, 30)}...`,
+        ? `Executed: ${command}`
+        : `Failed (exit ${result.exitCode}): ${command}`,
       output: finalOutput,
       metadata,
     }
