@@ -76,11 +76,12 @@ Results are sorted by file modification time (newest first).`,
 
   async execute(args, ctx) {
     const { pattern, case_insensitive, context_lines } = args
-    let searchPath = args.path || process.cwd()
+    const workDir = ctx.workingDirectory || process.cwd()
+    let searchPath = args.path || workDir
 
     // Resolve relative paths
     if (!path.isAbsolute(searchPath)) {
-      searchPath = path.resolve(process.cwd(), searchPath)
+      searchPath = path.resolve(workDir, searchPath)
     }
 
     // Build glob patterns

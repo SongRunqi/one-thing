@@ -60,11 +60,12 @@ Use this tool when you need to find files by name patterns.`,
 
   async execute(args, ctx) {
     const { pattern } = args
-    let searchPath = args.path || process.cwd()
+    const workDir = ctx.workingDirectory || process.cwd()
+    let searchPath = args.path || workDir
 
     // Resolve relative paths
     if (!path.isAbsolute(searchPath)) {
-      searchPath = path.resolve(process.cwd(), searchPath)
+      searchPath = path.resolve(workDir, searchPath)
     }
 
     // Update metadata with initial state
