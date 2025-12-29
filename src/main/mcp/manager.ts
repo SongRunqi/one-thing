@@ -81,10 +81,10 @@ class MCPManagerClass {
     const newServerIds = new Set(settings.servers.map(s => s.id))
     const oldServerIds = new Set(oldSettings.servers.map(s => s.id))
 
-    // Disconnect removed servers
+    // Remove servers that are no longer in settings
     for (const id of oldServerIds) {
       if (!newServerIds.has(id)) {
-        await this.disconnectServer(id)
+        await this.removeServer(id)
       }
     }
 
@@ -130,9 +130,20 @@ class MCPManagerClass {
   }
 
   /**
-   * Disconnect a server
+   * Disconnect a server (keeps it in the list for reconnection)
    */
   async disconnectServer(serverId: string): Promise<void> {
+    const client = this.clients.get(serverId)
+    if (client) {
+      await client.disconnect()
+      // Don't delete from clients - server stays in list as disconnected
+    }
+  }
+
+  /**
+   * Remove a server completely (disconnect and remove from list)
+   */
+  async removeServer(serverId: string): Promise<void> {
     const client = this.clients.get(serverId)
     if (client) {
       await client.disconnect()

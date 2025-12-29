@@ -55,7 +55,8 @@ interface ModelCache {
   lastFetched: number
 }
 
-const CACHE_TTL = 1000 * 60 * 60  // 1 hour
+// Cache never expires - only refresh manually or on app restart
+const CACHE_TTL = Infinity
 const MODELS_DEV_API = 'https://models.dev/api.json'
 
 // Provider ID mapping from Models.dev to our provider IDs
@@ -349,6 +350,94 @@ export async function modelSupportsTools(modelId: string, providerId?: string): 
   // Default: assume supports tools
   console.log(`[ModelRegistry] Model ${modelId} not found, assuming tools support`)
   return true
+}
+
+/**
+ * Check if a model is a reasoning/thinking model
+ * Uses Models.dev's reasoning field for accurate detection
+ * Reasoning models (like DeepSeek Reasoner, o1, o3) don't support temperature
+ */
+export async function modelSupportsReasoning(modelId: string, providerId?: string): Promise<boolean> {
+  if (isCacheStale() || cache.modelsDevData === null) {
+    await refreshCache()
+  }
+
+  // First try to find in Models.dev data directly
+  if (cache.modelsDevData) {
+    // Try the specific provider first
+    if (providerId) {
+      const modelsDevProviderId = REVERSE_PROVIDER_MAPPING[providerId] || providerId
+      const provider = cache.modelsDevData[modelsDevProviderId]
+      if (provider?.models[modelId]) {
+        const reasoning = provider.models[modelId].reasoning
+        console.log(`[ModelRegistry] Model ${modelId} reasoning=${reasoning} (from ${modelsDevProviderId})`)
+        return reasoning === true
+      }
+    }
+
+    // Search across all providers
+    for (const [provId, provider] of Object.entries(cache.modelsDevData)) {
+      if (provider.models[modelId]) {
+        const reasoning = provider.models[modelId].reasoning
+        console.log(`[ModelRegistry] Model ${modelId} reasoning=${reasoning} (from ${provId})`)
+        return reasoning === true
+      }
+    }
+  }
+
+  // Fallback: check supported_parameters in converted model
+  const model = await getModelById(modelId)
+  if (model?.supported_parameters) {
+    const hasReasoning = model.supported_parameters.includes('reasoning')
+    console.log(`[ModelRegistry] Model ${modelId} reasoning=${hasReasoning} (from supported_parameters)`)
+    return hasReasoning
+  }
+
+  // Final fallback: use name-based detection for known reasoning models
+  const lowerModelId = modelId.toLowerCase()
+  const reasoningPatterns = ['reasoner', 'o1', 'o3', 'thinking']
+  if (reasoningPatterns.some(p => lowerModelId.includes(p))) {
+    console.log(`[ModelRegistry] Model ${modelId} detected as reasoning model by name pattern`)
+    return true
+  }
+
+  console.log(`[ModelRegistry] Model ${modelId} not found, assuming no reasoning`)
+  return false
+}
+
+/**
+ * Synchronous check if a model is a reasoning model
+ * Uses cached data, falls back to name-based detection if cache is not ready
+ * This is needed for streaming where we can't await
+ */
+export function modelSupportsReasoningSync(modelId: string, providerId?: string): boolean {
+  // First try cache
+  if (cache.modelsDevData) {
+    // Try the specific provider first
+    if (providerId) {
+      const modelsDevProviderId = REVERSE_PROVIDER_MAPPING[providerId] || providerId
+      const provider = cache.modelsDevData[modelsDevProviderId]
+      if (provider?.models[modelId]) {
+        return provider.models[modelId].reasoning === true
+      }
+    }
+
+    // Search across all providers
+    for (const provider of Object.values(cache.modelsDevData)) {
+      if (provider.models[modelId]) {
+        return provider.models[modelId].reasoning === true
+      }
+    }
+  }
+
+  // Fallback: name-based detection
+  const lowerModelId = modelId.toLowerCase()
+  const reasoningPatterns = ['reasoner', 'o1-', 'o3-', '-o1', '-o3', 'thinking']
+  // Exclude non-reasoning models that might match patterns
+  if (lowerModelId.includes('gpt-5.2-chat') || lowerModelId.includes('gpt-5.2-instant')) {
+    return false
+  }
+  return reasoningPatterns.some(p => lowerModelId.includes(p))
 }
 
 /**

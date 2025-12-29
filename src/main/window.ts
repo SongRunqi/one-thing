@@ -230,6 +230,10 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
   const effectiveTheme = getEffectiveTheme()
   const backgroundColor = effectiveTheme === 'light' ? '#FFFCF0' : '#282726'
 
+  // Get color theme from settings
+  const settings = getSettings()
+  const colorTheme = settings.general?.colorTheme || 'blue'
+
   settingsWindow = new BrowserWindow({
     width: 900,
     height: 620,
@@ -257,12 +261,13 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
     settingsWindow = null
   })
 
-  // Load settings page with theme parameter
+  // Load settings page with theme parameters
+  const themeParams = `theme=${effectiveTheme}&colorTheme=${colorTheme}`
   if (isDevelopment) {
-    settingsWindow.loadURL(`http://127.0.0.1:5173/#/settings?theme=${effectiveTheme}`)
+    settingsWindow.loadURL(`http://127.0.0.1:5173/#/settings?${themeParams}`)
   } else {
     settingsWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
-      hash: `/settings?theme=${effectiveTheme}`
+      hash: `/settings?${themeParams}`
     })
   }
 

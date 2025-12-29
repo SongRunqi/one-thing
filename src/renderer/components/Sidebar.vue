@@ -1213,6 +1213,7 @@ html[data-theme='light'] .sidebar-toggle-btn:hover {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
+  user-select: none;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
@@ -1661,6 +1662,7 @@ html[data-theme='light'] .action-btn:hover {
   border-bottom: 1px solid var(--border);
   margin-bottom: 8px;
   padding-bottom: 12px;
+  user-select: none;
 }
 
 .session-item.new-chat-item .new-chat-icon {

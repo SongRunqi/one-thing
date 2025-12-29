@@ -21,7 +21,9 @@
       (function() {
         var hash = window.location.hash;
         var theme = null;
+        var colorTheme = null;
         var source = 'default';
+
         // Check URL hash for theme parameter (e.g., #theme=light or #/settings?theme=dark)
         if (hash.includes('theme=light')) {
           theme = 'light';
@@ -34,9 +36,22 @@
           theme = localStorage.getItem('cached-theme');
           source = theme ? 'localStorage' : 'none';
         }
-        console.log('[Theme] index.html:', { hash: hash, theme: theme, source: source });
+
+        // Check for colorTheme parameter
+        var colorMatch = hash.match(/colorTheme=([a-z]+)/);
+        if (colorMatch) {
+          colorTheme = colorMatch[1];
+        } else {
+          colorTheme = localStorage.getItem('cached-color-theme');
+        }
+
+        console.log('[Theme] index.html:', { hash: hash, theme: theme, colorTheme: colorTheme, source: source });
+
         if (theme === 'light' || theme === 'dark') {
           document.documentElement.setAttribute('data-theme', theme);
+        }
+        if (colorTheme) {
+          document.documentElement.setAttribute('data-color-theme', colorTheme);
         }
       })();
     </script>

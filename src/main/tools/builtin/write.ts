@@ -12,6 +12,8 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Tool } from '../core/tool.js'
 import { checkFileAccess } from '../core/sandbox.js'
+import { Permission } from '../../permission/index.js'
+import { createTwoFilesPatch, diffLines } from 'diff'
 
 /**
  * Write Tool Metadata
@@ -21,6 +23,9 @@ export interface WriteMetadata {
   bytesWritten: number
   lineCount: number
   created: boolean
+  diff?: string
+  additions?: number
+  deletions?: number
   [key: string]: unknown
 }
 
@@ -58,50 +63,89 @@ Usage:
   async execute(args, ctx) {
     const { file_path, content } = args
 
-    // Check sandbox boundary and request permission if needed
+    // Check sandbox boundary and request permission if needed (for external files)
     const resolvedPath = await checkFileAccess(file_path, ctx, 'Write file')
 
-    // Check if file exists
+    // Check if file exists and read current content for diff
     let fileExists = false
+    let contentOld = ''
     try {
       const stats = await fs.stat(resolvedPath)
       if (stats.isDirectory()) {
         throw new Error(`Path is a directory, not a file: ${resolvedPath}`)
       }
       fileExists = true
+      contentOld = await fs.readFile(resolvedPath, 'utf-8')
     } catch (error: any) {
       if (error.code !== 'ENOENT') {
         throw error
       }
     }
 
-    // Update metadata with initial state
+    // Calculate stats
+    const bytesWritten = Buffer.byteLength(content, 'utf-8')
+    const lineCount = content.split('\n').length
+
+    // Generate diff for preview
+    const diff = createTwoFilesPatch(resolvedPath, resolvedPath, contentOld, content)
+    const changes = diffLines(contentOld, content)
+    let additions = 0
+    let deletions = 0
+    for (const change of changes) {
+      if (change.added) additions += change.count || 0
+      if (change.removed) deletions += change.count || 0
+    }
+
+    // Update metadata with diff preview BEFORE asking for permission
     ctx.metadata({
       title: `Writing ${path.basename(resolvedPath)}`,
       metadata: {
         filePath: resolvedPath,
-        bytesWritten: 0,
-        lineCount: 0,
+        bytesWritten,
+        lineCount,
         created: !fileExists,
+        diff,
+        additions,
+        deletions,
       },
     })
 
-    // Ensure parent directory exists
+    // Request permission for file write (shows diff in UI)
+    await Permission.ask({
+      type: 'file_write',
+      pattern: resolvedPath,
+      sessionId: ctx.sessionId,
+      messageId: ctx.messageId,
+      callId: ctx.toolCallId,
+      title: fileExists
+        ? `Overwrite file: ${path.basename(resolvedPath)}`
+        : `Create new file: ${path.basename(resolvedPath)}`,
+      metadata: {
+        filePath: resolvedPath,
+        diff,
+        additions,
+        deletions,
+        bytesWritten,
+        lineCount,
+        operation: fileExists ? 'overwrite' : 'create',
+      },
+    })
+
+    // User approved - ensure parent directory exists
     const parentDir = path.dirname(resolvedPath)
     await fs.mkdir(parentDir, { recursive: true })
 
     // Write the file
     await fs.writeFile(resolvedPath, content, 'utf-8')
 
-    // Calculate stats
-    const bytesWritten = Buffer.byteLength(content, 'utf-8')
-    const lineCount = content.split('\n').length
-
     const metadata: WriteMetadata = {
       filePath: resolvedPath,
       bytesWritten,
       lineCount,
       created: !fileExists,
+      diff,
+      additions,
+      deletions,
     }
 
     const action = fileExists ? 'Updated' : 'Created'

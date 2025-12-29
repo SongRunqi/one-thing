@@ -264,6 +264,7 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 6px 16px;
   background: transparent;
+  user-select: none;
 }
 
 /* Top separator line - subtle, only shows when scrolled */

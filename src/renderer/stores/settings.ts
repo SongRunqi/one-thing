@@ -171,29 +171,42 @@ export const useSettingsStore = defineStore('settings', () => {
       systemTheme: systemTheme.value,
       stack: new Error().stack?.split('\n').slice(1, 4).join('\n')
     })
-    // Safety check: only set valid theme values
-    // Skip if theme is already correct (avoid unnecessary DOM changes that can cause flash)
+
+    // Always apply color theme and base theme first
+    // They may need updating even if base theme hasn't changed
+    applyColorTheme()
+    applyBaseTheme()
+
+    // Skip base theme update if already correct (avoid unnecessary DOM changes)
     if (currentTheme === theme) {
-      console.log('[Theme] Skipping - theme already correct:', theme)
+      console.log('[Theme] Skipping base theme - already correct:', theme)
       return
     }
     document.documentElement.setAttribute('data-theme', theme)
     // Cache effective theme to localStorage for instant startup
     localStorage.setItem('cached-theme', theme)
-    // Also apply color theme and base theme
-    applyColorTheme()
-    applyBaseTheme()
   }
 
   // Apply color theme to document
   function applyColorTheme() {
     const colorTheme = settings.value.general?.colorTheme || 'blue'
+    const currentColorTheme = document.documentElement.getAttribute('data-color-theme')
+    console.log('[Theme] applyColorTheme:', { from: currentColorTheme, to: colorTheme })
+    if (currentColorTheme === colorTheme) {
+      return // Already correct
+    }
     document.documentElement.setAttribute('data-color-theme', colorTheme)
+    // Cache color theme to localStorage for instant startup
+    localStorage.setItem('cached-color-theme', colorTheme)
   }
 
   // Apply base theme to document
   function applyBaseTheme() {
     const baseTheme = settings.value.general?.baseTheme || 'obsidian'
+    const currentBaseTheme = document.documentElement.getAttribute('data-base-theme')
+    if (currentBaseTheme === baseTheme) {
+      return // Already correct
+    }
     document.documentElement.setAttribute('data-base-theme', baseTheme)
   }
 
@@ -268,9 +281,20 @@ export const useSettingsStore = defineStore('settings', () => {
     isLoading.value = true
     try {
       const plainSettings = JSON.parse(JSON.stringify(toRaw(newSettings))) as AppSettings
+
+      // Check if theme-related settings changed
+      const themeChanged =
+        settings.value.theme !== plainSettings.theme ||
+        settings.value.general?.colorTheme !== plainSettings.general?.colorTheme ||
+        settings.value.general?.baseTheme !== plainSettings.general?.baseTheme
+
       settings.value = plainSettings
       await window.electronAPI.saveSettings(plainSettings)
-      applyTheme()
+
+      // Only apply theme if theme-related settings actually changed
+      if (themeChanged) {
+        applyTheme()
+      }
     } finally {
       isLoading.value = false
     }

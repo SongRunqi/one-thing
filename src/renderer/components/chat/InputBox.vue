@@ -654,10 +654,12 @@ function handleSkillPickerClose() {
   gap: 10px;
   padding: 12px 14px;
   margin-bottom: 8px;
-  background: rgba(120, 120, 128, 0.06);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: 12px;
   position: relative;
   animation: slideInDown 0.2s ease-out;
+  box-shadow: var(--shadow-sm);
 }
 
 @keyframes slideInDown {
@@ -792,6 +794,7 @@ html[data-theme='light'] .composer.focused {
   align-items: center;
   padding: 8px 12px;
   gap: 8px;
+  user-select: none;
 }
 
 .toolbar-left {

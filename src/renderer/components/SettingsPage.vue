@@ -267,13 +267,8 @@ async function loadSettings() {
       tools.value = toolsResponse.tools
     }
 
-    // Apply theme
-    const theme = localSettings.value?.theme || 'dark'
-    document.documentElement.dataset.theme = theme
-
-    // Apply color theme
-    const colorTheme = localSettings.value?.general?.colorTheme || 'blue'
-    document.documentElement.dataset.colorTheme = colorTheme
+    // Theme is already applied by index.html from URL params (set by main process)
+    // No need to re-apply here to avoid flicker
   } catch (err) {
     console.error('Failed to load settings:', err)
   } finally {
@@ -424,6 +419,7 @@ onUnmounted(() => {
   background: var(--bg-app);
   color: var(--text-primary);
   overflow: hidden;
+  user-select: none;
 }
 
 /* Titlebar drag region for macOS */

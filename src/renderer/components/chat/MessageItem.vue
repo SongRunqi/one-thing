@@ -1138,8 +1138,7 @@ function getStepsForTurn(turnIndex: number | undefined) {
 <style scoped>
 /* Wrapper for TransitionGroup compatibility */
 .message-item-wrapper {
-  width: 85%;
-  max-width: 900px;
+  width: 91%;
   display: flex;
   flex-direction: column;
 }
@@ -1167,13 +1166,13 @@ html[data-theme='light'] .message.assistant .bubble ::-moz-selection {
 .selection-toolbar {
   position: fixed;
   z-index: 9999;
-  background: var(--bg-elevated);
+  background: var(--bg-floating);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 12px;
   padding: 4px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-floating);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -1182,7 +1181,7 @@ html[data-theme='light'] .message.assistant .bubble ::-moz-selection {
 
 html[data-theme='light'] .selection-toolbar {
   background: rgba(255, 255, 255, 0.98);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.12);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.05),
     0 4px 6px -1px rgba(0, 0, 0, 0.1),
@@ -1667,6 +1666,7 @@ html[data-theme='light'] .content :deep(.inline-code) {
 .meta {
   font-size: 12px;
   color: var(--muted);
+  user-select: none;
 }
 
 /* Actions - minimal icon-only style */
@@ -1800,6 +1800,7 @@ html[data-theme='light'] .error-details {
 .error-time {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.4);
+  user-select: none;
 }
 
 html[data-theme='light'] .error-time {

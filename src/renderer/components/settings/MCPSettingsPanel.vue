@@ -61,7 +61,11 @@
           <div class="server-header" @click="toggleServerExpanded(server.config.id)">
             <div class="server-info">
               <div class="server-status" :class="server.status" :title="getStatusText(server.status)">
-                <div class="status-dot"></div>
+                <div class="status-indicator">
+                  <div class="status-dot"></div>
+                  <div class="status-ring"></div>
+                  <div class="status-pulse"></div>
+                </div>
               </div>
               <div class="server-details">
                 <div class="server-name">{{ server.config.name }}</div>
@@ -76,51 +80,52 @@
               </div>
             </div>
             <div class="server-actions">
-              <label class="toggle small" @click.stop title="Enable/Disable server">
-                <input
-                  type="checkbox"
-                  :checked="server.config.enabled"
-                  @change="toggleServerEnabled(server.config.id, ($event.target as HTMLInputElement).checked)"
-                />
-                <span class="toggle-slider"></span>
-              </label>
-              <button
-                class="icon-btn small"
-                :class="{ spinning: connectingServers.has(server.config.id) }"
-                @click.stop="handleConnectToggle(server)"
-                :title="server.status === 'connected' ? 'Disconnect' : 'Connect'"
-                :disabled="!server.config.enabled || connectingServers.has(server.config.id)"
-              >
-                <svg v-if="server.status === 'connected'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18.36 6.64a9 9 0 11-12.73 0"/>
-                  <line x1="12" y1="2" x2="12" y2="12"/>
-                </svg>
-                <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M5 12.55a11 11 0 0114.08 0"/>
-                  <path d="M1.42 9a16 16 0 0121.16 0"/>
-                  <path d="M8.53 16.11a6 6 0 016.95 0"/>
-                  <circle cx="12" cy="20" r="1"/>
-                </svg>
-              </button>
-              <button
-                class="icon-btn small"
-                @click.stop="openEditServerDialog(server.config)"
-                title="Edit server"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-              </button>
-              <button
-                class="icon-btn small danger"
-                @click.stop="confirmDeleteServer(server.config.id)"
-                title="Delete server"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                </svg>
-              </button>
+              <Tooltip text="Auto-connect on startup" position="top">
+                <label class="toggle small" @click.stop>
+                  <input
+                    type="checkbox"
+                    :checked="server.config.enabled"
+                    @change="toggleServerEnabled(server.config.id, ($event.target as HTMLInputElement).checked)"
+                  />
+                  <span class="toggle-slider"></span>
+                </label>
+              </Tooltip>
+              <Tooltip :text="server.status === 'connected' ? 'Stop' : 'Start'" position="top">
+                <button
+                  class="icon-btn small connect-btn"
+                  :class="{
+                    'is-loading': connectingServers.has(server.config.id),
+                    'is-connected': server.status === 'connected'
+                  }"
+                  @click.stop="handleConnectToggle(server)"
+                  :disabled="!server.config.enabled || connectingServers.has(server.config.id)"
+                >
+                  <Loader2 v-if="connectingServers.has(server.config.id)" class="loading-spinner" :size="14" />
+                  <Pause v-else-if="server.status === 'connected'" :size="14" />
+                  <Play v-else :size="14" />
+                </button>
+              </Tooltip>
+              <Tooltip text="Edit" position="top">
+                <button
+                  class="icon-btn small"
+                  @click.stop="openEditServerDialog(server.config)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+              </Tooltip>
+              <Tooltip text="Delete" position="top">
+                <button
+                  class="icon-btn small danger"
+                  @click.stop="confirmDeleteServer(server.config.id)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                  </svg>
+                </button>
+              </Tooltip>
               <svg
                 class="expand-chevron"
                 width="14"
@@ -585,6 +590,8 @@ import { ref, computed, onMounted, watch } from 'vue'
 import type { MCPServerConfig, MCPServerState, MCPSettings } from '@/types'
 import { v4 as uuidv4 } from 'uuid'
 import { MCP_PRESETS, PRESET_CATEGORIES, type MCPPreset, type PresetCategory } from '@/data/mcpPresets'
+import { Play, Pause, Loader2 } from 'lucide-vue-next'
+import Tooltip from '@/components/common/Tooltip.vue'
 
 interface Props {
   settings: MCPSettings
@@ -1467,32 +1474,107 @@ async function importSelectedServers() {
 }
 
 .server-status {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-indicator {
+  position: relative;
   width: 10px;
   height: 10px;
-  flex-shrink: 0;
 }
 
 .status-dot {
-  width: 10px;
-  height: 10px;
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
   background: var(--text-muted);
+  opacity: 0.5;
+  transition: all 0.3s ease;
 }
 
+.status-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.status-pulse {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: transparent;
+  opacity: 0;
+}
+
+/* Connected state */
 .server-status.connected .status-dot {
   background: #22c55e;
+  opacity: 1;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
 }
 
+.server-status.connected .status-ring {
+  border-color: rgba(34, 197, 94, 0.3);
+  opacity: 1;
+}
+
+/* Connecting state (from server.status) */
 .server-status.connecting .status-dot {
   background: #f59e0b;
-  animation: pulse 1s ease-in-out infinite;
+  opacity: 1;
 }
 
+.server-status.connecting .status-ring {
+  border-color: #f59e0b;
+  opacity: 1;
+  animation: ring-spin 1s linear infinite;
+  border-top-color: transparent;
+  border-right-color: transparent;
+}
+
+/* Error state */
 .server-status.error .status-dot {
   background: #ef4444;
+  opacity: 1;
+  animation: error-blink 2s ease-in-out infinite;
 }
 
-@keyframes pulse {
+.server-status.error .status-ring {
+  border-color: rgba(239, 68, 68, 0.3);
+  opacity: 1;
+}
+
+/* Disconnected state */
+.server-status.disconnected .status-dot {
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
+@keyframes ring-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes status-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+@keyframes error-blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
@@ -1583,6 +1665,30 @@ async function importSelectedServers() {
 
 .icon-btn.spinning svg {
   animation: spin 1s linear infinite;
+}
+
+/* Connect button styles */
+.connect-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.connect-btn.is-connected {
+  color: #22c55e;
+}
+
+.connect-btn.is-connected:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.connect-btn.is-loading {
+  pointer-events: none;
+}
+
+.connect-btn .loading-spinner {
+  animation: spin 1s linear infinite;
+  color: var(--accent);
 }
 
 @keyframes spin {

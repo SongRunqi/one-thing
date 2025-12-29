@@ -178,6 +178,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
+  user-select: none;
 }
 
 .agent-icon-wrapper {

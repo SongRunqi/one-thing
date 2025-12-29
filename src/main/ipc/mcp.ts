@@ -171,8 +171,8 @@ async function handleRemoveServer(request: MCPRemoveServerRequest): Promise<MCPR
   try {
     const { serverId } = request
 
-    // Disconnect first
-    await MCPManager.disconnectServer(serverId)
+    // Remove server (disconnect and remove from clients list)
+    await MCPManager.removeServer(serverId)
 
     // Update settings
     const mcpSettings = getMCPSettings()

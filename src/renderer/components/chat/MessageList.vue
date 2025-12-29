@@ -982,6 +982,9 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   border-bottom-left-radius: var(--radius-lg);
   border-bottom-right-radius: var(--radius-lg);
   overflow: hidden;
+  /* Prevent flicker during sidebar toggle */
+  contain: layout style;
+  will-change: contents;
 }
 
 .message-list {
@@ -1006,6 +1009,7 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   background: transparent;
   padding: 40px 20px;
   overflow: hidden;
+  user-select: none;
 }
 
 .holo-hero {
@@ -1199,6 +1203,7 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   align-items: center;
   gap: 4px;
   z-index: 100;
+  user-select: none;
 }
 
 .nav-position {
@@ -1255,6 +1260,11 @@ html[data-theme='light'] .nav-btn {
     gap: 12px;
   }
 
+  .thinking-indicator {
+    padding: 14px 16px;
+    border-radius: 14px;
+  }
+
   .nav-buttons {
     right: 12px;
     bottom: 120px;
@@ -1279,6 +1289,21 @@ html[data-theme='light'] .nav-btn {
 
   .empty-subtitle {
     font-size: 14px;
+  }
+
+  .thinking-indicator {
+    padding: 12px 14px;
+    border-radius: 12px;
+  }
+
+  .thinking-avatar {
+    width: 28px;
+    height: 28px;
+  }
+
+  .thinking-avatar svg {
+    width: 16px;
+    height: 16px;
   }
 
   .nav-buttons {

@@ -17,6 +17,7 @@ import * as os from 'os'
 import { Tool } from '../core/tool.js'
 import { Permission } from '../../permission/index.js'
 import { getSettings } from '../../stores/settings.js'
+import BASHPROMPOT from './bash.txt'
 
 // Maximum output length
 const MAX_OUTPUT_LENGTH = 30_000

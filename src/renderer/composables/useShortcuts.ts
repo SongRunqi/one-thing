@@ -139,6 +139,13 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       }
       return
     }
+
+    // Prevent Cmd+A (Select All) when not in input/textarea
+    // This prevents selecting all text on the page
+    if ((event.metaKey || event.ctrlKey) && event.key === 'a' && !isInInput) {
+      event.preventDefault()
+      return
+    }
   }
 
   onMounted(() => {

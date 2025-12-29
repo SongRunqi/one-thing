@@ -393,6 +393,8 @@ onMounted(async () => {
   unsubscribeSettingsChanged = window.electronAPI.onSettingsChanged((newSettings) => {
     console.log('[App] Settings changed from another window, updating store')
     settingsStore.settings = newSettings
+    // Apply theme to ensure visual consistency (resolves 'system' to actual theme)
+    settingsStore.applyTheme()
   })
 
   // Listen for menu shortcuts
@@ -420,10 +422,8 @@ onUnmounted(() => {
   }
 })
 
-watchEffect(() => {
-  const theme = settingsStore.settings.theme || 'dark'
-  document.documentElement.dataset.theme = theme
-})
+// Theme is managed by settingsStore.applyTheme() which correctly resolves 'system' to 'light'/'dark'
+// Do NOT directly set settings.theme to data-theme as 'system' is not a valid DOM value
 </script>
 
 <style scoped>

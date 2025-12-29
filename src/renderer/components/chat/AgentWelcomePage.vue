@@ -103,6 +103,7 @@ function getImageSrc(value: string): string {
   flex: 1;
   padding: 40px 20px;
   padding-bottom: 120px; /* Space for input box */
+  user-select: none;
 }
 
 .welcome-content {

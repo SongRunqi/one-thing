@@ -24,6 +24,7 @@ import {
   requiresOAuth as requiresOAuthFromRegistry,
   getProviderDefinition,
 } from './registry.js'
+import { modelSupportsReasoningSync } from '../services/model-registry.js'
 import type { ProviderInfo, ProviderConfig } from './types.js'
 import { oauthManager } from '../services/oauth-manager.js'
 
@@ -141,23 +142,10 @@ export async function createProviderAsync(
 
 /**
  * Check if a model is a reasoning/thinking model that doesn't support temperature
+ * Uses Models.dev data for accurate detection, falls back to name patterns
  */
-function isReasoningModel(modelId: string): boolean {
-  const reasoningModels = [
-    'deepseek-reasoner',
-    'o1',
-    'o1-preview',
-    'o1-mini',
-    'o3',
-    'o3-mini',
-    'gpt-5.2',  // GPT-5.2 Thinking model
-  ]
-  const lowerModelId = modelId.toLowerCase()
-  // Exclude gpt-5.2-chat-latest which is the Instant (non-reasoning) variant
-  if (lowerModelId.includes('gpt-5.2-chat') || lowerModelId.includes('gpt-5.2-instant')) {
-    return false
-  }
-  return reasoningModels.some(rm => lowerModelId.includes(rm))
+function isReasoningModel(modelId: string, providerId?: string): boolean {
+  return modelSupportsReasoningSync(modelId, providerId)
 }
 
 /**
@@ -274,7 +262,7 @@ export async function* streamChatResponse(
   const provider = createProvider(providerId, config)
   const model = provider.createModel(config.model)
 
-  const isReasoning = isReasoningModel(config.model)
+  const isReasoning = isReasoningModel(config.model, providerId)
 
   // Build streamText options
   const streamOptions: Parameters<typeof streamText>[0] = {
@@ -309,7 +297,7 @@ export async function* streamChatResponseWithReasoning(
   const provider = createProvider(providerId, config)
   const model = provider.createModel(config.model)
 
-  const isReasoning = isReasoningModel(config.model)
+  const isReasoning = isReasoningModel(config.model, providerId)
 
   // Convert messages to include reasoning_content for DeepSeek Reasoner
   const convertedMessages = messages.map(msg => {
@@ -456,7 +444,7 @@ export async function generateChatResponseWithReasoning(
   const provider = createProvider(providerId, config)
   const model = provider.createModel(config.model)
 
-  const isReasoning = isReasoningModel(config.model)
+  const isReasoning = isReasoningModel(config.model, providerId)
 
   // Convert messages to include reasoning_content for DeepSeek Reasoner
   const convertedMessages = messages.map(msg => {
@@ -618,7 +606,7 @@ export async function* streamChatResponseWithTools(
   const provider = createProvider(providerId, config)
   const model = provider.createModel(config.model)
 
-  const isReasoning = isReasoningModel(config.model)
+  const isReasoning = isReasoningModel(config.model, providerId)
 
   // Convert our tool definitions to AI SDK format
   // AI SDK expects tools with inputSchema property
@@ -977,7 +965,7 @@ export async function* streamChatWithUIMessages(
   const provider = createProvider(providerId, config)
   const model = provider.createModel(config.model)
 
-  const isReasoning = isReasoningModel(config.model)
+  const isReasoning = isReasoningModel(config.model, providerId)
 
   // Convert our tool definitions to AI SDK format
   const aiTools: Record<string, any> = {}

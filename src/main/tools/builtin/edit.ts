@@ -1,8 +1,11 @@
 /**
- * Edit Tool
+ * Edit Tool (Legacy V1 Version)
  *
  * Performs exact string replacements in files using a chain of
  * 9 replacement strategies for intelligent fuzzy matching.
+ *
+ * This is the legacy V1 implementation that uses Tool.define().
+ * For the new V2 implementation with proper confirmation flow, see edit-v2.ts
  */
 
 import { z } from 'zod'
@@ -10,7 +13,8 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Tool } from '../core/tool.js'
 import { replace, normalizeLineEndings, trimDiff } from '../core/replacers.js'
-import { checkFileAccess } from '../core/sandbox.js'
+import { checkFileAccess, getSandboxBoundary, isPathContained } from '../core/sandbox.js'
+import { Permission } from '../../permission/index.js'
 
 // Diff library for generating unified diffs
 import { createTwoFilesPatch, diffLines } from 'diff'
@@ -70,7 +74,7 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
   async execute(args, ctx) {
     const { file_path, old_string, new_string, replace_all } = args
 
-    // Check sandbox boundary and request permission if needed
+    // Check sandbox boundary and request permission if needed (for external files)
     const resolvedPath = await checkFileAccess(file_path, ctx, 'Edit file')
 
     // Validate old_string and new_string are different
@@ -98,8 +102,6 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
         createTwoFilesPatch(resolvedPath, resolvedPath, contentOld, contentNew)
       )
 
-      await fs.writeFile(resolvedPath, contentNew, 'utf-8')
-
       const changes = diffLines(contentOld, contentNew)
       let additions = 0
       let deletions = 0
@@ -107,6 +109,39 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
         if (change.added) additions += change.count || 0
         if (change.removed) deletions += change.count || 0
       }
+
+      // Update metadata with diff preview BEFORE asking for permission
+      ctx.metadata({
+        title: `Editing ${path.basename(resolvedPath)}`,
+        metadata: {
+          filePath: resolvedPath,
+          diff,
+          additions,
+          deletions,
+        },
+      })
+
+      // Request permission for file edit (shows diff in UI)
+      await Permission.ask({
+        type: 'file_edit',
+        pattern: resolvedPath,
+        sessionId: ctx.sessionId,
+        messageId: ctx.messageId,
+        callId: ctx.toolCallId,
+        title: contentOld === ''
+          ? `Create new file: ${path.basename(resolvedPath)}`
+          : `Replace entire content: ${path.basename(resolvedPath)}`,
+        metadata: {
+          filePath: resolvedPath,
+          diff,
+          additions,
+          deletions,
+          operation: contentOld === '' ? 'create' : 'replace',
+        },
+      })
+
+      // User approved - write the file
+      await fs.writeFile(resolvedPath, contentNew, 'utf-8')
 
       return {
         title: `Created/replaced ${path.basename(resolvedPath)}`,
@@ -166,7 +201,7 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
       if (change.removed) deletions += change.count || 0
     }
 
-    // Update metadata with diff preview
+    // Update metadata with diff preview BEFORE asking for permission
     ctx.metadata({
       title: `Editing ${path.basename(resolvedPath)}`,
       metadata: {
@@ -177,7 +212,24 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
       },
     })
 
-    // Write the file
+    // Request permission for file edit (shows diff in UI)
+    await Permission.ask({
+      type: 'file_edit',
+      pattern: resolvedPath,
+      sessionId: ctx.sessionId,
+      messageId: ctx.messageId,
+      callId: ctx.toolCallId,
+      title: `Edit file: ${path.basename(resolvedPath)}`,
+      metadata: {
+        filePath: resolvedPath,
+        diff,
+        additions,
+        deletions,
+        operation: 'edit',
+      },
+    })
+
+    // User approved - write the file
     await fs.writeFile(resolvedPath, contentNew, 'utf-8')
 
     // Build output message

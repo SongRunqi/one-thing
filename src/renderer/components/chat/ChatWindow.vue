@@ -445,6 +445,8 @@ defineExpose({
     0 8px 24px rgba(0, 0, 0, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  /* Prevent flicker during sidebar toggle */
+  contain: layout style;
 }
 
 html[data-theme='light'] .chat {
@@ -462,6 +464,7 @@ html[data-theme='light'] .chat {
   justify-content: space-between;
   height: 48px;
   padding: 0 16px;
+  user-select: none;
   background: rgba(var(--bg-rgb), 0.5);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   flex-shrink: 0;
