@@ -29,7 +29,7 @@ import {
   getEmbeddingService,
   DEFAULT_EMBEDDING_DIM,
   cosineSimilarity,
-} from '../services/embedding-service.js'
+} from '../services/memory/embedding-service.js'
 
 // Memory link relationship types
 export type MemoryLinkRelationship = 'similar' | 'contradicts' | 'updates' | 'related'

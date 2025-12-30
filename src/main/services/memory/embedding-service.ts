@@ -9,8 +9,8 @@
  * 4. Local @xenova/transformers (all-MiniLM-L6-v2)
  */
 
-import { getSettings } from '../stores/index.js'
-import type { EmbeddingSettings, EmbeddingProviderType } from '../../shared/ipc.js'
+import { getSettings } from '../../stores/index.js'
+import type { EmbeddingSettings, EmbeddingProviderType } from '../../../shared/ipc.js'
 
 // Default embedding dimensions
 export const DEFAULT_EMBEDDING_DIM = 384

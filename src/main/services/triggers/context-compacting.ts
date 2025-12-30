@@ -10,7 +10,7 @@
  */
 
 import type { Trigger, TriggerContext } from './index.js'
-import { calculateSessionTokens, countMessagesAfter } from '../token-counter.js'
+import { calculateSessionTokens, countMessagesAfter } from '../ai/token-counter.js'
 import { generateChatResponse } from '../../providers/index.js'
 import { updateSessionSummary, getSession } from '../../stores/sessions.js'
 

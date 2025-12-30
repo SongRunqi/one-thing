@@ -11,8 +11,8 @@ import {
   OpenRouterModel,
 } from '../../shared/ipc.js'
 import { getCachedModels, setCachedModels } from '../store.js'
-import * as modelRegistry from '../services/model-registry.js'
-import { oauthManager } from '../services/oauth-manager.js'
+import * as modelRegistry from '../services/ai/model-registry.js'
+import { oauthManager } from '../services/auth/oauth-manager.js'
 import { fetchCopilotModels, detectModelCapabilities } from '../providers/builtin/github-copilot.js'
 
 // Predefined Claude models as fallback

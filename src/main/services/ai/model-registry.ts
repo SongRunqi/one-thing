@@ -5,7 +5,7 @@
  * Models.dev provides comprehensive model metadata including tool_call support.
  */
 
-import type { OpenRouterModel } from '../../shared/ipc.js'
+import type { OpenRouterModel } from '../../../shared/ipc.js'
 
 // Models.dev API types
 interface ModelsDevModel {

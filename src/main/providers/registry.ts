@@ -9,7 +9,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { builtinProviders } from './builtin/index.js'
 import type { ProviderDefinition, ProviderInfo, ProviderInstance, ProviderConfig } from './types.js'
-import { oauthManager } from '../services/oauth-manager.js'
+import { oauthManager } from '../services/auth/oauth-manager.js'
 
 // Registry storage
 const providers = new Map<string, ProviderDefinition>()

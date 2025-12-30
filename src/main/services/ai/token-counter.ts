@@ -5,7 +5,7 @@
  * Uses a simple heuristic for mixed Chinese/English text.
  */
 
-import type { ChatMessage } from '../../shared/ipc.js'
+import type { ChatMessage } from '../../../shared/ipc.js'
 
 /**
  * Estimate tokens for a text string.

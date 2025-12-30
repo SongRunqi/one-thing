@@ -7,8 +7,8 @@
  * - Re-embedding (updates embeddings when models change)
  */
 
-import { getStorage } from '../storage/index.js'
-import { getAgents } from '../stores/agents.js'
+import { getStorage } from '../../storage/index.js'
+import { getAgents } from '../../stores/agents.js'
 
 // Default decay interval: 4 hours
 const DEFAULT_DECAY_INTERVAL_MS = 4 * 60 * 60 * 1000

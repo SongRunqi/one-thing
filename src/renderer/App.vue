@@ -19,11 +19,11 @@
       />
 
       <!-- Floating sidebar overlay backdrop -->
-      <div
-        v-if="sidebarFloating"
-        :class="['sidebar-floating-backdrop', { closing: sidebarFloatingClosing }]"
-        @click="closeFloatingSidebar"
-      ></div>
+<!--      <div-->
+<!--        v-if="sidebarFloating"-->
+<!--        :class="['sidebar-floating-backdrop', { closing: sidebarFloatingClosing }]"-->
+<!--        @click="closeFloatingSidebar"-->
+<!--      ></div>-->
 
       <Sidebar
         :collapsed="sidebarCollapsed && !sidebarFloating"
@@ -125,7 +125,7 @@ import { useChatStore } from '@/stores/chat'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAgentsStore } from '@/stores/agents'
 import { useShortcuts } from '@/composables/useShortcuts'
-import Sidebar from '@/components/Sidebar.vue'
+import { Sidebar } from '@/components/sidebar'
 import ChatContainer from '@/components/ChatContainer.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import WorkspaceDialog from '@/components/WorkspaceDialog.vue'

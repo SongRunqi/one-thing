@@ -6,7 +6,7 @@ import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills } from './i
 import { initializeStores } from './store.js'
 import { initializeToolRegistry } from './tools/index.js'
 import { initializeStorage, closeStorage } from './storage/index.js'
-import { startMemoryScheduler, stopMemoryScheduler } from './services/memory-scheduler.js'
+import { startMemoryScheduler, stopMemoryScheduler } from './services/memory/memory-scheduler.js'
 import { getMediaImagesDir } from './stores/paths.js'
 
 const __filename = fileURLToPath(import.meta.url)

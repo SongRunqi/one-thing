@@ -99,6 +99,7 @@ const defaultSettings: AppSettings = {
     sendShortcut: 'enter',
     colorTheme: 'blue',
     baseTheme: 'obsidian',
+    messageListDensity: 'comfortable',
     shortcuts: {
       sendMessage: { key: 'Enter' },
       newChat: { key: 'n', metaKey: true },
@@ -335,6 +336,10 @@ export const useSettingsStore = defineStore('settings', () => {
   function updateBaseTheme(baseTheme: 'obsidian' | 'ocean' | 'forest' | 'rose' | 'ember') {
     settings.value.general.baseTheme = baseTheme
     applyBaseTheme()
+  }
+
+  function updateMessageListDensity(density: 'compact' | 'comfortable' | 'spacious') {
+    settings.value.general.messageListDensity = density
   }
 
   // Get current provider's config
@@ -728,6 +733,7 @@ export const useSettingsStore = defineStore('settings', () => {
     applyBaseTheme,
     updateColorTheme,
     updateBaseTheme,
+    updateMessageListDensity,
     // Model name cache
     updateModelNameCache,
     getModelDisplayName,

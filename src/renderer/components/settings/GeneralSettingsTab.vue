@@ -76,6 +76,47 @@
       </div>
     </section>
 
+    <!-- Message Display Density -->
+    <section class="settings-section">
+      <h3 class="section-title">Message Display</h3>
+
+      <div class="density-cards">
+        <div
+          :class="['density-card', { active: currentDensity === 'compact' }]"
+          @click="updateDensity('compact')"
+        >
+          <div class="density-preview compact">
+            <div class="density-line"></div>
+            <div class="density-line short"></div>
+            <div class="density-line"></div>
+            <div class="density-line short"></div>
+          </div>
+          <span>Compact</span>
+        </div>
+        <div
+          :class="['density-card', { active: currentDensity === 'comfortable' }]"
+          @click="updateDensity('comfortable')"
+        >
+          <div class="density-preview comfortable">
+            <div class="density-line"></div>
+            <div class="density-line short"></div>
+            <div class="density-line"></div>
+          </div>
+          <span>Comfortable</span>
+        </div>
+        <div
+          :class="['density-card', { active: currentDensity === 'spacious' }]"
+          @click="updateDensity('spacious')"
+        >
+          <div class="density-preview spacious">
+            <div class="density-line"></div>
+            <div class="density-line short"></div>
+          </div>
+          <span>Spacious</span>
+        </div>
+      </div>
+    </section>
+
     <!-- Animation -->
     <section class="settings-section">
       <h3 class="section-title">Animation</h3>
@@ -107,6 +148,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AppSettings, ColorTheme } from '@/types'
+import type { MessageListDensity } from '../../../shared/ipc'
 
 const props = defineProps<{
   settings: AppSettings
@@ -131,6 +173,10 @@ const currentColorTheme = computed(() => {
   return props.settings.general?.colorTheme || 'blue'
 })
 
+const currentDensity = computed(() => {
+  return props.settings.general?.messageListDensity || 'comfortable'
+})
+
 function updateTheme(theme: 'light' | 'dark' | 'system') {
   emit('update:settings', { ...props.settings, theme })
 }
@@ -146,6 +192,13 @@ function updateAnimationSpeed(speed: number) {
   emit('update:settings', {
     ...props.settings,
     general: { ...props.settings.general, animationSpeed: speed }
+  })
+}
+
+function updateDensity(density: MessageListDensity) {
+  emit('update:settings', {
+    ...props.settings,
+    general: { ...props.settings.general, messageListDensity: density }
   })
 }
 </script>
@@ -404,6 +457,83 @@ function updateAnimationSpeed(speed: number) {
   margin-top: 8px;
   font-size: 11px;
   color: var(--text-muted);
+}
+
+/* Density Cards */
+.density-cards {
+  display: flex;
+  gap: 12px;
+}
+
+.density-card {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.density-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.density-card.active {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.density-card span {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.density-preview {
+  height: 48px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.density-preview.compact {
+  gap: 3px;
+  padding: 4px 8px;
+}
+
+.density-preview.comfortable {
+  gap: 6px;
+  padding: 6px 10px;
+}
+
+.density-preview.spacious {
+  gap: 10px;
+  padding: 8px 12px;
+}
+
+.density-line {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+.density-preview.compact .density-line {
+  height: 3px;
+}
+
+.density-preview.spacious .density-line {
+  height: 5px;
+}
+
+.density-line.short {
+  width: 60%;
+  opacity: 0.35;
 }
 
 /* Radio Group */

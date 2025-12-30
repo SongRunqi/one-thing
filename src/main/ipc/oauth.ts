@@ -19,7 +19,7 @@ import type {
   OAuthDevicePollRequest,
   OAuthDevicePollResponse,
 } from '../../shared/ipc.js'
-import { oauthManager } from '../services/oauth-manager.js'
+import { oauthManager } from '../services/auth/oauth-manager.js'
 import { testOAuthDirect } from '../test-oauth-direct.js'
 
 // Store for active callback servers

@@ -10,7 +10,7 @@
  */
 
 import type { Trigger, TriggerContext } from './index.js'
-import { extractAndSaveMemories, extractAndSaveUserFactsOnly } from '../memory-extractor.js'
+import { extractAndSaveMemories, extractAndSaveUserFactsOnly } from '../memory/memory-extractor.js'
 import { shouldExtractMemory } from './smart-extraction.js'
 import { getSettings } from '../../stores/index.js'
 

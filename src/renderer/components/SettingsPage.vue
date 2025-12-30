@@ -118,11 +118,11 @@ import type { AppSettings, ProviderInfo, CustomProviderConfig, ToolDefinition } 
 
 // Tab Components
 import GeneralSettingsTab from './settings/GeneralSettingsTab.vue'
-import AIProviderTab from './settings/AIProviderTab.vue'
+import { AIProviderTab } from './settings/provider'
 import ChatSettingsTab from './settings/ChatSettingsTab.vue'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
 import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
-import MCPSettingsPanel from './settings/MCPSettingsPanel.vue'
+import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
 import EmbeddingSettingsPanel from './settings/EmbeddingSettingsPanel.vue'
 

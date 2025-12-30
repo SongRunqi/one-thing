@@ -10,7 +10,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
 import crypto from 'crypto'
-import type { OAuthToken } from '../../shared/ipc.js'
+import type { OAuthToken } from '../../../shared/ipc.js'
 
 // Helper to use Electron's network stack for OAuth requests
 // This helps bypass Cloudflare's bot detection

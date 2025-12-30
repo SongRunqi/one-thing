@@ -8,10 +8,10 @@
  * This avoids duplicate memories and handles contradictions intelligently.
  */
 
-import { generateChatResponse } from '../providers/index.js'
-import { getStorage } from '../storage/index.js'
+import { generateChatResponse } from '../../providers/index.js'
+import { getStorage } from '../../storage/index.js'
 import { getEmbeddingService, cosineSimilarity } from './embedding-service.js'
-import type { ProviderConfig, UserFact, UserFactCategory, AgentMemory, MemoryVividness } from '../../shared/ipc.js'
+import type { ProviderConfig, UserFact, UserFactCategory, AgentMemory, MemoryVividness } from '../../../shared/ipc.js'
 
 // Memory operation types (Mem0 style)
 export type MemoryOperation = 'ADD' | 'UPDATE' | 'DELETE' | 'NOOP'

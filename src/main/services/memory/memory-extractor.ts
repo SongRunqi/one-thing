@@ -9,10 +9,10 @@
  * based on embedding similarity + LLM reasoning.
  */
 
-import { generateChatResponse } from '../providers/index.js'
-import { getStorage } from '../storage/index.js'
+import { generateChatResponse } from '../../providers/index.js'
+import { getStorage } from '../../storage/index.js'
 import { processUserFact, processAgentMemory } from './memory-manager.js'
-import type { ProviderConfig, UserFactCategory, AgentMemoryCategory, MemoryVividness } from '../../shared/ipc.js'
+import type { ProviderConfig, UserFactCategory, AgentMemoryCategory, MemoryVividness } from '../../../shared/ipc.js'
 
 // Extracted memory types
 interface ExtractedUserFact {

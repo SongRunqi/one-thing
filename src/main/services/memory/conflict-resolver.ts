@@ -8,8 +8,8 @@
  * - Duplicate information
  */
 
-import type { AgentMemory, UserFact } from '../../shared/ipc.js'
-import { getSQLiteStorage } from '../storage/index.js'
+import type { AgentMemory, UserFact } from '../../../shared/ipc.js'
+import { getSQLiteStorage } from '../../storage/index.js'
 import { getEmbeddingService, cosineSimilarity } from './embedding-service.js'
 
 // Similarity threshold for potential conflicts

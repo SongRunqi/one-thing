@@ -9,8 +9,8 @@
  * - contradicts: Contradictory information
  */
 
-import type { AgentMemory } from '../../shared/ipc.js'
-import { getSQLiteStorage, type MemoryLinkRelationship } from '../storage/index.js'
+import type { AgentMemory } from '../../../shared/ipc.js'
+import { getSQLiteStorage, type MemoryLinkRelationship } from '../../storage/index.js'
 import {
   getEmbeddingService,
   cosineSimilarity,

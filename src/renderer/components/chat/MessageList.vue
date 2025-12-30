@@ -1,6 +1,6 @@
 <template>
   <div class="message-list-wrapper">
-    <div class="message-list" ref="messageListRef">
+    <div :class="['message-list', `density-${messageListDensity}`]" ref="messageListRef">
     <EmptyState
       v-if="messages.length === 0 && !isLoading"
       @suggestion="handleSuggestion"
@@ -112,6 +112,11 @@ const currentAgentVoiceConfig = computed<AgentVoice | undefined>(() => {
 
   const agent = agentsStore.agents.find(a => a.id === session.agentId)
   return agent?.voice
+})
+
+// Get current message list density setting
+const messageListDensity = computed(() => {
+  return settingsStore.settings.general?.messageListDensity || 'comfortable'
 })
 
 // Track current navigation position among user messages
@@ -954,6 +959,40 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   /* Match parent container's border-radius for proper clipping at bottom corners */
   border-bottom-left-radius: var(--radius-lg);
   border-bottom-right-radius: var(--radius-lg);
+}
+
+/* Message list density modes */
+.message-list.density-compact {
+  --message-gap: 4px;
+  --message-padding: 8px 12px;
+  --message-font-size: 14px;
+  --message-line-height: 1.4;
+  --avatar-size: 24px;
+  --content-spacing: 0.4em;
+  gap: 6px;
+  padding: 12px 12px var(--composer-height, 140px);
+}
+
+.message-list.density-comfortable {
+  --message-gap: 10px;
+  --message-padding: 14px 18px;
+  --message-font-size: 15px;
+  --message-line-height: 1.6;
+  --avatar-size: 32px;
+  --content-spacing: 0.75em;
+  gap: 14px;
+  padding: 18px 18px var(--composer-height, 140px);
+}
+
+.message-list.density-spacious {
+  --message-gap: 16px;
+  --message-padding: 18px 24px;
+  --message-font-size: 16px;
+  --message-line-height: 1.8;
+  --avatar-size: 40px;
+  --content-spacing: 1em;
+  gap: 24px;
+  padding: 24px 24px var(--composer-height, 140px);
 }
 
 /* List Transitions */
