@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron'
+import * as os from 'os'
 import * as store from '../store.js'
 import type { ChatMessage, AppSettings, ProviderConfig, CustomProviderConfig, UserFact, AgentUserRelationship, AgentMood, AgentMemory, Step, StepType, ContentPart, MessageAttachment } from '../../shared/ipc.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
@@ -608,14 +609,32 @@ function buildSystemPrompt(options: {
   userProfilePrompt?: string
   agentMemoryPrompt?: string
   providerId?: string
+  workingDirectory?: string
 }): string {
-  const { hasTools, skills, workspaceSystemPrompt, userProfilePrompt, agentMemoryPrompt, providerId } = options
+  const { hasTools, skills, workspaceSystemPrompt, userProfilePrompt, agentMemoryPrompt, providerId, workingDirectory } = options
   // Use appropriate base prompt based on tool support
   let prompt = hasTools ? BASE_SYSTEM_PROMPT_WITH_TOOLS : BASE_SYSTEM_PROMPT_NO_TOOLS
 
   // Prepend workspace/agent system prompt if provided (for character/persona)
   if (workspaceSystemPrompt && workspaceSystemPrompt.trim()) {
     prompt = workspaceSystemPrompt.trim() + '\n\n' + prompt
+  }
+
+  // Add working directory information for file operations
+  // This helps the model use correct paths instead of hallucinating
+  if (workingDirectory && hasTools) {
+    const baseDir = os.homedir()
+    // Display path with ~ for readability, but also show the full path
+    const displayPath = workingDirectory.startsWith(baseDir)
+      ? workingDirectory.replace(baseDir, '~')
+      : workingDirectory
+    prompt += `
+# Working Directory
+Base directory: ${baseDir} (referred to as ~)
+Current working directory: ${displayPath} (${workingDirectory})
+
+IMPORTANT: When using file tools (read, edit, write, glob, grep), always use absolute paths within this working directory. Do NOT hallucinate or guess paths from other projects or users.
+`
   }
 
   // Note: Claude Code OAuth header is handled by claude-code.ts createOAuthFetch
@@ -1560,6 +1579,7 @@ async function executeStreamGeneration(
       userProfilePrompt,
       agentMemoryPrompt,
       providerId: ctx.providerId,
+      workingDirectory: sessionWorkingDir,
     })
 
     let pausedForConfirmation = false
@@ -2528,6 +2548,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       userProfilePrompt,
       agentMemoryPrompt,
       providerId,
+      workingDirectory: session.workingDirectory,
     })
 
     conversationMessages.push({ role: 'system', content: systemPrompt })

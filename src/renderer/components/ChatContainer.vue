@@ -325,12 +325,12 @@ onUnmounted(() => {
 <style scoped>
 .chat-container-wrapper {
   flex: 1;
-  padding: 12px 12px 12px 0;
+  padding: 12px;
+  padding-left: 0px;
   background: var(--bg);
   -webkit-app-region: drag;
   min-width: 0;
   display: flex;
-  transition: padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
 

@@ -11,15 +11,16 @@
     </button>
 
     <!-- Center: Workspace Icons -->
-    <div class="workspace-icons">
+    <div ref="workspaceIconsRef" class="workspace-icons">
       <!-- Default (no workspace) icon -->
       <button
         class="workspace-icon"
         :class="{ active: workspacesStore.isDefaultMode }"
+        :style="iconStyle"
         title="Default Chat"
         @click="switchToDefault"
       >
-        <MessageSquare :size="16" :stroke-width="1.5" />
+        <MessageSquare :size="iconSizeConfig.innerSize" :stroke-width="1.5" />
       </button>
 
       <!-- Workspace avatars -->
@@ -28,18 +29,25 @@
         :key="workspace.id"
         class="workspace-icon"
         :class="{ active: workspace.id === workspacesStore.currentWorkspaceId }"
+        :style="iconStyle"
         :title="workspace.name"
         @click="switchWorkspace(workspace.id)"
         @contextmenu.prevent="openContextMenu($event, workspace)"
       >
-        <span v-if="workspace.avatar.type === 'emoji'" class="workspace-emoji">
+        <span
+          v-if="workspace.avatar.type === 'emoji'"
+          class="workspace-emoji"
+          :style="emojiStyle"
+        >
           {{ workspace.avatar.value }}
         </span>
         <img
           v-else
           :src="'file://' + workspace.avatar.value"
           class="workspace-image"
-          :style="{ 
+          :style="{
+            width: iconSizeConfig.innerSize + 'px',
+            height: iconSizeConfig.innerSize + 'px',
             '-webkit-mask-image': `url('file://${workspace.avatar.value}')`,
             'mask-image': `url('file://${workspace.avatar.value}')`
           }"
@@ -97,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useSessionsStore } from '@/stores/sessions'
 import type { Workspace } from '@/types'
@@ -108,6 +116,83 @@ defineProps<{
   mediaPanelOpen?: boolean,
   showSeparator?: boolean
 }>()
+
+// Initialize stores first (before any computed/watch that uses them)
+const workspacesStore = useWorkspacesStore()
+const sessionsStore = useSessionsStore()
+
+// Dynamic icon sizing based on workspace count
+const workspaceIconsRef = ref<HTMLElement | null>(null)
+const containerWidth = ref(0)
+
+// Calculate dynamic icon size based on workspace count
+const iconSizeConfig = computed(() => {
+  const totalIcons = workspacesStore.workspaces.length + 1 // +1 for default chat icon
+  const gap = 4 // gap between icons in pixels
+  const minIconSize = 20 // minimum icon size
+  const maxIconSize = 32 // maximum icon size
+  const padding = 8 // horizontal padding inside workspace-icons container
+
+  // Calculate available width for icons
+  // Using containerWidth if measured, otherwise estimate based on typical sidebar width
+  const availableWidth = containerWidth.value > 0 ? containerWidth.value - padding : 150
+
+  // Calculate ideal size to fit all icons
+  const totalGapSpace = (totalIcons - 1) * gap
+  const idealSize = Math.floor((availableWidth - totalGapSpace) / totalIcons)
+
+  // Clamp between min and max
+  const iconSize = Math.max(minIconSize, Math.min(maxIconSize, idealSize))
+
+  // Inner icon/emoji size scales with container
+  const innerSize = Math.max(10, Math.floor(iconSize * 0.5))
+  const fontSize = Math.max(9, Math.floor(iconSize * 0.45))
+
+  return {
+    containerSize: iconSize,
+    innerSize,
+    fontSize,
+    borderRadius: Math.max(5, Math.floor(iconSize * 0.25))
+  }
+})
+
+// Computed styles for icons
+const iconStyle = computed(() => ({
+  width: iconSizeConfig.value.containerSize + 'px',
+  height: iconSizeConfig.value.containerSize + 'px',
+  minWidth: iconSizeConfig.value.containerSize + 'px',
+  borderRadius: iconSizeConfig.value.borderRadius + 'px',
+}))
+
+const emojiStyle = computed(() => ({
+  width: iconSizeConfig.value.innerSize + 'px',
+  height: iconSizeConfig.value.innerSize + 'px',
+  fontSize: iconSizeConfig.value.fontSize + 'px',
+}))
+
+// Update container width on mount and resize
+function updateContainerWidth() {
+  if (workspaceIconsRef.value) {
+    containerWidth.value = workspaceIconsRef.value.clientWidth
+  }
+}
+
+// ResizeObserver for tracking container width
+let resizeObserver: ResizeObserver | null = null
+
+function setupResizeObserver() {
+  if (workspaceIconsRef.value) {
+    resizeObserver = new ResizeObserver(() => {
+      updateContainerWidth()
+    })
+    resizeObserver.observe(workspaceIconsRef.value)
+  }
+}
+
+// Watch for workspace changes and update sizing
+watch(() => workspacesStore.workspaces.length, () => {
+  nextTick(updateContainerWidth)
+})
 
 const emit = defineEmits<{
   'toggle-media-panel': []
@@ -139,9 +224,6 @@ function handleCreateAgent() {
 function handleCreateWorkspace() {
   emit('open-create-dialog')
 }
-
-const workspacesStore = useWorkspacesStore()
-const sessionsStore = useSessionsStore()
 
 // Context menu state
 const contextMenu = reactive({
@@ -249,10 +331,20 @@ function handleClickOutside(event: MouseEvent) {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  // Setup resize observer and initial width measurement
+  nextTick(() => {
+    updateContainerWidth()
+    setupResizeObserver()
+  })
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  // Cleanup resize observer
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
 })
 </script>
 
@@ -338,14 +430,11 @@ html[data-theme='light'] .workspace-switcher::before {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px; /* Container size restored */
-  height: 32px;
-  min-width: 32px;
+  /* Size set dynamically via inline style */
   border: none;
-  border-radius: 8px;
   background: transparent;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   color: var(--muted);
 }
 
@@ -401,9 +490,8 @@ html[data-theme='light'] .workspace-switcher::before {
 .workspace-emoji,
 .workspace-image,
 .workspace-icon svg {
-  width: 13px; /* Minimal icon size */
-  height: 13px;
-  transition: all 0.2s ease;
+  /* Size set dynamically via inline style or :size prop */
+  transition: all 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -412,7 +500,6 @@ html[data-theme='light'] .workspace-switcher::before {
 }
 
 .workspace-emoji {
-  font-size: 11px;
   line-height: 1;
 }
 

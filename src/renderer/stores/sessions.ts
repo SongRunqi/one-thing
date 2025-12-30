@@ -67,10 +67,10 @@ export const useSessionsStore = defineStore('sessions', () => {
       const workspaceId = workspacesStore.currentWorkspaceId
 
       // Check if there's already an empty "New Chat" session in the current workspace (no messages)
-      // Only reuse if no specific agent is requested
+      // Only reuse if no specific agent is requested, and only top-level sessions (not branches)
       if (!agentId) {
         const existingEmptySession = filteredSessions.value.find(
-          s => (s.name === 'New Chat' || s.name === '') && (!s.messages || s.messages.length === 0)
+          s => (s.name === 'New Chat' || s.name === '') && (!s.messages || s.messages.length === 0) && !s.parentSessionId
         )
 
         if (existingEmptySession) {

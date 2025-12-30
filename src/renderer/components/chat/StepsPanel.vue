@@ -54,6 +54,32 @@
       <!-- Expanded Content -->
       <Transition name="slide">
         <div v-if="shouldShowContent(step)" class="step-details">
+          <!-- Diff preview for edit tool (awaiting-confirmation or completed) -->
+          <div v-if="(step.status === 'awaiting-confirmation' || step.status === 'completed') && getDiffFromStep(step)" class="detail-section diff-preview">
+            <div class="diff-header">
+              <span class="diff-file-path">{{ getDiffFromStep(step)?.filePath }}</span>
+              <span class="diff-stats">
+                <span class="additions">+{{ getDiffFromStep(step)?.additions || 0 }}</span>
+                <span class="deletions">-{{ getDiffFromStep(step)?.deletions || 0 }}</span>
+              </span>
+              <span v-if="step.status === 'completed'" class="diff-status-badge">已应用</span>
+            </div>
+            <div class="diff-content">
+              <template v-for="(line, idx) in getVisibleDiffLines(step)" :key="idx">
+                <div v-if="line.type === 'collapse'" class="diff-collapse" @click="toggleDiffExpand(step.id)">
+                  <span class="collapse-icon">{{ isDiffExpanded(step.id) ? '▼' : '▶' }}</span>
+                  <span>{{ line.text }}</span>
+                </div>
+                <div v-else :class="['diff-line', line.class]">
+                  <span class="line-number old">{{ line.oldNum || '' }}</span>
+                  <span class="line-number new">{{ line.newNum || '' }}</span>
+                  <span class="line-prefix">{{ line.prefix }}</span>
+                  <span class="line-content" :class="{ 'line-deleted-text': line.class === 'diff-del' }">{{ line.content }}</span>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Live output for running -->
           <div v-if="step.status === 'running' && step.result" class="detail-section live">
             <pre>{{ truncateOutput(step.result) }}</pre>
@@ -118,12 +144,32 @@ const emit = defineEmits<{
 }>()
 
 const expandedSteps = ref<Set<string>>(new Set())
+// Track steps that user has manually collapsed - don't auto-expand these
+const userCollapsedSteps = ref<Set<string>>(new Set())
+// Track which diffs are fully expanded (not collapsed)
+const expandedDiffs = ref<Set<string>>(new Set())
 
-// Auto-expand failed and awaiting-confirmation steps
+// Diff line type for VS Code-style display
+interface DiffLine {
+  type: 'line' | 'collapse'
+  class: string
+  prefix: string
+  content: string
+  text?: string
+  oldNum?: number | string
+  newNum?: number | string
+}
+
+// Maximum lines to show before collapsing
+const MAX_VISIBLE_LINES = 20
+const CONTEXT_LINES = 3 // Lines to show before/after collapse
+
+// Auto-expand failed and awaiting-confirmation steps (unless user manually collapsed)
 watch(() => props.steps, (steps) => {
   for (const step of steps) {
     if ((step.status === 'failed' && step.error) || step.status === 'awaiting-confirmation') {
-      if (!expandedSteps.value.has(step.id)) {
+      // Only auto-expand if user hasn't manually collapsed it
+      if (!expandedSteps.value.has(step.id) && !userCollapsedSteps.value.has(step.id)) {
         expandedSteps.value.add(step.id)
         expandedSteps.value = new Set(expandedSteps.value)
       }
@@ -134,8 +180,14 @@ watch(() => props.steps, (steps) => {
 function toggleExpand(stepId: string) {
   if (expandedSteps.value.has(stepId)) {
     expandedSteps.value.delete(stepId)
+    // Mark as user-collapsed to prevent auto-expand from overriding
+    userCollapsedSteps.value.add(stepId)
+    userCollapsedSteps.value = new Set(userCollapsedSteps.value)
   } else {
     expandedSteps.value.add(stepId)
+    // Remove from user-collapsed since user is expanding it
+    userCollapsedSteps.value.delete(stepId)
+    userCollapsedSteps.value = new Set(userCollapsedSteps.value)
   }
   expandedSteps.value = new Set(expandedSteps.value)
 }
@@ -163,6 +215,8 @@ function hasExpandableContent(step: Step): boolean {
 function shouldShowContent(step: Step): boolean {
   if (step.status === 'failed' && step.error) return true
   if (step.status === 'running' && step.result) return true
+  // Always show content for awaiting-confirmation (e.g., edit diff preview)
+  if (step.status === 'awaiting-confirmation') return true
   return expandedSteps.value.has(step.id)
 }
 
@@ -263,6 +317,173 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   const lines = output.split('\n')
   if (lines.length <= maxLines) return output
   return '...\n' + lines.slice(-maxLines).join('\n')
+}
+
+// Extract diff from step.result for edit tool confirmation
+function getDiffFromStep(step: Step): { diff: string; additions: number; deletions: number; filePath: string } | null {
+  if (!step.result) return null
+  try {
+    const parsed = JSON.parse(step.result)
+    if (parsed.diff) {
+      return {
+        diff: parsed.diff,
+        additions: parsed.additions || 0,
+        deletions: parsed.deletions || 0,
+        filePath: parsed.filePath || '',
+      }
+    }
+  } catch {
+    // Not JSON or no diff field
+  }
+  return null
+}
+
+// Split diff into lines for display
+function getDiffLines(diff: string): string[] {
+  return diff.split('\n')
+}
+
+// Get CSS class for diff line based on its prefix
+function getDiffLineClass(line: string): string {
+  if (line.startsWith('+') && !line.startsWith('+++')) return 'diff-add'
+  if (line.startsWith('-') && !line.startsWith('---')) return 'diff-del'
+  if (line.startsWith('@@')) return 'diff-hunk'
+  return ''
+}
+
+// Parse hunk header to get starting line numbers
+function parseHunkHeader(line: string): { oldStart: number; newStart: number } | null {
+  const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+  if (match) {
+    return { oldStart: parseInt(match[1], 10), newStart: parseInt(match[2], 10) }
+  }
+  return null
+}
+
+// Parse diff into lines with line numbers
+function parseDiffWithLineNumbers(diff: string): DiffLine[] {
+  const rawLines = diff.split('\n')
+  const result: DiffLine[] = []
+  let oldLineNum = 0
+  let newLineNum = 0
+  let inHunk = false
+
+  for (const line of rawLines) {
+    // Skip file headers
+    if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('Index:') || line.startsWith('diff ')) {
+      continue
+    }
+
+    // Parse hunk header
+    if (line.startsWith('@@')) {
+      const parsed = parseHunkHeader(line)
+      if (parsed) {
+        oldLineNum = parsed.oldStart
+        newLineNum = parsed.newStart
+        inHunk = true
+      }
+      result.push({
+        type: 'line',
+        class: 'diff-hunk',
+        prefix: '',
+        content: line,
+        oldNum: '...',
+        newNum: '...',
+      })
+      continue
+    }
+
+    if (!inHunk) continue
+
+    const lineClass = getDiffLineClass(line)
+    const prefix = line.charAt(0) || ' '
+    const content = line.slice(1)
+
+    if (lineClass === 'diff-del') {
+      result.push({
+        type: 'line',
+        class: lineClass,
+        prefix,
+        content,
+        oldNum: oldLineNum,
+        newNum: '',
+      })
+      oldLineNum++
+    } else if (lineClass === 'diff-add') {
+      result.push({
+        type: 'line',
+        class: lineClass,
+        prefix,
+        content,
+        oldNum: '',
+        newNum: newLineNum,
+      })
+      newLineNum++
+    } else {
+      // Context line
+      result.push({
+        type: 'line',
+        class: '',
+        prefix,
+        content,
+        oldNum: oldLineNum,
+        newNum: newLineNum,
+      })
+      oldLineNum++
+      newLineNum++
+    }
+  }
+
+  return result
+}
+
+// Get visible diff lines with optional collapsing
+function getVisibleDiffLines(step: Step): DiffLine[] {
+  const diffData = getDiffFromStep(step)
+  if (!diffData) return []
+
+  const allLines = parseDiffWithLineNumbers(diffData.diff)
+
+  // If expanded or short enough, show all
+  if (expandedDiffs.value.has(step.id) || allLines.length <= MAX_VISIBLE_LINES) {
+    return allLines
+  }
+
+  // Collapse: show first CONTEXT_LINES, collapse indicator, last CONTEXT_LINES
+  const result: DiffLine[] = []
+  const collapsedCount = allLines.length - CONTEXT_LINES * 2
+
+  // First lines
+  result.push(...allLines.slice(0, CONTEXT_LINES))
+
+  // Collapse indicator
+  result.push({
+    type: 'collapse',
+    class: '',
+    prefix: '',
+    content: '',
+    text: `展开更多 (${collapsedCount} 行)`,
+  })
+
+  // Last lines
+  result.push(...allLines.slice(-CONTEXT_LINES))
+
+  return result
+}
+
+// Toggle diff expand/collapse
+function toggleDiffExpand(stepId: string) {
+  if (expandedDiffs.value.has(stepId)) {
+    expandedDiffs.value.delete(stepId)
+  } else {
+    expandedDiffs.value.add(stepId)
+  }
+  expandedDiffs.value = new Set(expandedDiffs.value)
+}
+
+// Check if diff is expanded
+function isDiffExpanded(stepId: string): boolean {
+  return expandedDiffs.value.has(stepId)
 }
 </script>
 
@@ -512,6 +733,161 @@ pre.summary {
   border-left: 2px solid rgba(34, 197, 94, 0.5);
 }
 
+/* Diff preview for edit tool confirmation */
+.diff-preview {
+  margin-top: 8px;
+}
+
+.diff-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.diff-stats {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
+.diff-stats .additions {
+  color: #22c55e;
+}
+
+.diff-stats .deletions {
+  color: #ef4444;
+}
+
+.diff-file-path {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.diff-status-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  flex-shrink: 0;
+}
+
+.diff-content {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  padding: 4px 0;
+  max-height: 300px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+.diff-line {
+  display: flex;
+  white-space: pre;
+  padding: 0 8px;
+  min-height: 20px;
+}
+
+.line-number {
+  width: 36px;
+  min-width: 36px;
+  text-align: right;
+  padding-right: 8px;
+  color: var(--text-tertiary, #666);
+  user-select: none;
+  flex-shrink: 0;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.line-number.old {
+  border-right: 1px solid rgba(128, 128, 128, 0.2);
+}
+
+.line-prefix {
+  width: 16px;
+  min-width: 16px;
+  text-align: center;
+  color: inherit;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.line-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.line-deleted-text {
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+
+.diff-collapse {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  margin: 4px 8px;
+  background: rgba(100, 100, 100, 0.15);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  transition: background 0.15s ease;
+}
+
+.diff-collapse:hover {
+  background: rgba(100, 100, 100, 0.25);
+}
+
+.collapse-icon {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.diff-add {
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+}
+
+.diff-add .line-prefix {
+  color: #22c55e;
+}
+
+.diff-del {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+}
+
+.diff-del .line-prefix {
+  color: #ef4444;
+}
+
+.diff-hunk {
+  color: #60a5fa;
+  opacity: 0.8;
+  padding: 4px 8px;
+  margin-top: 4px;
+}
+
+.diff-hunk .line-content {
+  font-size: 11px;
+}
+
 /* Agent result */
 .agent-header {
   display: flex;
@@ -609,5 +985,57 @@ html[data-theme='light'] .btn-reject:hover {
 
 html[data-theme='light'] .detail-section pre {
   background: rgba(0, 0, 0, 0.04);
+}
+
+html[data-theme='light'] .diff-content {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+html[data-theme='light'] .diff-file-path {
+  color: var(--text-secondary, #666);
+}
+
+html[data-theme='light'] .diff-status-badge {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+
+html[data-theme='light'] .line-number {
+  color: var(--text-tertiary, #999);
+}
+
+html[data-theme='light'] .line-number.old {
+  border-right-color: rgba(0, 0, 0, 0.1);
+}
+
+html[data-theme='light'] .diff-collapse {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-secondary, #666);
+}
+
+html[data-theme='light'] .diff-collapse:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+html[data-theme='light'] .diff-add {
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+}
+
+html[data-theme='light'] .diff-add .line-prefix {
+  color: #16a34a;
+}
+
+html[data-theme='light'] .diff-del {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+html[data-theme='light'] .diff-del .line-prefix {
+  color: #dc2626;
+}
+
+html[data-theme='light'] .diff-hunk {
+  color: #2563eb;
 }
 </style>

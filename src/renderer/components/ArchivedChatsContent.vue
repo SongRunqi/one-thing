@@ -49,7 +49,7 @@
 
       <!-- Grouped Chats -->
       <template v-else-if="groupedChats.length > 0">
-        <div v-for="group in groupedChats" :key="group.label" class="chat-group">
+        <div v-for="(group, index) in groupedChats" :key="`${group.label}-${group.sessions[0]?.id || index}`" class="chat-group">
           <h4
             class="group-title"
             :class="{ collapsed: collapsedGroups.has(group.label) }"

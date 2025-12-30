@@ -13,7 +13,7 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Tool } from '../core/tool.js'
 import { replace, normalizeLineEndings, trimDiff } from '../core/replacers.js'
-import { checkFileAccess, getSandboxBoundary, isPathContained } from '../core/sandbox.js'
+import { getSandboxBoundary, isPathContained } from '../core/sandbox.js'
 import { Permission } from '../../permission/index.js'
 
 // Diff library for generating unified diffs
@@ -74,8 +74,14 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
   async execute(args, ctx) {
     const { file_path, old_string, new_string, replace_all } = args
 
-    // Check sandbox boundary and request permission if needed (for external files)
-    const resolvedPath = await checkFileAccess(file_path, ctx, 'Edit file')
+    // Resolve path (don't request permission yet - will do after generating diff)
+    const resolvedPath = path.isAbsolute(file_path)
+      ? file_path
+      : path.resolve(getSandboxBoundary(ctx.workingDirectory), file_path)
+
+    // Check if path is outside sandbox boundary
+    const boundary = getSandboxBoundary(ctx.workingDirectory)
+    const isExternal = !isPathContained(boundary, resolvedPath)
 
     // Validate old_string and new_string are different
     if (old_string === new_string) {
@@ -122,21 +128,26 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
       })
 
       // Request permission for file edit (shows diff in UI)
+      // If external, include directory path in pattern for proper permission
       await Permission.ask({
         type: 'file_edit',
-        pattern: resolvedPath,
+        pattern: isExternal
+          ? [path.dirname(resolvedPath), resolvedPath]
+          : resolvedPath,
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
         callId: ctx.toolCallId,
         title: contentOld === ''
-          ? `Create new file: ${path.basename(resolvedPath)}`
-          : `Replace entire content: ${path.basename(resolvedPath)}`,
+          ? `Create new file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`
+          : `Replace entire content: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`,
         metadata: {
           filePath: resolvedPath,
           diff,
           additions,
           deletions,
           operation: contentOld === '' ? 'create' : 'replace',
+          isExternal,
+          boundary: isExternal ? boundary : undefined,
         },
       })
 
@@ -213,19 +224,24 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
     })
 
     // Request permission for file edit (shows diff in UI)
+    // If external, include directory path in pattern for proper permission
     await Permission.ask({
       type: 'file_edit',
-      pattern: resolvedPath,
+      pattern: isExternal
+        ? [path.dirname(resolvedPath), resolvedPath]
+        : resolvedPath,
       sessionId: ctx.sessionId,
       messageId: ctx.messageId,
       callId: ctx.toolCallId,
-      title: `Edit file: ${path.basename(resolvedPath)}`,
+      title: `Edit file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`,
       metadata: {
         filePath: resolvedPath,
         diff,
         additions,
         deletions,
         operation: 'edit',
+        isExternal,
+        boundary: isExternal ? boundary : undefined,
       },
     })
 

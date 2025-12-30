@@ -84,20 +84,22 @@
           @click="handleSessionClickWithToggle($event, session)"
           @contextmenu.prevent="openContextMenu($event, session)"
         >
-          <!-- Collapse/Expand toggle for parent sessions -->
-          <button
-            v-if="session.hasBranches"
-            class="collapse-btn"
-            :class="{ collapsed: session.isCollapsed }"
-            @click.stop="toggleCollapse(session.id)"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </button>
-
-          <!-- Branch indicator -->
-          <span v-if="session.depth > 0" class="branch-indicator">↳</span>
+          <!-- Indicator area (fixed width for alignment) -->
+          <span class="indicator-area">
+            <!-- Collapse/Expand toggle for parent sessions -->
+            <button
+              v-if="session.hasBranches"
+              class="collapse-btn"
+              :class="{ collapsed: session.isCollapsed }"
+              @click.stop="toggleCollapse(session.id)"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            <!-- Branch indicator for child sessions without branches -->
+            <span v-else-if="session.depth > 0" class="branch-indicator">›</span>
+          </span>
 
           <!-- Generating indicator -->
           <div v-if="session.id === chatStore.generatingSessionId" class="generating-dot"></div>
@@ -918,7 +920,7 @@ async function confirmInlineRename() {
   const newName = editingName.value.trim()
 
   // Get original name to compare
-  const session = sessions.value.find(s => s.id === id)
+  const session = sessionsStore.filteredSessions.find(s => s.id === id)
   const originalName = session?.name || ''
 
   // Clear editing state first
@@ -1496,12 +1498,22 @@ html[data-theme='light'] .collapse-btn:hover {
   transform: rotate(-90deg);
 }
 
+/* Indicator area - fixed width for consistent name alignment */
+.indicator-area {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Branch indicator */
 .branch-indicator {
-  flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
-  opacity: 0.4;
+  opacity: 0.5;
+  font-weight: 500;
 }
 
 /* Pin indicator */

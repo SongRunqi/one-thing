@@ -11,7 +11,7 @@ import { z } from 'zod'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Tool } from '../core/tool.js'
-import { checkFileAccess } from '../core/sandbox.js'
+import { getSandboxBoundary, isPathContained } from '../core/sandbox.js'
 import { Permission } from '../../permission/index.js'
 import { createTwoFilesPatch, diffLines } from 'diff'
 
@@ -63,8 +63,14 @@ Usage:
   async execute(args, ctx) {
     const { file_path, content } = args
 
-    // Check sandbox boundary and request permission if needed (for external files)
-    const resolvedPath = await checkFileAccess(file_path, ctx, 'Write file')
+    // Resolve path (don't request permission yet - will do after generating diff)
+    const resolvedPath = path.isAbsolute(file_path)
+      ? file_path
+      : path.resolve(getSandboxBoundary(ctx.workingDirectory), file_path)
+
+    // Check if path is outside sandbox boundary
+    const boundary = getSandboxBoundary(ctx.workingDirectory)
+    const isExternal = !isPathContained(boundary, resolvedPath)
 
     // Check if file exists and read current content for diff
     let fileExists = false
@@ -111,15 +117,18 @@ Usage:
     })
 
     // Request permission for file write (shows diff in UI)
+    // If external, include directory path in pattern for proper permission
     await Permission.ask({
       type: 'file_write',
-      pattern: resolvedPath,
+      pattern: isExternal
+        ? [path.dirname(resolvedPath), resolvedPath]
+        : resolvedPath,
       sessionId: ctx.sessionId,
       messageId: ctx.messageId,
       callId: ctx.toolCallId,
       title: fileExists
-        ? `Overwrite file: ${path.basename(resolvedPath)}`
-        : `Create new file: ${path.basename(resolvedPath)}`,
+        ? `Overwrite file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`
+        : `Create new file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`,
       metadata: {
         filePath: resolvedPath,
         diff,
@@ -128,6 +137,8 @@ Usage:
         bytesWritten,
         lineCount,
         operation: fileExists ? 'overwrite' : 'create',
+        isExternal,
+        boundary: isExternal ? boundary : undefined,
       },
     })
 
