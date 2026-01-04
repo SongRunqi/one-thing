@@ -3,7 +3,7 @@
     <!-- Temperature -->
     <section class="settings-section">
       <h3 class="section-title">Temperature</h3>
-      <p class="section-desc">控制模型输出的随机性。较低的值使输出更确定，较高的值使输出更随机和创造性。</p>
+      <p class="section-desc">Controls the randomness of model output. Lower values make output more deterministic, higher values make it more random and creative.</p>
 
       <div class="form-group">
         <label class="form-label">
@@ -20,9 +20,9 @@
           class="form-slider"
         />
         <div class="slider-labels">
-          <span>精确 (0)</span>
-          <span>平衡 (1)</span>
-          <span>创意 (2)</span>
+          <span>Precise (0)</span>
+          <span>Balanced (1)</span>
+          <span>Creative (2)</span>
         </div>
       </div>
 
@@ -42,7 +42,7 @@
     <!-- Max Tokens -->
     <section class="settings-section">
       <h3 class="section-title">Max Output Tokens</h3>
-      <p class="section-desc">模型生成的最大 token 数量。较大的值允许更长的回复，但可能会增加响应时间和成本。</p>
+      <p class="section-desc">Maximum number of tokens the model can generate. Larger values allow longer responses, but may increase response time and cost.</p>
 
       <div class="form-group">
         <label class="form-label">
@@ -79,7 +79,7 @@
 
       <!-- Direct input -->
       <div class="number-input-group">
-        <label class="input-label">自定义值</label>
+        <label class="input-label">Custom value</label>
         <input
           type="number"
           :value="chatSettings.maxTokens"
@@ -94,12 +94,12 @@
     <!-- Branch Settings -->
     <section class="settings-section">
       <h3 class="section-title">Branch Settings</h3>
-      <p class="section-desc">控制分支会话的创建行为。</p>
+      <p class="section-desc">Controls branch session creation behavior.</p>
 
       <div class="toggle-row">
         <div class="toggle-info">
-          <span class="toggle-label">分屏打开分支</span>
-          <span class="toggle-desc">创建分支时在分屏中打开，而不是切换到新会话</span>
+          <span class="toggle-label">Open branch in split view</span>
+          <span class="toggle-desc">Open branches in split view instead of switching to a new session</span>
         </div>
         <button
           :class="['toggle-switch', { active: chatSettings.branchOpenInSplitScreen }]"
@@ -116,7 +116,7 @@
         <svg :class="['toggle-icon', { rotated: showAdvanced }]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
-        <h3 class="section-title inline">高级设置</h3>
+        <h3 class="section-title inline">Advanced Settings</h3>
       </button>
 
       <Transition name="slide">
@@ -127,7 +127,7 @@
               Top P (Nucleus Sampling)
               <span class="label-value">{{ (chatSettings.topP ?? 1).toFixed(2) }}</span>
             </label>
-            <p class="field-desc">控制采样的多样性。较低的值限制选择概率最高的 token。</p>
+            <p class="field-desc">Controls sampling diversity. Lower values restrict selection to highest probability tokens.</p>
             <input
               :value="chatSettings.topP ?? 1"
               @input="updateTopP(($event.target as HTMLInputElement).valueAsNumber)"
@@ -149,7 +149,7 @@
               Presence Penalty
               <span class="label-value">{{ (chatSettings.presencePenalty ?? 0).toFixed(2) }}</span>
             </label>
-            <p class="field-desc">增加讨论新话题的可能性。正值鼓励模型谈论新内容。</p>
+            <p class="field-desc">Increases likelihood of discussing new topics. Positive values encourage the model to talk about new content.</p>
             <input
               :value="chatSettings.presencePenalty ?? 0"
               @input="updatePresencePenalty(($event.target as HTMLInputElement).valueAsNumber)"
@@ -172,7 +172,7 @@
               Frequency Penalty
               <span class="label-value">{{ (chatSettings.frequencyPenalty ?? 0).toFixed(2) }}</span>
             </label>
-            <p class="field-desc">减少重复相同词语的可能性。正值使模型更少重复已说过的内容。</p>
+            <p class="field-desc">Reduces likelihood of repeating the same words. Positive values make the model less likely to repeat what it has already said.</p>
             <input
               :value="chatSettings.frequencyPenalty ?? 0"
               @input="updateFrequencyPenalty(($event.target as HTMLInputElement).valueAsNumber)"
@@ -199,7 +199,7 @@
           <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
           <path d="M3 3v5h5"/>
         </svg>
-        恢复默认设置
+        Reset to Defaults
       </button>
     </section>
   </div>
@@ -241,11 +241,11 @@ const chatSettings = computed<ChatSettings>(() => ({
 
 // Presets
 const temperaturePresets = [
-  { label: '精确', value: 0 },
-  { label: '低', value: 0.3 },
-  { label: '平衡', value: 0.7 },
-  { label: '高', value: 1.0 },
-  { label: '创意', value: 1.5 },
+  { label: 'Precise', value: 0 },
+  { label: 'Low', value: 0.3 },
+  { label: 'Balanced', value: 0.7 },
+  { label: 'High', value: 1.0 },
+  { label: 'Creative', value: 1.5 },
 ]
 
 const maxTokensPresets = [

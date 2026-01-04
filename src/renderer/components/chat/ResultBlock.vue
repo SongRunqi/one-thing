@@ -2,7 +2,7 @@
   <div class="result-block">
     <div class="result-header">
       <span class="result-label">{{ label }}</span>
-      <button class="copy-btn" @click="copyContent" :title="copied ? '已复制' : '复制'">
+      <button class="copy-btn" @click="copyContent" :title="copied ? 'Copied' : 'Copy'">
         <svg v-if="!copied" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -20,7 +20,7 @@
       class="expand-btn"
       @click="isExpanded = !isExpanded"
     >
-      {{ isExpanded ? '收起' : `展开全部 (${contentLines} 行)` }}
+      {{ isExpanded ? 'Collapse' : `Expand all (${contentLines} lines)` }}
     </button>
   </div>
 </template>
@@ -54,7 +54,7 @@ const props = withDefaults(defineProps<{
   language?: string
   maxLines?: number
 }>(), {
-  label: '结果',
+  label: 'Result',
   maxLines: 15
 })
 
@@ -241,28 +241,7 @@ watch(() => props.content, () => {
   background: rgba(255, 255, 255, 0.06);
 }
 
-/* Highlight.js theme - VS Code Dark+ inspired */
-:deep(.hljs-keyword) { color: #569cd6; }
-:deep(.hljs-built_in) { color: #4ec9b0; }
-:deep(.hljs-type) { color: #4ec9b0; }
-:deep(.hljs-literal) { color: #569cd6; }
-:deep(.hljs-number) { color: #b5cea8; }
-:deep(.hljs-string) { color: #ce9178; }
-:deep(.hljs-symbol) { color: #ce9178; }
-:deep(.hljs-comment) { color: #6a9955; }
-:deep(.hljs-punctuation) { color: #d4d4d4; }
-:deep(.hljs-attr) { color: #9cdcfe; }
-:deep(.hljs-attribute) { color: #9cdcfe; }
-:deep(.hljs-variable) { color: #9cdcfe; }
-:deep(.hljs-property) { color: #9cdcfe; }
-:deep(.hljs-title) { color: #dcdcaa; }
-:deep(.hljs-function) { color: #dcdcaa; }
-:deep(.hljs-class) { color: #4ec9b0; }
-:deep(.hljs-tag) { color: #569cd6; }
-:deep(.hljs-name) { color: #569cd6; }
-:deep(.hljs-selector-class) { color: #d7ba7d; }
-:deep(.hljs-selector-id) { color: #d7ba7d; }
-:deep(.hljs-meta) { color: #569cd6; }
+/* Highlight.js syntax colors are handled by global hljs-theme.css */
 
 /* Light theme */
 html[data-theme='light'] .result-block {
@@ -287,21 +266,6 @@ html[data-theme='light'] .expand-btn {
 html[data-theme='light'] .expand-btn:hover {
   background: rgba(0, 0, 0, 0.06);
 }
-
-/* Light theme syntax colors */
-html[data-theme='light'] :deep(.hljs-keyword) { color: #0000ff; }
-html[data-theme='light'] :deep(.hljs-built_in) { color: #267f99; }
-html[data-theme='light'] :deep(.hljs-type) { color: #267f99; }
-html[data-theme='light'] :deep(.hljs-literal) { color: #0000ff; }
-html[data-theme='light'] :deep(.hljs-number) { color: #098658; }
-html[data-theme='light'] :deep(.hljs-string) { color: #a31515; }
-html[data-theme='light'] :deep(.hljs-comment) { color: #008000; }
-html[data-theme='light'] :deep(.hljs-attr) { color: #001080; }
-html[data-theme='light'] :deep(.hljs-property) { color: #001080; }
-html[data-theme='light'] :deep(.hljs-title) { color: #795e26; }
-html[data-theme='light'] :deep(.hljs-function) { color: #795e26; }
-html[data-theme='light'] :deep(.hljs-tag) { color: #800000; }
-html[data-theme='light'] :deep(.hljs-name) { color: #800000; }
 
 /* Scrollbar styling */
 .result-content::-webkit-scrollbar {

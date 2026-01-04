@@ -3,65 +3,62 @@
     :class="['sidebar', { collapsed, floating, 'floating-closing': floatingClosing, resizing: isResizing }]"
     :style="sidebarStyle"
   >
-    <div class="sidebar-content">
-      <!-- Expanded State (only shown when not collapsed) -->
-      <template v-if="!collapsed">
-        <!-- Sidebar Header: Traffic lights space + Search + New Chat -->
-        <SidebarHeader
-          :search-query="localSearchQuery"
-          @toggle-collapse="$emit('toggleCollapse')"
-          @update:search-query="localSearchQuery = $event"
-        />
+    <div v-show="showContent" class="sidebar-content" :class="{ 'content-hidden': collapsed && !floating }">
+      <!-- Sidebar Header: Traffic lights space + Search + New Chat -->
+      <SidebarHeader
+        :search-query="localSearchQuery"
+        @toggle-collapse="$emit('toggleCollapse')"
+        @update:search-query="localSearchQuery = $event"
+      />
 
-        <!-- Agent Grid at top -->
-        <AgentGrid
-          v-if="agentsStore.pinnedAgents.length > 0"
-          @edit-agent="(agent) => $emit('edit-agent', agent)"
-          @open-create-dialog="$emit('open-agent-dialog')"
-        />
+      <!-- Agent Grid at top -->
+      <AgentGrid
+        v-if="agentsStore.pinnedAgents.length > 0"
+        @edit-agent="(agent) => $emit('edit-agent', agent)"
+        @open-create-dialog="$emit('open-agent-dialog')"
+      />
 
-        <!-- Session List -->
-        <SessionList
-          :sessions="flatSessions"
-          :current-session-id="sessionsStore.currentSessionId"
-          :is-session-generating="chatStore.isSessionGenerating"
-          :editing-session-id="editingSessionId"
-          :editing-name="editingName"
-          :pending-delete-id="pendingDeleteId"
-          :format-session-time="sessionOrganizer.formatSessionTime"
-          @create-new-chat="$emit('create-new-chat')"
-          @session-click="handleSessionClick"
-          @context-menu="openContextMenu"
-          @toggle-collapse="sessionOrganizer.toggleCollapse"
-          @start-rename="startInlineRename"
-          @confirm-rename="confirmInlineRename"
-          @cancel-rename="cancelInlineRename"
-          @delete="deleteSessionById"
-          @overflow-change="handleOverflowChange"
-        />
+      <!-- Session List -->
+      <SessionList
+        :sessions="flatSessions"
+        :current-session-id="sessionsStore.currentSessionId"
+        :is-session-generating="chatStore.isSessionGenerating"
+        :editing-session-id="editingSessionId"
+        :editing-name="editingName"
+        :pending-delete-id="pendingDeleteId"
+        :format-session-time="sessionOrganizer.formatSessionTime"
+        @create-new-chat="$emit('create-new-chat')"
+        @session-click="handleSessionClick"
+        @context-menu="openContextMenu"
+        @toggle-collapse="sessionOrganizer.toggleCollapse"
+        @start-rename="startInlineRename"
+        @confirm-rename="confirmInlineRename"
+        @cancel-rename="cancelInlineRename"
+        @delete="deleteSessionById"
+        @overflow-change="handleOverflowChange"
+      />
 
-        <!-- Context Menu -->
-        <SessionContextMenu
-          :show="contextMenu.show"
-          :x="contextMenu.x"
-          :y="contextMenu.y"
-          :session="contextMenu.session"
-          @close="closeContextMenu"
-          @rename="handleContextRename"
-          @pin="handleContextPin"
-          @delete="handleContextDelete"
-        />
+      <!-- Context Menu -->
+      <SessionContextMenu
+        :show="contextMenu.show"
+        :x="contextMenu.x"
+        :y="contextMenu.y"
+        :session="contextMenu.session"
+        @close="closeContextMenu"
+        @rename="handleContextRename"
+        @pin="handleContextPin"
+        @delete="handleContextDelete"
+      />
 
-        <!-- Workspace Switcher -->
-        <WorkspaceSwitcher
-          :media-panel-open="mediaPanelOpen"
-          :show-separator="hasContentBelow"
-          @toggle-media-panel="$emit('toggle-media-panel')"
-          @open-create-dialog="$emit('open-workspace-dialog')"
-          @open-agent-dialog="$emit('open-agent-dialog')"
-          @edit-workspace="(workspace) => $emit('edit-workspace', workspace)"
-        />
-      </template>
+      <!-- Workspace Switcher -->
+      <WorkspaceSwitcher
+        :media-panel-open="mediaPanelOpen"
+        :show-separator="hasContentBelow"
+        @toggle-media-panel="$emit('toggle-media-panel')"
+        @open-create-dialog="$emit('open-workspace-dialog')"
+        @open-agent-dialog="$emit('open-agent-dialog')"
+        @edit-workspace="(workspace) => $emit('edit-workspace', workspace)"
+      />
     </div>
 
     <!-- Resize Handle -->
@@ -134,6 +131,9 @@ const floatingClosing = computed(() => props.floatingClosing)
 const localSearchQuery = ref('')
 const isResizing = ref(false)
 const hasContentBelow = ref(false)
+
+// Content visibility - always show, use CSS for fade effect
+const showContent = computed(() => !props.collapsed || props.floating)
 
 // Inline editing state
 const editingSessionId = ref<string | null>(null)
@@ -318,10 +318,10 @@ onUnmounted(() => {
     max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     opacity 0.2s ease;
   overflow: hidden;
-  background: var(--bg);
+  /* Match container's darker base for consistent "surface" */
+  background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
   padding: 0;
   contain: layout style;
-  will-change: width;
 }
 
 /* Disable transition during resize for smooth dragging */
@@ -350,16 +350,12 @@ onUnmounted(() => {
   margin: 6px;
   padding-bottom: 0;
   border-radius: var(--radius-lg);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-floating);
   will-change: transform, opacity;
 }
 
 .sidebar.floating .traffic-lights-row {
   margin-top: 3px;
-}
-
-html[data-theme='light'] .sidebar.floating .sidebar-content {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
 
 .sidebar.floating.floating-closing {
@@ -395,9 +391,17 @@ html[data-theme='light'] .sidebar.floating .sidebar-content {
   flex-direction: column;
   min-height: 0;
   margin-top: 12px;
-  background: var(--bg);
+  /* Match container's darker base */
+  background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
   overflow: hidden;
   contain: layout style paint;
+  transition: opacity 0.15s ease;
+}
+
+/* Content fades out faster than width shrinks */
+.sidebar-content.content-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .sidebar.collapsed {
@@ -408,7 +412,6 @@ html[data-theme='light'] .sidebar.floating .sidebar-content {
   overflow: hidden;
   border: none;
   box-shadow: none;
-  opacity: 0;
 }
 
 @media (max-width: 768px) {

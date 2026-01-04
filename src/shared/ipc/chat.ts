@@ -4,6 +4,8 @@
  */
 
 import type { ToolCall } from './tools.js'
+import type { BuiltinAgentMode } from './agents.js'
+import type { SessionPlan } from './plan.js'
 
 // Content part types for sequential display
 export type ContentPart =
@@ -20,7 +22,7 @@ export interface Step {
   type: StepType
   title: string                    // Short title (e.g., "查看agent-plan技能文档")
   description?: string             // Longer description shown when expanded
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'awaiting-confirmation'
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'awaiting-confirmation' | 'cancelled'
   timestamp: number
   turnIndex?: number               // Which turn this step belongs to (for interleaving with text)
   toolCallId?: string              // Link to associated tool call if any
@@ -30,6 +32,12 @@ export interface Step {
   result?: string                  // Tool execution result
   summary?: string                 // AI's analysis after getting the result
   error?: string                   // Error message if failed
+  // Token usage for this turn (shared by all steps in the same turn)
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+  }
   // Tool Agent specific fields
   toolAgentResult?: {              // Result from Tool Agent execution
     success: boolean
@@ -106,6 +114,12 @@ export interface ChatSession {
   totalInputTokens?: number     // Accumulated input tokens for this session
   totalOutputTokens?: number    // Accumulated output tokens for this session
   totalTokens?: number          // Accumulated total tokens for this session
+  lastInputTokens?: number      // Last request's input tokens
+  contextSize?: number          // Current context window size (last turn's input tokens)
+  // Built-in agent mode (Ask Mode / Build Mode)
+  builtinMode?: BuiltinAgentMode  // 'build' (default) | 'ask'
+  // Planning workflow (AI creates task plan, executes step by step)
+  plan?: SessionPlan
 }
 
 // IPC Request/Response types

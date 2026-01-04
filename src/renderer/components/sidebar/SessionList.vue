@@ -191,15 +191,11 @@ onUnmounted(() => {
 .scroll-indicator-top {
   height: 1px;
   margin: 0 16px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--border-subtle);
   opacity: 0;
   transition: opacity 0.3s ease;
   pointer-events: none;
   flex-shrink: 0;
-}
-
-html[data-theme='light'] .scroll-indicator-top {
-  background: rgba(0, 0, 0, 0.04);
 }
 
 .scroll-indicator-top.visible {

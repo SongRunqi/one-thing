@@ -112,6 +112,10 @@ import type {
   UploadAgentAvatarResponse,
   PinAgentResponse,
   UnpinAgentResponse,
+  // Builtin Agent types
+  BuiltinAgentMode,
+  BuiltinAgent,
+  BuiltinAgentToolPermissions,
   // User Profile types
   UserProfile,
   UserFact,
@@ -133,6 +137,20 @@ import type {
   GetActiveMemoriesResponse,
   UpdateAgentRelationshipResponse,
   RecordInteractionResponse,
+  // Permission types
+  PermissionInfo,
+  PermissionResponse,
+  // Plan types (Planning workflow)
+  PlanItemStatus,
+  PlanItem,
+  SessionPlan,
+  // Theme types
+  ThemeMeta,
+  Theme,
+  GetThemesResponse,
+  GetThemeResponse,
+  ApplyThemeResponse,
+  RefreshThemesResponse,
 } from '../../shared/ipc'
 
 export type {
@@ -199,6 +217,10 @@ export type {
   AgentVoice,
   AgentPermissions,
   SkillPermission,
+  // Builtin Agent types
+  BuiltinAgentMode,
+  BuiltinAgent,
+  BuiltinAgentToolPermissions,
   // User Profile types
   UserProfile,
   UserFact,
@@ -209,6 +231,16 @@ export type {
   AgentUserRelationship,
   AgentMood,
   MemoryVividness,
+  // Permission types
+  PermissionInfo,
+  PermissionResponse,
+  // Plan types (Planning workflow)
+  PlanItemStatus,
+  PlanItem,
+  SessionPlan,
+  // Theme types
+  ThemeMeta,
+  Theme,
 }
 
 // Gallery image type for image preview window
@@ -233,7 +265,19 @@ export interface StreamSendMessageResponse {
 export interface ElectronAPI {
   sendMessage: (sessionId: string, message: string, attachments?: MessageAttachment[]) => Promise<SendMessageResponse>
   sendMessageStream: (sessionId: string, message: string, attachments?: MessageAttachment[]) => Promise<StreamSendMessageResponse>
-  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace'; content: string; messageId: string; sessionId?: string; reasoning?: string; toolCall?: ToolCall; replace?: boolean }) => void) => () => void
+  onStreamChunk: (callback: (chunk: {
+    type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace' | 'tool_input_start' | 'tool_input_delta'
+    content: string
+    messageId: string
+    sessionId?: string
+    reasoning?: string
+    toolCall?: ToolCall
+    replace?: boolean
+    // For streaming tool input (AI SDK v6)
+    toolCallId?: string
+    toolName?: string
+    argsTextDelta?: string
+  }) => void) => () => void
   onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string; sessionId?: string; sessionName?: string }) => void) => () => void
@@ -260,7 +304,13 @@ export interface ElectronAPI {
   updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) => Promise<{ success: boolean; error?: string }>
   updateSessionAgent: (sessionId: string, agentId: string | null) => Promise<{ success: boolean; error?: string }>
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
-  getSessionTokenUsage: (sessionId: string) => Promise<{ success: boolean; usage?: { totalInputTokens: number; totalOutputTokens: number; totalTokens: number; maxTokens: number }; error?: string }>
+  getSessionTokenUsage: (sessionId: string) => Promise<{ success: boolean; usage?: { totalInputTokens: number; totalOutputTokens: number; totalTokens: number; maxTokens: number; lastInputTokens: number; contextSize: number }; error?: string }>
+  // Builtin mode (Ask/Build) methods
+  setSessionBuiltinMode: (sessionId: string, mode: BuiltinAgentMode) => Promise<{ success: boolean; mode?: BuiltinAgentMode; error?: string }>
+  getSessionBuiltinMode: (sessionId: string) => Promise<{ success: boolean; mode?: BuiltinAgentMode; error?: string }>
+  // Plan update listener (for Planning workflow)
+  onPlanUpdated: (callback: (data: { sessionId: string; plan: SessionPlan }) => void) => () => void
+  onContextSizeUpdated: (callback: (data: { sessionId: string; contextSize: number }) => void) => () => void
   updateSessionMaxTokens: (sessionId: string, maxTokens: number) => Promise<{ success: boolean; error?: string }>
   getSettings: () => Promise<GetSettingsResponse>
   saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>
@@ -268,6 +318,12 @@ export interface ElectronAPI {
   onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void
   getSystemTheme: () => Promise<{ success: boolean; theme?: 'light' | 'dark' }>
   onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void
+  // Theme methods
+  getThemes: () => Promise<GetThemesResponse>
+  getTheme: (themeId: string) => Promise<GetThemeResponse>
+  applyTheme: (themeId: string, mode: 'dark' | 'light') => Promise<ApplyThemeResponse>
+  refreshThemes: (projectPath?: string) => Promise<RefreshThemesResponse>
+  openThemesFolder: () => Promise<{ success: boolean; error?: string }>
   fetchModels: (
     provider: AIProvider,
     apiKey: string,
@@ -294,6 +350,11 @@ export interface ElectronAPI {
   updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolCall>) => Promise<{ success: boolean }>
   updateContentParts: (sessionId: string, messageId: string, contentParts: ContentPart[]) => Promise<{ success: boolean }>
   abortStream: (sessionId?: string) => Promise<{ success: boolean }>
+
+  // Permission methods
+  respondToPermission: (request: { sessionId: string; permissionId: string; response: PermissionResponse }) => Promise<{ success: boolean; error?: string }>
+  getPendingPermissions: (sessionId: string) => Promise<{ success: boolean; pending?: PermissionInfo[]; error?: string }>
+  onPermissionRequest: (callback: (info: PermissionInfo) => void) => () => void
 
   // MCP methods
   mcpGetServers: () => Promise<MCPGetServersResponse>

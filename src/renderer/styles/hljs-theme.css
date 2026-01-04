@@ -1,0 +1,149 @@
+/**
+ * Highlight.js Theme Integration
+ * Maps highlight.js CSS classes to JSON theme CSS variables
+ * This enables code blocks to follow the selected theme colors
+ */
+
+/* ============================================
+   Keywords: if, const, function, return, etc.
+   ============================================ */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-literal {
+  color: var(--hljs-keyword, #BD93F9);
+}
+
+/* ============================================
+   Strings and String-like Values
+   ============================================ */
+.hljs-string,
+.hljs-doctag,
+.hljs-regexp,
+.hljs-symbol {
+  color: var(--hljs-string, #50FA7B);
+}
+
+/* ============================================
+   Numbers
+   ============================================ */
+.hljs-number {
+  color: var(--hljs-number, #FFB86C);
+}
+
+/* ============================================
+   Comments
+   ============================================ */
+.hljs-comment {
+  color: var(--hljs-comment, #6272A4);
+  font-style: italic;
+}
+
+/* ============================================
+   Functions and Titles
+   ============================================ */
+.hljs-title,
+.hljs-title.function_,
+.hljs-section {
+  color: var(--hljs-function, #8BE9FD);
+}
+
+/* ============================================
+   Variables, Attributes, Properties
+   ============================================ */
+.hljs-variable,
+.hljs-attr,
+.hljs-attribute,
+.hljs-template-variable {
+  color: var(--hljs-property, #9cdcfe);
+}
+
+/* ============================================
+   Types and Classes
+   ============================================ */
+.hljs-type,
+.hljs-class,
+.hljs-title.class_ {
+  color: var(--hljs-type, #4ec9b0);
+}
+
+/* ============================================
+   Operators and Punctuation
+   ============================================ */
+.hljs-operator,
+.hljs-punctuation {
+  color: var(--hljs-operator, #878580);
+}
+
+/* ============================================
+   HTML/XML Tags
+   ============================================ */
+.hljs-tag,
+.hljs-name {
+  color: var(--hljs-keyword, #BD93F9);
+}
+
+/* ============================================
+   Meta and Preprocessor
+   ============================================ */
+.hljs-meta,
+.hljs-meta .hljs-keyword {
+  color: var(--hljs-keyword, #BD93F9);
+}
+
+/* ============================================
+   Additions (diff)
+   ============================================ */
+.hljs-addition {
+  color: var(--hljs-string, #50FA7B);
+  background-color: rgba(80, 250, 123, 0.1);
+}
+
+/* ============================================
+   Deletions (diff)
+   ============================================ */
+.hljs-deletion {
+  color: var(--text-error, #FF5555);
+  background-color: rgba(255, 85, 85, 0.1);
+}
+
+/* ============================================
+   Emphasis and Strong
+   ============================================ */
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: bold;
+}
+
+/* ============================================
+   Links
+   ============================================ */
+.hljs-link {
+  color: var(--text-link, #8BE9FD);
+  text-decoration: underline;
+}
+
+/* ============================================
+   Quote
+   ============================================ */
+.hljs-quote {
+  color: var(--hljs-comment, #6272A4);
+  font-style: italic;
+}
+
+/* ============================================
+   Params
+   ============================================ */
+.hljs-params {
+  color: var(--hljs-variable, #F8F8F2);
+}
+
+/* ============================================
+   Subst (template substitution)
+   ============================================ */
+.hljs-subst {
+  color: var(--hljs-variable, #F8F8F2);
+}

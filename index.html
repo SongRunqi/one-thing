@@ -4,37 +4,58 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Chat</title>
-    <style>
-      /* Prevent flash of unstyled content - apply background immediately */
-      /* Using Flexoki colors: dark=#282726 (base-900), light=#FFFCF0 (paper) */
-      html, body {
-        background-color: #282726;
-        margin: 0;
-        padding: 0;
-      }
-      html[data-theme="light"], html[data-theme="light"] body {
-        background-color: #FFFCF0;
-      }
-    </style>
     <script>
-      // Sync read theme from URL hash (set by main process) or localStorage cache
+      // Apply cached theme IMMEDIATELY to prevent flash
+      // Uses inline styles on documentElement for HIGHEST CSS specificity
+      // This cannot be overridden by any stylesheet rules
+      (function() {
+        try {
+          var cachedCss = localStorage.getItem('cached-theme-css');
+
+          if (cachedCss) {
+            var variables = JSON.parse(cachedCss);
+
+            // Apply CSS variables directly to documentElement.style (inline style = highest specificity)
+            // This prevents variables.css from overriding these values
+            for (var key in variables) {
+              if (variables.hasOwnProperty(key)) {
+                document.documentElement.style.setProperty(key, variables[key]);
+              }
+            }
+
+            // Set background color
+            var bgColor = variables['--bg-app'] || variables['--bg'] || '#282726';
+            document.documentElement.style.backgroundColor = bgColor;
+            document.documentElement.style.margin = '0';
+            document.documentElement.style.padding = '0';
+
+            console.log('[Theme] Applied cached CSS via inline style (highest specificity)');
+          } else {
+            // No cache - just set basic background (will be overridden by theme later)
+            document.documentElement.style.backgroundColor = '#282726';
+            document.documentElement.style.margin = '0';
+            document.documentElement.style.padding = '0';
+          }
+        } catch (e) {
+          console.warn('[Theme] Failed to apply cached theme:', e);
+          document.documentElement.style.backgroundColor = '#282726';
+        }
+      })();
+    </script>
+    <script>
+      // Sync read light/dark mode from URL hash or localStorage
       (function() {
         var hash = window.location.hash;
         var theme = null;
         var colorTheme = null;
-        var source = 'default';
 
-        // Check URL hash for theme parameter (e.g., #theme=light or #/settings?theme=dark)
+        // Check URL hash for theme parameter
         if (hash.includes('theme=light')) {
           theme = 'light';
-          source = 'url-hash';
         } else if (hash.includes('theme=dark')) {
           theme = 'dark';
-          source = 'url-hash';
         } else {
-          // Fallback to localStorage cache
           theme = localStorage.getItem('cached-theme');
-          source = theme ? 'localStorage' : 'none';
         }
 
         // Check for colorTheme parameter
@@ -44,8 +65,6 @@
         } else {
           colorTheme = localStorage.getItem('cached-color-theme');
         }
-
-        console.log('[Theme] index.html:', { hash: hash, theme: theme, colorTheme: colorTheme, source: source });
 
         if (theme === 'light' || theme === 'dark') {
           document.documentElement.setAttribute('data-theme', theme);

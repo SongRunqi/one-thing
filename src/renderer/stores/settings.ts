@@ -99,6 +99,9 @@ const defaultSettings: AppSettings = {
     sendShortcut: 'enter',
     colorTheme: 'blue',
     baseTheme: 'obsidian',
+    themeId: 'flexoki',  // Default JSON theme (deprecated)
+    darkThemeId: 'flexoki',
+    lightThemeId: 'flexoki',
     messageListDensity: 'comfortable',
     shortcuts: {
       sendMessage: { key: 'Enter' },
@@ -181,11 +184,24 @@ export const useSettingsStore = defineStore('settings', () => {
     // Skip base theme update if already correct (avoid unnecessary DOM changes)
     if (currentTheme === theme) {
       console.log('[Theme] Skipping base theme - already correct:', theme)
+      // Still reapply JSON theme in case mode changed (e.g., system mode)
+      reapplyJsonTheme()
       return
     }
     document.documentElement.setAttribute('data-theme', theme)
     // Cache effective theme to localStorage for instant startup
     localStorage.setItem('cached-theme', theme)
+
+    // Reapply JSON theme to match the new mode
+    reapplyJsonTheme()
+  }
+
+  // Helper to reapply JSON theme (avoids circular import)
+  function reapplyJsonTheme() {
+    import('./themes').then(({ useThemeStore }) => {
+      const themeStore = useThemeStore()
+      themeStore.reapplyTheme()
+    })
   }
 
   // Apply color theme to document
@@ -319,8 +335,15 @@ export const useSettingsStore = defineStore('settings', () => {
     settings.value.ai.temperature = Math.max(0, Math.min(2, temperature))
   }
 
-  function updateTheme(theme: 'light' | 'dark' | 'system') {
+  async function updateTheme(theme: 'light' | 'dark' | 'system') {
     settings.value.theme = theme
+
+    // If switching to 'system' mode, fetch the current OS theme first
+    // This ensures systemTheme.value has the correct value before applyTheme() uses it
+    if (theme === 'system') {
+      await fetchSystemTheme()
+    }
+
     applyTheme()
   }
 

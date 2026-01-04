@@ -16,6 +16,7 @@ export type LegacyToolStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  | 'input-streaming'
 
 // ============================================================================
 // 状态映射
@@ -30,6 +31,7 @@ export const LEGACY_TO_UI_STATE: Record<LegacyToolStatus, ToolUIState> = {
   completed: 'output-available',
   failed: 'output-error',
   cancelled: 'output-error',
+  'input-streaming': 'input-streaming',
 }
 
 /**

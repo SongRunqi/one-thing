@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import { getWindowStatePath, readJsonFile, writeJsonFile } from './stores/paths.js'
 import { getSettings } from './stores/settings.js'
 import { IPC_CHANNELS } from '../shared/ipc.js'
+import { getThemeBackgroundColor, initializeThemes } from './themes/index.js'
 
 /**
  * Get the effective theme (resolves 'system' to actual theme)
@@ -28,6 +29,22 @@ function getEffectiveTheme(): 'light' | 'dark' {
   })
 
   return effectiveTheme
+}
+
+/**
+ * Get the effective theme ID based on mode
+ * Supports dual theme system: darkThemeId for dark mode, lightThemeId for light mode
+ */
+function getEffectiveThemeId(mode: 'dark' | 'light'): string {
+  const settings = getSettings()
+  const general = settings.general
+
+  // Priority: mode-specific > legacy themeId > default
+  if (mode === 'dark') {
+    return general?.darkThemeId || general?.themeId || 'flexoki'
+  } else {
+    return general?.lightThemeId || general?.themeId || 'flexoki'
+  }
 }
 
 /**
@@ -226,12 +243,12 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
   const isMac = process.platform === 'darwin'
 
   // Get effective theme (resolves 'system' to actual theme)
-  // Using Flexoki colors: dark=#282726 (base-900), light=#FFFCF0 (paper)
   const effectiveTheme = getEffectiveTheme()
-  const backgroundColor = effectiveTheme === 'light' ? '#FFFCF0' : '#282726'
 
-  // Get color theme from settings
+  // Get the actual theme's background color (supports dual theme system)
   const settings = getSettings()
+  const themeId = getEffectiveThemeId(effectiveTheme)
+  const backgroundColor = getThemeBackgroundColor(themeId, effectiveTheme)
   const colorTheme = settings.general?.colorTheme || 'blue'
 
   settingsWindow = new BrowserWindow({
@@ -278,14 +295,21 @@ export function createWindow() {
   // Setup Content Security Policy before creating window
   setupContentSecurityPolicy()
 
+  // Initialize themes before getting background color
+  initializeThemes()
+
   const isDevelopment = process.env.NODE_ENV === 'development'
   const isMac = process.platform === 'darwin'
   const windowState = getWindowState()
 
   // Get effective theme (resolves 'system' to actual theme)
-  // Using Flexoki colors: dark=#282726 (base-900), light=#FFFCF0 (paper)
   const effectiveTheme = getEffectiveTheme()
-  const backgroundColor = effectiveTheme === 'light' ? '#FFFCF0' : '#282726'
+
+  // Get the actual theme's background color (supports dual theme system)
+  const themeId = getEffectiveThemeId(effectiveTheme)
+  const backgroundColor = getThemeBackgroundColor(themeId, effectiveTheme)
+
+  console.log('[Window] Creating main window with theme:', { themeId, effectiveTheme, backgroundColor })
 
   const mainWindow = new BrowserWindow({
     width: windowState.width,
@@ -399,9 +423,10 @@ export function openImagePreviewWindow(data: ImagePreviewData) {
   }
   console.log('[Window] Creating new preview window')
 
-  // Get effective theme
+  // Get effective theme and background color
   const effectiveTheme = getEffectiveTheme()
-  const backgroundColor = effectiveTheme === 'light' ? '#FFFCF0' : '#100F0F'
+  const themeId = getEffectiveThemeId(effectiveTheme)
+  const backgroundColor = getThemeBackgroundColor(themeId, effectiveTheme)
 
   // Gallery mode needs wider window for sidebar
   const windowWidth = data.mode === 'gallery' ? 1100 : 900

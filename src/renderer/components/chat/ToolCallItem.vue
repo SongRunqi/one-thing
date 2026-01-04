@@ -4,7 +4,8 @@
     <div class="tool-row" @click="toggleExpand">
       <!-- Status dot -->
       <div class="status-dot">
-        <div v-if="toolCall.status === 'executing'" class="dot spinning"></div>
+        <div v-if="toolCall.status === 'input-streaming'" class="dot streaming"></div>
+        <div v-else-if="toolCall.status === 'executing'" class="dot spinning"></div>
         <div v-else-if="toolCall.status === 'completed'" class="dot success"></div>
         <div v-else-if="toolCall.status === 'failed'" class="dot error"></div>
         <div v-else-if="toolCall.requiresConfirmation" class="dot warning"></div>
@@ -26,11 +27,17 @@
         <span v-if="executionTime" class="exec-time">{{ executionTime }}</span>
       </span>
 
-      <!-- Confirmation buttons (stop propagation to prevent expand) -->
+      <!-- Confirmation buttons with shortcut hints (stop propagation to prevent expand) -->
       <div v-if="toolCall.requiresConfirmation" class="confirm-buttons" @click.stop>
-        <button class="btn-inline btn-allow" @click="$emit('confirm', toolCall, 'once')">允许</button>
-        <button class="btn-inline btn-always" @click="$emit('confirm', toolCall, 'always')">永久</button>
-        <button class="btn-inline btn-reject" @click="$emit('reject', toolCall)">拒绝</button>
+        <button class="btn-inline btn-allow" @click="$emit('confirm', toolCall, 'once')">
+          Allow <kbd>⏎</kbd>
+        </button>
+        <button class="btn-inline btn-always" @click="$emit('confirm', toolCall, 'always')">
+          Always <kbd>A</kbd>
+        </button>
+        <button class="btn-inline btn-reject" @click="$emit('reject', toolCall)">
+          Reject <kbd>D</kbd>
+        </button>
       </div>
 
       <!-- Expand indicator -->
@@ -38,6 +45,17 @@
         <polyline points="6 9 12 15 18 9"/>
       </svg>
     </div>
+
+    <!-- Streaming content for write/edit tools -->
+    <Transition name="slide">
+      <div v-if="streamingContentInfo && (streamingContentInfo.filePath || streamingContentInfo.content)" class="streaming-content">
+        <div class="streaming-header">
+          <span class="streaming-path">{{ streamingContentInfo.filePath || 'Parsing...' }}</span>
+          <span class="streaming-indicator">⟳ Writing...</span>
+        </div>
+        <pre v-if="streamingContentInfo.content" class="streaming-code"><code>{{ streamingContentInfo.content }}</code></pre>
+      </div>
+    </Transition>
 
     <!-- Expanded content -->
     <Transition name="slide">
@@ -49,13 +67,13 @@
 
         <!-- Arguments (if not just command) -->
         <div v-if="hasNonCommandArgs" class="detail-section">
-          <div class="detail-label">参数</div>
+          <div class="detail-label">Arguments</div>
           <pre>{{ formatNonCommandArgs() }}</pre>
         </div>
 
         <!-- Result -->
         <div v-if="toolCall.result && toolCall.status !== 'executing'" class="detail-section">
-          <div class="detail-label">结果</div>
+          <div class="detail-label">Result</div>
           <pre>{{ formatResult(toolCall.result) }}</pre>
         </div>
 
@@ -91,8 +109,90 @@ const isExpanded = ref(false)
 
 const statusClass = computed(() => `status-${props.toolCall.status}`)
 
+// For write/edit tools during streaming, extract and show file content
+const streamingContentInfo = computed(() => {
+  if (props.toolCall.status !== 'input-streaming' || !props.toolCall.streamingArgs) {
+    return null
+  }
+
+  const toolName = props.toolCall.toolName?.toLowerCase()
+  if (toolName !== 'write' && toolName !== 'edit') {
+    return null
+  }
+
+  const args = props.toolCall.streamingArgs
+  const result: { filePath: string; content: string } = { filePath: '', content: '' }
+
+  // Extract file_path
+  const pathMatch = args.match(/"file_path"\s*:\s*"([^"]*)"?/)
+  if (pathMatch) {
+    result.filePath = pathMatch[1]
+  }
+
+  // Extract content (for write tool)
+  if (toolName === 'write') {
+    const contentMatch = args.match(/"content"\s*:\s*"/)
+    if (contentMatch) {
+      // Get everything after "content": "
+      const startIdx = contentMatch.index! + contentMatch[0].length
+      let content = args.slice(startIdx)
+      // Unescape JSON string (basic unescaping)
+      content = content
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\')
+      // Remove trailing incomplete quote if present
+      if (content.endsWith('"')) {
+        content = content.slice(0, -1)
+      }
+      result.content = content
+    }
+  }
+
+  // Extract new_string (for edit tool)
+  if (toolName === 'edit') {
+    const newStringMatch = args.match(/"new_string"\s*:\s*"/)
+    if (newStringMatch) {
+      const startIdx = newStringMatch.index! + newStringMatch[0].length
+      let content = args.slice(startIdx)
+      content = content
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\')
+      if (content.endsWith('"')) {
+        content = content.slice(0, -1)
+      }
+      result.content = content
+    }
+  }
+
+  // Show if we have any info (filePath or content) - don't require both
+  return result
+})
+
 // Preview text - command or first arg (no truncation, CSS handles wrapping)
 const previewText = computed(() => {
+  // For input-streaming status
+  if (props.toolCall.status === 'input-streaming') {
+    if (props.toolCall.streamingArgs) {
+      const toolName = props.toolCall.toolName?.toLowerCase()
+      if (toolName === 'write' || toolName === 'edit') {
+        // Extract file_path for preview
+        const pathMatch = props.toolCall.streamingArgs.match(/"file_path"\s*:\s*"([^"]*)"?/)
+        if (pathMatch) {
+          return pathMatch[1]
+        }
+      }
+      // For other tools, show truncated streaming args
+      const args = props.toolCall.streamingArgs
+      return args.length > 100 ? '...' + args.slice(-100) : args
+    }
+    // No streaming args yet, just show generating indicator
+    return ''
+  }
+
   const args = props.toolCall.arguments
   if (!args) return ''
 
@@ -148,11 +248,12 @@ const executionTime = computed(() => {
 // Status text
 const statusText = computed(() => {
   switch (props.toolCall.status) {
-    case 'pending': return '等待'
-    case 'executing': return '执行中'
+    case 'input-streaming': return ''  // 直接显示 streaming-content，不需要状态文本
+    case 'pending': return 'Pending'
+    case 'executing': return 'Executing'
     case 'completed': return '✓'
     case 'failed': return '✗'
-    case 'cancelled': return '已取消'
+    case 'cancelled': return 'Cancelled'
     default: return ''
   }
 })
@@ -239,6 +340,15 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   background: #6b7280;
 }
 
+.dot.streaming {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(168, 85, 247, 0.3);
+  border-top-color: #a855f7;
+  background: transparent;
+  animation: spin 1s linear infinite;
+}
+
 .dot.spinning {
   width: 10px;
   height: 10px;
@@ -315,6 +425,10 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   color: #3b82f6;
 }
 
+.status-input-streaming .status-text {
+  color: #a855f7;
+}
+
 .exec-time {
   opacity: 0.7;
 }
@@ -381,6 +495,20 @@ function truncateOutput(output: string, maxLines: number = 8): string {
 .btn-reject:hover {
   color: var(--text-error, #D14D41);
   background: rgba(209, 77, 65, 0.08);
+}
+
+/* Keyboard shortcut hints */
+.btn-inline kbd {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 10px;
+  margin-left: 4px;
+  vertical-align: middle;
+  line-height: 1.4;
 }
 
 /* Expand icon */
@@ -459,6 +587,61 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   max-height: 300px;
 }
 
+/* Streaming content for write/edit tools */
+.streaming-content {
+  padding: 8px 10px 10px 34px;
+  border-left: 2px solid #a855f7;
+  margin-left: 10px;
+}
+
+.streaming-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.streaming-path {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.streaming-indicator {
+  font-size: 11px;
+  color: #a855f7;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.streaming-code {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(168, 85, 247, 0.08);
+  border: 1px solid rgba(168, 85, 247, 0.15);
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary, #e5e5e5);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.streaming-code code {
+  font-family: inherit;
+}
+
 /* Light theme */
 html[data-theme='light'] .tool-inline:hover {
   background: rgba(0, 0, 0, 0.03);
@@ -476,6 +659,11 @@ html[data-theme='light'] .tool-inline.needs-confirm:hover {
 
 html[data-theme='light'] .detail-section pre {
   background: rgba(0, 0, 0, 0.04);
+}
+
+html[data-theme='light'] .streaming-code {
+  background: rgba(147, 51, 234, 0.06);
+  border-color: rgba(147, 51, 234, 0.15);
 }
 
 html[data-theme='light'] .btn-allow {
@@ -507,5 +695,10 @@ html[data-theme='light'] .btn-reject {
 html[data-theme='light'] .btn-reject:hover {
   color: #AF3029;
   background: rgba(175, 48, 41, 0.08);
+}
+
+html[data-theme='light'] .btn-inline kbd {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 </style>

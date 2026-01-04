@@ -39,9 +39,13 @@ export interface GeneralSettings {
   animationSpeed: number  // 0.1 - 0.5 seconds, default 0.25
   sendShortcut: 'enter' | 'ctrl-enter' | 'cmd-enter'  // Legacy, kept for compatibility
   colorTheme: ColorTheme  // Accent color theme
-  baseTheme: BaseTheme    // Base theme (overall colors)
+  baseTheme: BaseTheme    // Base theme (overall colors) - DEPRECATED, use themeId
+  themeId?: string        // Theme ID - DEPRECATED, use darkThemeId/lightThemeId
+  darkThemeId?: string    // Theme ID for dark mode (e.g., 'dracula', 'nord')
+  lightThemeId?: string   // Theme ID for light mode (e.g., 'flexoki')
   shortcuts?: ShortcutSettings  // Custom keyboard shortcuts
   messageListDensity?: MessageListDensity  // Message list display density, default 'comfortable'
+  messageLineHeight?: number  // Message line height, 1.2-2.2, default 1.6
 }
 
 // Chat settings for model parameters

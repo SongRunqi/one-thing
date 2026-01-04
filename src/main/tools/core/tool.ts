@@ -40,7 +40,7 @@ export interface InitContext {
     id: string
     name: string
     description: string
-    source: 'user' | 'project' | 'plugin'
+    source: 'user' | 'project' | 'plugin' | 'builtin'
     path: string
     directoryPath: string
     enabled: boolean

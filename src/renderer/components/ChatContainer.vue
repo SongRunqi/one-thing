@@ -327,7 +327,8 @@ onUnmounted(() => {
   flex: 1;
   padding: 12px;
   padding-left: 0px;
-  background: var(--bg);
+  /* Slightly darker base for "surface" effect */
+  background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
   -webkit-app-region: drag;
   min-width: 0;
   display: flex;

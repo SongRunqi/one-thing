@@ -205,6 +205,7 @@ export interface TokenUsage {
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  durationMs?: number  // Duration in milliseconds for speed calculation
 }
 
 /**
@@ -215,6 +216,10 @@ export interface SessionTokenUsage {
   totalOutputTokens: number
   totalTokens: number
   maxTokens: number
+  /** Last request's input tokens */
+  lastInputTokens: number
+  /** Current context window size (last input + output) */
+  contextSize: number
 }
 
 /**

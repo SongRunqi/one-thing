@@ -12,8 +12,8 @@
             <Bot :size="20" :stroke-width="1.5" />
           </div>
           <div class="option-text">
-            <span class="option-title">创建 Agent</span>
-            <span class="option-desc">自定义 AI 助手人格</span>
+            <span class="option-title">Create Agent</span>
+            <span class="option-desc">Customize AI assistant personality</span>
           </div>
         </button>
         <button class="create-option" @click="handleCreateWorkspace">
@@ -21,8 +21,8 @@
             <FolderOpen :size="20" :stroke-width="1.5" />
           </div>
           <div class="option-text">
-            <span class="option-title">创建 Workspace</span>
-            <span class="option-desc">组织相关对话</span>
+            <span class="option-title">Create Workspace</span>
+            <span class="option-desc">Organize related conversations</span>
           </div>
         </button>
       </div>

@@ -11,7 +11,7 @@
         </div>
         <div class="hero-text">
           <h2 class="hero-title">Memory</h2>
-          <p class="hero-desc">让 AI 记住对话上下文，提供更个性化的回复</p>
+          <p class="hero-desc">Let AI remember conversation context for more personalized responses</p>
         </div>
         <label class="memory-toggle">
           <input
@@ -25,7 +25,7 @@
 
       <div class="status-bar" :class="{ active: isMemoryEnabled }">
         <span class="status-dot"></span>
-        <span class="status-text">{{ isMemoryEnabled ? '已启用' : '已关闭' }}</span>
+        <span class="status-text">{{ isMemoryEnabled ? 'Enabled' : 'Disabled' }}</span>
       </div>
     </section>
 
@@ -49,7 +49,7 @@
               <span class="provider-name">{{ provider.name }}</span>
               <span v-if="localSettings.provider === provider.id" class="selected-badge">✓</span>
               <span v-else-if="provider.models.length > 0" class="model-count">{{ provider.models.length }}</span>
-              <span v-else-if="!provider.configured && provider.id !== 'local'" class="config-badge">未配置</span>
+              <span v-else-if="!provider.configured && provider.id !== 'local'" class="config-badge">Not configured</span>
             </div>
           </div>
 
@@ -57,12 +57,12 @@
           <div class="model-list">
             <!-- Header with refresh button -->
             <div class="model-list-header">
-              <span class="header-title">{{ previewProvider?.name || '' }} 模型</span>
+              <span class="header-title">{{ previewProvider?.name || '' }} Models</span>
               <button
                 class="refresh-btn"
                 :disabled="loadingModels"
                 @click="refreshModelsForProvider(previewProviderId)"
-                title="刷新模型列表"
+                title="Refresh model list"
               >
                 <svg :class="{ spinning: loadingModels }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
@@ -73,12 +73,12 @@
 
             <div v-if="loadingModels" class="loading-state">
               <span class="loading-spinner"></span>
-              <span>加载模型...</span>
+              <span>Loading models...</span>
             </div>
 
             <div v-else-if="!previewProvider || previewProvider.models.length === 0" class="empty-state">
-              <span v-if="!isProviderConfigured(previewProviderId)">请先配置 {{ previewProvider?.name || '' }} 的 API Key</span>
-              <span v-else>未找到 Embedding 模型</span>
+              <span v-if="!isProviderConfigured(previewProviderId)">Please configure {{ previewProvider?.name || '' }} API Key first</span>
+              <span v-else>No embedding models found</span>
             </div>
 
             <template v-else>
@@ -93,7 +93,7 @@
               >
                 <div class="model-header">
                   <span class="model-name">{{ model.name }}</span>
-                  <span v-if="localSettings.provider === previewProviderId && currentModel === model.id" class="current-badge">当前</span>
+                  <span v-if="localSettings.provider === previewProviderId && currentModel === model.id" class="current-badge">Current</span>
                 </div>
                 <!-- TODO: Dimension badge temporarily hidden -->
               </div>
@@ -108,7 +108,7 @@
                 <path d="M12 16v-4"/>
                 <path d="M12 8h.01"/>
               </svg>
-              <span>首次使用时将自动下载模型文件 (~23MB)</span>
+              <span>Model file (~23MB) will be downloaded automatically on first use</span>
             </div>
           </div>
         </div>
@@ -126,7 +126,7 @@
             <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.54" opacity="0.3"/>
           </svg>
         </div>
-        <p class="disabled-text">启用 Memory 后可配置 Embedding 模型</p>
+        <p class="disabled-text">Enable Memory to configure embedding models</p>
       </div>
     </Transition>
   </div>
@@ -163,7 +163,7 @@ watch(() => props.settings, (newSettings) => {
 const EMBEDDING_CAPABLE_PROVIDERS: { id: EmbeddingProviderType; name: string; aiProvider: string }[] = [
   { id: 'openai', name: 'OpenAI', aiProvider: 'openai' },
   { id: 'gemini', name: 'Gemini', aiProvider: 'gemini' },
-  { id: 'zhipu', name: '智谱 AI', aiProvider: 'zhipu' },
+  { id: 'zhipu', name: 'Zhipu AI', aiProvider: 'zhipu' },
 ]
 
 // TODO: Dimension info temporarily disabled - need API source
@@ -172,7 +172,7 @@ const EMBEDDING_CAPABLE_PROVIDERS: { id: EmbeddingProviderType; name: string; ai
 // Local model fallback
 const LOCAL_PROVIDER = {
   id: 'local' as EmbeddingProviderType,
-  name: '本地模型',
+  name: 'Local Model',
   models: [{ id: 'all-MiniLM-L6-v2', name: 'all-MiniLM-L6-v2', type: 'embedding' as const }]
 }
 

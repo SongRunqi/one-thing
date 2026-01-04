@@ -168,9 +168,11 @@ export interface ChatResponseResult {
 
 /**
  * Stream chunk types for tool-enabled responses
+ * Includes streaming tool input chunks for real-time parameter display
  */
 export interface StreamChunkWithTools {
   type: 'text' | 'reasoning' | 'tool-call' | 'tool-result' | 'finish'
+    | 'tool-input-start' | 'tool-input-delta' | 'tool-input-end'
   text?: string
   reasoning?: string
   toolCall?: AIToolCall
@@ -178,6 +180,14 @@ export interface StreamChunkWithTools {
     toolCallId: string
     result: any
   }
+  /** Streaming tool input - start event */
+  toolInputStart?: { toolCallId: string; toolName: string }
+  /** Streaming tool input - incremental JSON delta */
+  toolInputDelta?: { toolCallId: string; argsTextDelta: string }
+  /** Streaming tool input - end event */
+  toolInputEnd?: { toolCallId: string }
+  /** Finish reason from AI model - used for loop control */
+  finishReason?: 'stop' | 'length' | 'tool-calls' | 'content-filter' | 'error' | 'other' | 'unknown'
   usage?: {
     inputTokens: number
     outputTokens: number
@@ -284,16 +294,21 @@ export async function* streamChatResponse(
   }
 }
 
+// Chunk types for streamChatResponseWithReasoning
+export type ReasoningStreamChunk =
+  | { type: 'text'; text: string; reasoning?: string }
+  | { type: 'finish'; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }
+
 /**
  * Stream a chat response with reasoning/thinking content
- * Returns an async generator that yields text and reasoning chunks
+ * Returns an async generator that yields text and reasoning chunks, plus finish with usage
  */
 export async function* streamChatResponseWithReasoning(
   providerId: string,
   config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: AIMessageContent; reasoningContent?: string }>,
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
-): AsyncGenerator<{ text: string; reasoning?: string }, void, unknown> {
+): AsyncGenerator<ReasoningStreamChunk, void, unknown> {
   const provider = createProvider(providerId, config)
   const model = provider.createModel(config.model)
 
@@ -342,27 +357,17 @@ export async function* streamChatResponseWithReasoning(
     for await (const chunk of stream.fullStream) {
       chunkCount++
       const chunkAny = chunk as any
-      console.log(`[Provider] Stream chunk ${chunkCount}:`, chunk.type,
-        'textDelta:', chunkAny.textDelta ? 'yes' : 'no',
-        'delta:', chunkAny.delta ? 'yes' : 'no',
-        'text:', chunkAny.text ? 'yes' : 'no',
-        'chunk keys:', Object.keys(chunkAny).join(', '))
 
       // Extract text from chunk
       let text = ''
       if (chunk.type === 'text-delta') {
-        // 尝试不同的属性名
         text = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
-        console.log(`[Provider] Text delta: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`)
       }
 
       // Extract reasoning from chunk
       let reasoning: string | undefined = undefined
       if (chunk.type === 'reasoning-delta') {
-        // 尝试不同的属性名
         reasoning = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
-        console.log(`[Provider] Reasoning delta: "${reasoning.substring(0, 50)}${reasoning.length > 50 ? '...' : ''}"`)
-
         if (reasoning) {
           accumulatedReasoning.push(reasoning)
         }
@@ -377,13 +382,12 @@ export async function* streamChatResponseWithReasoning(
 
       // For reasoning chunks, we yield them separately
       if (chunk.type === 'reasoning-delta') {
-        yield { text: '', reasoning }
+        yield { type: 'text' as const, text: '', reasoning }
       } else if (text) {
-        yield { text, reasoning: accumulatedReasoning.length > 0 ? accumulatedReasoning.join('') : undefined }
+        yield { type: 'text' as const, text, reasoning: accumulatedReasoning.length > 0 ? accumulatedReasoning.join('') : undefined }
       }
     }
 
-    console.log(`[Provider] Reasoning stream completed. Total chunks: ${chunkCount}`)
   } else {
     // For non-reasoning models, use fullStream to capture errors
     // (textStream silently swallows errors)
@@ -391,13 +395,11 @@ export async function* streamChatResponseWithReasoning(
     for await (const chunk of stream.fullStream) {
       chunkCount++
       const chunkAny = chunk as any
-      console.log(`[Provider] Chunk ${chunkCount} type: ${chunk.type}, keys: ${Object.keys(chunkAny).join(', ')}`)
 
       if (chunk.type === 'text-delta') {
         const text = chunkAny.textDelta || ''
         if (text) {
-          console.log(`[Provider] Text stream chunk ${chunkCount}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`)
-          yield { text }
+          yield { type: 'text' as const, text }
         }
       } else if (chunk.type === 'file') {
         // Handle file chunks (e.g., generated images from Gemini)
@@ -414,7 +416,7 @@ export async function* streamChatResponseWithReasoning(
             const mediaType = file.mediaType || 'image/png'
             const dataUrl = `data:${mediaType};base64,${base64Data}`
             // Yield as markdown image for display
-            yield { text: `![Generated Image](${dataUrl})` }
+            yield { type: 'text' as const, text: `![Generated Image](${dataUrl})` }
           }
         }
       } else if (chunk.type === 'error') {
@@ -424,7 +426,22 @@ export async function* streamChatResponseWithReasoning(
         throw streamError
       }
     }
-    console.log(`[Provider] Text stream completed. Total chunks: ${chunkCount}`)
+  }
+
+  // Get usage data after stream completes and yield finish chunk
+  try {
+    const usage = await stream.usage
+    yield {
+      type: 'finish' as const,
+      usage: {
+        inputTokens: usage.inputTokens ?? 0,
+        outputTokens: usage.outputTokens ?? 0,
+        totalTokens: usage.totalTokens ?? 0,
+      },
+    }
+  } catch (usageError) {
+    console.warn(`[Provider] Failed to get usage data from stream:`, usageError)
+    yield { type: 'finish' as const, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }
   }
 }
 
@@ -771,18 +788,22 @@ export async function* streamChatResponseWithTools(
     streamOptions.abortSignal = options.abortSignal
   }
 
-  // Log actual tool schemas that will be sent to API
-  if (streamOptions.tools) {
-    const toolsJson: Record<string, any> = {}
-    for (const [id, tool] of Object.entries(streamOptions.tools)) {
-      const t = tool as any
-      toolsJson[id] = {
-        description: t.description,
-        parameters: t.inputSchema?.toJSONSchema ? t.inputSchema.toJSONSchema() : null,
-      }
-    }
+  // Log complete request body being sent to AI
+  const requestBodyForLog = {
+    model: config.model,
+    messages: convertedMessages,
+    tools: streamOptions.tools ? Object.fromEntries(
+      Object.entries(streamOptions.tools).map(([id, tool]) => {
+        const t = tool as any
+        return [id, {
+          description: t.description,
+          parameters: t.inputSchema?.toJSONSchema ? t.inputSchema.toJSONSchema() : null,
+        }]
+      })
+    ) : undefined,
+    temperature: streamOptions.temperature,
+    maxOutputTokens: streamOptions.maxOutputTokens,
   }
-
   const stream = await streamText(streamOptions)
 
   // Process the full stream to capture all types of chunks
@@ -792,7 +813,6 @@ export async function* streamChatResponseWithTools(
     switch (chunk.type) {
       case 'text-delta':
         const text = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
-        console.log(`[Provider] Text delta received:`, text ? `"${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"` : '(empty)')
         if (text) {
           yield { type: 'text', text }
         }
@@ -806,24 +826,43 @@ export async function* streamChatResponseWithTools(
         break
 
       case 'tool-call':
-        console.log(`[Provider] Tool call:`, chunkAny)
         yield {
           type: 'tool-call',
           toolCall: {
             toolCallId: chunkAny.toolCallId,
             toolName: chunkAny.toolName,
-            args: chunkAny.input || chunkAny.args || {},  // AI SDK uses 'input'
+            args: chunkAny.input || chunkAny.args || {},
           },
         }
         break
 
       case 'tool-result':
-        console.log(`[Provider] Tool result:`, chunkAny)
         yield {
           type: 'tool-result',
           toolResult: {
             toolCallId: chunkAny.toolCallId,
             result: chunkAny.result,
+          },
+        }
+        break
+
+      case 'tool-input-start':
+        const startToolCallId = chunkAny.toolCallId || chunkAny.id
+        yield {
+          type: 'tool-input-start',
+          toolInputStart: {
+            toolCallId: startToolCallId,
+            toolName: chunkAny.toolName,
+          },
+        }
+        break
+
+      case 'tool-input-delta':
+        yield {
+          type: 'tool-input-delta',
+          toolInputDelta: {
+            toolCallId: chunkAny.toolCallId || chunkAny.id,
+            argsTextDelta: chunkAny.inputTextDelta || '',
           },
         }
         break
@@ -850,22 +889,25 @@ export async function* streamChatResponseWithTools(
     }
   }
 
-  // Get usage data after stream completes and yield finish chunk
+  // Get usage data and finish reason after stream completes
   try {
-    const usage = await stream.usage
+    const [usage, finishReason] = await Promise.all([
+      stream.usage,
+      stream.finishReason,
+    ])
     yield {
       type: 'finish',
+      finishReason: finishReason || 'unknown',
       usage: {
         inputTokens: usage.inputTokens ?? 0,
         outputTokens: usage.outputTokens ?? 0,
         totalTokens: usage.totalTokens ?? 0,
       },
     }
-    console.log(`[Provider] Stream with tools completed, usage:`, usage)
   } catch (usageError) {
-    console.warn(`[Provider] Failed to get usage data:`, usageError)
+    console.warn(`[Provider] Failed to get usage/finishReason:`, usageError)
     // Yield finish chunk without usage if we can't get it
-    yield { type: 'finish' }
+    yield { type: 'finish', finishReason: 'unknown' }
   }
 }
 
@@ -1087,6 +1129,29 @@ export async function* streamChatWithUIMessages(
         }
         break
 
+      // Streaming tool input chunks (AI SDK v6)
+      case 'tool-input-start':
+        const uiStartToolCallId = chunkAny.toolCallId || chunkAny.id
+        console.log(`[Provider] UIMessage tool input start:`, uiStartToolCallId, chunkAny.toolName)
+        yield {
+          type: 'tool-input-start',
+          toolInputStart: {
+            toolCallId: uiStartToolCallId,
+            toolName: chunkAny.toolName,
+          },
+        }
+        break
+
+      case 'tool-input-delta':
+        yield {
+          type: 'tool-input-delta',
+          toolInputDelta: {
+            toolCallId: chunkAny.toolCallId || chunkAny.id,
+            argsTextDelta: chunkAny.inputTextDelta || '',
+          },
+        }
+        break
+
       case 'error':
         // OpenAI Responses API error structure: { type: 'error', error: { message, code, type } }
         const rawStreamError = chunkAny.error || chunkAny
@@ -1108,22 +1173,26 @@ export async function* streamChatWithUIMessages(
     }
   }
 
-  // Get usage data after stream completes and yield finish chunk
+  // Get usage data and finish reason after stream completes
   try {
-    const usage = await stream.usage
+    const [usage, finishReason] = await Promise.all([
+      stream.usage,
+      stream.finishReason,
+    ])
     yield {
       type: 'finish',
+      finishReason: finishReason || 'unknown',
       usage: {
         inputTokens: usage.inputTokens ?? 0,
         outputTokens: usage.outputTokens ?? 0,
         totalTokens: usage.totalTokens ?? 0,
       },
     }
-    console.log(`[Provider] UIMessage stream completed, usage:`, usage)
+    console.log(`[Provider] UIMessage stream completed, finishReason: ${finishReason}, usage:`, usage)
   } catch (usageError) {
-    console.warn(`[Provider] Failed to get usage data:`, usageError)
+    console.warn(`[Provider] Failed to get usage/finishReason:`, usageError)
     // Yield finish chunk without usage if we can't get it
-    yield { type: 'finish' }
+    yield { type: 'finish', finishReason: 'unknown' }
   }
 }
 

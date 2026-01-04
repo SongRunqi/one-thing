@@ -13,6 +13,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { app } from 'electron'
 import type { SkillDefinition, SkillFile, SkillSource } from '../../shared/ipc.js'
 
 // YAML frontmatter parser (simple implementation)
@@ -121,6 +122,26 @@ export function getProjectSkillsPath(cwd?: string): string {
  */
 export function getPluginSkillsPath(): string {
   return path.join(os.homedir(), '.claude', 'plugins', 'cache', 'claude-plugins-official')
+}
+
+/**
+ * Get the builtin skills directory path
+ * Handles both development and production environments
+ */
+export function getBuiltinSkillsPath(): string {
+  // In production, resources are in process.resourcesPath
+  // In development, resources are in the project root
+  const isDev = !app.isPackaged
+
+  if (isDev) {
+    // Development: resources/skills relative to project root
+    // Go up from dist/main to project root
+    const projectRoot = path.resolve(app.getAppPath(), '..')
+    return path.join(projectRoot, 'resources', 'skills')
+  } else {
+    // Production: resources are copied to app.asar.unpacked or extraResources
+    return path.join(process.resourcesPath, 'skills')
+  }
 }
 
 /**
@@ -369,20 +390,45 @@ function loadPluginSkills(): SkillDefinition[] {
 }
 
 /**
- * Load all skills from user, project, and plugin directories
+ * Load builtin skills from app resources
+ */
+function loadBuiltinSkills(): SkillDefinition[] {
+  const builtinPath = getBuiltinSkillsPath()
+
+  if (!fs.existsSync(builtinPath)) {
+    console.log(`[Skills] Builtin skills path does not exist: ${builtinPath}`)
+    return []
+  }
+
+  const skills = loadSkillsFromPath(builtinPath, 'builtin')
+  console.log(`[Skills] Builtin skills path: ${builtinPath}, found ${skills.length} skills:`, skills.map(s => s.name))
+
+  return skills
+}
+
+/**
+ * Load all skills from user, project, plugin, and builtin directories
  * Uses upward traversal for project skills when workingDirectory is provided
  *
  * @param workingDirectory - Optional working directory for project skills (enables upward traversal)
  */
 export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
-  // 1. User skills (global)
-  const userSkills = loadSkillsFromPath(getUserSkillsPath(), 'user')
+  // 1. Builtin skills (shipped with the app, lowest priority - can be overridden)
+  const builtinSkills = loadBuiltinSkills()
 
-  // 2. Project skills (with upward traversal if workingDirectory provided)
+  // 2. User skills (global)
+  const userSkillsPath = getUserSkillsPath()
+  const userSkills = loadSkillsFromPath(userSkillsPath, 'user')
+  console.log(`[Skills] User skills path: ${userSkillsPath}, found ${userSkills.length} skills:`, userSkills.map(s => s.name))
+
+  // 3. Project skills (with upward traversal if workingDirectory provided)
   let projectSkills: SkillDefinition[] = []
   if (workingDirectory) {
     // Use upward traversal to find all .claude/skills directories
-    const projectSkillPaths = findProjectSkillPaths(workingDirectory)
+    // IMPORTANT: Exclude user skills path to avoid duplication (it's already loaded above)
+    const allProjectSkillPaths = findProjectSkillPaths(workingDirectory)
+    const projectSkillPaths = allProjectSkillPaths.filter(p => p !== userSkillsPath)
+    console.log(`[Skills] Project skill paths from ${workingDirectory}:`, projectSkillPaths, `(excluded user path: ${userSkillsPath})`)
     const seenSkillIds = new Set<string>()
 
     for (const skillPath of projectSkillPaths) {
@@ -399,20 +445,37 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
     console.log(`[Skills] Found ${projectSkillPaths.length} project skill directories via upward traversal`)
   }
 
-  // 3. Environment variable skills
+  // 4. Environment variable skills
   let envSkills: SkillDefinition[] = []
   const envSkillsPath = getEnvSkillsPath()
+  console.log(`[Skills] Env skills path (${SKILLS_DIR_ENV}): ${envSkillsPath || 'not set'}`)
   if (envSkillsPath) {
     envSkills = loadSkillsFromPath(envSkillsPath, 'user') // Treat as user-level
-    console.log(`[Skills] Loaded ${envSkills.length} skills from ${SKILLS_DIR_ENV}`)
+    console.log(`[Skills] Loaded ${envSkills.length} skills from ${SKILLS_DIR_ENV}:`, envSkills.map(s => s.name))
   }
 
-  // 4. Plugin skills
+  // 5. Plugin skills
   const pluginSkills = loadPluginSkills()
+  console.log(`[Skills] Plugin skills:`, pluginSkills.map(s => s.name))
 
-  console.log(`[Skills] Loaded ${userSkills.length} user, ${projectSkills.length} project, ${envSkills.length} env, ${pluginSkills.length} plugin skills`)
+  // Priority: project > user > env > plugin > builtin
+  // Builtin skills can be overridden by user/project skills with the same name
+  const allSkills = [...projectSkills, ...userSkills, ...envSkills, ...pluginSkills, ...builtinSkills]
 
-  return [...userSkills, ...projectSkills, ...envSkills, ...pluginSkills]
+  // Deduplicate by name (first one wins, so higher priority sources take precedence)
+  const seenNames = new Set<string>()
+  const dedupedSkills = allSkills.filter(skill => {
+    if (seenNames.has(skill.name)) {
+      return false
+    }
+    seenNames.add(skill.name)
+    return true
+  })
+
+  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${envSkills.length} env, ${pluginSkills.length} plugin skills`)
+  console.log(`[Skills] Total skills (after dedup): ${dedupedSkills.length}, names:`, dedupedSkills.map(s => s.name))
+
+  return dedupedSkills
 }
 
 /**

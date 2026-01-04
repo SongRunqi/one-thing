@@ -30,13 +30,13 @@
       <div
         class="message-content-wrapper"
         @mouseenter="showActions = true"
-        @mouseleave="showActions = false"
+        @mouseleave="handleMouseLeave"
       >
         <!-- Thinking/Waiting status -->
         <MessageThinking
           v-if="message.role === 'assistant'"
           :isStreaming="message.isStreaming || false"
-          :hasContent="!!message.content"
+          :hasContent="!!message.content || !!(message.toolCalls?.length) || !!(message.steps?.length)"
           :reasoning="message.reasoning"
           :thinkingStartTime="message.thinkingStartTime"
           :thinkingTime="message.thinkingTime"
@@ -64,6 +64,16 @@
           @rejectTool="handleToolReject"
         />
 
+        <!-- Inline error for assistant messages that failed mid-stream -->
+        <div v-if="message.role === 'assistant' && message.errorDetails" class="inline-error">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span class="inline-error-text">{{ message.errorDetails }}</span>
+        </div>
+
         <!-- Steps panel fallback - only for legacy messages without contentParts -->
         <StepsPanel
           v-if="message.role === 'assistant' && message.steps && message.steps.length > 0 && (!message.contentParts || !message.contentParts.some(p => p.type === 'data-steps'))"
@@ -90,6 +100,7 @@
             @regenerate="handleRegenerate"
             @branch="handleBranch"
             @goToBranch="handleGoToBranch"
+            @menuOpen="handleMenuOpen"
           />
         </div>
       </div>
@@ -145,8 +156,30 @@ const emit = defineEmits<{
 
 // UI State
 const showActions = ref(false)
+const menuIsOpen = ref(false)  // Track if a dropdown menu is open
 const isEditing = ref(false)
 const editContent = ref('')
+
+// Handle mouse leave - don't hide actions if a menu is open
+function handleMouseLeave(event: MouseEvent) {
+  // Don't hide actions if a menu is currently open
+  if (menuIsOpen.value) return
+
+  const relatedTarget = event.relatedTarget as HTMLElement | null
+  // Check if mouse is moving to a teleported menu (more-menu or branch-menu)
+  if (relatedTarget?.closest('.more-menu') || relatedTarget?.closest('.branch-menu')) {
+    return // Don't hide actions
+  }
+  showActions.value = false
+}
+
+// Handle menu open/close events from MessageActions
+function handleMenuOpen(isOpen: boolean) {
+  menuIsOpen.value = isOpen
+  if (isOpen) {
+    showActions.value = true
+  }
+}
 
 // Image preview state
 const previewVisible = ref(false)
@@ -253,7 +286,8 @@ function handleUpdateThinkingTime(time: number) {
 // Click outside handler
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement
-  if (!target.closest('.selection-toolbar') && !target.closest('.bubble')) {
+  // Close toolbar if clicking outside of it (including inside bubble)
+  if (!target.closest('.selection-toolbar')) {
     showSelectionToolbar.value = false
   }
   if (isEditing.value && !target.closest('.bubble')) {
@@ -261,12 +295,24 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
+// Selection change handler - hide toolbar when selection is cleared
+function handleSelectionChange() {
+  const selection = window.getSelection()
+  const text = selection?.toString().trim()
+  // If selection is empty or cleared, hide toolbar
+  if (!text || text.length === 0) {
+    showSelectionToolbar.value = false
+  }
+}
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  document.addEventListener('selectionchange', handleSelectionChange)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('selectionchange', handleSelectionChange)
 })
 </script>
 
@@ -435,5 +481,32 @@ html[data-theme='light'] .message.user :deep(.bubble.editing) {
 
 :deep(.regenerate-btn:hover svg) {
   transform: rotate(180deg);
+}
+
+/* Inline error for failed assistant messages */
+.inline-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-top: 8px;
+  background: rgba(var(--color-danger-rgb), 0.1);
+  border: 1px solid rgba(var(--color-danger-rgb), 0.3);
+  border-radius: 8px;
+  color: var(--text-error);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.inline-error svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.inline-error-text {
+  flex: 1;
+  word-break: break-word;
 }
 </style>

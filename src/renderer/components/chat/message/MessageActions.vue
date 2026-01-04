@@ -3,33 +3,22 @@
     <!-- Copy button -->
     <Tooltip :text="copied ? 'Copied!' : 'Copy'">
       <button class="action-btn copy-btn" @click="handleCopy">
-        <svg v-if="!copied" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-        </svg>
-        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
+        <Check v-if="copied" :size="15" :stroke-width="2" />
+        <Copy v-else :size="15" :stroke-width="1.5" />
       </button>
     </Tooltip>
 
     <!-- Edit button for user messages -->
     <Tooltip v-if="role === 'user'" text="Edit">
       <button class="action-btn edit-btn" @click.stop="emit('edit')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-        </svg>
+        <Pencil :size="15" :stroke-width="1.5" />
       </button>
     </Tooltip>
 
     <!-- Regenerate button (for assistant messages) -->
     <Tooltip v-if="role === 'assistant'" text="Regenerate">
       <button class="action-btn regenerate-btn" @click="emit('regenerate')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M23 4v6h-6"/>
-          <path d="M1 20v-6h6"/>
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-        </svg>
+        <RefreshCw :size="15" :stroke-width="2" />
       </button>
     </Tooltip>
 
@@ -40,17 +29,8 @@
         :class="{ speaking: isCurrentlySpeaking }"
         @click="handleSpeak"
       >
-        <!-- Play icon (not speaking) -->
-        <svg v-if="!isCurrentlySpeaking" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-        </svg>
-        <!-- Stop icon (speaking) -->
-        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="6" y="4" width="4" height="16"/>
-          <rect x="14" y="4" width="4" height="16"/>
-        </svg>
+        <Pause v-if="isCurrentlySpeaking" :size="15" :stroke-width="2" />
+        <Volume2 v-else :size="15" :stroke-width="2" />
       </button>
     </Tooltip>
 
@@ -62,12 +42,7 @@
           :class="{ 'has-branches': hasBranches }"
           @click="hasBranches ? toggleBranchMenu() : emit('branch')"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="6" y1="3" x2="6" y2="15"/>
-            <circle cx="18" cy="6" r="3"/>
-            <circle cx="6" cy="18" r="3"/>
-            <path d="M18 9a9 9 0 0 1-9 9"/>
-          </svg>
+          <GitBranch :size="15" :stroke-width="2" />
           <span v-if="hasBranches" class="branch-count-badge">{{ branchCount }}</span>
         </button>
         <!-- Branch dropdown menu -->
@@ -80,16 +55,12 @@
               @click="handleGoToBranch(branch.id)"
             >
               <span class="branch-name">{{ branch.name || 'Untitled branch' }}</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 18l6-6-6-6"/>
-              </svg>
+              <ChevronRight :size="12" :stroke-width="2" />
             </button>
           </div>
           <div class="branch-menu-footer">
             <button class="branch-menu-new" @click="handleNewBranch">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
+              <Plus :size="12" :stroke-width="2" />
               <span>New branch</span>
             </button>
           </div>
@@ -100,50 +71,51 @@
     <!-- Regenerate button for user messages -->
     <Tooltip v-if="role === 'user'" text="Regenerate response">
       <button class="action-btn regenerate-btn" @click="emit('regenerate')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M23 4v6h-6"/>
-          <path d="M1 20v-6h6"/>
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-        </svg>
+        <RefreshCw :size="15" :stroke-width="2" />
       </button>
     </Tooltip>
 
-    <!-- More menu button (for assistant messages with usage info) -->
+    <!-- More menu button (for assistant messages) -->
     <div v-if="role === 'assistant'" class="more-btn-wrapper" ref="moreBtnRef">
-      <Tooltip text="More info">
+      <Tooltip text="More">
         <button class="action-btn more-btn" @click.stop="toggleMoreMenu">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="1"/>
-            <circle cx="19" cy="12" r="1"/>
-            <circle cx="5" cy="12" r="1"/>
-          </svg>
+          <MoreHorizontal :size="15" :stroke-width="2" />
         </button>
       </Tooltip>
       <!-- More menu dropdown -->
-      <div v-if="showMoreMenu" class="more-menu" :style="moreMenuStyle">
-        <div class="more-menu-section">
-          <div class="more-menu-title">Token Usage</div>
-          <div v-if="usage" class="token-usage-info">
-            <div class="token-row">
-              <span class="token-label">Input</span>
-              <span class="token-value">{{ formatNumber(usage.inputTokens) }}</span>
+      <Teleport to="body">
+        <div v-if="showMoreMenu" class="more-menu" :style="moreMenuStyle" @click.stop>
+          <!-- Action items -->
+          <div class="more-menu-actions">
+            <button class="more-menu-item" @click="handleViewTokenUsage">
+              <Hash :size="14" :stroke-width="2" />
+              <span>Token usage</span>
+              <span v-if="usage" class="more-menu-item-badge">{{ formatCompact(usage.totalTokens) }}</span>
+            </button>
+            <!-- Add more action items here in the future -->
+          </div>
+
+          <!-- Info section (shown when expanded) -->
+          <div v-if="showTokenDetails && usage" class="more-menu-details">
+            <div class="token-detail-row">
+              <span>Input</span>
+              <span>{{ formatNumber(usage.inputTokens) }}</span>
             </div>
-            <div class="token-row">
-              <span class="token-label">Output</span>
-              <span class="token-value">{{ formatNumber(usage.outputTokens) }}</span>
+            <div class="token-detail-row">
+              <span>Output</span>
+              <span>{{ formatNumber(usage.outputTokens) }}</span>
             </div>
-            <div class="token-row total">
-              <span class="token-label">Total</span>
-              <span class="token-value">{{ formatNumber(usage.totalTokens) }}</span>
+            <div v-if="outputSpeed" class="token-detail-row speed">
+              <span>Speed</span>
+              <span>{{ outputSpeed }} tok/s</span>
+            </div>
+            <div v-if="model" class="token-detail-row model">
+              <span>Model</span>
+              <span>{{ model }}</span>
             </div>
           </div>
-          <div v-else class="token-usage-empty">No usage data</div>
         </div>
-        <div v-if="model" class="more-menu-section">
-          <div class="more-menu-title">Model</div>
-          <div class="model-info">{{ model }}</div>
-        </div>
-      </div>
+      </Teleport>
     </div>
   </div>
 </template>
@@ -154,6 +126,19 @@ import Tooltip from '@/components/common/Tooltip.vue'
 import { useTTS } from '@/composables/useTTS'
 import type { AgentVoice } from '@/types'
 import { stripMarkdown } from '@/composables/useMarkdownRenderer'
+import {
+  Copy,
+  Check,
+  Pencil,
+  RefreshCw,
+  Volume2,
+  Pause,
+  GitBranch,
+  ChevronRight,
+  Plus,
+  MoreHorizontal,
+  Hash,
+} from 'lucide-vue-next'
 
 interface BranchInfo {
   id: string
@@ -164,6 +149,7 @@ interface TokenUsage {
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  durationMs?: number
 }
 
 interface Props {
@@ -185,6 +171,7 @@ const emit = defineEmits<{
   regenerate: []
   branch: []
   goToBranch: [sessionId: string]
+  menuOpen: [isOpen: boolean]
 }>()
 
 // TTS
@@ -249,6 +236,7 @@ const branchMenuStyle = computed(() => ({
 function toggleBranchMenu() {
   if (showBranchMenu.value) {
     showBranchMenu.value = false
+    emit('menuOpen', false)
     return
   }
 
@@ -275,31 +263,60 @@ function toggleBranchMenu() {
   }
 
   showBranchMenu.value = true
+  emit('menuOpen', true)
 }
 
 function handleGoToBranch(sessionId: string) {
   showBranchMenu.value = false
+  emit('menuOpen', false)
   emit('goToBranch', sessionId)
 }
 
 function handleNewBranch() {
   showBranchMenu.value = false
+  emit('menuOpen', false)
   emit('branch')
 }
 
 // More menu
 const showMoreMenu = ref(false)
+const showTokenDetails = ref(false)
 const moreBtnRef = ref<HTMLElement | null>(null)
 const moreMenuPosition = ref({ top: 0, left: 0 })
 
 const moreMenuStyle = computed(() => ({
+  position: 'fixed' as const,
   top: `${moreMenuPosition.value.top}px`,
-  left: `${moreMenuPosition.value.left}px`
+  left: `${moreMenuPosition.value.left}px`,
+  zIndex: 1000,
 }))
+
+// Note: We don't auto-close menus when visible changes because
+// the menu is teleported to body and user needs to move mouse to it.
+// Menus are closed by click outside handler instead.
+
+function handleViewTokenUsage() {
+  showTokenDetails.value = !showTokenDetails.value
+}
+
+function formatCompact(num: number): string {
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`
+  return num.toString()
+}
+
+// Calculate output speed in tokens/second
+const outputSpeed = computed(() => {
+  if (!props.usage?.durationMs || props.usage.durationMs <= 0) return null
+  const seconds = props.usage.durationMs / 1000
+  return (props.usage.outputTokens / seconds).toFixed(1)
+})
 
 function toggleMoreMenu() {
   if (showMoreMenu.value) {
     showMoreMenu.value = false
+    showTokenDetails.value = false
+    emit('menuOpen', false)
     return
   }
 
@@ -326,6 +343,7 @@ function toggleMoreMenu() {
   }
 
   showMoreMenu.value = true
+  emit('menuOpen', true)
 }
 
 function formatNumber(num: number): string {
@@ -336,10 +354,18 @@ function formatNumber(num: number): string {
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement
   if (!target.closest('.branch-btn-wrapper')) {
-    showBranchMenu.value = false
+    if (showBranchMenu.value) {
+      showBranchMenu.value = false
+      emit('menuOpen', false)
+    }
   }
-  if (!target.closest('.more-btn-wrapper')) {
-    showMoreMenu.value = false
+  // For more menu, check both the button wrapper and the teleported menu itself
+  if (!target.closest('.more-btn-wrapper') && !target.closest('.more-menu')) {
+    if (showMoreMenu.value) {
+      showMoreMenu.value = false
+      showTokenDetails.value = false
+      emit('menuOpen', false)
+    }
   }
 }
 
@@ -394,8 +420,8 @@ onUnmounted(() => {
   height: 15px;
 }
 
-/* Copy button success state */
-.copy-btn:has(svg polyline) {
+/* Copy button success state - when showing check icon */
+.copy-btn:has(.lucide-check) {
   color: var(--accent);
 }
 
@@ -522,74 +548,91 @@ onUnmounted(() => {
 .more-btn-wrapper {
   position: relative;
 }
+</style>
 
+<!-- Global styles for Teleported menu -->
+<style>
 .more-menu {
-  position: fixed;
-  z-index: 1000;
-  min-width: 160px;
+  min-width: 180px;
   background: var(--bg-floating);
   backdrop-filter: blur(20px);
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: var(--shadow-floating);
   overflow: hidden;
-  animation: menuSlideIn 0.15s ease-out;
+  animation: moreMenuSlideIn 0.15s ease-out;
 }
 
-.more-menu-section {
-  padding: 12px;
+@keyframes moreMenuSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.more-menu-section + .more-menu-section {
-  border-top: 1px solid var(--border);
+.more-menu-actions {
+  padding: 4px;
 }
 
-.more-menu-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 8px;
-}
-
-.token-usage-info {
+.more-menu-item {
+  width: 100%;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
 }
 
-.token-row {
+.more-menu-item:hover {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.more-menu-item-badge {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.more-menu-details {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.token-detail-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
+  padding: 3px 0;
 }
 
-.token-label {
+.token-detail-row span:first-child {
   color: var(--muted);
 }
 
-.token-value {
+.token-detail-row span:last-child {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
-.token-row.total {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid var(--border);
-  font-weight: 500;
-}
-
-.token-usage-empty {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.model-info {
-  font-size: 12px;
-  color: var(--text);
-  word-break: break-all;
+.token-detail-row.model span:last-child {
+  font-size: 11px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -52,6 +52,7 @@ import {
   buildMessageContent,
   buildHistoryMessages,
   buildSystemPrompt,
+  filterHistoryForNonToolAPI,
 } from './chat/message-helpers.js'
 import {
   extractErrorDetails,
@@ -69,7 +70,7 @@ import {
   executeToolAndUpdate,
 } from './chat/tool-execution.js'
 import {
-  runToolLoop,
+  runStream,
   executeStreamGeneration,
 } from './chat/tool-loop.js'
 
@@ -225,7 +226,7 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
         model: providerConfig?.model || '',
         apiType,
       },
-      historyMessages,
+      filterHistoryForNonToolAPI(historyMessages),
       { temperature: settings.ai.temperature }
     )
 
@@ -428,7 +429,7 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
         model: providerConfig?.model || '',
         apiType,
       },
-      historyMessages,
+      filterHistoryForNonToolAPI(historyMessages),
       { temperature: settings.ai.temperature }
     )
 
@@ -832,9 +833,10 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
 
     // Add system prompt
     // Use async version to include tools with dynamic descriptions
-    const allEnabledTools = settings.tools?.enableToolCalls ? await getEnabledToolsAsync() : []
+    // Pass toolSettings.tools to filter based on user's per-tool enabled settings
+    const allEnabledTools = settings.tools?.enableToolCalls ? await getEnabledToolsAsync(settings.tools.tools) : []
     const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
-    const mcpTools = settings.tools?.enableToolCalls ? getMCPToolsForAI() : {}
+    const mcpTools = settings.tools?.enableToolCalls ? getMCPToolsForAI(settings.tools.tools) : {}
 
     // Check if the current model supports tools using Models.dev tool_call field
     const supportsTools = await modelRegistry.modelSupportsTools(providerConfig?.model || '', providerId)
@@ -911,17 +913,26 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       agentMemoryPrompt,
       providerId,
       workingDirectory: session.workingDirectory,
+      builtinMode: session.builtinMode,
+      sessionPlan: session.plan,
     })
 
     conversationMessages.push({ role: 'system', content: systemPrompt })
 
     // Add history messages (excluding current assistant message)
     for (const msg of historyWithoutCurrent) {
-      conversationMessages.push({
-        role: msg.role,
-        content: msg.content,
-        ...(msg.reasoningContent && { reasoningContent: msg.reasoningContent }),
-      })
+      if (msg.role === 'user') {
+        conversationMessages.push({ role: 'user', content: msg.content })
+      } else if (msg.role === 'assistant') {
+        conversationMessages.push({
+          role: 'assistant',
+          content: msg.content,
+          ...(msg.toolCalls && { toolCalls: msg.toolCalls }),
+          ...(msg.reasoningContent && { reasoningContent: msg.reasoningContent }),
+        })
+      } else if (msg.role === 'tool') {
+        conversationMessages.push({ role: 'tool', content: msg.content })
+      }
     }
 
     // Add the assistant message with tool calls
@@ -993,8 +1004,8 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
         const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
         const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
 
-        // Continue the tool loop
-        const result = await runToolLoop(ctx, conversationMessages, toolsForAI, processor, enabledSkills)
+        // Continue the stream (resume after tool confirmation)
+        const result = await runStream(ctx, conversationMessages, toolsForAI, processor, enabledSkills)
 
         // Log request end
         const requestEndTime = Date.now()

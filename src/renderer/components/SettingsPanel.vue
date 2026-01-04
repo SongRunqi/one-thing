@@ -360,7 +360,7 @@ const providers = computed<ProviderInfo[]>(() => {
     { id: 'claude', name: 'Claude', icon: 'claude', description: 'Claude 3.5, Claude 3 and other Anthropic models', defaultBaseUrl: 'https://api.anthropic.com/v1', defaultModel: 'claude-3-5-sonnet-20241022', supportsCustomBaseUrl: true, requiresApiKey: true },
     { id: 'deepseek', name: 'DeepSeek', icon: 'deepseek', description: 'DeepSeek-V3, DeepSeek-R1 and other DeepSeek models', defaultBaseUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat', supportsCustomBaseUrl: true, requiresApiKey: true },
     { id: 'kimi', name: 'Kimi', icon: 'kimi', description: 'Moonshot AI Kimi models with long context support', defaultBaseUrl: 'https://api.moonshot.cn/v1', defaultModel: 'moonshot-v1-8k', supportsCustomBaseUrl: true, requiresApiKey: true },
-    { id: 'zhipu', name: '智谱 GLM', icon: 'zhipu', description: 'GLM-4, GLM-3 and other Zhipu AI models', defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-4-flash', supportsCustomBaseUrl: true, requiresApiKey: true },
+    { id: 'zhipu', name: 'Zhipu GLM', icon: 'zhipu', description: 'GLM-4, GLM-3 and other Zhipu AI models', defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-4-flash', supportsCustomBaseUrl: true, requiresApiKey: true },
     { id: 'custom', name: 'Custom', icon: 'custom', description: 'OpenAI-compatible API endpoint', defaultBaseUrl: '', defaultModel: '', supportsCustomBaseUrl: true, requiresApiKey: true },
   ]
 })

@@ -42,10 +42,12 @@
      Accent Color (Customizable)
      Main: 300 shade - for primary accents
      Sub: 100 shade - for highlights, selections
+     Light: Lighter variant for hover states
      ============================================ */
   --accent: var(--fx-blue-300);
   --accent-main: var(--fx-blue-300);
   --accent-sub: var(--fx-blue-100);
+  --accent-light: var(--fx-blue-100);  /* Used by buttons and gradients */
   --accent-rgb: 67, 133, 190;
 
   /* ============================================
@@ -259,6 +261,21 @@
   --overlay-active: rgba(255, 255, 255, 0.08);
   --overlay-disabled: rgba(0, 0, 0, 0.5);
   --blur-backdrop: 24px;
+
+  /* ============================================
+     Diff Colors (for code diff views)
+     ============================================ */
+  --diff-add-bg: rgba(135, 154, 57, 0.15);
+  --diff-add-text: var(--text-success);
+  --diff-del-bg: rgba(209, 77, 65, 0.15);
+  --diff-del-text: var(--text-error);
+  --diff-hunk-bg: rgba(135, 135, 135, 0.08);
+  --diff-hunk-text: var(--text-muted);
+
+  /* RGB triplets for transparency patterns */
+  --color-success-rgb: 135, 154, 57;
+  --color-danger-rgb: 209, 77, 65;
+  --color-warning-rgb: 218, 112, 44;
 
   /* ============================================
      Legacy Compatibility Variables
@@ -475,6 +492,21 @@
   --overlay-hover: rgba(0, 0, 0, 0.04);
   --overlay-active: rgba(0, 0, 0, 0.06);
   --overlay-disabled: rgba(255, 255, 255, 0.5);
+
+  /* ============================================
+     Diff Colors (for code diff views)
+     ============================================ */
+  --diff-add-bg: rgba(102, 128, 11, 0.12);
+  --diff-add-text: var(--text-success);
+  --diff-del-bg: rgba(175, 48, 41, 0.12);
+  --diff-del-text: var(--text-error);
+  --diff-hunk-bg: rgba(0, 0, 0, 0.04);
+  --diff-hunk-text: var(--text-muted);
+
+  /* RGB triplets for transparency patterns */
+  --color-success-rgb: 102, 128, 11;
+  --color-danger-rgb: 175, 48, 41;
+  --color-warning-rgb: 188, 82, 21;
 
   /* ============================================
      Legacy Compatibility Variables - Light

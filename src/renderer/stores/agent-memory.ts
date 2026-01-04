@@ -27,7 +27,7 @@ export const useAgentMemoryStore = defineStore('agentMemory', () => {
 
   const moodNotes = computed(() => currentRelationship.value?.agentFeelings.notes)
 
-  // 格式化记忆为可读文本（用于 system prompt 注入）
+  // Format memories as readable text (for system prompt injection)
   const formattedMemories = computed(() => {
     if (!currentRelationship.value || memories.value.length === 0) {
       return null
@@ -37,21 +37,21 @@ export const useAgentMemoryStore = defineStore('agentMemory', () => {
     const rel = currentRelationship.value.relationship
 
     // Relationship context
-    sections.push(`## 与用户的关系
-- 信任度: ${rel.trustLevel}/100
-- 熟悉度: ${rel.familiarity}/100
-- 总互动次数: ${rel.totalInteractions}`)
+    sections.push(`## Relationship with User
+- Trust Level: ${rel.trustLevel}/100
+- Familiarity: ${rel.familiarity}/100
+- Total Interactions: ${rel.totalInteractions}`)
 
     // Current mood
     const moodMap: Record<AgentMood, string> = {
-      happy: '开心',
-      neutral: '平静',
-      concerned: '担忧',
-      excited: '兴奋',
+      happy: 'Happy',
+      neutral: 'Calm',
+      concerned: 'Concerned',
+      excited: 'Excited',
     }
     const mood = currentRelationship.value.agentFeelings
-    sections.push(`## 当前状态
-- 心情: ${moodMap[mood.currentMood]}${mood.notes ? `\n- 备注: ${mood.notes}` : ''}`)
+    sections.push(`## Current State
+- Mood: ${moodMap[mood.currentMood]}${mood.notes ? `\n- Notes: ${mood.notes}` : ''}`)
 
     // Active memories (top 5)
     const topMemories = activeMemories.value.slice(0, 5)
@@ -65,7 +65,7 @@ export const useAgentMemoryStore = defineStore('agentMemory', () => {
         }[m.vividness]
         return `- ${vividnessEmoji} ${m.content}`
       })
-      sections.push(`## 关于用户的记忆\n${memoryLines.join('\n')}`)
+      sections.push(`## Memories About User\n${memoryLines.join('\n')}`)
     }
 
     return sections.join('\n\n')

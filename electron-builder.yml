@@ -9,6 +9,17 @@ files:
   - package.json
   - node_modules
 
+# Extra resources to include (copied to resources/ in the app bundle)
+extraResources:
+  - from: resources/skills
+    to: skills
+    filter:
+      - "**/*"
+  - from: resources/prompts
+    to: prompts
+    filter:
+      - "**/*"
+
 win:
   target:
     - nsis

@@ -157,13 +157,15 @@ export function registerToolHandlers() {
         const step = message.steps.find(s => s.toolCallId === toolCallId)
         if (step) {
           // Map toolCall status to step status
-          let stepStatus: 'pending' | 'running' | 'completed' | 'failed' | 'awaiting-confirmation' = step.status
+          let stepStatus: 'pending' | 'running' | 'completed' | 'failed' | 'awaiting-confirmation' | 'cancelled' = step.status
           if (updates.status === 'executing') {
             stepStatus = 'running'
           } else if (updates.status === 'completed') {
             stepStatus = 'completed'
-          } else if (updates.status === 'failed' || updates.status === 'cancelled') {
+          } else if (updates.status === 'failed') {
             stepStatus = 'failed'
+          } else if (updates.status === 'cancelled') {
+            stepStatus = 'cancelled'
           } else if (updates.status === 'pending' && updates.requiresConfirmation) {
             stepStatus = 'awaiting-confirmation'
           }

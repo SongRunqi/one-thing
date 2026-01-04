@@ -21,21 +21,21 @@
       <Transition name="fade">
         <div v-if="showTooltip" class="context-tooltip" :style="tooltipStyle">
           <div class="tooltip-row">
-            <span>Input:</span>
-            <span class="tooltip-value">{{ formatTokens(inputTokens) }}</span>
-          </div>
-          <div class="tooltip-row">
-            <span>Output:</span>
-            <span class="tooltip-value">{{ formatTokens(outputTokens) }}</span>
+            <span>Context:</span>
+            <span class="tooltip-value">{{ formatTokens(currentContextSize) }} / {{ formatTokens(contextLength) }}</span>
           </div>
           <div class="tooltip-divider"></div>
           <div class="tooltip-row">
-            <span>Used:</span>
-            <span class="tooltip-value">{{ formatTokens(usedTokens) }}</span>
+            <span>Total:</span>
+            <span class="tooltip-value">{{ formatTokens(totalTokens) }}</span>
           </div>
-          <div class="tooltip-row">
-            <span>Context:</span>
-            <span class="tooltip-value">{{ formatTokens(contextLength) }}</span>
+          <div class="tooltip-row sub">
+            <span>Input:</span>
+            <span class="tooltip-value">{{ formatTokens(totalInputTokens) }}</span>
+          </div>
+          <div class="tooltip-row sub">
+            <span>Output:</span>
+            <span class="tooltip-value">{{ formatTokens(totalOutputTokens) }}</span>
           </div>
         </div>
       </Transition>
@@ -163,14 +163,19 @@ const sessionUsage = computed(() => {
   if (!props.sessionId) return null
   return chatStore.getSessionUsage(props.sessionId)
 })
-const inputTokens = computed(() => sessionUsage.value?.totalInputTokens ?? 0)
-const outputTokens = computed(() => sessionUsage.value?.totalOutputTokens ?? 0)
-const usedTokens = computed(() => sessionUsage.value?.totalTokens ?? 0)
+// Current context size = input tokens from last request (context window limit applies to input)
+const currentContextSize = computed(() => sessionUsage.value?.contextSize ?? 0)
 const isStreaming = computed(() => props.sessionId ? chatStore.isSessionGenerating(props.sessionId) : false)
 
+// Accumulated token usage for this session
+const totalInputTokens = computed(() => sessionUsage.value?.totalInputTokens ?? 0)
+const totalOutputTokens = computed(() => sessionUsage.value?.totalOutputTokens ?? 0)
+const totalTokens = computed(() => sessionUsage.value?.totalTokens ?? 0)
+
+// Percentage based on current context size, not cumulative tokens
 const percentage = computed(() => {
   if (contextLength.value === 0) return 0
-  return Math.min(Math.round((usedTokens.value / contextLength.value) * 100), 100)
+  return Math.min(Math.round((currentContextSize.value / contextLength.value) * 100), 100)
 })
 
 const statusClass = computed(() => {
@@ -259,10 +264,6 @@ onUnmounted(() => {
   background: var(--hover);
 }
 
-html[data-theme='light'] .context-indicator:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
 .context-icon {
   color: var(--accent);
   transition: color 0.2s ease;
@@ -288,12 +289,12 @@ html[data-theme='light'] .context-indicator:hover {
 /* Status colors */
 .context-indicator.warning .context-icon,
 .context-indicator.warning .context-percent {
-  color: #f59e0b;
+  color: var(--text-warning);
 }
 
 .context-indicator.danger .context-icon,
 .context-indicator.danger .context-percent {
-  color: #ef4444;
+  color: var(--text-error);
 }
 
 
@@ -322,15 +323,6 @@ html[data-theme='light'] .context-indicator:hover {
   pointer-events: none;
 }
 
-html[data-theme='dark'] .context-tooltip {
-  background: #2a2a2e;
-}
-
-html[data-theme='light'] .context-tooltip {
-  background: #ffffff;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-}
-
 .context-tooltip .tooltip-row {
   display: flex;
   justify-content: space-between;
@@ -349,6 +341,12 @@ html[data-theme='light'] .context-tooltip {
   height: 1px;
   background: var(--border);
   margin: 6px 0;
+}
+
+.context-tooltip .tooltip-row.sub {
+  font-size: 11px;
+  opacity: 0.7;
+  padding-left: 8px;
 }
 
 /* Tooltip fade transitions */

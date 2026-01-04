@@ -13,12 +13,17 @@ import type { ChatMessage, MessageAttachment } from '@/types'
 // Stream chunk type from IPC
 interface StreamChunk {
   type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace'
+    | 'tool_input_start' | 'tool_input_delta'
   content: string
   messageId: string
   sessionId?: string
   reasoning?: string
   toolCall?: any
   replace?: boolean
+  // For streaming tool input (AI SDK v6)
+  toolCallId?: string
+  toolName?: string
+  argsTextDelta?: string
 }
 
 // Stream complete data from IPC
@@ -32,6 +37,11 @@ interface StreamCompleteData {
     inputTokens: number
     outputTokens: number
     totalTokens: number
+  }
+  // Last turn's usage for correct context size calculation (not accumulated)
+  lastTurnUsage?: {
+    inputTokens: number
+    outputTokens: number
   }
 }
 
@@ -87,6 +97,8 @@ export const useChatStore = defineStore('chat', () => {
     totalInputTokens: number
     totalOutputTokens: number
     totalTokens: number
+    lastInputTokens: number
+    contextSize: number  // Current context window size (input + output)
   }>>(new Map())
 
   // Active streams (sessionId -> messageId)
@@ -176,6 +188,17 @@ export const useChatStore = defineStore('chat', () => {
    * Handle stream chunk event
    */
   function handleStreamChunk(chunk: StreamChunk) {
+    // 诊断日志：显示所有 tool_input 相关的 chunk
+    if (chunk.type === 'tool_input_start' || chunk.type === 'tool_input_delta') {
+      console.log('[Chat Store] handleStreamChunk entry:', {
+        type: chunk.type,
+        sessionId: chunk.sessionId,
+        messageId: chunk.messageId,
+        toolCallId: chunk.toolCallId,
+        hasArgsTextDelta: !!(chunk as any).argsTextDelta
+      })
+    }
+
     const sessionId = chunk.sessionId
     if (!sessionId) {
       console.warn('[Chat Store] Stream chunk missing sessionId')
@@ -267,7 +290,109 @@ export const useChatStore = defineStore('chat', () => {
       // Replace entire message content
       message.content = chunk.content
       message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
+    } else if (chunk.type === 'tool_input_start') {
+      // Streaming tool input start - create a placeholder ToolCall with input-streaming status
+      console.log('[Chat Store] tool_input_start:', chunk.toolCallId, chunk.toolName, 'message:', message.id)
+      if (chunk.toolCallId && chunk.toolName) {
+        if (!message.toolCalls) {
+          message.toolCalls = []
+        }
+        // Check if we already have this tool call (shouldn't happen, but be safe)
+        const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
+        if (existingIndex === -1) {
+          // Create a new streaming tool call placeholder
+          message.toolCalls.push({
+            id: chunk.toolCallId,
+            toolId: chunk.toolName,
+            toolName: chunk.toolName,
+            arguments: {},
+            status: 'input-streaming',
+            timestamp: Date.now(),
+            streamingArgs: '',
+          })
+        }
+
+        // Update contentParts
+        const parts = message.contentParts!
+        let lastPart = parts[parts.length - 1]
+
+        if (lastPart && lastPart.type === 'waiting') {
+          parts.pop()
+          lastPart = parts[parts.length - 1]
+        }
+
+        if (lastPart && lastPart.type === 'tool-call') {
+          // Add to existing tool-call part if not already there
+          const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
+          if (existingTcIndex === -1) {
+            // Create new toolCalls array and new part object to trigger Vue reactivity
+            const newToolCall = message.toolCalls[message.toolCalls.length - 1]
+            const updatedPart = {
+              ...lastPart,
+              toolCalls: [...lastPart.toolCalls, newToolCall]
+            }
+            parts[parts.length - 1] = updatedPart
+          }
+        } else {
+          parts.push({ type: 'tool-call', toolCalls: [message.toolCalls[message.toolCalls.length - 1]] })
+        }
+        message.contentParts = [...parts]
+      }
+    } else if (chunk.type === 'tool_input_delta') {
+      // Streaming tool input delta - accumulate args text
+      if (chunk.toolCallId && chunk.argsTextDelta && message.toolCalls) {
+        const toolCallIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
+        if (toolCallIndex >= 0) {
+          const toolCall = message.toolCalls[toolCallIndex]
+          if (toolCall.status === 'input-streaming') {
+            // Create new object to trigger Vue reactivity
+            const updatedToolCall = {
+              ...toolCall,
+              streamingArgs: (toolCall.streamingArgs || '') + chunk.argsTextDelta
+            }
+            message.toolCalls[toolCallIndex] = updatedToolCall
+
+            // Create new contentParts array to trigger deep reactivity
+            if (message.contentParts) {
+              message.contentParts = message.contentParts.map(part => {
+                if (part.type === 'tool-call' && part.toolCalls?.some(tc => tc.id === chunk.toolCallId)) {
+                  return {
+                    ...part,
+                    toolCalls: part.toolCalls.map(tc =>
+                      tc.id === chunk.toolCallId ? updatedToolCall : tc
+                    )
+                  }
+                }
+                return part
+              })
+            }
+
+            // Also update steps so StepsPanel can show streaming content
+            if (message.steps) {
+              message.steps = message.steps.map(step => {
+                if (step.toolCallId === chunk.toolCallId && step.toolCall) {
+                  return {
+                    ...step,
+                    toolCall: {
+                      ...step.toolCall,
+                      status: 'input-streaming',
+                      streamingArgs: updatedToolCall.streamingArgs
+                    }
+                  }
+                }
+                return step
+              })
+            }
+          }
+        }
+      }
     }
+
+    // Create new message object reference to trigger Vue reactivity
+    // This is necessary because Vue's computed may not detect changes
+    // to nested properties if the parent object reference stays the same
+    // Note: messageIndex is already declared at the beginning of this function
+    messages[messageIndex] = { ...message }
 
     // Trigger reactivity
     setSessionMessages(sessionId, [...messages])
@@ -291,11 +416,18 @@ export const useChatStore = defineStore('chat', () => {
         totalInputTokens: 0,
         totalOutputTokens: 0,
         totalTokens: 0,
+        lastInputTokens: 0,
+        contextSize: 0,
       }
+      // Use lastTurnUsage for context size (not accumulated)
+      const lastTurn = data.lastTurnUsage || data.usage
       sessionUsageMap.value.set(sessionId, {
         totalInputTokens: currentUsage.totalInputTokens + data.usage.inputTokens,
         totalOutputTokens: currentUsage.totalOutputTokens + data.usage.outputTokens,
         totalTokens: currentUsage.totalTokens + data.usage.totalTokens,
+        lastInputTokens: lastTurn.inputTokens,
+        // Context size = input tokens only (context window limit applies to input)
+        contextSize: lastTurn.inputTokens,
       })
       triggerRef(sessionUsageMap)
       console.log('[Chat Store] Updated usage for', sessionId, ':', sessionUsageMap.value.get(sessionId))
@@ -413,7 +545,16 @@ export const useChatStore = defineStore('chat', () => {
 
     // Initialize steps array if needed
     if (!message.steps) message.steps = []
-    message.steps.push(step)
+
+    // Check if step already exists (avoid duplicates from streaming)
+    const existingIndex = message.steps.findIndex(s => s.id === step.id || s.toolCallId === step.toolCallId)
+    if (existingIndex >= 0) {
+      // Update existing step
+      message.steps[existingIndex] = { ...message.steps[existingIndex], ...step }
+    } else {
+      // Add new step
+      message.steps.push(step)
+    }
     message.steps = [...message.steps]
 
     // Add steps placeholder to contentParts if needed
@@ -497,11 +638,26 @@ export const useChatStore = defineStore('chat', () => {
           totalInputTokens: response.usage.totalInputTokens,
           totalOutputTokens: response.usage.totalOutputTokens,
           totalTokens: response.usage.totalTokens,
+          lastInputTokens: response.usage.lastInputTokens || 0,
+          contextSize: response.usage.contextSize || 0,
         })
         triggerRef(sessionUsageMap)
       }
     } catch (error) {
       console.error('[Chat Store] Failed to load session usage:', error)
+    }
+  }
+
+  /**
+   * Handle context size update from backend (real-time during tool loops)
+   */
+  function handleContextSizeUpdated(data: { sessionId: string; contextSize: number }) {
+    const { sessionId, contextSize } = data
+    const currentUsage = sessionUsageMap.value.get(sessionId)
+    if (currentUsage) {
+      currentUsage.contextSize = contextSize
+      sessionUsageMap.value.set(sessionId, { ...currentUsage })
+      triggerRef(sessionUsageMap)
     }
   }
 
@@ -824,6 +980,7 @@ export const useChatStore = defineStore('chat', () => {
     handleStepAdded,
     handleStepUpdated,
     handleSkillActivated,
+    handleContextSizeUpdated,
 
     // Actions
     loadMessages,

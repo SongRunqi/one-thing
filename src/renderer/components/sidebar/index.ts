@@ -1,7 +1,7 @@
 /**
  * Sidebar Components
  *
- * 侧边栏组件集合，包含会话列表和管理功能
+ * Sidebar component collection, including session list and management features
  */
 
 export { default as Sidebar } from './Sidebar.vue'

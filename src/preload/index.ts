@@ -12,7 +12,17 @@ const electronAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE_STREAM, { sessionId, message, attachments }),
 
   // Stream event listeners
-  onStreamChunk: (callback: (chunk: { type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace'; content: string; messageId: string; sessionId?: string; reasoning?: string; toolCall?: any }) => void) => {
+  onStreamChunk: (callback: (chunk: {
+    type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace' | 'tool_input_start' | 'tool_input_delta';
+    content: string;
+    messageId: string;
+    sessionId?: string;
+    reasoning?: string;
+    toolCall?: any;
+    toolCallId?: string;
+    toolName?: string;
+    argsTextDelta?: string;
+  }) => void) => {
     const listener = (_event: any, chunk: any) => callback(chunk)
     ipcRenderer.on(IPC_CHANNELS.STREAM_CHUNK, listener)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_CHUNK, listener)
@@ -134,8 +144,28 @@ const electronAPI = {
   getSessionTokenUsage: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, sessionId),
 
+  onContextSizeUpdated: (callback: (data: { sessionId: string; contextSize: number }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.CONTEXT_SIZE_UPDATED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.CONTEXT_SIZE_UPDATED, listener)
+  },
+
   updateSessionMaxTokens: (sessionId: string, maxTokens: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_MAX_TOKENS, sessionId, maxTokens),
+
+  // Builtin mode (Ask/Build) methods
+  setSessionBuiltinMode: (sessionId: string, mode: 'build' | 'ask') =>
+    ipcRenderer.invoke(IPC_CHANNELS.SET_SESSION_BUILTIN_MODE, { sessionId, mode }),
+
+  getSessionBuiltinMode: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_BUILTIN_MODE, { sessionId }),
+
+  // Plan update listener (for Planning workflow)
+  onPlanUpdated: (callback: (data: { sessionId: string; plan: any }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.PLAN_UPDATED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.PLAN_UPDATED, listener)
+  },
 
   // Settings methods
   getSettings: () =>
@@ -161,6 +191,22 @@ const electronAPI = {
     ipcRenderer.on(IPC_CHANNELS.SYSTEM_THEME_CHANGED, listener)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.SYSTEM_THEME_CHANGED, listener)
   },
+
+  // Theme methods
+  getThemes: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.THEME_GET_ALL),
+
+  getTheme: (themeId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.THEME_GET, themeId),
+
+  applyTheme: (themeId: string, mode: 'dark' | 'light') =>
+    ipcRenderer.invoke(IPC_CHANNELS.THEME_APPLY, themeId, mode),
+
+  refreshThemes: (projectPath?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.THEME_REFRESH, projectPath),
+
+  openThemesFolder: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.THEME_OPEN_FOLDER),
 
   // Models methods (legacy)
   fetchModels: (provider: AIProvider, apiKey: string, baseUrl?: string, forceRefresh?: boolean) =>

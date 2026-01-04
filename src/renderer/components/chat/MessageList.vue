@@ -1,6 +1,10 @@
 <template>
   <div class="message-list-wrapper">
-    <div :class="['message-list', `density-${messageListDensity}`]" ref="messageListRef">
+    <div
+      :class="['message-list', `density-${messageListDensity}`]"
+      :style="customLineHeight ? { '--message-line-height': customLineHeight } : undefined"
+      ref="messageListRef"
+    >
     <EmptyState
       v-if="messages.length === 0 && !isLoading"
       @suggestion="handleSuggestion"
@@ -59,7 +63,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw } from 'vue'
-import type { ChatMessage, AgentVoice } from '@/types'
+import type { ChatMessage, AgentVoice, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
 import Tooltip from '../common/Tooltip.vue'
@@ -67,6 +71,7 @@ import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useAgentsStore } from '@/stores/agents'
 import { useSettingsStore } from '@/stores/settings'
+import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
 
 interface BranchInfo {
   id: string
@@ -117,6 +122,11 @@ const currentAgentVoiceConfig = computed<AgentVoice | undefined>(() => {
 // Get current message list density setting
 const messageListDensity = computed(() => {
   return settingsStore.settings.general?.messageListDensity || 'comfortable'
+})
+
+// Get custom line height setting (overrides density default if set)
+const customLineHeight = computed(() => {
+  return settingsStore.settings.general?.messageLineHeight
 })
 
 // Track current navigation position among user messages
@@ -463,6 +473,43 @@ function handleScroll() {
 // Track permission request cleanup function
 let cleanupPermissionListener: (() => void) | null = null
 
+// Get the first pending permission request (tool call requiring confirmation)
+const currentPendingPermission = computed<{ message: ChatMessage; toolCall: ToolCall } | null>(() => {
+  for (const message of props.messages) {
+    const pendingToolCall = message.toolCalls?.find(tc => tc.requiresConfirmation)
+    if (pendingToolCall) {
+      return { message, toolCall: pendingToolCall }
+    }
+  }
+  return null
+})
+
+// Setup keyboard shortcuts for permission confirmation
+// Enter = once, A = always, D/Escape = reject
+usePermissionShortcuts(
+  () => !!currentPendingPermission.value,
+  {
+    onAllowOnce: () => {
+      const pending = currentPendingPermission.value
+      if (pending) {
+        handleConfirmTool(pending.toolCall, 'once')
+      }
+    },
+    onAllowAlways: () => {
+      const pending = currentPendingPermission.value
+      if (pending) {
+        handleConfirmTool(pending.toolCall, 'always')
+      }
+    },
+    onReject: () => {
+      const pending = currentPendingPermission.value
+      if (pending) {
+        handleRejectTool(pending.toolCall)
+      }
+    },
+  }
+)
+
 // Handle incoming permission requests from backend
 function handlePermissionRequest(info: {
   id: string
@@ -513,6 +560,11 @@ function handlePermissionRequest(info: {
     const step = message.steps?.find(s => s.toolCallId === toolCall!.id)
     if (step) {
       step.status = 'awaiting-confirmation'
+      // Store metadata from permission request (contains diff for edit tool)
+      // This ensures diff is available even if STEP_UPDATED hasn't propagated yet
+      if (info.metadata && (info.metadata.diff || info.metadata.filePath)) {
+        step.result = JSON.stringify(info.metadata)
+      }
       if (step.toolCall) {
         (step.toolCall as any).permissionId = info.id
         step.toolCall.requiresConfirmation = true
@@ -564,6 +616,25 @@ onUnmounted(() => {
     cleanupPermissionListener = null
   }
 })
+
+// When session changes, reload any pending permission requests
+// This fixes the issue where permission requests are "lost" after switching sessions
+watch(effectiveSessionId, async (newSessionId) => {
+  if (!newSessionId) return
+
+  try {
+    const response = await window.electronAPI.getPendingPermissions(newSessionId)
+    if (response.success && response.pending && response.pending.length > 0) {
+      console.log('[Frontend] Loading pending permissions for session:', newSessionId, response.pending.length)
+      // Apply each pending permission to the UI
+      for (const info of response.pending) {
+        handlePermissionRequest(info)
+      }
+    }
+  } catch (error) {
+    console.error('[Frontend] Failed to load pending permissions:', error)
+  }
+}, { immediate: true })
 
 // Auto-scroll to bottom when messages change or loading state changes
 // Only scroll if user hasn't scrolled away manually
@@ -900,7 +971,7 @@ async function handleRejectTool(toolCall: any) {
     const step = message.steps?.find(s => s.toolCallId === toolCall.id)
     if (step) {
       step.status = 'failed'
-      step.error = '用户取消了命令执行'
+      step.error = 'Command execution cancelled by user'
       if (step.toolCall) {
         step.toolCall.status = 'cancelled'
         step.toolCall.error = 'Command rejected by user'

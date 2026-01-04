@@ -4,7 +4,7 @@
  */
 
 // Skill source location
-export type SkillSource = 'user' | 'project' | 'plugin'
+export type SkillSource = 'user' | 'project' | 'plugin' | 'builtin'
 
 // Skill definition based on official Claude Code Skills
 export interface SkillDefinition {

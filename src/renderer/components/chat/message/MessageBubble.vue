@@ -63,20 +63,34 @@
             :class="['content', { typing: isTyping && index === contentParts.length - 1 }]"
             v-html="renderContentMarkdown(part.content)"
           ></div>
-          <!-- Tool call part - only show if no steps -->
-          <template v-else-if="part.type === 'tool-call' && !hasSteps">
-            <ToolCallGroup
-              :toolCalls="part.toolCalls"
-              @execute="(tc) => emit('executeTool', tc)"
-            />
-            <ToolCallItem
-              v-for="tc in part.toolCalls"
-              :key="tc.id"
-              :toolCall="tc"
-              @execute="(tc) => emit('executeTool', tc)"
-              @confirm="(tc, r) => emit('confirmTool', tc, r)"
-              @reject="(tc) => emit('rejectTool', tc)"
-            />
+          <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
+          <template v-else-if="part.type === 'tool-call' && (!hasSteps || hasInputStreamingToolCalls(part.toolCalls))">
+            <template v-if="!hasSteps">
+              <!-- No steps at all, show all tool calls -->
+              <ToolCallGroup
+                :toolCalls="part.toolCalls"
+                @execute="(tc) => emit('executeTool', tc)"
+              />
+              <ToolCallItem
+                v-for="tc in part.toolCalls"
+                :key="`${tc.id}-${tc.streamingArgs?.length || 0}`"
+                :toolCall="tc"
+                @execute="(tc) => emit('executeTool', tc)"
+                @confirm="(tc, r) => emit('confirmTool', tc, r)"
+                @reject="(tc) => emit('rejectTool', tc)"
+              />
+            </template>
+            <template v-else>
+              <!-- Has steps, only show streaming tool calls without corresponding step -->
+              <ToolCallItem
+                v-for="tc in getToolCallsWithoutSteps(part.toolCalls)"
+                :key="`${tc.id}-${tc.streamingArgs?.length || 0}`"
+                :toolCall="tc"
+                @execute="(tc) => emit('executeTool', tc)"
+                @confirm="(tc, r) => emit('confirmTool', tc, r)"
+                @reject="(tc) => emit('rejectTool', tc)"
+              />
+            </template>
           </template>
           <!-- Steps panel - rendered inline -->
           <StepsPanel
@@ -94,20 +108,32 @@
 
       <!-- Fallback: legacy content display (no contentParts) -->
       <template v-else>
-        <!-- Tool calls if no steps -->
-        <template v-if="toolCalls && toolCalls.length > 0 && !hasSteps">
-          <ToolCallGroup
-            :toolCalls="toolCalls"
-            @execute="(tc) => emit('executeTool', tc)"
-          />
-          <ToolCallItem
-            v-for="tc in toolCalls"
-            :key="tc.id"
-            :toolCall="tc"
-            @execute="(tc) => emit('executeTool', tc)"
-            @confirm="(tc, r) => emit('confirmTool', tc, r)"
-            @reject="(tc) => emit('rejectTool', tc)"
-          />
+        <!-- Tool calls if no steps OR if streaming input without step -->
+        <template v-if="toolCalls && toolCalls.length > 0 && (!hasSteps || hasInputStreamingToolCalls(toolCalls))">
+          <template v-if="!hasSteps">
+            <ToolCallGroup
+              :toolCalls="toolCalls"
+              @execute="(tc) => emit('executeTool', tc)"
+            />
+            <ToolCallItem
+              v-for="tc in toolCalls"
+              :key="`${tc.id}-${tc.streamingArgs?.length || 0}`"
+              :toolCall="tc"
+              @execute="(tc) => emit('executeTool', tc)"
+              @confirm="(tc, r) => emit('confirmTool', tc, r)"
+              @reject="(tc) => emit('rejectTool', tc)"
+            />
+          </template>
+          <template v-else>
+            <ToolCallItem
+              v-for="tc in getToolCallsWithoutSteps(toolCalls)"
+              :key="`${tc.id}-${tc.streamingArgs?.length || 0}`"
+              :toolCall="tc"
+              @execute="(tc) => emit('executeTool', tc)"
+              @confirm="(tc, r) => emit('confirmTool', tc, r)"
+              @reject="(tc) => emit('rejectTool', tc)"
+            />
+          </template>
         </template>
         <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
       </template>
@@ -116,12 +142,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, createApp, h, type App } from 'vue'
 import ToolCallGroup from '../ToolCallGroup.vue'
 import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
+import InfographicBlock from '../InfographicBlock.vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
+import type { InfographicConfig } from '@shared/ipc/infographics'
 
 interface Props {
   role: 'user' | 'assistant'
@@ -159,8 +187,85 @@ const displayedContent = ref('')
 const isTyping = ref(false)
 let typewriterInterval: ReturnType<typeof setInterval> | null = null
 
+// Infographic 实例管理
+const infographicApps: App[] = []
+
+// 挂载 Infographic 组件到占位符
+function mountInfographics() {
+  if (!bubbleRef.value || props.isStreaming) return
+
+  // 清理旧实例
+  unmountInfographics()
+
+  // 查找所有 infographic 占位符
+  const placeholders = bubbleRef.value.querySelectorAll('.infographic-block:not(.mounted)')
+
+  placeholders.forEach((placeholder) => {
+    const configStr = placeholder.getAttribute('data-config')
+    if (!configStr) return
+
+    try {
+      const config: InfographicConfig = JSON.parse(decodeURIComponent(configStr))
+
+      // 创建挂载容器
+      const mountPoint = document.createElement('div')
+      mountPoint.className = 'infographic-mount-point'
+      placeholder.innerHTML = ''
+      placeholder.appendChild(mountPoint)
+      placeholder.classList.add('mounted')
+
+      // 创建 Vue App 实例
+      const app = createApp({
+        render() {
+          return h(InfographicBlock, {
+            config,
+            isStreaming: props.isStreaming
+          })
+        }
+      })
+
+      app.mount(mountPoint)
+      infographicApps.push(app)
+    } catch (e) {
+      console.error('Failed to mount infographic:', e)
+    }
+  })
+}
+
+// 卸载所有 Infographic 实例
+function unmountInfographics() {
+  infographicApps.forEach(app => {
+    try {
+      app.unmount()
+    } catch (e) {
+      // 忽略卸载错误
+    }
+  })
+  infographicApps.length = 0
+}
+
 // Computed
 const hasSteps = computed(() => props.steps && props.steps.length > 0)
+
+// Check if any tool calls are currently streaming input (and don't have a corresponding step yet)
+function hasInputStreamingToolCalls(toolCalls: ToolCall[]): boolean {
+  return toolCalls.some(tc => {
+    // Only show if streaming AND no corresponding step exists
+    if (tc.status !== 'input-streaming') return false
+    // Check if a step already exists for this tool call
+    const hasStep = props.steps?.some(s => s.toolCallId === tc.id)
+    return !hasStep
+  })
+}
+
+// Filter tool calls to only show those without corresponding steps
+function getToolCallsWithoutSteps(toolCalls: ToolCall[]): ToolCall[] {
+  if (!props.steps || props.steps.length === 0) return toolCalls
+  return toolCalls.filter(tc => {
+    // Only show if streaming input AND no step exists
+    return tc.status === 'input-streaming' && !props.steps?.some(s => s.toolCallId === tc.id)
+  })
+}
 
 const hasVisibleContent = computed(() => {
   return props.content ||
@@ -262,6 +367,8 @@ watch(
       startTypewriter()
     } else if (!newVal && oldVal) {
       stopTypewriter()
+      // 流式结束后挂载 Infographic
+      nextTick(() => mountInfographics())
     }
   },
   { immediate: true }
@@ -281,11 +388,14 @@ onMounted(() => {
     startTypewriter()
   } else {
     displayedContent.value = props.content
+    // 延迟挂载 Infographic，确保 DOM 已渲染
+    nextTick(() => mountInfographics())
   }
 })
 
 onUnmounted(() => {
   stopTypewriter()
+  unmountInfographics()
 })
 
 // Text selection
@@ -504,7 +614,7 @@ html[data-theme='light'] .attachment-file {
 }
 
 .bubble.user .content {
-  line-height: 1.5;
+  line-height: var(--message-line-height, 1.6);
   color: var(--text-user-primary);
 }
 
@@ -659,8 +769,8 @@ html[data-theme='light'] .content :deep(.inline-code) {
   margin: var(--content-spacing, 0.75em) 0;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-code, var(--border));
+  background: var(--bg-code-block, rgba(0, 0, 0, 0.3));
 }
 
 .content :deep(.code-block-header) {
@@ -668,8 +778,8 @@ html[data-theme='light'] .content :deep(.inline-code) {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border-bottom: 1px solid var(--border);
+  background: var(--bg-code-header, rgba(255, 255, 255, 0.05));
+  border-bottom: 1px solid var(--border-code, var(--border));
 }
 
 .content :deep(.code-block-lang) {
@@ -708,40 +818,85 @@ html[data-theme='light'] .content :deep(.inline-code) {
   line-height: 1.5;
 }
 
-/* highlight.js theme */
+/* highlight.js base - syntax colors are handled by global hljs-theme.css */
 .content :deep(.hljs) {
   background: transparent;
-  color: #e6e6e6;
+  color: var(--text-code-block, #e6e6e6);
 }
 
-.content :deep(.hljs-keyword) { color: #c678dd; }
-.content :deep(.hljs-string) { color: #98c379; }
-.content :deep(.hljs-number) { color: #d19a66; }
-.content :deep(.hljs-comment) { color: #5c6370; font-style: italic; }
-.content :deep(.hljs-function) { color: #61afef; }
-.content :deep(.hljs-class) { color: #e5c07b; }
-.content :deep(.hljs-variable) { color: #e06c75; }
-.content :deep(.hljs-attr) { color: #d19a66; }
-.content :deep(.hljs-built_in) { color: #e6c07b; }
-.content :deep(.hljs-title) { color: #61afef; }
-.content :deep(.hljs-params) { color: #abb2bf; }
-.content :deep(.hljs-punctuation) { color: #abb2bf; }
+/* Light theme code block - colors are now controlled by theme variables */
 
-/* Light theme highlight.js */
-html[data-theme='light'] .content :deep(.hljs) {
-  color: #383a42;
+/* MathJax / LaTeX styles */
+.content :deep(mjx-container) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
 }
 
-html[data-theme='light'] .content :deep(.hljs-keyword) { color: #a626a4; }
-html[data-theme='light'] .content :deep(.hljs-string) { color: #50a14f; }
-html[data-theme='light'] .content :deep(.hljs-number) { color: #986801; }
-html[data-theme='light'] .content :deep(.hljs-comment) { color: #a0a1a7; font-style: italic; }
-html[data-theme='light'] .content :deep(.hljs-function) { color: #4078f2; }
-html[data-theme='light'] .content :deep(.hljs-class) { color: #c18401; }
-html[data-theme='light'] .content :deep(.hljs-variable) { color: #e45649; }
-html[data-theme='light'] .content :deep(.hljs-attr) { color: #986801; }
-html[data-theme='light'] .content :deep(.hljs-built_in) { color: #c18401; }
-html[data-theme='light'] .content :deep(.hljs-title) { color: #4078f2; }
-html[data-theme='light'] .content :deep(.hljs-params) { color: #383a42; }
-html[data-theme='light'] .content :deep(.hljs-punctuation) { color: #383a42; }
+.content :deep(mjx-container[display="true"]) {
+  display: block;
+  text-align: center;
+  margin: var(--content-spacing, 0.75em) 0;
+  padding: 8px 0;
+}
+
+.content :deep(mjx-container svg) {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Dark theme: invert MathJax SVG colors */
+.content :deep(mjx-container svg) {
+  color: var(--text);
+}
+
+html[data-theme='light'] .content :deep(mjx-container svg) {
+  color: #1a1a1a;
+}
+
+/* Infographic 占位符样式 */
+.content :deep(.infographic-block) {
+  margin: 16px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.content :deep(.infographic-placeholder) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.content :deep(.infographic-placeholder .placeholder-icon) {
+  opacity: 0.5;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+}
+
+.content :deep(.infographic-parse-error) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--error, #ef4444);
+  font-size: 13px;
+}
+
+.content :deep(.infographic-parse-error .error-icon) {
+  opacity: 0.7;
+}
+
+.content :deep(.infographic-mount-point) {
+  width: 100%;
+}
 </style>

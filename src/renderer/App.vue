@@ -124,6 +124,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAgentsStore } from '@/stores/agents'
+import { useThemeStore } from '@/stores/themes'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { Sidebar } from '@/components/sidebar'
 import ChatContainer from '@/components/ChatContainer.vue'
@@ -144,6 +145,7 @@ const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const workspacesStore = useWorkspacesStore()
 const agentsStore = useAgentsStore()
+const themeStore = useThemeStore()
 
 const showSettings = ref(false)
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
@@ -348,6 +350,11 @@ watch(showSearchOverlay, (val) => {
   }
 })
 
+// Re-apply theme when mode (light/dark) changes
+watch(() => settingsStore.effectiveTheme, () => {
+  themeStore.reapplyTheme()
+})
+
 // Create new chat (respects selected agent)
 // If there's already an empty "New Chat", reuse it and update agent if needed
 async function createNewChat() {
@@ -384,6 +391,9 @@ onMounted(async () => {
   await sessionsStore.loadSessions()
   await settingsStore.loadSettings()
 
+  // Initialize theme system (must be after settings load)
+  await themeStore.initialize()
+
   // Create a default session if none exist
   if (sessionsStore.sessionCount === 0) {
     await sessionsStore.createSession('New Chat')
@@ -391,10 +401,27 @@ onMounted(async () => {
 
   // Listen for settings changes from other windows (e.g., settings window)
   unsubscribeSettingsChanged = window.electronAPI.onSettingsChanged((newSettings) => {
-    console.log('[App] Settings changed from another window, updating store')
+    console.log('[App] Settings changed from another window')
+
+    // Update settings store
     settingsStore.settings = newSettings
-    // Apply theme to ensure visual consistency (resolves 'system' to actual theme)
+
+    // Apply light/dark mode theme
     settingsStore.applyTheme()
+
+    // For cross-window sync: explicitly update theme refs from the received settings
+    // Since reapplyTheme() no longer syncs from settings (to prevent race conditions),
+    // we must manually update refs here for cross-window synchronization
+    const general = newSettings.general
+    if (general?.darkThemeId) {
+      themeStore.darkThemeId = general.darkThemeId
+    }
+    if (general?.lightThemeId) {
+      themeStore.lightThemeId = general.lightThemeId
+    }
+
+    // Now reapply theme with updated refs
+    themeStore.reapplyTheme()
   })
 
   // Listen for menu shortcuts

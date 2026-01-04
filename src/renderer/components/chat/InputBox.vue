@@ -1,5 +1,8 @@
 <template>
   <div class="composer-wrapper" ref="composerWrapperRef">
+    <!-- Plan Panel (shown above composer when plan exists) -->
+    <PlanPanel :session-id="effectiveSessionId" />
+
     <!-- Hidden file input -->
     <input
       ref="fileInputRef"
@@ -90,6 +93,9 @@
 
           <!-- Context indicator component -->
           <ContextIndicator :session-id="props.sessionId" />
+
+          <!-- Mode toggle (Build/Plan) -->
+          <ModeToggle ref="modeToggleRef" :session-id="effectiveSessionId" />
         </div>
 
         <!-- Right side: send/stop button -->
@@ -127,6 +133,8 @@ import ModelSelector from './ModelSelector.vue'
 import ContextIndicator from './ContextIndicator.vue'
 import ToolsMenu from './ToolsMenu.vue'
 import SkillsMenu from './SkillsMenu.vue'
+import ModeToggle from './ModeToggle.vue'
+import PlanPanel from './PlanPanel.vue'
 import { FileText, X, Paperclip, Square, Send } from 'lucide-vue-next'
 
 // Local interface for file preview (extends MessageAttachment with preview)
@@ -172,6 +180,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const composerWrapperRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const attachedFiles = ref<AttachedFile[]>([])
+const modeToggleRef = ref<InstanceType<typeof ModeToggle> | null>(null)
 
 // ResizeObserver for dynamic height tracking
 let composerResizeObserver: ResizeObserver | null = null
@@ -248,6 +257,16 @@ const currentModelSupportsVision = computed(() => {
 
 function handleKeyDown(e: KeyboardEvent) {
   if (isComposing.value) return
+
+  // Tab or Shift+Tab toggles between Build/Ask mode (only when input is empty)
+  if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    // Only toggle mode when input is empty
+    if (messageInput.value.trim() === '') {
+      e.preventDefault()
+      modeToggleRef.value?.toggleMode()
+      return
+    }
+  }
 
   const shortcuts = settingsStore.settings?.general?.shortcuts
   if (shortcuts?.sendMessage) {
@@ -590,7 +609,7 @@ function handleSkillPickerClose() {
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: rgba(120, 120, 128, 0.1);
+  background: var(--bg-elevated);
   border-radius: 8px;
   max-width: 200px;
   animation: slideInDown 0.2s ease-out;
@@ -598,7 +617,7 @@ function handleSkillPickerClose() {
 
 .attachment-item.is-image {
   padding: 4px;
-  background: rgba(120, 120, 128, 0.08);
+  background: var(--bg-hover);
 }
 
 .attachment-thumb {
@@ -643,8 +662,8 @@ function handleSkillPickerClose() {
 }
 
 .attachment-remove:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  background: rgba(var(--color-danger-rgb), 0.15);
+  color: var(--text-error);
   opacity: 1;
 }
 
@@ -669,7 +688,7 @@ function handleSkillPickerClose() {
 
 .quoted-bar {
   width: 3px;
-  background: linear-gradient(to bottom, rgba(59, 130, 246, 0.6), rgba(59, 130, 246, 0.3));
+  background: linear-gradient(to bottom, rgba(var(--accent-rgb), 0.6), rgba(var(--accent-rgb), 0.3));
   border-radius: 2px;
   flex-shrink: 0;
 }
@@ -697,7 +716,7 @@ function handleSkillPickerClose() {
 
 .quoted-text::-webkit-scrollbar { width: 3px; }
 .quoted-text::-webkit-scrollbar-track { background: transparent; }
-.quoted-text::-webkit-scrollbar-thumb { background: rgba(120, 120, 128, 0.3); border-radius: 2px; }
+.quoted-text::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
 
 .remove-quote-btn {
   width: 24px;
@@ -717,8 +736,8 @@ function handleSkillPickerClose() {
 }
 
 .remove-quote-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text);
+  background: var(--bg-hover);
+  color: var(--text-primary);
   opacity: 1;
 }
 
@@ -727,8 +746,8 @@ function handleSkillPickerClose() {
   display: flex;
   flex-direction: column;
   border-radius: 16px;
-  border: 0.5px solid rgba(255, 255, 255, 0.08);
-  background: rgba(30, 30, 35, 0.65);
+  border: 0.5px solid var(--border, rgba(255, 255, 255, 0.08));
+  background: rgba(var(--bg-rgb, 30, 30, 35), 0.65);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
   backdrop-filter: blur(24px) saturate(1.2);
   -webkit-backdrop-filter: blur(24px) saturate(1.2);
@@ -739,17 +758,6 @@ function handleSkillPickerClose() {
 .composer.focused {
   border-color: rgba(var(--accent-rgb), 0.35);
   box-shadow: 0 0 0 0.5px rgba(var(--accent-rgb), 0.2), 0 8px 32px rgba(0, 0, 0, 0.18), var(--shadow-glow);
-}
-
-html[data-theme='light'] .composer {
-  background: rgba(242, 240, 229, 0.85);
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
-}
-
-html[data-theme='light'] .composer.focused {
-  border-color: rgba(59, 130, 246, 0.4);
-  box-shadow: 0 0 0 0.5px rgba(59, 130, 246, 0.15), 0 8px 32px rgba(0, 0, 0, 0.06), var(--shadow-glow);
 }
 
 /* Input area */
@@ -785,7 +793,7 @@ html[data-theme='light'] .composer.focused {
 
 .composer-input::-webkit-scrollbar { width: 4px; }
 .composer-input::-webkit-scrollbar-track { background: transparent; }
-.composer-input::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 2px; }
+.composer-input::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
 
 /* Bottom toolbar */
 .composer-toolbar {
@@ -839,10 +847,6 @@ html[data-theme='light'] .composer.focused {
   transform: scale(0.95);
 }
 
-html[data-theme='light'] .toolbar-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
 .toolbar-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -854,37 +858,33 @@ html[data-theme='light'] .toolbar-btn:hover {
   height: 38px;
   border-radius: 12px;
   border: none;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
+  background: var(--gradient-accent);
+  color: var(--text-btn-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  box-shadow: var(--shadow-glow-accent);
 }
 
 .send-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: var(--bg-btn-primary-hover);
   transform: translateY(-1px) scale(1.02);
-  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.4);
 }
 
 .send-btn:active:not(:disabled) {
   transform: scale(0.96);
-  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 1px 4px rgba(var(--accent-rgb), 0.2);
 }
 
 .send-btn:disabled {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--muted);
+  background: var(--bg-hover);
+  color: var(--text-muted);
   cursor: not-allowed;
   box-shadow: none;
-}
-
-html[data-theme='light'] .send-btn:disabled {
-  background: rgba(0, 0, 0, 0.06);
 }
 
 .send-btn.stop-btn {

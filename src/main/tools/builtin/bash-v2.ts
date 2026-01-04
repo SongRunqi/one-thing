@@ -313,6 +313,11 @@ The sandbox restricts file access to allowed directories only.`,
     // Execute the command
     let output = ''
 
+    // Check if already aborted before starting
+    if (ctx.abortSignal?.aborted) {
+      throw new Error('Command execution aborted')
+    }
+
     const proc = execa(command, {
       shell: true,
       cwd: workingDir,
@@ -324,6 +329,26 @@ The sandbox restricts file access to allowed directories only.`,
       },
       reject: false, // Don't throw on non-zero exit
     })
+
+    // Handle abort signal - kill the process when abort is triggered
+    let aborted = false
+    const abortHandler = () => {
+      if (proc.killed) return
+      aborted = true
+      console.log('[Bash] Abort signal received, killing process')
+      proc.kill('SIGTERM')
+      // Force kill after 500ms if still running
+      setTimeout(() => {
+        if (!proc.killed) {
+          console.log('[Bash] Force killing process with SIGKILL')
+          proc.kill('SIGKILL')
+        }
+      }, 500)
+    }
+
+    if (ctx.abortSignal) {
+      ctx.abortSignal.addEventListener('abort', abortHandler, { once: true })
+    }
 
     // Stream output to metadata
     const append = (chunk: string) => {
@@ -343,7 +368,20 @@ The sandbox restricts file access to allowed directories only.`,
     proc.stdout?.on('data', (data: Buffer) => append(data.toString()))
     proc.stderr?.on('data', (data: Buffer) => append(data.toString()))
 
-    const result = await proc
+    let result
+    try {
+      result = await proc
+    } finally {
+      // Clean up abort listener
+      if (ctx.abortSignal) {
+        ctx.abortSignal.removeEventListener('abort', abortHandler)
+      }
+    }
+
+    // If aborted, throw an error to indicate cancellation
+    if (aborted) {
+      throw new Error('Command execution was cancelled by user')
+    }
 
     // Truncate if needed
     let truncated = false

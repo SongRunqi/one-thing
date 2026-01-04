@@ -14,6 +14,7 @@ import { registerShellHandlers } from './shell.js'
 import { registerMediaHandlers } from './media.js'
 import { registerPermissionHandlers } from './permission.js'
 import { registerOAuthHandlers, cleanupOAuth } from './oauth.js'
+import { registerThemeHandlers, initializeThemeSystem } from './themes.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -32,6 +33,7 @@ export function initializeIPC() {
   registerMediaHandlers()
   registerPermissionHandlers()
   registerOAuthHandlers()
+  registerThemeHandlers()
 }
 
-export { initializeMCP, shutdownMCP, initializeSkills, cleanupOAuth }
+export { initializeMCP, shutdownMCP, initializeSkills, cleanupOAuth, initializeThemeSystem }

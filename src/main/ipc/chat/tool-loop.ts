@@ -8,7 +8,6 @@ import { IPC_CHANNELS } from '../../../shared/ipc.js'
 import type { SkillDefinition, ToolCall } from '../../../shared/ipc.js'
 import type { AIMessageContent, ToolChatMessage } from '../../providers/index.js'
 import {
-  streamChatResponseWithReasoning,
   streamChatResponseWithTools,
   convertToolDefinitionsForAI,
 } from '../../providers/index.js'
@@ -27,7 +26,7 @@ import * as modelRegistry from '../../services/ai/model-registry.js'
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
 import { createStreamProcessor } from './stream-processor.js'
 import { sendUIMessageFinish } from './stream-helpers.js'
-import { formatMessagesForLog, buildSystemPrompt } from './message-helpers.js'
+import { formatMessagesForLog, buildSystemPrompt, type HistoryMessage } from './message-helpers.js'
 import {
   formatUserProfilePrompt,
   retrieveRelevantFacts,
@@ -37,24 +36,29 @@ import {
 } from './memory-helpers.js'
 import { getProviderApiType } from './provider-helpers.js'
 import { executeToolAndUpdate } from './tool-execution.js'
+import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages } from './chat-logger.js'
 
 /**
- * Tool loop result indicating why the loop ended
+ * Stream result indicating why the stream ended
  */
-export interface ToolLoopResult {
-  pausedForConfirmation: boolean  // Loop paused waiting for tool confirmation
+export interface StreamResult {
+  pausedForConfirmation: boolean  // Stream paused waiting for tool confirmation
 }
 
 /**
- * Run the tool loop for streaming with tools
+ * Unified stream execution function
+ * Handles both tool-enabled and simple streaming in a single code path
+ *
+ * When tools is empty {}, the loop naturally exits after the first turn
+ * When tools are provided, the loop continues until no more tool calls
  */
-export async function runToolLoop(
+export async function runStream(
   ctx: StreamContext,
   conversationMessages: ToolChatMessage[],
-  toolsForAI: Record<string, any>,
+  toolsForAI: Record<string, any>,  // Can be {} for no-tools mode
   processor: StreamProcessor,
   enabledSkills: SkillDefinition[]
-): Promise<ToolLoopResult> {
+): Promise<StreamResult> {
   const MAX_TOOL_TURNS = 100
   let currentTurn = 0
   const apiType = getProviderApiType(ctx.settings, ctx.providerId)
@@ -64,8 +68,9 @@ export async function runToolLoop(
     const toolCallsThisTurn: ToolCall[] = []
     const turnContent = { value: '' }
     const turnReasoning = { value: '' }
+    let lastFinishReason: string = 'unknown'  // Track AI's finish reason for loop control
 
-    console.log(`[Backend] Starting tool turn ${currentTurn}`)
+    logTurnStart(currentTurn)
 
     // Send continuation at the START of each turn (except first) to show waiting indicator
     // This ensures waiting is displayed BEFORE the LLM call starts
@@ -88,7 +93,11 @@ export async function runToolLoop(
       },
       conversationMessages,
       toolsForAI,
-      { temperature: ctx.settings.ai.temperature, abortSignal: ctx.abortSignal }
+      {
+        temperature: ctx.settings.ai.temperature,
+        maxTokens: ctx.settings.chat?.maxTokens,
+        abortSignal: ctx.abortSignal,
+      }
     )
 
     let turnUsage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined
@@ -102,7 +111,29 @@ export async function runToolLoop(
         processor.handleReasoningChunk(chunk.reasoning, turnReasoning)
       }
 
+      // Handle streaming tool input chunks (AI SDK v6)
+      // These provide real-time visibility into tool arguments as they're generated
+      if (chunk.type === 'tool-input-start' && chunk.toolInputStart) {
+        processor.handleToolInputStart(
+          chunk.toolInputStart.toolCallId,
+          chunk.toolInputStart.toolName
+        )
+      }
+
+      if (chunk.type === 'tool-input-delta' && chunk.toolInputDelta) {
+        processor.handleToolInputDelta(
+          chunk.toolInputDelta.toolCallId,
+          chunk.toolInputDelta.argsTextDelta
+        )
+      }
+
+      // Note: tool-input-end is not used - the 'tool-call' chunk contains the final parsed args
+      // AI SDK v6 flow: tool-call-streaming-start -> tool-call-delta* -> tool-call
+
       if (chunk.type === 'tool-call' && chunk.toolCall) {
+        // Get the step ID before handleToolCallChunk (which may clear the buffer)
+        const existingStepId = processor.getStepIdForToolCall(chunk.toolCall.toolCallId)
+        
         const toolCall = processor.handleToolCallChunk(chunk.toolCall)
         toolCallsThisTurn.push(toolCall)
 
@@ -112,19 +143,54 @@ export async function runToolLoop(
         await executeToolAndUpdate(ctx, toolCall, {
           toolName: toolCall.toolId,
           args: chunk.toolCall.args
-        }, processor.toolCalls, enabledSkills, currentTurn)
+        }, processor.toolCalls, enabledSkills, currentTurn, existingStepId)
       }
 
-      // Capture usage data from finish chunk
-      if (chunk.type === 'finish' && chunk.usage) {
-        turnUsage = chunk.usage
-        // Accumulate usage to context for final reporting
-        ctx.accumulatedUsage = ctx.accumulatedUsage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-        ctx.accumulatedUsage.inputTokens += chunk.usage.inputTokens
-        ctx.accumulatedUsage.outputTokens += chunk.usage.outputTokens
-        ctx.accumulatedUsage.totalTokens += chunk.usage.totalTokens
-        console.log(`[Backend] Turn ${currentTurn} usage:`, chunk.usage, `Total accumulated:`, ctx.accumulatedUsage)
+      // Capture usage data and finishReason from finish chunk
+      if (chunk.type === 'finish') {
+        // Capture finishReason for loop control (OpenCode style)
+        lastFinishReason = chunk.finishReason || 'unknown'
+
+        if (chunk.usage) {
+          turnUsage = chunk.usage
+          // Accumulate usage to context for final reporting
+          ctx.accumulatedUsage = ctx.accumulatedUsage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+          ctx.accumulatedUsage.inputTokens += chunk.usage.inputTokens
+          ctx.accumulatedUsage.outputTokens += chunk.usage.outputTokens
+          ctx.accumulatedUsage.totalTokens += chunk.usage.totalTokens
+          // Track last turn's usage for context size (NOT accumulated)
+          ctx.lastTurnUsage = chunk.usage
+          logTurnEnd(currentTurn, chunk.usage, toolCallsThisTurn.length)
+
+          // Send real-time context size update to frontend
+          // Context size = input tokens only (context window limit applies to input)
+          const currentContextSize = chunk.usage.inputTokens
+          ctx.sender.send(IPC_CHANNELS.CONTEXT_SIZE_UPDATED, {
+            sessionId: ctx.sessionId,
+            contextSize: currentContextSize,
+          })
+        }
       }
+    }
+
+    // Update all steps in this turn with the turn's usage data
+    if (turnUsage && toolCallsThisTurn.length > 0) {
+      const updatedStepIds = store.updateStepsUsageByTurn(
+        ctx.sessionId,
+        ctx.assistantMessageId,
+        currentTurn,
+        turnUsage
+      )
+      // Notify frontend about the usage updates for each step
+      for (const stepId of updatedStepIds) {
+        ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
+          sessionId: ctx.sessionId,
+          messageId: ctx.assistantMessageId,
+          stepId,
+          updates: { usage: turnUsage },
+        })
+      }
+      console.log(`[Backend] Updated ${updatedStepIds.length} steps with turn ${currentTurn} usage`)
     }
 
     // Add contentParts for this turn to enable proper interleaving of text and steps
@@ -163,9 +229,38 @@ export async function runToolLoop(
       return { pausedForConfirmation: true }
     }
 
-    // If no tool calls this turn, we're done
+    // Loop control based on finishReason (OpenCode style)
+    // AI decides when to stop - we trust the finishReason signal
     if (toolCallsThisTurn.length === 0) {
-      console.log(`[Backend] No tool calls in turn ${currentTurn}, ending loop`)
+      // No tool calls this turn - check finishReason to determine if we should exit
+      // "tool-calls" means AI intended to call tools (but didn't) - unusual, treat as stop
+      // "unknown" means uncertain - treat as stop
+      // "stop" means AI decided to stop - respect it
+
+      // Check if output was truncated due to max token limit
+      // When finishReason is 'length', the AI's response was cut off mid-generation
+      // Tool call JSON may be incomplete and unparseable, resulting in no tool calls
+      if (lastFinishReason === 'length') {
+        const truncationMessage = '\n\n⚠️ Response was truncated due to max token limit. Please type "continue" to resume.'
+
+        // Append truncation message to existing content (don't replace!)
+        const existingContent = turnContent.value || ''
+        const fullContent = existingContent + truncationMessage
+
+        // Update store with combined content
+        store.updateMessageContent(ctx.sessionId, ctx.assistantMessageId, fullContent)
+
+        // Send the truncation message to UI (append, not replace)
+        ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+          type: 'text',
+          content: truncationMessage,
+          messageId: ctx.assistantMessageId,
+          sessionId: ctx.sessionId,
+          // No replace: true - this appends to existing content
+        })
+      }
+
+      console.log(`[Backend] No tool calls in turn ${currentTurn}, finishReason: ${lastFinishReason}, ending loop`)
       return { pausedForConfirmation: false }
     }
 
@@ -205,6 +300,18 @@ export async function runToolLoop(
       })),
     }
     conversationMessages.push(toolResultMsg)
+
+    // Log what we're sending for the next turn
+    logContinuationMessages(
+      currentTurn,
+      turnContent.value,
+      assistantMsg.toolCalls,
+      toolResultMsg.content.map(tr => ({
+        toolCallId: tr.toolCallId,
+        toolName: tr.toolName,
+        result: tr.result,
+      }))
+    )
     // Continuation is now sent at the START of the next turn (line 1234-1240)
     // This ensures waiting is displayed BEFORE the LLM call starts
   }
@@ -217,45 +324,13 @@ export async function runToolLoop(
 }
 
 /**
- * Run simple streaming without tools
- */
-export async function runSimpleStream(
-  ctx: StreamContext,
-  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: AIMessageContent; reasoningContent?: string }>,
-  processor: StreamProcessor
-): Promise<void> {
-  const apiType = getProviderApiType(ctx.settings, ctx.providerId)
-
-  const stream = streamChatResponseWithReasoning(
-    ctx.providerId,
-    {
-      apiKey: ctx.providerConfig.apiKey,
-      baseUrl: ctx.providerConfig.baseUrl,
-      model: ctx.providerConfig.model,
-      apiType,
-    },
-    messages,
-    { temperature: ctx.settings.ai.temperature, abortSignal: ctx.abortSignal }
-  )
-
-  for await (const chunk of stream) {
-    if (chunk.text) {
-      processor.handleTextChunk(chunk.text)
-    }
-    if (chunk.reasoning) {
-      processor.handleReasoningChunk(chunk.reasoning)
-    }
-  }
-}
-
-/**
  * Core streaming execution function
  * Handles both tool-enabled and simple streaming
  * Tool calls are routed through Tool Agent for execution
  */
 export async function executeStreamGeneration(
   ctx: StreamContext,
-  historyMessages: Array<{ role: 'user' | 'assistant'; content: AIMessageContent; reasoningContent?: string }>,
+  historyMessages: HistoryMessage[],
   sessionName?: string
 ): Promise<void> {
   const processor = createStreamProcessor(ctx)
@@ -308,9 +383,10 @@ export async function executeStreamGeneration(
 
     // Get enabled tools (filter out MCP tools since they're handled separately with sanitized names)
     // Use async version to include tools with dynamic descriptions
-    const allEnabledTools = ctx.toolSettings?.enableToolCalls ? await getEnabledToolsAsync() : []
+    // Pass toolSettings.tools to filter based on user's per-tool enabled settings
+    const allEnabledTools = ctx.toolSettings?.enableToolCalls ? await getEnabledToolsAsync(ctx.toolSettings.tools) : []
     const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
-    const mcpTools = ctx.toolSettings?.enableToolCalls ? getMCPToolsForAI() : {}
+    const mcpTools = ctx.toolSettings?.enableToolCalls ? getMCPToolsForAI(ctx.toolSettings.tools) : {}
 
     // Check if the current model supports tools using Models.dev tool_call field
     const supportsTools = await modelRegistry.modelSupportsTools(ctx.providerConfig.model, ctx.providerId)
@@ -399,46 +475,49 @@ export async function executeStreamGeneration(
       agentMemoryPrompt,
       providerId: ctx.providerId,
       workingDirectory: sessionWorkingDir,
+      builtinMode: session?.builtinMode,
+      sessionPlan: session?.plan,
     })
 
     let pausedForConfirmation = false
-
-    // Log request start
     const requestStartTime = Date.now()
-    console.log('[Chat] ===== Request Start =====')
-    console.log('[Chat] Time:', new Date(requestStartTime).toISOString())
-    console.log('[Chat] Provider:', ctx.providerId)
-    console.log('[Chat] Model:', ctx.providerConfig.model)
-    console.log('[Chat] System Prompt:', systemPrompt)
-    console.log('[Chat] Messages:', JSON.stringify(formatMessagesForLog(historyMessages), null, 2))
 
-    if (hasTools) {
-      // Main LLM sees all tools, Tool Agent handles execution
-      const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
-      const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
+    // Build tools (can be empty {} for no-tools mode)
+    const builtinToolsForAI = hasTools ? convertToolDefinitionsForAI(enabledTools) : {}
+    const toolsForAI = hasTools ? { ...builtinToolsForAI, ...mcpTools } : {}
 
-      const conversationMessages: ToolChatMessage[] = [
-        { role: 'system', content: systemPrompt },
-        ...historyMessages,
-      ]
+    // Log request start with structured format
+    logRequestStart({
+      provider: ctx.providerId,
+      model: ctx.providerConfig.model,
+      systemPromptLength: systemPrompt.length,
+      systemPrompt,
+      messages: historyMessages,
+      tools: toolsForAI,
+      skills: enabledSkills,
+      hasTools,
+    })
 
-      const result = await runToolLoop(ctx, conversationMessages, toolsForAI, processor, enabledSkills)
-      pausedForConfirmation = result.pausedForConfirmation
-    } else {
-      // No tools: Simple streaming
-      const conversationMessages = [
-        { role: 'system' as const, content: systemPrompt },
-        ...historyMessages,
-      ]
-      await runSimpleStream(ctx, conversationMessages, processor)
+    // Build conversation messages with system prompt
+    const conversationMessages: ToolChatMessage[] = [
+      { role: 'system', content: systemPrompt },
+      ...historyMessages,
+    ]
+
+    // Unified stream execution - works for both tools and no-tools modes
+    // When toolsForAI is {}, the stream loop naturally exits after first turn
+    const result = await runStream(ctx, conversationMessages, toolsForAI, processor, enabledSkills)
+    pausedForConfirmation = result.pausedForConfirmation
+
+    // Log request end with structured format
+    const requestDurationMs = Date.now() - requestStartTime
+    const requestDuration = requestDurationMs / 1000
+    logRequestEnd(requestDuration, ctx.accumulatedUsage, ctx.lastTurnUsage)
+
+    // Add duration to usage for speed calculation in UI
+    if (ctx.accumulatedUsage) {
+      ctx.accumulatedUsage.durationMs = requestDurationMs
     }
-
-    // Log request end
-    const requestEndTime = Date.now()
-    const requestDuration = (requestEndTime - requestStartTime) / 1000
-    console.log('[Chat] ===== Request End =====')
-    console.log('[Chat] End Time:', new Date(requestEndTime).toISOString())
-    console.log('[Chat] Duration:', requestDuration.toFixed(2), 'seconds')
 
     // Only finalize and run post-processing if not paused for tool confirmation
     if (!pausedForConfirmation) {
@@ -449,14 +528,15 @@ export async function executeStreamGeneration(
         sessionId: ctx.sessionId,
         sessionName: updatedSession?.name || sessionName,
         usage: ctx.accumulatedUsage,
+        lastTurnUsage: ctx.lastTurnUsage,  // For correct context size calculation
       })
       // Also send UIMessage finish chunk with usage for new clients
       sendUIMessageFinish(ctx.sender, ctx.sessionId, ctx.assistantMessageId, 'stop', ctx.accumulatedUsage)
       // Save usage to message for future token subtraction on edit/regenerate
       if (ctx.accumulatedUsage) {
         store.updateMessageUsage(ctx.sessionId, ctx.assistantMessageId, ctx.accumulatedUsage)
-        // Update session usage cache
-        updateSessionUsage(ctx.sessionId, ctx.accumulatedUsage)
+        // Update session usage cache (pass lastTurnUsage for correct context size)
+        updateSessionUsage(ctx.sessionId, ctx.accumulatedUsage, ctx.lastTurnUsage)
       }
       console.log('[Backend] Streaming complete, total usage:', ctx.accumulatedUsage)
 
@@ -518,24 +598,31 @@ export async function executeStreamGeneration(
       // Import extractErrorDetails for error handling
       const { extractErrorDetails } = await import('./provider-helpers.js')
 
-      // Remove the failed assistant message from storage
-      store.deleteMessage(ctx.sessionId, ctx.assistantMessageId)
+      // Keep the assistant message with any content already generated
+      // Just mark it with error details instead of deleting
+      processor.finalize()
 
-      // Add an error message to the session (persisted)
-      const errorMessage = {
-        id: `error-${Date.now()}`,
-        role: 'error' as const,
-        content: error.message || 'Streaming error',
-        timestamp: Date.now(),
-        errorDetails: extractErrorDetails(error),
-      }
-      store.addMessage(ctx.sessionId, errorMessage)
+      const errorDetailsStr = extractErrorDetails(error)
+      const errorContent = error.message || 'Streaming error'
 
+      // Update the assistant message with error details
+      store.updateMessageError(ctx.sessionId, ctx.assistantMessageId, errorDetailsStr)
+
+      // Send error event to frontend (message is preserved, error is added)
       ctx.sender.send(IPC_CHANNELS.STREAM_ERROR, {
         messageId: ctx.assistantMessageId,
         sessionId: ctx.sessionId,
-        error: error.message || 'Streaming error',
-        errorDetails: extractErrorDetails(error),
+        error: errorContent,
+        errorDetails: errorDetailsStr,
+        preserved: true,  // Flag to indicate message content is preserved
+      })
+
+      // Also send stream complete to properly finalize the UI state
+      ctx.sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+        messageId: ctx.assistantMessageId,
+        sessionId: ctx.sessionId,
+        sessionName: store.getSession(ctx.sessionId)?.name,
+        error: errorContent,
       })
     }
   }

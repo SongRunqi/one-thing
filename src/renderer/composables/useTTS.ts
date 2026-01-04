@@ -202,7 +202,7 @@ export function useTTS() {
    * Preview a voice with sample text
    */
   function previewVoice(voiceURI: string, sampleText?: string) {
-    const text = sampleText || '你好，这是语音预览。Hello, this is a voice preview.'
+    const text = sampleText || 'Hello, this is a voice preview.'
     return speak(text, { enabled: true, voiceURI, rate: 1, pitch: 1, volume: 1 })
   }
 

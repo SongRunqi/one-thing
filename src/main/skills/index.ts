@@ -13,6 +13,7 @@ export {
   ensureSkillsDirectories,
   getUserSkillsPath,
   getProjectSkillsPath,
+  getBuiltinSkillsPath,
   findProjectSkillPaths,
   getEnvSkillsPath,
 } from './loader.js'

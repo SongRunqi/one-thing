@@ -17,6 +17,7 @@ import { WriteTool } from './write.js'
 import { GlobTool } from './glob.js'
 import { GrepTool } from './grep.js'
 import { SkillTool } from './skill.js'
+import { PlanTool } from './plan.js'
 
 // All built-in tools (Tool.define() format)
 // Note: SkillTool is async and needs separate initialization
@@ -27,6 +28,7 @@ const builtinTools = [
   WriteTool,
   GlobTool,
   GrepTool,
+  PlanTool,
 ]
 
 // Async tools that need initialization with context

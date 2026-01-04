@@ -1,14 +1,14 @@
 /**
  * useChatSession - Simplified per-session state proxy
  *
- * 架构说明:
- * - 这是 chat store 的 per-session 视图
- * - 所有状态和事件处理都在 store 中集中管理
- * - IPC 监听器由全局 IPC Hub 在应用启动时注册
- * - 此 composable 只负责:
- *   1. 返回特定 session 的响应式状态
- *   2. 委托动作给 store
- *   3. 在 sessionId 变化时触发消息加载
+ * Architecture notes:
+ * - This is a per-session view of the chat store
+ * - All state and event handling is centralized in the store
+ * - IPC listeners are registered at app startup by the global IPC Hub
+ * - This composable is only responsible for:
+ *   1. Returning reactive state for a specific session
+ *   2. Delegating actions to the store
+ *   3. Triggering message loading when sessionId changes
  */
 
 import { computed, watch, toValue, type MaybeRef } from 'vue'

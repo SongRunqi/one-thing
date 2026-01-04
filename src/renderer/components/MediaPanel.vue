@@ -101,6 +101,9 @@
         <!-- Archived Chats Content -->
         <ArchivedChatsContent v-else-if="activeNav === 'archive'" />
 
+        <!-- Infographics Editor -->
+        <InfographicEditor v-else-if="activeNav === 'infographics'" />
+
         <!-- Other content (Downloads, etc.) -->
         <template v-else>
           <div class="content-header">
@@ -135,6 +138,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import MemoryContent from './MemoryContent.vue'
 import AgentsContent from './AgentsContent.vue'
 import ArchivedChatsContent from './ArchivedChatsContent.vue'
+import InfographicEditor from './infographic/InfographicEditor.vue'
 import { useMediaStore, type GeneratedMedia } from '@/stores/media'
 import type { Agent } from '@/types'
 import {
@@ -145,7 +149,8 @@ import {
   PanelTop,
   LayoutGrid,
   Zap,
-  Archive
+  Archive,
+  BarChart2
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -240,6 +245,7 @@ const navItems = [
   { id: 'memory', label: 'Memory', icon: Sparkles },
   { id: 'agents', label: 'Agents', icon: Bot },
   { id: 'media', label: 'Media', icon: Images },
+  { id: 'infographics', label: '图表', icon: BarChart2 },
   { id: 'downloads', label: 'Downloads', icon: Download },
   { id: 'easels', label: 'Easels', icon: PanelTop },
   { id: 'spaces', label: 'Spaces', icon: LayoutGrid },
@@ -253,7 +259,8 @@ const navItems = [
   width: 500px;
   flex-shrink: 0;
   display: flex;
-  background: var(--bg);
+  /* Match container's darker base for consistent "surface" */
+  background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
   overflow: hidden;
 }
 

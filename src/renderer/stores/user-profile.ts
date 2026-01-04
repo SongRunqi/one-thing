@@ -24,7 +24,7 @@ export const useUserProfileStore = defineStore('userProfile', () => {
 
   const factCount = computed(() => facts.value.length)
 
-  // 格式化用户画像为可读文本（用于 system prompt 注入）
+  // Format user profile as readable text (for system prompt injection)
   const formattedProfile = computed(() => {
     if (!profile.value || facts.value.length === 0) {
       return null
@@ -35,25 +35,25 @@ export const useUserProfileStore = defineStore('userProfile', () => {
     // Personal information
     const personal = factsByCategory.value.personal
     if (personal.length > 0) {
-      sections.push(`## 关于用户\n${personal.map(f => `- ${f.content}`).join('\n')}`)
+      sections.push(`## About User\n${personal.map(f => `- ${f.content}`).join('\n')}`)
     }
 
     // Preferences
     const preferences = factsByCategory.value.preference
     if (preferences.length > 0) {
-      sections.push(`## 用户偏好\n${preferences.map(f => `- ${f.content}`).join('\n')}`)
+      sections.push(`## User Preferences\n${preferences.map(f => `- ${f.content}`).join('\n')}`)
     }
 
     // Goals
     const goals = factsByCategory.value.goal
     if (goals.length > 0) {
-      sections.push(`## 用户目标\n${goals.map(f => `- ${f.content}`).join('\n')}`)
+      sections.push(`## User Goals\n${goals.map(f => `- ${f.content}`).join('\n')}`)
     }
 
     // Traits
     const traits = factsByCategory.value.trait
     if (traits.length > 0) {
-      sections.push(`## 用户特点\n${traits.map(f => `- ${f.content}`).join('\n')}`)
+      sections.push(`## User Traits\n${traits.map(f => `- ${f.content}`).join('\n')}`)
     }
 
     return sections.join('\n\n')

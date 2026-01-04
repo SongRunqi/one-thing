@@ -41,7 +41,8 @@
           @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
         />
 
-        <div class="composer">
+        <!-- v-memo prevents unnecessary re-renders during tool_input_delta streaming -->
+        <div class="composer" v-memo="[isGenerating, effectiveSessionId]">
           <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="isGenerating" :session-id="effectiveSessionId" />
         </div>
       </div>
@@ -252,25 +253,21 @@ defineExpose({
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  background: var(--chat-canvas);
+  /* Use lighter background to appear "on top" of the base */
+  background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
+  /* Add subtle inner glow at top for raised effect */
   position: relative;
   border-radius: var(--radius-lg);
   overflow: hidden;
+  /* "Placed on surface" shadow - more prominent */
   box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.12),
-    0 8px 24px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.2),
+    0 20px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  border: none;
   /* Prevent flicker during sidebar toggle */
   contain: layout style;
-}
-
-html[data-theme='light'] .chat {
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.06),
-    0 8px 24px rgba(0, 0, 0, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .chat-container {

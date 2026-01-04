@@ -52,6 +52,8 @@ export interface ToolExecutionResult {
   // For dangerous commands that need user confirmation
   requiresConfirmation?: boolean
   commandType?: 'read-only' | 'dangerous' | 'forbidden'
+  // For abort/cancel - set when user cancels the operation
+  aborted?: boolean
 }
 
 /**

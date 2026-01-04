@@ -2,6 +2,7 @@
 @import './themes/light.css';
 @import './themes/dark.css';
 @import './components.css';
+@import './hljs-theme.css';
 
 :root {
   --breakpoint-mobile: 480px;

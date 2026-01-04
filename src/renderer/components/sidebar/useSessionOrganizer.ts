@@ -1,7 +1,7 @@
 /**
  * Session Organizer Composable
  *
- * 管理会话的层级组织、折叠状态、时间格式化等逻辑
+ * Manages hierarchical organization, collapse state, time formatting, etc. for sessions
  */
 
 import { ref, computed, watch, nextTick } from 'vue'
@@ -235,7 +235,10 @@ export function useSessionOrganizer() {
 
         if (session.branches.length > 0) {
           const shouldHideChildren = parentCollapsed || session.isCollapsed
-          const nextAncestors = [...ancestorsLast, isLast]
+          // 修复：根 session (depth=0) 不传递 isLast，因为根 session 上面没有需要画线的层级
+          const nextAncestors = session.depth > 0
+            ? [...ancestorsLast, isLast]
+            : []
           result.push(...flattenWithBranches(session.branches, shouldHideChildren, nextAncestors))
         }
       }

@@ -130,3 +130,60 @@ export interface UnpinAgentResponse {
   pinnedAgentIds?: string[]
   error?: string
 }
+
+// ============================================
+// Built-in Agent Types (Build Mode / Ask Mode)
+// ============================================
+
+/**
+ * Built-in agent mode types
+ * - 'build': Full access mode (default) - can edit, write, execute all commands
+ * - 'ask': Read-only mode - only exploration and answering questions, no file modifications
+ */
+export type BuiltinAgentMode = 'build' | 'ask'
+
+/**
+ * Tool permission configuration for built-in agents
+ */
+export interface BuiltinAgentToolPermissions {
+  /** Edit tool permission: 'allow' | 'deny' */
+  edit: 'allow' | 'deny'
+  /** Write tool permission: 'allow' | 'deny' */
+  write: 'allow' | 'deny'
+  /** Bash tool permission: 'allow' = all allowed, 'read-only' = only read commands, 'deny' = all denied */
+  bash: 'allow' | 'read-only' | 'deny'
+  /** Read-only bash command patterns (prefixes that are allowed in read-only mode) */
+  bashReadOnlyPatterns?: string[]
+  /** Forbidden bash command patterns (always blocked) */
+  bashForbiddenPatterns?: string[]
+}
+
+/**
+ * Built-in agent definition (system agents, not user-created)
+ */
+export interface BuiltinAgent {
+  /** Agent mode identifier */
+  mode: BuiltinAgentMode
+  /** Display name */
+  name: string
+  /** Short description */
+  description: string
+  /** Lucide icon name */
+  icon: string
+  /** Additional system prompt to inject when this mode is active */
+  systemPromptAddition: string
+  /** Tool permission configuration */
+  toolPermissions: BuiltinAgentToolPermissions
+}
+
+// IPC types for builtin mode
+export interface SetBuiltinModeRequest {
+  sessionId: string
+  mode: BuiltinAgentMode
+}
+
+export interface SetBuiltinModeResponse {
+  success: boolean
+  mode?: BuiltinAgentMode
+  error?: string
+}

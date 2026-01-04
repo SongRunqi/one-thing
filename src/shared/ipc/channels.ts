@@ -50,6 +50,10 @@ export const IPC_CHANNELS = {
   GET_SESSION: 'sessions:get',
   GET_SESSION_TOKEN_USAGE: 'sessions:get-token-usage',
   UPDATE_SESSION_MAX_TOKENS: 'sessions:update-max-tokens',
+  CONTEXT_SIZE_UPDATED: 'sessions:context-size-updated',
+  SET_SESSION_BUILTIN_MODE: 'sessions:set-builtin-mode',
+  GET_SESSION_BUILTIN_MODE: 'sessions:get-builtin-mode',
+  PLAN_UPDATED: 'sessions:plan-updated',
 
   // Settings related
   GET_SETTINGS: 'settings:get',
@@ -160,6 +164,13 @@ export const IPC_CHANNELS = {
   AGENT_MEMORY_GET_ACTIVE: 'agent-memory:get-active',
   AGENT_MEMORY_UPDATE_RELATIONSHIP: 'agent-memory:update-relationship',
   AGENT_MEMORY_RECORD_INTERACTION: 'agent-memory:record-interaction',
+
+  // Theme related
+  THEME_GET_ALL: 'themes:get-all',
+  THEME_GET: 'themes:get',
+  THEME_APPLY: 'themes:apply',
+  THEME_REFRESH: 'themes:refresh',
+  THEME_OPEN_FOLDER: 'themes:open-folder',
 
   // OAuth related
   OAUTH_START: 'oauth:start',

@@ -1,5 +1,6 @@
 <template>
-  <div :class="['tool-call-status', statusClass]">
+  <!-- Hide when input-streaming - ToolCallItem handles its own display -->
+  <div v-if="!hasInputStreaming" :class="['tool-call-status', statusClass]">
     <!-- Executing: flowing text animation -->
     <template v-if="hasExecuting">
       <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -60,6 +61,10 @@ const uniqueToolNames = computed(() => {
 })
 
 // Status checks - show the most relevant status
+const hasInputStreaming = computed(() =>
+  props.toolCalls.some(tc => tc.status === 'input-streaming')
+)
+
 const hasExecuting = computed(() =>
   props.toolCalls.some(tc => tc.status === 'executing')
 )

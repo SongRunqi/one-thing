@@ -163,6 +163,27 @@ export type {
   SaveSettingsResponse,
 } from './settings.js'
 
+// Theme types
+export type {
+  ColorValue,
+  ThemeDefs,
+  ThemeBgColors,
+  ThemeTextColors,
+  ThemeBorderColors,
+  ThemeShadows,
+  ThemeEffects,
+  ThemeColors,
+  Theme,
+  ThemeMeta,
+  Base46Base30,
+  Base46Base16,
+  Base46Theme,
+  GetThemesResponse,
+  GetThemeResponse,
+  ApplyThemeResponse,
+  RefreshThemesResponse,
+} from './themes.js'
+
 // Workspace types
 export type {
   WorkspaceAvatar,
@@ -200,7 +221,24 @@ export type {
   PinAgentResponse,
   UnpinAgentRequest,
   UnpinAgentResponse,
+  // Built-in Agent types (Ask/Build mode)
+  BuiltinAgentMode,
+  BuiltinAgentToolPermissions,
+  BuiltinAgent,
+  SetBuiltinModeRequest,
+  SetBuiltinModeResponse,
 } from './agents.js'
+
+// Plan types (Planning workflow)
+export type {
+  PlanItemStatus,
+  PlanItem,
+  SessionPlan,
+  UpdatePlanRequest,
+  UpdatePlanResponse,
+  GetPlanRequest,
+  GetPlanResponse,
+} from './plan.js'
 
 // User Profile types
 export type {

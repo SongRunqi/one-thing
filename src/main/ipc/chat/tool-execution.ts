@@ -11,6 +11,7 @@ import { executeTool } from '../../tools/index.js'
 import { isMCPTool, executeMCPTool } from '../../mcp/index.js'
 import type { ToolExecutionContext, ToolExecutionResult } from '../../tools/types.js'
 import type { StreamContext } from './stream-processor.js'
+import { checkToolPermission } from '../../agents/builtin-agents.js'
 
 /**
  * Detect if a bash command is reading a skill file and extract skill name
@@ -61,23 +62,23 @@ export function getStepType(toolName: string, args: Record<string, any>): StepTy
  */
 export function generateStepTitle(toolName: string, args: Record<string, any>, skillName?: string | null): string {
   if (skillName) {
-    return `查看 ${skillName} 技能文档`
+    return `Reading ${skillName} skill documentation`
   }
 
   if (toolName === 'bash') {
     const command = args.command as string || ''
     // Show full command (CSS handles wrapping for long commands)
-    return `执行命令: ${command}`
+    return `Run: ${command}`
   }
 
   // For MCP tools, show a cleaner name
   if (toolName.includes(':')) {
     const parts = toolName.split(':')
     const shortName = parts[parts.length - 1]
-    return `调用工具: ${shortName}`
+    return `Tool: ${shortName}`
   }
 
-  return `调用工具: ${toolName}`
+  return `Tool: ${toolName}`
 }
 
 /**
@@ -118,7 +119,15 @@ export async function executeToolDirectly(
     return result
   } catch (error: any) {
     console.error(`[DirectExec] Tool execution error:`, error)
-    return { success: false, error: error.message || 'Unknown error during tool execution' }
+    // Check if error is due to abort signal
+    const isAborted = context.abortSignal?.aborted ||
+      error.message?.includes('cancelled') ||
+      error.message?.includes('aborted')
+    return {
+      success: false,
+      error: error.message || 'Unknown error during tool execution',
+      aborted: isAborted,
+    }
   }
 }
 
@@ -151,7 +160,8 @@ export async function executeToolAndUpdate(
   toolCallData: { toolName: string; args: Record<string, any> },
   allToolCalls: ToolCall[],
   _skills: SkillDefinition[] = [],
-  turnIndex?: number
+  turnIndex?: number,
+  existingStepId?: string
 ): Promise<void> {
   // Check if this is reading a skill file
   const skillName = detectSkillUsage(toolCallData.toolName, toolCallData.args)
@@ -167,14 +177,54 @@ export async function executeToolAndUpdate(
     })
   }
 
-  // Create step for UI with turnIndex
-  const step = createStep(toolCall, skillName, turnIndex)
-  store.addMessageStep(ctx.sessionId, ctx.assistantMessageId, step)
-  ctx.sender.send(IPC_CHANNELS.STEP_ADDED, {
-    sessionId: ctx.sessionId,
-    messageId: ctx.assistantMessageId,
-    step,
-  })
+  // Check if a placeholder step already exists (from streaming input start)
+  // Priority: use existingStepId from processor (most reliable), then fallback to store lookup
+  const session = store.getSession(ctx.sessionId)
+  const message = session?.messages?.find(m => m.id === ctx.assistantMessageId)
+  let existingStep: Step | undefined
+  
+  if (existingStepId) {
+    // Use the step ID from the stream processor (passed from tool-loop)
+    existingStep = message?.steps?.find(s => s.id === existingStepId)
+  }
+  if (!existingStep) {
+    // Fallback: lookup by toolCallId
+    existingStep = message?.steps?.find(s => s.toolCallId === toolCall.id)
+  }
+
+
+
+  let step: Step
+  if (existingStep) {
+    // Update existing placeholder step with final info
+    step = existingStep
+    step.title = generateStepTitle(toolCall.toolName, toolCallData.args, skillName)
+    step.toolCall = { ...toolCall }
+    step.turnIndex = turnIndex
+
+    // Update in store and notify frontend
+    store.updateMessageStep(ctx.sessionId, ctx.assistantMessageId, step.id, {
+      title: step.title,
+      toolCall: step.toolCall,
+      turnIndex: step.turnIndex,
+    })
+    ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
+      sessionId: ctx.sessionId,
+      messageId: ctx.assistantMessageId,
+      stepId: step.id,
+      updates: { title: step.title, toolCall: step.toolCall, turnIndex: step.turnIndex },
+    })
+
+  } else {
+    // Create new step (fallback for non-streaming providers)
+    step = createStep(toolCall, skillName, turnIndex)
+    store.addMessageStep(ctx.sessionId, ctx.assistantMessageId, step)
+    ctx.sender.send(IPC_CHANNELS.STEP_ADDED, {
+      sessionId: ctx.sessionId,
+      messageId: ctx.assistantMessageId,
+      step,
+    })
+  }
 
   toolCall.status = 'executing'
   toolCall.startTime = Date.now()
@@ -195,11 +245,45 @@ export async function executeToolAndUpdate(
     error?: string
     requiresConfirmation?: boolean
     commandType?: 'read-only' | 'dangerous' | 'forbidden'
+    aborted?: boolean
   }
 
-  // Get session's workingDirectory for sandbox boundary
-  const session = store.getSession(ctx.sessionId)
+  // Get session's workingDirectory for sandbox boundary (reuse session from above)
   const workingDirectory = session?.workingDirectory
+  const builtinMode = session?.builtinMode || 'build'
+
+  // Check tool permission based on builtin mode (Plan mode vs Build mode)
+  const permCheck = checkToolPermission(toolCallData.toolName, toolCallData.args, builtinMode)
+  if (!permCheck.allowed) {
+    console.log(`[Backend] Tool blocked by ${builtinMode} mode:`, toolCallData.toolName, permCheck.reason)
+    toolCall.endTime = Date.now()
+    toolCall.status = 'failed'
+    toolCall.error = permCheck.reason
+
+    // Update step with error
+    const stepUpdates: Partial<Step> = {
+      status: 'failed',
+      toolCall: { ...toolCall },
+      error: permCheck.reason,
+    }
+    store.updateMessageStep(ctx.sessionId, ctx.assistantMessageId, step.id, stepUpdates)
+    ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
+      sessionId: ctx.sessionId,
+      messageId: ctx.assistantMessageId,
+      stepId: step.id,
+      updates: stepUpdates,
+    })
+
+    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+    ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+      type: 'tool_result',
+      content: '',
+      messageId: ctx.assistantMessageId,
+      sessionId: ctx.sessionId,
+      toolCall,
+    })
+    return
+  }
 
   // Execute tool directly (no LLM overhead)
   result = await executeToolDirectly(
@@ -215,7 +299,8 @@ export async function executeToolAndUpdate(
       onMetadata: (update) => {
         // Update step with real-time metadata
         const metadataUpdates: Partial<Step> = {}
-        if (update.title) {
+        // Only use title if it's a string (avoid [object Object] from arrays)
+        if (update.title && typeof update.title === 'string') {
           metadataUpdates.title = update.title
         }
         if (update.metadata) {
@@ -223,6 +308,19 @@ export async function executeToolAndUpdate(
           metadataUpdates.result = typeof update.metadata.output === 'string'
             ? update.metadata.output
             : JSON.stringify(update.metadata)
+
+          // If metadata contains diff info (edit tool), store in toolCall.changes
+          if (update.metadata.diff) {
+            metadataUpdates.toolCall = {
+              ...step.toolCall,
+              changes: {
+                diff: update.metadata.diff as string,
+                filePath: update.metadata.filePath as string,
+                additions: (update.metadata.additions as number) || 0,
+                deletions: (update.metadata.deletions as number) || 0,
+              },
+            }
+          }
         }
         // Only send update if there are changes
         if (Object.keys(metadataUpdates).length > 0) {
@@ -258,13 +356,20 @@ export async function executeToolAndUpdate(
       updates: stepUpdates,
     })
   } else {
-    toolCall.status = result.success ? 'completed' : 'failed'
+    // Determine status: cancelled if aborted, otherwise completed/failed based on success
+    if (result.aborted) {
+      toolCall.status = 'cancelled'
+    } else {
+      toolCall.status = result.success ? 'completed' : 'failed'
+    }
     toolCall.result = result.data
     toolCall.error = result.error
     // Update step status based on result, include result/error
-    const stepStatus = result.success ? 'completed' : 'failed'
+    const stepStatus = result.aborted ? 'cancelled' : (result.success ? 'completed' : 'failed')
     // Extract title from result.data if available (V2 tools return title in data)
-    const finalTitle = result.data?.title || step.title
+    // Only use if it's a string - avoid [object Object] display for arrays/objects
+    const rawTitle = result.data?.title
+    const finalTitle = (typeof rawTitle === 'string' ? rawTitle : null) || step.title
     const stepUpdates: Partial<Step> = {
       status: stepStatus,
       title: finalTitle,  // Update title with final result title

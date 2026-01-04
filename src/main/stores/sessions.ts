@@ -1,5 +1,5 @@
 import fs from 'fs'
-import type { ChatMessage, ChatSession, ToolCall, Step, ContentPart } from '../../shared/ipc.js'
+import type { ChatMessage, ChatSession, ToolCall, Step, ContentPart, SessionPlan } from '../../shared/ipc.js'
 import {
   getSessionsDir,
   getSessionPath,
@@ -9,6 +9,8 @@ import {
 } from './paths.js'
 import { getCurrentSessionId, setCurrentSessionId } from './app-state.js'
 import { getWorkspace } from './workspaces.js'
+import { getSettings } from './settings.js'
+import { expandPath } from '../tools/core/sandbox.js'
 
 /**
  * Sanitize a session after loading - clean up any interrupted states
@@ -131,6 +133,15 @@ export function createSession(sessionId: string, name: string, workspaceId?: str
     workingDirectory = workspace?.workingDirectory
   }
 
+  // Fallback to defaultWorkingDirectory from settings if not set
+  if (!workingDirectory) {
+    const settings = getSettings()
+    const defaultDir = settings.tools?.bash?.defaultWorkingDirectory
+    if (defaultDir) {
+      workingDirectory = expandPath(defaultDir)
+    }
+  }
+
   const session: ChatSession = {
     id: sessionId,
     name,
@@ -172,10 +183,22 @@ export function createBranchSession(
   inheritedMessages: ChatMessage[],
   agentId?: string
 ): ChatSession {
-  // Get parent session to inherit workspaceId and agentId if not provided
+  // Get parent session to inherit workspaceId, agentId, and workingDirectory if not provided
   const parentSession = getSession(parentSessionId)
   const inheritedWorkspaceId = parentSession?.workspaceId
   const inheritedAgentId = agentId ?? parentSession?.agentId
+
+  // Inherit workingDirectory from parent session
+  let workingDirectory = parentSession?.workingDirectory
+
+  // Fallback to defaultWorkingDirectory from settings if not set
+  if (!workingDirectory) {
+    const settings = getSettings()
+    const defaultDir = settings.tools?.bash?.defaultWorkingDirectory
+    if (defaultDir) {
+      workingDirectory = expandPath(defaultDir)
+    }
+  }
 
   // Calculate token usage from inherited messages
   let totalInputTokens = 0
@@ -200,6 +223,7 @@ export function createBranchSession(
     branchFromMessageId,
     workspaceId: inheritedWorkspaceId,
     agentId: inheritedAgentId,
+    workingDirectory,
     totalInputTokens,
     totalOutputTokens,
     totalTokens,
@@ -389,6 +413,42 @@ export function updateSessionWorkingDirectory(sessionId: string, workingDirector
   writeJsonFile(getSessionPath(sessionId), session)
 }
 
+// Update session builtin mode (Ask mode / Build mode)
+export function updateSessionBuiltinMode(sessionId: string, mode: 'build' | 'ask'): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  if (mode === 'build') {
+    delete session.builtinMode  // 'build' is default, no need to store
+  } else {
+    session.builtinMode = mode
+  }
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+}
+
+// Update session plan (Planning workflow)
+export function updateSessionPlan(sessionId: string, plan: SessionPlan | null): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  if (plan === null) {
+    delete session.plan
+  } else {
+    session.plan = plan
+  }
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+}
+
+// Get session plan
+export function getSessionPlan(sessionId: string): SessionPlan | undefined {
+  const session = getSession(sessionId)
+  return session?.plan
+}
+
 // Inherit working directory from workspace (does not update updatedAt)
 export function inheritSessionWorkingDirectory(sessionId: string, workingDirectory: string): void {
   const session = getSession(sessionId)
@@ -403,15 +463,22 @@ export function inheritSessionWorkingDirectory(sessionId: string, workingDirecto
 // Update session token usage (does not affect sort order)
 export function updateSessionTokenUsage(
   sessionId: string,
-  usage: { inputTokens: number; outputTokens: number; totalTokens: number }
+  usage: { inputTokens: number; outputTokens: number; totalTokens: number },
+  lastTurnUsage?: { inputTokens: number; outputTokens: number }
 ): void {
   const session = getSession(sessionId)
   if (!session) return
 
-  // Accumulate token usage
+  // Accumulate token usage (for statistics)
   session.totalInputTokens = (session.totalInputTokens || 0) + usage.inputTokens
   session.totalOutputTokens = (session.totalOutputTokens || 0) + usage.outputTokens
   session.totalTokens = (session.totalTokens || 0) + usage.totalTokens
+
+  // Use last turn's usage for context size (NOT accumulated)
+  const turnUsage = lastTurnUsage || usage
+  session.lastInputTokens = turnUsage.inputTokens
+  // Context size = input tokens only (context window limit applies to input)
+  session.contextSize = turnUsage.inputTokens
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
@@ -422,6 +489,8 @@ export function getSessionTokenUsage(sessionId: string): {
   totalInputTokens: number
   totalOutputTokens: number
   totalTokens: number
+  lastInputTokens: number
+  contextSize: number
 } | null {
   const session = getSession(sessionId)
   if (!session) return null
@@ -430,6 +499,8 @@ export function getSessionTokenUsage(sessionId: string): {
     totalInputTokens: session.totalInputTokens || 0,
     totalOutputTokens: session.totalOutputTokens || 0,
     totalTokens: session.totalTokens || 0,
+    lastInputTokens: session.lastInputTokens || 0,
+    contextSize: session.contextSize || 0,
   }
 }
 
@@ -685,6 +756,22 @@ export function updateMessageSkill(sessionId: string, messageId: string, skillUs
   return true
 }
 
+// Update message error details (for API errors during streaming)
+export function updateMessageError(sessionId: string, messageId: string, errorDetails: string): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  message.errorDetails = errorDetails
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  return true
+}
+
 // Add a step to a message (does not affect sort order)
 export function addMessageStep(sessionId: string, messageId: string, step: Step): boolean {
   const session = getSession(sessionId)
@@ -696,7 +783,16 @@ export function addMessageStep(sessionId: string, messageId: string, step: Step)
   if (!message.steps) {
     message.steps = []
   }
-  message.steps.push(step)
+
+  // Check for duplicate by toolCallId to avoid creating multiple steps for the same tool call
+  const existingIndex = message.steps.findIndex(s => s.toolCallId && s.toolCallId === step.toolCallId)
+  if (existingIndex >= 0) {
+    // Update existing step instead of adding duplicate
+    message.steps[existingIndex] = { ...message.steps[existingIndex], ...step }
+
+  } else {
+    message.steps.push(step)
+  }
 
   // Save session file
   writeJsonFile(getSessionPath(sessionId), session)
@@ -722,6 +818,36 @@ export function updateMessageStep(sessionId: string, messageId: string, stepId: 
   writeJsonFile(getSessionPath(sessionId), session)
 
   return true
+}
+
+// Update usage for all steps in a specific turn (does not affect sort order)
+export function updateStepsUsageByTurn(
+  sessionId: string,
+  messageId: string,
+  turnIndex: number,
+  usage: { inputTokens: number; outputTokens: number; totalTokens: number }
+): string[] {
+  const session = getSession(sessionId)
+  if (!session) return []
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message || !message.steps) return []
+
+  // Find all steps with matching turnIndex and update their usage
+  const updatedStepIds: string[] = []
+  for (const step of message.steps) {
+    if (step.turnIndex === turnIndex) {
+      step.usage = usage
+      updatedStepIds.push(step.id)
+    }
+  }
+
+  if (updatedStepIds.length > 0) {
+    // Save session file
+    writeJsonFile(getSessionPath(sessionId), session)
+  }
+
+  return updatedStepIds
 }
 
 // Update session summary (for context compacting)

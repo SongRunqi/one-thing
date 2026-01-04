@@ -160,8 +160,11 @@ export const useSessionsStore = defineStore('sessions', () => {
 
     // If session has no messages, permanently delete instead of archiving
     if (!session || !session.messages || session.messages.length === 0) {
-      // Check if this is the only session - if so, close the window
+      // Find the index of session to delete for switching logic
       const activeSessions = filteredSessions.value
+      const sessionIndex = activeSessions.findIndex(s => s.id === sessionId)
+
+      // Check if this is the only session - if so, close the window
       if (activeSessions.length === 1 && activeSessions[0].id === sessionId) {
         // Only one empty session left, close the window
         window.close()
@@ -173,9 +176,13 @@ export const useSessionsStore = defineStore('sessions', () => {
       if (currentSessionId.value === sessionId) {
         const remaining = filteredSessions.value
         if (remaining.length > 0) {
-          await switchSession(remaining[0].id)
+          // Switch to previous session if available, otherwise next
+          // After deletion, the next session is at the same index
+          const targetIndex = sessionIndex > 0 ? sessionIndex - 1 : 0
+          await switchSession(remaining[targetIndex].id)
         } else {
-          await createSession('New Chat')
+          // No sessions remaining, close window
+          window.close()
         }
       }
       return
@@ -189,6 +196,10 @@ export const useSessionsStore = defineStore('sessions', () => {
     try {
       const session = sessions.value.find(s => s.id === sessionId)
       if (!session) return
+
+      // Find the index of session to archive for switching logic (before archiving)
+      const activeSessionsBefore = filteredSessions.value
+      const sessionIndex = activeSessionsBefore.findIndex(s => s.id === sessionId)
 
       const archivedAt = Date.now()
 
@@ -220,10 +231,13 @@ export const useSessionsStore = defineStore('sessions', () => {
       if (allIdsToArchive.includes(currentSessionId.value)) {
         const activeSessions = filteredSessions.value
         if (activeSessions.length > 0) {
-          await switchSession(activeSessions[0].id)
+          // Switch to previous session if available, otherwise next
+          // After archiving, the next session is at the same index
+          const targetIndex = sessionIndex > 0 ? sessionIndex - 1 : 0
+          await switchSession(activeSessions[targetIndex].id)
         } else {
-          // Create a new session if no active sessions left
-          await createSession('New Chat')
+          // No sessions remaining, close window
+          window.close()
         }
       }
     } catch (error) {

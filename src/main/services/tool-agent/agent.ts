@@ -70,9 +70,10 @@ export async function executeToolAgent(
 
   // Get all enabled tools for the Tool Agent
   // Use async version to include tools with dynamic descriptions
-  const allEnabledTools = await getEnabledToolsAsync()
+  // Pass toolSettings.tools to filter based on user's per-tool enabled settings
+  const allEnabledTools = await getEnabledToolsAsync(context.toolSettings?.tools)
   const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
-  const mcpTools = getMCPToolsForAI()
+  const mcpTools = getMCPToolsForAI(context.toolSettings?.tools)
   const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
   const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
 

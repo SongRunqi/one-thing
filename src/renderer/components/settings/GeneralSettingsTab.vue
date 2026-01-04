@@ -1,8 +1,8 @@
 <template>
   <div class="tab-content">
-    <!-- Appearance -->
+    <!-- Mode (Light/Dark/System) -->
     <section class="settings-section">
-      <h3 class="section-title">Appearance</h3>
+      <h3 class="section-title">Mode</h3>
 
       <div class="theme-cards">
         <div
@@ -52,6 +52,12 @@
           <span>Dark</span>
         </div>
       </div>
+    </section>
+
+    <!-- Theme Selection -->
+    <section class="settings-section">
+      <h3 class="section-title">Theme</h3>
+      <ThemeSelectorPanel @themeChange="handleThemeChange" />
     </section>
 
     <!-- Accent Color -->
@@ -115,6 +121,27 @@
           <span>Spacious</span>
         </div>
       </div>
+
+      <!-- Line Height Slider -->
+      <div class="form-group" style="margin-top: 16px;">
+        <label class="form-label">
+          Line Height
+          <span class="label-value">{{ currentLineHeight.toFixed(1) }}</span>
+        </label>
+        <input
+          :value="currentLineHeight"
+          @input="updateLineHeight(($event.target as HTMLInputElement).valueAsNumber)"
+          type="range"
+          min="1.2"
+          max="2.2"
+          step="0.1"
+          class="form-slider"
+        />
+        <div class="slider-labels">
+          <span>Compact</span>
+          <span>Spacious</span>
+        </div>
+      </div>
     </section>
 
     <!-- Animation -->
@@ -149,6 +176,7 @@
 import { computed } from 'vue'
 import type { AppSettings, ColorTheme } from '@/types'
 import type { MessageListDensity } from '../../../shared/ipc'
+import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
 
 const props = defineProps<{
   settings: AppSettings
@@ -177,8 +205,25 @@ const currentDensity = computed(() => {
   return props.settings.general?.messageListDensity || 'comfortable'
 })
 
+const currentLineHeight = computed(() => {
+  return props.settings.general?.messageLineHeight ?? 1.6
+})
+
 function updateTheme(theme: 'light' | 'dark' | 'system') {
   emit('update:settings', { ...props.settings, theme })
+}
+
+// Handle theme change from ThemeSelectorPanel
+// This syncs localSettings with themeStore to prevent overwrites
+function handleThemeChange(darkThemeId: string, lightThemeId: string) {
+  emit('update:settings', {
+    ...props.settings,
+    general: {
+      ...props.settings.general,
+      darkThemeId,
+      lightThemeId,
+    },
+  })
 }
 
 function updateColorTheme(colorTheme: ColorTheme) {
@@ -199,6 +244,13 @@ function updateDensity(density: MessageListDensity) {
   emit('update:settings', {
     ...props.settings,
     general: { ...props.settings.general, messageListDensity: density }
+  })
+}
+
+function updateLineHeight(lineHeight: number) {
+  emit('update:settings', {
+    ...props.settings,
+    general: { ...props.settings.general, messageLineHeight: lineHeight }
   })
 }
 </script>

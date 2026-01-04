@@ -46,6 +46,9 @@ const defaultSettings: AppSettings = {
     sendShortcut: 'enter',
     colorTheme: 'blue',
     baseTheme: 'obsidian',
+    themeId: 'flexoki',  // Default JSON theme (deprecated, use darkThemeId/lightThemeId)
+    darkThemeId: 'flexoki',
+    lightThemeId: 'flexoki',
   },
   tools: {
     enableToolCalls: true,
@@ -177,6 +180,24 @@ function migrateSettings(settings: any): AppSettings {
   // Ensure baseTheme exists in general settings
   if (settings.general && !settings.general.baseTheme) {
     settings.general.baseTheme = 'obsidian'
+    needsSave = true
+  }
+
+  // Ensure themeId exists in general settings (for JSON theme system)
+  if (settings.general && !settings.general.themeId) {
+    settings.general.themeId = 'flexoki'
+    needsSave = true
+  }
+
+  // Ensure darkThemeId exists in general settings (dual theme system)
+  if (settings.general && !settings.general.darkThemeId) {
+    settings.general.darkThemeId = settings.general.themeId || 'flexoki'
+    needsSave = true
+  }
+
+  // Ensure lightThemeId exists in general settings (dual theme system)
+  if (settings.general && !settings.general.lightThemeId) {
+    settings.general.lightThemeId = settings.general.themeId || 'flexoki'
     needsSave = true
   }
 

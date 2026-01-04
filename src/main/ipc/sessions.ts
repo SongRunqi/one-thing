@@ -7,9 +7,14 @@ import * as store from '../store.js'
 /**
  * Update session usage (called from chat.ts when finish chunk is received)
  * Persists to disk for durability across app restarts
+ * @param lastTurnUsage - Optional: the last turn's usage (for context size calculation in tool loops)
  */
-export function updateSessionUsage(sessionId: string, usage: TokenUsage): void {
-  store.updateSessionTokenUsage(sessionId, usage)
+export function updateSessionUsage(
+  sessionId: string,
+  usage: TokenUsage,
+  lastTurnUsage?: { inputTokens: number; outputTokens: number }
+): void {
+  store.updateSessionTokenUsage(sessionId, usage, lastTurnUsage)
 }
 
 /**
@@ -22,6 +27,8 @@ export function getSessionUsage(sessionId: string): SessionTokenUsage {
     totalOutputTokens: usage?.totalOutputTokens ?? 0,
     totalTokens: usage?.totalTokens ?? 0,
     maxTokens: 128000, // Not used anymore, context length comes from model
+    lastInputTokens: usage?.lastInputTokens ?? 0,
+    contextSize: usage?.contextSize ?? 0,
   }
 }
 
@@ -171,5 +178,24 @@ export function registerSessionHandlers() {
   ipcMain.handle(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, async (_event, sessionId: string) => {
     const usage = getSessionUsage(sessionId)
     return { success: true, usage }
+  })
+
+  // 设置会话的内置模式 (Plan mode / Build mode)
+  ipcMain.handle(IPC_CHANNELS.SET_SESSION_BUILTIN_MODE, async (_event, { sessionId, mode }) => {
+    const session = store.getSession(sessionId)
+    if (!session) {
+      return { success: false, error: 'Session not found' }
+    }
+    store.updateSessionBuiltinMode(sessionId, mode)
+    return { success: true, mode }
+  })
+
+  // 获取会话的内置模式
+  ipcMain.handle(IPC_CHANNELS.GET_SESSION_BUILTIN_MODE, async (_event, { sessionId }) => {
+    const session = store.getSession(sessionId)
+    if (!session) {
+      return { success: false, error: 'Session not found' }
+    }
+    return { success: true, mode: session.builtinMode || 'build' }
   })
 }

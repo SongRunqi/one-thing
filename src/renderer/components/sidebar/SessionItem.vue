@@ -8,48 +8,28 @@
         pinned: session.isPinned,
         editing: isEditing,
         branch: session.depth > 0,
-        hidden: session.isHidden
+        hidden: session.isHidden,
+        collapsed: session.isCollapsed
       }
     ]"
-    :style="{ paddingLeft: `${12 + session.depth * 16}px` }"
-    :title="session.name || 'New chat'"
     @click="handleClick"
     @contextmenu.prevent="$emit('context-menu', $event)"
   >
-    <!-- Indicator area (fixed width for alignment) -->
-    <span class="indicator-area">
-      <!-- Collapse/Expand toggle for parent sessions -->
-      <button
-        v-if="session.hasBranches"
-        class="collapse-btn"
-        :class="{ collapsed: session.isCollapsed }"
-        @click.stop="$emit('toggle-collapse')"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </button>
-      <!-- Branch indicator for child sessions without branches -->
-      <span v-else-if="session.depth > 0" class="branch-indicator">›</span>
-    </span>
+    <!-- 树线缩进区域：参与 flex 布局，宽度 = depth * 16px -->
+    <div v-if="session.depth > 0" class="tree-indent" :style="{ width: `${session.depth * 16}px` }">
+      <div class="tree-lines">
+        <!-- 祖先层级的垂直线 -->
+        <span
+          v-for="(isAncestorLast, idx) in session.ancestorsLastChild"
+          :key="idx"
+          :class="['tree-line-segment', { continue: !isAncestorLast }]"
+        ></span>
+        <!-- 当前节点的连接线 -->
+        <span :class="['tree-line-segment', 'connector', { 'last-child': session.isLastChild }]"></span>
+      </div>
+    </div>
 
-    <!-- Generating indicator -->
-    <div v-if="isGenerating" class="generating-dot"></div>
-
-    <!-- Pin indicator -->
-    <svg
-      v-if="session.isPinned && session.depth === 0"
-      class="pin-icon"
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      stroke="none"
-    >
-      <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
-    </svg>
-
-    <!-- Session name -->
+    <!-- Session name (flex: 1) -->
     <input
       v-if="isEditing"
       ref="inputRef"
@@ -65,7 +45,35 @@
       <span class="session-name" @dblclick.stop="startRename">{{ session.name || 'New chat' }}</span>
     </Tooltip>
 
-    <!-- Session time -->
+    <!-- Branch Badge：圆形数字，点击展开/收起 -->
+    <button
+      v-if="session.hasBranches"
+      class="branch-badge"
+      :title="session.isCollapsed ? `展开 ${session.branchCount} 个分支` : `收起 ${session.branchCount} 个分支`"
+      @click.stop="$emit('toggle-collapse')"
+    >
+      {{ session.branchCount }}
+    </button>
+
+    <!-- 右侧状态区域 (固定宽度，始终占位) -->
+    <div class="status-area">
+      <!-- Generating dot - 始终存在，用 class 控制显隐 -->
+      <div :class="['generating-dot', { active: isGenerating }]"></div>
+      <!-- Pin icon -->
+      <svg
+        v-if="session.isPinned && session.depth === 0"
+        class="pin-icon"
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        stroke="none"
+      >
+        <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
+      </svg>
+    </div>
+
+    <!-- Session time (固定宽度，默认隐藏) -->
     <span v-if="!isEditing" class="session-time">{{ formattedTime }}</span>
 
     <!-- Hover actions -->
@@ -172,9 +180,9 @@ function cancelRename() {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 12px 12px;
-  margin: 2px 4px;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 1px 4px;
   border-radius: 6px;
   cursor: pointer;
   user-select: none;
@@ -189,11 +197,7 @@ function cancelRename() {
 }
 
 .session-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-html[data-theme='light'] .session-item:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--bg-hover);
 }
 
 .session-item.active {
@@ -210,13 +214,94 @@ html[data-theme='light'] .session-item:hover {
   overflow: hidden;
 }
 
-/* Generating indicator */
+/* 树线缩进区域：参与 flex 布局 */
+.tree-indent {
+  position: relative;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
+/* 树状连接线 */
+.tree-lines {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  display: flex;
+  pointer-events: none;
+}
+
+/* 每层的连接线单元 (16px 宽) */
+.tree-line-segment {
+  width: 16px;
+  height: 100%;
+  position: relative;
+}
+
+/* 垂直延续线 (非最后子节点的祖先) */
+.tree-line-segment.continue::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.5;
+}
+
+/* L 形连接线 (当前节点) */
+.tree-line-segment.connector::after {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0;
+  height: 50%;
+  width: 9px;
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+  opacity: 0.5;
+}
+
+/* 非最后子节点：T 形（延续垂直线） */
+.tree-line-segment.connector:not(.last-child)::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.5;
+}
+
+/* 右侧状态区域 - 固定宽度 */
+.status-area {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 20px;
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
+/* Generating dot - 始终存在，用 class 控制显隐 */
 .generating-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #10b981;
+  background: var(--text-success);
   flex-shrink: 0;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.generating-dot.active {
+  opacity: 1;
+  transform: scale(1);
   animation: pulse 1.5s ease-in-out infinite;
 }
 
@@ -225,62 +310,52 @@ html[data-theme='light'] .session-item:hover {
   50% { opacity: 1; transform: scale(1.1); }
 }
 
-/* Collapse button */
-.collapse-btn {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Branch Badge：圆形数字 */
+.branch-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: rgba(var(--accent-rgb), 0.15);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
   border: none;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s ease;
-  padding: 0;
-}
-
-.collapse-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text);
-}
-
-html[data-theme='light'] .collapse-btn:hover {
-  background: rgba(0, 0, 0, 0.08);
-}
-
-.collapse-btn svg {
-  transition: transform 0.2s ease;
-}
-
-.collapse-btn.collapsed svg {
-  transform: rotate(-90deg);
-}
-
-/* Indicator area - fixed width for consistent name alignment */
-.indicator-area {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.15s ease;
 }
 
-/* Branch indicator */
-.branch-indicator {
-  font-size: 12px;
-  color: var(--muted);
-  opacity: 0.5;
-  font-weight: 500;
+.branch-badge:hover {
+  background: var(--accent);
+  color: var(--text-btn-primary);
 }
 
-/* Pin indicator */
+/* 已收起时的 badge 样式 */
+.session-item.collapsed .branch-badge {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
+.session-item.collapsed .branch-badge:hover {
+  background: var(--accent);
+  color: var(--text-btn-primary);
+}
+
+
+/* Pin indicator - 默认隐藏，hover 或 pinned 时显示 */
 .pin-icon {
   flex-shrink: 0;
   color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.session-item:hover .pin-icon,
+.session-item.pinned .pin-icon {
   opacity: 0.5;
 }
 
@@ -303,7 +378,6 @@ html[data-theme='light'] .collapse-btn:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 30px; /* Reserve space for hover actions */
   transition: color 0.15s ease;
 }
 
@@ -329,13 +403,14 @@ html[data-theme='light'] .collapse-btn:hover {
   outline: none;
 }
 
-/* Session time */
+/* Session time - 默认显示，hover 时隐藏（给 actions 让位） */
 .session-time {
   flex-shrink: 0;
+  min-width: 36px;
   font-size: 11px;
   color: var(--muted);
-  opacity: 0.6;
-  margin-left: 4px;
+  text-align: right;
+  opacity: 0.5;
   transition: opacity 0.15s ease;
 }
 
@@ -376,28 +451,24 @@ html[data-theme='light'] .collapse-btn:hover {
 }
 
 .action-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text);
-}
-
-html[data-theme='light'] .action-btn:hover {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .action-btn.danger:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  background: rgba(var(--color-danger-rgb), 0.15);
+  color: var(--text-error);
 }
 
 .action-btn.confirm {
-  background: #ef4444;
-  color: white;
+  background: var(--text-error);
+  color: var(--text-btn-danger);
   animation: shake 0.4s ease;
 }
 
 .action-btn.confirm:hover {
-  background: #dc2626;
-  color: white;
+  background: var(--bg-btn-danger-hover);
+  color: var(--text-btn-danger);
 }
 
 .delete-count {
@@ -415,10 +486,10 @@ html[data-theme='light'] .action-btn:hover {
 
 /* Pending delete state for session item */
 .session-item:has(.action-btn.confirm) {
-  background: rgba(239, 68, 68, 0.08) !important;
+  background: rgba(var(--color-danger-rgb), 0.08) !important;
 }
 
 .session-item:has(.action-btn.confirm) .session-name {
-  color: #ef4444;
+  color: var(--text-error);
 }
 </style>

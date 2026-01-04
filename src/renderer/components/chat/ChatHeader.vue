@@ -126,10 +126,14 @@ function handleSelectAgent(agentId: string | null) {
   height: 48px;
   padding: 0 16px;
   user-select: none;
-  background: rgba(var(--bg-rgb), 0.5);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(var(--bg-rgb, 40, 39, 38), 0.5);
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.05));
   flex-shrink: 0;
   -webkit-app-region: drag;
+}
+
+html[data-theme='light'] .chat-header {
+  border-bottom-color: var(--border, rgba(0, 0, 0, 0.05));
 }
 
 .chat-header-left {
@@ -165,12 +169,8 @@ function handleSelectAgent(agentId: string | null) {
 }
 
 .chat-header-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover, rgba(255, 255, 255, 0.08));
   color: var(--text);
-}
-
-html[data-theme='light'] .chat-header-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
 }
 
 .chat-header-btn.back-btn {

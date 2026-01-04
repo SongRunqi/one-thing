@@ -34,11 +34,18 @@ export function registerSettingsHandlers() {
   })
 
   // 保存设置
-  ipcMain.handle(IPC_CHANNELS.SAVE_SETTINGS, async (_event, settings) => {
+  ipcMain.handle(IPC_CHANNELS.SAVE_SETTINGS, async (event, settings) => {
     store.saveSettings(settings)
-    // Broadcast settings change to all windows
+
+    // Get the sender's webContents ID to exclude from broadcast
+    const senderWebContentsId = event.sender.id
+
+    // Broadcast settings change to OTHER windows (exclude sender to prevent race condition)
+    // The sender already updated its local state, so it doesn't need the broadcast
     BrowserWindow.getAllWindows().forEach(win => {
-      win.webContents.send(IPC_CHANNELS.SETTINGS_CHANGED, settings)
+      if (win.webContents.id !== senderWebContentsId) {
+        win.webContents.send(IPC_CHANNELS.SETTINGS_CHANGED, settings)
+      }
     })
     return { success: true }
   })

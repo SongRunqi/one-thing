@@ -1,7 +1,7 @@
 /**
  * Provider Settings Composable
  *
- * 管理 AI Provider 配置、OAuth 流程、模型选择等逻辑
+ * Manages AI Provider configuration, OAuth flow, model selection, etc.
  */
 
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'

@@ -222,10 +222,19 @@ export async function getAllToolsAsync(): Promise<ToolDefinition[]> {
 
 /**
  * Get enabled tools including async tools (async version)
+ * @param toolSettings - Optional per-tool settings from user preferences.
+ *                       If provided, uses user settings to determine if tool is enabled.
+ *                       If not provided, uses tool's default enabled property.
  */
-export async function getEnabledToolsAsync(): Promise<ToolDefinition[]> {
+export async function getEnabledToolsAsync(
+  toolSettings?: Record<string, { enabled: boolean; autoExecute: boolean }>
+): Promise<ToolDefinition[]> {
   const allTools = await getAllToolsAsync()
-  return allTools.filter(t => t.enabled)
+  return allTools.filter(t => {
+    const settings = toolSettings?.[t.id]
+    // User settings take priority, otherwise use tool's default enabled property
+    return settings?.enabled ?? t.enabled
+  })
 }
 
 /**

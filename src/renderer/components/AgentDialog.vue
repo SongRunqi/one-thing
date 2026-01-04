@@ -296,7 +296,7 @@ const otherVoices = computed(() => {
 
 // Preview current voice
 async function previewCurrentVoice() {
-  const sampleText = '你好，这是语音预览。Hello, this is a voice preview.'
+  const sampleText = 'Hello, this is a voice preview.'
   await previewVoice(form.voice.voiceURI || '', sampleText)
 }
 

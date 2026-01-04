@@ -169,8 +169,10 @@ function jsonSchemaTypeToZod(prop: any): z.ZodTypeAny {
 /**
  * Get MCP tools formatted for Vercel AI SDK (same format as convertToolDefinitionsForAI)
  * Returns a record of tool definitions matching the format expected by streamChatResponseWithTools
+ *
+ * @param toolsSettings - Optional per-tool settings to filter disabled tools
  */
-export function getMCPToolsForAI(): Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }> {
+export function getMCPToolsForAI(toolsSettings?: Record<string, { enabled: boolean; autoExecute: boolean }>): Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }> {
   const result: Record<string, any> = {}
 
   if (!MCPManager.isEnabled) {
@@ -187,12 +189,24 @@ export function getMCPToolsForAI(): Record<string, { description: string; parame
     const sanitizedServerId = sanitizeForToolName(mcpTool.serverId)
     const sanitizedToolName = sanitizeForToolName(mcpTool.name)
     const toolId = `mcp_${sanitizedServerId}_${sanitizedToolName}`
+    // Also check with colon format: mcp:serverId:toolName
+    const colonToolId = `mcp:${mcpTool.serverId}:${mcpTool.name}`
 
     // Store mapping from sanitized ID to original values
     sanitizedToOriginalMap.set(toolId, {
       serverId: mcpTool.serverId,
       toolName: mcpTool.name,
     })
+
+    // Check if this tool is disabled in settings
+    // Settings can use either underscore format (mcp_*) or colon format (mcp:*)
+    if (toolsSettings) {
+      const toolSetting = toolsSettings[toolId] || toolsSettings[colonToolId]
+      if (toolSetting && !toolSetting.enabled) {
+        console.log(`[MCPBridge] Skipping disabled MCP tool: ${toolId}`)
+        continue
+      }
+    }
 
     // Convert JSON Schema properties to parameter array format
     const parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> = []
