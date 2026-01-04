@@ -133,8 +133,32 @@ export async function runStream(
       if (chunk.type === 'tool-call' && chunk.toolCall) {
         // Get the step ID before handleToolCallChunk (which may clear the buffer)
         const existingStepId = processor.getStepIdForToolCall(chunk.toolCall.toolCallId)
-        
+
         const toolCall = processor.handleToolCallChunk(chunk.toolCall)
+
+        // Send data-steps placeholder BEFORE executing the first tool of this turn
+        // This ensures proper ordering: text -> data-steps -> STEP_ADDED events
+        if (toolCallsThisTurn.length === 0) {
+          // First tool call of this turn - send text content_part first (if any)
+          if (turnContent.value) {
+            ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+              type: 'content_part',
+              content: '',
+              messageId: ctx.assistantMessageId,
+              sessionId: ctx.sessionId,
+              contentPart: { type: 'text', content: turnContent.value },
+            })
+          }
+          // Then send data-steps placeholder
+          ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+            type: 'content_part',
+            content: '',
+            messageId: ctx.assistantMessageId,
+            sessionId: ctx.sessionId,
+            contentPart: { type: 'data-steps', turnIndex: currentTurn },
+          })
+        }
+
         toolCallsThisTurn.push(toolCall)
 
         // Always execute tools - the tool will decide if it needs confirmation
@@ -194,19 +218,23 @@ export async function runStream(
     }
 
     // Add contentParts for this turn to enable proper interleaving of text and steps
-    // Only add if there's actual content (text or tool calls)
+    // Note: IPC messages for content_part are sent earlier (before tool execution) for proper ordering
+    // Here we only persist to store and send IPC for turns WITHOUT tool calls
     if (turnContent.value) {
       store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
         type: 'text',
         content: turnContent.value,
       })
-      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'content_part',
-        content: '',
-        messageId: ctx.assistantMessageId,
-        sessionId: ctx.sessionId,
-        contentPart: { type: 'text', content: turnContent.value },
-      })
+      // Only send IPC if no tool calls (otherwise already sent before tool execution)
+      if (toolCallsThisTurn.length === 0) {
+        ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+          type: 'content_part',
+          content: '',
+          messageId: ctx.assistantMessageId,
+          sessionId: ctx.sessionId,
+          contentPart: { type: 'text', content: turnContent.value },
+        })
+      }
     }
 
     if (toolCallsThisTurn.length > 0) {
@@ -214,13 +242,7 @@ export async function runStream(
         type: 'data-steps',
         turnIndex: currentTurn,
       })
-      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'content_part',
-        content: '',
-        messageId: ctx.assistantMessageId,
-        sessionId: ctx.sessionId,
-        contentPart: { type: 'data-steps', turnIndex: currentTurn },
-      })
+      // IPC already sent before tool execution, no need to send again
     }
 
     // If any tool requires confirmation, stop the loop and signal pause

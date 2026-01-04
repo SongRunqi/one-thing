@@ -64,6 +64,16 @@ const defaultSettings: AppSettings = {
       dangerousCommandWhitelist: [],
     },
   },
+  // Chat settings for model parameters and display
+  chat: {
+    temperature: 0.7,
+    maxTokens: 4096,
+    topP: 1,
+    presencePenalty: 0,
+    frequencyPenalty: 0,
+    branchOpenInSplitScreen: true,
+    chatFontSize: 14,
+  },
   // Embedding settings for memory system
   embedding: {
     provider: 'openai',

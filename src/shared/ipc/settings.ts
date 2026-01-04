@@ -56,6 +56,7 @@ export interface ChatSettings {
   presencePenalty?: number     // -2 to 2, default 0
   frequencyPenalty?: number    // -2 to 2, default 0
   branchOpenInSplitScreen?: boolean  // Whether branches open in split screen, default true
+  chatFontSize?: number        // Chat font size in px, 12-20, default 14
 }
 
 // Supported embedding provider types

@@ -2,7 +2,7 @@
   <div class="message-list-wrapper">
     <div
       :class="['message-list', `density-${messageListDensity}`]"
-      :style="customLineHeight ? { '--message-line-height': customLineHeight } : undefined"
+      :style="messageListStyles"
       ref="messageListRef"
     >
     <EmptyState
@@ -127,6 +127,23 @@ const messageListDensity = computed(() => {
 // Get custom line height setting (overrides density default if set)
 const customLineHeight = computed(() => {
   return settingsStore.settings.general?.messageLineHeight
+})
+
+// Get chat font size setting
+const chatFontSize = computed(() => {
+  return settingsStore.settings.chat?.chatFontSize
+})
+
+// Combined styles for message list
+const messageListStyles = computed(() => {
+  const styles: Record<string, string> = {}
+  if (customLineHeight.value) {
+    styles['--message-line-height'] = String(customLineHeight.value)
+  }
+  if (chatFontSize.value) {
+    styles['--message-font-size'] = `${chatFontSize.value}px`
+  }
+  return Object.keys(styles).length > 0 ? styles : undefined
 })
 
 // Track current navigation position among user messages

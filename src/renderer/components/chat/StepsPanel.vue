@@ -529,7 +529,7 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
 
 /* Inline step row */
 .step-inline {
-  font-size: 13px;
+  font-size: var(--message-font-size, 14px);
   line-height: var(--message-line-height, 1.6);
   border-radius: 6px;
   background: transparent;
@@ -559,6 +559,7 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
   padding: 6px 10px;
   cursor: pointer;
   min-height: 32px;
+  user-select: none;
 }
 
 /* Status dot */
@@ -617,6 +618,7 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
 
 /* Step title */
 .step-title {
+  font-size: var(--message-font-size, 14px);
   font-weight: 500;
   color: var(--text-secondary);
   flex: 1;
@@ -715,6 +717,7 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
 /* Expanded details */
 .step-details {
   padding: 0 10px 8px 34px;
+  font-size: var(--message-font-size, 14px);
 }
 
 .detail-section {

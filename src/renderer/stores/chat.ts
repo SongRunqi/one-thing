@@ -386,6 +386,34 @@ export const useChatStore = defineStore('chat', () => {
           }
         }
       }
+    } else if (chunk.type === 'content_part' && chunk.contentPart) {
+      // Handle content_part chunk from backend (for proper interleaving of text and steps)
+      const parts = message.contentParts!
+      const newPart = chunk.contentPart
+
+      // Remove waiting indicator if present
+      const lastPart = parts[parts.length - 1]
+      if (lastPart && lastPart.type === 'waiting') {
+        parts.pop()
+      }
+
+      if (newPart.type === 'data-steps') {
+        // For data-steps, check if we already have a placeholder for this turn
+        const turnIndex = (newPart as any).turnIndex
+        const hasPlaceholder = parts.some(
+          p => p.type === 'data-steps' && (p as any).turnIndex === turnIndex
+        )
+        if (!hasPlaceholder) {
+          parts.push(newPart as any)
+        }
+      } else if (newPart.type === 'text') {
+        // For text content_part, this is a finalized text block for the turn
+        // We may already have streaming text, so we need to handle carefully
+        // The streaming text chunks have already built up the text, so we can skip
+        // adding duplicate text here - the content_part is mainly for data-steps ordering
+      }
+
+      message.contentParts = [...parts]
     }
 
     // Create new message object reference to trigger Vue reactivity

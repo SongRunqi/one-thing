@@ -110,6 +110,44 @@
       </div>
     </section>
 
+    <!-- Chat Display -->
+    <section class="settings-section">
+      <h3 class="section-title">Chat Display</h3>
+      <p class="section-desc">Customize the appearance of chat messages.</p>
+
+      <div class="form-group">
+        <label class="form-label">
+          Font Size
+          <span class="label-value">{{ chatSettings.chatFontSize }}px</span>
+        </label>
+        <input
+          :value="chatSettings.chatFontSize"
+          @input="updateChatFontSize(($event.target as HTMLInputElement).valueAsNumber)"
+          type="range"
+          min="12"
+          max="20"
+          step="1"
+          class="form-slider"
+        />
+        <div class="slider-labels">
+          <span>12px</span>
+          <span>20px</span>
+        </div>
+      </div>
+
+      <!-- Font size presets -->
+      <div class="preset-buttons">
+        <button
+          v-for="preset in fontSizePresets"
+          :key="preset.value"
+          :class="['preset-btn', { active: chatSettings.chatFontSize === preset.value }]"
+          @click="updateChatFontSize(preset.value)"
+        >
+          {{ preset.label }}
+        </button>
+      </div>
+    </section>
+
     <!-- Advanced Settings (collapsed by default) -->
     <section class="settings-section">
       <button class="advanced-toggle" @click="showAdvanced = !showAdvanced">
@@ -227,6 +265,7 @@ const defaults: ChatSettings = {
   presencePenalty: 0,
   frequencyPenalty: 0,
   branchOpenInSplitScreen: true,
+  chatFontSize: 14,
 }
 
 // Get current chat settings with defaults
@@ -237,6 +276,7 @@ const chatSettings = computed<ChatSettings>(() => ({
   presencePenalty: props.settings.chat?.presencePenalty ?? defaults.presencePenalty,
   frequencyPenalty: props.settings.chat?.frequencyPenalty ?? defaults.frequencyPenalty,
   branchOpenInSplitScreen: props.settings.chat?.branchOpenInSplitScreen ?? defaults.branchOpenInSplitScreen,
+  chatFontSize: props.settings.chat?.chatFontSize ?? defaults.chatFontSize,
 }))
 
 // Presets
@@ -255,6 +295,14 @@ const maxTokensPresets = [
   { label: '8K', value: 8192 },
   { label: '16K', value: 16384 },
   { label: '32K', value: 32768 },
+]
+
+const fontSizePresets = [
+  { label: 'Small', value: 12 },
+  { label: 'Normal', value: 14 },
+  { label: 'Large', value: 16 },
+  { label: 'XL', value: 18 },
+  { label: '2XL', value: 20 },
 ]
 
 function formatNumber(num: number): string {
@@ -296,6 +344,10 @@ function updateFrequencyPenalty(value: number) {
 
 function updateBranchOpenInSplitScreen(value: boolean) {
   updateChatSettings({ branchOpenInSplitScreen: value })
+}
+
+function updateChatFontSize(value: number) {
+  updateChatSettings({ chatFontSize: Math.max(12, Math.min(20, value)) })
 }
 
 function resetToDefaults() {
