@@ -51,7 +51,7 @@ export interface StreamProcessor {
     args: Record<string, any>
   }): ToolCall
   /** Handle streaming tool input start - creates a pending tool call */
-  handleToolInputStart(toolCallId: string, toolName: string): void
+  handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number): void
   /** Handle streaming tool input delta - accumulates args JSON text */
   handleToolInputDelta(toolCallId: string, argsTextDelta: string): void
   /** Handle streaming tool input end - parses accumulated JSON and returns ToolCall */
@@ -179,7 +179,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
      * Handle streaming tool input start
      * Creates placeholder ToolCall and Step for real-time streaming display
      */
-    handleToolInputStart(toolCallId: string, toolName: string) {
+    handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number) {
       // Resolve tool ID (AI models may return short names)
       let toolId = toolName
       let displayName = toolName
@@ -229,6 +229,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
         timestamp: Date.now(),
         toolCallId: toolCallId,
         toolCall: { ...placeholderToolCall },
+        turnIndex: turnIndex,  // Include turnIndex for proper contentParts ordering
       }
 
       // Store stepId for later updates

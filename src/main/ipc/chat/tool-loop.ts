@@ -116,7 +116,8 @@ export async function runStream(
       if (chunk.type === 'tool-input-start' && chunk.toolInputStart) {
         processor.handleToolInputStart(
           chunk.toolInputStart.toolCallId,
-          chunk.toolInputStart.toolName
+          chunk.toolInputStart.toolName,
+          currentTurn  // Pass turnIndex for proper contentParts ordering
         )
       }
 
