@@ -66,7 +66,7 @@ export interface MessageAttachment {
 // Type definitions for IPC messages
 export interface ChatMessage {
   id: string
-  role: 'user' | 'assistant' | 'error'  // 'error' is display-only, not saved to backend
+  role: 'user' | 'assistant' | 'error' | 'system'  // 'error' and 'system' are display-only, not saved to backend
   content: string
   timestamp: number
   isStreaming?: boolean

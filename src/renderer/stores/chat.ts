@@ -932,13 +932,28 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const response = await window.electronAPI.abortStream(sessionId)
       if (response.success && sessionId) {
-        // Mark current streaming message as not streaming
+        // Mark current streaming message as not streaming and cancel running steps
         const currentMessageId = activeStreams.value.get(sessionId)
         if (currentMessageId) {
           const messages = getSessionMessagesRef(sessionId)
           const messageIndex = messages.findIndex(m => m.id === currentMessageId)
           if (messageIndex !== -1) {
-            messages[messageIndex] = { ...messages[messageIndex], isStreaming: false }
+            const message = messages[messageIndex]
+            // Cancel all running steps
+            let updatedSteps = message.steps
+            if (updatedSteps) {
+              updatedSteps = updatedSteps.map(step => {
+                if (step.status === 'running') {
+                  return {
+                    ...step,
+                    status: 'cancelled' as const,
+                    toolCall: step.toolCall ? { ...step.toolCall, status: 'cancelled' as const } : undefined
+                  }
+                }
+                return step
+              })
+            }
+            messages[messageIndex] = { ...message, isStreaming: false, steps: updatedSteps }
             setSessionMessages(sessionId, [...messages])
           }
         }
@@ -986,6 +1001,43 @@ export const useChatStore = defineStore('chat', () => {
     triggerRef(sessionMessages)
   }
 
+  /**
+   * Add a local-only message (not saved to backend)
+   * Used for system messages like /files command output
+   */
+  function addLocalMessage(sessionId: string, message: { role: 'system' | 'error'; content: string }) {
+    const messages = getSessionMessagesRef(sessionId)
+    const localMessage: ChatMessage = {
+      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      role: message.role,
+      content: message.content,
+      timestamp: Date.now(),
+    }
+    messages.push(localMessage)
+    setSessionMessages(sessionId, [...messages])
+  }
+
+  /**
+   * Add a message to Vue state (for immediate display after backend persistence)
+   */
+  function addMessageToState(sessionId: string, message: ChatMessage) {
+    const messages = getSessionMessagesRef(sessionId)
+    messages.push(message)
+    setSessionMessages(sessionId, [...messages])
+  }
+
+  /**
+   * Remove a message from Vue state by ID
+   */
+  function removeMessage(sessionId: string, messageId: string) {
+    const messages = getSessionMessagesRef(sessionId)
+    const index = messages.findIndex(m => m.id === messageId)
+    if (index !== -1) {
+      messages.splice(index, 1)
+      setSessionMessages(sessionId, [...messages])
+    }
+  }
+
   return {
     // Per-session state maps
     sessionMessages,
@@ -1020,5 +1072,8 @@ export const useChatStore = defineStore('chat', () => {
     updateSessionMessage,
     clearSessionError,
     clearSessionMessages,
+    addLocalMessage,
+    addMessageToState,
+    removeMessage,
   }
 })

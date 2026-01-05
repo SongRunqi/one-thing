@@ -21,7 +21,9 @@ const READ_ONLY_COMMANDS = new Set([
   'printenv', 'less', 'more', 'diff', 'cmp', 'stat', 'du', 'df',
   'tree', 'realpath', 'dirname', 'basename', 'readlink', 'type',
   'man', 'help', 'git status', 'git log', 'git diff', 'git branch',
-  'git show', 'git blame', 'npm list', 'npm outdated', 'npm view',
+  'git show', 'git blame', 'git rev-parse', 'git -C', 'git remote',
+  'git tag', 'git stash list', 'git config --get', 'git config --list',
+  'npm list', 'npm outdated', 'npm view',
   'node --version', 'npm --version', 'python --version', 'pip list',
 ])
 
@@ -405,6 +407,40 @@ export const handler: ToolHandler = async (args, context) => {
         LANG: 'en_US.UTF-8',
       },
     })
+
+    // Track file deletions for /files command
+    if (result.exitCode === 0 && context?.onMetadata) {
+      // Detect rm command and extract file paths
+      const rmMatch = command.match(/\brm\s+(?:-[rRfiv]*\s+)*(.+)/)
+      if (rmMatch) {
+        // Parse file paths (handle multiple files and quoted paths)
+        const pathsStr = rmMatch[1].trim()
+        // Split by unquoted spaces, respecting quotes
+        const filePaths = pathsStr.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []
+
+        for (const rawPath of filePaths) {
+          // Skip flags
+          if (rawPath.startsWith('-')) continue
+
+          // Clean up path (remove quotes)
+          const filePath = rawPath.replace(/^["']|["']$/g, '')
+
+          // Resolve relative paths
+          const resolvedPath = path.isAbsolute(filePath)
+            ? filePath
+            : path.resolve(workingDir, filePath)
+
+          context.onMetadata({
+            metadata: {
+              diff: `File deleted`,
+              filePath: resolvedPath,
+              additions: 0,
+              deletions: 1,
+            },
+          })
+        }
+      }
+    }
 
     return {
       success: true,

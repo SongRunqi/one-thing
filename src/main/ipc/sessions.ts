@@ -198,4 +198,40 @@ export function registerSessionHandlers() {
     }
     return { success: true, mode: session.builtinMode || 'build' }
   })
+
+  // Add a system message to a session (for /files command persistence)
+  ipcMain.handle('add-system-message', async (_event, { sessionId, message }) => {
+    try {
+      store.addMessage(sessionId, message)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Sessions] Failed to add system message:', error)
+      return { success: false, error: error.message || 'Failed to add message' }
+    }
+  })
+
+  // Remove existing files-changed message from a session (to keep only one)
+  ipcMain.handle('remove-files-changed-message', async (_event, { sessionId }) => {
+    try {
+      const session = store.getSession(sessionId)
+      if (!session) {
+        return { success: false, error: 'Session not found' }
+      }
+
+      // Find existing files-changed message
+      const existing = session.messages.find(
+        (m) => m.role === 'system' && m.content.includes('"type":"files-changed"')
+      )
+
+      if (existing) {
+        store.deleteMessage(sessionId, existing.id)
+        return { success: true, removedId: existing.id }
+      }
+
+      return { success: true, removedId: null }
+    } catch (error: any) {
+      console.error('[Sessions] Failed to remove files-changed message:', error)
+      return { success: false, error: error.message || 'Failed to remove message' }
+    }
+  })
 }

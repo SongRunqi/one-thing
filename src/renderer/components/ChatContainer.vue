@@ -16,14 +16,18 @@
         :style="{ flex: panel.flex }"
         :show-settings="index === 0 && showSettings"
         :show-agent-settings="index === 0 && showAgentSettings"
-        :show-sidebar-toggle="index === 0 && sidebarCollapsed && !mediaPanelOpen"
+        :show-agent-create="index === 0 && showAgentCreate"
+        :show-sidebar-toggle="index === 0 && sidebarCollapsed && !sidebarFloating && !mediaPanelOpen"
         @close="closePanel(panel.id)"
         @split="openSessionPicker(panel.id)"
+        @equalize="equalizeAllPanels"
         @split-with-branch="(sessionId) => splitPanel(panel.id, sessionId)"
         @close-settings="$emit('close-settings')"
         @open-settings="$emit('open-settings')"
         @close-agent-settings="$emit('close-agent-settings')"
         @open-agent-settings="$emit('open-agent-settings')"
+        @close-agent-create="$emit('close-agent-create')"
+        @agent-created="(agent) => $emit('agent-created', agent)"
         @toggle-sidebar="$emit('toggle-sidebar')"
       />
       <!-- Panel resizer -->
@@ -113,7 +117,9 @@ interface Panel {
 const props = defineProps<{
   showSettings?: boolean
   showAgentSettings?: boolean
+  showAgentCreate?: boolean
   sidebarCollapsed?: boolean
+  sidebarFloating?: boolean
   showHoverTrigger?: boolean
   mediaPanelOpen?: boolean
 }>()
@@ -123,6 +129,8 @@ defineEmits<{
   'open-settings': []
   'close-agent-settings': []
   'open-agent-settings': []
+  'close-agent-create': []
+  'agent-created': [agent: import('@/types').Agent]
   'toggle-sidebar': []
   'show-floating-sidebar': []
 }>()
@@ -301,6 +309,16 @@ function stopResize() {
   document.removeEventListener('mouseup', stopResize)
   document.body.style.cursor = ''
   document.body.style.userSelect = ''
+}
+
+// Equalize all panels - set equal flex values
+function equalizeAllPanels() {
+  if (panels.value.length <= 1) return
+
+  const equalFlex = 1 / panels.value.length
+  panels.value.forEach(panel => {
+    panel.flex = equalFlex
+  })
 }
 
 // Focus input of first panel

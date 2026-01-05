@@ -24,6 +24,7 @@
           </svg>
         </button>
         <button
+          v-if="canDelete"
           class="icon-btn small danger"
           @click="$emit('delete', skill)"
           title="Delete skill"
@@ -77,6 +78,7 @@ import type { SkillDefinition } from '@/types'
 defineProps<{
   skill: SkillDefinition
   expanded: boolean
+  canDelete?: boolean
 }>()
 
 defineEmits<{

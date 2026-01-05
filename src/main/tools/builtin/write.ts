@@ -113,6 +113,7 @@ Usage:
         diff,
         additions,
         deletions,
+        originalContent: contentOld,  // For rollback support (empty string for new files)
       },
     })
 
@@ -157,6 +158,7 @@ Usage:
       diff,
       additions,
       deletions,
+      originalContent: contentOld,  // For rollback support
     }
 
     const action = fileExists ? 'Updated' : 'Created'

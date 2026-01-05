@@ -19,41 +19,34 @@ md.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx]
   const code = token.content
   const lang = token.info.trim() || 'text'
+  const trimmedCode = code.trim()
 
-  // 处理 infographic 代码块
-  if (lang === 'infographic') {
-    try {
-      // 验证 JSON 格式
-      JSON.parse(code)
-      // 返回占位符，将由 Vue 组件替换
+  // 检测是否为 infographic 内容
+  // 官方格式：```plain 代码块，内容以 "infographic " 开头
+  // 也支持：```infographic 代码块（向后兼容）
+  const isInfographicLang = lang === 'infographic'
+  const isPlainWithInfographic = lang === 'plain' && trimmedCode.startsWith('infographic ')
+
+  if (isInfographicLang || isPlainWithInfographic) {
+    const isDSL = trimmedCode.startsWith('infographic ') ||
+                  trimmedCode.startsWith('data') ||
+                  trimmedCode.startsWith('theme')
+
+    if (isDSL) {
+      // 渲染为普通代码块样式，但添加 data-infographic 标记
+      // 流式输出时显示代码，流式结束后由 MessageBubble 替换为 InfographicBlock
       const configStr = encodeURIComponent(code)
-      return `<div class="infographic-block" data-config="${configStr}">
-        <div class="infographic-placeholder">
-          <div class="placeholder-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M3 3v18h18"/>
-              <path d="M18 17V9"/>
-              <path d="M13 17V5"/>
-              <path d="M8 17v-3"/>
-            </svg>
-          </div>
-          <span>正在加载信息图表...</span>
-        </div>
-      </div>`
-    } catch (e) {
-      // JSON 解析失败，显示错误
-      return `<div class="infographic-block infographic-error" data-config="${encodeURIComponent(code)}">
-        <div class="infographic-parse-error">
-          <div class="error-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-          </div>
-          <span>无效的图表配置 (JSON 格式错误)</span>
-        </div>
-      </div>`
+      const escapedCode = md.utils.escapeHtml(code)
+      return `<div class="code-block-container infographic-block" data-config="${configStr}" data-syntax="dsl">
+    <div class="code-block-header">
+      <div class="code-block-lang">infographic</div>
+      <button class="code-block-copy" onclick="navigator.clipboard.writeText(decodeURIComponent(this.getAttribute('data-code'))); this.querySelector('span').textContent='Copied!'; setTimeout(() => this.querySelector('span').textContent='Copy', 2000)" data-code="${configStr}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span>Copy</span>
+      </button>
+    </div>
+    <pre><code class="hljs">${escapedCode}</code></pre>
+  </div>`
     }
   }
 

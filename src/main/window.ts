@@ -384,36 +384,44 @@ export function createWindow() {
 let imagePreviewWindow: BrowserWindow | null = null
 
 // Types for image preview
-interface GalleryImage {
-  id: string
-  src: string
-  alt?: string
-  thumbnail?: string
-}
-
 type ImagePreviewData =
   | { mode: 'single'; src: string; alt?: string }
-  | { mode: 'gallery'; images: GalleryImage[]; currentIndex: number }
+  | { mode: 'gallery'; mediaId: string }
 
 /**
  * Open or update the image preview window
+ * - Single mode: for non-media images (attachments), data sent via IPC
+ * - Gallery mode: for media images, mediaId passed in URL, component loads data itself
  */
 export function openImagePreviewWindow(data: ImagePreviewData) {
-  const logInfo = data.mode === 'single'
-    ? { mode: 'single', src: data.src.substring(0, 50), alt: data.alt }
-    : { mode: 'gallery', count: data.images.length, currentIndex: data.currentIndex }
-  console.log('[Window] openImagePreviewWindow called:', logInfo)
+  console.log('[Window] openImagePreviewWindow called:', data)
 
   const isDevelopment = process.env.NODE_ENV === 'development'
   const isMac = process.platform === 'darwin'
 
-  // Determine IPC channel based on mode
-  const ipcChannel = data.mode === 'single' ? IPC_CHANNELS.IMAGE_PREVIEW_UPDATE : IPC_CHANNELS.IMAGE_GALLERY_UPDATE
+  // Build URL params based on mode
+  const effectiveTheme = getEffectiveTheme()
+  let urlParams = `theme=${effectiveTheme}&mode=${data.mode}`
+  if (data.mode === 'gallery') {
+    urlParams += `&mediaId=${data.mediaId}`
+  }
 
-  // If window already exists, send update and focus
+  // If window already exists, navigate to new URL and focus
   if (imagePreviewWindow && !imagePreviewWindow.isDestroyed()) {
-    console.log('[Window] Updating existing preview window, visible:', imagePreviewWindow.isVisible(), 'minimized:', imagePreviewWindow.isMinimized())
-    imagePreviewWindow.webContents.send(ipcChannel, data)
+    console.log('[Window] Updating existing preview window')
+    if (data.mode === 'single') {
+      // Single mode still uses IPC for src data (can be large base64)
+      imagePreviewWindow.webContents.send(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, data)
+    } else {
+      // Gallery mode: reload with new mediaId in URL
+      if (isDevelopment) {
+        imagePreviewWindow.loadURL(`http://127.0.0.1:5173/#/image-preview?${urlParams}`)
+      } else {
+        imagePreviewWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+          hash: `/image-preview?${urlParams}`
+        })
+      }
+    }
     if (imagePreviewWindow.isMinimized()) {
       imagePreviewWindow.restore()
     }
@@ -424,7 +432,6 @@ export function openImagePreviewWindow(data: ImagePreviewData) {
   console.log('[Window] Creating new preview window')
 
   // Get effective theme and background color
-  const effectiveTheme = getEffectiveTheme()
   const themeId = getEffectiveThemeId(effectiveTheme)
   const backgroundColor = getThemeBackgroundColor(themeId, effectiveTheme)
 
@@ -447,14 +454,15 @@ export function openImagePreviewWindow(data: ImagePreviewData) {
     },
   })
 
-  // Use dom-ready to ensure Vue has mounted before sending data
-  imagePreviewWindow.webContents.once('dom-ready', () => {
-    console.log('[Window] Preview window dom-ready, sending data')
-    // Small delay to ensure Vue component is mounted
-    setTimeout(() => {
-      imagePreviewWindow?.webContents.send(ipcChannel, data)
-    }, 50)
-  })
+  // For single mode, send data via IPC after dom-ready
+  if (data.mode === 'single') {
+    imagePreviewWindow.webContents.once('dom-ready', () => {
+      console.log('[Window] Preview window dom-ready, sending single image data')
+      setTimeout(() => {
+        imagePreviewWindow?.webContents.send(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, data)
+      }, 50)
+    })
+  }
 
   imagePreviewWindow.once('ready-to-show', () => {
     console.log('[Window] Preview window ready-to-show')
@@ -465,14 +473,14 @@ export function openImagePreviewWindow(data: ImagePreviewData) {
     imagePreviewWindow = null
   })
 
-  // Load image preview page (without data in URL - data sent via IPC after ready)
+  // Load image preview page with params in URL
   if (isDevelopment) {
-    console.log('[Window] Loading preview URL (dev)')
-    imagePreviewWindow.loadURL(`http://127.0.0.1:5173/#/image-preview?theme=${effectiveTheme}`)
+    console.log('[Window] Loading preview URL (dev):', urlParams)
+    imagePreviewWindow.loadURL(`http://127.0.0.1:5173/#/image-preview?${urlParams}`)
   } else {
-    console.log('[Window] Loading preview file (prod)')
+    console.log('[Window] Loading preview file (prod):', urlParams)
     imagePreviewWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
-      hash: `/image-preview?theme=${effectiveTheme}`
+      hash: `/image-preview?${urlParams}`
     })
   }
 

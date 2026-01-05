@@ -57,10 +57,10 @@
             <!-- Image Grid -->
             <div v-if="filteredImages.length > 0" class="media-grid">
               <div
-                v-for="(image, index) in filteredImages"
+                v-for="image in filteredImages"
                 :key="image.id"
                 class="media-item"
-                @click="openImage(image, index)"
+                @click="openImage(image)"
               >
                 <img :src="mediaStore.getImageUrl(image)" :alt="image.prompt" class="media-thumbnail" />
                 <div class="media-overlay">
@@ -180,27 +180,10 @@ const filteredImages = computed(() => {
   )
 })
 
-// Open image in gallery preview window
-async function openImage(image: GeneratedMedia, index: number) {
-  console.log('[MediaPanel] Loading images for gallery...')
-
-  // Read all images and convert to base64
-  const galleryImages = await Promise.all(
-    filteredImages.value.map(async (img) => {
-      // If already a data URL, use directly; otherwise read from file
-      const src = img.filePath.startsWith('data:')
-        ? img.filePath
-        : await window.electronAPI.readImageBase64(img.filePath)
-      return {
-        id: img.id,
-        src,
-        alt: img.prompt || 'Generated Image',
-      }
-    })
-  )
-
-  console.log('[MediaPanel] Opening image gallery:', { count: galleryImages.length, index })
-  window.electronAPI.openImageGallery(galleryImages, index)
+// Open image in gallery preview window (now uses mediaId, gallery loads its own data)
+function openImage(image: GeneratedMedia) {
+  console.log('[MediaPanel] Opening gallery for mediaId:', image.id)
+  window.electronAPI.openImageGallery(image.id)
 }
 
 // Delete an image
@@ -217,19 +200,11 @@ onMounted(async () => {
   // Load saved media from disk
   await mediaStore.loadMedia()
 
-  // Listen for new image generation events
+  // Listen for new image generation events (image already saved by main process)
   unsubscribe = window.electronAPI.onImageGenerated(async (data) => {
-    console.log('[MediaPanel] Image generated:', data)
-    // Save image to disk (supports both url and base64)
-    await mediaStore.saveImage({
-      url: data.url,
-      base64: data.base64,
-      prompt: data.prompt,
-      revisedPrompt: data.revisedPrompt,
-      model: data.model,
-      sessionId: data.sessionId,
-      messageId: data.messageId,
-    })
+    console.log('[MediaPanel] Image generated (already saved):', data.mediaId)
+    // Just reload the media list to show the new image
+    await mediaStore.loadMedia()
   })
 })
 

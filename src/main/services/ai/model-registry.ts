@@ -445,11 +445,32 @@ export function modelSupportsReasoningSync(modelId: string, providerId?: string)
  * Uses Models.dev's modalities.output field for accurate detection
  */
 export async function modelSupportsImageGeneration(modelId: string, providerId?: string): Promise<boolean> {
+  console.log(`[ModelRegistry] Checking image generation support for: ${modelId} (provider: ${providerId})`)
+  const lowerModelId = modelId.toLowerCase()
+
+  // FIRST: Check name-based patterns (highest priority for known image models)
+  // This ensures we catch image models even if Models.dev data is incomplete
+  const imageGenPatterns = ['dall-e', 'dalle', 'imagen', 'gpt-image', 'flux', 'stable-diffusion', 'midjourney']
+
+  // Special case for Gemini image models
+  const hasGemini = lowerModelId.includes('gemini')
+  const hasImage = lowerModelId.includes('image')
+  console.log(`[ModelRegistry] Name check: hasGemini=${hasGemini}, hasImage=${hasImage}`)
+  if (hasGemini && hasImage) {
+    console.log(`[ModelRegistry] Model ${modelId} detected as Gemini image model by name pattern`)
+    return true
+  }
+
+  if (imageGenPatterns.some(p => lowerModelId.includes(p))) {
+    console.log(`[ModelRegistry] Model ${modelId} detected as image generation model by name pattern`)
+    return true
+  }
+
+  // SECOND: Try to find in Models.dev data
   if (isCacheStale() || cache.modelsDevData === null) {
     await refreshCache()
   }
 
-  // First try to find in Models.dev data directly
   if (cache.modelsDevData) {
     // Try the specific provider first
     if (providerId) {
@@ -472,21 +493,6 @@ export async function modelSupportsImageGeneration(modelId: string, providerId?:
         return supportsImage
       }
     }
-  }
-
-  // Fallback: use name-based detection for known image generation models
-  const lowerModelId = modelId.toLowerCase()
-  const imageGenPatterns = ['dall-e', 'dalle', 'imagen', 'gpt-image', 'flux', 'stable-diffusion', 'midjourney']
-
-  // Special case for Gemini image models
-  if (lowerModelId.includes('gemini') && lowerModelId.includes('image')) {
-    console.log(`[ModelRegistry] Model ${modelId} detected as Gemini image model by name pattern`)
-    return true
-  }
-
-  if (imageGenPatterns.some(p => lowerModelId.includes(p))) {
-    console.log(`[ModelRegistry] Model ${modelId} detected as image generation model by name pattern`)
-    return true
   }
 
   console.log(`[ModelRegistry] Model ${modelId} not found in registry, assuming no image generation`)

@@ -10,9 +10,24 @@
  * That's it! The provider will be automatically registered and available.
  */
 
-import { generateText, streamText, convertToModelMessages } from 'ai'
+import { generateText, streamText, convertToModelMessages, wrapLanguageModel, type LanguageModel } from 'ai'
 import type { UIMessage as AISDKUIMessage } from 'ai'
+import { devToolsMiddleware } from '@ai-sdk/devtools'
 import { z } from 'zod'
+import isDev from 'electron-is-dev'
+
+/**
+ * Wrap model with DevTools middleware in development mode
+ * This enables inspection at http://localhost:4983 via `npx @ai-sdk/devtools`
+ */
+function wrapWithDevTools<T extends LanguageModel>(model: T): T {
+  if (!isDev) return model
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return wrapLanguageModel({
+    model: model as any,
+    middleware: devToolsMiddleware(),
+  }) as any
+}
 import {
   initializeRegistry,
   getAvailableProviders as getProvidersFromRegistry,
@@ -270,7 +285,7 @@ export async function* streamChatResponse(
   options: { temperature?: number; maxTokens?: number } = {}
 ): AsyncGenerator<{ text: string; reasoning?: string }, void, unknown> {
   const provider = createProvider(providerId, config)
-  const model = provider.createModel(config.model)
+  const model = wrapWithDevTools(provider.createModel(config.model))
 
   const isReasoning = isReasoningModel(config.model, providerId)
 
@@ -310,7 +325,7 @@ export async function* streamChatResponseWithReasoning(
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
 ): AsyncGenerator<ReasoningStreamChunk, void, unknown> {
   const provider = createProvider(providerId, config)
-  const model = provider.createModel(config.model)
+  const model = wrapWithDevTools(provider.createModel(config.model))
 
   const isReasoning = isReasoningModel(config.model, providerId)
 
@@ -459,7 +474,7 @@ export async function generateChatResponseWithReasoning(
   options: { temperature?: number; maxTokens?: number } = {}
 ): Promise<ChatResponseResult> {
   const provider = createProvider(providerId, config)
-  const model = provider.createModel(config.model)
+  const model = wrapWithDevTools(provider.createModel(config.model))
 
   const isReasoning = isReasoningModel(config.model, providerId)
 
@@ -621,7 +636,7 @@ export async function* streamChatResponseWithTools(
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
 ): AsyncGenerator<StreamChunkWithTools, void, unknown> {
   const provider = createProvider(providerId, config)
-  const model = provider.createModel(config.model)
+  const model = wrapWithDevTools(provider.createModel(config.model))
 
   const isReasoning = isReasoningModel(config.model, providerId)
 
@@ -1005,7 +1020,7 @@ export async function* streamChatWithUIMessages(
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
 ): AsyncGenerator<StreamChunkWithTools, void, unknown> {
   const provider = createProvider(providerId, config)
-  const model = provider.createModel(config.model)
+  const model = wrapWithDevTools(provider.createModel(config.model))
 
   const isReasoning = isReasoningModel(config.model, providerId)
 

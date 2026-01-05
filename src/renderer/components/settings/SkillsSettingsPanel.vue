@@ -56,6 +56,7 @@
               :key="skill.id"
               :skill="skill"
               :expanded="expandedSkills.has(skill.id)"
+              :can-delete="true"
               @toggle-expand="toggleSkillExpanded(skill.id)"
               @toggle-enabled="toggleSkillEnabled"
               @delete="confirmDeleteSkill"
@@ -77,6 +78,7 @@
               :key="skill.id"
               :skill="skill"
               :expanded="expandedSkills.has(skill.id)"
+              :can-delete="true"
               @toggle-expand="toggleSkillExpanded(skill.id)"
               @toggle-enabled="toggleSkillEnabled"
               @delete="confirmDeleteSkill"
@@ -100,7 +102,26 @@
               :expanded="expandedSkills.has(skill.id)"
               @toggle-expand="toggleSkillExpanded(skill.id)"
               @toggle-enabled="toggleSkillEnabled"
-              @delete="confirmDeleteSkill"
+              @open-directory="openSkillDirectory"
+            />
+          </div>
+        </div>
+
+        <!-- Builtin Skills -->
+        <div v-if="builtinSkills.length > 0" class="skill-group">
+          <div class="group-header">
+            <span class="group-title">Builtin Skills</span>
+            <span class="group-path">App Resources</span>
+            <span class="group-count">{{ builtinSkills.length }}</span>
+          </div>
+          <div class="skills-list">
+            <SkillItem
+              v-for="skill in builtinSkills"
+              :key="skill.id"
+              :skill="skill"
+              :expanded="expandedSkills.has(skill.id)"
+              @toggle-expand="toggleSkillExpanded(skill.id)"
+              @toggle-enabled="toggleSkillEnabled"
               @open-directory="openSkillDirectory"
             />
           </div>
@@ -158,6 +179,7 @@ const deletingSkill = ref<SkillDefinition | null>(null)
 const userSkills = computed(() => skills.value.filter(s => s.source === 'user'))
 const projectSkills = computed(() => skills.value.filter(s => s.source === 'project'))
 const pluginSkills = computed(() => skills.value.filter(s => s.source === 'plugin'))
+const builtinSkills = computed(() => skills.value.filter(s => s.source === 'builtin'))
 
 // Load skills
 async function loadSkills() {

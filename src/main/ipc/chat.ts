@@ -28,6 +28,7 @@ import { triggerManager } from '../services/triggers/index.js'
 import { memoryExtractionTrigger } from '../services/triggers/memory-extraction.js'
 import { contextCompactingTrigger } from '../services/triggers/context-compacting.js'
 import { Permission } from '../permission/index.js'
+import { saveMediaImage } from './media.js'
 import * as modelRegistry from '../services/ai/model-registry.js'
 
 // Import from chat sub-modules
@@ -35,11 +36,8 @@ import {
   sendUIMessageFinish,
 } from './chat/stream-helpers.js'
 import {
-  normalizeImageModelId,
-  generateImage,
-  generateGeminiImage,
-  type ImageGenerationResult,
-} from './chat/image-generation.js'
+  executeMessageStream,
+} from './chat/stream-executor.js'
 import {
   formatUserProfilePrompt,
   retrieveRelevantFacts,
@@ -130,7 +128,47 @@ export function registerChatHandlers() {
   })
 
   // 中止当前流式请求 (支持指定 sessionId)
-  ipcMain.handle(IPC_CHANNELS.ABORT_STREAM, async (_event, { sessionId } = {}) => {
+  ipcMain.handle(IPC_CHANNELS.ABORT_STREAM, async (event, { sessionId } = {}) => {
+    const sender = event.sender
+
+    // Helper to cancel pending/running steps for a session
+    const cancelPendingSteps = (sid: string) => {
+      const session = store.getSession(sid)
+      if (!session) return
+
+      // Find the latest streaming message
+      const streamingMessage = session.messages.find(m => m.isStreaming)
+      if (!streamingMessage?.steps) return
+
+      // Cancel all awaiting-confirmation and running steps
+      for (const step of streamingMessage.steps) {
+        if (step.status === 'awaiting-confirmation' || step.status === 'running') {
+          step.status = 'cancelled'
+          if (step.toolCall) {
+            step.toolCall.status = 'cancelled'
+          }
+          store.updateMessageStep(sid, streamingMessage.id, step.id, {
+            status: 'cancelled',
+            toolCall: step.toolCall,
+          })
+          sender.send(IPC_CHANNELS.STEP_UPDATED, {
+            sessionId: sid,
+            messageId: streamingMessage.id,
+            stepId: step.id,
+            updates: { status: 'cancelled', toolCall: step.toolCall },
+          })
+        }
+      }
+
+      // Mark message as not streaming and send complete
+      store.updateMessageStreaming(sid, streamingMessage.id, false)
+      sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+        messageId: streamingMessage.id,
+        sessionId: sid,
+        aborted: true,
+      })
+    }
+
     if (sessionId) {
       // Abort specific session's stream
       const controller = activeStreams.get(sessionId)
@@ -140,10 +178,13 @@ export function registerChatHandlers() {
         activeStreams.delete(sessionId)
         // Clear any pending permission requests for this session
         Permission.clearSession(sessionId)
+        // Cancel any waiting steps
+        cancelPendingSteps(sessionId)
         return { success: true }
       }
-      // Even if no active stream, still clear pending permissions
+      // Even if no active stream, still clear pending permissions and cancel waiting steps
       Permission.clearSession(sessionId)
+      cancelPendingSteps(sessionId)
       return { success: false, error: 'No active stream for this session' }
     } else {
       // Abort all streams (backwards compatibility)
@@ -318,26 +359,26 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
       sessionName: session?.name,
     }
 
-    // Start streaming in background using shared infrastructure
+    // Start streaming in background using unified stream executor
     process.nextTick(async () => {
-      const abortController = new AbortController()
-      activeStreams.set(sessionId, abortController)
-
-      const ctx: StreamContext = {
-        sender,
-        sessionId,
-        assistantMessageId,
-        abortSignal: abortController.signal,
-        settings,
-        providerConfig: configWithApiKey,
-        providerId,
-        toolSettings: settings.tools,
-      }
+      console.log(`[Backend] Starting edit/resend stream for session: ${sessionId}`)
 
       try {
-        await executeStreamGeneration(ctx, historyMessages, session?.name)
-      } finally {
-        activeStreams.delete(sessionId)
+        // Use unified stream executor (handles both image generation and text streaming)
+        await executeMessageStream({
+          sender,
+          sessionId,
+          assistantMessageId,
+          messageContent: newContent,  // Use the edited content as prompt
+          historyMessages,
+          configWithApiKey,
+          providerId,
+          settings,
+          toolSettings: settings.tools,
+          sessionName: session?.name,
+        })
+      } catch (error: any) {
+        console.error('[Backend] Error in edit/resend stream execution:', error)
       }
     })
 
@@ -507,6 +548,7 @@ async function handleGenerateTitle(userMessage: string) {
 
 // Handle streaming message with event emitter
 async function handleSendMessageStream(sender: Electron.WebContents, sessionId: string, messageContent: string, attachments?: MessageAttachment[]) {
+  console.log(`[Backend] handleSendMessageStream called - BUILD_VERSION: 2025-01-05-v2`)
   try {
     // Get session to check if this is the first user message
     const session = store.getSession(sessionId)
@@ -587,133 +629,30 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       sessionName: updatedSessionForName?.name,
     }
 
-    // Start streaming in background using shared infrastructure
+    // Start streaming in background using unified stream executor
     process.nextTick(async () => {
-      const abortController = new AbortController()
-      activeStreams.set(sessionId, abortController)
+      console.log(`[Backend] Starting stream for session: ${sessionId}, model: ${configWithApiKey.model}`)
 
       try {
-        // Check if this is an image generation model using Models.dev capability
-        const supportsImageGen = await modelRegistry.modelSupportsImageGeneration(configWithApiKey.model, providerId)
+        // Build history from updated session (includes user message)
+        const sessionForHistory = store.getSession(sessionId)
+        const historyMessages = buildHistoryMessages(sessionForHistory?.messages || [], sessionForHistory)
 
-        if (supportsImageGen) {
-          console.log(`[Backend] Detected image generation model: ${configWithApiKey.model} (provider: ${providerId})`)
-
-          // For image generation, we don't need history - just the prompt
-          const prompt = messageContent
-
-          // Send a "thinking" message to show progress
-          sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-            type: 'text',
-            content: '正在生成图片...\n\n',
-            messageId: assistantMessageId,
-            sessionId,
-          })
-          store.updateMessageContent(sessionId, assistantMessageId, '正在生成图片...\n\n')
-
-          let result: ImageGenerationResult
-          let modelForDisplay: string
-
-          // Use provider ID to determine which image generation API to use
-          if (providerId === 'gemini') {
-            // Gemini image generation (uses generateText with files output)
-            console.log(`[Backend] Using Gemini image generation`)
-            modelForDisplay = configWithApiKey.model
-            result = await generateGeminiImage(
-              configWithApiKey.apiKey,
-              configWithApiKey.model,
-              prompt
-            )
-          } else {
-            // OpenAI-compatible image generation (DALL-E, etc.)
-            const normalizedModel = normalizeImageModelId(configWithApiKey.model)
-            console.log(`[Backend] Using OpenAI image generation: ${normalizedModel}`)
-            modelForDisplay = normalizedModel
-            result = await generateImage(
-              configWithApiKey.apiKey,
-              configWithApiKey.baseUrl || 'https://api.openai.com/v1',
-              normalizedModel,
-              prompt
-            )
-          }
-
-          if (result.success && result.imageBase64) {
-            // Format the response with markdown image and revised prompt info
-            let responseContent = ''
-
-            if (result.revisedPrompt && result.revisedPrompt !== prompt) {
-              responseContent += `**优化后的提示词:** ${result.revisedPrompt}\n\n`
-            }
-
-            // Use base64 data URL for displaying the image
-            const imageDataUrl = `data:image/png;base64,${result.imageBase64}`
-            responseContent += `![Generated Image](${imageDataUrl})`
-
-            // Update message with image
-            store.updateMessageContent(sessionId, assistantMessageId, responseContent)
-            store.updateMessageStreaming(sessionId, assistantMessageId, false)
-
-            // Send complete content to frontend
-            sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-              type: 'text',
-              content: responseContent,
-              messageId: assistantMessageId,
-              sessionId,
-              replace: true, // Signal frontend to replace content
-            })
-
-            // Notify frontend about the generated image for Media Panel
-            // Send base64 data for saving to disk
-            sender.send(IPC_CHANNELS.IMAGE_GENERATED, {
-              id: `img-${Date.now()}`,
-              base64: result.imageBase64,
-              prompt: prompt,
-              revisedPrompt: result.revisedPrompt,
-              model: modelForDisplay,
-              sessionId,
-              messageId: assistantMessageId,
-              createdAt: Date.now(),
-            })
-
-            sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-              messageId: assistantMessageId,
-              sessionId,
-              sessionName: updatedSessionForName?.name,
-            })
-            console.log('[Backend] Image generation complete')
-          } else {
-            // Handle error
-            const errorContent = `图片生成失败: ${result.error || '未知错误'}`
-            store.updateMessageContent(sessionId, assistantMessageId, errorContent)
-            store.updateMessageStreaming(sessionId, assistantMessageId, false)
-
-            sender.send(IPC_CHANNELS.STREAM_ERROR, {
-              messageId: assistantMessageId,
-              sessionId,
-              error: result.error || 'Image generation failed',
-            })
-          }
-        } else {
-          // Normal text streaming
-          // Build history from updated session (includes user message)
-          const sessionForHistory = store.getSession(sessionId)
-          const historyMessages = buildHistoryMessages(sessionForHistory?.messages || [], sessionForHistory)
-
-          const ctx: StreamContext = {
-            sender,
-            sessionId,
-            assistantMessageId,
-            abortSignal: abortController.signal,
-            settings,
-            providerConfig: configWithApiKey,
-            providerId,
-            toolSettings: settings.tools,
-          }
-
-          await executeStreamGeneration(ctx, historyMessages, session?.name)
-        }
-      } finally {
-        activeStreams.delete(sessionId)
+        // Use unified stream executor (handles both image generation and text streaming)
+        await executeMessageStream({
+          sender,
+          sessionId,
+          assistantMessageId,
+          messageContent,
+          historyMessages,
+          configWithApiKey,
+          providerId,
+          settings,
+          toolSettings: settings.tools,
+          sessionName: updatedSessionForName?.name,
+        })
+      } catch (error: any) {
+        console.error('[Backend] Error in stream execution:', error)
       }
     })
 
@@ -1023,8 +962,11 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
             sessionName: session.name,
           })
           console.log('[Backend] Resume streaming complete')
+          // Only remove controller if stream completed
+          activeStreams.delete(sessionId)
         } else {
           console.log('[Backend] Resume paused for another tool confirmation')
+          // Keep controller in activeStreams for abort support
         }
 
       } catch (error: any) {
@@ -1061,7 +1003,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
             errorDetails: extractErrorDetails(error),
           })
         }
-      } finally {
+        // On error/abort, always remove controller
         activeStreams.delete(sessionId)
       }
     })

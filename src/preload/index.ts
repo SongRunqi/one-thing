@@ -160,6 +160,13 @@ const electronAPI = {
   getSessionBuiltinMode: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_BUILTIN_MODE, { sessionId }),
 
+  // System message methods (for /files command persistence)
+  addSystemMessage: (sessionId: string, message: { id: string; role: string; content: string; timestamp: number }) =>
+    ipcRenderer.invoke('add-system-message', { sessionId, message }),
+
+  removeFilesChangedMessage: (sessionId: string) =>
+    ipcRenderer.invoke('remove-files-changed-message', { sessionId }),
+
   // Plan update listener (for Planning workflow)
   onPlanUpdated: (callback: (data: { sessionId: string; plan: any }) => void) => {
     const listener = (_event: any, data: any) => callback(data)
@@ -512,16 +519,10 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, listener)
   },
 
-  // Image gallery methods
-  openImageGallery: (images: Array<{ id: string; src: string; alt?: string; thumbnail?: string }>, initialIndex?: number) => {
-    console.log('[Preload] openImageGallery called:', { count: images.length, initialIndex })
-    return ipcRenderer.invoke(IPC_CHANNELS.OPEN_IMAGE_GALLERY, { images, initialIndex })
-  },
-
-  onImageGalleryUpdate: (callback: (data: { mode: 'gallery'; images: Array<{ id: string; src: string; alt?: string; thumbnail?: string }>; currentIndex: number }) => void) => {
-    const listener = (_event: any, data: any) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.IMAGE_GALLERY_UPDATE, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.IMAGE_GALLERY_UPDATE, listener)
+  // Image gallery methods (now uses mediaId - gallery loads its own data)
+  openImageGallery: (mediaId: string) => {
+    console.log('[Preload] openImageGallery called:', { mediaId })
+    return ipcRenderer.invoke(IPC_CHANNELS.OPEN_IMAGE_GALLERY, { mediaId })
   },
 
   // Permission methods
@@ -601,6 +602,14 @@ const electronAPI = {
     ipcRenderer.on('menu:close-chat', listener)
     return () => ipcRenderer.removeListener('menu:close-chat', listener)
   },
+
+  // Files methods (for @ file search)
+  listFiles: (options: { cwd: string; query?: string; limit?: number }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILES_LIST, options),
+
+  // File rollback (for /files command)
+  rollbackFile: (options: { filePath: string; originalContent: string; isNew: boolean }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_ROLLBACK, options),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

@@ -636,22 +636,36 @@ onUnmounted(() => {
 
 // When session changes, reload any pending permission requests
 // This fixes the issue where permission requests are "lost" after switching sessions
-watch(effectiveSessionId, async (newSessionId) => {
-  if (!newSessionId) return
+// Watch both sessionId AND messages.length to ensure messages are loaded before restoring permissions
+watch(
+  [effectiveSessionId, () => props.messages.length],
+  async ([newSessionId, msgCount], [oldSessionId, oldMsgCount]) => {
+    if (!newSessionId) return
 
-  try {
-    const response = await window.electronAPI.getPendingPermissions(newSessionId)
-    if (response.success && response.pending && response.pending.length > 0) {
-      console.log('[Frontend] Loading pending permissions for session:', newSessionId, response.pending.length)
-      // Apply each pending permission to the UI
-      for (const info of response.pending) {
-        handlePermissionRequest(info)
+    // Only restore permissions when:
+    // 1. Session changed AND has messages
+    // 2. Messages just loaded (went from 0 to non-0)
+    const sessionChanged = newSessionId !== oldSessionId
+    const messagesJustLoaded = oldMsgCount === 0 && msgCount > 0
+
+    if (!sessionChanged && !messagesJustLoaded) return
+    if (msgCount === 0) return  // Messages not loaded yet, wait
+
+    try {
+      const response = await window.electronAPI.getPendingPermissions(newSessionId)
+      if (response.success && response.pending && response.pending.length > 0) {
+        console.log('[Frontend] Loading pending permissions for session:', newSessionId, response.pending.length)
+        // Apply each pending permission to the UI
+        for (const info of response.pending) {
+          handlePermissionRequest(info)
+        }
       }
+    } catch (error) {
+      console.error('[Frontend] Failed to load pending permissions:', error)
     }
-  } catch (error) {
-    console.error('[Frontend] Failed to load pending permissions:', error)
-  }
-}, { immediate: true })
+  },
+  { immediate: true }
+)
 
 // Auto-scroll to bottom when messages change or loading state changes
 // Only scroll if user hasn't scrolled away manually

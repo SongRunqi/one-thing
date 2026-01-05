@@ -48,13 +48,17 @@
         ref="chatContainerRef"
         :show-settings="showSettings"
         :show-agent-settings="showAgentSettings"
+        :show-agent-create="showAgentCreate"
         :sidebar-collapsed="sidebarCollapsed"
+        :sidebar-floating="sidebarFloating"
         :show-hover-trigger="sidebarCollapsed && !sidebarFloating && !showMediaPanel"
         :media-panel-open="showMediaPanel"
         @close-settings="showSettings = false"
         @open-settings="showSettings = true"
         @close-agent-settings="showAgentSettings = false"
         @open-agent-settings="showAgentSettings = true"
+        @close-agent-create="closeAgentCreate"
+        @agent-created="handleAgentCreated"
         @toggle-sidebar="handleSidebarToggle"
         @show-floating-sidebar="handleTriggerEnter"
       />
@@ -166,6 +170,7 @@ const showMediaPanel = ref(false)
 const showAgentDialog = ref(false)
 const editingAgent = ref<Agent | null>(null)
 const showAgentSettings = ref(false)
+const showAgentCreate = ref(false)
 
 function openWorkspaceDialog(workspace?: Workspace) {
   editingWorkspace.value = workspace || null
@@ -178,8 +183,23 @@ function closeWorkspaceDialog() {
 }
 
 function openAgentDialog(agent?: Agent) {
-  editingAgent.value = agent || null
-  showAgentDialog.value = true
+  if (agent) {
+    // Editing existing agent - use dialog
+    editingAgent.value = agent
+    showAgentDialog.value = true
+  } else {
+    // Creating new agent - show inline form in ChatWindow
+    showAgentCreate.value = true
+  }
+}
+
+function closeAgentCreate() {
+  showAgentCreate.value = false
+}
+
+function handleAgentCreated(_agent: Agent) {
+  showAgentCreate.value = false
+  // Agent is already created and pinned in the store by AgentWelcomePage
 }
 
 function closeAgentDialog() {

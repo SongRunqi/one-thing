@@ -202,10 +202,11 @@ function mountInfographics() {
 
   placeholders.forEach((placeholder) => {
     const configStr = placeholder.getAttribute('data-config')
+    const syntaxType = placeholder.getAttribute('data-syntax') || 'json'
     if (!configStr) return
 
     try {
-      const config: InfographicConfig = JSON.parse(decodeURIComponent(configStr))
+      const decodedConfig = decodeURIComponent(configStr)
 
       // 创建挂载容器
       const mountPoint = document.createElement('div')
@@ -214,13 +215,24 @@ function mountInfographics() {
       placeholder.appendChild(mountPoint)
       placeholder.classList.add('mounted')
 
+      // 根据语法类型选择传递的属性
+      const componentProps: Record<string, any> = {
+        isStreaming: props.isStreaming,
+        syntaxType
+      }
+
+      if (syntaxType === 'dsl') {
+        // DSL 语法：直接传递原始字符串
+        componentProps.syntax = decodedConfig
+      } else {
+        // JSON 格式：解析为对象
+        componentProps.config = JSON.parse(decodedConfig) as InfographicConfig
+      }
+
       // 创建 Vue App 实例
       const app = createApp({
         render() {
-          return h(InfographicBlock, {
-            config,
-            isStreaming: props.isStreaming
-          })
+          return h(InfographicBlock, componentProps)
         }
       })
 
@@ -435,7 +447,19 @@ function handleContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
   if (target.tagName === 'IMG') {
     const img = target as HTMLImageElement
-    window.electronAPI?.openImagePreview(img.src, img.alt || 'Generated Image')
+    const src = img.src
+    const alt = img.alt || ''
+
+    // Check if alt text contains mediaId (format: "Generated Image|mediaId:xxx")
+    const mediaIdMatch = alt.match(/\|mediaId:([a-f0-9-]+)/)
+    if (mediaIdMatch) {
+      const mediaId = mediaIdMatch[1]
+      console.log('[MessageBubble] Opening gallery for mediaId:', mediaId)
+      window.electronAPI?.openImageGallery(mediaId)
+    } else {
+      // Non-media image (attachment, external URL, old format)
+      window.electronAPI?.openImagePreview(src, alt)
+    }
   }
   emit('contentClick', event)
 }

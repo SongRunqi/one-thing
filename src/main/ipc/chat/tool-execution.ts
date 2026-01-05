@@ -5,13 +5,13 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import * as store from '../../store.js'
-import { IPC_CHANNELS } from '../../../shared/ipc.js'
 import type { Step, StepType, SkillDefinition, ToolCall } from '../../../shared/ipc.js'
 import { executeTool } from '../../tools/index.js'
 import { isMCPTool, executeMCPTool } from '../../mcp/index.js'
 import type { ToolExecutionContext, ToolExecutionResult } from '../../tools/types.js'
 import type { StreamContext } from './stream-processor.js'
 import { checkToolPermission } from '../../agents/builtin-agents.js'
+import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
 
 /**
  * Detect if a bash command is reading a skill file and extract skill name
@@ -98,10 +98,27 @@ export async function executeToolDirectly(
   }
 ): Promise<ToolExecutionResult> {
   try {
+    // Check if aborted before starting
+    if (context.abortSignal?.aborted) {
+      return {
+        success: false,
+        error: 'Execution cancelled by user',
+        aborted: true,
+      }
+    }
+
     // 1. Check if it's an MCP tool
     if (isMCPTool(toolName)) {
       console.log(`[DirectExec] Executing MCP tool: ${toolName}`)
+      // Check abort before MCP call (MCP tools don't support abort internally)
+      if (context.abortSignal?.aborted) {
+        return { success: false, error: 'Execution cancelled by user', aborted: true }
+      }
       const result = await executeMCPTool(toolName, args)
+      // Check abort after MCP call in case it was triggered during execution
+      if (context.abortSignal?.aborted) {
+        return { success: false, error: 'Execution cancelled by user', aborted: true }
+      }
       return { success: true, data: result }
     }
 
@@ -163,18 +180,24 @@ export async function executeToolAndUpdate(
   turnIndex?: number,
   existingStepId?: string
 ): Promise<void> {
+  const emitter = createIPCEmitter(ctx)
+
+  // Check if aborted before starting
+  if (ctx.abortSignal?.aborted) {
+    console.log(`[Backend] Tool execution aborted before start: ${toolCallData.toolName}`)
+    toolCall.status = 'failed'
+    toolCall.error = 'Execution cancelled by user'
+    toolCall.endTime = Date.now()
+    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+    emitter.sendToolResult(toolCall)
+    return
+  }
+
   // Check if this is reading a skill file
   const skillName = detectSkillUsage(toolCallData.toolName, toolCallData.args)
   if (skillName) {
     console.log(`[Backend] Skill activated: ${skillName}`)
-    // Update message with skill info
-    store.updateMessageSkill(ctx.sessionId, ctx.assistantMessageId, skillName)
-    // Notify frontend
-    ctx.sender.send(IPC_CHANNELS.SKILL_ACTIVATED, {
-      sessionId: ctx.sessionId,
-      messageId: ctx.assistantMessageId,
-      skillName,
-    })
+    emitter.sendSkillActivated(skillName)
   }
 
   // Check if a placeholder step already exists (from streaming input start)
@@ -203,27 +226,16 @@ export async function executeToolAndUpdate(
     step.turnIndex = turnIndex
 
     // Update in store and notify frontend
-    store.updateMessageStep(ctx.sessionId, ctx.assistantMessageId, step.id, {
+    emitter.sendStepUpdated(step.id, {
       title: step.title,
       toolCall: step.toolCall,
       turnIndex: step.turnIndex,
-    })
-    ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
-      sessionId: ctx.sessionId,
-      messageId: ctx.assistantMessageId,
-      stepId: step.id,
-      updates: { title: step.title, toolCall: step.toolCall, turnIndex: step.turnIndex },
     })
 
   } else {
     // Create new step (fallback for non-streaming providers)
     step = createStep(toolCall, skillName, turnIndex)
-    store.addMessageStep(ctx.sessionId, ctx.assistantMessageId, step)
-    ctx.sender.send(IPC_CHANNELS.STEP_ADDED, {
-      sessionId: ctx.sessionId,
-      messageId: ctx.assistantMessageId,
-      step,
-    })
+    emitter.sendStepAdded(step)
   }
 
   toolCall.status = 'executing'
@@ -231,13 +243,7 @@ export async function executeToolAndUpdate(
 
   store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
   // Send executing status to frontend so UI shows "Calling..." with spinner
-  ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-    type: 'tool_call',
-    content: '',
-    messageId: ctx.assistantMessageId,
-    sessionId: ctx.sessionId,
-    toolCall,
-  })
+  emitter.sendToolCall(toolCall)
 
   let result: {
     success: boolean
@@ -261,27 +267,14 @@ export async function executeToolAndUpdate(
     toolCall.error = permCheck.reason
 
     // Update step with error
-    const stepUpdates: Partial<Step> = {
+    emitter.sendStepUpdated(step.id, {
       status: 'failed',
       toolCall: { ...toolCall },
       error: permCheck.reason,
-    }
-    store.updateMessageStep(ctx.sessionId, ctx.assistantMessageId, step.id, stepUpdates)
-    ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
-      sessionId: ctx.sessionId,
-      messageId: ctx.assistantMessageId,
-      stepId: step.id,
-      updates: stepUpdates,
     })
 
     store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-    ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-      type: 'tool_result',
-      content: '',
-      messageId: ctx.assistantMessageId,
-      sessionId: ctx.sessionId,
-      toolCall,
-    })
+    emitter.sendToolResult(toolCall)
     return
   }
 
@@ -311,26 +304,28 @@ export async function executeToolAndUpdate(
 
           // If metadata contains diff info (edit tool), store in toolCall.changes
           if (update.metadata.diff) {
+            const changesData = {
+              diff: update.metadata.diff as string,
+              filePath: update.metadata.filePath as string,
+              additions: (update.metadata.additions as number) || 0,
+              deletions: (update.metadata.deletions as number) || 0,
+              originalContent: update.metadata.originalContent as string | undefined,  // For rollback
+            }
+
+            // ★ 关键：同时更新局部 step 对象（因为 store.getSession 返回的是副本）
+            if (!step.toolCall) {
+              step.toolCall = { ...toolCall }
+            }
+            step.toolCall.changes = changesData
+
             metadataUpdates.toolCall = {
               ...step.toolCall,
-              changes: {
-                diff: update.metadata.diff as string,
-                filePath: update.metadata.filePath as string,
-                additions: (update.metadata.additions as number) || 0,
-                deletions: (update.metadata.deletions as number) || 0,
-              },
             }
           }
         }
         // Only send update if there are changes
         if (Object.keys(metadataUpdates).length > 0) {
-          store.updateMessageStep(ctx.sessionId, ctx.assistantMessageId, step.id, metadataUpdates)
-          ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
-            sessionId: ctx.sessionId,
-            messageId: ctx.assistantMessageId,
-            stepId: step.id,
-            updates: metadataUpdates,
-          })
+          emitter.sendStepUpdated(step.id, metadataUpdates)
         }
       },
     }
@@ -344,16 +339,10 @@ export async function executeToolAndUpdate(
     toolCall.commandType = result.commandType
     toolCall.error = result.error
     // Update step to awaiting-confirmation (waiting for user confirmation)
-    const stepUpdates: Partial<Step> = {
+    // Preserve step.toolCall.changes (set by onMetadata before permission request)
+    emitter.sendStepUpdated(step.id, {
       status: 'awaiting-confirmation',
-      toolCall: { ...toolCall },  // Update toolCall with confirmation info
-    }
-    store.updateMessageStep(ctx.sessionId, ctx.assistantMessageId, step.id, stepUpdates)
-    ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
-      sessionId: ctx.sessionId,
-      messageId: ctx.assistantMessageId,
-      stepId: step.id,
-      updates: stepUpdates,
+      toolCall: { ...toolCall, changes: step.toolCall?.changes },
     })
   } else {
     // Determine status: cancelled if aborted, otherwise completed/failed based on success
@@ -370,28 +359,16 @@ export async function executeToolAndUpdate(
     // Only use if it's a string - avoid [object Object] display for arrays/objects
     const rawTitle = result.data?.title
     const finalTitle = (typeof rawTitle === 'string' ? rawTitle : null) || step.title
-    const stepUpdates: Partial<Step> = {
+    emitter.sendStepUpdated(step.id, {
       status: stepStatus,
       title: finalTitle,  // Update title with final result title
-      toolCall: { ...toolCall },  // Update toolCall with result
+      // Preserve step.toolCall.changes (set by onMetadata) when updating
+      toolCall: { ...toolCall, changes: step.toolCall?.changes },
       result: typeof result.data === 'string' ? result.data : JSON.stringify(result.data),
       error: result.error,
-    }
-    store.updateMessageStep(ctx.sessionId, ctx.assistantMessageId, step.id, stepUpdates)
-    ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
-      sessionId: ctx.sessionId,
-      messageId: ctx.assistantMessageId,
-      stepId: step.id,
-      updates: stepUpdates,
     })
   }
 
   store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-  ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-    type: 'tool_result',
-    content: '',
-    messageId: ctx.assistantMessageId,
-    sessionId: ctx.sessionId,
-    toolCall,
-  })
+  emitter.sendToolResult(toolCall)
 }

@@ -181,4 +181,10 @@ export const IPC_CHANNELS = {
   OAUTH_DEVICE_POLL: 'oauth:device-poll',
   OAUTH_TOKEN_REFRESHED: 'oauth:token-refreshed',
   OAUTH_TOKEN_EXPIRED: 'oauth:token-expired',
+
+  // Files related (for @ file search)
+  FILES_LIST: 'files:list',
+
+  // File rollback related
+  FILE_ROLLBACK: 'files:rollback',
 } as const

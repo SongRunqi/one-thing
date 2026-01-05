@@ -95,9 +95,14 @@ export function registerToolHandlers() {
     try {
       const { toolId, arguments: args, messageId, sessionId } = request
 
+      // Get session's workingDirectory for sandbox boundary
+      const session = store.getSession(sessionId)
+      const workingDirectory = session?.workingDirectory
+
       const context: ToolExecutionContext = {
         sessionId,
         messageId,
+        workingDirectory,
       }
 
       const result = await executeTool(toolId, args, context)

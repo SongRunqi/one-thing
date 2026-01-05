@@ -124,6 +124,7 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
           diff,
           additions,
           deletions,
+          originalContent: contentOld,  // For rollback support (empty string for new files)
         },
       })
 
@@ -164,6 +165,7 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
           diff,
           additions,
           deletions,
+          originalContent: contentOld,  // For rollback support (empty string for new files)
         },
       }
     }
@@ -220,6 +222,7 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
         diff,
         additions,
         deletions,
+        originalContent: contentOld,  // For rollback support
       },
     })
 
@@ -264,6 +267,7 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
         diff,
         additions,
         deletions,
+        originalContent: contentOld,  // For rollback support
       },
     }
   },

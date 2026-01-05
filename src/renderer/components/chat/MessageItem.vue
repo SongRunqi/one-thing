@@ -21,6 +21,13 @@
       :timestamp="message.timestamp"
     />
 
+    <!-- System message (e.g., /files command output) -->
+    <MessageSystem
+      v-else-if="message.role === 'system'"
+      :content="message.content"
+      :timestamp="message.timestamp"
+    />
+
     <!-- Normal user/assistant message -->
     <div
       v-else
@@ -122,6 +129,7 @@ import type { ChatMessage, ToolCall, AgentVoice, MessageAttachment } from '@/typ
 import StepsPanel from './StepsPanel.vue'
 import ImagePreview from '../common/ImagePreview.vue'
 import MessageError from './message/MessageError.vue'
+import MessageSystem from './message/MessageSystem.vue'
 import MessageThinking from './message/MessageThinking.vue'
 import MessageBubble from './message/MessageBubble.vue'
 import MessageActions from './message/MessageActions.vue'

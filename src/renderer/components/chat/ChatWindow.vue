@@ -16,13 +16,23 @@
       @select-agent="selectAgent"
       @go-to-parent="goToParentSession"
       @split="emit('split')"
+      @equalize="emit('equalize')"
       @close="emit('close')"
+    />
+
+    <!-- Agent Create Page (when creating a new agent inline) -->
+    <AgentWelcomePage
+      v-if="showAgentCreate"
+      mode="create"
+      @agent-created="handleAgentCreated"
+      @cancel-create="emit('closeAgentCreate')"
     />
 
     <!-- Agent Welcome Page (when session has agent and no messages) -->
     <AgentWelcomePage
-      v-if="showAgentWelcome && sessionAgent"
+      v-else-if="showAgentWelcome && sessionAgent"
       :agent="sessionAgent"
+      mode="view"
       @start-chat="handleStartAgentChat"
       @open-settings="emit('openAgentSettings')"
     />
@@ -79,6 +89,7 @@ import AgentWelcomePage from './AgentWelcomePage.vue'
 interface Props {
   showSettings?: boolean
   showAgentSettings?: boolean
+  showAgentCreate?: boolean
   sessionId?: string
   canClose?: boolean
   showSidebarToggle?: boolean
@@ -87,6 +98,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   showSettings: false,
   showAgentSettings: false,
+  showAgentCreate: false,
   showSidebarToggle: false,
 })
 
@@ -95,8 +107,11 @@ const emit = defineEmits<{
   openSettings: []
   closeAgentSettings: []
   openAgentSettings: []
+  closeAgentCreate: []
+  agentCreated: [agent: import('@/types').Agent]
   close: []
   split: []
+  equalize: []
   splitWithBranch: [sessionId: string]
   toggleSidebar: []
 }>()
@@ -202,6 +217,12 @@ function handleOpenToolSettings() {
 async function handleStartAgentChat() {
   // Session already has the agent assigned, just focus the input
   inputBoxRef.value?.focus()
+}
+
+// Handle agent created from inline form
+function handleAgentCreated(agent: import('@/types').Agent) {
+  emit('agentCreated', agent)
+  emit('closeAgentCreate')
 }
 
 async function handleSendMessage(message: string, attachments?: import('@/types').MessageAttachment[]) {

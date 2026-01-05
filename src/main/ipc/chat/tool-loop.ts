@@ -25,6 +25,7 @@ import * as modelRegistry from '../../services/ai/model-registry.js'
 
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
 import { createStreamProcessor } from './stream-processor.js'
+import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
 import { sendUIMessageFinish } from './stream-helpers.js'
 import { formatMessagesForLog, buildSystemPrompt, type HistoryMessage } from './message-helpers.js'
 import {
@@ -46,6 +47,114 @@ export interface StreamResult {
 }
 
 /**
+ * State for a single turn in the tool loop
+ */
+interface TurnState {
+  toolCalls: ToolCall[]
+  content: { value: string }
+  reasoning: { value: string }
+  finishReason: string
+  usage?: { inputTokens: number; outputTokens: number; totalTokens: number }
+}
+
+/**
+ * Create initial state for a new turn
+ */
+function createTurnState(): TurnState {
+  return {
+    toolCalls: [],
+    content: { value: '' },
+    reasoning: { value: '' },
+    finishReason: 'unknown',
+    usage: undefined,
+  }
+}
+
+/**
+ * Persist content parts to store after turn completion
+ * Also handles IPC sending for turns WITHOUT tool calls (tool call turns send IPC earlier)
+ */
+function persistTurnContentParts(
+  ctx: StreamContext,
+  emitter: IPCEmitter,
+  turnState: TurnState,
+  turnIndex: number
+): void {
+  // Add contentParts for this turn to enable proper interleaving of text and steps
+  // Note: IPC messages for content_part are sent earlier (before tool execution) for proper ordering
+  // Here we only persist to store and send IPC for turns WITHOUT tool calls
+  if (turnState.content.value) {
+    store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
+      type: 'text',
+      content: turnState.content.value,
+    })
+    // Only send IPC if no tool calls (otherwise already sent before tool execution)
+    if (turnState.toolCalls.length === 0) {
+      emitter.sendContentPart({ type: 'text', content: turnState.content.value })
+    }
+  }
+
+  if (turnState.toolCalls.length > 0) {
+    store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
+      type: 'data-steps',
+      turnIndex,
+    })
+    // IPC already sent before tool execution, no need to send again
+  }
+}
+
+/**
+ * Build continuation messages for the next turn
+ */
+function buildContinuationMessages(
+  turnState: TurnState,
+  conversationMessages: ToolChatMessage[],
+  turnIndex: number
+): void {
+  const assistantMsg: {
+    role: 'assistant'
+    content: string
+    toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>
+    reasoningContent?: string
+  } = {
+    role: 'assistant' as const,
+    content: turnState.content.value,
+    toolCalls: turnState.toolCalls.map(tc => ({
+      toolCallId: tc.id,
+      toolName: tc.toolName,
+      args: tc.arguments,
+    })),
+  }
+  if (turnState.reasoning.value) {
+    assistantMsg.reasoningContent = turnState.reasoning.value
+  }
+  conversationMessages.push(assistantMsg)
+
+  const toolResultMsg = {
+    role: 'tool' as const,
+    content: turnState.toolCalls.map(tc => ({
+      type: 'tool-result' as const,
+      toolCallId: tc.id,
+      toolName: tc.toolName,
+      result: tc.status === 'completed' ? tc.result : { error: tc.error },
+    })),
+  }
+  conversationMessages.push(toolResultMsg)
+
+  // Log what we're sending for the next turn
+  logContinuationMessages(
+    turnIndex,
+    turnState.content.value,
+    assistantMsg.toolCalls,
+    toolResultMsg.content.map(tr => ({
+      toolCallId: tr.toolCallId,
+      toolName: tr.toolName,
+      result: tr.result,
+    }))
+  )
+}
+
+/**
  * Unified stream execution function
  * Handles both tool-enabled and simple streaming in a single code path
  *
@@ -62,25 +171,18 @@ export async function runStream(
   const MAX_TOOL_TURNS = 100
   let currentTurn = 0
   const apiType = getProviderApiType(ctx.settings, ctx.providerId)
+  const emitter = createIPCEmitter(ctx)
 
   while (currentTurn < MAX_TOOL_TURNS) {
     currentTurn++
-    const toolCallsThisTurn: ToolCall[] = []
-    const turnContent = { value: '' }
-    const turnReasoning = { value: '' }
-    let lastFinishReason: string = 'unknown'  // Track AI's finish reason for loop control
+    const turn = createTurnState()
 
     logTurnStart(currentTurn)
 
     // Send continuation at the START of each turn (except first) to show waiting indicator
     // This ensures waiting is displayed BEFORE the LLM call starts
     if (currentTurn > 1) {
-      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'continuation',
-        content: '',
-        messageId: ctx.assistantMessageId,
-        sessionId: ctx.sessionId,
-      })
+      emitter.sendContinuation()
     }
 
     const stream = streamChatResponseWithTools(
@@ -104,11 +206,11 @@ export async function runStream(
 
     for await (const chunk of stream) {
       if (chunk.type === 'text' && chunk.text) {
-        processor.handleTextChunk(chunk.text, turnContent)
+        processor.handleTextChunk(chunk.text, turn.content)
       }
 
       if (chunk.type === 'reasoning' && chunk.reasoning) {
-        processor.handleReasoningChunk(chunk.reasoning, turnReasoning)
+        processor.handleReasoningChunk(chunk.reasoning, turn.reasoning)
       }
 
       // Handle streaming tool input chunks (AI SDK v6)
@@ -139,28 +241,16 @@ export async function runStream(
 
         // Send data-steps placeholder BEFORE executing the first tool of this turn
         // This ensures proper ordering: text -> data-steps -> STEP_ADDED events
-        if (toolCallsThisTurn.length === 0) {
+        if (turn.toolCalls.length === 0) {
           // First tool call of this turn - send text content_part first (if any)
-          if (turnContent.value) {
-            ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-              type: 'content_part',
-              content: '',
-              messageId: ctx.assistantMessageId,
-              sessionId: ctx.sessionId,
-              contentPart: { type: 'text', content: turnContent.value },
-            })
+          if (turn.content.value) {
+            emitter.sendContentPart({ type: 'text', content: turn.content.value })
           }
           // Then send data-steps placeholder
-          ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-            type: 'content_part',
-            content: '',
-            messageId: ctx.assistantMessageId,
-            sessionId: ctx.sessionId,
-            contentPart: { type: 'data-steps', turnIndex: currentTurn },
-          })
+          emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
         }
 
-        toolCallsThisTurn.push(toolCall)
+        turn.toolCalls.push(toolCall)
 
         // Always execute tools - the tool will decide if it needs confirmation
         // by returning requiresConfirmation: true (e.g., bash for dangerous commands)
@@ -174,10 +264,11 @@ export async function runStream(
       // Capture usage data and finishReason from finish chunk
       if (chunk.type === 'finish') {
         // Capture finishReason for loop control (OpenCode style)
-        lastFinishReason = chunk.finishReason || 'unknown'
+        turn.finishReason = chunk.finishReason || 'unknown'
 
         if (chunk.usage) {
           turnUsage = chunk.usage
+          turn.usage = chunk.usage
           // Accumulate usage to context for final reporting
           ctx.accumulatedUsage = ctx.accumulatedUsage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
           ctx.accumulatedUsage.inputTokens += chunk.usage.inputTokens
@@ -185,21 +276,17 @@ export async function runStream(
           ctx.accumulatedUsage.totalTokens += chunk.usage.totalTokens
           // Track last turn's usage for context size (NOT accumulated)
           ctx.lastTurnUsage = chunk.usage
-          logTurnEnd(currentTurn, chunk.usage, toolCallsThisTurn.length)
+          logTurnEnd(currentTurn, chunk.usage, turn.toolCalls.length)
 
           // Send real-time context size update to frontend
           // Context size = input tokens only (context window limit applies to input)
-          const currentContextSize = chunk.usage.inputTokens
-          ctx.sender.send(IPC_CHANNELS.CONTEXT_SIZE_UPDATED, {
-            sessionId: ctx.sessionId,
-            contextSize: currentContextSize,
-          })
+          emitter.sendContextSizeUpdate(chunk.usage.inputTokens)
         }
       }
     }
 
     // Update all steps in this turn with the turn's usage data
-    if (turnUsage && toolCallsThisTurn.length > 0) {
+    if (turnUsage && turn.toolCalls.length > 0) {
       const updatedStepIds = store.updateStepsUsageByTurn(
         ctx.sessionId,
         ctx.assistantMessageId,
@@ -207,6 +294,8 @@ export async function runStream(
         turnUsage
       )
       // Notify frontend about the usage updates for each step
+      // Note: store already updated by updateStepsUsageByTurn, we use direct IPC send
+      // because sendStepUpdated would double-update the store
       for (const stepId of updatedStepIds) {
         ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
           sessionId: ctx.sessionId,
@@ -218,43 +307,18 @@ export async function runStream(
       console.log(`[Backend] Updated ${updatedStepIds.length} steps with turn ${currentTurn} usage`)
     }
 
-    // Add contentParts for this turn to enable proper interleaving of text and steps
-    // Note: IPC messages for content_part are sent earlier (before tool execution) for proper ordering
-    // Here we only persist to store and send IPC for turns WITHOUT tool calls
-    if (turnContent.value) {
-      store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
-        type: 'text',
-        content: turnContent.value,
-      })
-      // Only send IPC if no tool calls (otherwise already sent before tool execution)
-      if (toolCallsThisTurn.length === 0) {
-        ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-          type: 'content_part',
-          content: '',
-          messageId: ctx.assistantMessageId,
-          sessionId: ctx.sessionId,
-          contentPart: { type: 'text', content: turnContent.value },
-        })
-      }
-    }
-
-    if (toolCallsThisTurn.length > 0) {
-      store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
-        type: 'data-steps',
-        turnIndex: currentTurn,
-      })
-      // IPC already sent before tool execution, no need to send again
-    }
+    // Persist content parts to store (and send IPC for non-tool-call turns)
+    persistTurnContentParts(ctx, emitter, turn, currentTurn)
 
     // If any tool requires confirmation, stop the loop and signal pause
-    if (toolCallsThisTurn.some(tc => tc.requiresConfirmation)) {
+    if (turn.toolCalls.some(tc => tc.requiresConfirmation)) {
       console.log(`[Backend] Tool requires user confirmation, pausing loop`)
       return { pausedForConfirmation: true }
     }
 
     // Loop control based on finishReason (OpenCode style)
     // AI decides when to stop - we trust the finishReason signal
-    if (toolCallsThisTurn.length === 0) {
+    if (turn.toolCalls.length === 0) {
       // No tool calls this turn - check finishReason to determine if we should exit
       // "tool-calls" means AI intended to call tools (but didn't) - unusual, treat as stop
       // "unknown" means uncertain - treat as stop
@@ -263,79 +327,33 @@ export async function runStream(
       // Check if output was truncated due to max token limit
       // When finishReason is 'length', the AI's response was cut off mid-generation
       // Tool call JSON may be incomplete and unparseable, resulting in no tool calls
-      if (lastFinishReason === 'length') {
+      if (turn.finishReason === 'length') {
         const truncationMessage = '\n\n⚠️ Response was truncated due to max token limit. Please type "continue" to resume.'
 
         // Append truncation message to existing content (don't replace!)
-        const existingContent = turnContent.value || ''
+        const existingContent = turn.content.value || ''
         const fullContent = existingContent + truncationMessage
 
         // Update store with combined content
         store.updateMessageContent(ctx.sessionId, ctx.assistantMessageId, fullContent)
 
         // Send the truncation message to UI (append, not replace)
-        ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-          type: 'text',
-          content: truncationMessage,
-          messageId: ctx.assistantMessageId,
-          sessionId: ctx.sessionId,
-          // No replace: true - this appends to existing content
-        })
+        emitter.sendTextChunk(truncationMessage)
       }
 
-      console.log(`[Backend] No tool calls in turn ${currentTurn}, finishReason: ${lastFinishReason}, ending loop`)
+      console.log(`[Backend] No tool calls in turn ${currentTurn}, finishReason: ${turn.finishReason}, ending loop`)
       return { pausedForConfirmation: false }
     }
 
     // Check if all tools were auto-executed
-    if (!toolCallsThisTurn.every(tc => tc.status === 'completed' || tc.status === 'failed')) {
+    if (!turn.toolCalls.every(tc => tc.status === 'completed' || tc.status === 'failed')) {
       console.log(`[Backend] Not all tools auto-executed, ending loop`)
       return { pausedForConfirmation: false }
     }
 
-    // Build continuation messages
-    const assistantMsg: {
-      role: 'assistant'
-      content: string
-      toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>
-      reasoningContent?: string
-    } = {
-      role: 'assistant' as const,
-      content: turnContent.value,
-      toolCalls: toolCallsThisTurn.map(tc => ({
-        toolCallId: tc.id,
-        toolName: tc.toolName,
-        args: tc.arguments,
-      })),
-    }
-    if (turnReasoning.value) {
-      assistantMsg.reasoningContent = turnReasoning.value
-    }
-    conversationMessages.push(assistantMsg)
-
-    const toolResultMsg = {
-      role: 'tool' as const,
-      content: toolCallsThisTurn.map(tc => ({
-        type: 'tool-result' as const,
-        toolCallId: tc.id,
-        toolName: tc.toolName,
-        result: tc.status === 'completed' ? tc.result : { error: tc.error },
-      })),
-    }
-    conversationMessages.push(toolResultMsg)
-
-    // Log what we're sending for the next turn
-    logContinuationMessages(
-      currentTurn,
-      turnContent.value,
-      assistantMsg.toolCalls,
-      toolResultMsg.content.map(tr => ({
-        toolCallId: tr.toolCallId,
-        toolName: tr.toolName,
-        result: tr.result,
-      }))
-    )
-    // Continuation is now sent at the START of the next turn (line 1234-1240)
+    // Build and append continuation messages for the next turn
+    buildContinuationMessages(turn, conversationMessages, currentTurn)
+    // Continuation IPC is sent at the START of the next turn
     // This ensures waiting is displayed BEFORE the LLM call starts
   }
 
@@ -351,12 +369,17 @@ export async function runStream(
  * Handles both tool-enabled and simple streaming
  * Tool calls are routed through Tool Agent for execution
  */
+export interface StreamGenerationResult {
+  pausedForConfirmation: boolean
+}
+
 export async function executeStreamGeneration(
   ctx: StreamContext,
   historyMessages: HistoryMessage[],
   sessionName?: string
-): Promise<void> {
+): Promise<StreamGenerationResult> {
   const processor = createStreamProcessor(ctx)
+  const emitter = createIPCEmitter(ctx)
 
   try {
     console.log('[Backend] Starting streaming for message:', ctx.assistantMessageId)
@@ -546,9 +569,7 @@ export async function executeStreamGeneration(
     if (!pausedForConfirmation) {
       processor.finalize()
       const updatedSession = store.getSession(ctx.sessionId)
-      ctx.sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-        messageId: ctx.assistantMessageId,
-        sessionId: ctx.sessionId,
+      emitter.sendStreamComplete({
         sessionName: updatedSession?.name || sessionName,
         usage: ctx.accumulatedUsage,
         lastTurnUsage: ctx.lastTurnUsage,  // For correct context size calculation
@@ -603,15 +624,15 @@ export async function executeStreamGeneration(
       console.log('[Backend] Stream paused for tool confirmation, not sending complete')
     }
 
+    return { pausedForConfirmation }
+
   } catch (error: any) {
     const isAborted = error.name === 'AbortError' || ctx.abortSignal.aborted
 
     if (isAborted) {
       console.log('[Backend] Stream aborted by user')
       processor.finalize()
-      ctx.sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-        messageId: ctx.assistantMessageId,
-        sessionId: ctx.sessionId,
+      emitter.sendStreamComplete({
         sessionName: store.getSession(ctx.sessionId)?.name,
         aborted: true,
       })
@@ -632,21 +653,20 @@ export async function executeStreamGeneration(
       store.updateMessageError(ctx.sessionId, ctx.assistantMessageId, errorDetailsStr)
 
       // Send error event to frontend (message is preserved, error is added)
-      ctx.sender.send(IPC_CHANNELS.STREAM_ERROR, {
-        messageId: ctx.assistantMessageId,
-        sessionId: ctx.sessionId,
+      emitter.sendStreamError({
         error: errorContent,
         errorDetails: errorDetailsStr,
         preserved: true,  // Flag to indicate message content is preserved
       })
 
       // Also send stream complete to properly finalize the UI state
-      ctx.sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-        messageId: ctx.assistantMessageId,
-        sessionId: ctx.sessionId,
+      emitter.sendStreamComplete({
         sessionName: store.getSession(ctx.sessionId)?.name,
         error: errorContent,
       })
     }
+
+    // On error, stream is not paused - it's terminated
+    return { pausedForConfirmation: false }
   }
 }

@@ -308,6 +308,9 @@ export interface ElectronAPI {
   // Builtin mode (Ask/Build) methods
   setSessionBuiltinMode: (sessionId: string, mode: BuiltinAgentMode) => Promise<{ success: boolean; mode?: BuiltinAgentMode; error?: string }>
   getSessionBuiltinMode: (sessionId: string) => Promise<{ success: boolean; mode?: BuiltinAgentMode; error?: string }>
+  // System message methods (for /files command persistence)
+  addSystemMessage: (sessionId: string, message: { id: string; role: string; content: string; timestamp: number }) => Promise<{ success: boolean; error?: string }>
+  removeFilesChangedMessage: (sessionId: string) => Promise<{ success: boolean; removedId?: string | null; error?: string }>
   // Plan update listener (for Planning workflow)
   onPlanUpdated: (callback: (data: { sessionId: string; plan: SessionPlan }) => void) => () => void
   onContextSizeUpdated: (callback: (data: { sessionId: string; contextSize: number }) => void) => () => void
@@ -432,9 +435,8 @@ export interface ElectronAPI {
 
   // Image preview methods
   openImagePreview: (src: string, alt?: string) => Promise<{ success: boolean }>
-  openImageGallery: (images: GalleryImage[], initialIndex?: number) => Promise<{ success: boolean }>
+  openImageGallery: (mediaId: string) => Promise<{ success: boolean }>
   onImagePreviewUpdate: (callback: (data: { src: string; alt?: string }) => void) => () => void
-  onImageGalleryUpdate: (callback: (data: { images: GalleryImage[]; currentIndex: number }) => void) => () => void
 
   // OAuth methods
   oauthStart: (providerId: string) => Promise<{
@@ -473,6 +475,12 @@ export interface ElectronAPI {
   // Menu event listeners
   onMenuNewChat: (callback: () => void) => () => void
   onMenuCloseChat: (callback: () => void) => () => void
+
+  // Files methods (for @ file search)
+  listFiles: (options: { cwd: string; query?: string; limit?: number }) => Promise<{ success: boolean; files: string[]; error?: string }>
+
+  // File rollback (for /files command)
+  rollbackFile: (options: { filePath: string; originalContent: string; isNew: boolean }) => Promise<{ success: boolean; error?: string }>
 }
 
 declare global {

@@ -43,16 +43,42 @@
       </div>
     </div>
 
-    <div class="composer" :class="{ focused: isFocused }" @click="focusTextarea">
-      <!-- Skill Picker (only shows enabled skills for / trigger) -->
-      <SkillPicker
-        :visible="showSkillPicker"
-        :query="skillTriggerQuery"
-        :skills="enabledSkills"
-        @select="handleSkillSelect"
-        @close="handleSkillPickerClose"
-      />
+    <!-- Command Feedback -->
+    <Transition name="fade">
+      <div v-if="commandFeedback" :class="['command-feedback', commandFeedback.type]">
+        <Check v-if="commandFeedback.type === 'success'" :size="14" :stroke-width="2.5" />
+        <X v-else :size="14" :stroke-width="2.5" />
+        <span>{{ commandFeedback.message }}</span>
+      </div>
+    </Transition>
 
+    <!-- Command Picker (positioned above composer) -->
+    <CommandPicker
+      :visible="showCommandPicker"
+      :query="commandQuery"
+      @select="handleCommandSelect"
+      @close="handleCommandPickerClose"
+    />
+
+    <!-- Skill Picker (positioned above composer) -->
+    <SkillPicker
+      :visible="showSkillPicker"
+      :query="skillTriggerQuery"
+      :skills="enabledSkills"
+      @select="handleSkillSelect"
+      @close="handleSkillPickerClose"
+    />
+
+    <!-- File Picker (positioned above composer, for @ file search) -->
+    <FilePicker
+      :visible="showFilePicker"
+      :query="fileQuery"
+      :cwd="workingDirectory"
+      @select="handleFilePickerSelect"
+      @close="handleFilePickerClose"
+    />
+
+    <div class="composer" :class="{ focused: isFocused }" @click="focusTextarea">
       <!-- Input area - full width -->
       <div class="input-area">
         <textarea
@@ -128,14 +154,18 @@ import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import type { SkillDefinition, MessageAttachment, AttachmentMediaType } from '@/types'
+import type { CommandDefinition } from '@/types/commands'
 import SkillPicker from './SkillPicker.vue'
+import CommandPicker from './CommandPicker.vue'
+import FilePicker from './FilePicker.vue'
 import ModelSelector from './ModelSelector.vue'
 import ContextIndicator from './ContextIndicator.vue'
 import ToolsMenu from './ToolsMenu.vue'
 import SkillsMenu from './SkillsMenu.vue'
 import ModeToggle from './ModeToggle.vue'
 import PlanPanel from './PlanPanel.vue'
-import { FileText, X, Paperclip, Square, Send } from 'lucide-vue-next'
+import { FileText, X, Paperclip, Square, Send, Check } from 'lucide-vue-next'
+import { getCommands, findCommand, filterCommands } from '@/services/commands'
 
 // Local interface for file preview (extends MessageAttachment with preview)
 interface AttachedFile extends Omit<MessageAttachment, 'base64Data'> {
@@ -167,6 +197,14 @@ const sessionsStore = useSessionsStore()
 
 // Get the effective session ID for this panel
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
+
+// Get the working directory for file search
+const workingDirectory = computed(() => {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return ''
+  const session = sessionsStore.sessions.find(s => s.id === sessionId)
+  return session?.workingDirectory || ''
+})
 
 // Cache input text per session
 const sessionInputCache = new Map<string, string>()
@@ -201,6 +239,28 @@ function handleInput() {
 const availableSkills = ref<SkillDefinition[]>([])
 const showSkillPicker = ref(false)
 const skillTriggerQuery = ref('')
+
+// Commands state
+const showCommandPicker = ref(false)
+const commandQuery = ref('')
+
+// File picker state (for @ file search)
+const showFilePicker = ref(false)
+const fileQuery = ref('')
+
+// Command feedback state
+const commandFeedback = ref<{ type: 'success' | 'error'; message: string } | null>(null)
+let feedbackTimeout: ReturnType<typeof setTimeout> | null = null
+
+function showCommandFeedback(type: 'success' | 'error', message: string) {
+  if (feedbackTimeout) {
+    clearTimeout(feedbackTimeout)
+  }
+  commandFeedback.value = { type, message }
+  feedbackTimeout = setTimeout(() => {
+    commandFeedback.value = null
+  }, 3000)
+}
 
 // Reset isSending when generation completes
 watch(() => props.isLoading, (loading) => {
@@ -258,6 +318,14 @@ const currentModelSupportsVision = computed(() => {
 function handleKeyDown(e: KeyboardEvent) {
   if (isComposing.value) return
 
+  // Don't handle send shortcuts when any picker is visible
+  // (they handle Enter/Tab themselves)
+  const anyPickerVisible = showCommandPicker.value || showSkillPicker.value || showFilePicker.value
+  if (anyPickerVisible && (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    // Let the picker handle these keys
+    return
+  }
+
   // Tab or Shift+Tab toggles between Build/Ask mode (only when input is empty)
   if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
     // Only toggle mode when input is empty
@@ -300,48 +368,83 @@ function handleKeyDown(e: KeyboardEvent) {
   }
 }
 
-function sendMessage() {
-  if (canSend.value) {
-    isSending.value = true
-    let fullMessage = messageInput.value
+async function sendMessage() {
+  if (!canSend.value) return
 
-    if (quotedText.value) {
-      const quotedLines = quotedText.value.split('\n').map(line => `> ${line}`).join('\n')
-      fullMessage = `${quotedLines}\n\n${messageInput.value}`
-    }
+  // Check if this is a command
+  const commandMatch = messageInput.value.match(/^\/(\w+)(?:\s+(.*))?$/)
+  if (commandMatch) {
+    const commandId = commandMatch[1]
+    const argsString = commandMatch[2] || ''
+    const command = findCommand(commandId)
 
-    // Convert attached files to MessageAttachment format (without preview)
-    const attachments: MessageAttachment[] | undefined = attachedFiles.value.length > 0
-      ? attachedFiles.value.map(f => ({
-          id: f.id,
-          fileName: f.fileName,
-          mimeType: f.mimeType,
-          size: f.size,
-          mediaType: f.mediaType,
-          base64Data: f.base64Data,
-          width: f.width,
-          height: f.height,
-        }))
-      : undefined
+    if (command) {
+      // Execute command locally (don't send to AI)
+      const result = await command.execute({
+        sessionId: effectiveSessionId.value,
+        args: argsString.split(/\s+/).filter(Boolean),
+        rawArgs: argsString,
+      })
 
-    emit('sendMessage', fullMessage, attachments)
-    messageInput.value = ''
-    quotedText.value = ''
-    attachedFiles.value = [] // Clear attachments after sending
-    // Clear the cache for this session since message was sent
-    if (effectiveSessionId.value) {
-      sessionInputCache.delete(effectiveSessionId.value)
-    }
-    nextTick(() => {
-      adjustHeight()
-      // Reset scroll position to top
-      if (textareaRef.value) {
-        textareaRef.value.scrollTop = 0
+      // Show feedback
+      if (result.success) {
+        showCommandFeedback('success', `cd → ${result.message}`)
+      } else {
+        showCommandFeedback('error', result.error || `/${commandId} failed`)
       }
-      // Refocus the textarea after sending
-      textareaRef.value?.focus()
-    })
+
+      // Clear input
+      messageInput.value = ''
+      showCommandPicker.value = false
+      commandQuery.value = ''
+      nextTick(() => {
+        adjustHeight()
+        textareaRef.value?.focus()
+      })
+      return
+    }
   }
+
+  // Regular message sending
+  isSending.value = true
+  let fullMessage = messageInput.value
+
+  if (quotedText.value) {
+    const quotedLines = quotedText.value.split('\n').map(line => `> ${line}`).join('\n')
+    fullMessage = `${quotedLines}\n\n${messageInput.value}`
+  }
+
+  // Convert attached files to MessageAttachment format (without preview)
+  const attachments: MessageAttachment[] | undefined = attachedFiles.value.length > 0
+    ? attachedFiles.value.map(f => ({
+        id: f.id,
+        fileName: f.fileName,
+        mimeType: f.mimeType,
+        size: f.size,
+        mediaType: f.mediaType,
+        base64Data: f.base64Data,
+        width: f.width,
+        height: f.height,
+      }))
+    : undefined
+
+  emit('sendMessage', fullMessage, attachments)
+  messageInput.value = ''
+  quotedText.value = ''
+  attachedFiles.value = [] // Clear attachments after sending
+  // Clear the cache for this session since message was sent
+  if (effectiveSessionId.value) {
+    sessionInputCache.delete(effectiveSessionId.value)
+  }
+  nextTick(() => {
+    adjustHeight()
+    // Reset scroll position to top
+    if (textareaRef.value) {
+      textareaRef.value.scrollTop = 0
+    }
+    // Refocus the textarea after sending
+    textareaRef.value?.focus()
+  })
 }
 
 function stopGeneration() {
@@ -552,6 +655,43 @@ const enabledSkills = computed(() => {
 })
 
 watch(messageInput, (newValue) => {
+  // Check for command pattern first: /word (without space - still typing command name)
+  const commandMatch = newValue.match(/^\/(\w*)$/)
+
+  if (commandMatch) {
+    const query = commandMatch[1]
+    const commands = filterCommands(query)
+    if (commands.length > 0) {
+      commandQuery.value = query
+      showCommandPicker.value = true
+      showSkillPicker.value = false
+      showFilePicker.value = false
+      skillTriggerQuery.value = ''
+      fileQuery.value = ''
+      return
+    }
+  }
+
+  // Close command picker if not matching command pattern
+  showCommandPicker.value = false
+  commandQuery.value = ''
+
+  // Check for @ file search pattern: @xxx (anywhere in text, matches the last @)
+  // Only trigger if there's a working directory set
+  const fileMatch = newValue.match(/@([^\s@]*)$/)
+  if (fileMatch && workingDirectory.value) {
+    fileQuery.value = fileMatch[1]
+    showFilePicker.value = true
+    showSkillPicker.value = false
+    skillTriggerQuery.value = ''
+    return
+  }
+
+  // Close file picker if not matching file pattern
+  showFilePicker.value = false
+  fileQuery.value = ''
+
+  // Fall back to skill matching
   const triggerMatch = newValue.match(/^([/@]\w*)$/)
   if (triggerMatch && enabledSkills.value.length > 0) {
     skillTriggerQuery.value = triggerMatch[1]
@@ -587,12 +727,78 @@ async function handleSkillSelect(skill: SkillDefinition) {
 function handleSkillPickerClose() {
   showSkillPicker.value = false
 }
+
+// Command handling
+async function handleCommandSelect(command: CommandDefinition) {
+  showCommandPicker.value = false
+  // Fill in the command in the input, user can add arguments
+  messageInput.value = `/${command.id} `
+  await nextTick()
+  adjustHeight()
+  textareaRef.value?.focus()
+}
+
+function handleCommandPickerClose() {
+  showCommandPicker.value = false
+  commandQuery.value = ''
+}
+
+// File picker handling
+async function handleFilePickerSelect(filePath: string) {
+  showFilePicker.value = false
+  // Replace @xxx with the selected file path
+  messageInput.value = messageInput.value.replace(/@[^\s@]*$/, `@${filePath} `)
+  fileQuery.value = ''
+  await nextTick()
+  adjustHeight()
+  textareaRef.value?.focus()
+}
+
+function handleFilePickerClose() {
+  showFilePicker.value = false
+  fileQuery.value = ''
+}
 </script>
 
 <style scoped>
 .composer-wrapper {
   width: 85%;
   margin: 0 auto;
+  position: relative;
+}
+
+/* Command feedback */
+.command-feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Monaco', monospace;
+}
+
+.command-feedback.success {
+  background: rgba(var(--color-success-rgb, 34, 197, 94), 0.15);
+  color: var(--text-success, var(--color-success));
+  border: 1px solid rgba(var(--color-success-rgb, 34, 197, 94), 0.3);
+}
+
+.command-feedback.error {
+  background: rgba(var(--color-danger-rgb, 239, 68, 68), 0.15);
+  color: var(--text-error, var(--color-danger));
+  border: 1px solid rgba(var(--color-danger-rgb, 239, 68, 68), 0.3);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 /* Attachment preview */

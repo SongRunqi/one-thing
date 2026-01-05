@@ -21,6 +21,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.1",
     "@ai-sdk/deepseek": "^2.0.1",
+    "@ai-sdk/devtools": "^0.0.3",
     "@ai-sdk/google": "^3.0.1",
     "@ai-sdk/openai": "^3.0.1",
     "@ai-sdk/openai-compatible": "^2.0.1",
@@ -38,7 +39,9 @@
     "eventemitter3": "^5.0.1",
     "execa": "^9.6.1",
     "highlight.js": "^11.11.1",
+    "lottie-web": "^5.13.0",
     "lucide-vue-next": "^0.562.0",
+    "lunar-javascript": "^1.7.7",
     "markdown-it": "^14.1.0",
     "markdown-it-mathjax3": "^5.2.0",
     "mathjax": "^3.2.2",

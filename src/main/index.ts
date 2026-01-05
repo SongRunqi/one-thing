@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import { createWindow } from './window.js'
 import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills } from './ipc/handlers.js'
 import { initializeStores } from './store.js'
+import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
 import { initializeStorage, closeStorage } from './storage/index.js'
 import { startMemoryScheduler, stopMemoryScheduler } from './services/memory/memory-scheduler.js'
@@ -31,6 +32,9 @@ app.on('ready', async () => {
 
   // Initialize stores and migrate data if needed
   initializeStores()
+
+  // Clean up interrupted sessions from previous app instance
+  sanitizeAllSessionsOnStartup()
 
   // Initialize SQLite storage with vector support
   await initializeStorage('sqlite')

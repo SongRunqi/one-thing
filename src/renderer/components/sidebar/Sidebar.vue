@@ -342,6 +342,7 @@ onUnmounted(() => {
   animation: slideInLeft 0.2s cubic-bezier(0.32, 0.72, 0, 1) forwards;
   overflow: visible;
   transition: none;
+  pointer-events: none;
 }
 
 /* Floating mode only needs height adjustment since base styles already have margin */
@@ -352,6 +353,7 @@ onUnmounted(() => {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-floating);
   will-change: transform, opacity;
+  pointer-events: auto;
 }
 
 .sidebar.floating .traffic-lights-row {

@@ -5,17 +5,71 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import * as store from '../../store.js'
-import { IPC_CHANNELS } from '../../../shared/ipc.js'
 import type { AppSettings, ProviderConfig, ToolSettings, Step, StepType } from '../../../shared/ipc.js'
 import type { ToolCall } from '../../../shared/ipc.js'
 import { createToolCall } from '../../tools/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '../../mcp/index.js'
+import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
 
 /**
  * Store active AbortControllers per session for stream cancellation
  * Key: sessionId, Value: AbortController
  */
 export const activeStreams = new Map<string, AbortController>()
+
+// ============================================================
+// MCP Tool Identity Resolution
+// ============================================================
+
+/**
+ * Resolved tool identity with display name and ID information
+ */
+export interface ResolvedTool {
+  toolId: string      // Full tool ID for execution (e.g., "mcp_context7_get-library-docs")
+  displayName: string // Human-readable display name
+  isMcp: boolean      // Whether this is an MCP tool
+}
+
+/**
+ * Resolve tool identity from a tool name
+ *
+ * AI models may return short names like "get-library-docs" instead of
+ * full IDs like "mcp_serverId_get-library-docs". This function resolves
+ * the full ID and provides a display name.
+ *
+ * @param toolName The tool name from the AI model
+ * @param args Optional tool arguments for context-aware resolution
+ * @returns Resolved tool identity with full ID and display name
+ */
+export function resolveToolIdentity(toolName: string, args: Record<string, any> = {}): ResolvedTool {
+  let toolId = toolName
+  let displayName = toolName
+  let isMcp = false
+
+  // Check if it's already a full MCP tool ID
+  if (isMCPTool(toolName)) {
+    toolId = toolName
+    isMcp = true
+  } else {
+    // Try to find full MCP tool ID from short name
+    const fullId = findMCPToolIdByShortName(toolName, args)
+    if (fullId) {
+      toolId = fullId
+      isMcp = true
+    }
+  }
+
+  // For MCP tools, use the server's display name
+  if (isMcp) {
+    const parsed = parseMCPToolId(toolId)
+    if (parsed) {
+      const serverState = MCPManager.getServerState(parsed.serverId)
+      displayName = serverState?.config.name || parsed.serverId
+    }
+  }
+
+  return { toolId, displayName, isMcp }
+}
 
 /**
  * Context for streaming operations
@@ -68,6 +122,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
   let accumulatedContent = initialContent?.content || ''
   let accumulatedReasoning = initialContent?.reasoning || ''
   const toolCalls: ToolCall[] = []
+  const emitter = createIPCEmitter(ctx)
 
   // Buffer for streaming tool input (AI SDK v6 tool-call-streaming-start/delta)
   // Maps toolCallId -> { toolName, argsText (accumulated JSON string), stepId }
@@ -82,25 +137,14 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       accumulatedContent += text
       if (turnContent) turnContent.value += text
       store.updateMessageContent(ctx.sessionId, ctx.assistantMessageId, accumulatedContent)
-      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'text',
-        content: text,
-        messageId: ctx.assistantMessageId,
-        sessionId: ctx.sessionId,
-      })
+      emitter.sendTextChunk(text)
     },
 
     handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }) {
       accumulatedReasoning += reasoning
       if (turnReasoning) turnReasoning.value += reasoning
       store.updateMessageReasoning(ctx.sessionId, ctx.assistantMessageId, accumulatedReasoning)
-      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'reasoning',
-        content: '',
-        messageId: ctx.assistantMessageId,
-        sessionId: ctx.sessionId,
-        reasoning,
-      })
+      emitter.sendReasoningChunk(reasoning)
     },
 
     handleToolCallChunk(toolCallData: {
@@ -111,43 +155,15 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       // Check if a placeholder already exists (from handleToolInputStart)
       const existingIndex = toolCalls.findIndex(tc => tc.id === toolCallData.toolCallId)
 
-      // Resolve tool ID - AI models may return short names like "get-library-docs"
-      // instead of full IDs like "mcp_serverId_get-library-docs"
-      let toolId = toolCallData.toolName
-      let displayName = toolCallData.toolName
-      let isMcp = false
-
-      if (isMCPTool(toolCallData.toolName)) {
-        // Already a full MCP tool ID
-        toolId = toolCallData.toolName
-        isMcp = true
-      } else {
-        // Try to find full MCP tool ID from short name or server name
-        const fullId = findMCPToolIdByShortName(toolCallData.toolName, toolCallData.args)
-        if (fullId) {
-
-          toolId = fullId
-          isMcp = true
-        }
-      }
-
-      // For MCP tools, show the MCP server's display name
-      // For regular tools, show the tool name
-      if (isMcp) {
-        const parsed = parseMCPToolId(toolId)
-        if (parsed) {
-          // Get the server's display name from MCPManager
-          const serverState = MCPManager.getServerState(parsed.serverId)
-          displayName = serverState?.config.name || parsed.serverId
-        }
-      }
+      // Resolve tool ID using centralized function
+      const resolved = resolveToolIdentity(toolCallData.toolName, toolCallData.args)
 
       let toolCall: ToolCall
       if (existingIndex >= 0) {
         // Update existing placeholder with complete args
         toolCall = toolCalls[existingIndex]
-        toolCall.toolId = toolId
-        toolCall.toolName = displayName
+        toolCall.toolId = resolved.toolId
+        toolCall.toolName = resolved.displayName
         toolCall.arguments = toolCallData.args
         toolCall.status = 'pending'  // Transition from input-streaming to pending
         // Keep streamingArgs for reference but clear it
@@ -155,8 +171,8 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       } else {
         // Create new toolCall (fallback for non-streaming providers)
         toolCall = createToolCall(
-          toolId,        // toolId: use full ID for execution
-          displayName,   // toolName: use readable name for display
+          resolved.toolId,      // toolId: use full ID for execution
+          resolved.displayName, // toolName: use readable name for display
           toolCallData.args
         )
         toolCall.id = toolCallData.toolCallId
@@ -164,13 +180,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       }
 
       store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
-      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'tool_call',
-        content: '',
-        messageId: ctx.assistantMessageId,
-        sessionId: ctx.sessionId,
-        toolCall,
-      })
+      emitter.sendToolCall(toolCall)
 
       return toolCall
     },
@@ -180,35 +190,14 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
      * Creates placeholder ToolCall and Step for real-time streaming display
      */
     handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number) {
-      // Resolve tool ID (AI models may return short names)
-      let toolId = toolName
-      let displayName = toolName
-      let isMcp = false
-
-      if (isMCPTool(toolName)) {
-        toolId = toolName
-        isMcp = true
-      } else {
-        const fullId = findMCPToolIdByShortName(toolName, {})
-        if (fullId) {
-          toolId = fullId
-          isMcp = true
-        }
-      }
-
-      if (isMcp) {
-        const parsed = parseMCPToolId(toolId)
-        if (parsed) {
-          const serverState = MCPManager.getServerState(parsed.serverId)
-          displayName = serverState?.config.name || parsed.serverId
-        }
-      }
+      // Resolve tool ID using centralized function
+      const resolved = resolveToolIdentity(toolName)
 
       // Create placeholder ToolCall with streaming status
       const placeholderToolCall: ToolCall = {
         id: toolCallId,
-        toolId: toolId,
-        toolName: displayName,
+        toolId: resolved.toolId,
+        toolName: resolved.displayName,
         arguments: {},
         status: 'input-streaming',
         streamingArgs: '',
@@ -224,7 +213,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       const placeholderStep: Step = {
         id: stepId,
         type: stepType,
-        title: `调用工具: ${displayName}`,
+        title: `调用工具: ${resolved.displayName}`,
         status: 'running',
         timestamp: Date.now(),
         toolCallId: toolCallId,
@@ -235,29 +224,12 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       // Store stepId for later updates
       toolInputBuffers.set(toolCallId, { toolName, argsText: '', stepId })
 
-      // Add step to store and notify frontend
-      store.addMessageStep(ctx.sessionId, ctx.assistantMessageId, placeholderStep)
+      // Add step to store and notify frontend (emitter handles both)
       store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
-
-      // Send step added event
-      ctx.sender.send(IPC_CHANNELS.STEP_ADDED, {
-        sessionId: ctx.sessionId,
-        messageId: ctx.assistantMessageId,
-        step: placeholderStep,
-      })
+      emitter.sendStepAdded(placeholderStep)
 
       // Send tool_input_start with placeholder toolCall
-      ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'tool_input_start',
-        content: '',
-        messageId: ctx.assistantMessageId,
-        sessionId: ctx.sessionId,
-        toolCallId,
-        toolName: displayName,
-        toolCall: placeholderToolCall,
-      })
-
-
+      emitter.sendToolInputStart(toolCallId, resolved.displayName, placeholderToolCall)
     },
 
     /**
@@ -289,26 +261,11 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
               timestamp: toolCalls[toolCallIndex]?.timestamp || Date.now(),
             }
           }
-          store.updateMessageStep(ctx.sessionId, ctx.assistantMessageId, buffer.stepId, stepUpdates)
-
-          // Send step updated event for real-time UI update
-          ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
-            sessionId: ctx.sessionId,
-            messageId: ctx.assistantMessageId,
-            stepId: buffer.stepId,
-            updates: stepUpdates,
-          })
+          emitter.sendStepUpdated(buffer.stepId, stepUpdates)
         }
 
         // Send IPC delta to frontend for real-time display
-        ctx.sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-          type: 'tool_input_delta',
-          content: '',
-          messageId: ctx.assistantMessageId,
-          sessionId: ctx.sessionId,
-          toolCallId,
-          argsTextDelta,
-        })
+        emitter.sendToolInputDelta(toolCallId, argsTextDelta)
       }
     },
 

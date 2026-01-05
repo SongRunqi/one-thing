@@ -89,8 +89,55 @@ async function saveBase64Image(base64Data: string, filePath: string): Promise<vo
   fs.writeFileSync(filePath, buffer)
 }
 
+/**
+ * Save an image to media storage (can be called directly from main process)
+ * Returns the saved MediaItem with id and filePath
+ */
+export async function saveMediaImage(data: {
+  url?: string
+  base64?: string
+  prompt: string
+  revisedPrompt?: string
+  model: string
+  sessionId: string
+  messageId: string
+}): Promise<MediaItem> {
+  const id = uuidv4()
+  const filename = `${id}.png`
+  const filePath = path.join(getMediaImagesDir(), filename)
+
+  // Download or save the image
+  if (data.url) {
+    await downloadImage(data.url, filePath)
+  } else if (data.base64) {
+    await saveBase64Image(data.base64, filePath)
+  } else {
+    throw new Error('No image data provided')
+  }
+
+  // Create media item
+  const item: MediaItem = {
+    id,
+    type: 'image',
+    filePath,
+    prompt: data.prompt,
+    revisedPrompt: data.revisedPrompt,
+    model: data.model,
+    createdAt: Date.now(),
+    sessionId: data.sessionId,
+    messageId: data.messageId,
+  }
+
+  // Save to index
+  const index = loadMediaIndex()
+  index.items.unshift(item)
+  saveMediaIndex(index)
+
+  return item
+}
+
 export function registerMediaHandlers() {
-  // Save a generated image
+  // Save a generated image (IPC wrapper for saveMediaImage)
   ipcMain.handle('media:save-image', async (_, data: {
     url?: string
     base64?: string
@@ -100,38 +147,7 @@ export function registerMediaHandlers() {
     sessionId: string
     messageId: string
   }): Promise<MediaItem> => {
-    const id = uuidv4()
-    const filename = `${id}.png`
-    const filePath = path.join(getMediaImagesDir(), filename)
-
-    // Download or save the image
-    if (data.url) {
-      await downloadImage(data.url, filePath)
-    } else if (data.base64) {
-      await saveBase64Image(data.base64, filePath)
-    } else {
-      throw new Error('No image data provided')
-    }
-
-    // Create media item
-    const item: MediaItem = {
-      id,
-      type: 'image',
-      filePath,
-      prompt: data.prompt,
-      revisedPrompt: data.revisedPrompt,
-      model: data.model,
-      createdAt: Date.now(),
-      sessionId: data.sessionId,
-      messageId: data.messageId,
-    }
-
-    // Save to index
-    const index = loadMediaIndex()
-    index.items.unshift(item)
-    saveMediaIndex(index)
-
-    return item
+    return saveMediaImage(data)
   })
 
   // Load all media items
@@ -183,7 +199,7 @@ export function registerMediaHandlers() {
     saveMediaIndex({ items: [] })
   })
 
-  // Open image preview window (single image)
+  // Open image preview window (single image - for non-media images like attachments)
   ipcMain.handle(IPC_CHANNELS.OPEN_IMAGE_PREVIEW, async (_, data: {
     src: string
     alt?: string
@@ -193,13 +209,12 @@ export function registerMediaHandlers() {
     return { success: true }
   })
 
-  // Open image gallery window (multiple images)
+  // Open image gallery window (by mediaId - gallery loads its own data)
   ipcMain.handle(IPC_CHANNELS.OPEN_IMAGE_GALLERY, async (_, data: {
-    images: Array<{ id: string; src: string; alt?: string; thumbnail?: string }>
-    initialIndex?: number
+    mediaId: string
   }) => {
-    console.log('[Media IPC] Opening image gallery:', { count: data.images.length, initialIndex: data.initialIndex })
-    openImagePreviewWindow({ mode: 'gallery', images: data.images, currentIndex: data.initialIndex || 0 })
+    console.log('[Media IPC] Opening image gallery for mediaId:', data.mediaId)
+    openImagePreviewWindow({ mode: 'gallery', mediaId: data.mediaId })
     return { success: true }
   })
 

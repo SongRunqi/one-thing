@@ -53,6 +53,16 @@
         <Columns2 :size="14" :stroke-width="2" />
       </button>
 
+      <!-- Equalize panels button -->
+      <button
+        v-if="canClose"
+        class="chat-header-btn"
+        title="Equalize panels"
+        @click="$emit('equalize')"
+      >
+        <Equal :size="14" :stroke-width="2" />
+      </button>
+
       <!-- Close button (for multi-panel) -->
       <button
         v-if="canClose"
@@ -68,7 +78,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { PanelLeft, ArrowLeft, Columns2, X } from 'lucide-vue-next'
+import { PanelLeft, ArrowLeft, Columns2, Equal, X } from 'lucide-vue-next'
 import AgentDropdown from './AgentDropdown.vue'
 import AddressBar from './AddressBar.vue'
 import type { Agent } from '@/types'
@@ -91,6 +101,7 @@ const emit = defineEmits<{
   selectAgent: [agentId: string | null]
   goToParent: []
   split: []
+  equalize: []
   close: []
 }>()
 

@@ -132,11 +132,43 @@ import { matchShortcut } from '@/composables/useShortcuts'
 
 const settingsStore = useSettingsStore()
 
+/**
+ * Parse URL query params from window.location.hash
+ * Format: #/image-preview?mode=gallery&mediaId=xxx
+ */
+function getQueryParams(): Record<string, string> {
+  const hash = window.location.hash
+  const queryIndex = hash.indexOf('?')
+  if (queryIndex === -1) return {}
+
+  const queryString = hash.slice(queryIndex + 1)
+  const params: Record<string, string> = {}
+  queryString.split('&').forEach(pair => {
+    const [key, value] = pair.split('=')
+    if (key && value) {
+      params[decodeURIComponent(key)] = decodeURIComponent(value)
+    }
+  })
+  return params
+}
+
 interface GalleryImage {
   id: string
   src: string
   alt?: string
   thumbnail?: string
+}
+
+interface MediaItem {
+  id: string
+  type: 'image'
+  filePath: string
+  prompt: string
+  revisedPrompt?: string
+  model: string
+  createdAt: number
+  sessionId: string
+  messageId: string
 }
 
 // Mode and images state
@@ -355,43 +387,83 @@ function setupSingleImageListener() {
   return cleanup
 }
 
-// Listen for gallery updates from main process
-function setupGalleryListener() {
-  console.log('[ImagePreviewWindow] Setting up gallery IPC listener')
-  const cleanup = window.electronAPI?.onImageGalleryUpdate?.((data) => {
-    console.log('[ImagePreviewWindow] Received gallery data:', {
-      count: data.images.length,
-      currentIndex: data.currentIndex,
-      firstImage: data.images[0]?.src?.substring(0, 80)
+/**
+ * Load gallery from media storage (Pull mode - more reliable than IPC push)
+ * Reads mediaId from URL params, loads all media, and finds the target image
+ */
+async function loadGalleryFromMedia(mediaId: string) {
+  console.log('[ImagePreviewWindow] Loading gallery for mediaId:', mediaId)
+  try {
+    const mediaItems: MediaItem[] = await window.electronAPI.loadAllMedia()
+    console.log('[ImagePreviewWindow] Loaded media items:', mediaItems.length)
+
+    if (mediaItems.length === 0) {
+      console.warn('[ImagePreviewWindow] No media items found')
+      loadError.value = true
+      return
+    }
+
+    // Convert media items to gallery images (sorted by createdAt desc in store)
+    const galleryImages: GalleryImage[] = mediaItems.map(item => ({
+      id: item.id,
+      src: `media://${item.id}.png`,
+      alt: item.prompt,
+      thumbnail: `media://${item.id}.png`
+    }))
+
+    // Find the index of the requested mediaId
+    let targetIndex = galleryImages.findIndex(img => img.id === mediaId)
+    if (targetIndex === -1) {
+      console.warn('[ImagePreviewWindow] MediaId not found, defaulting to first image')
+      targetIndex = 0
+    }
+
+    console.log('[ImagePreviewWindow] Gallery loaded:', {
+      count: galleryImages.length,
+      targetIndex,
+      firstImage: galleryImages[0]?.src
     })
+
     isGalleryMode.value = true
-    images.value = data.images
-    currentIndex.value = data.currentIndex
+    images.value = galleryImages
+    currentIndex.value = targetIndex
     loadError.value = false
     resetView()
-    scrollThumbnailIntoView(data.currentIndex)
-
-    // Debug: log computed values after update
-    console.log('[ImagePreviewWindow] After update - imageSrc:', imageSrc.value?.substring(0, 80))
-  })
-  return cleanup
+    scrollThumbnailIntoView(targetIndex)
+  } catch (error) {
+    console.error('[ImagePreviewWindow] Failed to load media:', error)
+    loadError.value = true
+  }
 }
 
 let cleanupSingleListener: (() => void) | undefined
-let cleanupGalleryListener: (() => void) | undefined
 
-onMounted(async () => {
-  // Load settings for keyboard shortcuts
-  await settingsStore.loadSettings()
-  document.addEventListener('keydown', handleKeydown)
+onMounted(() => {
+  // Set up single image IPC listener (for non-media images like attachments)
   cleanupSingleListener = setupSingleImageListener()
-  cleanupGalleryListener = setupGalleryListener()
+
+  // Read mode and mediaId from URL params (parsed from window.location.hash)
+  const params = getQueryParams()
+  const mode = params.mode
+  const mediaId = params.mediaId
+
+  console.log('[ImagePreviewWindow] onMounted, mode:', mode, 'mediaId:', mediaId)
+
+  if (mode === 'gallery' && mediaId) {
+    // Gallery mode: load media data ourselves (Pull mode - reliable)
+    loadGalleryFromMedia(mediaId)
+  }
+  // Single mode: wait for IPC message (handled by setupSingleImageListener)
+
+  // Load settings for keyboard shortcuts (non-blocking)
+  settingsStore.loadSettings().then(() => {
+    document.addEventListener('keydown', handleKeydown)
+  })
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
   cleanupSingleListener?.()
-  cleanupGalleryListener?.()
 })
 </script>
 

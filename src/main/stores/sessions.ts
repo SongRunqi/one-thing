@@ -13,58 +13,86 @@ import { getSettings } from './settings.js'
 import { expandPath } from '../tools/core/sandbox.js'
 
 /**
- * Sanitize a session after loading - clean up any interrupted states
- * This handles cases where the app was closed while tools were running
+ * Sanitize a session after loading - clean up UI-only states
+ * Note: Step/toolCall statuses are NOT modified here to preserve state across session switches
+ * Status cleanup only happens on app startup via sanitizeAllSessions()
  */
 function sanitizeSession(session: ChatSession): ChatSession {
   let modified = false
 
   for (const message of session.messages) {
-    // Clean up streaming state
+    // Clean up streaming state (UI-only, safe to reset)
     if (message.isStreaming) {
       message.isStreaming = false
       modified = true
     }
+  }
 
-    // Clean up interrupted steps
-    if (message.steps) {
-      for (const step of message.steps) {
-        if (step.status === 'running' || step.status === 'pending') {
-          step.status = 'failed'
-          step.error = step.error || 'Interrupted: app was closed'
-          // Clean up "Running:" or "调用工具:" prefix in title
-          if (step.title.startsWith('Running:') || step.title.startsWith('调用工具:')) {
-            step.title = step.title.replace(/^(Running:|调用工具:)\s*/, 'Interrupted: ')
+  return session
+}
+
+/**
+ * Sanitize all sessions on app startup - clean up interrupted states
+ * This should only be called once when the app starts
+ */
+export function sanitizeAllSessionsOnStartup(): void {
+  const index = loadSessionsIndex()
+
+  for (const meta of index) {
+    const sessionPath = getSessionPath(meta.id)
+    const session = readJsonFile<ChatSession | null>(sessionPath, null)
+    if (!session) continue
+
+    let modified = false
+
+    for (const message of session.messages) {
+      // Clean up streaming state
+      if (message.isStreaming) {
+        message.isStreaming = false
+        modified = true
+      }
+
+      // Clean up interrupted steps
+      if (message.steps) {
+        for (const step of message.steps) {
+          if (step.status === 'running' || step.status === 'pending') {
+            step.status = 'failed'
+            step.error = step.error || 'Interrupted: app was closed'
+            if (step.title.startsWith('Running:') || step.title.startsWith('调用工具:')) {
+              step.title = step.title.replace(/^(Running:|调用工具:)\s*/, 'Interrupted: ')
+            }
+            modified = true
           }
-          modified = true
+          if (step.status === 'awaiting-confirmation') {
+            step.status = 'failed'
+            step.error = 'Interrupted: permission request was not answered'
+            modified = true
+          }
+          if (step.toolCall) {
+            if (step.toolCall.status === 'executing' || step.toolCall.status === 'pending') {
+              step.toolCall.status = 'cancelled'
+              modified = true
+            }
+          }
         }
-        if (step.status === 'awaiting-confirmation') {
-          step.status = 'failed'
-          step.error = 'Interrupted: permission request was not answered'
-          modified = true
-        }
-        // Clean up toolCall status within step
-        if (step.toolCall) {
-          if (step.toolCall.status === 'executing' || step.toolCall.status === 'pending') {
-            step.toolCall.status = 'cancelled'
+      }
+
+      // Clean up interrupted toolCalls
+      if (message.toolCalls) {
+        for (const tc of message.toolCalls) {
+          if (tc.status === 'executing' || tc.status === 'pending') {
+            tc.status = 'cancelled'
             modified = true
           }
         }
       }
     }
 
-    // Clean up interrupted toolCalls
-    if (message.toolCalls) {
-      for (const tc of message.toolCalls) {
-        if (tc.status === 'executing' || tc.status === 'pending') {
-          tc.status = 'cancelled'
-          modified = true
-        }
-      }
+    // Only write back if modified
+    if (modified) {
+      writeJsonFile(sessionPath, session)
     }
   }
-
-  return session
 }
 
 // Session metadata stored in index for quick listing

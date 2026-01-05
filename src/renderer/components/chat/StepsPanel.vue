@@ -12,6 +12,7 @@
           <div v-if="step.status === 'running'" class="dot spinning"></div>
           <div v-else-if="step.status === 'completed'" class="dot success"></div>
           <div v-else-if="step.status === 'failed'" class="dot error"></div>
+          <div v-else-if="step.status === 'cancelled'" class="dot cancelled"></div>
           <div v-else-if="step.status === 'awaiting-confirmation'" class="dot warning"></div>
           <div v-else class="dot pending"></div>
         </div>
@@ -200,6 +201,7 @@ function stepClass(step: Step): Record<string, boolean> {
     'status-running': step.status === 'running',
     'status-completed': step.status === 'completed',
     'status-failed': step.status === 'failed',
+    'status-cancelled': step.status === 'cancelled',
     'needs-confirm': step.status === 'awaiting-confirmation',
   }
 }
@@ -232,6 +234,7 @@ function getStatusText(step: Step): string {
   if (step.status === 'running') return 'Running'
   if (step.status === 'failed') return '✗'
   if (step.status === 'completed') return '✓'
+  if (step.status === 'cancelled') return 'Cancelled'
   return ''
 }
 
@@ -581,6 +584,7 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
 .dot.pending { background: var(--text-muted); }
 .dot.success { background: var(--text-success); }
 .dot.error { background: var(--text-error); }
+.dot.cancelled { background: var(--text-muted); opacity: 0.6; }
 .dot.warning {
   background: var(--text-warning);
   animation: pulse 1.5s infinite;
@@ -651,6 +655,7 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
 .status-text.running { color: var(--accent); }
 .status-text.completed { color: var(--text-success); }
 .status-text.failed { color: var(--text-error); }
+.status-text.cancelled { color: var(--text-muted); opacity: 0.8; }
 
 /* Confirm buttons */
 .confirm-buttons {
