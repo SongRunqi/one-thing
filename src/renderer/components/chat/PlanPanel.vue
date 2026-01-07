@@ -123,13 +123,13 @@ onUnmounted(() => {
 <style scoped>
 .plan-panel {
   border-radius: 12px;
-  border: 0.5px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  background: var(--bg-elevated, rgba(30, 30, 35, 0.65));
-  box-shadow: var(--shadow-md, 0 4px 24px rgba(0, 0, 0, 0.12));
+  border: 0.5px solid var(--border, rgba(255, 255, 255, 0.08));
+  background: rgba(var(--bg-rgb, 30, 30, 35), 0.65);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
   backdrop-filter: blur(24px) saturate(1.2);
   -webkit-backdrop-filter: blur(24px) saturate(1.2);
   padding: 12px 14px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 /* Light theme colors now controlled by theme variables */
@@ -287,23 +287,23 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
-/* Transition for panel - smooth spring-like entrance */
+/* Transition for panel - synced with composer border-radius transition */
 .plan-slide-enter-active {
-  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .plan-slide-leave-active {
-  transition: all 0.25s cubic-bezier(0.4, 0, 1, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .plan-slide-enter-from {
   opacity: 0;
-  transform: translateY(-8px) scale(0.98);
+  transform: translateY(-8px);
 }
 
 .plan-slide-leave-to {
   opacity: 0;
-  transform: translateY(-4px) scale(0.99);
+  transform: translateY(-8px);
 }
 
 /* Grid-based collapse/expand animation - GPU accelerated */
@@ -327,7 +327,6 @@ onUnmounted(() => {
 @media (max-width: 600px) {
   .plan-panel {
     padding: 10px 12px;
-    margin-bottom: 10px;
   }
 
   .plan-item {

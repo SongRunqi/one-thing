@@ -9,10 +9,11 @@
         </svg>
       </div>
       <span class="header-title">Changed Files</span>
-      <span class="header-count">({{ data.summary.totalFiles }})</span>
+      <span class="header-count">({{ displayFiles.length }})</span>
+      <span class="header-hint" title="Only Edit and Write tool changes are tracked">Edit/Write only</span>
       <span class="header-stats">
-        <span class="stat-add">+{{ data.summary.totalAdditions }}</span>
-        <span class="stat-del">-{{ data.summary.totalDeletions }}</span>
+        <span class="stat-add">+{{ summary.totalAdditions }}</span>
+        <span class="stat-del">-{{ summary.totalDeletions }}</span>
       </span>
       <!-- Rollback All Button -->
       <button
@@ -31,8 +32,8 @@
     </div>
 
     <!-- Empty state -->
-    <div v-if="data.files.length === 0" class="empty-state">
-      No files changed in this conversation
+    <div v-if="displayFiles.length === 0" class="empty-state">
+      All changes have been rolled back
     </div>
 
     <!-- Content area -->
@@ -40,7 +41,7 @@
       <!-- File list -->
       <div class="file-list">
         <div
-          v-for="file in data.files"
+          v-for="file in displayFiles"
           :key="file.filePath"
           :class="['file-item', { selected: selectedFile?.filePath === file.filePath }]"
           @click="selectFile(file)"
@@ -88,20 +89,11 @@
           <div class="diff-header">
             <span class="diff-filename">{{ selectedFile.filePath }}</span>
           </div>
-          <div class="diff-content" v-if="selectedFile.diff">
-            <div class="diff-table">
-              <div
-                v-for="(line, index) in parsedDiff"
-                :key="index"
-                :class="['diff-row', `diff-row--${line.type}`]"
-              >
-                <span class="diff-line-num diff-line-num--old">{{ line.oldLine ?? '' }}</span>
-                <span class="diff-line-num diff-line-num--new">{{ line.newLine ?? '' }}</span>
-                <span class="diff-sign">{{ getLineSign(line.type) }}</span>
-                <span class="diff-code">{{ line.content }}</span>
-              </div>
-            </div>
-          </div>
+          <DiffView
+            v-if="selectedFile.diff"
+            :diff="selectedFile.diff"
+            maxHeight="100%"
+          />
           <div class="diff-empty" v-else>
             <span>No diff available</span>
           </div>
@@ -112,16 +104,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { FileChangeData, FilesChangedMessage } from '@/services/commands/files'
-
-/** 解析后的 diff 行 */
-interface DiffLine {
-  type: 'add' | 'del' | 'context'
-  content: string
-  oldLine?: number
-  newLine?: number
-}
+import DiffView from './DiffView.vue'
 
 interface Props {
   data: FilesChangedMessage
@@ -133,8 +118,32 @@ const emit = defineEmits<{
   (e: 'rollback', files: FileChangeData[]): void
 }>()
 
+/** 已回滚的文件路径集合 */
+const rolledBackFiles = ref<Set<string>>(new Set())
+
+/** 显示的文件列表（排除已回滚的） */
+const displayFiles = computed(() => {
+  return props.data.files.filter(f => !rolledBackFiles.value.has(f.filePath))
+})
+
+/** 动态计算的统计数据 */
+const summary = computed(() => {
+  const files = displayFiles.value
+  return {
+    totalFiles: files.length,
+    totalAdditions: files.reduce((sum, f) => sum + f.additions, 0),
+    totalDeletions: files.reduce((sum, f) => sum + f.deletions, 0),
+  }
+})
+
 const selectedFile = ref<FileChangeData | null>(null)
 const isRollingBack = ref(false)
+
+// 当 props.data 变化时重置回滚状态
+watch(() => props.data, () => {
+  rolledBackFiles.value = new Set()
+  selectedFile.value = null
+})
 
 function selectFile(file: FileChangeData) {
   selectedFile.value = file
@@ -152,8 +161,19 @@ function canRollback(file: FileChangeData): boolean {
  * 是否有可回滚的文件
  */
 const hasRollbackableFiles = computed(() => {
-  return props.data.files.some(f => canRollback(f))
+  return displayFiles.value.some(f => canRollback(f))
 })
+
+/**
+ * 从显示列表中移除文件（标记为已回滚）
+ */
+function markAsRolledBack(filePath: string) {
+  rolledBackFiles.value.add(filePath)
+  // 如果当前选中的文件被回滚，清除选择
+  if (selectedFile.value?.filePath === filePath) {
+    selectedFile.value = null
+  }
+}
 
 /**
  * 回滚单个文件
@@ -177,6 +197,7 @@ async function rollbackFile(file: FileChangeData) {
     })
 
     if (result.success) {
+      markAsRolledBack(file.filePath)
       emit('rollback', [file])
     } else {
       alert(`Failed to rollback: ${result.error}`)
@@ -192,7 +213,7 @@ async function rollbackFile(file: FileChangeData) {
  * 回滚所有文件
  */
 async function rollbackAll() {
-  const rollbackableFiles = props.data.files.filter(f => canRollback(f))
+  const rollbackableFiles = displayFiles.value.filter(f => canRollback(f))
   if (rollbackableFiles.length === 0) return
 
   if (!confirm(`Are you sure you want to rollback all ${rollbackableFiles.length} file(s)?`)) {
@@ -212,6 +233,7 @@ async function rollbackAll() {
       })
 
       if (result.success) {
+        markAsRolledBack(file.filePath)
         successFiles.push(file)
       } else {
         failedFiles.push(getFileName(file.filePath))
@@ -243,85 +265,6 @@ function getFileDir(filePath: string): string {
   return parts.join('/')
 }
 
-/**
- * 解析 unified diff 格式，提取行号信息
- * 格式示例: @@ -10,5 +12,8 @@ function name()
- * 注意：Meta 行和 Hunk 头部不会被添加到结果中，只用于计算行号
- */
-function parseDiff(diff: string): DiffLine[] {
-  if (!diff) return []
-
-  const lines = diff.split('\n')
-  const result: DiffLine[] = []
-
-  let oldLine = 0
-  let newLine = 0
-
-  for (const line of lines) {
-    // 文件元信息行 (--- a/file, +++ b/file) - 跳过不显示
-    if (line.startsWith('---') || line.startsWith('+++')) {
-      continue
-    }
-
-    // Hunk 头部 @@ -old,count +new,count @@ - 只解析行号，不显示
-    if (line.startsWith('@@')) {
-      const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
-      if (match) {
-        oldLine = parseInt(match[1], 10)
-        newLine = parseInt(match[2], 10)
-      }
-      continue
-    }
-
-    // 添加行
-    if (line.startsWith('+')) {
-      result.push({
-        type: 'add',
-        content: line.slice(1), // 移除前导 +
-        newLine: newLine++
-      })
-      continue
-    }
-
-    // 删除行
-    if (line.startsWith('-')) {
-      result.push({
-        type: 'del',
-        content: line.slice(1), // 移除前导 -
-        oldLine: oldLine++
-      })
-      continue
-    }
-
-    // 上下文行（空格开头或无前缀）
-    const content = line.startsWith(' ') ? line.slice(1) : line
-    if (oldLine > 0 || newLine > 0) {
-      result.push({
-        type: 'context',
-        content,
-        oldLine: oldLine++,
-        newLine: newLine++
-      })
-    }
-  }
-
-  return result
-}
-
-/** 计算选中文件的解析后 diff */
-const parsedDiff = computed(() => {
-  if (!selectedFile.value?.diff) return []
-  return parseDiff(selectedFile.value.diff)
-})
-
-/** 根据行类型返回符号 */
-function getLineSign(type: DiffLine['type']): string {
-  switch (type) {
-    case 'add': return '+'
-    case 'del': return '-'
-    default: return ''
-  }
-}
 </script>
 
 <style scoped>
@@ -357,6 +300,15 @@ function getLineSign(type: DiffLine['type']): string {
   font-size: 14px;
 }
 
+.header-hint {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--hover);
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: help;
+}
+
 .header-stats {
   margin-left: auto;
   display: flex;
@@ -374,8 +326,10 @@ function getLineSign(type: DiffLine['type']): string {
 }
 
 .empty-state {
-  padding: 32px;
-  text-align: center;
+  height: 350px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
 }
 
@@ -461,6 +415,8 @@ function getLineSign(type: DiffLine['type']): string {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;  /* Allow flex shrinking */
+  overflow: hidden;  /* Contain children */
   background: var(--background);
 }
 
@@ -479,6 +435,8 @@ function getLineSign(type: DiffLine['type']): string {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;  /* Allow flex shrinking */
+  overflow: hidden;  /* Contain children */
 }
 
 .diff-header {
@@ -493,109 +451,19 @@ function getLineSign(type: DiffLine['type']): string {
   color: var(--text);
 }
 
-.diff-content {
+/* Override DiffView styles for full-height display */
+.diff-container :deep(.diff-view) {
   flex: 1;
-  overflow: auto;
-}
-
-/* Diff 表格容器 */
-.diff-table {
   display: flex;
   flex-direction: column;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  min-width: max-content;  /* 允许内容撑开宽度，实现横向滚动 */
+  min-height: 0;  /* Allow flex shrinking for proper scrolling */
 }
 
-/* Diff 行 - 四列布局 */
-.diff-row {
-  display: grid;
-  grid-template-columns: 36px 36px 20px 1fr;
-  min-height: 20px;
-  transition: background 0.1s ease;
-}
-
-.diff-row:hover {
-  background: rgba(255, 255, 255, 0.03);
-}
-
-/* 行号列 */
-.diff-line-num {
-  padding: 0 6px;
-  text-align: right;
-  color: var(--text-faint, var(--muted));
-  background: rgba(0, 0, 0, 0.08);
-  user-select: none;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  border-right: 1px solid var(--border);
-}
-
-.diff-line-num--new {
-  border-right: none;
-}
-
-/* 符号列 */
-.diff-sign {
-  width: 20px;
-  text-align: center;
-  user-select: none;
-  font-weight: 600;
-}
-
-/* 代码内容列 */
-.diff-code {
-  padding: 0 12px;
-  white-space: pre;
-  /* 不在每行添加滚动条，由 .diff-content 统一处理横向滚动 */
-}
-
-/* === 行类型样式 === */
-
-/* 添加行 */
-.diff-row--add {
-  background: var(--diff-add-bg);
-}
-
-.diff-row--add .diff-sign {
-  color: var(--diff-add-text);
-}
-
-.diff-row--add .diff-code {
-  color: var(--diff-add-text);
-}
-
-.diff-row--add .diff-line-num {
-  background: rgba(135, 154, 57, 0.12);
-  color: var(--diff-add-text);
-}
-
-/* 删除行 */
-.diff-row--del {
-  background: var(--diff-del-bg);
-}
-
-.diff-row--del .diff-sign {
-  color: var(--diff-del-text);
-}
-
-.diff-row--del .diff-code {
-  color: var(--diff-del-text);
-}
-
-.diff-row--del .diff-line-num {
-  background: rgba(209, 77, 65, 0.12);
-  color: var(--diff-del-text);
-}
-
-/* 上下文行 */
-.diff-row--context {
-  background: transparent;
-}
-
-.diff-row--context .diff-code {
-  color: var(--text);
+.diff-container :deep(.diff-content) {
+  max-height: none;
+  flex: 1;
+  min-height: 0;  /* Allow flex shrinking for proper scrolling */
+  overflow: auto;  /* Enable scrollbars */
 }
 
 .diff-empty {
@@ -620,30 +488,31 @@ function getLineSign(type: DiffLine['type']): string {
 
 /* Scrollbar styles */
 .file-list::-webkit-scrollbar,
-.diff-content::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.diff-container :deep(.diff-content)::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
 .file-list::-webkit-scrollbar-track,
-.diff-content::-webkit-scrollbar-track {
-  background: transparent;
+.diff-container :deep(.diff-content)::-webkit-scrollbar-track {
+  background: var(--panel);
+  border-radius: 4px;
 }
 
 .file-list::-webkit-scrollbar-thumb,
-.diff-content::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
+.diff-container :deep(.diff-content)::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 4px;
+  border: 2px solid var(--panel);
 }
 
 .file-list::-webkit-scrollbar-thumb:hover,
-.diff-content::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
+.diff-container :deep(.diff-content)::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary, var(--muted));
 }
 
-/* 横向滚动条角落 */
-.diff-content::-webkit-scrollbar-corner {
-  background: transparent;
+.diff-container :deep(.diff-content)::-webkit-scrollbar-corner {
+  background: var(--panel);
 }
 
 /* === Rollback Buttons === */

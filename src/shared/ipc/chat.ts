@@ -46,6 +46,9 @@ export interface Step {
     filesModified?: string[]
     errors?: string[]
   }
+  // Nested step support (for CustomAgent sub-tool calls)
+  parentStepId?: string            // Parent step ID (for child steps)
+  childSteps?: Step[]              // Child steps array (populated by frontend)
 }
 
 // Message attachment types for file/image uploads
@@ -66,6 +69,7 @@ export interface MessageAttachment {
 // Type definitions for IPC messages
 export interface ChatMessage {
   id: string
+  sessionId?: string  // Session ID this message belongs to (for context isolation)
   role: 'user' | 'assistant' | 'error' | 'system'  // 'error' and 'system' are display-only, not saved to backend
   content: string
   timestamp: number

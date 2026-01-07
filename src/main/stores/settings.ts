@@ -49,6 +49,11 @@ const defaultSettings: AppSettings = {
     themeId: 'flexoki',  // Default JSON theme (deprecated, use darkThemeId/lightThemeId)
     darkThemeId: 'flexoki',
     lightThemeId: 'flexoki',
+    quickCommands: [
+      { commandId: 'cd', enabled: true },
+      { commandId: 'git', enabled: true },
+      { commandId: 'files', enabled: true },
+    ],
   },
   tools: {
     enableToolCalls: true,
@@ -208,6 +213,12 @@ function migrateSettings(settings: any): AppSettings {
   // Ensure lightThemeId exists in general settings (dual theme system)
   if (settings.general && !settings.general.lightThemeId) {
     settings.general.lightThemeId = settings.general.themeId || 'flexoki'
+    needsSave = true
+  }
+
+  // Ensure quickCommands exists in general settings
+  if (settings.general && !settings.general.quickCommands) {
+    settings.general.quickCommands = defaultSettings.general.quickCommands
     needsSave = true
   }
 

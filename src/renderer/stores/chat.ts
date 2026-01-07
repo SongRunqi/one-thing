@@ -8,7 +8,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, triggerRef } from 'vue'
-import type { ChatMessage, MessageAttachment } from '@/types'
+import type { ChatMessage, MessageAttachment, Step } from '@/types'
 
 // Stream chunk type from IPC
 interface StreamChunk {
@@ -57,7 +57,7 @@ interface StreamErrorData {
 interface StepData {
   sessionId: string
   messageId: string
-  step: any
+  step: Step
 }
 
 interface StepUpdateData {
@@ -104,6 +104,17 @@ export const useChatStore = defineStore('chat', () => {
   // Active streams (sessionId -> messageId)
   const activeStreams = ref<Map<string, string>>(new Map())
 
+  // Context compacting state per session
+  const sessionCompacting = ref<Map<string, boolean>>(new Map())
+
+  // ============ UI State (Persisted across re-renders) ============
+
+  // Expanded agent panels (step IDs of agent steps that are expanded)
+  const expandedAgentPanels = ref<Set<string>>(new Set())
+
+  // Expanded tool calls within agent panels (tool call IDs that show details)
+  const expandedToolCalls = ref<Set<string>>(new Set())
+
   // ============ Getters ============
 
   /**
@@ -133,6 +144,87 @@ export const useChatStore = defineStore('chat', () => {
    */
   function isSessionGenerating(sessionId: string): boolean {
     return sessionGenerating.value.get(sessionId) || activeStreams.value.has(sessionId)
+  }
+
+  /**
+   * Check if a specific session is compacting context
+   */
+  function isSessionCompacting(sessionId: string): boolean {
+    return sessionCompacting.value.get(sessionId) || false
+  }
+
+  /**
+   * Set compacting state for a session
+   */
+  function setSessionCompacting(sessionId: string, isCompacting: boolean): void {
+    sessionCompacting.value.set(sessionId, isCompacting)
+    triggerRef(sessionCompacting)
+  }
+
+  // ============ UI State Functions ============
+
+  /**
+   * Check if an agent panel is expanded
+   */
+  function isAgentPanelExpanded(stepId: string): boolean {
+    return expandedAgentPanels.value.has(stepId)
+  }
+
+  /**
+   * Toggle agent panel expansion state
+   */
+  function toggleAgentPanel(stepId: string): void {
+    const newSet = new Set(expandedAgentPanels.value)
+    if (newSet.has(stepId)) {
+      newSet.delete(stepId)
+    } else {
+      newSet.add(stepId)
+    }
+    expandedAgentPanels.value = newSet
+  }
+
+  /**
+   * Set agent panel expansion state explicitly
+   */
+  function setAgentPanelExpanded(stepId: string, expanded: boolean): void {
+    const newSet = new Set(expandedAgentPanels.value)
+    if (expanded) {
+      newSet.add(stepId)
+    } else {
+      newSet.delete(stepId)
+    }
+    expandedAgentPanels.value = newSet
+  }
+
+  /**
+   * Check if a tool call is expanded (showing details)
+   */
+  function isToolCallExpanded(toolCallId: string): boolean {
+    return expandedToolCalls.value.has(toolCallId)
+  }
+
+  /**
+   * Toggle tool call expansion state
+   */
+  function toggleToolCall(toolCallId: string): void {
+    const newSet = new Set(expandedToolCalls.value)
+    if (newSet.has(toolCallId)) {
+      newSet.delete(toolCallId)
+    } else {
+      newSet.add(toolCallId)
+    }
+    expandedToolCalls.value = newSet
+  }
+
+  /**
+   * Collapse all tool calls within an agent panel
+   */
+  function collapseAllToolCalls(toolCallIds: string[]): void {
+    const newSet = new Set(expandedToolCalls.value)
+    for (const id of toolCallIds) {
+      newSet.delete(id)
+    }
+    expandedToolCalls.value = newSet
   }
 
   // ============ Helper Functions ============
@@ -562,6 +654,21 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
+   * Find a step by ID in a nested step structure
+   */
+  function findStepById(steps: Step[], stepId: string): Step | null {
+    for (const step of steps) {
+      if (step.id === stepId) return step
+      // Search in child steps recursively
+      if (step.childSteps?.length) {
+        const found = findStepById(step.childSteps, stepId)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
+  /**
    * Handle step added event
    */
   function handleStepAdded(data: StepData) {
@@ -573,6 +680,41 @@ export const useChatStore = defineStore('chat', () => {
 
     // Initialize steps array if needed
     if (!message.steps) message.steps = []
+
+    // Check if this is a child step (has parentStepId)
+    if (step.parentStepId) {
+      // Find parent step INDEX (not reference) to replace entire object for Vue reactivity
+      const parentIndex = message.steps.findIndex(s => s.id === step.parentStepId)
+      if (parentIndex >= 0) {
+        const parentStep = message.steps[parentIndex]
+        const existingChildSteps = parentStep.childSteps || []
+
+        // Check for duplicates in childSteps
+        const existingChildIndex = existingChildSteps.findIndex(
+          s => s.id === step.id || s.toolCallId === step.toolCallId
+        )
+
+        let newChildSteps: Step[]
+        if (existingChildIndex >= 0) {
+          // Update existing child step
+          newChildSteps = [...existingChildSteps]
+          newChildSteps[existingChildIndex] = { ...existingChildSteps[existingChildIndex], ...step }
+        } else {
+          // Add new child step
+          newChildSteps = [...existingChildSteps, step]
+        }
+
+        // Replace entire parent step object to trigger Vue reactivity
+        message.steps[parentIndex] = {
+          ...parentStep,
+          childSteps: newChildSteps,
+        }
+        message.steps = [...message.steps]
+        setSessionMessages(sessionId, [...messages])
+        return
+      }
+      // If parent not found, fall through to add as top-level step
+    }
 
     // Check if step already exists (avoid duplicates from streaming)
     const existingIndex = message.steps.findIndex(s => s.id === step.id || s.toolCallId === step.toolCallId)
@@ -616,11 +758,36 @@ export const useChatStore = defineStore('chat', () => {
     const message = messages.find(m => m.id === messageId)
     if (!message?.steps) return
 
+    // First try top-level steps
     const stepIndex = message.steps.findIndex(s => s.id === stepId)
     if (stepIndex !== -1) {
       message.steps[stepIndex] = { ...message.steps[stepIndex], ...updates }
       message.steps = [...message.steps]
       setSessionMessages(sessionId, [...messages])
+      return
+    }
+
+    // If not found in top-level, search in nested childSteps
+    // Need to find parent step and replace it entirely for Vue reactivity
+    const parentIndex = message.steps.findIndex(s =>
+      s.childSteps?.some(c => c.id === stepId)
+    )
+    if (parentIndex >= 0) {
+      const parentStep = message.steps[parentIndex]
+      const childIndex = parentStep.childSteps!.findIndex(c => c.id === stepId)
+      if (childIndex >= 0) {
+        // Create new childSteps array with updated child
+        const newChildSteps = [...parentStep.childSteps!]
+        newChildSteps[childIndex] = { ...newChildSteps[childIndex], ...updates }
+
+        // Replace parent step object to trigger Vue reactivity
+        message.steps[parentIndex] = {
+          ...parentStep,
+          childSteps: newChildSteps,
+        }
+        message.steps = [...message.steps]
+        setSessionMessages(sessionId, [...messages])
+      }
     }
   }
 
@@ -683,9 +850,53 @@ export const useChatStore = defineStore('chat', () => {
     const { sessionId, contextSize } = data
     const currentUsage = sessionUsageMap.value.get(sessionId)
     if (currentUsage) {
-      currentUsage.contextSize = contextSize
-      sessionUsageMap.value.set(sessionId, { ...currentUsage })
-      triggerRef(sessionUsageMap)
+      // Update existing usage entry
+      sessionUsageMap.value.set(sessionId, {
+        ...currentUsage,
+        contextSize,
+      })
+    } else {
+      // Initialize usage entry if it doesn't exist yet
+      // This handles the case where the IPC event arrives before loadSessionUsage completes
+      sessionUsageMap.value.set(sessionId, {
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalTokens: 0,
+        lastInputTokens: 0,
+        contextSize,
+      })
+    }
+    triggerRef(sessionUsageMap)
+  }
+
+  /**
+   * Handle context compact started from backend
+   */
+  function handleContextCompactStarted(data: { sessionId: string }) {
+    const { sessionId } = data
+    console.log(`[ChatStore] Context compacting started for session: ${sessionId}`)
+    setSessionCompacting(sessionId, true)
+  }
+
+  /**
+   * Handle context compact completed from backend
+   */
+  function handleContextCompactCompleted(data: { sessionId: string; success: boolean; error?: string; summary?: string }) {
+    const { sessionId, success, error, summary } = data
+    console.log(`[ChatStore] Context compacting completed for session: ${sessionId}, success: ${success}`)
+    setSessionCompacting(sessionId, false)
+
+    if (success && summary) {
+      // Add system message to show the summary
+      addLocalMessage(sessionId, {
+        role: 'system',
+        content: JSON.stringify({
+          type: 'context-compact',
+          summary: summary,
+        }),
+      })
+    } else if (!success && error) {
+      console.warn(`[ChatStore] Context compacting failed: ${error}`)
     }
   }
 
@@ -1009,6 +1220,7 @@ export const useChatStore = defineStore('chat', () => {
     const messages = getSessionMessagesRef(sessionId)
     const localMessage: ChatMessage = {
       id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      sessionId,  // Include sessionId for context isolation
       role: message.role,
       content: message.content,
       timestamp: Date.now(),
@@ -1052,6 +1264,17 @@ export const useChatStore = defineStore('chat', () => {
     getSessionState,
     getSessionUsage,
     isSessionGenerating,
+    isSessionCompacting,
+
+    // UI State (for AgentExecutionPanel)
+    expandedAgentPanels,
+    expandedToolCalls,
+    isAgentPanelExpanded,
+    toggleAgentPanel,
+    setAgentPanelExpanded,
+    isToolCallExpanded,
+    toggleToolCall,
+    collapseAllToolCalls,
 
     // Event handlers (called by IPC Hub)
     handleStreamChunk,
@@ -1061,6 +1284,8 @@ export const useChatStore = defineStore('chat', () => {
     handleStepUpdated,
     handleSkillActivated,
     handleContextSizeUpdated,
+    handleContextCompactStarted,
+    handleContextCompactCompleted,
 
     // Actions
     loadMessages,

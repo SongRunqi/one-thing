@@ -1,8 +1,5 @@
 <template>
   <div class="composer-wrapper" ref="composerWrapperRef">
-    <!-- Plan Panel (shown above composer when plan exists) -->
-    <PlanPanel :session-id="effectiveSessionId" />
-
     <!-- Hidden file input -->
     <input
       ref="fileInputRef"
@@ -77,6 +74,23 @@
       @select="handleFilePickerSelect"
       @close="handleFilePickerClose"
     />
+
+    <!-- Path Picker (positioned above composer, for /cd path completion) -->
+    <PathPicker
+      :visible="showPathPicker"
+      :path-input="pathQuery"
+      @select="handlePathPickerSelect"
+      @close="handlePathPickerClose"
+    />
+
+    <!-- Quick Command Bar (configurable command buttons) -->
+    <QuickCommandBar
+      :session-id="effectiveSessionId"
+      @executed="handleQuickCommandExecuted"
+    />
+
+    <!-- Plan Panel (紧贴 composer 上方显示) -->
+    <PlanPanel :session-id="effectiveSessionId" />
 
     <div class="composer" :class="{ focused: isFocused }" @click="focusTextarea">
       <!-- Input area - full width -->
@@ -153,11 +167,14 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
+import { useChatStore } from '@/stores/chat'
 import type { SkillDefinition, MessageAttachment, AttachmentMediaType } from '@/types'
 import type { CommandDefinition } from '@/types/commands'
 import SkillPicker from './SkillPicker.vue'
 import CommandPicker from './CommandPicker.vue'
 import FilePicker from './FilePicker.vue'
+import PathPicker from './PathPicker.vue'
+import QuickCommandBar from './QuickCommandBar.vue'
 import ModelSelector from './ModelSelector.vue'
 import ContextIndicator from './ContextIndicator.vue'
 import ToolsMenu from './ToolsMenu.vue'
@@ -194,6 +211,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
+const chatStore = useChatStore()
 
 // Get the effective session ID for this panel
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
@@ -219,6 +237,21 @@ const composerWrapperRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const attachedFiles = ref<AttachedFile[]>([])
 const modeToggleRef = ref<InstanceType<typeof ModeToggle> | null>(null)
+
+// ============ 历史导航状态 ============
+const historyIndex = ref(-1)  // -1 表示不在历史模式，0 是最近一条
+const originalInput = ref('')  // 导航前的原始输入
+
+// 当前会话的用户消息历史（最新在前）
+const userMessageHistory = computed(() => {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return []
+  const messages = chatStore.sessionMessages.get(sessionId) || []
+  return messages
+    .filter(m => m.role === 'user' && m.content.trim())
+    .map(m => m.content)
+    .reverse()
+})
 
 // ResizeObserver for dynamic height tracking
 let composerResizeObserver: ResizeObserver | null = null
@@ -247,6 +280,10 @@ const commandQuery = ref('')
 // File picker state (for @ file search)
 const showFilePicker = ref(false)
 const fileQuery = ref('')
+
+// Path picker state (for /cd path completion)
+const showPathPicker = ref(false)
+const pathQuery = ref('')
 
 // Command feedback state
 const commandFeedback = ref<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -290,6 +327,8 @@ watch(effectiveSessionId, (newSessionId, oldSessionId) => {
       })
     }
   }
+  // 切换会话时重置历史导航
+  resetHistoryNavigation()
   previousSessionId = newSessionId ?? null
 }, { immediate: true })
 
@@ -315,15 +354,110 @@ const currentModelSupportsVision = computed(() => {
   return model?.architecture?.input_modalities?.includes('image') || false
 })
 
+// ============ 历史导航辅助函数 ============
+
+// 检查光标是否在第一行
+function isCursorOnFirstLine(): boolean {
+  const textarea = textareaRef.value
+  if (!textarea || !textarea.value) return true
+  return !textarea.value.substring(0, textarea.selectionStart).includes('\n')
+}
+
+// 检查光标是否在最后一行
+function isCursorOnLastLine(): boolean {
+  const textarea = textareaRef.value
+  if (!textarea || !textarea.value) return true
+  return !textarea.value.substring(textarea.selectionStart).includes('\n')
+}
+
+// 重置历史导航状态
+function resetHistoryNavigation() {
+  historyIndex.value = -1
+  originalInput.value = ''
+}
+
+// 处理历史导航
+function handleHistoryNavigation(direction: 'up' | 'down'): boolean {
+  const history = userMessageHistory.value
+  if (history.length === 0) return false
+
+  if (direction === 'up') {
+    // 检查是否可以触发导航
+    if (messageInput.value !== '' && !isCursorOnFirstLine()) return false
+    // 首次进入历史模式，保存原始输入
+    if (historyIndex.value === -1) originalInput.value = messageInput.value
+    const newIndex = historyIndex.value + 1
+    // 到达边界，消费事件但不改变内容
+    if (newIndex >= history.length) return true
+    historyIndex.value = newIndex
+    messageInput.value = history[newIndex]
+  } else {
+    // 不在历史模式，不处理
+    if (historyIndex.value === -1) return false
+    if (!isCursorOnLastLine()) return false
+    const newIndex = historyIndex.value - 1
+    if (newIndex < 0) {
+      // 返回到原始输入
+      historyIndex.value = -1
+      messageInput.value = originalInput.value
+      originalInput.value = ''
+    } else {
+      historyIndex.value = newIndex
+      messageInput.value = history[newIndex]
+    }
+  }
+
+  // 调整高度并将光标移到末尾
+  nextTick(() => {
+    adjustHeight()
+    if (textareaRef.value) {
+      textareaRef.value.selectionStart = textareaRef.value.selectionEnd = textareaRef.value.value.length
+    }
+  })
+  return true
+}
+
 function handleKeyDown(e: KeyboardEvent) {
   if (isComposing.value) return
 
   // Don't handle send shortcuts when any picker is visible
   // (they handle Enter/Tab themselves)
+  // Exception: PathPicker uses Tab for completion, Enter still sends the command
   const anyPickerVisible = showCommandPicker.value || showSkillPicker.value || showFilePicker.value
+  const pathPickerVisible = showPathPicker.value
+
   if (anyPickerVisible && (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
     // Let the picker handle these keys
     return
+  }
+
+  // PathPicker: Tab/Arrow/Escape handled by picker, but Enter sends the command
+  if (pathPickerVisible) {
+    if (e.key === 'Tab' || e.key === 'Escape' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      return
+    }
+    // Enter sends the command immediately
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      showPathPicker.value = false
+      pathQuery.value = ''
+      sendMessage()
+      return
+    }
+  }
+
+  // 历史导航处理 (↑/↓ 键)
+  if (e.key === 'ArrowUp') {
+    if (handleHistoryNavigation('up')) {
+      e.preventDefault()
+      return
+    }
+  }
+  if (e.key === 'ArrowDown') {
+    if (handleHistoryNavigation('down')) {
+      e.preventDefault()
+      return
+    }
   }
 
   // Tab or Shift+Tab toggles between Build/Ask mode (only when input is empty)
@@ -388,13 +522,14 @@ async function sendMessage() {
 
       // Show feedback
       if (result.success) {
-        showCommandFeedback('success', `cd → ${result.message}`)
+        showCommandFeedback('success', result.message || 'Done')
       } else {
         showCommandFeedback('error', result.error || `/${commandId} failed`)
       }
 
       // Clear input
       messageInput.value = ''
+      resetHistoryNavigation()
       showCommandPicker.value = false
       commandQuery.value = ''
       nextTick(() => {
@@ -430,6 +565,7 @@ async function sendMessage() {
 
   emit('sendMessage', fullMessage, attachments)
   messageInput.value = ''
+  resetHistoryNavigation()
   quotedText.value = ''
   attachedFiles.value = [] // Clear attachments after sending
   // Clear the cache for this session since message was sent
@@ -655,6 +791,16 @@ const enabledSkills = computed(() => {
 })
 
 watch(messageInput, (newValue) => {
+  // 检测用户是否在历史模式下编辑（而非通过导航设置）
+  if (historyIndex.value !== -1) {
+    const history = userMessageHistory.value
+    // 如果当前值不匹配当前历史记录，说明用户开始编辑
+    if (history[historyIndex.value] !== newValue) {
+      historyIndex.value = -1
+      originalInput.value = ''
+    }
+  }
+
   // Check for command pattern first: /word (without space - still typing command name)
   const commandMatch = newValue.match(/^\/(\w*)$/)
 
@@ -666,8 +812,10 @@ watch(messageInput, (newValue) => {
       showCommandPicker.value = true
       showSkillPicker.value = false
       showFilePicker.value = false
+      showPathPicker.value = false
       skillTriggerQuery.value = ''
       fileQuery.value = ''
+      pathQuery.value = ''
       return
     }
   }
@@ -675,6 +823,22 @@ watch(messageInput, (newValue) => {
   // Close command picker if not matching command pattern
   showCommandPicker.value = false
   commandQuery.value = ''
+
+  // Check for /cd path completion pattern: /cd <path>
+  const cdMatch = newValue.match(/^\/cd\s+(.*)$/)
+  if (cdMatch) {
+    pathQuery.value = cdMatch[1]
+    showPathPicker.value = true
+    showFilePicker.value = false
+    showSkillPicker.value = false
+    skillTriggerQuery.value = ''
+    fileQuery.value = ''
+    return
+  }
+
+  // Close path picker if not matching /cd pattern
+  showPathPicker.value = false
+  pathQuery.value = ''
 
   // Check for @ file search pattern: @xxx (anywhere in text, matches the last @)
   // Only trigger if there's a working directory set
@@ -758,6 +922,36 @@ function handleFilePickerClose() {
   showFilePicker.value = false
   fileQuery.value = ''
 }
+
+// Path picker handling (for /cd command)
+async function handlePathPickerSelect(selectedPath: string) {
+  showPathPicker.value = false
+  // Replace the path part after /cd with the selected path
+  messageInput.value = `/cd ${selectedPath}`
+  pathQuery.value = ''
+  await nextTick()
+  adjustHeight()
+  textareaRef.value?.focus()
+}
+
+function handlePathPickerClose() {
+  showPathPicker.value = false
+  pathQuery.value = ''
+}
+
+// Quick command bar handling
+function handleQuickCommandExecuted(result: {
+  commandId: string
+  success: boolean
+  message?: string
+  error?: string
+}) {
+  if (result.success) {
+    showCommandFeedback('success', result.message || 'Done')
+  } else {
+    showCommandFeedback('error', result.error || 'Command failed')
+  }
+}
 </script>
 
 <style scoped>
@@ -767,28 +961,32 @@ function handleFilePickerClose() {
   position: relative;
 }
 
-/* Command feedback */
+/* Command feedback - toast style, doesn't affect layout */
 .command-feedback {
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
+  gap: 6px;
+  padding: 6px 12px;
   border-radius: 8px;
-  font-size: 13px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .command-feedback.success {
-  background: rgba(var(--color-success-rgb, 34, 197, 94), 0.15);
-  color: var(--text-success, var(--color-success));
-  border: 1px solid rgba(var(--color-success-rgb, 34, 197, 94), 0.3);
+  background: rgba(34, 197, 94, 0.9);
+  color: white;
 }
 
 .command-feedback.error {
-  background: rgba(var(--color-danger-rgb, 239, 68, 68), 0.15);
-  color: var(--text-error, var(--color-danger));
-  border: 1px solid rgba(var(--color-danger-rgb, 239, 68, 68), 0.3);
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
 }
 
 .fade-enter-active,

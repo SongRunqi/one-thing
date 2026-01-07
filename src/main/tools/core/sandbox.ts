@@ -32,6 +32,9 @@ export function isPathContained(boundary: string, targetPath: string): boolean {
 /**
  * Get the sandbox boundary directory
  * Priority: workingDirectory > settings.defaultWorkingDirectory > process.cwd()
+ *
+ * Note: workingDirectory is expected to be already expanded (by getSession/getWorkspace).
+ * Only settings.defaultWorkingDirectory needs expansion here.
  */
 export function getSandboxBoundary(workingDirectory?: string): string {
   if (workingDirectory) {

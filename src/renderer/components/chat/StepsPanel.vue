@@ -1,154 +1,164 @@
 <template>
-  <div class="steps-panel" v-if="steps && steps.length > 0">
-    <div
-      v-for="step in steps"
-      :key="step.id"
-      :class="['step-inline', stepClass(step), { expanded: expandedSteps.has(step.id) }]"
-    >
-      <!-- Main Row -->
-      <div class="step-row" @click="toggleExpand(step.id)">
-        <!-- Status dot -->
-        <div class="status-dot">
-          <div v-if="step.status === 'running'" class="dot spinning"></div>
-          <div v-else-if="step.status === 'completed'" class="dot success"></div>
-          <div v-else-if="step.status === 'failed'" class="dot error"></div>
-          <div v-else-if="step.status === 'cancelled'" class="dot cancelled"></div>
-          <div v-else-if="step.status === 'awaiting-confirmation'" class="dot warning"></div>
-          <div v-else class="dot pending"></div>
+  <div class="steps-panel" v-if="steps && steps.length > 0" :data-depth="depth">
+    <template v-for="step in steps" :key="step.id">
+      <!-- Agent Step: Use AgentExecutionPanel for steps with childSteps -->
+      <AgentExecutionPanel
+        v-if="isAgentStep(step)"
+        :step="step"
+        :child-steps="step.childSteps || []"
+        :session-id="sessionId"
+        @confirm="handleAgentConfirm"
+        @reject="handleAgentReject"
+      />
+
+      <!-- Regular Step: Standard step rendering -->
+      <div
+        v-else
+        :class="['step-inline', stepClass(step), { expanded: expandedSteps.has(step.id) }]"
+        :style="{ '--depth': depth }"
+      >
+        <!-- Main Row - Simplified: icon + tool + preview + actions -->
+        <div class="step-row" @click="toggleExpand(step.id)">
+          <!-- Status icon (single, clear) -->
+          <span class="status-icon" :class="step.status">
+            <span v-if="step.status === 'running'" class="spinner"></span>
+            <span v-else-if="step.status === 'completed'">✓</span>
+            <span v-else-if="step.status === 'failed'">✗</span>
+            <span v-else-if="step.status === 'cancelled'">—</span>
+            <span v-else-if="step.status === 'awaiting-confirmation'">⏳</span>
+            <span v-else>○</span>
+          </span>
+
+          <!-- Tool name -->
+          <span class="tool-name">{{ step.toolCall?.toolName || 'tool' }}</span>
+
+          <!-- Step title (brief description) -->
+          <span class="step-title">{{ truncateTitle(step.title, 40) }}</span>
+
+          <!-- Right side: error OR buttons OR expand icon -->
+          <span v-if="step.status === 'failed' && step.error" class="error-tag">
+            {{ truncateError(step.error, 30) }}
+          </span>
+
+          <template v-else-if="step.status === 'awaiting-confirmation'">
+            <div class="confirm-buttons" @click.stop>
+              <button class="btn-allow" @click="handleConfirm(step, 'once')">Allow</button>
+              <button class="btn-always" @click="handleConfirm(step, 'always')">Always</button>
+              <button class="btn-reject" @click="handleReject(step)">Reject</button>
+            </div>
+          </template>
+
+          <svg
+            v-else-if="hasExpandableContent(step)"
+            :class="['expand-icon', { rotated: expandedSteps.has(step.id) }]"
+            width="14" height="14" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2"
+          >
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
         </div>
 
-        <!-- Tool name badge -->
-        <span v-if="step.toolCall?.toolName" class="tool-badge">{{ step.toolCall.toolName }}</span>
-
-        <!-- Step title -->
-        <span class="step-title">{{ truncateTitle(step.title) }}</span>
-
-        <!-- Preview -->
-        <span class="step-preview">{{ getPreview(step) }}</span>
-
-        <!-- Spacer -->
-        <div class="spacer"></div>
-
-        <!-- Status / Buttons -->
-        <template v-if="step.status === 'awaiting-confirmation'">
-          <div class="confirm-buttons" @click.stop>
-            <button class="btn-inline btn-allow" @click="handleConfirm(step, 'once')">Allow</button>
-            <button class="btn-inline btn-always" @click="handleConfirm(step, 'always')">Always</button>
-            <button class="btn-inline btn-reject" @click="handleReject(step)">Reject</button>
-          </div>
-        </template>
-        <span v-else class="status-text" :class="step.status">
-          {{ getStatusText(step) }}
-        </span>
-
-        <!-- Expand icon -->
-        <svg
-          v-if="hasExpandableContent(step)"
-          :class="['expand-icon', { rotated: expandedSteps.has(step.id) }]"
-          width="12" height="12" viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" stroke-width="2"
-        >
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </div>
-
-      <!-- Expanded Content -->
-      <Transition name="slide">
-        <div v-if="shouldShowContent(step)" class="step-details">
-          <!-- Streaming diff preview (during input-streaming for edit/write tools) -->
-          <div v-if="getStreamingContent(step)" class="detail-section streaming-diff">
-            <div class="streaming-header">
-              <span class="streaming-path">{{ getStreamingContent(step)?.filePath || 'Parsing...' }}</span>
-              <span class="streaming-indicator">
-                <svg class="streaming-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 12a9 9 0 11-6.219-8.56"/>
-                </svg>
-                Writing...
-              </span>
+        <!-- Expanded Content -->
+        <Transition name="slide">
+          <div v-if="shouldShowContent(step)" class="step-details">
+            <!-- Streaming diff preview (during input-streaming for edit/write tools) -->
+            <div v-if="getStreamingContent(step)" class="detail-section streaming-diff">
+              <div class="streaming-header">
+                <span class="streaming-path">{{ getStreamingContent(step)?.filePath || 'Parsing...' }}</span>
+                <span class="streaming-indicator flowing-text">Writing...</span>
+              </div>
+              <pre v-if="getStreamingContent(step)?.content" class="streaming-code"><code>{{ getStreamingContent(step)?.content }}</code></pre>
             </div>
-            <pre v-if="getStreamingContent(step)?.content" class="streaming-code"><code>{{ getStreamingContent(step)?.content }}</code></pre>
-          </div>
 
-          <!-- Diff preview for edit tool (awaiting-confirmation or completed) -->
-          <div v-if="(step.status === 'awaiting-confirmation' || step.status === 'completed') && getDiffFromStep(step)" class="detail-section diff-preview">
-            <div class="detail-label">Changes</div>
-            <div class="diff-content">
-              <!-- File header inside code block (IDE style) -->
-              <div class="diff-header">
-                <span class="diff-file-path">{{ getDiffFromStep(step)?.filePath }}</span>
-                <span class="diff-stats">
-                  <span class="additions">+{{ getDiffFromStep(step)?.additions || 0 }}</span>
-                  <span class="deletions">-{{ getDiffFromStep(step)?.deletions || 0 }}</span>
+            <!-- Diff preview for edit tool (awaiting-confirmation or completed) -->
+            <div v-if="(step.status === 'awaiting-confirmation' || step.status === 'completed') && getDiffFromStep(step)" class="detail-section diff-preview">
+              <div class="detail-label">Changes</div>
+              <div class="diff-content">
+                <!-- File header inside code block (IDE style) -->
+                <div class="diff-header">
+                  <span class="diff-file-path">{{ getDiffFromStep(step)?.filePath }}</span>
+                  <span class="diff-stats">
+                    <span class="additions">+{{ getDiffFromStep(step)?.additions || 0 }}</span>
+                    <span class="deletions">-{{ getDiffFromStep(step)?.deletions || 0 }}</span>
+                  </span>
+                  <span v-if="step.status === 'completed'" class="diff-status-badge">Applied</span>
+                </div>
+                <!-- Diff lines -->
+                <div v-for="(line, idx) in getVisibleDiffLines(step)" :key="idx" :class="['diff-line', line.class]">
+                  <span class="line-number old">{{ line.oldNum || '' }}</span>
+                  <span class="line-number new">{{ line.newNum || '' }}</span>
+                  <span class="line-prefix">{{ line.prefix }}</span>
+                  <span class="line-content" :class="{ 'line-deleted-text': line.class === 'diff-del' }">{{ line.content }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live output for running -->
+            <div v-if="step.status === 'running' && step.result" class="detail-section live">
+              <pre>{{ truncateOutput(step.result) }}</pre>
+            </div>
+
+            <!-- Thinking -->
+            <div v-if="step.thinking && expandedSteps.has(step.id)" class="detail-section">
+              <div class="detail-label">💭 Thinking</div>
+              <pre class="thinking">{{ step.thinking }}</pre>
+            </div>
+
+            <!-- Tool Agent Result -->
+            <div v-if="step.toolAgentResult && expandedSteps.has(step.id)" class="detail-section">
+              <div class="agent-header">
+                <span :class="['agent-badge', step.toolAgentResult.success ? 'success' : 'failed']">
+                  {{ step.toolAgentResult.success ? 'Success' : 'Failed' }}
                 </span>
-                <span v-if="step.status === 'completed'" class="diff-status-badge">Applied</span>
+                <span class="agent-stats">{{ step.toolAgentResult.toolCallCount }} calls</span>
               </div>
-              <!-- Diff lines -->
-              <div v-for="(line, idx) in getVisibleDiffLines(step)" :key="idx" :class="['diff-line', line.class]">
-                <span class="line-number old">{{ line.oldNum || '' }}</span>
-                <span class="line-number new">{{ line.newNum || '' }}</span>
-                <span class="line-prefix">{{ line.prefix }}</span>
-                <span class="line-content" :class="{ 'line-deleted-text': line.class === 'diff-del' }">{{ line.content }}</span>
-              </div>
+              <pre>{{ step.toolAgentResult.summary }}</pre>
+            </div>
+
+            <!-- Arguments - JSON beautified format (hidden for edit tool which shows diff instead) -->
+            <div v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step) && step.toolCall?.toolName !== 'edit'" class="detail-section args-section">
+              <div class="detail-label">Arguments</div>
+              <pre class="args-json">{{ formatArgsJson(step.toolCall.arguments) }}</pre>
+            </div>
+
+            <!-- Result -->
+            <div v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running'" class="detail-section">
+              <div class="detail-label">Result</div>
+              <pre>{{ formatResult(step.result) }}</pre>
+            </div>
+
+            <!-- Summary -->
+            <div v-if="step.summary && expandedSteps.has(step.id)" class="detail-section">
+              <div class="detail-label">📝 Analysis</div>
+              <pre class="summary">{{ step.summary }}</pre>
+            </div>
+
+            <!-- Error -->
+            <div v-if="step.error" class="detail-section error">
+              <pre>{{ step.error }}</pre>
             </div>
           </div>
-
-          <!-- Live output for running -->
-          <div v-if="step.status === 'running' && step.result" class="detail-section live">
-            <pre>{{ truncateOutput(step.result) }}</pre>
-          </div>
-
-          <!-- Thinking -->
-          <div v-if="step.thinking && expandedSteps.has(step.id)" class="detail-section">
-            <div class="detail-label">💭 Thinking</div>
-            <pre class="thinking">{{ step.thinking }}</pre>
-          </div>
-
-          <!-- Tool Agent Result -->
-          <div v-if="step.toolAgentResult && expandedSteps.has(step.id)" class="detail-section">
-            <div class="agent-header">
-              <span :class="['agent-badge', step.toolAgentResult.success ? 'success' : 'failed']">
-                {{ step.toolAgentResult.success ? 'Success' : 'Failed' }}
-              </span>
-              <span class="agent-stats">{{ step.toolAgentResult.toolCallCount }} calls</span>
-            </div>
-            <pre>{{ step.toolAgentResult.summary }}</pre>
-          </div>
-
-          <!-- Arguments (hidden for edit tool) -->
-          <div v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step) && step.toolCall?.toolName !== 'edit'" class="detail-section">
-            <div class="detail-label">Arguments</div>
-            <pre>{{ formatArgs(step.toolCall.arguments) }}</pre>
-          </div>
-
-          <!-- Result -->
-          <div v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running'" class="detail-section">
-            <div class="detail-label">Result</div>
-            <pre>{{ formatResult(step.result) }}</pre>
-          </div>
-
-          <!-- Summary -->
-          <div v-if="step.summary && expandedSteps.has(step.id)" class="detail-section">
-            <div class="detail-label">📝 Analysis</div>
-            <pre class="summary">{{ step.summary }}</pre>
-          </div>
-
-          <!-- Error -->
-          <div v-if="step.error" class="detail-section error">
-            <pre>{{ step.error }}</pre>
-          </div>
-        </div>
-      </Transition>
-    </div>
+        </Transition>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { Step, ToolCall } from '@/types'
+import AgentExecutionPanel from './AgentExecutionPanel.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   steps: Step[]
-}>()
+  depth?: number
+  parentCollapsed?: boolean  // When parent step is collapsed, propagate to children
+  sessionId?: string  // Session ID for AgentExecutionPanel state management
+}>(), {
+  depth: 0,
+  parentCollapsed: false,
+  sessionId: '',
+})
 
 const emit = defineEmits<{
   confirm: [toolCall: ToolCall, response: 'once' | 'always']
@@ -181,6 +191,15 @@ watch(() => props.steps, (steps) => {
   }
 }, { deep: true, immediate: true })
 
+// Collapse propagation: when parent step is collapsed, reset all expanded states in this panel
+watch(() => props.parentCollapsed, (collapsed) => {
+  if (collapsed) {
+    // Clear all expanded steps when parent collapses
+    expandedSteps.value = new Set()
+    // Don't clear userCollapsedSteps - keep user preferences for when parent re-expands
+  }
+})
+
 function toggleExpand(stepId: string) {
   if (expandedSteps.value.has(stepId)) {
     expandedSteps.value.delete(stepId)
@@ -204,6 +223,63 @@ function stepClass(step: Step): Record<string, boolean> {
     'status-cancelled': step.status === 'cancelled',
     'needs-confirm': step.status === 'awaiting-confirmation',
   }
+}
+
+/**
+ * Check if a step is an agent step (CustomAgent execution)
+ * These steps should be rendered using AgentExecutionPanel instead of default rendering
+ *
+ * Detection methods:
+ * 1. Has childSteps (agent already started executing sub-tools)
+ * 2. Tool name is 'custom-agent' (agent just started, no childSteps yet)
+ * 3. Step type is 'tool-agent'
+ */
+function isAgentStep(step: Step): boolean {
+  // Method 1: Has childSteps (existing logic)
+  if (step.childSteps && step.childSteps.length > 0) return true
+
+  // Method 2: Identify by toolName early (before childSteps appear)
+  const toolName = step.toolCall?.toolName?.toLowerCase()
+  if (toolName === 'custom-agent' || toolName === 'customagent') return true
+
+  // Method 3: Identify by step type
+  if (step.type === 'tool-agent') return true
+
+  return false
+}
+
+/**
+ * Handle confirm from AgentExecutionPanel
+ */
+function handleAgentConfirm(step: Step, type: 'allow' | 'always') {
+  const toolCall = step.toolCall || {
+    id: step.id,
+    toolId: step.toolCall?.toolName || 'unknown',
+    toolName: step.toolCall?.toolName || 'unknown',
+    arguments: step.toolCall?.arguments || {},
+    status: 'pending' as const,
+    timestamp: step.timestamp,
+    requiresConfirmation: true,
+    customAgentPermissionId: (step as any).customAgentPermissionId,
+  }
+  emit('confirm', toolCall, type === 'allow' ? 'once' : 'always')
+}
+
+/**
+ * Handle reject from AgentExecutionPanel
+ */
+function handleAgentReject(step: Step) {
+  const toolCall = step.toolCall || {
+    id: step.id,
+    toolId: step.toolCall?.toolName || 'unknown',
+    toolName: step.toolCall?.toolName || 'unknown',
+    arguments: step.toolCall?.arguments || {},
+    status: 'pending' as const,
+    timestamp: step.timestamp,
+    requiresConfirmation: true,
+    customAgentPermissionId: (step as any).customAgentPermissionId,
+  }
+  emit('reject', toolCall)
 }
 
 function hasExpandableContent(step: Step): boolean {
@@ -238,17 +314,230 @@ function getStatusText(step: Step): string {
   return ''
 }
 
-function getPreview(step: Step): string {
-  // For bash commands - title already contains the command, skip preview
-  if (step.toolCall?.arguments?.command) {
-    return ''
+/**
+ * Shorten file path for display
+ * Shows last 2-3 segments if path is too long
+ */
+function shortenPath(path: string, maxLen: number = 45): string {
+  if (!path) return ''
+  if (path.length <= maxLen) return path
+  const parts = path.split('/')
+  // Try to show filename and parent dir
+  if (parts.length >= 2) {
+    const short = '.../' + parts.slice(-2).join('/')
+    if (short.length <= maxLen) return short
   }
-  // For file operations
-  if (step.toolCall?.arguments?.path) {
-    const path = step.toolCall.arguments.path as string
-    return path.length > 40 ? '...' + path.slice(-37) : path
+  // Just show filename
+  return '.../' + parts[parts.length - 1]
+}
+
+/**
+ * Get a simple, single-line preview for the step
+ * Combines all relevant info into one clean string
+ */
+function getSimplePreview(step: Step): string {
+  const args = step.toolCall?.arguments as Record<string, any> | undefined
+  const toolName = step.toolCall?.toolName?.toLowerCase()
+
+  if (!args) return ''
+
+  switch (toolName) {
+    case 'read': {
+      const path = shortenPath(args.file_path || args.path || '')
+      const offset = args.offset as number | undefined
+      const limit = args.limit as number | undefined
+      if (offset || limit) {
+        const start = offset || 1
+        const end = limit ? start + limit - 1 : '...'
+        return `${path}:${start}-${end}`
+      }
+      return path
+    }
+
+    case 'grep': {
+      const pattern = args.pattern as string
+      const glob = args.glob || args.type || ''
+      const truncPattern = pattern?.length > 20 ? pattern.slice(0, 17) + '...' : pattern
+      if (glob) {
+        return `"${truncPattern}" in ${glob}`
+      }
+      return `"${truncPattern}"`
+    }
+
+    case 'bash': {
+      const cmd = args.command as string
+      return cmd?.length > 55 ? cmd.slice(0, 52) + '...' : cmd || ''
+    }
+
+    case 'edit': {
+      const path = shortenPath(args.file_path || '')
+      const changes = step.toolCall?.changes
+      if (changes) {
+        return `${path} (+${changes.additions} -${changes.deletions})`
+      }
+      return path
+    }
+
+    case 'write': {
+      const path = shortenPath(args.file_path || '')
+      const content = args.content as string
+      if (content) {
+        return `${path} (${content.length} chars)`
+      }
+      return path
+    }
+
+    case 'glob': {
+      const pattern = args.pattern as string
+      const path = args.path as string
+      if (path) {
+        return `${pattern} in ${shortenPath(path, 25)}`
+      }
+      return pattern || ''
+    }
+
+    case 'web-search':
+    case 'websearch': {
+      const query = args.query as string
+      return query ? `"${query}"` : ''
+    }
+
+    default:
+      // Fallback: show path or pattern or command
+      if (args.file_path || args.path) {
+        return shortenPath(args.file_path || args.path)
+      }
+      if (args.pattern) {
+        return `"${args.pattern}"`
+      }
+      if (args.command) {
+        const cmd = args.command as string
+        return cmd?.length > 55 ? cmd.slice(0, 52) + '...' : cmd
+      }
+      return ''
   }
-  return ''
+}
+
+// Keep old function for compatibility (can be removed later)
+interface ToolPreview {
+  primary: string
+  secondary?: string
+}
+
+function getToolPreview(step: Step): ToolPreview {
+  const args = step.toolCall?.arguments as Record<string, any> | undefined
+  const toolName = step.toolCall?.toolName?.toLowerCase()
+
+  if (!args) {
+    return { primary: step.title || '' }
+  }
+
+  switch (toolName) {
+    case 'read': {
+      const path = shortenPath(args.file_path || args.path || '')
+      const offset = args.offset as number | undefined
+      const limit = args.limit as number | undefined
+      let range = ''
+      if (offset || limit) {
+        const start = offset || 1
+        const end = limit ? start + limit - 1 : '?'
+        range = `:${start}-${end}`
+      }
+      return { primary: path + range }
+    }
+
+    case 'grep': {
+      const pattern = args.pattern as string
+      const glob = args.glob || args.type
+      const ctx = args['-C'] || args['-A'] || args['-B']
+      const truncatedPattern = pattern?.length > 25 ? pattern.slice(0, 22) + '...' : pattern
+      return {
+        primary: pattern ? `"${truncatedPattern}"` : '',
+        secondary: glob ? `in ${glob}${ctx ? ` (${ctx} ctx)` : ''}` : undefined
+      }
+    }
+
+    case 'bash': {
+      const cmd = args.command as string
+      const truncatedCmd = cmd?.length > 50 ? cmd.slice(0, 47) + '...' : cmd
+      return { primary: truncatedCmd || '' }
+    }
+
+    case 'edit': {
+      const path = shortenPath(args.file_path || '')
+      const changes = step.toolCall?.changes
+      const stats = changes
+        ? `+${changes.additions} -${changes.deletions}`
+        : ''
+      return { primary: path, secondary: stats || undefined }
+    }
+
+    case 'write': {
+      const path = shortenPath(args.file_path || '')
+      const content = args.content as string
+      const size = content?.length
+      return { primary: path, secondary: size ? `${size} chars` : undefined }
+    }
+
+    case 'glob': {
+      const pattern = args.pattern as string
+      const path = args.path as string
+      return {
+        primary: pattern || '',
+        secondary: path ? `in ${shortenPath(path)}` : undefined
+      }
+    }
+
+    case 'web-search':
+    case 'websearch': {
+      const query = args.query as string
+      return { primary: query ? `"${query}"` : '' }
+    }
+
+    case 'web-fetch':
+    case 'webfetch': {
+      const url = args.url as string
+      return { primary: url ? shortenUrl(url) : '' }
+    }
+
+    default:
+      // Fallback: try common argument patterns
+      if (args.file_path || args.path) {
+        return { primary: shortenPath(args.file_path || args.path) }
+      }
+      if (args.pattern) {
+        return { primary: `"${args.pattern}"` }
+      }
+      if (args.command) {
+        const cmd = args.command as string
+        return { primary: cmd?.length > 50 ? cmd.slice(0, 47) + '...' : cmd }
+      }
+      return { primary: '' }
+  }
+}
+
+/**
+ * Shorten URL for display
+ */
+function shortenUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    const path = u.pathname.length > 20 ? '...' + u.pathname.slice(-17) : u.pathname
+    return u.hostname + path
+  } catch {
+    return url.length > 40 ? url.slice(0, 37) + '...' : url
+  }
+}
+
+/**
+ * Truncate error message for inline display
+ */
+function truncateError(error: string, maxLen: number = 40): string {
+  if (!error) return ''
+  // Get first line only
+  const firstLine = error.split('\n')[0]
+  if (firstLine.length <= maxLen) return firstLine
+  return firstLine.slice(0, maxLen - 3) + '...'
 }
 
 function hasArgs(step: Step): boolean {
@@ -258,44 +547,54 @@ function hasArgs(step: Step): boolean {
 }
 
 function handleConfirm(step: Step, response: 'once' | 'always') {
-  if (step.toolCall) {
-    emit('confirm', step.toolCall, response)
+  // Use toolCall if available, otherwise construct a fallback from step info
+  // This handles CustomAgent nested steps where toolCall may be constructed differently
+  const toolCall = step.toolCall || {
+    id: step.id,
+    toolId: step.title?.split(':')[0] || 'unknown',
+    toolName: step.title?.split(':')[0] || 'unknown',
+    arguments: {},
+    status: 'pending' as const,
+    timestamp: step.timestamp,
+    requiresConfirmation: true,
+    // Preserve CustomAgent permission ID if present
+    customAgentPermissionId: (step as any).customAgentPermissionId,
   }
+  emit('confirm', toolCall, response)
 }
 
 function handleReject(step: Step) {
-  if (step.toolCall) {
-    emit('reject', step.toolCall)
+  // Use toolCall if available, otherwise construct a fallback from step info
+  const toolCall = step.toolCall || {
+    id: step.id,
+    toolId: step.title?.split(':')[0] || 'unknown',
+    toolName: step.title?.split(':')[0] || 'unknown',
+    arguments: {},
+    status: 'pending' as const,
+    timestamp: step.timestamp,
+    requiresConfirmation: true,
+    // Preserve CustomAgent permission ID if present
+    customAgentPermissionId: (step as any).customAgentPermissionId,
   }
+  emit('reject', toolCall)
 }
 
-function formatArgs(args: Record<string, any>): string {
-  // For bash, show command directly without label
-  if (args.command) {
-    return args.command
-  }
+/**
+ * Format arguments as beautified JSON
+ * Handles large content fields by truncating them
+ */
+function formatArgsJson(args: Record<string, any>): string {
+  // Create a copy to avoid modifying original
+  const displayArgs = { ...args }
 
-  // For file operations, show path directly
-  const pathField = args.path || args.file_path || args.filePath
-  if (pathField) {
-    return pathField
-  }
-
-  // For pattern-based tools (glob, grep)
-  if (args.pattern) {
-    return args.pattern
-  }
-
-  // For other tools, show key: value format
-  const lines: string[] = []
-  for (const [key, value] of Object.entries(args)) {
-    if (typeof value === 'string') {
-      lines.push(`${key}: ${value}`)
-    } else {
-      lines.push(`${key}: ${JSON.stringify(value)}`)
+  // Truncate large string values (e.g., content in write tool)
+  for (const [key, value] of Object.entries(displayArgs)) {
+    if (typeof value === 'string' && value.length > 500) {
+      displayArgs[key] = value.slice(0, 500) + `... (${value.length} chars total)`
     }
   }
-  return lines.join('\n')
+
+  return JSON.stringify(displayArgs, null, 2)
 }
 
 function truncateTitle(title: string, maxLen: number = 50): string {
@@ -530,6 +829,30 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
   gap: 2px;
 }
 
+/* Fixed height with scrollbar for root-level panel only */
+.steps-panel[data-depth="0"] {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Custom scrollbar for root-level panel */
+.steps-panel[data-depth="0"]::-webkit-scrollbar {
+  width: 6px;
+}
+
+.steps-panel[data-depth="0"]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.steps-panel[data-depth="0"]::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.steps-panel[data-depth="0"]::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
 /* Inline step row */
 .step-inline {
   font-size: var(--message-font-size, 14px);
@@ -554,48 +877,42 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
   border-color: rgba(var(--color-warning-rgb), 0.25);
 }
 
-/* Main row */
+/* Main row - simplified layout */
 .step-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 10px;
+  padding: 8px 12px;
   cursor: pointer;
-  min-height: 32px;
+  min-height: 36px;
   user-select: none;
 }
 
-/* Status dot */
-.status-dot {
-  width: 16px;
-  height: 16px;
+/* Status icon - single, clear indicator */
+.status-icon {
+  width: 18px;
+  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 13px;
   flex-shrink: 0;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
+.status-icon.completed { color: var(--text-success); }
+.status-icon.failed { color: var(--text-error); }
+.status-icon.running { color: var(--accent); }
+.status-icon.cancelled { color: var(--text-muted); opacity: 0.6; }
+.status-icon.awaiting-confirmation { color: var(--warning); }
+.status-icon.pending { color: var(--text-muted); }
+
+/* Spinner for running status */
+.status-icon .spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
   border-radius: 50%;
-}
-
-.dot.pending { background: var(--text-muted); }
-.dot.success { background: var(--text-success); }
-.dot.error { background: var(--text-error); }
-.dot.cancelled { background: var(--text-muted); opacity: 0.6; }
-.dot.warning {
-  background: var(--text-warning);
-  animation: pulse 1.5s infinite;
-}
-
-.dot.spinning {
-  width: 10px;
-  height: 10px;
-  border: 2px solid rgba(var(--accent-rgb), 0.3);
-  border-top-color: var(--accent);
-  background: transparent;
   animation: spin 0.8s linear infinite;
 }
 
@@ -603,70 +920,53 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
   to { transform: rotate(360deg); }
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* Tool badge */
-.tool-badge {
-  font-size: 11px;
+/* Tool name - simple text label */
+.tool-name {
+  font-size: 12px;
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--bg-elevated);
   color: var(--text-secondary);
   flex-shrink: 0;
+  min-width: 50px;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
 }
 
-/* Step title */
+/* Step title - brief description */
 .step-title {
-  font-size: var(--message-font-size, 14px);
-  font-weight: 500;
-  color: var(--text-secondary);
   flex: 1;
   min-width: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Preview */
-.step-preview {
-  color: var(--text-primary);
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 12px;
-  white-space: nowrap;
+/* Error tag - inline error indicator */
+.error-tag {
+  font-size: 11px;
+  color: var(--text-error);
+  background: rgba(var(--color-danger-rgb), 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
-}
-
-.spacer { flex: 0; }
-
-/* Status text */
-.status-text {
-  font-size: 12px;
-  color: var(--text-muted);
+  white-space: nowrap;
   flex-shrink: 0;
 }
-
-.status-text.running { color: var(--accent); }
-.status-text.completed { color: var(--text-success); }
-.status-text.failed { color: var(--text-error); }
-.status-text.cancelled { color: var(--text-muted); opacity: 0.8; }
 
 /* Confirm buttons */
 .confirm-buttons {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-.btn-inline {
+.btn-allow,
+.btn-always,
+.btn-reject {
   padding: 4px 10px;
-  border-radius: var(--radius-sm, 8px);
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -763,6 +1063,15 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
   word-break: break-word;
   max-height: 200px;
   overflow-y: auto;
+}
+
+/* Arguments JSON beautified */
+.args-json {
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  border-radius: 6px;
+  max-height: 250px;
 }
 
 pre.thinking {
@@ -987,17 +1296,9 @@ pre.summary {
 }
 
 .streaming-indicator {
-  display: flex;
-  align-items: center;
-  gap: 4px;
   font-size: 11px;
-  color: var(--accent);
   font-weight: 500;
   flex-shrink: 0;
-}
-
-.streaming-spinner {
-  animation: spin 1s linear infinite;
 }
 
 .streaming-code {

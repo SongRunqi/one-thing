@@ -35,6 +35,12 @@ export interface ShortcutSettings {
   focusInput: KeyboardShortcut       // Focus input (default /)
 }
 
+// Quick command button configuration for InputBox toolbar
+export interface QuickCommandConfig {
+  commandId: string    // Command ID, e.g., 'cd', 'git', 'files'
+  enabled: boolean     // Whether to show this button
+}
+
 export interface GeneralSettings {
   animationSpeed: number  // 0.1 - 0.5 seconds, default 0.25
   sendShortcut: 'enter' | 'ctrl-enter' | 'cmd-enter'  // Legacy, kept for compatibility
@@ -46,6 +52,7 @@ export interface GeneralSettings {
   shortcuts?: ShortcutSettings  // Custom keyboard shortcuts
   messageListDensity?: MessageListDensity  // Message list display density, default 'comfortable'
   messageLineHeight?: number  // Message line height, 1.2-2.2, default 1.6
+  quickCommands?: QuickCommandConfig[]  // Quick command buttons shown above InputBox
 }
 
 // Chat settings for model parameters
@@ -57,6 +64,7 @@ export interface ChatSettings {
   frequencyPenalty?: number    // -2 to 2, default 0
   branchOpenInSplitScreen?: boolean  // Whether branches open in split screen, default true
   chatFontSize?: number        // Chat font size in px, 12-20, default 14
+  contextCompactThreshold?: number  // Context usage % to trigger compacting, 50-100, default 85
 }
 
 // Supported embedding provider types

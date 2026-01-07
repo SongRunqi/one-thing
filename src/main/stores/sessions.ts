@@ -32,6 +32,45 @@ function sanitizeSession(session: ChatSession): ChatSession {
 }
 
 /**
+ * Sanitize a step and its childSteps recursively
+ * Returns true if any modifications were made
+ */
+function sanitizeStepRecursive(step: Step): boolean {
+  let modified = false
+
+  if (step.status === 'running' || step.status === 'pending') {
+    step.status = 'failed'
+    step.error = step.error || 'Interrupted: app was closed'
+    if (step.title.startsWith('Running:') || step.title.startsWith('调用工具:')) {
+      step.title = step.title.replace(/^(Running:|调用工具:)\s*/, 'Interrupted: ')
+    }
+    modified = true
+  }
+  if (step.status === 'awaiting-confirmation') {
+    step.status = 'failed'
+    step.error = 'Interrupted: permission request was not answered'
+    modified = true
+  }
+  if (step.toolCall) {
+    if (step.toolCall.status === 'executing' || step.toolCall.status === 'pending') {
+      step.toolCall.status = 'cancelled'
+      modified = true
+    }
+  }
+
+  // Recursively sanitize childSteps
+  if (step.childSteps?.length) {
+    for (const childStep of step.childSteps) {
+      if (sanitizeStepRecursive(childStep)) {
+        modified = true
+      }
+    }
+  }
+
+  return modified
+}
+
+/**
  * Sanitize all sessions on app startup - clean up interrupted states
  * This should only be called once when the app starts
  */
@@ -52,27 +91,11 @@ export function sanitizeAllSessionsOnStartup(): void {
         modified = true
       }
 
-      // Clean up interrupted steps
+      // Clean up interrupted steps (recursively including childSteps)
       if (message.steps) {
         for (const step of message.steps) {
-          if (step.status === 'running' || step.status === 'pending') {
-            step.status = 'failed'
-            step.error = step.error || 'Interrupted: app was closed'
-            if (step.title.startsWith('Running:') || step.title.startsWith('调用工具:')) {
-              step.title = step.title.replace(/^(Running:|调用工具:)\s*/, 'Interrupted: ')
-            }
+          if (sanitizeStepRecursive(step)) {
             modified = true
-          }
-          if (step.status === 'awaiting-confirmation') {
-            step.status = 'failed'
-            step.error = 'Interrupted: permission request was not answered'
-            modified = true
-          }
-          if (step.toolCall) {
-            if (step.toolCall.status === 'executing' || step.toolCall.status === 'pending') {
-              step.toolCall.status = 'cancelled'
-              modified = true
-            }
           }
         }
       }
@@ -147,6 +170,11 @@ export function getSession(sessionId: string): ChatSession | undefined {
   const sessionPath = getSessionPath(sessionId)
   const session = readJsonFile<ChatSession | null>(sessionPath, null)
   if (!session) return undefined
+
+  // Expand ~ in workingDirectory (handles legacy stored paths)
+  if (session.workingDirectory) {
+    session.workingDirectory = expandPath(session.workingDirectory)
+  }
 
   // Sanitize session to clean up interrupted states
   return sanitizeSession(session)
@@ -434,7 +462,8 @@ export function updateSessionWorkingDirectory(sessionId: string, workingDirector
   if (workingDirectory === null || workingDirectory === '') {
     delete session.workingDirectory
   } else {
-    session.workingDirectory = workingDirectory
+    // Expand ~ to home directory before storing
+    session.workingDirectory = expandPath(workingDirectory)
   }
 
   // Save session file
@@ -482,7 +511,8 @@ export function inheritSessionWorkingDirectory(sessionId: string, workingDirecto
   const session = getSession(sessionId)
   if (!session) return
 
-  session.workingDirectory = workingDirectory
+  // Expand ~ to home directory before storing
+  session.workingDirectory = expandPath(workingDirectory)
 
   // Save session file without updating timestamp
   writeJsonFile(getSessionPath(sessionId), session)
@@ -800,7 +830,22 @@ export function updateMessageError(sessionId: string, messageId: string, errorDe
   return true
 }
 
+/**
+ * Find a step by ID, recursively searching in childSteps
+ */
+function findStepByIdRecursive(steps: Step[], stepId: string): Step | undefined {
+  for (const step of steps) {
+    if (step.id === stepId) return step
+    if (step.childSteps?.length) {
+      const found = findStepByIdRecursive(step.childSteps, stepId)
+      if (found) return found
+    }
+  }
+  return undefined
+}
+
 // Add a step to a message (does not affect sort order)
+// If step has parentStepId, adds to parent's childSteps array
 export function addMessageStep(sessionId: string, messageId: string, step: Step): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -812,6 +857,31 @@ export function addMessageStep(sessionId: string, messageId: string, step: Step)
     message.steps = []
   }
 
+  // If step has a parent, add to parent's childSteps
+  if (step.parentStepId) {
+    const parentStep = findStepByIdRecursive(message.steps, step.parentStepId)
+    if (parentStep) {
+      if (!parentStep.childSteps) {
+        parentStep.childSteps = []
+      }
+      // Check for duplicate in childSteps
+      const existingChildIndex = parentStep.childSteps.findIndex(
+        s => s.toolCallId && s.toolCallId === step.toolCallId
+      )
+      if (existingChildIndex >= 0) {
+        parentStep.childSteps[existingChildIndex] = { ...parentStep.childSteps[existingChildIndex], ...step }
+      } else {
+        parentStep.childSteps.push(step)
+      }
+      // Save session file
+      writeJsonFile(getSessionPath(sessionId), session)
+      return true
+    }
+    // Parent not found - fall through to add as top-level step
+    console.warn(`[sessions] Parent step not found for childStep: parentId=${step.parentStepId}, stepId=${step.id}`)
+  }
+
+  // Add as top-level step (no parent or parent not found)
   // Check for duplicate by toolCallId to avoid creating multiple steps for the same tool call
   const existingIndex = message.steps.findIndex(s => s.toolCallId && s.toolCallId === step.toolCallId)
   if (existingIndex >= 0) {
@@ -829,6 +899,7 @@ export function addMessageStep(sessionId: string, messageId: string, step: Step)
 }
 
 // Update a step in a message (does not affect sort order)
+// Searches recursively in childSteps
 export function updateMessageStep(sessionId: string, messageId: string, stepId: string, updates: Partial<Step>): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -836,7 +907,8 @@ export function updateMessageStep(sessionId: string, messageId: string, stepId: 
   const message = session.messages.find((m) => m.id === messageId)
   if (!message || !message.steps) return false
 
-  const step = message.steps.find((s) => s.id === stepId)
+  // Use recursive search to find step (could be in childSteps)
+  const step = findStepByIdRecursive(message.steps, stepId)
   if (!step) return false
 
   // Apply updates

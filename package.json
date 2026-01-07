@@ -1,7 +1,7 @@
 {
   "name": "0neThing",
   "version": "0.1.0",
-  "description": "An Electron app for chatting with AI",
+  "description": "A chat ",
   "main": "dist/main/index.js",
   "type": "module",
   "scripts": {
@@ -28,6 +28,7 @@
     "@antv/infographic": "^0.2.3",
     "@modelcontextprotocol/sdk": "^1.25.0",
     "@openrouter/sdk": "^0.3.10",
+    "@pierre/diffs": "^1.0.4",
     "@types/markdown-it": "^14.1.2",
     "@xenova/transformers": "^2.17.2",
     "@zip.js/zip.js": "^2.8.11",

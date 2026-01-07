@@ -2,15 +2,15 @@
   <div :class="['tool-inline', statusClass, { expanded: isExpanded, 'needs-confirm': toolCall.requiresConfirmation }]">
     <!-- Main Row (always visible) -->
     <div class="tool-row" @click="toggleExpand">
-      <!-- Status dot -->
-      <div class="status-dot">
-        <div v-if="toolCall.status === 'input-streaming'" class="dot streaming"></div>
-        <div v-else-if="toolCall.status === 'executing'" class="dot spinning"></div>
-        <div v-else-if="toolCall.status === 'completed'" class="dot success"></div>
-        <div v-else-if="toolCall.status === 'failed'" class="dot error"></div>
-        <div v-else-if="toolCall.requiresConfirmation" class="dot warning"></div>
-        <div v-else class="dot pending"></div>
-      </div>
+      <!-- Status indicator -->
+      <span class="status-indicator">
+        <span v-if="toolCall.status === 'input-streaming'" class="flowing-text">Streaming</span>
+        <span v-else-if="toolCall.status === 'executing'" class="flowing-text">Running</span>
+        <span v-else-if="toolCall.status === 'completed'" class="status-done">✓</span>
+        <span v-else-if="toolCall.status === 'failed'" class="status-error">✗</span>
+        <span v-else-if="toolCall.requiresConfirmation" class="flowing-text">Confirm</span>
+        <span v-else class="status-pending">○</span>
+      </span>
 
       <!-- Tool name -->
       <span class="tool-name">{{ toolCall.toolName }}</span>
@@ -51,7 +51,7 @@
       <div v-if="streamingContentInfo && (streamingContentInfo.filePath || streamingContentInfo.content)" class="streaming-content">
         <div class="streaming-header">
           <span class="streaming-path">{{ streamingContentInfo.filePath || 'Parsing...' }}</span>
-          <span class="streaming-indicator">⟳ Writing...</span>
+          <span class="streaming-indicator flowing-text">Writing...</span>
         </div>
         <pre v-if="streamingContentInfo.content" class="streaming-code"><code>{{ streamingContentInfo.content }}</code></pre>
       </div>
@@ -320,64 +320,24 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   flex-wrap: wrap;
 }
 
-/* Status dot */
-.status-dot {
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Status indicator - unified flowing text animation */
+.status-indicator {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 60px;
   flex-shrink: 0;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+.status-indicator .status-done {
+  color: #22c55e;
 }
 
-.dot.pending {
-  background: #6b7280;
+.status-indicator .status-error {
+  color: #ef4444;
 }
 
-.dot.streaming {
-  width: 10px;
-  height: 10px;
-  border: 2px solid rgba(168, 85, 247, 0.3);
-  border-top-color: #a855f7;
-  background: transparent;
-  animation: spin 1s linear infinite;
-}
-
-.dot.spinning {
-  width: 10px;
-  height: 10px;
-  border: 2px solid rgba(59, 130, 246, 0.3);
-  border-top-color: #3b82f6;
-  background: transparent;
-  animation: spin 0.8s linear infinite;
-}
-
-.dot.success {
-  background: #22c55e;
-}
-
-.dot.error {
-  background: #ef4444;
-}
-
-.dot.warning {
-  background: var(--fx-yellow, #D0A215);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+.status-indicator .status-pending {
+  color: #6b7280;
 }
 
 /* Tool name */
@@ -613,13 +573,7 @@ function truncateOutput(output: string, maxLines: number = 8): string {
 
 .streaming-indicator {
   font-size: 11px;
-  color: #a855f7;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  font-weight: 500;
 }
 
 .streaming-code {

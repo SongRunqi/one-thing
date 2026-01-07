@@ -5,7 +5,7 @@
 
 import * as store from '../../store.js'
 import { IPC_CHANNELS } from '../../../shared/ipc.js'
-import type { SkillDefinition, ToolCall } from '../../../shared/ipc.js'
+import type { SkillDefinition, ToolCall, ChatMessage } from '../../../shared/ipc.js'
 import type { AIMessageContent, ToolChatMessage } from '../../providers/index.js'
 import {
   streamChatResponseWithTools,
@@ -22,12 +22,13 @@ import { updateSessionUsage } from '../sessions.js'
 import { getStorage } from '../../storage/index.js'
 import { triggerManager, type TriggerContext } from '../../services/triggers/index.js'
 import * as modelRegistry from '../../services/ai/model-registry.js'
+import { shouldCompact, executeCompacting, type CompactingContext } from '../../services/ai/context-compacting.js'
 
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
 import { createStreamProcessor } from './stream-processor.js'
 import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
 import { sendUIMessageFinish } from './stream-helpers.js'
-import { formatMessagesForLog, buildSystemPrompt, type HistoryMessage } from './message-helpers.js'
+import { formatMessagesForLog, buildSystemPrompt, buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
 import {
   formatUserProfilePrompt,
   retrieveRelevantFacts,
@@ -155,6 +156,73 @@ function buildContinuationMessages(
 }
 
 /**
+ * Check and trigger context compacting if threshold is reached
+ * Returns true if compacting was performed
+ */
+async function checkAndTriggerCompacting(
+  ctx: StreamContext,
+  emitter: IPCEmitter,
+  inputTokens: number,
+  modelContextLength: number
+): Promise<boolean> {
+  // Skip if context length is unknown or too small
+  if (modelContextLength <= 0) {
+    return false
+  }
+
+  // Check if we should compact
+  if (!shouldCompact(inputTokens, modelContextLength)) {
+    return false
+  }
+
+  console.log(`[ToolLoop] Context usage ${((inputTokens / modelContextLength) * 100).toFixed(1)}% reached threshold, triggering compacting`)
+
+  // Notify frontend that compacting started
+  emitter.sendCompactStarted()
+
+  try {
+    // Get session and its messages for compacting
+    const session = store.getSession(ctx.sessionId)
+    if (!session) {
+      console.warn('[ToolLoop] Session not found for compacting:', ctx.sessionId)
+      emitter.sendCompactCompleted({ success: false, error: 'Session not found' })
+      return false
+    }
+    const messages = session.messages as ChatMessage[]
+
+    // Build compacting context
+    const compactingCtx: CompactingContext = {
+      sessionId: ctx.sessionId,
+      messages,
+      providerId: ctx.providerId,
+      providerConfig: {
+        apiKey: ctx.providerConfig.apiKey,
+        baseUrl: ctx.providerConfig.baseUrl,
+        model: ctx.providerConfig.model,
+      },
+    }
+
+    // Execute compacting
+    const result = await executeCompacting(compactingCtx)
+
+    // Notify frontend with summary
+    emitter.sendCompactCompleted({ success: result.success, error: result.error, summary: result.summary })
+
+    if (result.success) {
+      console.log('[ToolLoop] Context compacting completed successfully')
+      return true
+    } else {
+      console.warn('[ToolLoop] Context compacting failed:', result.error)
+      return false
+    }
+  } catch (error) {
+    console.error('[ToolLoop] Context compacting error:', error)
+    emitter.sendCompactCompleted({ success: false, error: String(error) })
+    return false
+  }
+}
+
+/**
  * Unified stream execution function
  * Handles both tool-enabled and simple streaming in a single code path
  *
@@ -164,6 +232,7 @@ function buildContinuationMessages(
 export async function runStream(
   ctx: StreamContext,
   conversationMessages: ToolChatMessage[],
+  systemPrompt: string,  // System prompt for rebuilding after compacting
   toolsForAI: Record<string, any>,  // Can be {} for no-tools mode
   processor: StreamProcessor,
   enabledSkills: SkillDefinition[]
@@ -172,6 +241,17 @@ export async function runStream(
   let currentTurn = 0
   const apiType = getProviderApiType(ctx.settings, ctx.providerId)
   const emitter = createIPCEmitter(ctx)
+
+  // Get model context length for compacting check
+  let modelContextLength = 128000  // Default fallback
+  try {
+    const modelInfo = await modelRegistry.getModelById(ctx.providerConfig.model)
+    if (modelInfo?.context_length) {
+      modelContextLength = modelInfo.context_length
+    }
+  } catch (error) {
+    console.warn('[ToolLoop] Failed to get model context length:', error)
+  }
 
   while (currentTurn < MAX_TOOL_TURNS) {
     currentTurn++
@@ -185,6 +265,12 @@ export async function runStream(
       emitter.sendContinuation()
     }
 
+    // Get model's actual max output tokens and cap user setting
+    // This prevents errors when switching between models with different output limits
+    const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(ctx.providerConfig.model)
+    const userMaxTokens = ctx.settings.chat?.maxTokens || 4096
+    const effectiveMaxTokens = Math.min(userMaxTokens, modelMaxOutputTokens)
+
     const stream = streamChatResponseWithTools(
       ctx.providerId,
       {
@@ -197,7 +283,7 @@ export async function runStream(
       toolsForAI,
       {
         temperature: ctx.settings.ai.temperature,
-        maxTokens: ctx.settings.chat?.maxTokens,
+        maxTokens: effectiveMaxTokens,
         abortSignal: ctx.abortSignal,
       }
     )
@@ -310,6 +396,36 @@ export async function runStream(
     // Persist content parts to store (and send IPC for non-tool-call turns)
     persistTurnContentParts(ctx, emitter, turn, currentTurn)
 
+    // Check if context compacting should be triggered (before next turn)
+    // Only check if we have tool calls and will continue looping
+    if (turnUsage && turn.toolCalls.length > 0 && currentTurn < MAX_TOOL_TURNS) {
+      const compacted = await checkAndTriggerCompacting(ctx, emitter, turnUsage.inputTokens, modelContextLength)
+
+      if (compacted) {
+        // CRITICAL: Rebuild conversationMessages to use the new summary
+        // Get the updated session with the new summary
+        const updatedSession = store.getSession(ctx.sessionId)
+        if (updatedSession) {
+          // Rebuild history using the new summary
+          const compactedHistory = buildHistoryMessages(
+            updatedSession.messages as ChatMessage[],
+            {
+              summary: updatedSession.summary,
+              summaryUpToMessageId: updatedSession.summaryUpToMessageId,
+            }
+          )
+
+          // Clear and rebuild conversationMessages
+          // Keep only: system prompt + compacted history
+          conversationMessages.length = 0
+          conversationMessages.push({ role: 'system', content: systemPrompt })
+          conversationMessages.push(...compactedHistory)
+
+          console.log(`[ToolLoop] Rebuilt conversation with ${compactedHistory.length} messages after compacting`)
+        }
+      }
+    }
+
     // If any tool requires confirmation, stop the loop and signal pause
     if (turn.toolCalls.some(tc => tc.requiresConfirmation)) {
       console.log(`[Backend] Tool requires user confirmation, pausing loop`)
@@ -402,8 +518,8 @@ export async function executeStreamGeneration(
       console.log(`[Chat] Loading skills for session working directory: ${sessionWorkingDir}`)
     }
 
-    // Set init context for async tools (like SkillTool)
-    // This provides agent permissions and available skills to tools that need them
+    // Set init context for async tools (like SkillTool, CustomAgentTool)
+    // This provides agent permissions, available skills, working directory, and provider config
     if (ctx.toolSettings?.enableToolCalls) {
       setInitContext({
         agent: currentAgent ? {
@@ -422,6 +538,16 @@ export async function executeStreamGeneration(
           instructions: s.instructions,
           files: s.files?.map(f => ({ name: f.name, path: f.path, type: f.type as 'markdown' | 'script' | 'template' | 'other' })),
         })),
+        // For CustomAgentTool: working directory and provider config
+        workingDirectory: sessionWorkingDir,
+        providerId: ctx.providerId,
+        providerConfig: {
+          apiKey: ctx.providerConfig.apiKey,
+          baseUrl: ctx.providerConfig.baseUrl,
+          model: ctx.providerConfig.model,
+        },
+        // For CustomAgentTool: agent enabled settings
+        agentSettings: ctx.toolSettings?.agents,
       })
       // Initialize async tools with the new context
       await initializeAsyncTools()
@@ -552,7 +678,7 @@ export async function executeStreamGeneration(
 
     // Unified stream execution - works for both tools and no-tools modes
     // When toolsForAI is {}, the stream loop naturally exits after first turn
-    const result = await runStream(ctx, conversationMessages, toolsForAI, processor, enabledSkills)
+    const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, processor, enabledSkills)
     pausedForConfirmation = result.pausedForConfirmation
 
     // Log request end with structured format

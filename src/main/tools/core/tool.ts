@@ -11,6 +11,7 @@
  */
 
 import { z } from 'zod'
+import type { Step } from '../../../shared/ipc/index.js'
 
 /**
  * Tool metadata - arbitrary key-value pairs for real-time UI updates
@@ -47,6 +48,16 @@ export interface InitContext {
     instructions: string
     files?: Array<{ name: string; path: string; type: string }>
   }>
+  /** Session's working directory (for CustomAgentTool) */
+  workingDirectory?: string
+  /** Provider ID (for CustomAgentTool) */
+  providerId?: string
+  /** Provider configuration (for CustomAgentTool) */
+  providerConfig?: {
+    apiKey: string
+    baseUrl?: string
+    model: string
+  }
   /** Any additional context */
   [key: string]: unknown
 }
@@ -70,6 +81,12 @@ export interface ToolContext<M extends ToolMetadata = ToolMetadata> {
    * Call this to stream updates to the UI during tool execution
    */
   metadata(input: { title?: string; metadata?: Partial<M> }): void
+  /**
+   * Step event callbacks for tools that delegate to sub-agents (like CustomAgent)
+   * These allow the tool to forward internal steps to the UI
+   */
+  onStepStart?: (step: Step) => void
+  onStepComplete?: (step: Step) => void
 }
 
 /**

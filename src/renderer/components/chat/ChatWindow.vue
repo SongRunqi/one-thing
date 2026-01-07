@@ -20,21 +20,11 @@
       @close="emit('close')"
     />
 
-    <!-- Agent Create Page (when creating a new agent inline) -->
-    <AgentWelcomePage
+    <!-- Agent Create Page (when creating a new custom agent inline) -->
+    <CreateAgentPage
       v-if="showAgentCreate"
-      mode="create"
       @agent-created="handleAgentCreated"
-      @cancel-create="emit('closeAgentCreate')"
-    />
-
-    <!-- Agent Welcome Page (when session has agent and no messages) -->
-    <AgentWelcomePage
-      v-else-if="showAgentWelcome && sessionAgent"
-      :agent="sessionAgent"
-      mode="view"
-      @start-chat="handleStartAgentChat"
-      @open-settings="emit('openAgentSettings')"
+      @cancel="emit('closeAgentCreate')"
     />
 
     <!-- Chat View (when not showing agent welcome) -->
@@ -84,7 +74,8 @@ import InputBox from './InputBox.vue'
 import ChatHeader from './ChatHeader.vue'
 import SettingsPanel from '../SettingsPanel.vue'
 import AgentSettingsPanel from '../AgentSettingsPanel.vue'
-import AgentWelcomePage from './AgentWelcomePage.vue'
+import CreateAgentPage from './CreateAgentPage.vue'
+import type { CustomAgent } from '@/types'
 
 interface Props {
   showSettings?: boolean
@@ -108,7 +99,7 @@ const emit = defineEmits<{
   closeAgentSettings: []
   openAgentSettings: []
   closeAgentCreate: []
-  agentCreated: [agent: import('@/types').Agent]
+  agentCreated: [agent: CustomAgent]
   close: []
   split: []
   equalize: []
@@ -202,9 +193,6 @@ async function selectAgent(agentId: string | null) {
   }
 }
 
-// Agent welcome page disabled - go straight to chat
-const showAgentWelcome = computed(() => false)
-
 // Input box ref for setting quoted text
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
 
@@ -213,14 +201,8 @@ function handleOpenToolSettings() {
   window.electronAPI.openSettingsWindow()
 }
 
-// Handle starting a new chat with the session's agent
-async function handleStartAgentChat() {
-  // Session already has the agent assigned, just focus the input
-  inputBoxRef.value?.focus()
-}
-
-// Handle agent created from inline form
-function handleAgentCreated(agent: import('@/types').Agent) {
+// Handle custom agent created from inline form
+function handleAgentCreated(agent: CustomAgent) {
   emit('agentCreated', agent)
   emit('closeAgentCreate')
 }

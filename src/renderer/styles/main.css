@@ -152,6 +152,21 @@ html[data-theme='light'] .panel {
   }
 }
 
+/* Unified flowing gradient animation for waiting/loading states */
+.flowing-text {
+  background: linear-gradient(90deg, var(--muted) 0%, var(--accent) 50%, var(--muted) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: flowingGradient 2s linear infinite;
+}
+
+@keyframes flowingGradient {
+  0% { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
 /* Responsive Utilities */
 @media (max-width: 768px) {
   .app-shell {

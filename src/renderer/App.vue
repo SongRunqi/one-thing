@@ -61,6 +61,7 @@
         @agent-created="handleAgentCreated"
         @toggle-sidebar="handleSidebarToggle"
         @show-floating-sidebar="handleTriggerEnter"
+        @hide-floating-sidebar="handleTriggerLeave"
       />
     </div>
 
@@ -72,11 +73,17 @@
     />
 
     <!-- Agent Dialog -->
-    <AgentDialog
-      :visible="showAgentDialog"
-      :agent="editingAgent"
-      @close="closeAgentDialog"
-    />
+    <Teleport to="body">
+      <div v-if="showAgentDialog && editingAgent" class="agent-dialog-overlay" @click.self="closeAgentDialog">
+        <div class="agent-dialog-container">
+          <CustomAgentDialog
+            :agent="editingAgent"
+            @close="closeAgentDialog"
+            @saved="closeAgentDialog"
+          />
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Search Overlay (teleported to body) -->
     <Teleport to="body">
@@ -134,11 +141,11 @@ import { Sidebar } from '@/components/sidebar'
 import ChatContainer from '@/components/ChatContainer.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import WorkspaceDialog from '@/components/WorkspaceDialog.vue'
-import AgentDialog from '@/components/AgentDialog.vue'
+import CustomAgentDialog from '@/components/CustomAgentDialog.vue'
 import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
-import type { Workspace, Agent } from '@/types'
+import type { Workspace, Agent, CustomAgent } from '@/types'
 
 // Detect if this is the settings window or image preview window
 const isSettingsWindow = window.location.hash.startsWith('#/settings')
@@ -168,7 +175,7 @@ const showMediaPanel = ref(false)
 
 // Agent state
 const showAgentDialog = ref(false)
-const editingAgent = ref<Agent | null>(null)
+const editingAgent = ref<CustomAgent | null>(null)
 const showAgentSettings = ref(false)
 const showAgentCreate = ref(false)
 
@@ -182,11 +189,14 @@ function closeWorkspaceDialog() {
   editingWorkspace.value = null
 }
 
-function openAgentDialog(agent?: Agent) {
-  if (agent) {
-    // Editing existing agent - use dialog
-    editingAgent.value = agent
+function openAgentDialog(agent?: Agent | CustomAgent) {
+  if (agent && 'customTools' in agent) {
+    // Editing existing CustomAgent - use dialog
+    editingAgent.value = agent as CustomAgent
     showAgentDialog.value = true
+  } else if (agent) {
+    // Old Agent system - just show agent settings (deprecated path)
+    console.warn('[App] Old Agent system is deprecated, please migrate to CustomAgent')
   } else {
     // Creating new agent - show inline form in ChatWindow
     showAgentCreate.value = true
@@ -197,9 +207,9 @@ function closeAgentCreate() {
   showAgentCreate.value = false
 }
 
-function handleAgentCreated(_agent: Agent) {
+function handleAgentCreated(_agent: CustomAgent) {
   showAgentCreate.value = false
-  // Agent is already created and pinned in the store by AgentWelcomePage
+  // Agent is already created and pinned in the store by CreateAgentPage
 }
 
 function closeAgentDialog() {
@@ -247,6 +257,7 @@ const sidebarFloating = ref(false)
 const sidebarFloatingClosing = ref(false)
 const sidebarNoTransition = ref(false) // Disable transition during/after floating
 const floatingCooldown = ref(false) // Prevent re-expansion after toggle
+const floatingShowTimer = ref<ReturnType<typeof setTimeout> | null>(null) // Delay before showing floating sidebar
 
 // Close floating sidebar with animation
 function closeFloatingSidebar() {
@@ -284,12 +295,30 @@ function handleSidebarToggle() {
   }
 }
 
-// Handle hover trigger enter
+// Handle hover trigger enter - with delay to avoid accidental triggers
 function handleTriggerEnter() {
   // Don't expand if in cooldown period (after toggle or close)
   if (sidebarFloatingClosing.value || floatingCooldown.value) return
-  sidebarNoTransition.value = true
-  sidebarFloating.value = true
+
+  // Clear any existing timer
+  if (floatingShowTimer.value) {
+    clearTimeout(floatingShowTimer.value)
+  }
+
+  // Add 200ms delay before showing floating sidebar
+  floatingShowTimer.value = setTimeout(() => {
+    sidebarNoTransition.value = true
+    sidebarFloating.value = true
+    floatingShowTimer.value = null
+  }, 200)
+}
+
+// Handle hover trigger leave - cancel pending show
+function handleTriggerLeave() {
+  if (floatingShowTimer.value) {
+    clearTimeout(floatingShowTimer.value)
+    floatingShowTimer.value = null
+  }
 }
 
 // Handle mouse leaving the floating sidebar
@@ -659,5 +688,32 @@ html[data-theme='light'] .search-overlay {
   .search-input {
     font-size: 14px;
   }
+}
+
+/* Agent Dialog Overlay */
+.agent-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.agent-dialog-container {
+  width: 100%;
+  max-width: 560px;
+  max-height: 85vh;
+  background: var(--bg);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 </style>

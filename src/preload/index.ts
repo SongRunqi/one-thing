@@ -150,6 +150,18 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.CONTEXT_SIZE_UPDATED, listener)
   },
 
+  onContextCompactStarted: (callback: (data: { sessionId: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.CONTEXT_COMPACT_STARTED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.CONTEXT_COMPACT_STARTED, listener)
+  },
+
+  onContextCompactCompleted: (callback: (data: { sessionId: string; success: boolean; error?: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.CONTEXT_COMPACT_COMPLETED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.CONTEXT_COMPACT_COMPLETED, listener)
+  },
+
   updateSessionMaxTokens: (sessionId: string, maxTokens: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_MAX_TOKENS, sessionId, maxTokens),
 
@@ -166,6 +178,9 @@ const electronAPI = {
 
   removeFilesChangedMessage: (sessionId: string) =>
     ipcRenderer.invoke('remove-files-changed-message', { sessionId }),
+
+  removeGitStatusMessage: (sessionId: string) =>
+    ipcRenderer.invoke('remove-git-status-message', { sessionId }),
 
   // Plan update listener (for Planning workflow)
   onPlanUpdated: (callback: (data: { sessionId: string; plan: any }) => void) => {
@@ -335,6 +350,93 @@ const electronAPI = {
 
   toggleSkillEnabled: (skillId: string, enabled: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.SKILLS_TOGGLE_ENABLED, { skillId, enabled }),
+
+  // Custom Agent methods
+  getCustomAgents: (workingDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_GET_ALL, { workingDirectory }),
+
+  refreshCustomAgents: (workingDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_REFRESH, { workingDirectory }),
+
+  openCustomAgentsDirectory: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_OPEN_DIRECTORY),
+
+  getCustomAgent: (agentId: string, workingDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_GET, { agentId, workingDirectory }),
+
+  createCustomAgent: (config: {
+    name: string
+    description: string
+    systemPrompt: string
+    customTools: Array<{
+      id: string
+      name: string
+      description: string
+      parameters: Array<{
+        name: string
+        type: 'string' | 'number' | 'boolean' | 'object' | 'array'
+        description: string
+        required: boolean
+        default?: unknown
+        enum?: string[]
+      }>
+      execution: { type: 'bash'; command: string; env?: Record<string, string>; timeout?: number }
+        | { type: 'http'; method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'; url: string; headers?: Record<string, string>; bodyTemplate?: string; timeout?: number }
+        | { type: 'builtin'; toolId: string; argsMapping?: Record<string, string> }
+    }>
+    avatar?: { type: 'emoji' | 'image'; value: string }
+    allowBuiltinTools?: boolean
+    allowedBuiltinTools?: string[]
+    maxToolCalls?: number
+    timeoutMs?: number
+  }, source?: 'user' | 'project', workingDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_CREATE, { config, source, workingDirectory }),
+
+  updateCustomAgent: (agentId: string, updates: Partial<{
+    name: string
+    description: string
+    systemPrompt: string
+    customTools: Array<any>
+    avatar: { type: 'emoji' | 'image'; value: string }
+    allowBuiltinTools: boolean
+    allowedBuiltinTools: string[]
+    maxToolCalls: number
+    timeoutMs: number
+  }>, workingDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_UPDATE, { agentId, updates, workingDirectory }),
+
+  deleteCustomAgent: (agentId: string, workingDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_DELETE, { agentId, workingDirectory }),
+
+  getAvailableBuiltinTools: (): Promise<Array<{ id: string; name: string; description: string }>> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_GET_AVAILABLE_BUILTIN_TOOLS),
+
+  // CustomAgent permission handling
+  respondToCustomAgentPermission: (requestId: string, decision: 'allow' | 'always' | 'reject'): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_PERMISSION_RESPOND, { requestId, decision }),
+
+  onCustomAgentPermissionRequest: (callback: (data: {
+    requestId: string
+    sessionId: string
+    messageId: string
+    stepId: string
+    toolCall: {
+      id: string
+      toolName: string
+      arguments: Record<string, unknown>
+      commandType?: 'read-only' | 'dangerous' | 'forbidden'
+      error?: string
+    }
+  }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.CUSTOM_AGENT_PERMISSION_REQUEST, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.CUSTOM_AGENT_PERMISSION_REQUEST, listener)
+  },
+
+  // Refresh async tools (invalidate cache and re-initialize)
+  // Call this after creating/modifying/deleting CustomAgents
+  refreshAsyncTools: (workingDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.REFRESH_ASYNC_TOOLS, { workingDirectory }),
 
   // Message update methods
   updateMessageThinkingTime: (sessionId: string, messageId: string, thinkingTime: number) =>
@@ -610,6 +712,10 @@ const electronAPI = {
   // File rollback (for /files command)
   rollbackFile: (options: { filePath: string; originalContent: string; isNew: boolean }) =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_ROLLBACK, options),
+
+  // Directories listing (for /cd path completion)
+  listDirs: (options: { basePath: string; query?: string; limit?: number }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.DIRS_LIST, options),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

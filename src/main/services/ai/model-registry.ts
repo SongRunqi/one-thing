@@ -300,6 +300,15 @@ export async function getModelById(modelId: string): Promise<OpenRouterModel | u
 }
 
 /**
+ * Get the maximum output tokens supported by a model
+ * Used to cap the user's maxTokens setting to prevent errors
+ */
+export async function getModelMaxOutputTokens(modelId: string): Promise<number> {
+  const model = await getModelById(modelId)
+  return model?.top_provider?.max_completion_tokens || 4096
+}
+
+/**
  * Check if a model supports tool calls
  * Uses Models.dev's tool_call field for accurate detection
  */

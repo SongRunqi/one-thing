@@ -1,42 +1,54 @@
 <template>
   <div
     class="context-indicator"
-    :class="[statusClass, { compact: isCompact }]"
+    :class="[statusClass, { compact: isCompact, compacting: isCompacting }]"
     @mouseenter="handleMouseEnter"
     @mouseleave="showTooltip = false"
     ref="indicatorRef"
   >
-    <!-- Icon -->
+    <!-- Icon: Show Loader2 when compacting, Zap otherwise -->
+    <Loader2
+      v-if="isCompacting"
+      :size="14"
+      :stroke-width="2"
+      class="context-icon spin"
+    />
     <Zap
+      v-else
       :size="14"
       :stroke-width="2"
       class="context-icon"
       :class="{ pulse: isStreaming }"
     />
     <!-- Percentage -->
-    <span class="context-percent">{{ percentage }}%</span>
+    <span class="context-percent">{{ isCompacting ? '...' : `${percentage}%` }}</span>
 
     <!-- Hover tooltip (teleported to body to avoid clipping) -->
     <Teleport to="body">
       <Transition name="fade">
         <div v-if="showTooltip" class="context-tooltip" :style="tooltipStyle">
-          <div class="tooltip-row">
-            <span>Context:</span>
-            <span class="tooltip-value">{{ formatTokens(currentContextSize) }} / {{ formatTokens(contextLength) }}</span>
+          <div v-if="isCompacting" class="tooltip-row compacting-status">
+            <span>⏳ Compacting context...</span>
           </div>
-          <div class="tooltip-divider"></div>
-          <div class="tooltip-row">
-            <span>Total:</span>
-            <span class="tooltip-value">{{ formatTokens(totalTokens) }}</span>
-          </div>
-          <div class="tooltip-row sub">
-            <span>Input:</span>
-            <span class="tooltip-value">{{ formatTokens(totalInputTokens) }}</span>
-          </div>
-          <div class="tooltip-row sub">
-            <span>Output:</span>
-            <span class="tooltip-value">{{ formatTokens(totalOutputTokens) }}</span>
-          </div>
+          <template v-else>
+            <div class="tooltip-row">
+              <span>Context:</span>
+              <span class="tooltip-value">{{ formatTokens(currentContextSize) }} / {{ formatTokens(contextLength) }}</span>
+            </div>
+            <div class="tooltip-divider"></div>
+            <div class="tooltip-row">
+              <span>Total:</span>
+              <span class="tooltip-value">{{ formatTokens(totalTokens) }}</span>
+            </div>
+            <div class="tooltip-row sub">
+              <span>Input:</span>
+              <span class="tooltip-value">{{ formatTokens(totalInputTokens) }}</span>
+            </div>
+            <div class="tooltip-row sub">
+              <span>Output:</span>
+              <span class="tooltip-value">{{ formatTokens(totalOutputTokens) }}</span>
+            </div>
+          </template>
         </div>
       </Transition>
     </Teleport>
@@ -45,7 +57,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { Zap } from 'lucide-vue-next'
+import { Zap, Loader2 } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
@@ -166,6 +178,7 @@ const sessionUsage = computed(() => {
 // Current context size = input tokens from last request (context window limit applies to input)
 const currentContextSize = computed(() => sessionUsage.value?.contextSize ?? 0)
 const isStreaming = computed(() => props.sessionId ? chatStore.isSessionGenerating(props.sessionId) : false)
+const isCompacting = computed(() => props.sessionId ? chatStore.isSessionCompacting(props.sessionId) : false)
 
 // Accumulated token usage for this session
 const totalInputTokens = computed(() => sessionUsage.value?.totalInputTokens ?? 0)
@@ -273,9 +286,18 @@ onUnmounted(() => {
   animation: pulse 1.5s ease-in-out infinite;
 }
 
+.context-icon.spin {
+  animation: spin 1s linear infinite;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .context-percent {
@@ -295,6 +317,16 @@ onUnmounted(() => {
 .context-indicator.danger .context-icon,
 .context-indicator.danger .context-percent {
   color: var(--text-error);
+}
+
+/* Compacting state */
+.context-indicator.compacting .context-icon {
+  color: var(--accent);
+}
+
+.context-indicator.compacting .context-percent {
+  color: var(--accent);
+  opacity: 0.8;
 }
 
 
@@ -347,6 +379,11 @@ onUnmounted(() => {
   font-size: 11px;
   opacity: 0.7;
   padding-left: 8px;
+}
+
+.context-tooltip .tooltip-row.compacting-status {
+  color: var(--accent);
+  font-weight: 500;
 }
 
 /* Tooltip fade transitions */

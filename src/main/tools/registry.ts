@@ -413,7 +413,7 @@ export async function executeTool(
         }
       }
 
-      // Create V2 context with metadata callback
+      // Create V2 context with metadata callback and step callbacks
       const v2Context: ToolContext = {
         sessionId: context.sessionId,
         messageId: context.messageId,
@@ -429,6 +429,9 @@ export async function executeTool(
             })
           }
         },
+        // Forward step events to allow sub-agent tools to report progress
+        onStepStart: context.onStepStart,
+        onStepComplete: context.onStepComplete,
       }
 
       const result = await v2Tool.execute(parseResult.data, v2Context)
@@ -477,7 +480,7 @@ export async function executeTool(
         }
       }
 
-      // Create V2 context with metadata callback
+      // Create V2 context with metadata callback and step callbacks
       const v2Context: ToolContext = {
         sessionId: context.sessionId,
         messageId: context.messageId,
@@ -493,6 +496,9 @@ export async function executeTool(
             })
           }
         },
+        // Forward step events to allow sub-agent tools to report progress
+        onStepStart: context.onStepStart,
+        onStepComplete: context.onStepComplete,
       }
 
       const result = await initResult.execute(parseResult.data, v2Context)

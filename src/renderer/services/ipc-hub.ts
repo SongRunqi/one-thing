@@ -59,5 +59,14 @@ export function initializeIPCHub() {
     useChatStore().handleContextSizeUpdated(data)
   })
 
+  // Context compacting events
+  window.electronAPI.onContextCompactStarted((data) => {
+    useChatStore().handleContextCompactStarted(data)
+  })
+
+  window.electronAPI.onContextCompactCompleted((data) => {
+    useChatStore().handleContextCompactCompleted(data)
+  })
+
   console.log('[IPC Hub] All listeners registered')
 }

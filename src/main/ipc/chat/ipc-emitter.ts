@@ -65,6 +65,12 @@ export interface IPCEmitter {
   /** Send context size update */
   sendContextSizeUpdate(contextSize: number): void
 
+  /** Send context compact started event */
+  sendCompactStarted(): void
+
+  /** Send context compact completed event */
+  sendCompactCompleted(data: { success: boolean; error?: string; summary?: string }): void
+
   // ========== Step Events ==========
 
   /** Send step added event (also adds to store) */
@@ -189,6 +195,19 @@ export function createIPCEmitter(ctx: StreamContext): IPCEmitter {
       sender.send(IPC_CHANNELS.CONTEXT_SIZE_UPDATED, {
         sessionId,
         contextSize,
+      })
+    },
+
+    sendCompactStarted() {
+      sender.send(IPC_CHANNELS.CONTEXT_COMPACT_STARTED, {
+        sessionId,
+      })
+    },
+
+    sendCompactCompleted(data: { success: boolean; error?: string }) {
+      sender.send(IPC_CHANNELS.CONTEXT_COMPACT_COMPLETED, {
+        sessionId,
+        ...data,
       })
     },
 

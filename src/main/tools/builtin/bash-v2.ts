@@ -215,6 +215,9 @@ function isPathContained(boundary: string, targetPath: string): boolean {
 /**
  * Get the sandbox boundary directory
  * Priority: ctx.workingDirectory > settings.defaultWorkingDirectory > process.cwd()
+ *
+ * Note: ctxWorkingDirectory is expected to be already expanded (by getSession).
+ * Only settings.defaultWorkingDirectory needs expansion here.
  */
 function getSandboxBoundary(ctxWorkingDirectory?: string): string {
   if (ctxWorkingDirectory) {
@@ -252,11 +255,12 @@ The sandbox restricts file access to allowed directories only.`,
   async execute(args, ctx) {
     const { command, working_directory, timeout } = args
 
-    // Get sandbox boundary from session's workingDirectory
+    // Get sandbox boundary from session's workingDirectory (getSandboxBoundary expands ~)
     const sandboxBoundary = getSandboxBoundary(ctx.workingDirectory)
 
     // Determine working directory (default to sandbox boundary)
-    let workingDir = working_directory || sandboxBoundary
+    // Also expand ~ in working_directory parameter from LLM
+    let workingDir = working_directory ? expandPath(working_directory) : sandboxBoundary
 
     // Classify the command
     const commandAction = classifyCommand(command)

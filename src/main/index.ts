@@ -2,7 +2,7 @@ import { app, BrowserWindow, protocol, net } from 'electron'
 import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { createWindow } from './window.js'
-import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills } from './ipc/handlers.js'
+import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills, initializeCustomAgents } from './ipc/handlers.js'
 import { initializeStores } from './store.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
@@ -63,6 +63,11 @@ app.on('ready', async () => {
   // Initialize skills system asynchronously
   initializeSkills().catch(err => {
     console.error('[Skills] Initialization failed (non-blocking):', err)
+  })
+
+  // Initialize custom agents system asynchronously
+  initializeCustomAgents().catch(err => {
+    console.error('[CustomAgent] Initialization failed (non-blocking):', err)
   })
 })
 

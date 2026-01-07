@@ -159,29 +159,13 @@ const pendingText = computed(() => {
   color: rgb(239, 68, 68);
 }
 
-/* Flowing text animation - gradient sweeps from left to right (matches Thinking animation) */
+/* Flowing text animation - uses global flowingGradient from main.css */
 .status-text.flowing {
-  background: linear-gradient(
-    90deg,
-    rgba(var(--accent-rgb), 0.3) 0%,
-    rgba(var(--accent-rgb), 1) 25%,
-    rgba(var(--accent-rgb), 1) 50%,
-    rgba(var(--accent-rgb), 1) 75%,
-    rgba(var(--accent-rgb), 0.3) 100%
-  );
-  background-size: 200% 100%;
+  background: linear-gradient(90deg, var(--muted) 0%, var(--accent) 50%, var(--muted) 100%);
+  background-size: 200% auto;
   -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   background-clip: text;
-  animation: flowing-gradient 2.5s ease-in-out infinite;
-}
-
-@keyframes flowing-gradient {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
+  -webkit-text-fill-color: transparent;
+  animation: flowingGradient 2s linear infinite;
 }
 </style>

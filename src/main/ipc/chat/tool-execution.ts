@@ -95,6 +95,9 @@ export async function executeToolDirectly(
     workingDirectory?: string  // Session's working directory (sandbox boundary)
     abortSignal?: AbortSignal
     onMetadata?: (update: { title?: string; metadata?: Record<string, unknown> }) => void
+    // Step event callbacks for sub-agent tools (e.g., CustomAgent)
+    onStepStart?: (step: Step) => void
+    onStepComplete?: (step: Step) => void
   }
 ): Promise<ToolExecutionResult> {
   try {
@@ -131,6 +134,9 @@ export async function executeToolDirectly(
       workingDirectory: context.workingDirectory,
       abortSignal: context.abortSignal,
       onMetadata: context.onMetadata,
+      // Forward step callbacks for sub-agent tools (e.g., CustomAgent)
+      onStepStart: context.onStepStart,
+      onStepComplete: context.onStepComplete,
     }
     const result = await executeTool(toolName, args, execContext)
     return result
@@ -327,6 +333,19 @@ export async function executeToolAndUpdate(
         if (Object.keys(metadataUpdates).length > 0) {
           emitter.sendStepUpdated(step.id, metadataUpdates)
         }
+      },
+      // Forward step events from sub-agent tools (e.g., CustomAgent)
+      onStepStart: (subStep: Step) => {
+        // Set parent step ID for nested display in StepsPanel
+        subStep.parentStepId = step.id
+        emitter.sendStepAdded(subStep)
+      },
+      onStepComplete: (subStep: Step) => {
+        emitter.sendStepUpdated(subStep.id, {
+          status: subStep.status,
+          result: subStep.result,
+          error: subStep.error,
+        })
       },
     }
   )

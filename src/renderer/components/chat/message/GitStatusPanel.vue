@@ -50,7 +50,7 @@
       </div>
 
       <div class="stats-row">
-        <span class="stat-badge total">
+        <span v-if="data.summary.totalChanges > 0" class="stat-badge total">
           {{ data.summary.totalChanges }} changes
         </span>
         <span v-if="data.summary.stagedCount > 0" class="stat-badge staged">
@@ -78,8 +78,57 @@
       </div>
     </div>
 
-    <!-- Content sections -->
-    <div v-else class="panel-content">
+    <!-- Quick actions (fixed, outside scrollable area) -->
+    <div v-if="data.isRepo" class="actions-bar">
+      <button
+        class="action-btn primary"
+        @click="emitAction('stage-all')"
+        title="Stage all changes (git add -A)"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <span>Stage All</span>
+      </button>
+      <button
+        class="action-btn"
+        @click="emitAction('commit')"
+        title="Commit staged changes"
+        :disabled="data.summary.stagedCount === 0"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="4"/>
+          <line x1="1.05" y1="12" x2="7" y2="12"/>
+          <line x1="17.01" y1="12" x2="22.96" y2="12"/>
+        </svg>
+        <span>Commit</span>
+      </button>
+      <button
+        class="action-btn"
+        @click="emitAction('push')"
+        title="Push to remote"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="19" x2="12" y2="5"/>
+          <polyline points="5 12 12 5 19 12"/>
+        </svg>
+        <span>Push</span>
+      </button>
+      <button
+        class="action-btn"
+        @click="emitAction('pull')"
+        title="Pull from remote"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <polyline points="19 12 12 19 5 12"/>
+        </svg>
+        <span>Pull</span>
+      </button>
+    </div>
+
+    <!-- Content sections (scrollable) -->
+    <div v-if="data.isRepo" class="panel-content">
       <!-- Staged files -->
       <div v-if="data.staged.length > 0" class="section">
         <div class="section-header" @click="toggleSection('staged')">
@@ -104,27 +153,42 @@
             <div
               v-for="file in data.staged"
               :key="'staged-' + file.path"
-              class="file-item"
-              @click="emitFileAction('diff-staged', file.path)"
+              class="file-item-wrapper"
             >
-              <span :class="['status-icon', `status-${file.status}`]">
-                {{ getStatusIcon(file.status) }}
-              </span>
-              <span class="file-path" :title="file.path">
-                <span class="file-dir">{{ getFileDir(file.path) }}</span>
-                <span class="file-name">{{ getFileName(file.path) }}</span>
-              </span>
-              <div class="file-actions">
-                <button
-                  class="file-action-btn"
-                  @click.stop="emitFileAction('unstage', file.path)"
-                  title="Unstage file"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="5" y1="12" x2="19" y2="12"/>
-                  </svg>
-                </button>
+              <div
+                class="file-item"
+                :class="{ expanded: isDiffExpanded(file.path) }"
+                @click="toggleDiff(file.path, true)"
+              >
+                <span :class="['status-icon', `status-${file.status}`]">
+                  {{ getStatusIcon(file.status) }}
+                </span>
+                <span class="file-path" :title="file.path">
+                  <span class="file-dir">{{ getFileDir(file.path) }}</span>
+                  <span class="file-name">{{ getFileName(file.path) }}</span>
+                </span>
+                <div class="file-actions">
+                  <button
+                    class="file-action-btn"
+                    @click.stop="emitFileAction('unstage', file.path)"
+                    title="Unstage file"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
+              <!-- Expanded diff content -->
+              <Transition name="diff">
+                <div v-if="getDiffState(file.path)" class="diff-container">
+                  <DiffView
+                    :diff="getDiffState(file.path)?.content || ''"
+                    :loading="getDiffState(file.path)?.loading"
+                    :error="getDiffState(file.path)?.error"
+                  />
+                </div>
+              </Transition>
             </div>
           </div>
         </Transition>
@@ -154,38 +218,53 @@
             <div
               v-for="file in data.unstaged"
               :key="'unstaged-' + file.path"
-              class="file-item"
-              @click="emitFileAction('diff', file.path)"
+              class="file-item-wrapper"
             >
-              <span :class="['status-icon', `status-${file.status}`]">
-                {{ getStatusIcon(file.status) }}
-              </span>
-              <span class="file-path" :title="file.path">
-                <span class="file-dir">{{ getFileDir(file.path) }}</span>
-                <span class="file-name">{{ getFileName(file.path) }}</span>
-              </span>
-              <div class="file-actions">
-                <button
-                  class="file-action-btn"
-                  @click.stop="emitFileAction('stage', file.path)"
-                  title="Stage file"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="5" x2="12" y2="19"/>
-                    <line x1="5" y1="12" x2="19" y2="12"/>
-                  </svg>
-                </button>
-                <button
-                  class="file-action-btn danger"
-                  @click.stop="emitFileAction('discard', file.path)"
-                  title="Discard changes"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  </svg>
-                </button>
+              <div
+                class="file-item"
+                :class="{ expanded: isDiffExpanded(file.path) }"
+                @click="toggleDiff(file.path, false)"
+              >
+                <span :class="['status-icon', `status-${file.status}`]">
+                  {{ getStatusIcon(file.status) }}
+                </span>
+                <span class="file-path" :title="file.path">
+                  <span class="file-dir">{{ getFileDir(file.path) }}</span>
+                  <span class="file-name">{{ getFileName(file.path) }}</span>
+                </span>
+                <div class="file-actions">
+                  <button
+                    class="file-action-btn"
+                    @click.stop="emitFileAction('stage', file.path)"
+                    title="Stage file"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="12" y1="5" x2="12" y2="19"/>
+                      <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                  </button>
+                  <button
+                    class="file-action-btn danger"
+                    @click.stop="emitFileAction('discard', file.path)"
+                    title="Discard changes"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
+              <!-- Expanded diff content -->
+              <Transition name="diff">
+                <div v-if="getDiffState(file.path)" class="diff-container">
+                  <DiffView
+                    :diff="getDiffState(file.path)?.content || ''"
+                    :loading="getDiffState(file.path)?.loading"
+                    :error="getDiffState(file.path)?.error"
+                  />
+                </div>
+              </Transition>
             </div>
           </div>
         </Transition>
@@ -298,54 +377,6 @@
         </Transition>
       </div>
 
-      <!-- Quick actions -->
-      <div class="actions-bar">
-        <button
-          class="action-btn primary"
-          @click="emitAction('stage-all')"
-          title="Stage all changes (git add -A)"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-          <span>Stage All</span>
-        </button>
-        <button
-          class="action-btn"
-          @click="emitAction('commit')"
-          title="Commit staged changes"
-          :disabled="data.summary.stagedCount === 0"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="4"/>
-            <line x1="1.05" y1="12" x2="7" y2="12"/>
-            <line x1="17.01" y1="12" x2="22.96" y2="12"/>
-          </svg>
-          <span>Commit</span>
-        </button>
-        <button
-          class="action-btn"
-          @click="emitAction('push')"
-          title="Push to remote"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="19" x2="12" y2="5"/>
-            <polyline points="5 12 12 5 19 12"/>
-          </svg>
-          <span>Push</span>
-        </button>
-        <button
-          class="action-btn"
-          @click="emitAction('pull')"
-          title="Pull from remote"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <polyline points="19 12 12 19 5 12"/>
-          </svg>
-          <span>Pull</span>
-        </button>
-      </div>
     </div>
 
     <!-- Toast notification -->
@@ -361,11 +392,15 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, computed, watch } from 'vue'
 import type { GitStatusData, GitFileStatus } from '@/services/commands/git'
+import DiffView from './DiffView.vue'
 
 interface Props {
   data: GitStatusData
+  isRefreshing?: boolean
+  workingDirectory?: string
+  sessionId?: string
 }
 
 const props = defineProps<Props>()
@@ -377,8 +412,13 @@ const emit = defineEmits<{
 }>()
 
 // State
-const isLoading = ref(false)
 const toastMessage = ref('')
+
+// Use prop for loading state
+const isLoading = computed(() => props.isRefreshing ?? false)
+
+// Expanded diff state: { [filePath]: { content: string, loading: boolean, staged: boolean } }
+const expandedDiffs = reactive<Record<string, { content: string; loading: boolean; error?: string }>>({})
 
 // Collapsible sections state
 const collapsedSections = reactive({
@@ -387,6 +427,19 @@ const collapsedSections = reactive({
   untracked: false,
   commits: true, // Start collapsed
 })
+
+// Reset state when data changes (e.g., session switch)
+watch(() => props.data, () => {
+  // Clear expanded diffs
+  Object.keys(expandedDiffs).forEach(key => {
+    delete expandedDiffs[key]
+  })
+  // Reset collapsed sections to defaults
+  collapsedSections.staged = false
+  collapsedSections.unstaged = false
+  collapsedSections.untracked = false
+  collapsedSections.commits = true
+}, { deep: true })
 
 // Toggle section collapse
 function toggleSection(section: keyof typeof collapsedSections) {
@@ -453,15 +506,68 @@ function showToast(message: string) {
   }, 2000)
 }
 
-// Handle refresh
+// Handle refresh - parent manages loading state
 function handleRefresh() {
   if (isLoading.value) return
-  isLoading.value = true
   emit('refresh')
-  // Reset loading state after a delay (parent should handle actual refresh)
-  setTimeout(() => {
-    isLoading.value = false
-  }, 1000)
+}
+
+// Toggle diff expansion for a file
+async function toggleDiff(filePath: string, staged: boolean) {
+  // If already expanded, collapse it
+  if (expandedDiffs[filePath]) {
+    delete expandedDiffs[filePath]
+    return
+  }
+
+  // Need working directory to run git commands
+  if (!props.workingDirectory) {
+    expandedDiffs[filePath] = { content: '', loading: false, error: 'No working directory' }
+    return
+  }
+
+  // Start loading
+  expandedDiffs[filePath] = { content: '', loading: true }
+
+  try {
+    const command = staged ? `git diff --staged "${filePath}"` : `git diff "${filePath}"`
+
+    // Execute git diff via electronAPI with working directory
+    const result = await window.electronAPI.executeTool(
+      'bash',
+      { command, working_directory: props.workingDirectory },
+      `git-diff-${Date.now()}`,
+      props.sessionId || ''
+    )
+
+    if (result.success && result.result?.output) {
+      const output = result.result.output
+      // Check if there's actual diff content
+      if (output.trim() && output !== '(no output)') {
+        expandedDiffs[filePath] = { content: output, loading: false }
+      } else {
+        expandedDiffs[filePath] = { content: '', loading: false, error: 'No changes' }
+      }
+    } else {
+      expandedDiffs[filePath] = { content: '', loading: false, error: result.error || 'Failed to get diff' }
+    }
+  } catch (error) {
+    expandedDiffs[filePath] = {
+      content: '',
+      loading: false,
+      error: error instanceof Error ? error.message : 'Failed to get diff'
+    }
+  }
+}
+
+// Check if diff is expanded for a file
+function isDiffExpanded(filePath: string): boolean {
+  return !!expandedDiffs[filePath]
+}
+
+// Get diff state for a file
+function getDiffState(filePath: string) {
+  return expandedDiffs[filePath]
 }
 
 // Handle keyboard shortcuts
@@ -480,6 +586,7 @@ function emitAction(action: string) {
 function emitFileAction(action: string, filePath: string) {
   emit('file-action', action, filePath)
 }
+
 </script>
 
 <style scoped>
@@ -1012,7 +1119,7 @@ function emitFileAction(action: string, filePath: string) {
   gap: 8px;
   padding: 12px 14px;
   background: rgba(0, 0, 0, 0.03);
-  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .action-btn {
@@ -1115,5 +1222,50 @@ function emitFileAction(action: string, filePath: string) {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* File item wrapper for diff expansion */
+.file-item-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.file-item.expanded {
+  background: rgba(var(--accent-rgb), 0.05);
+  border-radius: 6px 6px 0 0;
+}
+
+.file-action-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+/* Diff container styles */
+.diff-container {
+  margin: 0 0 8px 0;
+  border-radius: 0 0 8px 8px;
+  border: 1px solid var(--border);
+  border-top: none;
+  background: var(--background);
+  overflow: hidden;
+}
+
+/* Diff transition */
+.diff-enter-active,
+.diff-leave-active {
+  transition: all 0.25s ease;
+  overflow: hidden;
+}
+
+.diff-enter-from,
+.diff-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.diff-enter-to,
+.diff-leave-from {
+  max-height: 400px;
 }
 </style>

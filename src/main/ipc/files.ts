@@ -6,6 +6,7 @@
 
 import * as path from 'path'
 import * as fs from 'fs/promises'
+import * as os from 'os'
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { listFiles } from '../utils/ripgrep.js'
@@ -35,6 +36,20 @@ export interface RollbackResponse {
   error?: string
 }
 
+// Types for directory listing (for /cd path completion)
+export interface ListDirsRequest {
+  basePath: string   // Base path to list directories from (can contain ~)
+  query?: string     // Partial path being typed for filtering
+  limit?: number
+}
+
+export interface ListDirsResponse {
+  success: boolean
+  dirs: string[]     // Full paths to directories
+  basePath: string   // Expanded base path
+  error?: string
+}
+
 /**
  * Register file-related IPC handlers
  */
@@ -48,6 +63,8 @@ export function registerFilesHandlers() {
       if (!cwd) {
         return { success: false, files: [], error: 'Working directory is required' }
       }
+
+      // cwd is already expanded by getSession (passed from frontend session.workingDirectory)
 
       try {
         const files: string[] = []
@@ -107,6 +124,85 @@ export function registerFilesHandlers() {
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to rollback file',
+        }
+      }
+    }
+  )
+
+  // List directories for /cd path completion
+  ipcMain.handle(
+    IPC_CHANNELS.DIRS_LIST,
+    async (_event, request: ListDirsRequest): Promise<ListDirsResponse> => {
+      const { basePath, query = '', limit = 50 } = request
+
+      if (!basePath) {
+        return { success: false, dirs: [], basePath: '', error: 'Base path is required' }
+      }
+
+      try {
+        // Expand ~ to home directory
+        let expandedPath = basePath
+        if (expandedPath.startsWith('~')) {
+          expandedPath = expandedPath.replace('~', os.homedir())
+        }
+
+        // Determine the directory to list and the filter prefix
+        let dirToList: string
+        let filterPrefix: string
+
+        // Check if the path ends with / or is a directory
+        const pathStat = await fs.stat(expandedPath).catch(() => null)
+
+        if (pathStat?.isDirectory()) {
+          // Path is a directory - list its contents
+          dirToList = expandedPath
+          filterPrefix = query.toLowerCase()
+        } else {
+          // Path might be partial - list parent directory and filter
+          dirToList = path.dirname(expandedPath)
+          filterPrefix = path.basename(expandedPath).toLowerCase()
+        }
+
+        // Check if directory exists
+        const dirStat = await fs.stat(dirToList).catch(() => null)
+        if (!dirStat?.isDirectory()) {
+          return { success: true, dirs: [], basePath: expandedPath }
+        }
+
+        // Read directory contents
+        const entries = await fs.readdir(dirToList, { withFileTypes: true })
+
+        // Filter only directories and apply query filter
+        const dirs: string[] = []
+        for (const entry of entries) {
+          // Skip hidden directories unless query starts with .
+          if (entry.name.startsWith('.') && !filterPrefix.startsWith('.')) {
+            continue
+          }
+
+          if (entry.isDirectory()) {
+            // Apply filter
+            if (!filterPrefix || entry.name.toLowerCase().startsWith(filterPrefix)) {
+              dirs.push(path.join(dirToList, entry.name))
+
+              if (dirs.length >= limit) {
+                break
+              }
+            }
+          }
+        }
+
+        // Sort alphabetically
+        dirs.sort((a, b) => path.basename(a).localeCompare(path.basename(b)))
+
+        return { success: true, dirs, basePath: expandedPath }
+      } catch (error) {
+        console.error('[Files IPC] Failed to list directories:', error)
+        return {
+          success: false,
+          dirs: [],
+          basePath: '',
+          error: error instanceof Error ? error.message : 'Failed to list directories',
         }
       }
     }

@@ -38,7 +38,14 @@ export const cdCommand: CommandDefinition = {
       }
 
       // Use sessions store to update (this will update both backend and UI)
-      await sessionsStore.updateSessionWorkingDirectory(context.sessionId, finalPath)
+      const result = await sessionsStore.updateSessionWorkingDirectory(context.sessionId, finalPath)
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to change directory',
+        }
+      }
 
       return {
         success: true,

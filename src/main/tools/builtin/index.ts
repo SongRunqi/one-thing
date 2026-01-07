@@ -18,6 +18,7 @@ import { GlobTool } from './glob.js'
 import { GrepTool } from './grep.js'
 import { SkillTool } from './skill.js'
 import { PlanTool } from './plan.js'
+import { CustomAgentTool } from './custom-agent.js'
 
 // All built-in tools (Tool.define() format)
 // Note: SkillTool is async and needs separate initialization
@@ -34,6 +35,7 @@ const builtinTools = [
 // Async tools that need initialization with context
 export const asyncBuiltinTools = [
   SkillTool,
+  CustomAgentTool,
 ]
 
 /**

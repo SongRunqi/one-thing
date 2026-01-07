@@ -17,6 +17,8 @@ import {
   initializeToolRegistry,
   isInitialized,
   zodToJsonSchema,
+  setInitContext,
+  initializeAsyncTools,
 } from '../tools/index.js'
 import type { ToolExecutionContext, ToolInfo, ToolInfoAsync, ToolInitResult } from '../tools/index.js'
 import * as store from '../store.js'
@@ -127,6 +129,25 @@ export function registerToolHandlers() {
     console.log('[Tools IPC] Cancel tool requested:', toolCallId)
     return {
       success: true,
+    }
+  })
+
+  // Refresh async tools (re-initialize with new context)
+  // Used when CustomAgents are created/modified/deleted to update the tool list
+  ipcMain.handle(IPC_CHANNELS.REFRESH_ASYNC_TOOLS, async (_event, { workingDirectory }) => {
+    try {
+      console.log('[Tools IPC] Refreshing async tools, workingDirectory:', workingDirectory)
+      // Reset init context to invalidate all async tool caches
+      setInitContext({ workingDirectory } as any)
+      // Re-initialize all async tools
+      await initializeAsyncTools()
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Tools IPC] Error refreshing async tools:', error)
+      return {
+        success: false,
+        error: error.message || 'Failed to refresh async tools',
+      }
     }
   })
 

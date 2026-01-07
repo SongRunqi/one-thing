@@ -109,6 +109,11 @@ const defaultSettings: AppSettings = {
       toggleSidebar: { key: 'b', metaKey: true },
       focusInput: { key: '/' },
     },
+    quickCommands: [
+      { commandId: 'cd', enabled: true },
+      { commandId: 'git', enabled: true },
+      { commandId: 'files', enabled: true },
+    ],
   },
   tools: {
     enableToolCalls: true,

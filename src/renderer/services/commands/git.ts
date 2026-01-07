@@ -131,14 +131,30 @@ function parseGitStatus(output: string): {
   const unstaged: GitFileStatus[] = []
   const untracked: GitFileStatus[] = []
 
-  const lines = output.trim().split('\n').filter(Boolean)
+  // Filter out bash tool's "(no output)" placeholder and other non-porcelain lines
+  // Note: Don't use .trim() as it removes leading spaces which are significant in porcelain format
+  const lines = output
+    .replace(/^\n+|\n+$/g, '')  // Only trim newlines, not spaces
+    .split('\n')
+    .filter((line) => {
+      // Skip empty lines
+      if (!line) return false
+      // Skip bash tool placeholder
+      if (line === '(no output)') return false
+      // Skip bash metadata
+      if (line.startsWith('<bash_metadata>')) return false
+      // Valid porcelain line: XY followed by path
+      // X and Y must be valid status chars: ' ', 'M', 'A', 'D', 'R', 'C', 'U', '?', '!'
+      const validChars = ' MADRCU?!'
+      // Check first two chars are valid status chars and line has content
+      return line.length >= 4 && validChars.includes(line[0]) && validChars.includes(line[1])
+    })
 
   for (const line of lines) {
-    if (line.length < 3) continue
-
     const index = line[0]
     const worktree = line[1]
-    const path = line.slice(3)
+    // Path starts after XY and space(s) - handle both "XY PATH" and "XY  PATH" formats
+    const path = line.slice(2).trimStart()
 
     // Untracked files
     if (index === '?' && worktree === '?') {
@@ -146,13 +162,13 @@ function parseGitStatus(output: string): {
       continue
     }
 
-    // Staged changes
+    // Staged changes (index has modification, not space or ?)
     if (index !== ' ' && index !== '?') {
       const status = parseStatusChar(index)
       staged.push({ path, status, staged: true })
     }
 
-    // Unstaged changes
+    // Unstaged changes (worktree has modification, not space or ?)
     if (worktree !== ' ' && worktree !== '?') {
       const status = parseStatusChar(worktree)
       unstaged.push({ path, status, staged: false })
@@ -167,12 +183,21 @@ function parseGitStatus(output: string): {
  */
 function parseGitLog(output: string): GitCommit[] {
   const commits: GitCommit[] = []
-  const lines = output.trim().split('\n').filter(Boolean)
+  const lines = output
+    .trim()
+    .split('\n')
+    .filter((line) => {
+      // Skip empty lines and bash tool placeholders
+      if (!line || line === '(no output)') return false
+      if (line.startsWith('<bash_metadata>')) return false
+      return true
+    })
 
   for (const line of lines) {
     // Format: hash|message|author|relativeDate
     const parts = line.split('|')
-    if (parts.length >= 4) {
+    // Hash should be 40 chars (full SHA)
+    if (parts.length >= 4 && parts[0].length === 40 && /^[a-f0-9]+$/.test(parts[0])) {
       commits.push({
         hash: parts[0],
         shortHash: parts[0].slice(0, 7),
@@ -224,8 +249,9 @@ function parseBranchInfo(output: string): GitStatusData['branch'] {
 
 /**
  * Collect all git information
+ * Exported for use by refresh functionality
  */
-async function collectGitInfo(
+export async function collectGitInfo(
   sessionId: string,
   workingDirectory: string
 ): Promise<GitStatusData> {
@@ -291,7 +317,8 @@ async function collectGitInfo(
     untracked,
     recentCommits,
     summary: {
-      totalChanges: staged.length + unstaged.length + untracked.length,
+      // totalChanges = staged + unstaged (not including untracked, as they are shown separately)
+      totalChanges: staged.length + unstaged.length,
       stagedCount: staged.length,
       unstagedCount: unstaged.length,
       untrackedCount: untracked.length,
@@ -332,22 +359,11 @@ export const gitCommand: CommandDefinition = {
       const gitData = await collectGitInfo(context.sessionId, workingDirectory)
 
       // Remove existing git-status message from this session (keep only one)
-      const existingMessages = chatStore.sessionMessages.get(context.sessionId) || []
-      const existingGitMsg = existingMessages.find((m) => {
-        if (m.role !== 'system') return false
-        try {
-          const parsed = JSON.parse(m.content)
-          return parsed?.type === 'git-status'
-        } catch {
-          return false
-        }
-      })
-
-      if (existingGitMsg) {
-        // Remove from Vue state
-        chatStore.removeMessage(context.sessionId, existingGitMsg.id)
-        // Note: Backend cleanup would need a dedicated IPC handler
-        // For now, frontend-only removal is sufficient
+      // First, remove from backend (persistent storage)
+      const removeResult = await window.electronAPI.removeGitStatusMessage(context.sessionId)
+      if (removeResult.removedId) {
+        // Also remove from Vue state for immediate UI update
+        chatStore.removeMessage(context.sessionId, removeResult.removedId)
       }
 
       // Create new message with unique ID

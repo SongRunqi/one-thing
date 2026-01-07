@@ -6,6 +6,7 @@ import { registerProvidersHandlers } from './providers.js'
 import { registerToolHandlers } from './tools.js'
 import { registerMCPHandlers, initializeMCP, shutdownMCP } from './mcp.js'
 import { registerSkillHandlers, initializeSkills } from './skills.js'
+import { registerCustomAgentHandlers, initializeCustomAgents } from './custom-agents.js'
 import { registerWorkspaceHandlers } from './workspaces.js'
 import { registerAgentHandlers } from './agents.js'
 import { registerUserProfileHandlers } from './user-profile.js'
@@ -26,6 +27,7 @@ export function initializeIPC() {
   registerToolHandlers()
   registerMCPHandlers()
   registerSkillHandlers()
+  registerCustomAgentHandlers()
   registerWorkspaceHandlers()
   registerAgentHandlers()
   registerUserProfileHandlers()
@@ -38,4 +40,4 @@ export function initializeIPC() {
   registerFilesHandlers()
 }
 
-export { initializeMCP, shutdownMCP, initializeSkills, cleanupOAuth, initializeThemeSystem }
+export { initializeMCP, shutdownMCP, initializeSkills, initializeCustomAgents, cleanupOAuth, initializeThemeSystem }

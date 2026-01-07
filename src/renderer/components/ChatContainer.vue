@@ -5,6 +5,7 @@
       v-if="showHoverTrigger"
       class="sidebar-hover-trigger"
       @mouseenter="$emit('show-floating-sidebar')"
+      @mouseleave="$emit('hide-floating-sidebar')"
     ></div>
     <div class="chat-panels">
       <ChatWindow
@@ -130,9 +131,10 @@ defineEmits<{
   'close-agent-settings': []
   'open-agent-settings': []
   'close-agent-create': []
-  'agent-created': [agent: import('@/types').Agent]
+  'agent-created': [agent: import('@/types').CustomAgent]
   'toggle-sidebar': []
   'show-floating-sidebar': []
+  'hide-floating-sidebar': []
 }>()
 
 const sessionsStore = useSessionsStore()

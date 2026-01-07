@@ -148,6 +148,45 @@
       </div>
     </section>
 
+    <!-- Context Compacting -->
+    <section class="settings-section">
+      <h3 class="section-title">Context Compacting</h3>
+      <p class="section-desc">Automatically compress conversation history when context usage reaches the threshold. This helps maintain performance during long conversations.</p>
+
+      <div class="form-group">
+        <label class="form-label">
+          Compact Threshold
+          <span class="label-value">{{ chatSettings.contextCompactThreshold ?? 85 }}%</span>
+        </label>
+        <input
+          :value="chatSettings.contextCompactThreshold ?? 85"
+          @input="updateContextCompactThreshold(($event.target as HTMLInputElement).valueAsNumber)"
+          type="range"
+          min="50"
+          max="100"
+          step="5"
+          class="form-slider"
+        />
+        <div class="slider-labels">
+          <span>50%</span>
+          <span>75%</span>
+          <span>100%</span>
+        </div>
+      </div>
+
+      <!-- Threshold presets -->
+      <div class="preset-buttons">
+        <button
+          v-for="preset in compactThresholdPresets"
+          :key="preset.value"
+          :class="['preset-btn', { active: (chatSettings.contextCompactThreshold ?? 85) === preset.value }]"
+          @click="updateContextCompactThreshold(preset.value)"
+        >
+          {{ preset.label }}
+        </button>
+      </div>
+    </section>
+
     <!-- Advanced Settings (collapsed by default) -->
     <section class="settings-section">
       <button class="advanced-toggle" @click="showAdvanced = !showAdvanced">
@@ -266,6 +305,7 @@ const defaults: ChatSettings = {
   frequencyPenalty: 0,
   branchOpenInSplitScreen: true,
   chatFontSize: 14,
+  contextCompactThreshold: 85,
 }
 
 // Get current chat settings with defaults
@@ -277,6 +317,7 @@ const chatSettings = computed<ChatSettings>(() => ({
   frequencyPenalty: props.settings.chat?.frequencyPenalty ?? defaults.frequencyPenalty,
   branchOpenInSplitScreen: props.settings.chat?.branchOpenInSplitScreen ?? defaults.branchOpenInSplitScreen,
   chatFontSize: props.settings.chat?.chatFontSize ?? defaults.chatFontSize,
+  contextCompactThreshold: props.settings.chat?.contextCompactThreshold ?? defaults.contextCompactThreshold,
 }))
 
 // Presets
@@ -303,6 +344,14 @@ const fontSizePresets = [
   { label: 'Large', value: 16 },
   { label: 'XL', value: 18 },
   { label: '2XL', value: 20 },
+]
+
+const compactThresholdPresets = [
+  { label: 'Early (60%)', value: 60 },
+  { label: 'Normal (75%)', value: 75 },
+  { label: 'Default (85%)', value: 85 },
+  { label: 'Late (95%)', value: 95 },
+  { label: 'Off (100%)', value: 100 },
 ]
 
 function formatNumber(num: number): string {
@@ -348,6 +397,10 @@ function updateBranchOpenInSplitScreen(value: boolean) {
 
 function updateChatFontSize(value: number) {
   updateChatSettings({ chatFontSize: Math.max(12, Math.min(20, value)) })
+}
+
+function updateContextCompactThreshold(value: number) {
+  updateChatSettings({ contextCompactThreshold: Math.max(50, Math.min(100, value)) })
 }
 
 function resetToDefaults() {

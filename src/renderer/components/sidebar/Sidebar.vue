@@ -83,7 +83,7 @@ import SessionList from './SessionList.vue'
 import SessionContextMenu from './SessionContextMenu.vue'
 import SidebarResizeHandle from './SidebarResizeHandle.vue'
 import { useSessionOrganizer, type SessionWithBranches } from './useSessionOrganizer'
-import type { ChatSession, Workspace, Agent } from '@/types'
+import type { ChatSession, Workspace, Agent, CustomAgent } from '@/types'
 
 interface Props {
   collapsed?: boolean
@@ -108,7 +108,7 @@ const emit = defineEmits<{
   'open-workspace-dialog': []
   'edit-workspace': [workspace: Workspace]
   'open-agent-dialog': []
-  'edit-agent': [agent: Agent]
+  'edit-agent': [agent: Agent | CustomAgent]
   'create-new-chat': []
   'open-search': []
   'resize': [width: number]

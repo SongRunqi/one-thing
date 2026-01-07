@@ -347,7 +347,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
-  async function updateSessionWorkingDirectory(sessionId: string, workingDirectory: string | null) {
+  async function updateSessionWorkingDirectory(sessionId: string, workingDirectory: string | null): Promise<{ success: boolean; error?: string }> {
     try {
       const response = await window.electronAPI.updateSessionWorkingDirectory(sessionId, workingDirectory)
       if (response.success) {
@@ -359,9 +359,12 @@ export const useSessionsStore = defineStore('sessions', () => {
             session.workingDirectory = workingDirectory
           }
         }
+        return { success: true }
       }
+      return { success: false, error: response.error || 'Failed to update working directory' }
     } catch (error) {
       console.error('Failed to update session working directory:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
     }
   }
 

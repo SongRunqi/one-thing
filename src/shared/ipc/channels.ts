@@ -51,6 +51,8 @@ export const IPC_CHANNELS = {
   GET_SESSION_TOKEN_USAGE: 'sessions:get-token-usage',
   UPDATE_SESSION_MAX_TOKENS: 'sessions:update-max-tokens',
   CONTEXT_SIZE_UPDATED: 'sessions:context-size-updated',
+  CONTEXT_COMPACT_STARTED: 'sessions:context-compact-started',
+  CONTEXT_COMPACT_COMPLETED: 'sessions:context-compact-completed',
   SET_SESSION_BUILTIN_MODE: 'sessions:set-builtin-mode',
   GET_SESSION_BUILTIN_MODE: 'sessions:get-builtin-mode',
   PLAN_UPDATED: 'sessions:plan-updated',
@@ -87,6 +89,7 @@ export const IPC_CHANNELS = {
   EXECUTE_TOOL: 'tools:execute',
   CANCEL_TOOL: 'tools:cancel',
   UPDATE_TOOL_CALL: 'tools:update-tool-call',
+  REFRESH_ASYNC_TOOLS: 'tools:refresh-async',
   STREAM_TOOL_CALL: 'chat:stream-tool-call',
   STREAM_TOOL_RESULT: 'chat:stream-tool-result',
   UPDATE_CONTENT_PARTS: 'chat:update-content-parts',
@@ -187,4 +190,20 @@ export const IPC_CHANNELS = {
 
   // File rollback related
   FILE_ROLLBACK: 'files:rollback',
+
+  // Directories related (for /cd path completion)
+  DIRS_LIST: 'dirs:list',
+
+  // Custom Agent related
+  CUSTOM_AGENT_GET_ALL: 'custom-agents:get-all',
+  CUSTOM_AGENT_REFRESH: 'custom-agents:refresh',
+  CUSTOM_AGENT_OPEN_DIRECTORY: 'custom-agents:open-directory',
+  CUSTOM_AGENT_CREATE: 'custom-agents:create',
+  CUSTOM_AGENT_UPDATE: 'custom-agents:update',
+  CUSTOM_AGENT_DELETE: 'custom-agents:delete',
+  CUSTOM_AGENT_GET: 'custom-agents:get',
+  CUSTOM_AGENT_GET_AVAILABLE_BUILTIN_TOOLS: 'custom-agents:get-available-builtin-tools',
+  // CustomAgent permission (for tools that need user confirmation within CustomAgent execution)
+  CUSTOM_AGENT_PERMISSION_REQUEST: 'custom-agents:permission-request',
+  CUSTOM_AGENT_PERMISSION_RESPOND: 'custom-agents:permission-respond',
 } as const

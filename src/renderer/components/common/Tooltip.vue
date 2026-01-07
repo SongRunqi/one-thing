@@ -169,7 +169,7 @@ onUnmounted(() => {
   color: #fff;
   background: rgba(24, 24, 27, 0.95);
   border-radius: 6px;
-  white-space: nowrap;
+  white-space: pre-line;
   pointer-events: none;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(8px);

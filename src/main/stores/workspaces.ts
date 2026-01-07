@@ -11,6 +11,7 @@ import {
   deleteJsonFile,
 } from './paths.js'
 import { getCurrentWorkspaceId, setCurrentWorkspaceId } from './app-state.js'
+import { expandPath } from '../tools/core/sandbox.js'
 
 // Get workspaces index path
 function getWorkspacesIndexPath(): string {
@@ -29,13 +30,25 @@ function saveWorkspacesIndex(workspaces: Workspace[]): void {
 
 // Get all workspaces
 export function getWorkspaces(): Workspace[] {
-  return loadWorkspacesIndex()
+  const workspaces = loadWorkspacesIndex()
+  // Expand ~ in workingDirectory for all workspaces (handles legacy stored paths)
+  for (const workspace of workspaces) {
+    if (workspace.workingDirectory) {
+      workspace.workingDirectory = expandPath(workspace.workingDirectory)
+    }
+  }
+  return workspaces
 }
 
 // Get a single workspace by ID
 export function getWorkspace(workspaceId: string): Workspace | undefined {
   const workspaces = loadWorkspacesIndex()
-  return workspaces.find(w => w.id === workspaceId)
+  const workspace = workspaces.find(w => w.id === workspaceId)
+  // Expand ~ in workingDirectory (handles legacy stored paths)
+  if (workspace?.workingDirectory) {
+    workspace.workingDirectory = expandPath(workspace.workingDirectory)
+  }
+  return workspace
 }
 
 // Create a new workspace
@@ -46,11 +59,14 @@ export function createWorkspace(
   workingDirectory?: string,
   systemPrompt?: string  // Optional: deprecated, use Agent instead
 ): Workspace {
+  // Expand ~ to home directory if workingDirectory is provided
+  const expandedWorkingDirectory = workingDirectory ? expandPath(workingDirectory) : undefined
+
   const workspace: Workspace = {
     id: workspaceId,
     name,
     avatar,
-    ...(workingDirectory && { workingDirectory }),
+    ...(expandedWorkingDirectory && { workingDirectory: expandedWorkingDirectory }),
     ...(systemPrompt && { systemPrompt }),  // Only include if provided (for migration)
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -83,7 +99,8 @@ export function updateWorkspace(
     workspace.avatar = updates.avatar
   }
   if (updates.workingDirectory !== undefined) {
-    workspace.workingDirectory = updates.workingDirectory || undefined
+    // Expand ~ to home directory
+    workspace.workingDirectory = updates.workingDirectory ? expandPath(updates.workingDirectory) : undefined
   }
   if (updates.systemPrompt !== undefined) {
     workspace.systemPrompt = updates.systemPrompt

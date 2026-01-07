@@ -103,6 +103,11 @@ export interface ToolSettings {
     enabled: boolean
     autoExecute: boolean
   }>
+  // Per-agent settings (agentId -> settings)
+  // Used to enable/disable individual CustomAgents
+  agents?: Record<string, {
+    enabled: boolean
+  }>
   // Bash tool specific settings
   bash?: BashToolSettings
   // Tool Agent settings (provider/model for tool execution)

@@ -140,7 +140,7 @@ import AgentsContent from './AgentsContent.vue'
 import ArchivedChatsContent from './ArchivedChatsContent.vue'
 import InfographicEditor from './infographic/InfographicEditor.vue'
 import { useMediaStore, type GeneratedMedia } from '@/stores/media'
-import type { Agent } from '@/types'
+import type { CustomAgent } from '@/types'
 import {
   Sparkles,
   Bot,
@@ -161,7 +161,7 @@ const props = defineProps<{
 defineEmits<{
   close: []
   'create-agent': []
-  'edit-agent': [agent: Agent]
+  'edit-agent': [agent: CustomAgent]
 }>()
 
 const mediaStore = useMediaStore()

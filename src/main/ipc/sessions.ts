@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
+import fs from 'node:fs/promises'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { TokenUsage, SessionTokenUsage } from '../../shared/ipc.js'
 import * as store from '../store.js'
@@ -119,6 +120,22 @@ export function registerSessionHandlers() {
 
   // 更新会话工作目录 (sandbox boundary)
   ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY, async (_event, { sessionId, workingDirectory }) => {
+    // 如果是清除目录，直接执行
+    if (workingDirectory === null || workingDirectory === '') {
+      store.updateSessionWorkingDirectory(sessionId, workingDirectory)
+      return { success: true }
+    }
+
+    // 验证目录是否存在
+    try {
+      const stat = await fs.stat(workingDirectory)
+      if (!stat.isDirectory()) {
+        return { success: false, error: `Not a directory: ${workingDirectory}` }
+      }
+    } catch {
+      return { success: false, error: `Directory does not exist: ${workingDirectory}` }
+    }
+
     store.updateSessionWorkingDirectory(sessionId, workingDirectory)
     return { success: true }
   })
@@ -231,6 +248,31 @@ export function registerSessionHandlers() {
       return { success: true, removedId: null }
     } catch (error: any) {
       console.error('[Sessions] Failed to remove files-changed message:', error)
+      return { success: false, error: error.message || 'Failed to remove message' }
+    }
+  })
+
+  // Remove existing git-status message from a session (to keep only one)
+  ipcMain.handle('remove-git-status-message', async (_event, { sessionId }) => {
+    try {
+      const session = store.getSession(sessionId)
+      if (!session) {
+        return { success: false, error: 'Session not found' }
+      }
+
+      // Find existing git-status message
+      const existing = session.messages.find(
+        (m) => m.role === 'system' && m.content.includes('"type":"git-status"')
+      )
+
+      if (existing) {
+        store.deleteMessage(sessionId, existing.id)
+        return { success: true, removedId: existing.id }
+      }
+
+      return { success: true, removedId: null }
+    } catch (error: any) {
+      console.error('[Sessions] Failed to remove git-status message:', error)
       return { success: false, error: error.message || 'Failed to remove message' }
     }
   })

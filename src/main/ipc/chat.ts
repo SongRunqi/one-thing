@@ -26,7 +26,7 @@ import { getSkillsForSession } from './skills.js'
 import { getStorage } from '../storage/index.js'
 import { triggerManager } from '../services/triggers/index.js'
 import { memoryExtractionTrigger } from '../services/triggers/memory-extraction.js'
-import { contextCompactingTrigger } from '../services/triggers/context-compacting.js'
+// Note: contextCompactingTrigger removed - compacting now happens in real-time during tool loop
 import { Permission } from '../permission/index.js'
 import { saveMediaImage } from './media.js'
 import * as modelRegistry from '../services/ai/model-registry.js'
@@ -74,7 +74,7 @@ import {
 
 // Register triggers on module load
 triggerManager.register(memoryExtractionTrigger)
-triggerManager.register(contextCompactingTrigger)
+// Note: contextCompactingTrigger removed - compacting now happens in real-time during tool loop
 
 // ============================================
 // IPC Handlers
@@ -944,7 +944,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
         const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
 
         // Continue the stream (resume after tool confirmation)
-        const result = await runStream(ctx, conversationMessages, toolsForAI, processor, enabledSkills)
+        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, processor, enabledSkills)
 
         // Log request end
         const requestEndTime = Date.now()

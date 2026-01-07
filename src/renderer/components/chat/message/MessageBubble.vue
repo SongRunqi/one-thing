@@ -56,7 +56,7 @@
     <div v-else class="content-display" @click="handleContentClick">
       <!-- Sequential content parts (text and tool calls interleaved) -->
       <template v-if="contentParts && contentParts.length > 0">
-        <template v-for="(part, index) in contentParts" :key="index">
+        <template v-for="(part, index) in contentParts" :key="`${part.type}-${index}-${'turnIndex' in part ? part.turnIndex : ''}`">
           <!-- Text part -->
           <div
             v-if="part.type === 'text'"
@@ -73,7 +73,7 @@
               />
               <ToolCallItem
                 v-for="tc in part.toolCalls"
-                :key="`${tc.id}-${tc.streamingArgs?.length || 0}`"
+                :key="tc.id"
                 :toolCall="tc"
                 @execute="(tc) => emit('executeTool', tc)"
                 @confirm="(tc, r) => emit('confirmTool', tc, r)"
@@ -84,7 +84,7 @@
               <!-- Has steps, only show streaming tool calls without corresponding step -->
               <ToolCallItem
                 v-for="tc in getToolCallsWithoutSteps(part.toolCalls)"
-                :key="`${tc.id}-${tc.streamingArgs?.length || 0}`"
+                :key="tc.id"
                 :toolCall="tc"
                 @execute="(tc) => emit('executeTool', tc)"
                 @confirm="(tc, r) => emit('confirmTool', tc, r)"
@@ -96,6 +96,7 @@
           <StepsPanel
             v-else-if="part.type === 'data-steps' && steps && steps.length > 0"
             :steps="getStepsForTurn(part.turnIndex)"
+            :session-id="sessionId"
             @confirm="(tc, r) => emit('confirmTool', tc, r)"
             @reject="(tc) => emit('rejectTool', tc)"
           />
@@ -117,7 +118,7 @@
             />
             <ToolCallItem
               v-for="tc in toolCalls"
-              :key="`${tc.id}-${tc.streamingArgs?.length || 0}`"
+              :key="tc.id"
               :toolCall="tc"
               @execute="(tc) => emit('executeTool', tc)"
               @confirm="(tc, r) => emit('confirmTool', tc, r)"
@@ -127,7 +128,7 @@
           <template v-else>
             <ToolCallItem
               v-for="tc in getToolCallsWithoutSteps(toolCalls)"
-              :key="`${tc.id}-${tc.streamingArgs?.length || 0}`"
+              :key="tc.id"
               :toolCall="tc"
               @execute="(tc) => emit('executeTool', tc)"
               @confirm="(tc, r) => emit('confirmTool', tc, r)"
@@ -162,6 +163,7 @@ interface Props {
   isStreaming?: boolean
   isEditing?: boolean
   editContent?: string
+  sessionId?: string  // Session ID for AgentExecutionPanel state management
 }
 
 const props = defineProps<Props>()

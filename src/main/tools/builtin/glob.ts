@@ -10,6 +10,7 @@ import * as path from 'path'
 import * as fs from 'fs/promises'
 import { Tool } from '../core/tool.js'
 import { Ripgrep } from '../../utils/ripgrep.js'
+import { expandPath } from '../core/sandbox.js'
 
 // Maximum files to return
 const DEFAULT_LIMIT = 100
@@ -60,8 +61,10 @@ Use this tool when you need to find files by name patterns.`,
 
   async execute(args, ctx) {
     const { pattern } = args
+    // ctx.workingDirectory is already expanded by getSession
     const workDir = ctx.workingDirectory || process.cwd()
-    let searchPath = args.path || workDir
+    // args.path from LLM may contain ~, so expand it
+    let searchPath = args.path ? expandPath(args.path) : workDir
 
     // Resolve relative paths
     if (!path.isAbsolute(searchPath)) {

@@ -151,6 +151,24 @@ import type {
   GetThemeResponse,
   ApplyThemeResponse,
   RefreshThemesResponse,
+  // CustomAgent types
+  CustomAgent,
+  CustomAgentConfig,
+  CustomAgentSource,
+  CustomToolDefinition,
+  CustomToolParameter,
+  CustomToolParameterType,
+  CustomToolExecution,
+  BashExecution,
+  HttpExecution,
+  BuiltinExecution,
+  CustomToolResult,
+  CustomAgentStep,
+  CustomAgentResult,
+  GetCustomAgentsResponse,
+  CreateCustomAgentResponse,
+  UpdateCustomAgentResponse,
+  DeleteCustomAgentResponse,
 } from '../../shared/ipc'
 
 export type {
@@ -241,6 +259,20 @@ export type {
   // Theme types
   ThemeMeta,
   Theme,
+  // CustomAgent types
+  CustomAgent,
+  CustomAgentConfig,
+  CustomAgentSource,
+  CustomToolDefinition,
+  CustomToolParameter,
+  CustomToolParameterType,
+  CustomToolExecution,
+  BashExecution,
+  HttpExecution,
+  BuiltinExecution,
+  CustomToolResult,
+  CustomAgentStep,
+  CustomAgentResult,
 }
 
 // Gallery image type for image preview window
@@ -311,9 +343,12 @@ export interface ElectronAPI {
   // System message methods (for /files command persistence)
   addSystemMessage: (sessionId: string, message: { id: string; role: string; content: string; timestamp: number }) => Promise<{ success: boolean; error?: string }>
   removeFilesChangedMessage: (sessionId: string) => Promise<{ success: boolean; removedId?: string | null; error?: string }>
+  removeGitStatusMessage: (sessionId: string) => Promise<{ success: boolean; removedId?: string | null; error?: string }>
   // Plan update listener (for Planning workflow)
   onPlanUpdated: (callback: (data: { sessionId: string; plan: SessionPlan }) => void) => () => void
   onContextSizeUpdated: (callback: (data: { sessionId: string; contextSize: number }) => void) => () => void
+  onContextCompactStarted: (callback: (data: { sessionId: string }) => void) => () => void
+  onContextCompactCompleted: (callback: (data: { sessionId: string; success: boolean; error?: string }) => void) => () => void
   updateSessionMaxTokens: (sessionId: string, maxTokens: number) => Promise<{ success: boolean; error?: string }>
   getSettings: () => Promise<GetSettingsResponse>
   saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>
@@ -358,6 +393,22 @@ export interface ElectronAPI {
   respondToPermission: (request: { sessionId: string; permissionId: string; response: PermissionResponse }) => Promise<{ success: boolean; error?: string }>
   getPendingPermissions: (sessionId: string) => Promise<{ success: boolean; pending?: PermissionInfo[]; error?: string }>
   onPermissionRequest: (callback: (info: PermissionInfo) => void) => () => void
+
+  // CustomAgent permission methods
+  respondToCustomAgentPermission: (requestId: string, decision: 'allow' | 'always' | 'reject') => Promise<{ success: boolean }>
+  onCustomAgentPermissionRequest: (callback: (data: {
+    requestId: string
+    sessionId: string
+    messageId: string
+    stepId: string
+    toolCall: {
+      id: string
+      toolName: string
+      arguments: Record<string, unknown>
+      commandType?: 'read-only' | 'dangerous' | 'forbidden'
+      error?: string
+    }
+  }) => void) => () => void
 
   // MCP methods
   mcpGetServers: () => Promise<MCPGetServersResponse>
@@ -481,6 +532,18 @@ export interface ElectronAPI {
 
   // File rollback (for /files command)
   rollbackFile: (options: { filePath: string; originalContent: string; isNew: boolean }) => Promise<{ success: boolean; error?: string }>
+
+  // Directories listing (for /cd path completion)
+  listDirs: (options: { basePath: string; query?: string; limit?: number }) => Promise<{ success: boolean; dirs: string[]; basePath: string; error?: string }>
+
+  // CustomAgent methods
+  getCustomAgents: (workingDirectory?: string) => Promise<GetCustomAgentsResponse>
+  refreshCustomAgents: (workingDirectory?: string) => Promise<GetCustomAgentsResponse>
+  openCustomAgentsDirectory: () => Promise<{ success: boolean; error?: string }>
+  getCustomAgent: (agentId: string, workingDirectory?: string) => Promise<{ success: boolean; agent?: CustomAgent; error?: string }>
+  createCustomAgent: (config: Omit<CustomAgentConfig, 'id' | 'createdAt' | 'updatedAt'>, source?: 'user' | 'project', workingDirectory?: string) => Promise<CreateCustomAgentResponse>
+  updateCustomAgent: (agentId: string, updates: Partial<Omit<CustomAgentConfig, 'id' | 'createdAt' | 'updatedAt'>>, workingDirectory?: string) => Promise<UpdateCustomAgentResponse>
+  deleteCustomAgent: (agentId: string, workingDirectory?: string) => Promise<DeleteCustomAgentResponse>
 }
 
 declare global {

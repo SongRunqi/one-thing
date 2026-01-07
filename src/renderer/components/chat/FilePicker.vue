@@ -23,7 +23,7 @@
             <polyline points="14 2 14 8 20 8" />
           </svg>
         </div>
-        <div class="file-path">{{ file }}</div>
+        <div class="file-path">{{ getRelativePath(file) }}</div>
       </div>
     </div>
     <div class="file-list-empty" v-else-if="!isLoading && query">
@@ -152,6 +152,19 @@ function scrollToSelected() {
 
 function selectFile(filePath: string) {
   emit('select', filePath)
+}
+
+// Get relative path for display (keeps full path for selection)
+function getRelativePath(absolutePath: string): string {
+  if (props.cwd && absolutePath.startsWith(props.cwd)) {
+    let relativePath = absolutePath.slice(props.cwd.length)
+    // Remove leading slash
+    if (relativePath.startsWith('/')) {
+      relativePath = relativePath.slice(1)
+    }
+    return relativePath || absolutePath
+  }
+  return absolutePath
 }
 
 onMounted(() => {

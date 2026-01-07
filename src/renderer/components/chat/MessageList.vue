@@ -489,13 +489,45 @@ function handleScroll() {
 
 // Track permission request cleanup function
 let cleanupPermissionListener: (() => void) | null = null
+let cleanupCustomAgentPermissionListener: (() => void) | null = null
 
 // Get the first pending permission request (tool call requiring confirmation)
+// Searches both top-level toolCalls AND nested childSteps (for CustomAgent sub-tool calls)
 const currentPendingPermission = computed<{ message: ChatMessage; toolCall: ToolCall } | null>(() => {
   for (const message of props.messages) {
+    // 1. Check top-level toolCalls (normal tool calls)
     const pendingToolCall = message.toolCalls?.find(tc => tc.requiresConfirmation)
     if (pendingToolCall) {
       return { message, toolCall: pendingToolCall }
+    }
+
+    // 2. Check nested childSteps (CustomAgent sub-tool calls)
+    // CustomAgent steps are stored as childSteps of the parent custom-agent step
+    for (const step of message.steps || []) {
+      if (step.childSteps?.length) {
+        for (const childStep of step.childSteps) {
+          // Check if this child step has a toolCall that requires confirmation
+          if (childStep.toolCall?.requiresConfirmation) {
+            return { message, toolCall: childStep.toolCall }
+          }
+          // Also check for customAgentPermissionId (set by handleCustomAgentPermissionRequest)
+          if ((childStep as any).customAgentPermissionId && childStep.status === 'awaiting-confirmation') {
+            // Construct a toolCall-like object from the step if toolCall is missing
+            // Use type assertion since customAgentPermissionId is a custom extension
+            const toolCallFromStep = (childStep.toolCall || {
+              id: childStep.id,
+              toolId: childStep.type === 'command' ? 'bash' : childStep.type,
+              toolName: childStep.title?.split(':')[0] || 'unknown',
+              arguments: childStep.toolCall?.arguments || {},
+              status: 'pending' as const,
+              timestamp: childStep.timestamp,
+              requiresConfirmation: true,
+            }) as ToolCall & { customAgentPermissionId?: string }
+            toolCallFromStep.customAgentPermissionId = (childStep as any).customAgentPermissionId
+            return { message, toolCall: toolCallFromStep as ToolCall }
+          }
+        }
+      }
     }
   }
   return null
@@ -599,6 +631,92 @@ function handlePermissionRequest(info: {
   }
 }
 
+// Handle incoming CustomAgent permission requests from backend
+// CustomAgent has nested steps that need permission (e.g., bash commands within a CustomAgent)
+function handleCustomAgentPermissionRequest(info: {
+  requestId: string
+  sessionId: string
+  messageId: string
+  stepId: string
+  toolCall: {
+    id: string
+    toolName: string
+    arguments: Record<string, unknown>
+    commandType?: 'read-only' | 'dangerous' | 'forbidden'
+    error?: string
+  }
+}) {
+  console.log('[Frontend] Received CustomAgent permission request:', info)
+
+  // Use effectiveSessionId (from props or global) instead of just global currentSession
+  const panelSessionId = effectiveSessionId.value
+  if (!panelSessionId || panelSessionId !== info.sessionId) {
+    console.log('[Frontend] CustomAgent permission request for different session, ignoring')
+    return
+  }
+
+  // Find the message
+  const message = props.messages.find(m => m.id === info.messageId)
+  if (!message) {
+    console.log('[Frontend] Message not found for CustomAgent permission request:', info.messageId)
+    return
+  }
+
+  // Find the nested step that needs permission
+  // The stepId from CustomAgent is like "toolName-toolCallId"
+  // We need to search in childSteps of parent steps
+  let foundStep: any = null
+  let parentStep: any = null
+
+  for (const step of message.steps || []) {
+    // Check if this step has childSteps that contain our target
+    if (step.childSteps?.length) {
+      for (const childStep of step.childSteps) {
+        // Match by toolCallId or by the tool call info
+        if (childStep.toolCallId === info.toolCall.id ||
+            (childStep.toolCall?.toolName === info.toolCall.toolName &&
+             JSON.stringify(childStep.toolCall?.arguments) === JSON.stringify(info.toolCall.arguments))) {
+          foundStep = childStep
+          parentStep = step
+          break
+        }
+      }
+    }
+    if (foundStep) break
+  }
+
+  if (foundStep && parentStep) {
+    // Store the CustomAgent permission request ID on the step
+    (foundStep as any).customAgentPermissionId = info.requestId
+    foundStep.status = 'awaiting-confirmation'
+
+    // Also set on toolCall if present
+    if (foundStep.toolCall) {
+      (foundStep.toolCall as any).customAgentPermissionId = info.requestId
+      foundStep.toolCall.requiresConfirmation = true
+      foundStep.toolCall.status = 'pending'
+      foundStep.toolCall.commandType = info.toolCall.commandType
+    }
+
+    // Force Vue reactivity by replacing the parent step
+    const parentIndex = message.steps!.findIndex(s => s.id === parentStep.id)
+    if (parentIndex >= 0) {
+      const newChildSteps = parentStep.childSteps!.map((c: any) =>
+        c === foundStep ? { ...foundStep } : c
+      )
+      message.steps![parentIndex] = {
+        ...parentStep,
+        childSteps: newChildSteps,
+      }
+      message.steps = [...message.steps!]
+    }
+
+    console.log('[Frontend] Updated child step with CustomAgent permission request:', foundStep.id || info.stepId)
+  } else {
+    console.log('[Frontend] No matching child step found for CustomAgent permission request')
+  }
+}
+
 // Setup event listeners
 onMounted(() => {
   if (messageListRef.value) {
@@ -608,6 +726,9 @@ onMounted(() => {
 
   // Listen for permission requests from backend
   cleanupPermissionListener = window.electronAPI.onPermissionRequest(handlePermissionRequest)
+
+  // Listen for CustomAgent permission requests from backend
+  cleanupCustomAgentPermissionListener = window.electronAPI.onCustomAgentPermissionRequest(handleCustomAgentPermissionRequest)
 })
 
 onUnmounted(() => {
@@ -631,6 +752,11 @@ onUnmounted(() => {
   if (cleanupPermissionListener) {
     cleanupPermissionListener()
     cleanupPermissionListener = null
+  }
+  // Cleanup CustomAgent permission listener
+  if (cleanupCustomAgentPermissionListener) {
+    cleanupCustomAgentPermissionListener()
+    cleanupCustomAgentPermissionListener = null
   }
 })
 
@@ -815,6 +941,51 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'always' = 'o
   const currentSession = panelSession.value
   if (!currentSession) return
 
+  // Check if this is a CustomAgent permission request
+  const customAgentPermissionId = (toolCall as any).customAgentPermissionId
+  if (customAgentPermissionId) {
+    console.log(`[Frontend] Responding to CustomAgent permission ${customAgentPermissionId} with ${response}`)
+    try {
+      // Map 'once'/'always' to the decision format expected by CustomAgent
+      const decision = response === 'once' ? 'allow' : 'always'
+      await window.electronAPI.respondToCustomAgentPermission(customAgentPermissionId, decision)
+
+      // Update UI state - find the step in nested childSteps
+      for (const message of props.messages) {
+        for (const parentStep of message.steps || []) {
+          if (parentStep.childSteps?.length) {
+            const childIndex = parentStep.childSteps.findIndex(
+              (c: any) => c.customAgentPermissionId === customAgentPermissionId ||
+                          c.toolCall?.customAgentPermissionId === customAgentPermissionId
+            )
+            if (childIndex >= 0) {
+              const childStep = parentStep.childSteps[childIndex]
+              childStep.status = 'running'
+              delete (childStep as any).customAgentPermissionId
+              if (childStep.toolCall) {
+                childStep.toolCall.status = 'executing'
+                childStep.toolCall.requiresConfirmation = false
+                delete (childStep.toolCall as any).customAgentPermissionId
+              }
+              // Force Vue reactivity
+              const parentIndex = message.steps!.findIndex(s => s.id === parentStep.id)
+              if (parentIndex >= 0) {
+                const newChildSteps = [...parentStep.childSteps]
+                newChildSteps[childIndex] = { ...childStep }
+                message.steps![parentIndex] = { ...parentStep, childSteps: newChildSteps }
+                message.steps = [...message.steps!]
+              }
+              break
+            }
+          }
+        }
+      }
+      return
+    } catch (error) {
+      console.error('Failed to respond to CustomAgent permission:', error)
+    }
+  }
+
   // Find the message containing this tool call
   const message = props.messages.find(m =>
     m.toolCalls?.some(tc => tc.id === toolCall.id)
@@ -968,6 +1139,51 @@ async function handleRejectTool(toolCall: any) {
   // Update the tool call status to cancelled/rejected
   const currentSession = panelSession.value
   if (!currentSession) return
+
+  // Check if this is a CustomAgent permission request
+  const customAgentPermissionId = (toolCall as any).customAgentPermissionId
+  if (customAgentPermissionId) {
+    console.log(`[Frontend] Rejecting CustomAgent permission ${customAgentPermissionId}`)
+    try {
+      await window.electronAPI.respondToCustomAgentPermission(customAgentPermissionId, 'reject')
+
+      // Update UI state - find the step in nested childSteps
+      for (const message of props.messages) {
+        for (const parentStep of message.steps || []) {
+          if (parentStep.childSteps?.length) {
+            const childIndex = parentStep.childSteps.findIndex(
+              (c: any) => c.customAgentPermissionId === customAgentPermissionId ||
+                          c.toolCall?.customAgentPermissionId === customAgentPermissionId
+            )
+            if (childIndex >= 0) {
+              const childStep = parentStep.childSteps[childIndex]
+              childStep.status = 'failed'
+              childStep.error = 'Command rejected by user'
+              delete (childStep as any).customAgentPermissionId
+              if (childStep.toolCall) {
+                childStep.toolCall.status = 'cancelled'
+                childStep.toolCall.error = 'Command rejected by user'
+                childStep.toolCall.requiresConfirmation = false
+                delete (childStep.toolCall as any).customAgentPermissionId
+              }
+              // Force Vue reactivity
+              const parentIndex = message.steps!.findIndex(s => s.id === parentStep.id)
+              if (parentIndex >= 0) {
+                const newChildSteps = [...parentStep.childSteps]
+                newChildSteps[childIndex] = { ...childStep }
+                message.steps![parentIndex] = { ...parentStep, childSteps: newChildSteps }
+                message.steps = [...message.steps!]
+              }
+              break
+            }
+          }
+        }
+      }
+      return
+    } catch (error) {
+      console.error('Failed to respond to CustomAgent permission:', error)
+    }
+  }
 
   // Find the message containing this tool call and update its status
   const message = props.messages.find(m =>

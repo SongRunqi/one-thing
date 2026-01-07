@@ -24,36 +24,40 @@
       </button>
 
       <!-- Workspace avatars -->
-      <button
+      <Tooltip
         v-for="workspace in workspacesStore.workspaces"
         :key="workspace.id"
-        class="workspace-icon"
-        :class="{ active: workspace.id === workspacesStore.currentWorkspaceId }"
-        :style="iconStyle"
-        :title="workspace.name"
-        @click="switchWorkspace(workspace.id)"
-        @contextmenu.prevent="openContextMenu($event, workspace)"
+        :text="getWorkspaceTooltip(workspace)"
+        position="top"
       >
-        <span
-          v-if="workspace.avatar.type === 'emoji'"
-          class="workspace-emoji"
-          :style="emojiStyle"
+        <button
+          class="workspace-icon"
+          :class="{ active: workspace.id === workspacesStore.currentWorkspaceId }"
+          :style="iconStyle"
+          @click="switchWorkspace(workspace.id)"
+          @contextmenu.prevent="openContextMenu($event, workspace)"
         >
-          {{ workspace.avatar.value }}
-        </span>
-        <img
-          v-else
-          :src="'file://' + workspace.avatar.value"
-          class="workspace-image"
-          :style="{
-            width: iconSizeConfig.innerSize + 'px',
-            height: iconSizeConfig.innerSize + 'px',
-            '-webkit-mask-image': `url('file://${workspace.avatar.value}')`,
-            'mask-image': `url('file://${workspace.avatar.value}')`
-          }"
-          alt=""
-        />
-      </button>
+          <span
+            v-if="workspace.avatar.type === 'emoji'"
+            class="workspace-emoji"
+            :style="emojiStyle"
+          >
+            {{ workspace.avatar.value }}
+          </span>
+          <img
+            v-else
+            :src="'file://' + workspace.avatar.value"
+            class="workspace-image"
+            :style="{
+              width: iconSizeConfig.innerSize + 'px',
+              height: iconSizeConfig.innerSize + 'px',
+              '-webkit-mask-image': `url('file://${workspace.avatar.value}')`,
+              'mask-image': `url('file://${workspace.avatar.value}')`
+            }"
+            alt=""
+          />
+        </button>
+      </Tooltip>
     </div>
 
     <!-- Right: Add Button -->
@@ -110,6 +114,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useSessionsStore } from '@/stores/sessions'
 import type { Workspace } from '@/types'
 import CreatePanel from './CreatePanel.vue'
+import Tooltip from './common/Tooltip.vue'
 import { Images, MessageSquare, Plus } from 'lucide-vue-next'
 
 defineProps<{
@@ -262,6 +267,14 @@ const contextMenuStyle = computed(() => {
     top: y + 'px'
   }
 })
+
+// Generate tooltip with name and directory
+function getWorkspaceTooltip(workspace: Workspace): string {
+  if (workspace.workingDirectory) {
+    return `${workspace.name}\n${workspace.workingDirectory}`
+  }
+  return workspace.name
+}
 
 async function switchToDefault() {
   await workspacesStore.switchWorkspace(null)

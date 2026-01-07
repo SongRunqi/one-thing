@@ -26,10 +26,15 @@ export {
   type EmbeddingModelInfo,
 } from './model-registry.js'
 
-// Token counter
+// Token counter utilities
 export {
-  estimateTokens,
-  calculateMessageTokens,
-  calculateSessionTokens,
   countMessagesAfter,
 } from './token-counter.js'
+
+// Context compacting
+export {
+  shouldCompact,
+  executeCompacting,
+  getCompactThreshold,
+  COMPACTING_CONFIG,
+} from './context-compacting.js'

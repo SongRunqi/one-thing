@@ -63,6 +63,54 @@ Your response:
 **Remember: Use the plan tool proactively. Don't wait for the user to ask for a plan.**
 `
 
+// Tool usage guidance - controls how tools are selected and executed
+const TOOL_USAGE_GUIDANCE = `
+## Tool Usage
+
+### Selection Priority
+
+**File Operations - Use specialized tools:**
+| Operation | ❌ Avoid | ✅ Use |
+|-----------|----------|--------|
+| Read file | cat, head, tail, less | read |
+| Write file | echo >, cat <<EOF | write |
+| Edit file | sed, awk | edit |
+| Search content | grep, rg | grep |
+| Find files | find, ls | glob |
+
+**Bash is ONLY for:**
+- System commands (git, npm, docker, etc.)
+- Running scripts and builds
+- Commands without a specialized tool equivalent
+
+### Execution Strategy
+
+**Batch independent calls:** Return multiple tool calls in ONE response to save round-trips.
+\`\`\`
+✅ Need to read 3 files? → Return read("a.ts"), read("b.ts"), read("c.ts") together
+   (executed sequentially, but only 1 LLM turn)
+❌ Wrong: Return read("a.ts"), wait for result, return read("b.ts"), wait...
+   (wastes 3 LLM turns)
+\`\`\`
+
+**Separate dependent calls:** When result of one call is needed for another, use separate responses.
+\`\`\`
+Response 1: glob("*.config.ts") → returns ["vite.config.ts"]
+Response 2: read("vite.config.ts") ← uses result from response 1
+\`\`\`
+
+### Parameter Rules
+- **Never guess** file paths, function names, or any values
+- **Never use placeholders** like "<path>" or "TODO"
+- **Use exact values** from user input or previous tool results
+- **Omit optional params** - don't set them to null/undefined
+
+### Before Modifying Files
+1. **Always read first** - Understand current state before changes
+2. **Use edit for changes** - Prefer edit() over write() for existing files
+3. **Verify paths exist** - Use glob() if unsure about file location
+`
+
 /**
  * Build plan context prompt for injection into system prompt
  * Shows current plan status so AI can continue working on it
@@ -417,9 +465,10 @@ Base directory: ${baseDir} (referred to as ~)
     prompt += `\n\n# Operating System Context\n${osPrompt}`
   }
 
-  // Add planning guidance when tools are available
+  // Add planning and tool usage guidance when tools are available
   if (hasTools) {
     prompt += '\n' + PLANNING_GUIDANCE
+    prompt += '\n' + TOOL_USAGE_GUIDANCE
   }
 
   // Add current plan context if available

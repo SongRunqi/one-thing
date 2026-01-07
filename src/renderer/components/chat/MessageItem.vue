@@ -26,6 +26,7 @@
       v-else-if="message.role === 'system'"
       :content="message.content"
       :timestamp="message.timestamp"
+      :sessionId="message.sessionId"
     />
 
     <!-- Normal user/assistant message -->
@@ -62,6 +63,7 @@
           :isStreaming="message.isStreaming"
           :isEditing="isEditing"
           :editContent="editContent"
+          :sessionId="message.sessionId"
           @submitEdit="handleSubmitEdit"
           @cancelEdit="handleCancelEdit"
           @openImage="handleOpenImage"
@@ -85,6 +87,7 @@
         <StepsPanel
           v-if="message.role === 'assistant' && message.steps && message.steps.length > 0 && (!message.contentParts || !message.contentParts.some(p => p.type === 'data-steps'))"
           :steps="message.steps"
+          :session-id="message.sessionId"
           @confirm="handleToolConfirm"
           @reject="handleToolReject"
         />

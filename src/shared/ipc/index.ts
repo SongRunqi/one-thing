@@ -286,6 +286,36 @@ export type {
   BashPermissionRules,
 } from './permissions.js'
 
+// Custom Agent types
+export type {
+  CustomToolParameterType,
+  CustomToolParameter,
+  BashExecution,
+  HttpExecution,
+  BuiltinExecution,
+  CustomToolExecution,
+  CustomToolDefinition,
+  CustomAgentSource,
+  CustomAgent,
+  CustomAgentConfig,
+  CustomToolResult,
+  CustomAgentStep,
+  CustomAgentResult,
+  GetCustomAgentsRequest,
+  GetCustomAgentsResponse,
+  InvokeCustomAgentRequest,
+  InvokeCustomAgentResponse,
+  RefreshCustomAgentsRequest,
+  RefreshCustomAgentsResponse,
+  CustomAgentJsonFile,
+  CreateCustomAgentRequest,
+  CreateCustomAgentResponse,
+  UpdateCustomAgentRequest,
+  UpdateCustomAgentResponse,
+  DeleteCustomAgentRequest,
+  DeleteCustomAgentResponse,
+} from './custom-agents.js'
+
 // UIMessage types
 export type {
   ToolUIState,
