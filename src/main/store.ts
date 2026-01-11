@@ -60,17 +60,6 @@ export {
   getCurrentWorkspaceId,
   setCurrentWorkspaceId,
 
-  // Agents
-  getAgents,
-  getAgent,
-  createAgent,
-  updateAgent,
-  deleteAgent,
-  uploadAgentAvatar,
-  getPinnedAgentIds,
-  pinAgent,
-  unpinAgent,
-
   // Initialization
   initializeStores,
 } from './stores/index.js'

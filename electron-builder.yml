@@ -15,8 +15,12 @@ extraResources:
     to: skills
     filter:
       - "**/*"
-  - from: resources/prompts
-    to: prompts
+  - from: resources/templates
+    to: templates
+    filter:
+      - "**/*"
+  - from: resources/docs
+    to: docs
     filter:
       - "**/*"
 

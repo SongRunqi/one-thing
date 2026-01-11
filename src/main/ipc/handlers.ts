@@ -8,7 +8,6 @@ import { registerMCPHandlers, initializeMCP, shutdownMCP } from './mcp.js'
 import { registerSkillHandlers, initializeSkills } from './skills.js'
 import { registerCustomAgentHandlers, initializeCustomAgents } from './custom-agents.js'
 import { registerWorkspaceHandlers } from './workspaces.js'
-import { registerAgentHandlers } from './agents.js'
 import { registerUserProfileHandlers } from './user-profile.js'
 import { registerAgentMemoryHandlers } from './agent-memory.js'
 import { registerShellHandlers } from './shell.js'
@@ -17,6 +16,8 @@ import { registerPermissionHandlers } from './permission.js'
 import { registerOAuthHandlers, cleanupOAuth } from './oauth.js'
 import { registerThemeHandlers, initializeThemeSystem } from './themes.js'
 import { registerFilesHandlers } from './files.js'
+import { registerFileTreeHandlers } from './file-tree.js'
+import { registerPluginHandlers } from './plugins.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -29,7 +30,6 @@ export function initializeIPC() {
   registerSkillHandlers()
   registerCustomAgentHandlers()
   registerWorkspaceHandlers()
-  registerAgentHandlers()
   registerUserProfileHandlers()
   registerAgentMemoryHandlers()
   registerShellHandlers()
@@ -38,6 +38,8 @@ export function initializeIPC() {
   registerOAuthHandlers()
   registerThemeHandlers()
   registerFilesHandlers()
+  registerFileTreeHandlers()
+  registerPluginHandlers()
 }
 
 export { initializeMCP, shutdownMCP, initializeSkills, initializeCustomAgents, cleanupOAuth, initializeThemeSystem }

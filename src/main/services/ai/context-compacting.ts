@@ -8,34 +8,18 @@
  * this service uses actual token counts from the AI SDK response.
  */
 
+import * as fs from 'fs'
 import type { ChatMessage } from '../../../shared/ipc.js'
 import { generateChatResponse } from '../../providers/index.js'
-import { updateSessionSummary, getSession } from '../../stores/sessions.js'
+import { updateSessionSummary, getSession, insertMessageAfter } from '../../stores/sessions.js'
+import { v4 as uuidv4 } from 'uuid'
 import { getSettings } from '../../stores/settings.js'
-import { countMessagesAfter } from './token-counter.js'
+import { getSessionHistoryDir, getSessionHistoryPath } from '../../stores/paths.js'
+import { getPromptManager } from '../prompt/prompt-manager.js'
+import type { ContextCompactVariables } from '../prompt/types.js'
 
 // Configuration
 const DEFAULT_COMPACT_THRESHOLD = 85  // Default: compact at 85% context usage
-const MIN_MESSAGES_FOR_SUMMARY = 10   // Need at least 10 messages to summarize
-
-// Summary generation prompt (English)
-const SUMMARY_PROMPT = `You are a conversation summarization assistant. Please read the following conversation history and generate a structured summary.
-
-## Conversation History
-{messages}
-
-## Task
-Generate a summary that includes:
-1. **Main Topics**: What was primarily discussed
-2. **Key Decisions**: Important decisions or conclusions made
-3. **Context Information**: User preferences, conventions, important background
-4. **Ongoing Tasks**: Incomplete items or to-dos
-
-## Requirements
-- Output in clear Markdown format
-- Keep it within 500 words
-- Preserve all important technical details and context
-- Use third person description ("The user mentioned...", "The assistant suggested...")`
 
 /**
  * Check if context compacting should be triggered based on actual token usage
@@ -97,21 +81,92 @@ export interface CompactingContext {
 export interface CompactingResult {
   success: boolean
   summary?: string
+  historyFilePath?: string  // Path to the full conversation history backup
   error?: string
 }
 
 /**
+ * Write full conversation history to a file before compacting
+ * This allows the AI to reference the original conversation if needed
+ */
+function writeHistoryBackup(sessionId: string, messages: ChatMessage[]): string | undefined {
+  try {
+    // Ensure directory exists
+    const historyDir = getSessionHistoryDir()
+    if (!fs.existsSync(historyDir)) {
+      fs.mkdirSync(historyDir, { recursive: true })
+    }
+
+    const historyPath = getSessionHistoryPath(sessionId)
+
+    // Build markdown content
+    const lines: string[] = [
+      '# Conversation History Backup',
+      '',
+      `> Session ID: ${sessionId}`,
+      `> Backup Time: ${new Date().toISOString()}`,
+      `> Total Messages: ${messages.length}`,
+      '',
+      '---',
+      '',
+    ]
+
+    for (const msg of messages) {
+      if (msg.role !== 'user' && msg.role !== 'assistant') continue
+
+      const role = msg.role === 'user' ? '👤 User' : '🤖 Assistant'
+      const timestamp = new Date(msg.timestamp).toLocaleString()
+
+      lines.push(`## ${role}`)
+      lines.push(`*${timestamp}*`)
+      lines.push('')
+      lines.push(msg.content)
+      lines.push('')
+
+      // Include tool calls summary if any
+      if (msg.toolCalls && msg.toolCalls.length > 0) {
+        lines.push('**Tool Calls:**')
+        for (const tc of msg.toolCalls) {
+          const status = tc.status === 'completed' ? '✓' : tc.status === 'failed' ? '✗' : '...'
+          lines.push(`- [${status}] ${tc.toolName}`)
+        }
+        lines.push('')
+      }
+
+      lines.push('---')
+      lines.push('')
+    }
+
+    fs.writeFileSync(historyPath, lines.join('\n'), 'utf-8')
+    console.log(`[ContextCompacting] History backup saved: ${historyPath}`)
+    return historyPath
+  } catch (error) {
+    console.error('[ContextCompacting] Failed to write history backup:', error)
+    return undefined
+  }
+}
+
+/**
+ * Get the history file path for a session (if it exists)
+ */
+export function getHistoryFilePath(sessionId: string): string | null {
+  const historyPath = getSessionHistoryPath(sessionId)
+  return fs.existsSync(historyPath) ? historyPath : null
+}
+
+/**
  * Execute context compacting - generate a summary of the conversation
+ * Triggered only by context size threshold, not message count
  */
 export async function executeCompacting(ctx: CompactingContext): Promise<CompactingResult> {
   const { sessionId, messages, providerId, providerConfig } = ctx
 
   console.log('[ContextCompacting] Starting context compacting for session:', sessionId)
 
-  // Check minimum messages requirement
-  if (messages.length < MIN_MESSAGES_FOR_SUMMARY) {
-    console.log(`[ContextCompacting] Not enough messages (${messages.length} < ${MIN_MESSAGES_FOR_SUMMARY})`)
-    return { success: false, error: 'Not enough messages to summarize' }
+  // Only check if there are any messages to summarize
+  if (messages.length === 0) {
+    console.log('[ContextCompacting] No messages to summarize')
+    return { success: false, error: 'No messages to summarize' }
   }
 
   // Get current session to check for existing summary
@@ -120,6 +175,10 @@ export async function executeCompacting(ctx: CompactingContext): Promise<Compact
     return { success: false, error: 'Session not found' }
   }
 
+  // Write full conversation history to file BEFORE compacting
+  // This preserves the original context for potential recovery
+  const historyFilePath = writeHistoryBackup(sessionId, messages)
+
   // Determine which messages to include in the summary
   let messagesToSummarize = messages
   let existingSummary = ''
@@ -127,15 +186,15 @@ export async function executeCompacting(ctx: CompactingContext): Promise<Compact
   if (session.summary && session.summaryUpToMessageId) {
     const summaryIndex = messages.findIndex(m => m.id === session.summaryUpToMessageId)
     if (summaryIndex !== -1) {
-      // Check if we have new messages since last summary
-      const newMessagesCount = countMessagesAfter(messages, session.summaryUpToMessageId)
-      if (newMessagesCount < 5) {
-        console.log(`[ContextCompacting] Only ${newMessagesCount} new messages since last summary, skipping`)
-        return { success: false, error: 'Not enough new messages since last summary' }
-      }
-      // Include existing summary context and new messages
+      // Include existing summary context and summarize only new messages
       existingSummary = session.summary
       messagesToSummarize = messages.slice(summaryIndex + 1)
+
+      // If no new messages since last summary, nothing to do
+      if (messagesToSummarize.length === 0) {
+        console.log('[ContextCompacting] No new messages since last summary')
+        return { success: false, error: 'No new messages since last summary' }
+      }
     }
   }
 
@@ -148,9 +207,10 @@ export async function executeCompacting(ctx: CompactingContext): Promise<Compact
     ]
   }
 
-  // Generate summary
+  // Generate summary using template
   const formattedMessages = formatMessagesForSummary(summaryMessages)
-  const prompt = SUMMARY_PROMPT.replace('{messages}', formattedMessages)
+  const promptManager = getPromptManager()
+  const prompt = promptManager.render('main/context-compact', { messages: formattedMessages } as ContextCompactVariables)
 
   try {
     const summary = await generateChatResponse(
@@ -180,13 +240,32 @@ export async function executeCompacting(ctx: CompactingContext): Promise<Compact
     if (saveSuccess) {
       console.log('[ContextCompacting] Summary saved successfully')
       console.log('[ContextCompacting] Summary preview:', summary.slice(0, 200) + '...')
-      return { success: true, summary: summary.trim() }
+      if (historyFilePath) {
+        console.log('[ContextCompacting] Full history available at:', historyFilePath)
+      }
+
+      // Add a system message to show the compact summary in the chat
+      // Insert it after the last summarized message for correct UI position
+      const compactMessage: ChatMessage = {
+        id: uuidv4(),
+        sessionId,
+        role: 'system',
+        content: JSON.stringify({
+          type: 'context-compact',
+          summary: summary.trim(),
+        }),
+        timestamp: Date.now(),
+      }
+      insertMessageAfter(sessionId, lastMessage.id, compactMessage)
+      console.log('[ContextCompacting] Compact message inserted after:', lastMessage.id)
+
+      return { success: true, summary: summary.trim(), historyFilePath }
     } else {
-      return { success: false, error: 'Failed to save summary' }
+      return { success: false, error: 'Failed to save summary', historyFilePath }
     }
   } catch (error) {
     console.error('[ContextCompacting] Failed to generate summary:', error)
-    return { success: false, error: String(error) }
+    return { success: false, error: String(error), historyFilePath }
   }
 }
 
@@ -195,5 +274,4 @@ export async function executeCompacting(ctx: CompactingContext): Promise<Compact
  */
 export const COMPACTING_CONFIG = {
   defaultThreshold: DEFAULT_COMPACT_THRESHOLD,
-  minMessagesForSummary: MIN_MESSAGES_FOR_SUMMARY,
 }

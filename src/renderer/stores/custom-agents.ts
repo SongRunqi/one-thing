@@ -17,11 +17,30 @@ import { useWorkspacesStore } from './workspaces'
 export const useCustomAgentsStore = defineStore('customAgents', () => {
   // State
   const customAgents = ref<CustomAgent[]>([])
+  const pinnedAgentIds = ref<string[]>([])
+  const selectedAgentId = ref<string | null>(null)
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
   // Computed
   const agentCount = computed(() => customAgents.value.length)
+
+  const pinnedAgents = computed(() =>
+    pinnedAgentIds.value
+      .map(id => customAgents.value.find(a => a.id === id))
+      .filter((a): a is CustomAgent => a !== undefined)
+  )
+
+  const unpinnedAgents = computed(() =>
+    customAgents.value.filter(a => !pinnedAgentIds.value.includes(a.id))
+  )
+
+  // Get currently selected agent object
+  const selectedAgent = computed(() =>
+    selectedAgentId.value
+      ? customAgents.value.find(a => a.id === selectedAgentId.value) ?? null
+      : null
+  )
 
   const userAgents = computed(() =>
     customAgents.value.filter(a => a.source === 'user')
@@ -52,6 +71,7 @@ export const useCustomAgentsStore = defineStore('customAgents', () => {
 
       if (response.success && response.agents) {
         customAgents.value = response.agents
+        pinnedAgentIds.value = response.pinnedAgentIds || []
       } else {
         error.value = response.error || 'Failed to load custom agents'
         console.error('[CustomAgentsStore] Load error:', error.value)
@@ -254,14 +274,69 @@ export const useCustomAgentsStore = defineStore('customAgents', () => {
     error.value = null
   }
 
+  /**
+   * Select an agent (for UI display)
+   */
+  function selectAgent(agentId: string | null) {
+    selectedAgentId.value = agentId
+  }
+
+  /**
+   * Pin an agent to sidebar
+   */
+  async function pinAgent(agentId: string): Promise<boolean> {
+    try {
+      const response = await window.electronAPI.pinCustomAgent(agentId)
+      if (response.success && response.pinnedAgentIds) {
+        pinnedAgentIds.value = response.pinnedAgentIds
+        return true
+      }
+    } catch (err) {
+      console.error('[CustomAgentsStore] Pin error:', err)
+    }
+    return false
+  }
+
+  /**
+   * Unpin an agent from sidebar
+   */
+  async function unpinAgent(agentId: string): Promise<boolean> {
+    try {
+      const response = await window.electronAPI.unpinCustomAgent(agentId)
+      if (response.success && response.pinnedAgentIds) {
+        pinnedAgentIds.value = response.pinnedAgentIds
+        return true
+      }
+    } catch (err) {
+      console.error('[CustomAgentsStore] Unpin error:', err)
+    }
+    return false
+  }
+
+  /**
+   * Toggle pin state of an agent
+   */
+  async function togglePinAgent(agentId: string): Promise<boolean> {
+    if (pinnedAgentIds.value.includes(agentId)) {
+      return unpinAgent(agentId)
+    } else {
+      return pinAgent(agentId)
+    }
+  }
+
   return {
     // State
     customAgents,
+    pinnedAgentIds,
+    selectedAgentId,
     isLoading,
     error,
 
     // Computed
     agentCount,
+    pinnedAgents,
+    unpinnedAgents,
+    selectedAgent,
     userAgents,
     projectAgents,
 
@@ -277,5 +352,9 @@ export const useCustomAgentsStore = defineStore('customAgents', () => {
     deleteToolFromAgent,
     openAgentsDirectory,
     clearError,
+    selectAgent,
+    pinAgent,
+    unpinAgent,
+    togglePinAgent,
   }
 })

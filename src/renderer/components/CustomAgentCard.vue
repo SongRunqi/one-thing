@@ -44,6 +44,17 @@
 
     <!-- Actions -->
     <div class="agent-actions">
+      <!-- Pin/Unpin button -->
+      <button
+        class="action-btn pin-btn"
+        :class="{ pinned: isPinned }"
+        @click.stop="$emit('toggle-pin', agent)"
+        :title="isPinned ? 'Unpin from sidebar' : 'Pin to sidebar'"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" :fill="isPinned ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
+          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+        </svg>
+      </button>
       <!-- Enable/Disable toggle -->
       <div
         class="toggle-switch"
@@ -75,6 +86,7 @@ const props = defineProps<{
   agent: CustomAgent
   selected?: boolean
   enabled?: boolean  // Whether this agent is enabled (from settings)
+  isPinned?: boolean  // Whether this agent is pinned to sidebar
 }>()
 
 defineEmits<{
@@ -82,6 +94,7 @@ defineEmits<{
   edit: [agent: CustomAgent]
   delete: [agent: CustomAgent]
   toggle: [agent: CustomAgent]  // Toggle enabled/disabled state
+  'toggle-pin': [agent: CustomAgent]  // Toggle pin state
 }>()
 
 // Calculate total tool count (custom tools + allowed builtin tools)
@@ -283,5 +296,24 @@ function getImageSrc(value: string): string {
 .action-btn.danger:hover {
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
+}
+
+/* Pin button - always visible when pinned */
+.action-btn.pin-btn {
+  opacity: 0;
+}
+
+.action-btn.pin-btn.pinned {
+  opacity: 1;
+  color: #eab308;
+}
+
+.custom-agent-card:hover .action-btn.pin-btn {
+  opacity: 1;
+}
+
+.action-btn.pin-btn:hover {
+  background: rgba(234, 179, 8, 0.1);
+  color: #eab308;
 }
 </style>

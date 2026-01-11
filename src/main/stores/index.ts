@@ -11,6 +11,7 @@ export {
   deleteSession,
   renameSession,
   addMessage,
+  insertMessageAfter,
   deleteMessage,
   updateMessageAndTruncate,
   updateMessageContent,
@@ -50,19 +51,6 @@ export {
   getCurrentWorkspaceId,
   setCurrentWorkspaceId,
 } from './workspaces.js'
-
-// Agent exports
-export {
-  getAgents,
-  getAgent,
-  createAgent,
-  updateAgent,
-  deleteAgent,
-  uploadAgentAvatar,
-  getPinnedAgentIds,
-  pinAgent,
-  unpinAgent,
-} from './agents.js'
 
 // Migration function
 import { app } from 'electron'

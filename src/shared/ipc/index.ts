@@ -201,26 +201,13 @@ export type {
   UploadWorkspaceAvatarResponse,
 } from './workspaces.js'
 
-// Agent types
+// Shared Agent types (Avatar, Voice, Permissions, Builtin Mode)
 export type {
   AgentAvatar,
   AgentVoice,
   SkillPermission,
   AgentPermissions,
-  Agent,
-  GetAgentsResponse,
-  CreateAgentRequest,
-  CreateAgentResponse,
-  UpdateAgentRequest,
-  UpdateAgentResponse,
-  DeleteAgentRequest,
-  DeleteAgentResponse,
-  UploadAgentAvatarRequest,
-  UploadAgentAvatarResponse,
-  PinAgentRequest,
-  PinAgentResponse,
-  UnpinAgentRequest,
-  UnpinAgentResponse,
+  Agent, // @deprecated - use CustomAgent instead
   // Built-in Agent types (Ask/Build mode)
   BuiltinAgentMode,
   BuiltinAgentToolPermissions,
@@ -314,6 +301,11 @@ export type {
   UpdateCustomAgentResponse,
   DeleteCustomAgentRequest,
   DeleteCustomAgentResponse,
+  // Pin/Unpin types (for sidebar display)
+  PinCustomAgentRequest,
+  PinCustomAgentResponse,
+  UnpinCustomAgentRequest,
+  UnpinCustomAgentResponse,
 } from './custom-agents.js'
 
 // UIMessage types
@@ -348,6 +340,38 @@ export {
   isErrorUIPart,
   getToolName,
 } from './ui-message.js'
+
+// Plugin types
+export type {
+  PluginSource,
+  PluginStatus,
+  PluginInfo,
+  GetPluginsResponse,
+  GetPluginResponse,
+  InstallPluginRequest,
+  InstallPluginResponse,
+  UninstallPluginResponse,
+  TogglePluginResponse,
+  ReloadPluginResponse,
+  UpdatePluginConfigRequest,
+  UpdatePluginConfigResponse,
+  PluginDirectoriesInfo,
+  PluginChannel,
+} from './plugins.js'
+
+// File Tree types (for right sidebar file browser)
+export type {
+  FileTreeNode,
+  FileTreeListRequest,
+  FileTreeListResponse,
+  ExtractedDocument,
+  // File Preview types
+  FilePreview,
+  FileReadRequest,
+  FileReadResponse,
+} from './file-tree.js'
+
+export { PLUGIN_CHANNELS } from './plugins.js'
 
 // Re-export tool state mapping utilities
 export type { LegacyToolStatus } from '../tool-state-mapping.js'

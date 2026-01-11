@@ -99,6 +99,68 @@ export function getDatabasePath(): string {
   return path.join(getStorePath(), 'memory.db')
 }
 
+// Tool outputs directory (for large outputs that exceed inline limits)
+export function getToolOutputsDir(): string {
+  return path.join(getStorePath(), 'tool-outputs')
+}
+
+export function getToolOutputPath(filename: string): string {
+  return path.join(getToolOutputsDir(), filename)
+}
+
+// Generate a unique filename for tool output
+export function generateToolOutputFilename(toolName: string, sessionId?: string): string {
+  const timestamp = Date.now()
+  const random = Math.random().toString(36).substring(2, 8)
+  const prefix = sessionId ? `${sessionId.slice(0, 8)}_` : ''
+  return `${prefix}${toolName}_${timestamp}_${random}.txt`
+}
+
+// MCP Tools catalog file (contains full tool descriptions for AI reference)
+export function getMCPToolsCatalogPath(): string {
+  return path.join(getStorePath(), 'mcp-tools-catalog.md')
+}
+
+// Get the bundled docs directory path (for reference documentation)
+export function getDocsDir(): string {
+  // In production, docs are bundled in resources/docs
+  // In development, they're in resources/docs relative to project root
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'docs')
+  }
+  // Development: relative to project root
+  return path.join(app.getAppPath(), 'resources', 'docs')
+}
+
+export function getMacOSAutomationDocsPath(): string {
+  return path.join(getDocsDir(), 'macos-automation.md')
+}
+
+export function getToolUsageDocsPath(): string {
+  return path.join(getDocsDir(), 'tool-usage-guide.md')
+}
+
+// Session history directory (for full conversation backup before context compacting)
+export function getSessionHistoryDir(): string {
+  return path.join(getStorePath(), 'session-history')
+}
+
+export function getSessionHistoryPath(sessionId: string): string {
+  return path.join(getSessionHistoryDir(), `${sessionId}.md`)
+}
+
+// Permissions directory (for workspace-level permissions)
+export function getPermissionsDir(): string {
+  return path.join(getStorePath(), 'permissions')
+}
+
+// Helper to ensure a directory exists
+export function ensureDir(dir: string): void {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+}
+
 // Ensure all necessary directories exist
 export function ensureStoreDirs(): void {
   const dirs = [
@@ -112,12 +174,13 @@ export function ensureStoreDirs(): void {
     getAgentMemoryDir(),
     getMediaDir(),
     getMediaImagesDir(),
+    getToolOutputsDir(),
+    getSessionHistoryDir(),
+    getPermissionsDir(),
   ]
 
   for (const dir of dirs) {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
-    }
+    ensureDir(dir)
   }
 }
 

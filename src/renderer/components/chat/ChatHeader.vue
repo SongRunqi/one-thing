@@ -53,6 +53,16 @@
         <Columns2 :size="14" :stroke-width="2" />
       </button>
 
+      <!-- Flow / Right sidebar toggle -->
+      <button
+        class="chat-header-btn flow-btn"
+        :class="{ active: isRightSidebarOpen }"
+        :title="isRightSidebarOpen ? 'Hide Files (⌘⇧E)' : 'Show Files (⌘⇧E)'"
+        @click="$emit('toggleRightSidebar')"
+      >
+        <PanelRight :size="14" :stroke-width="2" />
+      </button>
+
       <!-- Equalize panels button -->
       <button
         v-if="canClose"
@@ -78,7 +88,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { PanelLeft, ArrowLeft, Columns2, Equal, X } from 'lucide-vue-next'
+import { PanelLeft, PanelRight, ArrowLeft, Columns2, Equal, X } from 'lucide-vue-next'
 import AgentDropdown from './AgentDropdown.vue'
 import AddressBar from './AddressBar.vue'
 import type { Agent } from '@/types'
@@ -92,10 +102,12 @@ defineProps<{
   showSidebarToggle: boolean
   showSplitButton: boolean
   canClose: boolean
+  isRightSidebarOpen?: boolean
 }>()
 
 const emit = defineEmits<{
   toggleSidebar: []
+  toggleRightSidebar: []
   openDirectoryPicker: []
   updateTitle: [title: string]
   selectAgent: [agentId: string | null]
@@ -194,6 +206,11 @@ html[data-theme='light'] .chat-header {
 }
 
 .chat-header-btn.sidebar-toggle-btn {
+  color: var(--accent);
+}
+
+.chat-header-btn.flow-btn.active {
+  background: rgba(var(--accent-rgb), 0.15);
   color: var(--accent);
 }
 </style>

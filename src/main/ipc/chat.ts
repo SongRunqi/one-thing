@@ -24,6 +24,7 @@ import {
 import { getMCPToolsForAI } from '../mcp/index.js'
 import { getSkillsForSession } from './skills.js'
 import { getStorage } from '../storage/index.js'
+import { getCustomAgentById } from '../services/custom-agent/index.js'
 import { triggerManager } from '../services/triggers/index.js'
 import { memoryExtractionTrigger } from '../services/triggers/memory-extraction.js'
 // Note: contextCompactingTrigger removed - compacting now happens in real-time during tool loop
@@ -745,7 +746,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     const enabledSkills = skillsEnabled ? getSkillsForSession(session.workingDirectory) : []
 
     // Get agent for permission context
-    const currentAgent = session.agentId ? store.getAgent(session.agentId) : undefined
+    const currentAgent = session.agentId ? getCustomAgentById(session.agentId, session.workingDirectory) : undefined
 
     // Set init context for async tools (like SkillTool)
     if (settings.tools?.enableToolCalls) {
@@ -753,7 +754,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
         agent: currentAgent ? {
           id: currentAgent.id,
           name: currentAgent.name,
-          permissions: currentAgent.permissions,
+          permissions: undefined, // CustomAgents use allowBuiltinTools/allowedBuiltinTools instead
         } : undefined,
         skills: enabledSkills.map(s => ({
           id: s.id,
@@ -840,7 +841,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       const workspace = store.getWorkspace(session.workspaceId)
       characterSystemPrompt = workspace?.systemPrompt
     } else if (session.agentId) {
-      const agent = store.getAgent(session.agentId)
+      const agent = getCustomAgentById(session.agentId, session.workingDirectory)
       characterSystemPrompt = agent?.systemPrompt
     }
 

@@ -809,12 +809,33 @@ export const useChatStore = defineStore('chat', () => {
 
   /**
    * Load messages for a session from backend
+   * Note: If this session has an active stream, we preserve the in-memory
+   * streaming message to maintain UI state continuity during session switches
    */
   async function loadMessages(sessionId: string) {
     try {
       const response = await window.electronAPI.getSession(sessionId)
       if (response.success && response.session) {
-        const messages = (response.session.messages || []).map(rebuildContentParts)
+        let messages = (response.session.messages || []).map(rebuildContentParts)
+
+        // If this session has an active stream, preserve the in-memory streaming message
+        // This prevents losing isStreaming, content, reasoning, steps etc. during session switch
+        const activeStreamMessageId = activeStreams.value.get(sessionId)
+        if (activeStreamMessageId) {
+          const existingMessages = sessionMessages.value.get(sessionId) || []
+          const streamingMessage = existingMessages.find(m => m.id === activeStreamMessageId)
+          if (streamingMessage) {
+            // Replace backend version with in-memory version to preserve full state
+            const index = messages.findIndex(m => m.id === activeStreamMessageId)
+            if (index !== -1) {
+              messages[index] = streamingMessage
+            } else {
+              // Edge case: backend doesn't have this message yet, append it
+              messages.push(streamingMessage)
+            }
+          }
+        }
+
         setSessionMessages(sessionId, messages)
       }
     } catch (error) {
@@ -881,21 +902,17 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * Handle context compact completed from backend
    */
-  function handleContextCompactCompleted(data: { sessionId: string; success: boolean; error?: string; summary?: string }) {
-    const { sessionId, success, error, summary } = data
+  async function handleContextCompactCompleted(data: { sessionId: string; success: boolean; error?: string; summary?: string }) {
+    const { sessionId, success, error } = data
     console.log(`[ChatStore] Context compacting completed for session: ${sessionId}, success: ${success}`)
     setSessionCompacting(sessionId, false)
 
-    if (success && summary) {
-      // Add system message to show the summary
-      addLocalMessage(sessionId, {
-        role: 'system',
-        content: JSON.stringify({
-          type: 'context-compact',
-          summary: summary,
-        }),
-      })
-    } else if (!success && error) {
+    if (success) {
+      // Reload messages to get the persisted compact system message
+      // This ensures UI shows the message at the correct position
+      await loadMessages(sessionId)
+      console.log(`[ChatStore] Reloaded messages after compacting for session: ${sessionId}`)
+    } else if (error) {
       console.warn(`[ChatStore] Context compacting failed: ${error}`)
     }
   }

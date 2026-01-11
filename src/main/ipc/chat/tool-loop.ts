@@ -6,6 +6,7 @@
 import * as store from '../../store.js'
 import { IPC_CHANNELS } from '../../../shared/ipc.js'
 import type { SkillDefinition, ToolCall, ChatMessage } from '../../../shared/ipc.js'
+import { hookManager } from '../../plugins/hooks/index.js'
 import type { AIMessageContent, ToolChatMessage } from '../../providers/index.js'
 import {
   streamChatResponseWithTools,
@@ -20,6 +21,7 @@ import { getMCPToolsForAI } from '../../mcp/index.js'
 import { getSkillsForSession } from '../skills.js'
 import { updateSessionUsage } from '../sessions.js'
 import { getStorage } from '../../storage/index.js'
+import { getCustomAgentById } from '../../services/custom-agent/index.js'
 import { triggerManager, type TriggerContext } from '../../services/triggers/index.js'
 import * as modelRegistry from '../../services/ai/model-registry.js'
 import { shouldCompact, executeCompacting, type CompactingContext } from '../../services/ai/context-compacting.js'
@@ -177,6 +179,17 @@ async function checkAndTriggerCompacting(
 
   console.log(`[ToolLoop] Context usage ${((inputTokens / modelContextLength) * 100).toFixed(1)}% reached threshold, triggering compacting`)
 
+  return await performCompacting(ctx, emitter)
+}
+
+/**
+ * Execute compacting and notify frontend
+ * Returns true if compacting was successful
+ */
+async function performCompacting(
+  ctx: StreamContext,
+  emitter: IPCEmitter
+): Promise<boolean> {
   // Notify frontend that compacting started
   emitter.sendCompactStarted()
 
@@ -223,6 +236,49 @@ async function checkAndTriggerCompacting(
 }
 
 /**
+ * Rebuild conversation messages after compacting
+ */
+function rebuildConversationMessages(
+  ctx: StreamContext,
+  systemPrompt: string,
+  conversationMessages: ToolChatMessage[]
+): void {
+  const updatedSession = store.getSession(ctx.sessionId)
+  if (updatedSession) {
+    const compactedHistory = buildHistoryMessages(
+      updatedSession.messages as ChatMessage[],
+      {
+        id: updatedSession.id,
+        summary: updatedSession.summary,
+        summaryUpToMessageId: updatedSession.summaryUpToMessageId,
+      }
+    )
+
+    // Clear and rebuild conversationMessages
+    conversationMessages.length = 0
+    conversationMessages.push({ role: 'system', content: systemPrompt })
+    conversationMessages.push(...compactedHistory)
+
+    console.log(`[ToolLoop] Rebuilt conversation with ${compactedHistory.length} messages after compacting`)
+  }
+}
+
+/**
+ * Check if an error is a "prompt too long" error
+ */
+function isPromptTooLongError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase()
+    return msg.includes('prompt is too long') ||
+           msg.includes('context_length_exceeded') ||
+           msg.includes('maximum context length') ||
+           msg.includes('too many tokens') ||
+           msg.includes('request too large')
+  }
+  return false
+}
+
+/**
  * Unified stream execution function
  * Handles both tool-enabled and simple streaming in a single code path
  *
@@ -259,6 +315,19 @@ export async function runStream(
 
     logTurnStart(currentTurn)
 
+    // ============================================================
+    // Checkpoint 1: Pre-request compacting check
+    // Check session.contextSize before sending API request
+    // ============================================================
+    const session = store.getSession(ctx.sessionId)
+    if (session?.contextSize && shouldCompact(session.contextSize, modelContextLength)) {
+      console.log(`[ToolLoop] Pre-request compacting: contextSize=${session.contextSize}, threshold=${Math.floor(modelContextLength * 0.85)}`)
+      const compacted = await performCompacting(ctx, emitter)
+      if (compacted) {
+        rebuildConversationMessages(ctx, systemPrompt, conversationMessages)
+      }
+    }
+
     // Send continuation at the START of each turn (except first) to show waiting indicator
     // This ensures waiting is displayed BEFORE the LLM call starts
     if (currentTurn > 1) {
@@ -269,106 +338,167 @@ export async function runStream(
     // This prevents errors when switching between models with different output limits
     const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(ctx.providerConfig.model)
     const userMaxTokens = ctx.settings.chat?.maxTokens || 4096
-    const effectiveMaxTokens = Math.min(userMaxTokens, modelMaxOutputTokens)
+    let effectiveMaxTokens = Math.min(userMaxTokens, modelMaxOutputTokens)
 
-    const stream = streamChatResponseWithTools(
-      ctx.providerId,
-      {
-        apiKey: ctx.providerConfig.apiKey,
-        baseUrl: ctx.providerConfig.baseUrl,
-        model: ctx.providerConfig.model,
-        apiType,
-      },
-      conversationMessages,
-      toolsForAI,
-      {
-        temperature: ctx.settings.ai.temperature,
+    // Get temperature and other params with plugin hook support
+    let temperature = ctx.settings.ai.temperature
+    let model = ctx.providerConfig.model
+
+    // Execute params:pre hooks (can modify model, temperature, maxTokens)
+    if (hookManager.hasHooks('params:pre')) {
+      const paramsResult = await hookManager.executeChain('params:pre', {
+        providerId: ctx.providerId,
+        model,
+        temperature,
         maxTokens: effectiveMaxTokens,
-        abortSignal: ctx.abortSignal,
+        topP: (ctx.settings.ai as unknown as Record<string, unknown>).topP as number | undefined,
+      })
+
+      // Apply modifications from plugin
+      const paramsValue = paramsResult.value as { model?: string; temperature?: number; maxTokens?: number }
+      if (paramsValue) {
+        model = paramsValue.model ?? model
+        temperature = paramsValue.temperature ?? temperature
+        effectiveMaxTokens = paramsValue.maxTokens ?? effectiveMaxTokens
       }
-    )
+    }
+
+    // ============================================================
+    // Checkpoint 3: Error recovery wrapper
+    // Catch "prompt too long" errors and retry after compacting
+    // ============================================================
+    let stream: AsyncIterable<any>
+    try {
+      stream = streamChatResponseWithTools(
+        ctx.providerId,
+        {
+          apiKey: ctx.providerConfig.apiKey,
+          baseUrl: ctx.providerConfig.baseUrl,
+          model,
+          apiType,
+        },
+        conversationMessages,
+        toolsForAI,
+        {
+          temperature,
+          maxTokens: effectiveMaxTokens,
+          abortSignal: ctx.abortSignal,
+        }
+      )
+    } catch (error) {
+      // Check if error is "prompt too long" and attempt recovery
+      if (isPromptTooLongError(error)) {
+        console.log('[ToolLoop] Prompt too long error on stream creation, attempting compacting recovery')
+        const compacted = await performCompacting(ctx, emitter)
+        if (compacted) {
+          rebuildConversationMessages(ctx, systemPrompt, conversationMessages)
+          // Retry this turn
+          currentTurn--
+          continue
+        }
+      }
+      // Re-throw if not recoverable
+      throw error
+    }
 
     let turnUsage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined
 
-    for await (const chunk of stream) {
-      if (chunk.type === 'text' && chunk.text) {
-        processor.handleTextChunk(chunk.text, turn.content)
-      }
+    // Wrap stream iteration in try-catch for error recovery
+    try {
+      for await (const chunk of stream) {
+        if (chunk.type === 'text' && chunk.text) {
+          processor.handleTextChunk(chunk.text, turn.content)
+        }
 
-      if (chunk.type === 'reasoning' && chunk.reasoning) {
-        processor.handleReasoningChunk(chunk.reasoning, turn.reasoning)
-      }
+        if (chunk.type === 'reasoning' && chunk.reasoning) {
+          processor.handleReasoningChunk(chunk.reasoning, turn.reasoning)
+        }
 
-      // Handle streaming tool input chunks (AI SDK v6)
-      // These provide real-time visibility into tool arguments as they're generated
-      if (chunk.type === 'tool-input-start' && chunk.toolInputStart) {
-        processor.handleToolInputStart(
-          chunk.toolInputStart.toolCallId,
-          chunk.toolInputStart.toolName,
-          currentTurn  // Pass turnIndex for proper contentParts ordering
-        )
-      }
+        // Handle streaming tool input chunks (AI SDK v6)
+        // These provide real-time visibility into tool arguments as they're generated
+        if (chunk.type === 'tool-input-start' && chunk.toolInputStart) {
+          processor.handleToolInputStart(
+            chunk.toolInputStart.toolCallId,
+            chunk.toolInputStart.toolName,
+            currentTurn  // Pass turnIndex for proper contentParts ordering
+          )
+        }
 
-      if (chunk.type === 'tool-input-delta' && chunk.toolInputDelta) {
-        processor.handleToolInputDelta(
-          chunk.toolInputDelta.toolCallId,
-          chunk.toolInputDelta.argsTextDelta
-        )
-      }
+        if (chunk.type === 'tool-input-delta' && chunk.toolInputDelta) {
+          processor.handleToolInputDelta(
+            chunk.toolInputDelta.toolCallId,
+            chunk.toolInputDelta.argsTextDelta
+          )
+        }
 
-      // Note: tool-input-end is not used - the 'tool-call' chunk contains the final parsed args
-      // AI SDK v6 flow: tool-call-streaming-start -> tool-call-delta* -> tool-call
+        // Note: tool-input-end is not used - the 'tool-call' chunk contains the final parsed args
+        // AI SDK v6 flow: tool-call-streaming-start -> tool-call-delta* -> tool-call
 
-      if (chunk.type === 'tool-call' && chunk.toolCall) {
-        // Get the step ID before handleToolCallChunk (which may clear the buffer)
-        const existingStepId = processor.getStepIdForToolCall(chunk.toolCall.toolCallId)
+        if (chunk.type === 'tool-call' && chunk.toolCall) {
+          // Get the step ID before handleToolCallChunk (which may clear the buffer)
+          const existingStepId = processor.getStepIdForToolCall(chunk.toolCall.toolCallId)
 
-        const toolCall = processor.handleToolCallChunk(chunk.toolCall)
+          const toolCall = processor.handleToolCallChunk(chunk.toolCall)
 
-        // Send data-steps placeholder BEFORE executing the first tool of this turn
-        // This ensures proper ordering: text -> data-steps -> STEP_ADDED events
-        if (turn.toolCalls.length === 0) {
-          // First tool call of this turn - send text content_part first (if any)
-          if (turn.content.value) {
-            emitter.sendContentPart({ type: 'text', content: turn.content.value })
+          // Send data-steps placeholder BEFORE executing the first tool of this turn
+          // This ensures proper ordering: text -> data-steps -> STEP_ADDED events
+          if (turn.toolCalls.length === 0) {
+            // First tool call of this turn - send text content_part first (if any)
+            if (turn.content.value) {
+              emitter.sendContentPart({ type: 'text', content: turn.content.value })
+            }
+            // Then send data-steps placeholder
+            emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
           }
-          // Then send data-steps placeholder
-          emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
+
+          turn.toolCalls.push(toolCall)
+
+          // Always execute tools - the tool will decide if it needs confirmation
+          // by returning requiresConfirmation: true (e.g., bash for dangerous commands)
+          // Pass the resolved toolId for execution, include skills for Tool Agent
+          await executeToolAndUpdate(ctx, toolCall, {
+            toolName: toolCall.toolId,
+            args: chunk.toolCall.args
+          }, processor.toolCalls, enabledSkills, currentTurn, existingStepId)
         }
 
-        turn.toolCalls.push(toolCall)
+        // Capture usage data and finishReason from finish chunk
+        if (chunk.type === 'finish') {
+          // Capture finishReason for loop control (OpenCode style)
+          turn.finishReason = chunk.finishReason || 'unknown'
 
-        // Always execute tools - the tool will decide if it needs confirmation
-        // by returning requiresConfirmation: true (e.g., bash for dangerous commands)
-        // Pass the resolved toolId for execution, include skills for Tool Agent
-        await executeToolAndUpdate(ctx, toolCall, {
-          toolName: toolCall.toolId,
-          args: chunk.toolCall.args
-        }, processor.toolCalls, enabledSkills, currentTurn, existingStepId)
-      }
+          if (chunk.usage) {
+            turnUsage = chunk.usage
+            turn.usage = chunk.usage
+            // Accumulate usage to context for final reporting
+            ctx.accumulatedUsage = ctx.accumulatedUsage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+            ctx.accumulatedUsage.inputTokens += chunk.usage.inputTokens
+            ctx.accumulatedUsage.outputTokens += chunk.usage.outputTokens
+            ctx.accumulatedUsage.totalTokens += chunk.usage.totalTokens
+            // Track last turn's usage for context size (NOT accumulated)
+            ctx.lastTurnUsage = chunk.usage
+            logTurnEnd(currentTurn, chunk.usage, turn.toolCalls.length)
 
-      // Capture usage data and finishReason from finish chunk
-      if (chunk.type === 'finish') {
-        // Capture finishReason for loop control (OpenCode style)
-        turn.finishReason = chunk.finishReason || 'unknown'
-
-        if (chunk.usage) {
-          turnUsage = chunk.usage
-          turn.usage = chunk.usage
-          // Accumulate usage to context for final reporting
-          ctx.accumulatedUsage = ctx.accumulatedUsage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-          ctx.accumulatedUsage.inputTokens += chunk.usage.inputTokens
-          ctx.accumulatedUsage.outputTokens += chunk.usage.outputTokens
-          ctx.accumulatedUsage.totalTokens += chunk.usage.totalTokens
-          // Track last turn's usage for context size (NOT accumulated)
-          ctx.lastTurnUsage = chunk.usage
-          logTurnEnd(currentTurn, chunk.usage, turn.toolCalls.length)
-
-          // Send real-time context size update to frontend
-          // Context size = input tokens only (context window limit applies to input)
-          emitter.sendContextSizeUpdate(chunk.usage.inputTokens)
+            // Send real-time context size update to frontend
+            // Context size = input tokens only (context window limit applies to input)
+            emitter.sendContextSizeUpdate(chunk.usage.inputTokens)
+          }
         }
       }
+    } catch (error) {
+      // Check if error is "prompt too long" during streaming and attempt recovery
+      if (isPromptTooLongError(error)) {
+        console.log('[ToolLoop] Prompt too long error during streaming, attempting compacting recovery')
+        const compacted = await performCompacting(ctx, emitter)
+        if (compacted) {
+          rebuildConversationMessages(ctx, systemPrompt, conversationMessages)
+          // Retry this turn
+          currentTurn--
+          continue
+        }
+      }
+      // Re-throw if not recoverable
+      throw error
     }
 
     // Update all steps in this turn with the turn's usage data
@@ -396,33 +526,16 @@ export async function runStream(
     // Persist content parts to store (and send IPC for non-tool-call turns)
     persistTurnContentParts(ctx, emitter, turn, currentTurn)
 
-    // Check if context compacting should be triggered (before next turn)
-    // Only check if we have tool calls and will continue looping
-    if (turnUsage && turn.toolCalls.length > 0 && currentTurn < MAX_TOOL_TURNS) {
+    // ============================================================
+    // Checkpoint 2: Post-turn compacting check
+    // Check actual inputTokens after turn completion
+    // Removed toolCalls condition - pure text conversations also need compacting
+    // ============================================================
+    if (turnUsage && currentTurn < MAX_TOOL_TURNS) {
       const compacted = await checkAndTriggerCompacting(ctx, emitter, turnUsage.inputTokens, modelContextLength)
 
       if (compacted) {
-        // CRITICAL: Rebuild conversationMessages to use the new summary
-        // Get the updated session with the new summary
-        const updatedSession = store.getSession(ctx.sessionId)
-        if (updatedSession) {
-          // Rebuild history using the new summary
-          const compactedHistory = buildHistoryMessages(
-            updatedSession.messages as ChatMessage[],
-            {
-              summary: updatedSession.summary,
-              summaryUpToMessageId: updatedSession.summaryUpToMessageId,
-            }
-          )
-
-          // Clear and rebuild conversationMessages
-          // Keep only: system prompt + compacted history
-          conversationMessages.length = 0
-          conversationMessages.push({ role: 'system', content: systemPrompt })
-          conversationMessages.push(...compactedHistory)
-
-          console.log(`[ToolLoop] Rebuilt conversation with ${compactedHistory.length} messages after compacting`)
-        }
+        rebuildConversationMessages(ctx, systemPrompt, conversationMessages)
       }
     }
 
@@ -502,10 +615,9 @@ export async function executeStreamGeneration(
 
     // Get session and agent info first (needed for tool init context)
     const session = store.getSession(ctx.sessionId)
-    let currentAgent: ReturnType<typeof store.getAgent> | undefined
-    if (session?.agentId) {
-      currentAgent = store.getAgent(session.agentId)
-    }
+    const currentAgent = session?.agentId
+      ? getCustomAgentById(session.agentId, session.workingDirectory)
+      : undefined
 
     // Get enabled skills based on session's workingDirectory (needed for tool init context and system prompt)
     // This uses upward traversal to find project skills
@@ -525,7 +637,7 @@ export async function executeStreamGeneration(
         agent: currentAgent ? {
           id: currentAgent.id,
           name: currentAgent.name,
-          permissions: currentAgent.permissions,
+          permissions: undefined, // CustomAgents use allowBuiltinTools/allowedBuiltinTools instead
         } : undefined,
         skills: enabledSkills.map(s => ({
           id: s.id,
@@ -573,7 +685,7 @@ export async function executeStreamGeneration(
 
     // First, try to get system prompt from agent
     if (session?.agentId) {
-      const agent = store.getAgent(session.agentId)
+      const agent = getCustomAgentById(session.agentId, session.workingDirectory)
       if (agent?.systemPrompt) {
         characterSystemPrompt = agent.systemPrompt
       }
@@ -728,13 +840,29 @@ export async function executeStreamGeneration(
         .pop()
 
       if (lastUserMessageObj && processor.accumulatedContent) {
+        const lastUserMessageText = getTextFromContent(lastUserMessageObj.content)
+
+        // Execute message:post hooks (event type, fire-and-forget)
+        if (hookManager.hasHooks('message:post')) {
+          hookManager.executeAll('message:post', {
+            sessionId: ctx.sessionId,
+            userMessage: lastUserMessageText,
+            assistantMessage: processor.accumulatedContent,
+            usage: ctx.accumulatedUsage ? {
+              inputTokens: ctx.accumulatedUsage.inputTokens,
+              outputTokens: ctx.accumulatedUsage.outputTokens,
+              totalTokens: ctx.accumulatedUsage.totalTokens,
+            } : undefined,
+          }).catch(err => console.error('[Backend] message:post hook failed:', err))
+        }
+
         const updatedSessionForTriggers = store.getSession(ctx.sessionId)
         if (updatedSessionForTriggers) {
           const triggerContext: TriggerContext = {
             sessionId: ctx.sessionId,
             session: updatedSessionForTriggers,
             messages: updatedSessionForTriggers.messages,
-            lastUserMessage: getTextFromContent(lastUserMessageObj.content),
+            lastUserMessage: lastUserMessageText,
             lastAssistantMessage: processor.accumulatedContent,
             providerId: ctx.providerId,
             providerConfig: ctx.providerConfig,

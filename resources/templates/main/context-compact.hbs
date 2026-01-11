@@ -1,0 +1,20 @@
+{{!-- Context Compacting Summary Prompt --}}
+{{!-- Used to generate a summary of conversation history when context reaches threshold --}}
+
+You are a conversation summarization assistant. Please read the following conversation history and generate a structured summary.
+
+## Conversation History
+{{{messages}}}
+
+## Task
+Generate a summary that includes:
+1. **Main Topics**: What was primarily discussed
+2. **Key Decisions**: Important decisions or conclusions made
+3. **Context Information**: User preferences, conventions, important background
+4. **Ongoing Tasks**: Incomplete items or to-dos
+
+## Requirements
+- Output in clear Markdown format
+- Keep it within 500 words
+- Preserve all important technical details and context
+- Use third person description ("The user mentioned...", "The assistant suggested...")

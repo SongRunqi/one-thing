@@ -5,11 +5,18 @@
  * seamlessly with the Vercel AI SDK
  */
 
+import * as fs from 'fs'
 import { MCPManager } from './manager.js'
 import type { MCPToolInfo, MCPToolCallResult } from './types.js'
 import type { ToolDefinition, ToolParameter } from '../tools/types.js'
 import { registerTool, unregisterTool, getAllTools } from '../tools/registry.js'
+import { getMCPToolsCatalogPath } from '../stores/paths.js'
 import { z } from 'zod'
+
+/**
+ * Tools catalog version - incremented when catalog format changes
+ */
+let toolsCatalogGenerated = false
 
 /**
  * Mapping from sanitized tool IDs to original MCP tool info
@@ -167,12 +174,128 @@ function jsonSchemaTypeToZod(prop: any): z.ZodTypeAny {
 }
 
 /**
+ * Generate the MCP tools catalog file
+ * This file contains full documentation for all available MCP tools
+ * AI can reference this file to understand tool capabilities in detail
+ */
+export function generateToolsCatalog(): void {
+  if (!MCPManager.isEnabled) {
+    toolsCatalogGenerated = false
+    return
+  }
+
+  const mcpTools = MCPManager.getAllTools()
+  if (mcpTools.length === 0) {
+    toolsCatalogGenerated = false
+    return
+  }
+
+  const lines: string[] = [
+    '# MCP Tools Catalog',
+    '',
+    `> Auto-generated on ${new Date().toISOString()}`,
+    `> Total tools: ${mcpTools.length}`,
+    '',
+    'This catalog contains detailed documentation for all available MCP tools.',
+    'Use the tool ID (e.g., `mcp_serverId_toolName`) when calling tools.',
+    '',
+    '---',
+    '',
+  ]
+
+  // Group tools by server
+  const toolsByServer = new Map<string, MCPToolInfo[]>()
+  for (const tool of mcpTools) {
+    const existing = toolsByServer.get(tool.serverId) || []
+    existing.push(tool)
+    toolsByServer.set(tool.serverId, existing)
+  }
+
+  for (const [serverId, tools] of toolsByServer.entries()) {
+    lines.push(`## Server: ${serverId}`)
+    lines.push('')
+
+    for (const tool of tools) {
+      const sanitizedServerId = sanitizeForToolName(serverId)
+      const sanitizedToolName = sanitizeForToolName(tool.name)
+      const toolId = `mcp_${sanitizedServerId}_${sanitizedToolName}`
+
+      lines.push(`### ${tool.name}`)
+      lines.push('')
+      lines.push(`**Tool ID:** \`${toolId}\``)
+      lines.push('')
+      lines.push(`**Description:** ${tool.description || 'No description available'}`)
+      lines.push('')
+
+      if (tool.inputSchema.properties && Object.keys(tool.inputSchema.properties).length > 0) {
+        lines.push('**Parameters:**')
+        lines.push('')
+        lines.push('| Name | Type | Required | Description |')
+        lines.push('|------|------|----------|-------------|')
+
+        const required = tool.inputSchema.required || []
+        for (const [name, prop] of Object.entries(tool.inputSchema.properties)) {
+          const propSchema = prop as any
+          const isRequired = required.includes(name) ? '✓' : ''
+          const type = propSchema.type || 'any'
+          const desc = (propSchema.description || '').replace(/\|/g, '\\|').replace(/\n/g, ' ')
+          lines.push(`| ${name} | ${type} | ${isRequired} | ${desc} |`)
+        }
+        lines.push('')
+      } else {
+        lines.push('**Parameters:** None')
+        lines.push('')
+      }
+
+      lines.push('---')
+      lines.push('')
+    }
+  }
+
+  // Write the catalog file
+  try {
+    const catalogPath = getMCPToolsCatalogPath()
+    fs.writeFileSync(catalogPath, lines.join('\n'), 'utf-8')
+    toolsCatalogGenerated = true
+    console.log(`[MCPBridge] Tools catalog generated: ${catalogPath} (${mcpTools.length} tools)`)
+  } catch (error) {
+    console.error('[MCPBridge] Failed to write tools catalog:', error)
+    toolsCatalogGenerated = false
+  }
+}
+
+/**
+ * Get the path to the tools catalog file (if it exists)
+ */
+export function getToolsCatalogPath(): string | null {
+  if (!toolsCatalogGenerated) return null
+  const path = getMCPToolsCatalogPath()
+  return fs.existsSync(path) ? path : null
+}
+
+/**
+ * Truncate description to a maximum length, adding ellipsis if needed
+ */
+function truncateDescription(desc: string, maxLength: number = 100): string {
+  if (!desc) return ''
+  if (desc.length <= maxLength) return desc
+  return desc.slice(0, maxLength - 3) + '...'
+}
+
+/**
  * Get MCP tools formatted for Vercel AI SDK (same format as convertToolDefinitionsForAI)
  * Returns a record of tool definitions matching the format expected by streamChatResponseWithTools
  *
+ * OPTIMIZED: Uses condensed descriptions when tools catalog is available.
+ * Full tool documentation is written to a file that AI can reference.
+ *
  * @param toolsSettings - Optional per-tool settings to filter disabled tools
+ * @param useCondensed - If true, use condensed descriptions (default: true when catalog exists)
  */
-export function getMCPToolsForAI(toolsSettings?: Record<string, { enabled: boolean; autoExecute: boolean }>): Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }> {
+export function getMCPToolsForAI(
+  toolsSettings?: Record<string, { enabled: boolean; autoExecute: boolean }>,
+  useCondensed: boolean = toolsCatalogGenerated
+): Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }> {
   const result: Record<string, any> = {}
 
   if (!MCPManager.isEnabled) {
@@ -216,18 +339,42 @@ export function getMCPToolsForAI(toolsSettings?: Record<string, { enabled: boole
 
       for (const [name, prop] of Object.entries(mcpTool.inputSchema.properties)) {
         const propSchema = prop as any
-        parameters.push({
-          name,
-          type: mapJsonSchemaType(propSchema.type) as string,
-          description: propSchema.description || '',
-          required: required.includes(name),
-          enum: propSchema.enum,
-        })
+
+        if (useCondensed) {
+          // Condensed mode: only include required params with short descriptions
+          if (required.includes(name)) {
+            parameters.push({
+              name,
+              type: mapJsonSchemaType(propSchema.type) as string,
+              description: truncateDescription(propSchema.description || '', 60),
+              required: true,
+            })
+          }
+        } else {
+          // Full mode: include all parameters with full descriptions
+          parameters.push({
+            name,
+            type: mapJsonSchemaType(propSchema.type) as string,
+            description: propSchema.description || '',
+            required: required.includes(name),
+            enum: propSchema.enum,
+          })
+        }
       }
     }
 
+    // Build description based on mode
+    let description: string
+    if (useCondensed) {
+      // Condensed: short description only
+      description = truncateDescription(mcpTool.description || `MCP tool: ${mcpTool.name}`, 120)
+    } else {
+      // Full: complete description
+      description = mcpTool.description || `MCP tool: ${mcpTool.name}`
+    }
+
     result[toolId] = {
-      description: mcpTool.description || `MCP tool: ${mcpTool.name}`,
+      description,
       parameters,
     }
   }
@@ -287,6 +434,9 @@ export async function registerMCPTools(): Promise<void> {
 
     registerTool(definition, handler)
   }
+
+  // Generate the tools catalog file for AI reference
+  generateToolsCatalog()
 
   console.log(`[MCPBridge] Registered ${mcpTools.length} MCP tools`)
 }

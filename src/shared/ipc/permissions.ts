@@ -14,14 +14,28 @@ export interface PermissionInfo {
   title: string
   metadata: Record<string, unknown>
   createdAt: number
+  /** Working directory for workspace-level permissions */
+  workingDirectory?: string
 }
 
-export type PermissionResponse = 'once' | 'always' | 'reject'
+/**
+ * Permission response types:
+ * - 'once': Allow this single operation only (本次)
+ * - 'session': Allow for the duration of this session (本会话)
+ * - 'workspace': Permanently allow in this workspace (本工作区)
+ * - 'reject': Deny the operation
+ */
+export type PermissionResponse = 'once' | 'session' | 'workspace' | 'reject'
+
+/** Legacy alias for backwards compatibility */
+export type LegacyPermissionResponse = 'once' | 'always' | 'reject'
 
 export interface PermissionRespondRequest {
   sessionId: string
   permissionId: string
   response: PermissionResponse
+  /** Optional reason for rejection */
+  rejectReason?: string
 }
 
 // Agent permission configuration

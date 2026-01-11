@@ -14,9 +14,11 @@ import { z } from 'zod'
 import { execa } from 'execa'
 import * as path from 'path'
 import * as os from 'os'
+import * as fs from 'fs'
 import { Tool } from '../core/tool.js'
 import { Permission } from '../../permission/index.js'
 import { getSettings } from '../../stores/settings.js'
+import { getToolOutputsDir, getToolOutputPath, generateToolOutputFilename } from '../../stores/paths.js'
 import BASHPROMPOT from './bash.txt'
 
 // Maximum output length
@@ -88,6 +90,7 @@ export interface BashMetadata {
   workingDirectory: string
   exitCode: number
   output: string
+  outputFilePath?: string  // Path to full output file (when output exceeds limit)
   description?: string
   [key: string]: unknown
 }
@@ -387,18 +390,54 @@ The sandbox restricts file access to allowed directories only.`,
       throw new Error('Command execution was cancelled by user')
     }
 
-    // Truncate if needed
-    let truncated = false
+    // Handle large outputs by writing to file
+    let finalOutput = output || '(no output)'
+    let outputFilePath: string | undefined
+
     if (output.length > MAX_OUTPUT_LENGTH) {
-      output = output.slice(0, MAX_OUTPUT_LENGTH)
-      truncated = true
+      // Write full output to a file
+      try {
+        // Ensure tool outputs directory exists
+        const outputsDir = getToolOutputsDir()
+        if (!fs.existsSync(outputsDir)) {
+          fs.mkdirSync(outputsDir, { recursive: true })
+        }
+
+        const filename = generateToolOutputFilename('bash', ctx.sessionId)
+        outputFilePath = getToolOutputPath(filename)
+        fs.writeFileSync(outputFilePath, output, 'utf-8')
+
+        // Keep the TAIL of the output (more useful than head for error messages)
+        const PREVIEW_LENGTH = 8000
+        const TAIL_LENGTH = 6000
+        const HEAD_LENGTH = 1500
+
+        let preview: string
+        if (output.length <= PREVIEW_LENGTH) {
+          preview = output
+        } else {
+          // Show head + ... + tail
+          const head = output.slice(0, HEAD_LENGTH)
+          const tail = output.slice(-TAIL_LENGTH)
+          preview = `${head}\n\n... [${output.length - HEAD_LENGTH - TAIL_LENGTH} characters omitted] ...\n\n${tail}`
+        }
+
+        finalOutput = `${preview}\n\n<bash_metadata>
+Full output saved to: ${outputFilePath}
+Total length: ${output.length} characters
+To view full output, use: cat "${outputFilePath}"
+To view last N lines: tail -n 100 "${outputFilePath}"
+</bash_metadata>`
+
+        console.log(`[Bash] Large output (${output.length} chars) saved to: ${outputFilePath}`)
+      } catch (writeError) {
+        console.error('[Bash] Failed to write large output to file:', writeError)
+        // Fallback to simple truncation
+        finalOutput = output.slice(0, MAX_OUTPUT_LENGTH)
+        finalOutput += `\n\n<bash_metadata>\nOutput truncated at ${MAX_OUTPUT_LENGTH} characters (file write failed)\n</bash_metadata>`
+      }
     }
 
-    // Build final output
-    let finalOutput = output || '(no output)'
-    if (truncated) {
-      finalOutput += `\n\n<bash_metadata>\nOutput truncated at ${MAX_OUTPUT_LENGTH} characters\n</bash_metadata>`
-    }
     if (result.exitCode !== 0) {
       finalOutput += `\n\n<bash_metadata>\nExit code: ${result.exitCode}\n</bash_metadata>`
     }
@@ -408,6 +447,7 @@ The sandbox restricts file access to allowed directories only.`,
       workingDirectory: workingDir,
       exitCode: result.exitCode ?? 0,
       output: finalOutput,
+      ...(outputFilePath && { outputFilePath }),
     }
 
     return {

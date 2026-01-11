@@ -48,20 +48,28 @@
         ref="chatContainerRef"
         :show-settings="showSettings"
         :show-agent-settings="showAgentSettings"
-        :show-agent-create="showAgentCreate"
         :sidebar-collapsed="sidebarCollapsed"
         :sidebar-floating="sidebarFloating"
         :show-hover-trigger="sidebarCollapsed && !sidebarFloating && !showMediaPanel"
         :media-panel-open="showMediaPanel"
+        :show-agent-create="showAgentCreate"
+        :editing-agent="editingAgent"
         @close-settings="showSettings = false"
         @open-settings="showSettings = true"
         @close-agent-settings="showAgentSettings = false"
         @open-agent-settings="showAgentSettings = true"
-        @close-agent-create="closeAgentCreate"
-        @agent-created="handleAgentCreated"
         @toggle-sidebar="handleSidebarToggle"
         @show-floating-sidebar="handleTriggerEnter"
         @hide-floating-sidebar="handleTriggerLeave"
+        @close-agent-create="closeAgentCreate"
+        @agent-created="handleAgentCreated"
+        @agent-saved="handleAgentSaved"
+      />
+
+      <!-- Right Panel (Sidebar + Preview) -->
+      <RightPanel
+        :session-id="sessionsStore.currentSessionId"
+        :working-directory="sessionsStore.currentSession?.workingDirectory"
       />
     </div>
 
@@ -71,19 +79,6 @@
       :workspace="editingWorkspace"
       @close="closeWorkspaceDialog"
     />
-
-    <!-- Agent Dialog -->
-    <Teleport to="body">
-      <div v-if="showAgentDialog && editingAgent" class="agent-dialog-overlay" @click.self="closeAgentDialog">
-        <div class="agent-dialog-container">
-          <CustomAgentDialog
-            :agent="editingAgent"
-            @close="closeAgentDialog"
-            @saved="closeAgentDialog"
-          />
-        </div>
-      </div>
-    </Teleport>
 
     <!-- Search Overlay (teleported to body) -->
     <Teleport to="body">
@@ -129,23 +124,25 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, watchEffect, ref, computed, watch, nextTick } from 'vue'
+import { onMounted, onUnmounted, ref, computed, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { useAgentsStore } from '@/stores/agents'
+import { useCustomAgentsStore } from '@/stores/custom-agents'
 import { useThemeStore } from '@/stores/themes'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { Sidebar } from '@/components/sidebar'
+import { RightPanel } from '@/components/right-panel'
+import { useRightSidebarStore } from '@/stores/right-sidebar'
 import ChatContainer from '@/components/ChatContainer.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import WorkspaceDialog from '@/components/WorkspaceDialog.vue'
-import CustomAgentDialog from '@/components/CustomAgentDialog.vue'
+// CustomAgentDialog removed - now using full-page CreateAgentPage for both create and edit
 import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
-import type { Workspace, Agent, CustomAgent } from '@/types'
+import type { Workspace, CustomAgent } from '@/types'
 
 // Detect if this is the settings window or image preview window
 const isSettingsWindow = window.location.hash.startsWith('#/settings')
@@ -155,8 +152,9 @@ const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const workspacesStore = useWorkspacesStore()
-const agentsStore = useAgentsStore()
+const customAgentsStore = useCustomAgentsStore()
 const themeStore = useThemeStore()
+const rightSidebarStore = useRightSidebarStore()
 
 const showSettings = ref(false)
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
@@ -174,7 +172,6 @@ const editingWorkspace = ref<Workspace | null>(null)
 const showMediaPanel = ref(false)
 
 // Agent state
-const showAgentDialog = ref(false)
 const editingAgent = ref<CustomAgent | null>(null)
 const showAgentSettings = ref(false)
 const showAgentCreate = ref(false)
@@ -189,32 +186,33 @@ function closeWorkspaceDialog() {
   editingWorkspace.value = null
 }
 
-function openAgentDialog(agent?: Agent | CustomAgent) {
-  if (agent && 'customTools' in agent) {
-    // Editing existing CustomAgent - use dialog
-    editingAgent.value = agent as CustomAgent
-    showAgentDialog.value = true
-  } else if (agent) {
-    // Old Agent system - just show agent settings (deprecated path)
-    console.warn('[App] Old Agent system is deprecated, please migrate to CustomAgent')
+function openAgentDialog(agent?: CustomAgent) {
+  if (agent) {
+    // Editing existing CustomAgent - use full-page editor
+    editingAgent.value = agent
+    showAgentCreate.value = false
   } else {
-    // Creating new agent - show inline form in ChatWindow
+    // Creating new agent - use full-page editor
+    editingAgent.value = null
     showAgentCreate.value = true
   }
 }
 
 function closeAgentCreate() {
   showAgentCreate.value = false
+  editingAgent.value = null
 }
 
 function handleAgentCreated(_agent: CustomAgent) {
   showAgentCreate.value = false
+  editingAgent.value = null
   // Agent is already created and pinned in the store by CreateAgentPage
 }
 
-function closeAgentDialog() {
-  showAgentDialog.value = false
+function handleAgentSaved(_agent: CustomAgent) {
   editingAgent.value = null
+  showAgentCreate.value = false
+  // Agent is already updated in the store by CreateAgentPage
 }
 
 function toggleMediaPanel() {
@@ -239,6 +237,11 @@ function closeMediaPanel() {
 }
 
 
+// Toggle right sidebar
+function toggleRightSidebar() {
+  rightSidebarStore.toggle()
+}
+
 // Setup global keyboard shortcuts
 useShortcuts({
   onNewChat: createNewChat,
@@ -250,6 +253,14 @@ useShortcuts({
     window.electronAPI.openSettingsWindow()
   },
 })
+
+// Additional keyboard shortcut for right sidebar (Cmd+Shift+E)
+function handleRightSidebarShortcut(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'e') {
+    event.preventDefault()
+    toggleRightSidebar()
+  }
+}
 
 // Persist sidebar collapsed state and control traffic lights visibility
 const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
@@ -407,7 +418,7 @@ watch(() => settingsStore.effectiveTheme, () => {
 // Create new chat (respects selected agent)
 // If there's already an empty "New Chat", reuse it and update agent if needed
 async function createNewChat() {
-  const agentId = agentsStore.selectedAgentId || null
+  const agentId = customAgentsStore.selectedAgentId || null
 
   // Check if there's an existing empty session in current workspace
   const existingEmptySession = sessionsStore.filteredSessions.find(
@@ -436,17 +447,14 @@ let unsubscribeMenuCloseChat: (() => void) | null = null
 onMounted(async () => {
   // Load initial data
   await workspacesStore.loadWorkspaces()
-  await agentsStore.loadAgents()
+  await customAgentsStore.loadCustomAgents()
   await sessionsStore.loadSessions()
   await settingsStore.loadSettings()
 
   // Initialize theme system (must be after settings load)
   await themeStore.initialize()
 
-  // Create a default session if none exist
-  if (sessionsStore.sessionCount === 0) {
-    await sessionsStore.createSession('New Chat')
-  }
+  // Don't auto-create new chat - let user choose from existing sessions or create manually
 
   // Listen for settings changes from other windows (e.g., settings window)
   unsubscribeSettingsChanged = window.electronAPI.onSettingsChanged((newSettings) => {
@@ -484,6 +492,9 @@ onMounted(async () => {
       await sessionsStore.deleteSession(currentId)
     }
   })
+
+  // Right sidebar keyboard shortcut (Cmd+Shift+E)
+  window.addEventListener('keydown', handleRightSidebarShortcut)
 })
 
 onUnmounted(() => {
@@ -496,6 +507,8 @@ onUnmounted(() => {
   if (unsubscribeMenuCloseChat) {
     unsubscribeMenuCloseChat()
   }
+  // Clean up right sidebar shortcut
+  window.removeEventListener('keydown', handleRightSidebarShortcut)
 })
 
 // Theme is managed by settingsStore.applyTheme() which correctly resolves 'system' to 'light'/'dark'

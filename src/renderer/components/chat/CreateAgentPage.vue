@@ -217,6 +217,14 @@
               <span class="setting-hint">Allow the agent to use built-in tools in addition to custom tools</span>
             </div>
 
+            <div class="setting-row checkbox-row">
+              <label class="checkbox-label">
+                <input v-model="form.enableMemory" type="checkbox" class="form-checkbox" />
+                <span>Enable Memory</span>
+              </label>
+              <span class="setting-hint">Include user profile and agent relationship memory in the prompt</span>
+            </div>
+
             <!-- Built-in Tools Selector -->
             <div v-if="form.allowBuiltinTools" class="builtin-tools-selector">
               <label class="form-label">Select Built-in Tools</label>
@@ -320,6 +328,7 @@ const form = reactive<{
   timeoutMs: number
   allowBuiltinTools: boolean
   allowedBuiltinTools: string[]
+  enableMemory: boolean
   source: 'user' | 'project'
 }>({
   name: '',
@@ -331,6 +340,7 @@ const form = reactive<{
   timeoutMs: 120000,
   allowBuiltinTools: false,
   allowedBuiltinTools: [],
+  enableMemory: true,
   source: 'user'
 })
 
@@ -493,6 +503,7 @@ async function handleCreate() {
       timeoutMs: form.timeoutMs,
       allowBuiltinTools: form.allowBuiltinTools,
       allowedBuiltinTools: [...form.allowedBuiltinTools],
+      enableMemory: form.enableMemory,
     }
 
     const agent = await customAgentsStore.createCustomAgent(config, form.source)

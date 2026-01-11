@@ -43,6 +43,20 @@ export interface ListDirsRequest {
   limit?: number
 }
 
+// Types for file content reading (for file preview)
+export interface FileReadRequest {
+  path: string
+  maxSize?: number  // Default: 1MB (1048576 bytes)
+}
+
+export interface FileReadResponse {
+  success: boolean
+  content?: string
+  encoding?: string
+  size?: number
+  error?: string
+}
+
 export interface ListDirsResponse {
   success: boolean
   dirs: string[]     // Full paths to directories
@@ -203,6 +217,60 @@ export function registerFilesHandlers() {
           dirs: [],
           basePath: '',
           error: error instanceof Error ? error.message : 'Failed to list directories',
+        }
+      }
+    }
+  )
+
+  // Read file content for preview
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_READ_CONTENT,
+    async (_event, request: FileReadRequest): Promise<FileReadResponse> => {
+      const { path: filePath, maxSize = 1048576 } = request // Default 1MB
+
+      if (!filePath) {
+        return { success: false, error: 'File path is required' }
+      }
+
+      try {
+        // Check if file exists and get its size
+        const stats = await fs.stat(filePath)
+
+        if (!stats.isFile()) {
+          return { success: false, error: 'Path is not a file' }
+        }
+
+        if (stats.size > maxSize) {
+          return {
+            success: false,
+            error: `File is too large (${Math.round(stats.size / 1024)}KB). Maximum size is ${Math.round(maxSize / 1024)}KB.`,
+            size: stats.size,
+          }
+        }
+
+        // Read the file content
+        const content = await fs.readFile(filePath, 'utf-8')
+
+        return {
+          success: true,
+          content,
+          encoding: 'utf-8',
+          size: stats.size,
+        }
+      } catch (error) {
+        console.error('[Files IPC] Failed to read file content:', error)
+
+        // Check for specific error types
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          return { success: false, error: 'File not found' }
+        }
+        if ((error as NodeJS.ErrnoException).code === 'EACCES') {
+          return { success: false, error: 'Permission denied' }
+        }
+
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to read file',
         }
       }
     }

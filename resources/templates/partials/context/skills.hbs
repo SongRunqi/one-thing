@@ -1,0 +1,16 @@
+## Available Skills
+You have access to the following skills. When a task involves using a skill, read its SKILL.md file first to understand how to use it properly.
+
+{{#each skills}}
+- **{{name}}**: {{description}}
+{{#if directoryPath}}
+  - SKILL.md location: `{{directoryPath}}/SKILL.md`
+{{else if path}}
+  - SKILL.md location: `{{path}}`
+{{/if}}
+{{/each}}
+
+**How to use skills:**
+1. Use `cat <skill-path>/SKILL.md` to read the skill documentation
+2. Follow the instructions in SKILL.md to execute the skill
+3. Skills may have scripts or specific commands to run

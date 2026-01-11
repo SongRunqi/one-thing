@@ -1,0 +1,15 @@
+## Available Skills
+
+You have access to the following Claude Code Skills. Use them when the user's request matches their description.
+
+{{#each skills}}
+### Skill: {{name}}
+**Description:** {{description}}
+
+{{#if instructions}}
+{{truncate instructions maxInstructionLength}}
+{{/if}}
+
+---
+
+{{/each}}

@@ -586,6 +586,29 @@ export function addMessage(sessionId: string, message: ChatMessage): void {
   }
 }
 
+// Insert a message after a specific message ID
+// Used for context compacting to insert summary message at the correct position
+export function insertMessageAfter(sessionId: string, afterMessageId: string, message: ChatMessage): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const index = session.messages.findIndex((m) => m.id === afterMessageId)
+  if (index === -1) {
+    // If afterMessageId not found, append to end
+    session.messages.push(message)
+  } else {
+    // Insert after the found message
+    session.messages.splice(index + 1, 0, message)
+  }
+
+  session.updatedAt = Date.now()
+
+  // Save session file
+  writeJsonFile(getSessionPath(sessionId), session)
+
+  return true
+}
+
 // Delete a message from a session
 export function deleteMessage(sessionId: string, messageId: string): boolean {
   const session = getSession(sessionId)

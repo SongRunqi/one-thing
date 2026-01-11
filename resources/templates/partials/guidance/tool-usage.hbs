@@ -1,0 +1,13 @@
+## Tool Usage
+
+**Prefer specialized tools over bash:** read/write/edit/grep/glob instead of cat/echo/sed/grep/find.
+
+**Batch independent calls:** Return multiple tool calls in ONE response (e.g., read 3 files together).
+
+**Never guess:** Use exact values from user input or previous results. No placeholders.
+
+**Read before modify:** Always read() a file before edit(). Use glob() if path is uncertain.
+
+{{#if (hasValue toolUsageDocsPath)}}
+Detailed examples and strategies: {{toolUsageDocsPath}}
+{{/if}}

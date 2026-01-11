@@ -169,6 +169,7 @@ function parseAgentJsonFile(
       allowedBuiltinTools: json.allowedBuiltinTools,
       maxToolCalls: json.maxToolCalls ?? 20,
       timeoutMs: json.timeoutMs ?? 120000,
+      enableMemory: json.enableMemory ?? true,
       source,
       sourcePath,
     }
@@ -315,4 +316,72 @@ export function getCustomAgentById(
 export function refreshCustomAgents(workingDirectory?: string): CustomAgent[] {
   console.log('[CustomAgent] Refreshing agents...')
   return loadCustomAgents(workingDirectory)
+}
+
+/**
+ * Delete a file-based CustomAgent by removing its JSON file
+ *
+ * @param agentId - The agent ID (format: "source:name", e.g., "user:my-agent")
+ * @param workingDirectory - Optional working directory for project-level agents
+ * @returns true if the agent was found and deleted, false otherwise
+ */
+export function deleteFileBasedAgent(agentId: string, workingDirectory?: string): boolean {
+  // Parse the agent ID to get source and name
+  const colonIndex = agentId.indexOf(':')
+  if (colonIndex === -1) {
+    console.warn(`[CustomAgent] Invalid file-based agent ID format: ${agentId}`)
+    return false
+  }
+
+  const source = agentId.substring(0, colonIndex) as CustomAgentSource
+  const name = agentId.substring(colonIndex + 1)
+
+  // Determine the agents directory based on source
+  let agentsDir: string
+  if (source === 'project' && workingDirectory) {
+    agentsDir = getProjectAgentsPath(workingDirectory)
+  } else if (source === 'user') {
+    agentsDir = getUserAgentsPath()
+  } else {
+    console.warn(`[CustomAgent] Cannot delete agent with source: ${source}`)
+    return false
+  }
+
+  // Look for the JSON file that contains this agent
+  if (!fs.existsSync(agentsDir)) {
+    return false
+  }
+
+  try {
+    const entries = fs.readdirSync(agentsDir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) {
+        continue
+      }
+
+      const filePath = path.join(agentsDir, entry.name)
+
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8')
+        const json = JSON.parse(content) as CustomAgentJsonFile
+
+        // Check if this file contains the agent we want to delete
+        if (json.name === name) {
+          // Delete the file
+          fs.unlinkSync(filePath)
+          console.log(`[CustomAgent] Deleted file-based agent: ${filePath}`)
+          return true
+        }
+      } catch {
+        // Skip files that can't be parsed
+        continue
+      }
+    }
+  } catch (error) {
+    console.error(`[CustomAgent] Error deleting file-based agent:`, error)
+    return false
+  }
+
+  return false
 }

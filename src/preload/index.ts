@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS, AIProvider, MessageAttachment } from '../shared/ipc.js'
-import type { UIMessageStreamData } from '../shared/ipc.js'
+import { IPC_CHANNELS, AIProvider, MessageAttachment, PLUGIN_CHANNELS } from '../shared/ipc.js'
+import type { UIMessageStreamData, InstallPluginRequest, UpdatePluginConfigRequest } from '../shared/ipc.js'
 
 const electronAPI = {
   // Chat methods
@@ -389,6 +389,7 @@ const electronAPI = {
     allowedBuiltinTools?: string[]
     maxToolCalls?: number
     timeoutMs?: number
+    enableMemory?: boolean
   }, source?: 'user' | 'project', workingDirectory?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_CREATE, { config, source, workingDirectory }),
 
@@ -402,6 +403,7 @@ const electronAPI = {
     allowedBuiltinTools: string[]
     maxToolCalls: number
     timeoutMs: number
+    enableMemory: boolean
   }>, workingDirectory?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_UPDATE, { agentId, updates, workingDirectory }),
 
@@ -414,6 +416,13 @@ const electronAPI = {
   // CustomAgent permission handling
   respondToCustomAgentPermission: (requestId: string, decision: 'allow' | 'always' | 'reject'): Promise<{ success: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_PERMISSION_RESPOND, { requestId, decision }),
+
+  // CustomAgent pin/unpin (for sidebar display)
+  pinCustomAgent: (agentId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_PIN, { agentId }),
+
+  unpinCustomAgent: (agentId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_UNPIN, { agentId }),
 
   onCustomAgentPermissionRequest: (callback: (data: {
     requestId: string
@@ -464,46 +473,6 @@ const electronAPI = {
 
   uploadWorkspaceAvatar: (workspaceId: string, imageData: string, mimeType: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_UPLOAD_AVATAR, { workspaceId, imageData, mimeType }),
-
-  // Agent methods
-  getAgents: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_GET_ALL),
-
-  createAgent: (
-    name: string,
-    avatar: { type: 'emoji' | 'image'; value: string },
-    systemPrompt: string,
-    options?: {
-      tagline?: string
-      personality?: string[]
-      primaryColor?: string
-      voice?: { enabled: boolean; voiceURI?: string; rate?: number; pitch?: number; volume?: number }
-    }
-  ) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_CREATE, { name, avatar, systemPrompt, ...options }),
-
-  updateAgent: (id: string, updates: {
-    name?: string
-    avatar?: { type: 'emoji' | 'image'; value: string }
-    systemPrompt?: string
-    tagline?: string
-    personality?: string[]
-    primaryColor?: string
-    voice?: { enabled: boolean; voiceURI?: string; rate?: number; pitch?: number; volume?: number }
-  }) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_UPDATE, { id, ...updates }),
-
-  deleteAgent: (agentId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_DELETE, { agentId }),
-
-  uploadAgentAvatar: (agentId: string, imageData: string, mimeType: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_UPLOAD_AVATAR, { agentId, imageData, mimeType }),
-
-  pinAgent: (agentId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_PIN, { agentId }),
-
-  unpinAgent: (agentId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_UNPIN, { agentId }),
 
   // User Profile methods
   getUserProfile: () =>
@@ -631,7 +600,8 @@ const electronAPI = {
   respondToPermission: (request: {
     sessionId: string
     permissionId: string
-    response: 'once' | 'always' | 'reject'
+    response: 'once' | 'session' | 'workspace' | 'reject' | 'always'  // 'always' for legacy compatibility
+    rejectReason?: string
   }) => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_RESPOND, request),
 
   getPendingPermissions: (sessionId: string) =>
@@ -650,6 +620,8 @@ const electronAPI = {
     title: string
     metadata: Record<string, unknown>
     createdAt: number
+    /** Working directory for workspace-level permissions */
+    workingDirectory?: string
   }) => void) => {
     const listener = (_event: any, info: any) => callback(info)
     ipcRenderer.on(IPC_CHANNELS.PERMISSION_REQUEST, listener)
@@ -716,6 +688,45 @@ const electronAPI = {
   // Directories listing (for /cd path completion)
   listDirs: (options: { basePath: string; query?: string; limit?: number }) =>
     ipcRenderer.invoke(IPC_CHANNELS.DIRS_LIST, options),
+
+  // File tree methods (for right sidebar file browser)
+  fileTreeList: (options: { directory: string; depth?: number; includeHidden?: boolean; respectGitignore?: boolean }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_TREE_LIST, options),
+
+  // File content reading (for file preview panel)
+  readFileContent: (filePath: string, maxSize?: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_CONTENT, { path: filePath, maxSize }),
+
+  // Plugin methods
+  getPlugins: () =>
+    ipcRenderer.invoke(PLUGIN_CHANNELS.GET_ALL),
+
+  getPlugin: (pluginId: string) =>
+    ipcRenderer.invoke(PLUGIN_CHANNELS.GET, pluginId),
+
+  installPlugin: (request: InstallPluginRequest) =>
+    ipcRenderer.invoke(PLUGIN_CHANNELS.INSTALL, request),
+
+  uninstallPlugin: (pluginId: string) =>
+    ipcRenderer.invoke(PLUGIN_CHANNELS.UNINSTALL, pluginId),
+
+  enablePlugin: (pluginId: string) =>
+    ipcRenderer.invoke(PLUGIN_CHANNELS.ENABLE, pluginId),
+
+  disablePlugin: (pluginId: string) =>
+    ipcRenderer.invoke(PLUGIN_CHANNELS.DISABLE, pluginId),
+
+  reloadPlugin: (pluginId: string) =>
+    ipcRenderer.invoke(PLUGIN_CHANNELS.RELOAD, pluginId),
+
+  updatePluginConfig: (request: UpdatePluginConfigRequest) =>
+    ipcRenderer.invoke(PLUGIN_CHANNELS.UPDATE_CONFIG, request),
+
+  getPluginDirectories: () =>
+    ipcRenderer.invoke(PLUGIN_CHANNELS.GET_DIRECTORIES),
+
+  openPluginDirectory: (dirType: 'plugins' | 'npm' | 'local') =>
+    ipcRenderer.invoke(PLUGIN_CHANNELS.OPEN_DIRECTORY, dirType),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

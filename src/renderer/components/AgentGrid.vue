@@ -1,6 +1,6 @@
 <template>
   <div class="agent-grid">
-    <!-- Pinned Agents (max 3) -->
+    <!-- Pinned Agents (supports multiple rows) -->
     <div
       v-for="agent in displayedAgents"
       :key="agent.id"
@@ -13,7 +13,11 @@
         @click="handleAgentClick(agent)"
         @contextmenu.prevent="openContextMenu($event, agent)"
       >
-        <span v-if="agent.avatar.type === 'emoji'" class="agent-emoji">
+        <!-- Default avatar (first letter of name) if no avatar -->
+        <span v-if="!agent.avatar" class="agent-default">
+          {{ agent.name.charAt(0).toUpperCase() }}
+        </span>
+        <span v-else-if="agent.avatar.type === 'emoji'" class="agent-emoji">
           {{ agent.avatar.value }}
         </span>
         <img
@@ -73,29 +77,29 @@
 
 <script setup lang="ts">
 import { reactive, computed, onMounted, onUnmounted } from 'vue'
-import { useAgentsStore } from '@/stores/agents'
-import type { Agent } from '@/types'
+import { useCustomAgentsStore } from '@/stores/custom-agents'
+import type { CustomAgent } from '../../shared/ipc/custom-agents.js'
 
 const emit = defineEmits<{
-  'select-agent': [agent: Agent]
-  'edit-agent': [agent: Agent]
+  'select-agent': [agent: CustomAgent]
+  'edit-agent': [agent: CustomAgent]
   'open-create-dialog': []
 }>()
 
-const agentsStore = useAgentsStore()
+const customAgentsStore = useCustomAgentsStore()
 
 // Get selected agent ID from store
-const selectedAgentId = computed(() => agentsStore.selectedAgentId)
+const selectedAgentId = computed(() => customAgentsStore.selectedAgentId)
 
-// Limit to max 3 pinned agents
-const displayedAgents = computed(() => agentsStore.pinnedAgents.slice(0, 3))
+// Show all pinned agents (no limit)
+const displayedAgents = computed(() => customAgentsStore.pinnedAgents)
 
 // Context menu state
 const contextMenu = reactive({
   visible: false,
   x: 0,
   y: 0,
-  agent: null as Agent | null
+  agent: null as CustomAgent | null
 })
 
 function getImageSrc(value: string): string {
@@ -106,22 +110,22 @@ function getImageSrc(value: string): string {
 }
 
 // Handle agent click - toggle selection
-function handleAgentClick(agent: Agent) {
+function handleAgentClick(agent: CustomAgent) {
   if (selectedAgentId.value === agent.id) {
     // Already selected, deselect it
-    agentsStore.selectAgent(null)
+    customAgentsStore.selectAgent(null)
   } else {
     // Select this agent
-    agentsStore.selectAgent(agent.id)
+    customAgentsStore.selectAgent(agent.id)
   }
 }
 
 // Deselect the current agent
 function deselectAgent() {
-  agentsStore.selectAgent(null)
+  customAgentsStore.selectAgent(null)
 }
 
-function openContextMenu(event: MouseEvent, agent: Agent) {
+function openContextMenu(event: MouseEvent, agent: CustomAgent) {
   contextMenu.visible = true
   contextMenu.x = event.clientX
   contextMenu.y = event.clientY
@@ -142,7 +146,7 @@ function editAgent() {
 
 async function unpinAgent() {
   if (contextMenu.agent) {
-    await agentsStore.unpinAgent(contextMenu.agent.id)
+    await customAgentsStore.unpinAgent(contextMenu.agent.id)
   }
   closeContextMenu()
 }
@@ -151,7 +155,7 @@ async function deleteAgent() {
   if (contextMenu.agent) {
     const confirmed = confirm(`Delete agent "${contextMenu.agent.name}"?`)
     if (confirmed) {
-      await agentsStore.deleteAgent(contextMenu.agent.id)
+      await customAgentsStore.deleteCustomAgent(contextMenu.agent.id)
     }
   }
   closeContextMenu()
@@ -175,6 +179,7 @@ onUnmounted(() => {
 <style scoped>
 .agent-grid {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
@@ -183,8 +188,10 @@ onUnmounted(() => {
 
 .agent-icon-wrapper {
   position: relative;
-  flex: 1;
-  min-width: 0;
+  /* Fixed width for consistent grid layout - 3 per row with gaps */
+  width: calc((100% - 16px) / 3);
+  min-width: 60px;
+  max-width: 100px;
 }
 
 .agent-icon {
@@ -244,6 +251,12 @@ onUnmounted(() => {
 .agent-emoji {
   font-size: 20px;
   line-height: 1;
+}
+
+.agent-default {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .agent-image {

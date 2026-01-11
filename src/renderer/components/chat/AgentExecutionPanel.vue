@@ -57,14 +57,9 @@
           </Transition>
 
           <!-- Permission Buttons -->
-          <div v-if="toolStep.status === 'awaiting-confirmation'" class="confirm-buttons">
-            <button class="btn-allow" @click.stop="handleConfirm(toolStep, 'allow')">
-              Allow
-            </button>
-            <button class="btn-always" @click.stop="handleConfirm(toolStep, 'always')">
-              Always
-            </button>
-            <button class="btn-reject" @click.stop="handleReject(toolStep)">
+          <div v-if="toolStep.status === 'awaiting-confirmation'" class="confirm-buttons" @click.stop>
+            <AllowSplitButton @confirm="(response) => handleConfirm(toolStep, response)" />
+            <button class="btn-reject" @click.stop="handleReject(toolStep)" title="Reject (D/Esc)">
               Reject
             </button>
           </div>
@@ -101,6 +96,7 @@ import { computed, watch, onMounted } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import type { Step, ToolCall } from '@/types'
+import AllowSplitButton from '../common/AllowSplitButton.vue'
 
 interface Props {
   step: Step
@@ -111,7 +107,7 @@ interface Props {
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
-  (e: 'confirm', step: Step, type: 'allow' | 'always'): void
+  (e: 'confirm', step: Step, type: 'once' | 'session' | 'workspace' | 'always'): void
   (e: 'reject', step: Step): void
 }>()
 
@@ -288,7 +284,7 @@ function formatResult(result: string): string {
   return result
 }
 
-function handleConfirm(toolStep: Step, type: 'allow' | 'always') {
+function handleConfirm(toolStep: Step, type: 'once' | 'session' | 'workspace') {
   emit('confirm', toolStep, type)
 }
 
@@ -568,40 +564,19 @@ onMounted(() => {
   display: flex;
   gap: 6px;
   margin: 8px 8px 8px 32px;
+  align-items: center;
 }
 
-.confirm-buttons button {
+.btn-reject {
   padding: 4px 12px;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  border: 1px solid transparent;
+  border: 1px solid var(--error);
   transition: all 0.15s ease;
-}
-
-.btn-allow {
-  background: var(--accent);
-  color: white;
-}
-
-.btn-allow:hover {
-  background: var(--accent-hover);
-}
-
-.btn-always {
-  background: var(--success);
-  color: white;
-}
-
-.btn-always:hover {
-  background: var(--success-hover);
-}
-
-.btn-reject {
   background: transparent;
   color: var(--error);
-  border-color: var(--error);
 }
 
 .btn-reject:hover {

@@ -1,43 +1,45 @@
 <template>
   <!-- Hide when input-streaming - ToolCallItem handles its own display -->
-  <div v-if="!hasInputStreaming" :class="['tool-call-status', statusClass]">
-    <!-- Executing: flowing text animation -->
-    <template v-if="hasExecuting">
-      <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"/>
-        <polyline points="12 6 12 12 16 14"/>
-      </svg>
-      <span class="status-text flowing">{{ executingText }}</span>
-    </template>
+  <Transition name="tool-status" mode="out-in">
+    <div v-if="!hasInputStreaming" :class="['tool-call-status', statusClass]" :key="statusKey">
+      <!-- Executing: flowing text animation -->
+      <template v-if="hasExecuting">
+        <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span class="status-text flowing">{{ executingText }}</span>
+      </template>
 
-    <!-- Completed: show checkmark -->
-    <template v-else-if="hasCompleted">
-      <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-        <polyline points="22 4 12 14.01 9 11.01"/>
-      </svg>
-      <span class="status-text">{{ completedText }}</span>
-    </template>
+      <!-- Completed: show checkmark -->
+      <template v-else-if="hasCompleted">
+        <svg class="status-icon completed-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        <span class="status-text completed-text">{{ completedText }}</span>
+      </template>
 
-    <!-- All Failed (no executing, no completed) -->
-    <template v-else-if="hasFailed">
-      <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"/>
-        <line x1="15" y1="9" x2="9" y2="15"/>
-        <line x1="9" y1="9" x2="15" y2="15"/>
-      </svg>
-      <span class="status-text">{{ failedText }}</span>
-    </template>
+      <!-- All Failed (no executing, no completed) -->
+      <template v-else-if="hasFailed">
+        <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="15" y1="9" x2="9" y2="15"/>
+          <line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+        <span class="status-text">{{ failedText }}</span>
+      </template>
 
-    <!-- Pending: flowing text animation but static clock icon -->
-    <template v-else>
-      <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"/>
-        <polyline points="12 6 12 12 16 14"/>
-      </svg>
-      <span class="status-text flowing">{{ pendingText }}</span>
-    </template>
-  </div>
+      <!-- Pending: flowing text animation but static clock icon -->
+      <template v-else>
+        <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span class="status-text flowing">{{ pendingText }}</span>
+      </template>
+    </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
@@ -79,6 +81,14 @@ const hasFailed = computed(() =>
 
 // CSS class for status
 const statusClass = computed(() => {
+  if (hasExecuting.value) return 'executing'
+  if (hasCompleted.value) return 'completed'
+  if (hasFailed.value) return 'failed'
+  return 'pending'
+})
+
+// Unique key for transitions - changes when status changes
+const statusKey = computed(() => {
   if (hasExecuting.value) return 'executing'
   if (hasCompleted.value) return 'completed'
   if (hasFailed.value) return 'failed'
@@ -167,5 +177,68 @@ const pendingText = computed(() => {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: flowingGradient 2s linear infinite;
+}
+
+/* Completed state - fade in from flowing gradient */
+.status-text.completed-text {
+  animation: completedFadeIn 0.4s ease;
+}
+
+.status-icon.completed-icon {
+  animation: completedIconPop 0.3s ease;
+}
+
+@keyframes completedFadeIn {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes completedIconPop {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Tool status transitions */
+.tool-status-enter-active {
+  animation: toolStatusEnter 0.25s ease;
+}
+
+.tool-status-leave-active {
+  animation: toolStatusLeave 0.15s ease forwards;
+}
+
+@keyframes toolStatusEnter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toolStatusLeave {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 </style>

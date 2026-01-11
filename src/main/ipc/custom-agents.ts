@@ -22,13 +22,19 @@ import type {
   DeleteCustomAgentRequest,
   DeleteCustomAgentResponse,
   CustomAgent,
+  PinCustomAgentRequest,
+  PinCustomAgentResponse,
+  UnpinCustomAgentRequest,
+  UnpinCustomAgentResponse,
 } from '../../shared/ipc/custom-agents.js'
+import { pinAgent, unpinAgent, getPinnedAgentIds } from '../stores/app-state.js'
 import {
   loadCustomAgents,
   refreshCustomAgents,
   ensureAgentsDirectories,
   getUserAgentsPath,
   getAvailableBuiltinToolsInfo,
+  deleteFileBasedAgent,
   type PermissionDecision,
 } from '../services/custom-agent/index.js'
 import { respondToPermissionRequest } from '../tools/builtin/custom-agent.js'
@@ -96,9 +102,11 @@ export function registerCustomAgentHandlers(): void {
         const fileAgents = loadCustomAgents(request.workingDirectory)
         const storeAgents = getAllCustomAgents(request.workingDirectory)
         const agents = mergeAgents(fileAgents, storeAgents)
+        const pinnedAgentIds = getPinnedAgentIds()
         return {
           success: true,
           agents,
+          pinnedAgentIds,
         }
       } catch (error: any) {
         console.error('[CustomAgent] Error getting agents:', error)
@@ -214,7 +222,14 @@ export function registerCustomAgentHandlers(): void {
     IPC_CHANNELS.CUSTOM_AGENT_DELETE,
     async (_, request: DeleteCustomAgentRequest): Promise<DeleteCustomAgentResponse> => {
       try {
-        const deleted = deleteCustomAgent(request.agentId, request.workingDirectory)
+        // Try to delete from store first (store-based agents have ID format: custom-agent-xxx)
+        let deleted = deleteCustomAgent(request.agentId, request.workingDirectory)
+
+        // If not found in store, try to delete file-based agent (ID format: source:name)
+        if (!deleted && request.agentId.includes(':')) {
+          deleted = deleteFileBasedAgent(request.agentId, request.workingDirectory)
+        }
+
         if (!deleted) {
           return {
             success: false,
@@ -279,6 +294,48 @@ export function registerCustomAgentHandlers(): void {
       } catch (error: any) {
         console.error('[CustomAgent] Error responding to permission:', error)
         return { success: false }
+      }
+    }
+  )
+
+  // Pin CustomAgent to sidebar
+  ipcMain.handle(
+    IPC_CHANNELS.CUSTOM_AGENT_PIN,
+    async (_, request: PinCustomAgentRequest): Promise<PinCustomAgentResponse> => {
+      try {
+        const pinnedAgentIds = pinAgent(request.agentId)
+        console.log(`[CustomAgent] Pinned agent: ${request.agentId}`)
+        return {
+          success: true,
+          pinnedAgentIds,
+        }
+      } catch (error: any) {
+        console.error('[CustomAgent] Error pinning agent:', error)
+        return {
+          success: false,
+          error: error.message || 'Failed to pin agent',
+        }
+      }
+    }
+  )
+
+  // Unpin CustomAgent from sidebar
+  ipcMain.handle(
+    IPC_CHANNELS.CUSTOM_AGENT_UNPIN,
+    async (_, request: UnpinCustomAgentRequest): Promise<UnpinCustomAgentResponse> => {
+      try {
+        const pinnedAgentIds = unpinAgent(request.agentId)
+        console.log(`[CustomAgent] Unpinned agent: ${request.agentId}`)
+        return {
+          success: true,
+          pinnedAgentIds,
+        }
+      } catch (error: any) {
+        console.error('[CustomAgent] Error unpinning agent:', error)
+        return {
+          success: false,
+          error: error.message || 'Failed to unpin agent',
+        }
       }
     }
   )

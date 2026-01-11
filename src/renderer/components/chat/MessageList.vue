@@ -58,6 +58,45 @@
         </button>
       </Tooltip>
     </div>
+
+    <!-- Reject Reason Dialog -->
+    <Teleport to="body">
+      <Transition name="modal-fade">
+        <div v-if="showRejectDialog" class="reject-dialog-overlay" @click.self="cancelReject">
+          <div class="reject-dialog">
+            <div class="reject-dialog-header">
+              <span class="reject-dialog-title">拒绝原因</span>
+              <button class="reject-dialog-close" @click="cancelReject">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div class="reject-dialog-body">
+              <textarea
+                ref="rejectReasonInputRef"
+                v-model="rejectReason"
+                class="reject-reason-input"
+                placeholder="请输入拒绝原因（可选）..."
+                rows="3"
+                @keydown.enter.ctrl="confirmReject"
+                @keydown.enter.meta="confirmReject"
+                @keydown.escape="cancelReject"
+              ></textarea>
+              <div class="reject-dialog-hint">按 Ctrl+Enter 确认，Esc 取消</div>
+            </div>
+            <div class="reject-dialog-footer">
+              <button class="reject-dialog-btn reject-dialog-btn-cancel" @click="cancelReject">
+                取消
+              </button>
+              <button class="reject-dialog-btn reject-dialog-btn-confirm" @click="confirmReject">
+                确认拒绝
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -69,7 +108,7 @@ import EmptyState from './EmptyState.vue'
 import Tooltip from '../common/Tooltip.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
-import { useAgentsStore } from '@/stores/agents'
+import { useCustomAgentsStore } from '@/stores/custom-agents'
 import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
 
@@ -98,9 +137,15 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
-const agentsStore = useAgentsStore()
+const customAgentsStore = useCustomAgentsStore()
 const settingsStore = useSettingsStore()
 const messageListRef = ref<HTMLElement | null>(null)
+
+// Reject reason dialog state
+const showRejectDialog = ref(false)
+const rejectReason = ref('')
+const pendingRejectToolCall = ref<any>(null)
+const rejectReasonInputRef = ref<HTMLTextAreaElement | null>(null)
 
 // Get the effective session for this panel (props.sessionId or fallback to global)
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
@@ -111,12 +156,11 @@ const panelSession = computed(() => {
 })
 
 // Get current agent's voice config (if session is associated with an agent)
+// Note: CustomAgents don't have voice configuration - this feature was part of the old Agent system
+// Returning undefined disables agent-specific voice for now
 const currentAgentVoiceConfig = computed<AgentVoice | undefined>(() => {
-  const session = panelSession.value
-  if (!session?.agentId) return undefined
-
-  const agent = agentsStore.agents.find(a => a.id === session.agentId)
-  return agent?.voice
+  // CustomAgents don't support voice configuration yet
+  return undefined
 })
 
 // Get current message list density setting
@@ -534,9 +578,9 @@ const currentPendingPermission = computed<{ message: ChatMessage; toolCall: Tool
 })
 
 // Setup keyboard shortcuts for permission confirmation
-// Enter = once, A = always, D/Escape = reject
+// Enter = once (本次), S = session (本会话), W = workspace (本工作区), D/Escape = reject
 usePermissionShortcuts(
-  () => !!currentPendingPermission.value,
+  () => !!currentPendingPermission.value && !showRejectDialog.value,
   {
     onAllowOnce: () => {
       const pending = currentPendingPermission.value
@@ -544,16 +588,22 @@ usePermissionShortcuts(
         handleConfirmTool(pending.toolCall, 'once')
       }
     },
-    onAllowAlways: () => {
+    onAllowSession: () => {
       const pending = currentPendingPermission.value
       if (pending) {
-        handleConfirmTool(pending.toolCall, 'always')
+        handleConfirmTool(pending.toolCall, 'session')
+      }
+    },
+    onAllowWorkspace: () => {
+      const pending = currentPendingPermission.value
+      if (pending) {
+        handleConfirmTool(pending.toolCall, 'workspace')
       }
     },
     onReject: () => {
       const pending = currentPendingPermission.value
       if (pending) {
-        handleRejectTool(pending.toolCall)
+        openRejectDialog(pending.toolCall)
       }
     },
   }
@@ -936,8 +986,9 @@ async function handleExecuteTool(toolCall: any) {
 }
 
 // Handle tool confirmation (for dangerous bash commands)
-// response: 'once' = allow this time, 'always' = always allow this pattern
-async function handleConfirmTool(toolCall: any, response: 'once' | 'always' = 'once') {
+// response: 'once' = allow this time, 'session' = allow for session, 'workspace' = allow permanently in workspace
+// Note: 'always' is kept for backwards compatibility and maps to 'session'
+async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | 'workspace' | 'always' = 'once') {
   const currentSession = panelSession.value
   if (!currentSession) return
 
@@ -1134,8 +1185,34 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'always' = 'o
   }
 }
 
-// Handle tool rejection
-async function handleRejectTool(toolCall: any) {
+// Open the reject reason dialog
+function openRejectDialog(toolCall: any) {
+  pendingRejectToolCall.value = toolCall
+  rejectReason.value = ''
+  showRejectDialog.value = true
+  // Focus the textarea after dialog opens
+  nextTick(() => {
+    rejectReasonInputRef.value?.focus()
+  })
+}
+
+// Confirm rejection with reason
+function confirmReject() {
+  if (pendingRejectToolCall.value) {
+    handleRejectTool(pendingRejectToolCall.value, rejectReason.value.trim() || undefined)
+  }
+  cancelReject()
+}
+
+// Cancel the reject dialog
+function cancelReject() {
+  showRejectDialog.value = false
+  rejectReason.value = ''
+  pendingRejectToolCall.value = null
+}
+
+// Handle tool rejection with optional reason
+async function handleRejectTool(toolCall: any, rejectReasonArg?: string) {
   // Update the tool call status to cancelled/rejected
   const currentSession = panelSession.value
   if (!currentSession) return
@@ -1143,7 +1220,7 @@ async function handleRejectTool(toolCall: any) {
   // Check if this is a CustomAgent permission request
   const customAgentPermissionId = (toolCall as any).customAgentPermissionId
   if (customAgentPermissionId) {
-    console.log(`[Frontend] Rejecting CustomAgent permission ${customAgentPermissionId}`)
+    console.log(`[Frontend] Rejecting CustomAgent permission ${customAgentPermissionId}`, rejectReasonArg ? `Reason: ${rejectReasonArg}` : '')
     try {
       await window.electronAPI.respondToCustomAgentPermission(customAgentPermissionId, 'reject')
 
@@ -1194,12 +1271,13 @@ async function handleRejectTool(toolCall: any) {
   const permissionId = (toolCall as any).permissionId
   if (permissionId) {
     // Use Permission system to respond with reject
-    console.log(`[Frontend] Rejecting permission ${permissionId}`)
+    console.log(`[Frontend] Rejecting permission ${permissionId}`, rejectReasonArg ? `Reason: ${rejectReasonArg}` : '')
     try {
       await window.electronAPI.respondToPermission({
         sessionId: currentSession.id,
         permissionId,
         response: 'reject',
+        rejectReason: rejectReasonArg,
       })
     } catch (error) {
       console.error('Failed to respond to permission:', error)
@@ -1456,5 +1534,172 @@ html[data-theme='light'] .nav-btn {
     font-size: 10px;
     padding: 2px 6px;
   }
+}
+
+/* Reject Reason Dialog */
+.reject-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.reject-dialog {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.reject-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.reject-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.reject-dialog-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  transition: all 0.15s ease;
+}
+
+.reject-dialog-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.reject-dialog-body {
+  padding: 20px;
+}
+
+.reject-reason-input {
+  width: 100%;
+  min-height: 80px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--base);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  font-family: inherit;
+  transition: border-color 0.15s ease;
+}
+
+.reject-reason-input::placeholder {
+  color: var(--muted);
+}
+
+.reject-reason-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.reject-dialog-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.reject-dialog-footer {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+}
+
+.reject-dialog-btn {
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.reject-dialog-btn-cancel {
+  background: var(--hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.reject-dialog-btn-cancel:hover {
+  background: var(--base);
+}
+
+.reject-dialog-btn-confirm {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border-color: #dc2626;
+}
+
+.reject-dialog-btn-confirm:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+}
+
+.reject-dialog-btn-confirm:active {
+  transform: translateY(0);
+}
+
+/* Modal fade transition */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.modal-fade-enter-active .reject-dialog,
+.modal-fade-leave-active .reject-dialog {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+
+.modal-fade-enter-from .reject-dialog,
+.modal-fade-leave-to .reject-dialog {
+  transform: scale(0.95) translateY(-10px);
+  opacity: 0;
+}
+
+/* Light theme adjustments */
+html[data-theme='light'] .reject-dialog-overlay {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+html[data-theme='light'] .reject-dialog {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
 }
 </style>

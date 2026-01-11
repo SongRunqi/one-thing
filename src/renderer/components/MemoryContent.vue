@@ -246,7 +246,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useUserProfileStore } from '@/stores/user-profile'
 import { useAgentMemoryStore } from '@/stores/agent-memory'
-import { useAgentsStore } from '@/stores/agents'
+import { useCustomAgentsStore } from '@/stores/custom-agents'
 import type { UserFactCategory, AgentMemoryCategory } from '@/types'
 import FactCard from './memory/FactCard.vue'
 import MemoryCard from './memory/MemoryCard.vue'
@@ -268,7 +268,7 @@ import {
 
 const userProfileStore = useUserProfileStore()
 const agentMemoryStore = useAgentMemoryStore()
-const agentsStore = useAgentsStore()
+const customAgentsStore = useCustomAgentsStore()
 
 // Tab state
 const activeTab = ref<'profile' | 'agent'>('profile')
@@ -297,7 +297,7 @@ const filteredFacts = computed(() => {
 })
 
 // Computed - Agent Memory
-const agents = computed(() => agentsStore.agents)
+const agents = computed(() => customAgentsStore.customAgents)
 const relationship = computed(() => agentMemoryStore.currentRelationship)
 const memories = computed(() => agentMemoryStore.memories)
 
@@ -429,7 +429,7 @@ onMounted(async () => {
   profileLoading.value = true
   try {
     await userProfileStore.loadProfile()
-    await agentsStore.loadAgents()
+    await customAgentsStore.loadCustomAgents()
   } finally {
     profileLoading.value = false
   }

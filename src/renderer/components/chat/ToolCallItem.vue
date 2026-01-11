@@ -27,15 +27,10 @@
         <span v-if="executionTime" class="exec-time">{{ executionTime }}</span>
       </span>
 
-      <!-- Confirmation buttons with shortcut hints (stop propagation to prevent expand) -->
+      <!-- Confirmation buttons (stop propagation to prevent expand) -->
       <div v-if="toolCall.requiresConfirmation" class="confirm-buttons" @click.stop>
-        <button class="btn-inline btn-allow" @click="$emit('confirm', toolCall, 'once')">
-          Allow <kbd>⏎</kbd>
-        </button>
-        <button class="btn-inline btn-always" @click="$emit('confirm', toolCall, 'always')">
-          Always <kbd>A</kbd>
-        </button>
-        <button class="btn-inline btn-reject" @click="$emit('reject', toolCall)">
+        <AllowSplitButton @confirm="(response) => $emit('confirm', toolCall, response)" />
+        <button class="btn-inline btn-reject" @click="$emit('reject', toolCall)" title="Reject (D/Esc)">
           Reject <kbd>D</kbd>
         </button>
       </div>
@@ -77,10 +72,6 @@
           <pre>{{ formatResult(toolCall.result) }}</pre>
         </div>
 
-        <!-- Error -->
-        <div v-if="toolCall.error" class="detail-section error">
-          <pre>{{ toolCall.error }}</pre>
-        </div>
       </div>
     </Transition>
   </div>
@@ -89,6 +80,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { ToolCall } from '@/types'
+import AllowSplitButton from '../common/AllowSplitButton.vue'
 
 interface Props {
   toolCall: ToolCall
@@ -101,7 +93,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 defineEmits<{
   execute: [toolCall: ToolCall]
-  confirm: [toolCall: ToolCall, response: 'once' | 'always']
+  confirm: [toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always']
   reject: [toolCall: ToolCall]
 }>()
 
@@ -424,28 +416,6 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   }
 }
 
-.btn-allow {
-  color: var(--text-success, #879A39);
-  border-color: rgba(135, 154, 57, 0.3);
-  background: rgba(135, 154, 57, 0.08);
-}
-
-.btn-allow:hover {
-  background: rgba(135, 154, 57, 0.15);
-  border-color: rgba(135, 154, 57, 0.5);
-}
-
-.btn-always {
-  color: var(--accent, #4385BE);
-  border-color: rgba(67, 133, 190, 0.3);
-  background: rgba(67, 133, 190, 0.08);
-}
-
-.btn-always:hover {
-  background: rgba(67, 133, 190, 0.15);
-  border-color: rgba(67, 133, 190, 0.5);
-}
-
 .btn-reject {
   color: var(--text-muted, #9F9D96);
   border-color: transparent;
@@ -496,14 +466,9 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   padding-left: 8px;
 }
 
-.detail-section.error {
-  border-left: 2px solid #ef4444;
-  padding-left: 8px;
-}
 
-.detail-section.error pre {
-  color: #ef4444;
-}
+
+
 
 .detail-label {
   font-size: 11px;
@@ -618,28 +583,6 @@ html[data-theme='light'] .detail-section pre {
 html[data-theme='light'] .streaming-code {
   background: rgba(147, 51, 234, 0.06);
   border-color: rgba(147, 51, 234, 0.15);
-}
-
-html[data-theme='light'] .btn-allow {
-  color: #66800B;
-  border-color: rgba(102, 128, 11, 0.3);
-  background: rgba(102, 128, 11, 0.08);
-}
-
-html[data-theme='light'] .btn-allow:hover {
-  background: rgba(102, 128, 11, 0.15);
-  border-color: rgba(102, 128, 11, 0.5);
-}
-
-html[data-theme='light'] .btn-always {
-  color: #205EA6;
-  border-color: rgba(32, 94, 166, 0.3);
-  background: rgba(32, 94, 166, 0.08);
-}
-
-html[data-theme='light'] .btn-always:hover {
-  background: rgba(32, 94, 166, 0.15);
-  border-color: rgba(32, 94, 166, 0.5);
 }
 
 html[data-theme='light'] .btn-reject {

@@ -65,10 +65,12 @@
               :agent="agent"
               :selected="selectedAgentId === agent.id"
               :enabled="isAgentEnabled(agent.id)"
+              :is-pinned="isAgentPinned(agent.id)"
               @select="selectAgent"
               @edit="editAgent"
               @delete="confirmDelete"
               @toggle="toggleAgentEnabled"
+              @toggle-pin="toggleAgentPinned"
             />
           </div>
         </div>
@@ -89,10 +91,12 @@
               :agent="agent"
               :selected="selectedAgentId === agent.id"
               :enabled="isAgentEnabled(agent.id)"
+              :is-pinned="isAgentPinned(agent.id)"
               @select="selectAgent"
               @edit="editAgent"
               @delete="confirmDelete"
               @toggle="toggleAgentEnabled"
+              @toggle-pin="toggleAgentPinned"
             />
           </div>
         </div>
@@ -151,6 +155,16 @@ const isRefreshing = ref(false)
 // Check if an agent is enabled (default to true if not set)
 function isAgentEnabled(agentId: string): boolean {
   return settingsStore.settings?.tools?.agents?.[agentId]?.enabled ?? true
+}
+
+// Check if an agent is pinned to sidebar
+function isAgentPinned(agentId: string): boolean {
+  return customAgentsStore.pinnedAgentIds.includes(agentId)
+}
+
+// Toggle agent pinned state
+async function toggleAgentPinned(agent: CustomAgent) {
+  await customAgentsStore.togglePinAgent(agent.id)
 }
 
 // Toggle agent enabled state

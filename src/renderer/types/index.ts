@@ -99,20 +99,10 @@ import type {
   DeleteWorkspaceResponse,
   SwitchWorkspaceResponse,
   UploadWorkspaceAvatarResponse,
-  // Agent types
-  Agent,
+  // Shared Agent types (Avatar, Voice, Builtin Mode)
   AgentAvatar,
   AgentVoice,
-  AgentPermissions,
-  SkillPermission,
-  GetAgentsResponse,
-  CreateAgentResponse,
-  UpdateAgentResponse,
-  DeleteAgentResponse,
-  UploadAgentAvatarResponse,
-  PinAgentResponse,
-  UnpinAgentResponse,
-  // Builtin Agent types
+  Agent, // @deprecated - use CustomAgent instead
   BuiltinAgentMode,
   BuiltinAgent,
   BuiltinAgentToolPermissions,
@@ -169,6 +159,17 @@ import type {
   CreateCustomAgentResponse,
   UpdateCustomAgentResponse,
   DeleteCustomAgentResponse,
+  PinCustomAgentResponse,
+  UnpinCustomAgentResponse,
+  // File Tree types (for right sidebar)
+  FileTreeNode,
+  FileTreeListRequest,
+  FileTreeListResponse,
+  ExtractedDocument,
+  // File Preview types
+  FilePreview,
+  FileReadRequest,
+  FileReadResponse,
 } from '../../shared/ipc'
 
 export type {
@@ -229,13 +230,10 @@ export type {
   // Workspace types
   Workspace,
   WorkspaceAvatar,
-  // Agent types
-  Agent,
+  // Shared Agent types (Avatar, Voice, Builtin Mode)
   AgentAvatar,
   AgentVoice,
-  AgentPermissions,
-  SkillPermission,
-  // Builtin Agent types
+  Agent, // @deprecated - use CustomAgent instead
   BuiltinAgentMode,
   BuiltinAgent,
   BuiltinAgentToolPermissions,
@@ -273,6 +271,15 @@ export type {
   CustomToolResult,
   CustomAgentStep,
   CustomAgentResult,
+  // File Tree types (for right sidebar)
+  FileTreeNode,
+  FileTreeListRequest,
+  FileTreeListResponse,
+  ExtractedDocument,
+  // File Preview types
+  FilePreview,
+  FileReadRequest,
+  FileReadResponse,
 }
 
 // Gallery image type for image preview window
@@ -449,15 +456,6 @@ export interface ElectronAPI {
   switchWorkspace: (workspaceId: string | null) => Promise<SwitchWorkspaceResponse>
   uploadWorkspaceAvatar: (workspaceId: string, imageData: string, mimeType: string) => Promise<UploadWorkspaceAvatarResponse>
 
-  // Agent methods
-  getAgents: () => Promise<GetAgentsResponse>
-  createAgent: (name: string, avatar: AgentAvatar, systemPrompt: string, options?: { tagline?: string; personality?: string[]; primaryColor?: string; voice?: AgentVoice }) => Promise<CreateAgentResponse>
-  updateAgent: (id: string, updates: { name?: string; avatar?: AgentAvatar; systemPrompt?: string; tagline?: string; personality?: string[]; primaryColor?: string; voice?: AgentVoice }) => Promise<UpdateAgentResponse>
-  deleteAgent: (agentId: string) => Promise<DeleteAgentResponse>
-  uploadAgentAvatar: (agentId: string, imageData: string, mimeType: string) => Promise<UploadAgentAvatarResponse>
-  pinAgent: (agentId: string) => Promise<PinAgentResponse>
-  unpinAgent: (agentId: string) => Promise<UnpinAgentResponse>
-
   // User Profile methods
   getUserProfile: () => Promise<GetUserProfileResponse>
   addUserFact: (content: string, category: UserFactCategory, confidence?: number, sourceAgentId?: string) => Promise<AddUserFactResponse>
@@ -536,6 +534,12 @@ export interface ElectronAPI {
   // Directories listing (for /cd path completion)
   listDirs: (options: { basePath: string; query?: string; limit?: number }) => Promise<{ success: boolean; dirs: string[]; basePath: string; error?: string }>
 
+  // File tree methods (for right sidebar file browser)
+  fileTreeList: (options: FileTreeListRequest) => Promise<FileTreeListResponse>
+
+  // File content reading (for file preview panel)
+  readFileContent: (filePath: string, maxSize?: number) => Promise<FileReadResponse>
+
   // CustomAgent methods
   getCustomAgents: (workingDirectory?: string) => Promise<GetCustomAgentsResponse>
   refreshCustomAgents: (workingDirectory?: string) => Promise<GetCustomAgentsResponse>
@@ -544,6 +548,9 @@ export interface ElectronAPI {
   createCustomAgent: (config: Omit<CustomAgentConfig, 'id' | 'createdAt' | 'updatedAt'>, source?: 'user' | 'project', workingDirectory?: string) => Promise<CreateCustomAgentResponse>
   updateCustomAgent: (agentId: string, updates: Partial<Omit<CustomAgentConfig, 'id' | 'createdAt' | 'updatedAt'>>, workingDirectory?: string) => Promise<UpdateCustomAgentResponse>
   deleteCustomAgent: (agentId: string, workingDirectory?: string) => Promise<DeleteCustomAgentResponse>
+  // CustomAgent pin methods
+  pinCustomAgent: (agentId: string) => Promise<PinCustomAgentResponse>
+  unpinCustomAgent: (agentId: string) => Promise<UnpinCustomAgentResponse>
 }
 
 declare global {

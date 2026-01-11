@@ -1,0 +1,12 @@
+{{#if workingDirectory}}
+# Working Directory
+Base directory: {{baseDirectory}} (referred to as ~)
+Current working directory: {{displayPath}} ({{workingDirectory}})
+{{#if hasTools}}
+
+IMPORTANT: When using file tools (read, edit, write, glob, grep), always use absolute paths within this working directory. Do NOT hallucinate or guess paths from other projects or users.
+{{/if}}
+{{else}}
+# Base Directory
+Base directory: {{baseDirectory}} (referred to as ~)
+{{/if}}

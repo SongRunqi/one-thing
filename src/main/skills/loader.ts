@@ -212,7 +212,46 @@ function getFileType(fileName: string, filePath: string): SkillFile['type'] {
 }
 
 /**
+ * Directories to exclude when scanning skill files
+ * These are common directories that shouldn't be included in skill context
+ */
+const EXCLUDED_DIRECTORIES = new Set([
+  'node_modules',
+  '.git',
+  '.svn',
+  '.hg',
+  '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.tox',
+  '.venv',
+  'venv',
+  '.env',
+  'dist',
+  'build',
+  '.next',
+  '.nuxt',
+  '.cache',
+  'coverage',
+  '.nyc_output',
+])
+
+/**
+ * Files to exclude when scanning skill files
+ */
+const EXCLUDED_FILES = new Set([
+  '.DS_Store',
+  'Thumbs.db',
+  '.gitignore',
+  '.npmignore',
+  'package-lock.json',
+  'yarn.lock',
+  'pnpm-lock.yaml',
+])
+
+/**
  * Scan a skill directory for additional files
+ * Excludes common directories like node_modules, .git, etc.
  */
 function scanSkillFiles(skillDir: string): SkillFile[] {
   const files: SkillFile[] = []
@@ -226,8 +265,16 @@ function scanSkillFiles(skillDir: string): SkillFile[] {
         const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name
 
         if (entry.isDirectory()) {
+          // Skip excluded directories
+          if (EXCLUDED_DIRECTORIES.has(entry.name)) {
+            continue
+          }
           scanDir(fullPath, relPath)
         } else if (entry.isFile() && entry.name !== 'SKILL.md') {
+          // Skip excluded files
+          if (EXCLUDED_FILES.has(entry.name)) {
+            continue
+          }
           files.push({
             name: relPath,
             path: fullPath,

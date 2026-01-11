@@ -8,7 +8,7 @@
  */
 
 import { getStorage } from '../../storage/index.js'
-import { getAgents } from '../../stores/agents.js'
+import { loadCustomAgents } from '../custom-agent/loader.js'
 
 // Default decay interval: 4 hours
 const DEFAULT_DECAY_INTERVAL_MS = 4 * 60 * 60 * 1000
@@ -115,7 +115,7 @@ class MemoryScheduler {
 
     const results: DecayResult[] = []
     const storage = getStorage()
-    const agents = getAgents()
+    const agents = loadCustomAgents()
 
     if (agents.length === 0) {
       this.log('No agents found, skipping decay')

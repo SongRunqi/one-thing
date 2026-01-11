@@ -13,6 +13,7 @@ export {
   ensureAgentsDirectories,
   getUserAgentsPath,
   getProjectAgentsPath,
+  deleteFileBasedAgent,
 } from './loader.js'
 
 // Tool Builder

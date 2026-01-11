@@ -1,33 +1,46 @@
 <template>
-  <!-- Waiting status (streaming, no content yet, no reasoning) -->
-  <div v-if="isStreaming && !hasContent && !reasoning" class="thinking-status">
-    <div class="thinking-status-row">
-      <span class="thinking-text flowing">Waiting</span>
-      <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
-    </div>
-  </div>
+  <!-- 只在有内容显示时渲染容器 -->
+  <Transition name="container-fade">
+    <div v-if="shouldShowContainer" class="thinking-container">
+      <!-- Waiting status (streaming, no content yet, no reasoning) -->
+      <Transition name="thinking-fade" mode="out-in">
+        <div v-if="isStreaming && !hasContent && !reasoning" key="waiting" class="thinking-status">
+          <div class="thinking-status-row">
+            <span class="thinking-text flowing">Waiting</span>
+            <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+          </div>
+        </div>
 
-  <!-- Thinking/Thought status (has reasoning) -->
-  <div v-if="reasoning" class="thinking-status">
-    <div class="thinking-with-content">
-      <div class="thinking-status-row" @click="toggleExpand">
-        <!-- Still thinking: animated -->
-        <span v-if="isStreaming && !hasContent" class="thinking-text flowing">Thinking</span>
-        <!-- Done thinking: static "Thought for X seconds" -->
-        <span v-else class="thinking-text thought">Thought for {{ formatThinkingTime(displayTime) }}</span>
-        <!-- Show time separately only when still thinking -->
-        <span v-if="isStreaming && !hasContent" class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
-        <button class="thinking-toggle-btn" :class="{ expanded: isExpanded }">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M6 9l6 6 6-6"/>
-          </svg>
-        </button>
-      </div>
-      <div v-if="isExpanded" class="thinking-content-wrapper">
-        <div class="thinking-content" v-html="renderedReasoning"></div>
-      </div>
+        <!-- Thinking/Thought status (has reasoning) -->
+        <div v-else-if="reasoning" key="reasoning" class="thinking-status">
+          <div class="thinking-with-content">
+            <div class="thinking-status-row" @click="toggleExpand">
+              <!-- Still thinking: animated with transition -->
+              <Transition name="status-text-fade" mode="out-in">
+                <span v-if="isStreaming && !hasContent" key="thinking" class="thinking-text flowing">Thinking</span>
+                <!-- Done thinking: static "Thought for X seconds" -->
+                <span v-else key="thought" class="thinking-text thought">Thought for {{ formatThinkingTime(displayTime) }}</span>
+              </Transition>
+              <!-- Show time separately only when still thinking -->
+              <Transition name="time-fade">
+                <span v-if="isStreaming && !hasContent" class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+              </Transition>
+              <button class="thinking-toggle-btn" :class="{ expanded: isExpanded }">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 9l6 6 6-6"/>
+                </svg>
+              </button>
+            </div>
+            <Transition name="expand">
+              <div v-if="isExpanded" class="thinking-content-wrapper">
+                <div class="thinking-content" v-html="renderedReasoning"></div>
+              </div>
+            </Transition>
+          </div>
+        </div>
+      </Transition>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
@@ -67,6 +80,13 @@ const renderedReasoning = computed(() => {
   if (!props.reasoning) return ''
   const cleanedContent = cleanReasoningContent(props.reasoning)
   return renderMarkdown(cleanedContent, false)
+})
+
+// 是否应该显示容器（有 Waiting 或有 Reasoning 时才显示）
+const shouldShowContainer = computed(() => {
+  const showWaiting = props.isStreaming && !props.hasContent && !props.reasoning
+  const showReasoning = !!props.reasoning
+  return showWaiting || showReasoning
 })
 
 function toggleExpand() {
@@ -158,6 +178,27 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.thinking-container {
+  position: relative;
+  /* 不设置 min-height，让容器高度由内容决定 */
+}
+
+/* 容器淡入淡出 - 使用 absolute 避免影响下方布局 */
+.container-fade-enter-active {
+  transition: opacity 0.2s ease;
+}
+
+.container-fade-leave-active {
+  position: absolute;
+  width: 100%;
+  transition: opacity 0.25s ease;
+}
+
+.container-fade-enter-from,
+.container-fade-leave-to {
+  opacity: 0;
+}
+
 .thinking-status {
   margin-bottom: 8px;
 }
@@ -208,6 +249,95 @@ onUnmounted(() => {
   color: var(--muted);
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
+}
+
+/* Transition: Waiting <-> Thinking/Thought container */
+.thinking-fade-enter-active {
+  animation: thinkingFadeIn 0.25s ease;
+}
+
+.thinking-fade-leave-active {
+  animation: thinkingFadeOut 0.15s ease forwards;
+}
+
+@keyframes thinkingFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes thinkingFadeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Transition: Thinking -> Thought text */
+.status-text-fade-enter-active {
+  animation: statusTextEnter 0.3s ease;
+}
+
+.status-text-fade-leave-active {
+  animation: statusTextLeave 0.15s ease forwards;
+}
+
+@keyframes statusTextEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes statusTextLeave {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Transition: Time display fade */
+.time-fade-enter-active,
+.time-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.time-fade-enter-from,
+.time-fade-leave-to {
+  opacity: 0;
+}
+
+/* Transition: Content expand */
+.expand-enter-active {
+  animation: expandIn 0.2s ease-out;
+}
+
+.expand-leave-active {
+  animation: expandOut 0.15s ease-in forwards;
+}
+
+@keyframes expandOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
 }
 
 .thinking-toggle-btn {

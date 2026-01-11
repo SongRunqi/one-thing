@@ -16,7 +16,8 @@ export function registerPermissionHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.PERMISSION_RESPOND, async (_event, request: {
     sessionId: string
     permissionId: string
-    response: Permission.Response
+    response: Permission.Response | Permission.LegacyResponse
+    rejectReason?: string
   }) => {
     try {
       const success = Permission.respond(request)

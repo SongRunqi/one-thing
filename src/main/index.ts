@@ -9,6 +9,9 @@ import { initializeToolRegistry } from './tools/index.js'
 import { initializeStorage, closeStorage } from './storage/index.js'
 import { startMemoryScheduler, stopMemoryScheduler } from './services/memory/memory-scheduler.js'
 import { getMediaImagesDir } from './stores/paths.js'
+import { runMigration as runAgentMigration } from './services/migration/agent-migration.js'
+import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './services/prompt/index.js'
+import { initializePlugins, shutdownPlugins } from './plugins/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -33,11 +36,28 @@ app.on('ready', async () => {
   // Initialize stores and migrate data if needed
   initializeStores()
 
+  // Run agent migration (from old Built-in Agent to CustomAgent format)
+  // This must run after stores init but before custom agents are loaded
+  try {
+    const migratedCount = runAgentMigration()
+    if (migratedCount >= 0) {
+      console.log(`[Startup] Agent migration: ${migratedCount} agents migrated`)
+    }
+  } catch (error) {
+    console.error('[Startup] Agent migration failed:', error)
+  }
+
   // Clean up interrupted sessions from previous app instance
   sanitizeAllSessionsOnStartup()
 
   // Initialize SQLite storage with vector support
   await initializeStorage('sqlite')
+
+  // Initialize PromptManager for template-based prompts
+  await initializePromptManager()
+
+  // Start template watcher in development mode (hot reload)
+  startTemplateWatcher()
 
   // Start memory scheduler for periodic decay
   await startMemoryScheduler({
@@ -51,6 +71,11 @@ app.on('ready', async () => {
 
   // Initialize IPC handlers
   initializeIPC()
+
+  // Initialize plugin system (loads plugins and executes app:init hooks)
+  initializePlugins().catch(err => {
+    console.error('[Plugins] Initialization failed (non-blocking):', err)
+  })
 
   // Create window first for fast startup
   mainWindow = createWindow()
@@ -85,6 +110,12 @@ app.on('activate', () => {
 
 // Cleanup on quit
 app.on('before-quit', async () => {
+  // Shutdown plugins (executes app:quit hooks)
+  await shutdownPlugins()
+
+  // Stop template watcher
+  stopTemplateWatcher()
+
   // Stop memory scheduler
   stopMemoryScheduler()
 

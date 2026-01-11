@@ -1,0 +1,17 @@
+## Available Custom Tools
+
+You have access to the following custom tools:
+
+{{#each customTools}}
+- **{{name}}** ({{id}}): {{description}}
+  Parameters:
+{{#if parameters.length}}
+{{#each parameters}}
+    - {{name}}: {{type}} {{#if required}}(required){{else}}(optional){{/if}} - {{description}}
+{{/each}}
+{{else}}
+    (no parameters)
+{{/if}}
+
+{{/each}}
+Use these tools to complete the assigned task.

@@ -5,12 +5,14 @@
       :session-name="currentSession?.name || 'New chat'"
       :working-directory="currentSession?.workingDirectory || null"
       :session-agent="sessionAgent"
-      :agents="agentsStore.agents"
+      :agents="customAgentsStore.customAgents"
       :is-branch-session="isBranchSession"
       :show-sidebar-toggle="showSidebarToggle"
       :show-split-button="canClose !== undefined"
       :can-close="!!canClose"
+      :is-right-sidebar-open="rightSidebarStore.isOpen"
       @toggle-sidebar="emit('toggleSidebar')"
+      @toggle-right-sidebar="rightSidebarStore.toggle()"
       @open-directory-picker="openWorkingDirectoryPicker"
       @update-title="handleUpdateTitle"
       @select-agent="selectAgent"
@@ -20,15 +22,8 @@
       @close="emit('close')"
     />
 
-    <!-- Agent Create Page (when creating a new custom agent inline) -->
-    <CreateAgentPage
-      v-if="showAgentCreate"
-      @agent-created="handleAgentCreated"
-      @cancel="emit('closeAgentCreate')"
-    />
-
-    <!-- Chat View (when not showing agent welcome) -->
-    <div v-else class="chat-container">
+    <!-- Chat View -->
+    <div class="chat-container">
       <div class="chat-main">
         <MessageList
           :messages="panelMessages"
@@ -53,34 +48,25 @@
       <SettingsPanel v-if="showSettings" @close="emit('closeSettings')" />
     </Transition>
 
-    <!-- Agent Settings Panel overlay -->
-    <Transition name="settings-fade">
-      <AgentSettingsPanel
-        v-if="showAgentSettings"
-        :agent="agentsStore.selectedAgent"
-        @close="emit('closeAgentSettings')"
-      />
-    </Transition>
+    <!-- Agent Settings Panel removed - use CustomAgentDialog instead -->
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
-import { useAgentsStore } from '@/stores/agents'
+import { useCustomAgentsStore } from '@/stores/custom-agents'
+import { useRightSidebarStore } from '@/stores/right-sidebar'
 import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import ChatHeader from './ChatHeader.vue'
 import SettingsPanel from '../SettingsPanel.vue'
-import AgentSettingsPanel from '../AgentSettingsPanel.vue'
-import CreateAgentPage from './CreateAgentPage.vue'
 import type { CustomAgent } from '@/types'
 
 interface Props {
   showSettings?: boolean
   showAgentSettings?: boolean
-  showAgentCreate?: boolean
   sessionId?: string
   canClose?: boolean
   showSidebarToggle?: boolean
@@ -89,7 +75,6 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   showSettings: false,
   showAgentSettings: false,
-  showAgentCreate: false,
   showSidebarToggle: false,
 })
 
@@ -98,8 +83,6 @@ const emit = defineEmits<{
   openSettings: []
   closeAgentSettings: []
   openAgentSettings: []
-  closeAgentCreate: []
-  agentCreated: [agent: CustomAgent]
   close: []
   split: []
   equalize: []
@@ -108,7 +91,8 @@ const emit = defineEmits<{
 }>()
 
 const sessionsStore = useSessionsStore()
-const agentsStore = useAgentsStore()
+const customAgentsStore = useCustomAgentsStore()
+const rightSidebarStore = useRightSidebarStore()
 
 // Get effective session ID (props.sessionId or current session)
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
@@ -138,7 +122,7 @@ const panelMessages = computed(() => messages.value)
 const sessionAgent = computed(() => {
   const agentId = currentSession.value?.agentId
   if (!agentId) return null
-  return agentsStore.agents.find(a => a.id === agentId) || null
+  return customAgentsStore.customAgents.find(a => a.id === agentId) || null
 })
 
 // Check if current session is a branch
@@ -199,12 +183,6 @@ const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
 // Handle open tool settings from InputBox - opens settings in new window
 function handleOpenToolSettings() {
   window.electronAPI.openSettingsWindow()
-}
-
-// Handle custom agent created from inline form
-function handleAgentCreated(agent: CustomAgent) {
-  emit('agentCreated', agent)
-  emit('closeAgentCreate')
 }
 
 async function handleSendMessage(message: string, attachments?: import('@/types').MessageAttachment[]) {

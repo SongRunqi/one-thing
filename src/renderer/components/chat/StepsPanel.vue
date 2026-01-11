@@ -42,9 +42,8 @@
 
           <template v-else-if="step.status === 'awaiting-confirmation'">
             <div class="confirm-buttons" @click.stop>
-              <button class="btn-allow" @click="handleConfirm(step, 'once')">Allow</button>
-              <button class="btn-always" @click="handleConfirm(step, 'always')">Always</button>
-              <button class="btn-reject" @click="handleReject(step)">Reject</button>
+              <AllowSplitButton @confirm="(response) => handleConfirm(step, response)" />
+              <button class="btn-reject" @click="handleReject(step)" title="Reject (D/Esc)">Reject</button>
             </div>
           </template>
 
@@ -62,13 +61,15 @@
         <Transition name="slide">
           <div v-if="shouldShowContent(step)" class="step-details">
             <!-- Streaming diff preview (during input-streaming for edit/write tools) -->
-            <div v-if="getStreamingContent(step)" class="detail-section streaming-diff">
-              <div class="streaming-header">
-                <span class="streaming-path">{{ getStreamingContent(step)?.filePath || 'Parsing...' }}</span>
-                <span class="streaming-indicator flowing-text">Writing...</span>
+            <Transition name="streaming-fade" mode="out-in">
+              <div v-if="getStreamingContent(step)" key="streaming" class="detail-section streaming-diff">
+                <div class="streaming-header">
+                  <span class="streaming-path">{{ getStreamingContent(step)?.filePath || 'Parsing...' }}</span>
+                  <span class="streaming-indicator flowing-text">Writing...</span>
+                </div>
+                <pre v-if="getStreamingContent(step)?.content" class="streaming-code"><code>{{ getStreamingContent(step)?.content }}</code></pre>
               </div>
-              <pre v-if="getStreamingContent(step)?.content" class="streaming-code"><code>{{ getStreamingContent(step)?.content }}</code></pre>
-            </div>
+            </Transition>
 
             <!-- Diff preview for edit tool (awaiting-confirmation or completed) -->
             <div v-if="(step.status === 'awaiting-confirmation' || step.status === 'completed') && getDiffFromStep(step)" class="detail-section diff-preview">
@@ -133,10 +134,6 @@
               <pre class="summary">{{ step.summary }}</pre>
             </div>
 
-            <!-- Error -->
-            <div v-if="step.error" class="detail-section error">
-              <pre>{{ step.error }}</pre>
-            </div>
           </div>
         </Transition>
       </div>
@@ -148,6 +145,7 @@
 import { ref, watch } from 'vue'
 import type { Step, ToolCall } from '@/types'
 import AgentExecutionPanel from './AgentExecutionPanel.vue'
+import AllowSplitButton from '../common/AllowSplitButton.vue'
 
 const props = withDefaults(defineProps<{
   steps: Step[]
@@ -161,7 +159,7 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  confirm: [toolCall: ToolCall, response: 'once' | 'always']
+  confirm: [toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always']
   reject: [toolCall: ToolCall]
 }>()
 
@@ -546,7 +544,7 @@ function hasArgs(step: Step): boolean {
   return Object.keys(args).length > 0
 }
 
-function handleConfirm(step: Step, response: 'once' | 'always') {
+function handleConfirm(step: Step, response: 'once' | 'session' | 'workspace' | 'always') {
   // Use toolCall if available, otherwise construct a fallback from step info
   // This handles CustomAgent nested steps where toolCall may be constructed differently
   const toolCall = step.toolCall || {
@@ -960,10 +958,9 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
   display: flex;
   gap: 6px;
   flex-shrink: 0;
+  align-items: center;
 }
 
-.btn-allow,
-.btn-always,
 .btn-reject {
   padding: 4px 10px;
   border-radius: 6px;
@@ -973,34 +970,7 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
   border: 1px solid transparent;
   transition: all 0.15s ease;
   background: transparent;
-}
-
-.btn-allow {
-  color: var(--text-success);
-  border-color: rgba(var(--color-success-rgb), 0.3);
-  background: rgba(var(--color-success-rgb), 0.08);
-}
-
-.btn-allow:hover {
-  background: rgba(var(--color-success-rgb), 0.15);
-  border-color: rgba(var(--color-success-rgb), 0.5);
-}
-
-.btn-always {
-  color: var(--accent);
-  border-color: rgba(var(--accent-rgb), 0.3);
-  background: rgba(var(--accent-rgb), 0.08);
-}
-
-.btn-always:hover {
-  background: rgba(var(--accent-rgb), 0.15);
-  border-color: rgba(var(--accent-rgb), 0.5);
-}
-
-.btn-reject {
   color: var(--text-muted);
-  border-color: transparent;
-  background: transparent;
 }
 
 .btn-reject:hover {
@@ -1034,14 +1004,8 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
   padding-left: 8px;
 }
 
-.detail-section.error {
-  border-left: 2px solid var(--text-error);
-  padding-left: 8px;
-}
 
-.detail-section.error pre {
-  color: var(--text-error);
-}
+
 
 .detail-label {
   font-size: 11px;
@@ -1299,6 +1263,37 @@ pre.summary {
   font-size: 11px;
   font-weight: 500;
   flex-shrink: 0;
+}
+
+/* Streaming fade transition - from Writing to Completed/Diff */
+.streaming-fade-enter-active {
+  animation: streamingFadeIn 0.3s ease;
+}
+
+.streaming-fade-leave-active {
+  animation: streamingFadeOut 0.2s ease forwards;
+}
+
+@keyframes streamingFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes streamingFadeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
 }
 
 .streaming-code {

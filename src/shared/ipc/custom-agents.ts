@@ -125,6 +125,10 @@ export interface CustomAgent {
   /** Timeout in milliseconds (default: 120000) */
   timeoutMs?: number
 
+  // Memory settings
+  /** Whether to enable memory for this agent (default: true) */
+  enableMemory?: boolean
+
   // Source information
   /** Source of this agent definition */
   source: CustomAgentSource
@@ -203,6 +207,7 @@ export interface GetCustomAgentsRequest {
 export interface GetCustomAgentsResponse {
   success: boolean
   agents?: CustomAgent[]
+  pinnedAgentIds?: string[]
   error?: string
 }
 
@@ -276,6 +281,7 @@ export interface CustomAgentJsonFile {
   allowedBuiltinTools?: string[]
   maxToolCalls?: number
   timeoutMs?: number
+  enableMemory?: boolean
 }
 
 /**
@@ -292,6 +298,7 @@ export interface CustomAgentConfig {
   allowedBuiltinTools?: string[]
   maxToolCalls?: number
   timeoutMs?: number
+  enableMemory?: boolean
   createdAt: number
   updatedAt: number
 }
@@ -340,5 +347,35 @@ export interface DeleteCustomAgentRequest {
 
 export interface DeleteCustomAgentResponse {
   success: boolean
+  error?: string
+}
+
+// ============================================
+// Pin Request/Response Types
+// ============================================
+
+/**
+ * Pin a CustomAgent to sidebar
+ */
+export interface PinCustomAgentRequest {
+  agentId: string
+}
+
+export interface PinCustomAgentResponse {
+  success: boolean
+  pinnedAgentIds?: string[]
+  error?: string
+}
+
+/**
+ * Unpin a CustomAgent from sidebar
+ */
+export interface UnpinCustomAgentRequest {
+  agentId: string
+}
+
+export interface UnpinCustomAgentResponse {
+  success: boolean
+  pinnedAgentIds?: string[]
   error?: string
 }

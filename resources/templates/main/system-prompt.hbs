@@ -1,0 +1,53 @@
+{{!-- Main System Prompt Template --}}
+
+{{!-- 1. Inject builtin agent mode prompt (Ask mode restrictions) --}}
+{{#if (eq builtinMode "ask")}}
+{{> main/ask-mode}}
+{{/if}}
+
+{{!-- 2. Workspace/Agent persona OR default base prompt --}}
+{{#if (hasValue workspaceSystemPrompt)}}
+{{{workspaceSystemPrompt}}}
+{{else}}
+{{> base/base}}
+{{/if}}
+
+{{!-- 4. Working directory context --}}
+{{> context/working-directory baseDirectory=baseDirectory workingDirectory=workingDirectory displayPath=displayPath hasTools=hasTools}}
+
+{{!-- 5. OS-specific context --}}
+
+# Operating System Context
+{{> (concat "os/" osType) macosAutomationDocsPath=macosAutomationDocsPath}}
+
+{{!-- 6. Planning and tool guidance when tools are available --}}
+{{#if hasTools}}
+
+{{> guidance/planning}}
+
+{{> guidance/tool-usage toolUsageDocsPath=toolUsageDocsPath}}
+{{/if}}
+
+{{!-- 7. Current plan context --}}
+{{#if sessionPlan}}
+{{#if sessionPlan.items.length}}
+
+{{> context/plan-context sessionPlan=sessionPlan}}
+{{/if}}
+{{/if}}
+
+{{!-- 8. User memory/profile --}}
+{{#if (hasValue userProfilePrompt)}}
+
+{{> context/user-memory userProfilePrompt=userProfilePrompt}}
+{{/if}}
+
+{{!-- 9. Agent relationship memory --}}
+{{#if (hasValue agentMemoryPrompt)}}
+
+{{> context/agent-memory agentMemoryPrompt=agentMemoryPrompt}}
+{{/if}}
+
+{{!-- 10. MCP Tools descriptions are included inline in the tool definitions passed to the AI,
+     already filtered by per-session settings. No need for a separate catalog file reference
+     since it would show ALL tools regardless of what's enabled in the session. --}}

@@ -51,10 +51,7 @@ export const useSessionsStore = defineStore('sessions', () => {
       const response = await window.electronAPI.getSessions()
       if (response.success) {
         sessions.value = response.sessions || []
-        // Always start with a new chat on app open
-        if (!currentSessionId.value) {
-          await createSession('New Chat')
-        }
+        // Don't auto-create new chat on app open - let user choose
       }
     } finally {
       isLoading.value = false
@@ -164,10 +161,10 @@ export const useSessionsStore = defineStore('sessions', () => {
       const activeSessions = filteredSessions.value
       const sessionIndex = activeSessions.findIndex(s => s.id === sessionId)
 
-      // Check if this is the only session - if so, close the window
+      // Check if this is the only session - just delete it, keep window open
       if (activeSessions.length === 1 && activeSessions[0].id === sessionId) {
-        // Only one empty session left, close the window
-        window.close()
+        await permanentlyDeleteSession(sessionId)
+        currentSessionId.value = ''
         return
       }
 
@@ -181,8 +178,8 @@ export const useSessionsStore = defineStore('sessions', () => {
           const targetIndex = sessionIndex > 0 ? sessionIndex - 1 : 0
           await switchSession(remaining[targetIndex].id)
         } else {
-          // No sessions remaining, close window
-          window.close()
+          // No sessions remaining, just clear current session
+          currentSessionId.value = ''
         }
       }
       return
@@ -236,8 +233,8 @@ export const useSessionsStore = defineStore('sessions', () => {
           const targetIndex = sessionIndex > 0 ? sessionIndex - 1 : 0
           await switchSession(activeSessions[targetIndex].id)
         } else {
-          // No sessions remaining, close window
-          window.close()
+          // No sessions remaining, just clear current session
+          currentSessionId.value = ''
         }
       }
     } catch (error) {

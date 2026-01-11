@@ -54,25 +54,98 @@
 
     <!-- Normal display -->
     <div v-else class="content-display" @click="handleContentClick">
-      <!-- Sequential content parts (text and tool calls interleaved) -->
-      <template v-if="contentParts && contentParts.length > 0">
-        <template v-for="(part, index) in contentParts" :key="`${part.type}-${index}-${'turnIndex' in part ? part.turnIndex : ''}`">
-          <!-- Text part -->
-          <div
-            v-if="part.type === 'text'"
-            :class="['content', { typing: isTyping && index === contentParts.length - 1 }]"
-            v-html="renderContentMarkdown(part.content)"
-          ></div>
-          <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
-          <template v-else-if="part.type === 'tool-call' && (!hasSteps || hasInputStreamingToolCalls(part.toolCalls))">
+      <!-- Collapsible wrapper (only for user messages) -->
+      <div
+        ref="contentRef"
+        class="content-wrapper"
+        :class="{
+          collapsed: role === 'user' && isCollapsed && isOverflowing && !isStreaming,
+          'has-overflow': role === 'user' && isOverflowing
+        }"
+        :style="role === 'user' && isCollapsed && isOverflowing && !isStreaming ? { maxHeight: MAX_COLLAPSED_HEIGHT + 'px' } : {}"
+      >
+        <!-- New contentParts-based rendering -->
+        <template v-if="contentParts && contentParts.length > 0">
+          <!-- Text 内容 - Waiting 状态由 MessageThinking 组件处理 -->
+          <Transition name="text-fade">
+            <div
+              v-if="firstTextPart"
+              class="content"
+              :class="{ typing: isTyping }"
+              v-html="renderContentMarkdown(firstTextPart.content)"
+            ></div>
+          </Transition>
+
+          <!-- Other parts: tool-call, steps, additional text (with TransitionGroup) -->
+          <TransitionGroup
+            v-if="otherParts && otherParts.length > 0"
+            name="other-parts"
+            tag="div"
+            class="other-parts-container"
+          >
+            <template v-for="(part, index) in otherParts" :key="getOtherPartKey(part, index)">
+              <!-- Tool loop waiting (工具执行后等待 AI 继续) -->
+              <div v-if="part.type === 'waiting'" class="tool-loop-waiting">
+                <span class="thinking-text flowing">Waiting</span>
+              </div>
+              <!-- Additional text parts (after the first one) -->
+              <div
+                v-else-if="part.type === 'text'"
+                class="content"
+                v-html="renderContentMarkdown(part.content)"
+              ></div>
+              <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
+              <template v-else-if="part.type === 'tool-call' && (!hasSteps || hasInputStreamingToolCalls(part.toolCalls))">
+                <template v-if="!hasSteps">
+                  <!-- No steps at all, show all tool calls -->
+                  <ToolCallGroup
+                    :toolCalls="part.toolCalls"
+                    @execute="(tc) => emit('executeTool', tc)"
+                  />
+                  <ToolCallItem
+                    v-for="tc in part.toolCalls"
+                    :key="tc.id"
+                    :toolCall="tc"
+                    @execute="(tc) => emit('executeTool', tc)"
+                    @confirm="(tc, r) => emit('confirmTool', tc, r)"
+                    @reject="(tc) => emit('rejectTool', tc)"
+                  />
+                </template>
+                <template v-else>
+                  <!-- Has steps, only show streaming tool calls without corresponding step -->
+                  <ToolCallItem
+                    v-for="tc in getToolCallsWithoutSteps(part.toolCalls)"
+                    :key="tc.id"
+                    :toolCall="tc"
+                    @execute="(tc) => emit('executeTool', tc)"
+                    @confirm="(tc, r) => emit('confirmTool', tc, r)"
+                    @reject="(tc) => emit('rejectTool', tc)"
+                  />
+                </template>
+              </template>
+              <!-- Steps panel - rendered inline -->
+              <StepsPanel
+                v-else-if="part.type === 'data-steps' && steps && steps.length > 0"
+                :steps="getStepsForTurn(part.turnIndex)"
+                :session-id="sessionId"
+                @confirm="(tc, r) => emit('confirmTool', tc, r)"
+                @reject="(tc) => emit('rejectTool', tc)"
+              />
+            </template>
+          </TransitionGroup>
+        </template>
+
+        <!-- Fallback: legacy content display (no contentParts) -->
+        <template v-else>
+          <!-- Tool calls if no steps OR if streaming input without step -->
+          <template v-if="toolCalls && toolCalls.length > 0 && (!hasSteps || hasInputStreamingToolCalls(toolCalls))">
             <template v-if="!hasSteps">
-              <!-- No steps at all, show all tool calls -->
               <ToolCallGroup
-                :toolCalls="part.toolCalls"
+                :toolCalls="toolCalls"
                 @execute="(tc) => emit('executeTool', tc)"
               />
               <ToolCallItem
-                v-for="tc in part.toolCalls"
+                v-for="tc in toolCalls"
                 :key="tc.id"
                 :toolCall="tc"
                 @execute="(tc) => emit('executeTool', tc)"
@@ -81,9 +154,8 @@
               />
             </template>
             <template v-else>
-              <!-- Has steps, only show streaming tool calls without corresponding step -->
               <ToolCallItem
-                v-for="tc in getToolCallsWithoutSteps(part.toolCalls)"
+                v-for="tc in getToolCallsWithoutSteps(toolCalls)"
                 :key="tc.id"
                 :toolCall="tc"
                 @execute="(tc) => emit('executeTool', tc)"
@@ -92,52 +164,31 @@
               />
             </template>
           </template>
-          <!-- Steps panel - rendered inline -->
-          <StepsPanel
-            v-else-if="part.type === 'data-steps' && steps && steps.length > 0"
-            :steps="getStepsForTurn(part.turnIndex)"
-            :session-id="sessionId"
-            @confirm="(tc, r) => emit('confirmTool', tc, r)"
-            @reject="(tc) => emit('rejectTool', tc)"
-          />
-          <!-- Waiting indicator -->
-          <div v-else-if="part.type === 'waiting'" class="thinking-status-inline">
-            <span class="thinking-text flowing">Waiting</span>
-          </div>
+          <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
         </template>
-      </template>
+      </div>
 
-      <!-- Fallback: legacy content display (no contentParts) -->
-      <template v-else>
-        <!-- Tool calls if no steps OR if streaming input without step -->
-        <template v-if="toolCalls && toolCalls.length > 0 && (!hasSteps || hasInputStreamingToolCalls(toolCalls))">
-          <template v-if="!hasSteps">
-            <ToolCallGroup
-              :toolCalls="toolCalls"
-              @execute="(tc) => emit('executeTool', tc)"
-            />
-            <ToolCallItem
-              v-for="tc in toolCalls"
-              :key="tc.id"
-              :toolCall="tc"
-              @execute="(tc) => emit('executeTool', tc)"
-              @confirm="(tc, r) => emit('confirmTool', tc, r)"
-              @reject="(tc) => emit('rejectTool', tc)"
-            />
-          </template>
-          <template v-else>
-            <ToolCallItem
-              v-for="tc in getToolCallsWithoutSteps(toolCalls)"
-              :key="tc.id"
-              :toolCall="tc"
-              @execute="(tc) => emit('executeTool', tc)"
-              @confirm="(tc, r) => emit('confirmTool', tc, r)"
-              @reject="(tc) => emit('rejectTool', tc)"
-            />
-          </template>
-        </template>
-        <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
-      </template>
+      <!-- Collapse/Expand button (only for user messages) -->
+      <button
+        v-if="role === 'user' && isOverflowing && !isStreaming"
+        class="collapse-toggle"
+        :class="{ collapsed: isCollapsed }"
+        @click.stop="toggleCollapse"
+      >
+        <svg
+          class="collapse-icon"
+          :class="{ rotated: !isCollapsed }"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+        <span>{{ isCollapsed ? 'Show more' : 'Show less' }}</span>
+      </button>
     </div>
   </div>
 </template>
@@ -180,14 +231,62 @@ const emit = defineEmits<{
 }>()
 
 const bubbleRef = ref<HTMLElement | null>(null)
+const contentRef = ref<HTMLElement | null>(null)
 const editTextarea = ref<HTMLTextAreaElement | null>(null)
 const localEditContent = ref('')
 const isEditComposing = ref(false)
+
+// Collapsible content
+const MAX_COLLAPSED_HEIGHT = 300 // 最大折叠高度（像素）
+const isCollapsed = ref(true) // 默认折叠
+const isOverflowing = ref(false) // 内容是否超出最大高度
+let resizeObserver: ResizeObserver | null = null
 
 // Typewriter effect
 const displayedContent = ref('')
 const isTyping = ref(false)
 let typewriterInterval: ReturnType<typeof setInterval> | null = null
+
+// ============ New overlay-based transition system ============
+
+// Extract the first text part (rendered separately for smooth transition)
+const firstTextPart = computed(() => {
+  return props.contentParts?.find(p => p.type === 'text') || null
+})
+
+// Other parts (excluding first text, but keeping tool loop waiting) for TransitionGroup
+const otherParts = computed(() => {
+  if (!props.contentParts) return []
+  let foundFirstText = false
+  let foundFirstWaiting = false
+
+  return props.contentParts.filter(p => {
+    // 跳过第一个 waiting（由 MessageThinking 处理）
+    // 但保留后续的 waiting（tool loop 中的等待）
+    if (p.type === 'waiting') {
+      if (!foundFirstWaiting && !foundFirstText) {
+        foundFirstWaiting = true
+        return false // 第一个 waiting 跳过
+      }
+      return true // 后续 waiting（tool loop）保留
+    }
+
+    if (p.type === 'text' && !foundFirstText) {
+      foundFirstText = true
+      return false // first text is rendered separately
+    }
+    return true
+  })
+})
+
+// Generate stable keys for other parts TransitionGroup
+function getOtherPartKey(part: ContentPart, index: number): string {
+  if (part.type === 'text') return `text-other-${index}`
+  if (part.type === 'tool-call') return `tool-call-${index}`
+  if (part.type === 'data-steps') return `steps-${part.turnIndex ?? index}`
+  if (part.type === 'waiting') return `waiting-${index}`
+  return `part-${index}`
+}
 
 // Infographic 实例管理
 const infographicApps: App[] = []
@@ -383,6 +482,11 @@ watch(
       stopTypewriter()
       // 流式结束后挂载 Infographic
       nextTick(() => mountInfographics())
+      // 流式结束后检测溢出并默认折叠
+      nextTick(() => {
+        checkOverflow()
+        isCollapsed.value = true // 流式结束后重置为折叠状态
+      })
     }
   },
   { immediate: true }
@@ -394,8 +498,43 @@ watch(
     if (!props.isStreaming && !isTyping.value) {
       displayedContent.value = props.content
     }
+    // 内容变化后重新检测溢出
+    nextTick(() => checkOverflow())
   }
 )
+
+// 检测内容是否溢出
+function checkOverflow() {
+  if (!contentRef.value) return
+  const scrollHeight = contentRef.value.scrollHeight
+  isOverflowing.value = scrollHeight > MAX_COLLAPSED_HEIGHT
+}
+
+// 切换折叠状态
+function toggleCollapse() {
+  isCollapsed.value = !isCollapsed.value
+}
+
+// 设置 ResizeObserver
+function setupResizeObserver() {
+  if (!contentRef.value) return
+
+  resizeObserver = new ResizeObserver(() => {
+    checkOverflow()
+  })
+  resizeObserver.observe(contentRef.value)
+
+  // 初始检查
+  checkOverflow()
+}
+
+// 清理 ResizeObserver
+function cleanupResizeObserver() {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+}
 
 onMounted(() => {
   if (props.isStreaming) {
@@ -405,11 +544,15 @@ onMounted(() => {
     // 延迟挂载 Infographic，确保 DOM 已渲染
     nextTick(() => mountInfographics())
   }
+
+  // 设置内容溢出检测
+  nextTick(() => setupResizeObserver())
 })
 
 onUnmounted(() => {
   stopTypewriter()
   unmountInfographics()
+  cleanupResizeObserver()
 })
 
 // Text selection
@@ -626,6 +769,61 @@ html[data-theme='light'] .attachment-file {
   width: 100%;
 }
 
+/* Collapsible content wrapper */
+.content-wrapper {
+  position: relative;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.content-wrapper.collapsed {
+  /* Gradient mask at bottom when collapsed */
+}
+
+.content-wrapper.collapsed::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--user-bubble)
+  );
+  pointer-events: none;
+}
+
+/* Collapse/Expand button */
+.collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 0;
+  margin-top: 4px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.collapse-toggle:hover {
+  color: var(--accent);
+}
+
+.collapse-icon {
+  transition: transform 0.3s ease;
+}
+
+.collapse-icon.rotated {
+  transform: rotate(180deg);
+}
+
 .content {
   word-wrap: break-word;
   line-height: var(--message-line-height, 1.6);
@@ -657,11 +855,23 @@ html[data-theme='light'] .attachment-file {
   51%, 100% { opacity: 0; }
 }
 
-/* Waiting inline indicator */
-.thinking-status-inline {
+/* ============ Text 淡入动画 ============ */
+
+/* Text 内容淡入 - Waiting 状态由 MessageThinking 组件处理 */
+.text-fade-enter-active {
+  transition: opacity 0.3s ease;
+}
+
+.text-fade-enter-from {
+  opacity: 0;
+}
+
+/* Tool loop waiting (工具执行后等待 AI 继续) */
+.tool-loop-waiting {
   padding: 8px 0;
 }
 
+/* Flowing gradient text for waiting indicator */
 .thinking-text.flowing {
   font-size: 13px;
   font-weight: 500;
@@ -681,6 +891,46 @@ html[data-theme='light'] .attachment-file {
 @keyframes flowingGradient {
   0% { background-position: 200% center; }
   100% { background-position: -200% center; }
+}
+
+/* ============ Other Parts TransitionGroup ============ */
+
+/* Container for tool-calls, steps, and additional text parts */
+.other-parts-container {
+  position: relative;
+}
+
+/* Other parts transition classes */
+.other-parts-enter-active {
+  animation: otherPartsEnter 0.3s ease;
+}
+
+.other-parts-leave-active {
+  position: absolute;  /* 离开时脱离文档流，避免影响布局 */
+  width: 100%;
+  animation: otherPartsLeave 0.25s ease forwards;
+}
+
+.other-parts-move {
+  transition: transform 0.3s ease;
+}
+
+@keyframes otherPartsEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes otherPartsLeave {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 /* Markdown content styles */
@@ -729,6 +979,15 @@ html[data-theme='light'] .attachment-file {
 
 .content :deep(a:hover) {
   text-decoration: underline;
+}
+
+/* Horizontal rule */
+.content :deep(hr) {
+  border: none;
+  height: 1px;
+  background: var(--border-subtle, var(--border));
+  margin: 1em 0;
+  opacity: 0.5;
 }
 
 /* Generated images */

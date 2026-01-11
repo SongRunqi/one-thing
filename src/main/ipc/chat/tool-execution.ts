@@ -12,6 +12,7 @@ import type { ToolExecutionContext, ToolExecutionResult } from '../../tools/type
 import type { StreamContext } from './stream-processor.js'
 import { checkToolPermission } from '../../agents/builtin-agents.js'
 import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
+import { hookManager } from '../../plugins/hooks/index.js'
 
 /**
  * Detect if a bash command is reading a skill file and extract skill name
@@ -284,10 +285,42 @@ export async function executeToolAndUpdate(
     return
   }
 
+  // Execute tool:pre hooks (can modify args or abort)
+  let finalArgs = { ...toolCallData.args }
+  if (hookManager.hasHooks('tool:pre')) {
+    const preResult = await hookManager.executeChain('tool:pre', {
+      toolId: toolCall.id,
+      toolName: toolCallData.toolName,
+      args: toolCallData.args,
+      sessionId: ctx.sessionId,
+      messageId: ctx.assistantMessageId,
+    })
+
+    if (preResult.abort) {
+      console.log(`[Backend] Tool aborted by plugin: ${preResult.abortReason}`)
+      toolCall.endTime = Date.now()
+      toolCall.status = 'failed'
+      toolCall.error = preResult.abortReason || 'Aborted by plugin'
+
+      emitter.sendStepUpdated(step.id, {
+        status: 'failed',
+        toolCall: { ...toolCall },
+        error: toolCall.error,
+      })
+
+      store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+      emitter.sendToolResult(toolCall)
+      return
+    }
+
+    const preResultValue = preResult.value as { args: Record<string, unknown> }
+    finalArgs = preResultValue.args
+  }
+
   // Execute tool directly (no LLM overhead)
   result = await executeToolDirectly(
     toolCallData.toolName,
-    toolCallData.args,
+    finalArgs,
     {
       sessionId: ctx.sessionId,
       messageId: ctx.assistantMessageId,
@@ -351,6 +384,30 @@ export async function executeToolAndUpdate(
   )
 
   toolCall.endTime = Date.now()
+
+  // Execute tool:post hooks (can modify result)
+  if (hookManager.hasHooks('tool:post') && !result.requiresConfirmation) {
+    const postResult = await hookManager.executeChain('tool:post', {
+      toolId: toolCall.id,
+      toolName: toolCallData.toolName,
+      args: finalArgs,
+      result: {
+        success: result.success,
+        data: result.data,
+        error: result.error,
+      },
+      sessionId: ctx.sessionId,
+      messageId: ctx.assistantMessageId,
+    })
+
+    // Apply modifications from plugin
+    const postResultValue = postResult.value as { result?: { success: boolean; data?: unknown; error?: string } }
+    if (postResultValue.result) {
+      result.success = postResultValue.result.success
+      result.data = postResultValue.result.data
+      result.error = postResultValue.result.error
+    }
+  }
 
   if (result.requiresConfirmation) {
     toolCall.status = 'pending'

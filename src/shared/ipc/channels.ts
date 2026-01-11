@@ -144,15 +144,6 @@ export const IPC_CHANNELS = {
   WORKSPACE_SWITCH: 'workspaces:switch',
   WORKSPACE_UPLOAD_AVATAR: 'workspaces:upload-avatar',
 
-  // Agent related
-  AGENT_GET_ALL: 'agents:get-all',
-  AGENT_CREATE: 'agents:create',
-  AGENT_UPDATE: 'agents:update',
-  AGENT_DELETE: 'agents:delete',
-  AGENT_UPLOAD_AVATAR: 'agents:upload-avatar',
-  AGENT_PIN: 'agents:pin',
-  AGENT_UNPIN: 'agents:unpin',
-
   // User Profile related
   USER_PROFILE_GET: 'user-profile:get',
   USER_PROFILE_ADD_FACT: 'user-profile:add-fact',
@@ -206,4 +197,27 @@ export const IPC_CHANNELS = {
   // CustomAgent permission (for tools that need user confirmation within CustomAgent execution)
   CUSTOM_AGENT_PERMISSION_REQUEST: 'custom-agents:permission-request',
   CUSTOM_AGENT_PERMISSION_RESPOND: 'custom-agents:permission-respond',
+  // CustomAgent pin/unpin (for sidebar display)
+  CUSTOM_AGENT_PIN: 'custom-agents:pin',
+  CUSTOM_AGENT_UNPIN: 'custom-agents:unpin',
+
+  // File Tree related (for right sidebar file browser)
+  FILE_TREE_LIST: 'file-tree:list',
+  FILE_TREE_WATCH: 'file-tree:watch',
+  FILE_TREE_UNWATCH: 'file-tree:unwatch',
+
+  // File Preview related (for reading file content)
+  FILE_READ_CONTENT: 'file:read-content',
+
+  // Plugin related
+  PLUGINS_GET_ALL: 'plugins:get-all',
+  PLUGINS_GET: 'plugins:get',
+  PLUGINS_INSTALL: 'plugins:install',
+  PLUGINS_UNINSTALL: 'plugins:uninstall',
+  PLUGINS_ENABLE: 'plugins:enable',
+  PLUGINS_DISABLE: 'plugins:disable',
+  PLUGINS_RELOAD: 'plugins:reload',
+  PLUGINS_UPDATE_CONFIG: 'plugins:update-config',
+  PLUGINS_GET_DIRECTORIES: 'plugins:get-directories',
+  PLUGINS_OPEN_DIRECTORY: 'plugins:open-directory',
 } as const

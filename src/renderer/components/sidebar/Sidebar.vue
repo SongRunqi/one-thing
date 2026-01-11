@@ -11,9 +11,9 @@
         @update:search-query="localSearchQuery = $event"
       />
 
-      <!-- Agent Grid at top -->
+      <!-- Agent Grid at top (shows pinned Custom Agents) -->
       <AgentGrid
-        v-if="agentsStore.pinnedAgents.length > 0"
+        v-if="customAgentsStore.pinnedAgents.length > 0"
         @edit-agent="(agent) => $emit('edit-agent', agent)"
         @open-create-dialog="$emit('open-agent-dialog')"
       />
@@ -75,7 +75,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
-import { useAgentsStore } from '@/stores/agents'
+import { useCustomAgentsStore } from '@/stores/custom-agents'
 import WorkspaceSwitcher from '@/components/WorkspaceSwitcher.vue'
 import AgentGrid from '@/components/AgentGrid.vue'
 import SidebarHeader from './SidebarHeader.vue'
@@ -117,7 +117,7 @@ const emit = defineEmits<{
 // Stores
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
-const agentsStore = useAgentsStore()
+const customAgentsStore = useCustomAgentsStore()
 
 // Composable
 const sessionOrganizer = useSessionOrganizer()

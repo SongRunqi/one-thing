@@ -167,6 +167,105 @@ html[data-theme='light'] .panel {
   100% { background-position: -200% center; }
 }
 
+/* ============================================
+   Waiting-to-Content Transition System
+   ============================================
+   Smooth transitions between loading states and content display.
+   Used by: MessageBubble, MessageThinking, ToolCallGroup, StepsPanel
+*/
+
+/* Fade out animation for waiting indicators */
+.waiting-fade-out {
+  animation: waitingFadeOut 0.2s ease forwards;
+}
+
+@keyframes waitingFadeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Fade in animation for new content */
+.content-fade-in {
+  animation: contentFadeIn 0.3s ease forwards;
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* First chunk highlight - inherits flowing gradient then fades to normal */
+.first-chunk-highlight {
+  background: linear-gradient(90deg, var(--muted) 0%, var(--accent) 50%, var(--muted) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation:
+    flowingGradient 1s linear,
+    highlightFadeOut 0.6s ease 0.3s forwards;
+}
+
+@keyframes highlightFadeOut {
+  to {
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-fill-color: var(--text);
+  }
+}
+
+/* Status transition - for tool/step status changes */
+.status-transition {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.status-transition.exiting {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+.status-transition.entering {
+  animation: statusEnter 0.25s ease forwards;
+}
+
+@keyframes statusEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Vue Transition classes for content parts */
+.content-part-enter-active {
+  animation: contentFadeIn 0.3s ease;
+}
+
+.content-part-leave-active {
+  animation: waitingFadeOut 0.15s ease forwards;
+  position: absolute;
+}
+
+.content-part-move {
+  transition: transform 0.3s ease;
+}
+
 /* Responsive Utilities */
 @media (max-width: 768px) {
   .app-shell {

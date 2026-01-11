@@ -7,8 +7,39 @@
       @mouseenter="$emit('show-floating-sidebar')"
       @mouseleave="$emit('hide-floating-sidebar')"
     ></div>
-    <div class="chat-panels">
+
+    <!-- Create/Edit Agent Page (full-screen mode) -->
+    <div v-if="showAgentCreate || editingAgent" class="chat-panels">
+      <div class="full-page-container">
+        <CreateAgentPage
+          :agent="editingAgent"
+          @created="handleAgentCreated"
+          @saved="handleAgentSaved"
+          @close="$emit('close-agent-create')"
+        />
+      </div>
+    </div>
+
+    <div v-else class="chat-panels">
+      <!-- Empty state when no sessions -->
+      <div v-if="!sessionsStore.currentSessionId" class="empty-state">
+        <div class="empty-state-content">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <h3>No Active Chat</h3>
+          <p>Start a new conversation to begin</p>
+          <button class="new-chat-btn" @click="createNewSession">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            New Chat
+          </button>
+        </div>
+      </div>
+      <!-- Chat panels when session exists -->
       <ChatWindow
+        v-else
         v-for="(panel, index) in panels"
         :key="panel.id"
         :ref="el => setPanelRef(panel.id, el)"
@@ -17,7 +48,6 @@
         :style="{ flex: panel.flex }"
         :show-settings="index === 0 && showSettings"
         :show-agent-settings="index === 0 && showAgentSettings"
-        :show-agent-create="index === 0 && showAgentCreate"
         :show-sidebar-toggle="index === 0 && sidebarCollapsed && !sidebarFloating && !mediaPanelOpen"
         @close="closePanel(panel.id)"
         @split="openSessionPicker(panel.id)"
@@ -27,8 +57,6 @@
         @open-settings="$emit('open-settings')"
         @close-agent-settings="$emit('close-agent-settings')"
         @open-agent-settings="$emit('open-agent-settings')"
-        @close-agent-create="$emit('close-agent-create')"
-        @agent-created="(agent) => $emit('agent-created', agent)"
         @toggle-sidebar="$emit('toggle-sidebar')"
       />
       <!-- Panel resizer -->
@@ -108,6 +136,8 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
+import CreateAgentPage from '@/components/agent/CreateAgentPage.vue'
+import type { CustomAgent } from '@/types'
 
 interface Panel {
   id: string
@@ -118,24 +148,36 @@ interface Panel {
 const props = defineProps<{
   showSettings?: boolean
   showAgentSettings?: boolean
-  showAgentCreate?: boolean
   sidebarCollapsed?: boolean
   sidebarFloating?: boolean
   showHoverTrigger?: boolean
   mediaPanelOpen?: boolean
+  showAgentCreate?: boolean
+  editingAgent?: CustomAgent | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'close-settings': []
   'open-settings': []
   'close-agent-settings': []
   'open-agent-settings': []
-  'close-agent-create': []
-  'agent-created': [agent: import('@/types').CustomAgent]
   'toggle-sidebar': []
   'show-floating-sidebar': []
   'hide-floating-sidebar': []
+  'close-agent-create': []
+  'agent-created': [agent: CustomAgent]
+  'agent-saved': [agent: CustomAgent]
 }>()
+
+// Handle agent creation
+function handleAgentCreated(agent: CustomAgent) {
+  emit('agent-created', agent)
+}
+
+// Handle agent save (edit mode)
+function handleAgentSaved(agent: CustomAgent) {
+  emit('agent-saved', agent)
+}
 
 const sessionsStore = useSessionsStore()
 
@@ -321,6 +363,11 @@ function equalizeAllPanels() {
   panels.value.forEach(panel => {
     panel.flex = equalFlex
   })
+}
+
+// Create new session from empty state
+async function createNewSession() {
+  await sessionsStore.createSession('New Chat')
 }
 
 // Focus input of first panel
@@ -581,5 +628,80 @@ onUnmounted(() => {
   text-align: center;
   color: var(--muted);
   font-size: 14px;
+}
+
+/* Full page container for CreateAgent, etc. */
+.full-page-container {
+  flex: 1;
+  display: flex;
+  background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.2),
+    0 20px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+/* Empty state when no sessions */
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.2),
+    0 20px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.empty-state-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-state-content svg {
+  opacity: 0.5;
+}
+
+.empty-state-content h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.empty-state-content p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.new-chat-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.new-chat-btn:hover {
+  background: var(--accent-hover, var(--accent));
+  transform: translateY(-1px);
 }
 </style>

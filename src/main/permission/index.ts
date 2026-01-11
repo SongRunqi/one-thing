@@ -6,14 +6,21 @@
  *
  * Flow:
  * 1. Tool calls Permission.ask() before dangerous operations
- * 2. System checks if pattern is already approved
+ * 2. System checks if pattern is already approved (workspace → session)
  * 3. If not, emits event and waits for user response
- * 4. User can respond with: once, always, reject
+ * 4. User can respond with: once, session, workspace, reject
+ *
+ * Permission Levels:
+ * - once: Allow this single operation only (本次)
+ * - session: Allow for the duration of this session (本会话)
+ * - workspace: Permanently allow in this workspace (本工作区)
+ * - reject: Deny the operation with optional reason
  */
 
 import { BrowserWindow } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import * as WorkspacePermissions from './workspace-permissions.js'
 
 export namespace Permission {
   /**
@@ -29,12 +36,21 @@ export namespace Permission {
     title: string
     metadata: Record<string, unknown>
     createdAt: number
+    /** Working directory for workspace-level permissions */
+    workingDirectory?: string
   }
 
   /**
-   * User response types
+   * User response types:
+   * - 'once': Allow this single operation only
+   * - 'session': Allow for the duration of this session
+   * - 'workspace': Permanently allow in this workspace
+   * - 'reject': Deny the operation
    */
-  export type Response = 'once' | 'always' | 'reject'
+  export type Response = 'once' | 'session' | 'workspace' | 'reject'
+
+  /** Legacy response type for backwards compatibility */
+  export type LegacyResponse = 'once' | 'always' | 'reject'
 
   /**
    * Permission state per session
@@ -116,13 +132,23 @@ export namespace Permission {
     sessionId: Info['sessionId']
     messageId: Info['messageId']
     metadata: Info['metadata']
+    /** Working directory for workspace-level permissions */
+    workingDirectory?: string
   }): Promise<void> {
     const session = getSession(input.sessionId)
-
-    // Check if already approved
     const keys = toKeys(input.pattern, input.type)
+
+    // Check if approved at workspace level first (persistent)
+    if (input.workingDirectory) {
+      if (WorkspacePermissions.areAllApprovedInWorkspace(input.workingDirectory, keys)) {
+        console.log('[Permission] Already approved at workspace level:', keys)
+        return
+      }
+    }
+
+    // Check if approved at session level (in-memory)
     if (isCovered(keys, session.approved)) {
-      console.log('[Permission] Already approved:', keys)
+      console.log('[Permission] Already approved at session level:', keys)
       return
     }
 
@@ -137,6 +163,7 @@ export namespace Permission {
       title: input.title,
       metadata: input.metadata,
       createdAt: Date.now(),
+      workingDirectory: input.workingDirectory,
     }
 
     console.log('[Permission] Asking permission:', info.id, info.type, info.pattern)
@@ -159,7 +186,9 @@ export namespace Permission {
   export function respond(input: {
     sessionId: string
     permissionId: string
-    response: Response
+    response: Response | LegacyResponse
+    /** Optional reason for rejection */
+    rejectReason?: string
   }): boolean {
     const session = getSession(input.sessionId)
     const pending = session.pending.get(input.permissionId)
@@ -169,16 +198,20 @@ export namespace Permission {
       return false
     }
 
-    console.log('[Permission] Response:', input.permissionId, input.response)
+    // Normalize legacy 'always' to 'session'
+    const response: Response = input.response === 'always' ? 'session' : input.response as Response
+
+    console.log('[Permission] Response:', input.permissionId, response)
 
     session.pending.delete(input.permissionId)
 
-    if (input.response === 'reject') {
+    if (response === 'reject') {
       pending.reject(new RejectedError(
         input.sessionId,
         input.permissionId,
         pending.info.callId,
-        pending.info.metadata
+        pending.info.metadata,
+        input.rejectReason
       ))
       return true
     }
@@ -186,9 +219,26 @@ export namespace Permission {
     // Grant permission
     pending.resolve()
 
-    // If 'always', approve the pattern for future requests
-    if (input.response === 'always') {
-      const keys = toKeys(pending.info.pattern, pending.info.type)
+    const keys = toKeys(pending.info.pattern, pending.info.type)
+
+    // Handle 'workspace' response - persist to workspace storage
+    if (response === 'workspace' && pending.info.workingDirectory) {
+      WorkspacePermissions.approveInWorkspace(pending.info.workingDirectory, keys)
+
+      // Auto-approve any other pending requests that match (in this workspace)
+      for (const [id, other] of session.pending) {
+        if (other.info.workingDirectory === pending.info.workingDirectory) {
+          const otherKeys = toKeys(other.info.pattern, other.info.type)
+          if (WorkspacePermissions.areAllApprovedInWorkspace(pending.info.workingDirectory, otherKeys)) {
+            session.pending.delete(id)
+            other.resolve()
+          }
+        }
+      }
+    }
+
+    // Handle 'session' response - store in session memory
+    if (response === 'session') {
       for (const key of keys) {
         session.approved.set(key, true)
       }
@@ -237,10 +287,11 @@ export namespace Permission {
       public readonly metadata?: Record<string, unknown>,
       reason?: string
     ) {
-      super(
-        reason ??
-        'The user rejected permission to use this tool. You may try again with different parameters.'
-      )
+      // If user provided a reason, include it directly; otherwise use default message
+      const message = reason
+        ? `User rejected this operation: ${reason}`
+        : 'The user rejected permission to use this tool. You may try again with different parameters.'
+      super(message)
       this.name = 'PermissionRejectedError'
     }
   }
