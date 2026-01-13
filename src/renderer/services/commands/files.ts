@@ -1,5 +1,6 @@
 import type { CommandDefinition, CommandContext, CommandResult } from '@/types/commands'
 import { useChatStore } from '@/stores/chat'
+import { useRightSidebarStore } from '@/stores/right-sidebar'
 
 /**
  * File change info extracted from tool calls
@@ -30,7 +31,7 @@ export interface FilesChangedMessage {
  * Collect all file changes from a session's messages
  * Checks both step.toolCall.changes and message.toolCalls[].changes
  */
-function collectFileChanges(sessionId: string): FileChangeData[] {
+export function collectFileChanges(sessionId: string): FileChangeData[] {
   const chatStore = useChatStore()
   const messages = chatStore.sessionMessages.get(sessionId) || []
   const fileChangesMap = new Map<string, FileChangeData>()
@@ -115,50 +116,13 @@ export const filesCommand: CommandDefinition = {
   usage: '/files',
 
   async execute(context: CommandContext): Promise<CommandResult> {
-    const chatStore = useChatStore()
-    const files = collectFileChanges(context.sessionId)
+    collectFileChanges(context.sessionId)
+    const rightSidebarStore = useRightSidebarStore()
 
-    // Calculate summary
-    const totalAdditions = files.reduce((sum, f) => sum + f.additions, 0)
-    const totalDeletions = files.reduce((sum, f) => sum + f.deletions, 0)
+    // Open right sidebar and switch to files tab
+    rightSidebarStore.open()
+    rightSidebarStore.setActiveTab('files')
 
-    // Create structured message
-    const messageData: FilesChangedMessage = {
-      type: 'files-changed',
-      files,
-      summary: {
-        totalFiles: files.length,
-        totalAdditions,
-        totalDeletions,
-      },
-    }
-
-    // 1. Remove existing files-changed message (backend + frontend)
-    // This ensures only one files-changed message exists per session
-    const removeResult = await window.electronAPI.removeFilesChangedMessage(context.sessionId)
-    if (removeResult.removedId) {
-      // Also remove from Vue state for immediate UI update
-      chatStore.removeMessage(context.sessionId, removeResult.removedId)
-    }
-
-    // 2. Create new message with unique ID
-    const messageId = `system-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-    const systemMessage = {
-      id: messageId,
-      role: 'system' as const,
-      content: JSON.stringify(messageData),
-      timestamp: Date.now(),
-    }
-
-    // 3. Persist to backend
-    await window.electronAPI.addSystemMessage(context.sessionId, systemMessage)
-
-    // 4. Add to Vue state for immediate display
-    chatStore.addMessageToState(context.sessionId, systemMessage)
-
-    return {
-      success: true,
-      message: `${files.length} file(s) changed`,
-    }
+    return { success: true }
   },
 }

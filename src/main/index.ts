@@ -6,8 +6,7 @@ import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills, initialize
 import { initializeStores } from './store.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
-import { initializeStorage, closeStorage } from './storage/index.js'
-import { startMemoryScheduler, stopMemoryScheduler } from './services/memory/memory-scheduler.js'
+import { initializeTextMemory } from './services/memory-text/index.js'
 import { getMediaImagesDir } from './stores/paths.js'
 import { runMigration as runAgentMigration } from './services/migration/agent-migration.js'
 import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './services/prompt/index.js'
@@ -50,21 +49,14 @@ app.on('ready', async () => {
   // Clean up interrupted sessions from previous app instance
   sanitizeAllSessionsOnStartup()
 
-  // Initialize SQLite storage with vector support
-  await initializeStorage('sqlite')
+  // Initialize text-based memory system
+  await initializeTextMemory()
 
   // Initialize PromptManager for template-based prompts
   await initializePromptManager()
 
   // Start template watcher in development mode (hot reload)
   startTemplateWatcher()
-
-  // Start memory scheduler for periodic decay
-  await startMemoryScheduler({
-    decayIntervalMs: 4 * 60 * 60 * 1000, // 4 hours
-    runOnStart: true,
-    debug: process.env.NODE_ENV === 'development',
-  })
 
   // Initialize tool registry
   await initializeToolRegistry()
@@ -115,12 +107,6 @@ app.on('before-quit', async () => {
 
   // Stop template watcher
   stopTemplateWatcher()
-
-  // Stop memory scheduler
-  stopMemoryScheduler()
-
-  // Close storage connections
-  await closeStorage()
 
   // Shutdown MCP
   await shutdownMCP()

@@ -323,8 +323,8 @@ export const useChatStore = defineStore('chat', () => {
         const parts = message.contentParts!
         let lastPart = parts[parts.length - 1]
 
-        // Remove waiting indicator if present
-        if (lastPart && lastPart.type === 'waiting') {
+        // Remove loading-memory or waiting indicator if present
+        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
           parts.pop()
           lastPart = parts[parts.length - 1]
         }
@@ -356,7 +356,8 @@ export const useChatStore = defineStore('chat', () => {
         const parts = message.contentParts!
         let lastPart = parts[parts.length - 1]
 
-        if (lastPart && lastPart.type === 'waiting') {
+        // Remove loading-memory or waiting indicator if present
+        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
           parts.pop()
           lastPart = parts[parts.length - 1]
         }
@@ -408,7 +409,8 @@ export const useChatStore = defineStore('chat', () => {
         const parts = message.contentParts!
         let lastPart = parts[parts.length - 1]
 
-        if (lastPart && lastPart.type === 'waiting') {
+        // Remove loading-memory or waiting indicator if present
+        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
           parts.pop()
           lastPart = parts[parts.length - 1]
         }
@@ -483,9 +485,9 @@ export const useChatStore = defineStore('chat', () => {
       const parts = message.contentParts!
       const newPart = chunk.contentPart
 
-      // Remove waiting indicator if present
+      // Remove loading-memory or waiting indicator if present
       const lastPart = parts[parts.length - 1]
-      if (lastPart && lastPart.type === 'waiting') {
+      if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
         parts.pop()
       }
 
@@ -559,10 +561,10 @@ export const useChatStore = defineStore('chat', () => {
     if (messageIndex !== -1) {
       const message = messages[messageIndex]
 
-      // Remove waiting indicator
+      // Remove loading-memory or waiting indicator
       if (message.contentParts) {
         const lastPart = message.contentParts[message.contentParts.length - 1]
-        if (lastPart && lastPart.type === 'waiting') {
+        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
           message.contentParts.pop()
         }
 
@@ -737,7 +739,8 @@ export const useChatStore = defineStore('chat', () => {
 
       if (!hasPlaceholderForTurn) {
         const lastPart = parts[parts.length - 1]
-        if (lastPart && lastPart.type === 'waiting') {
+        // Remove loading-memory or waiting indicator if present
+        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
           parts.pop()
         }
         parts.push({ type: 'data-steps', turnIndex: stepTurnIndex } as any)

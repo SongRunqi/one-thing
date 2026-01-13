@@ -1,439 +1,307 @@
 <template>
   <div class="memory-content">
-    <!-- Tabs -->
-    <div class="memory-tabs">
-      <button
-        class="tab-btn"
-        :class="{ active: activeTab === 'profile' }"
-        @click="activeTab = 'profile'"
-      >
-        <User :size="14" :stroke-width="2" />
-        User Profile
-      </button>
-      <button
-        class="tab-btn"
-        :class="{ active: activeTab === 'agent' }"
-        @click="activeTab = 'agent'"
-      >
-        <Heart :size="14" :stroke-width="2" />
-        Agent Memory
-      </button>
-      <button class="open-folder-btn" @click="openDataFolder" title="Open data folder">
-        <FolderOpen :size="16" :stroke-width="2" />
-      </button>
+    <!-- Header -->
+    <div class="memory-header">
+      <div class="header-left">
+        <h2 class="title">Memory Files</h2>
+        <span class="file-count" v-if="!isLoading">{{ memoryStore.totalFiles }} files</span>
+      </div>
+      <div class="header-actions">
+        <button class="action-btn" @click="handleExport" :disabled="isExporting || memoryStore.totalFiles === 0" title="Export">
+          <Download :size="16" :stroke-width="2" />
+        </button>
+        <button class="action-btn" @click="handleImport" :disabled="isImporting" title="Import">
+          <Upload :size="16" :stroke-width="2" />
+        </button>
+        <button class="action-btn" @click="openMemoryFolder" title="Open folder">
+          <FolderOpen :size="16" :stroke-width="2" />
+        </button>
+      </div>
     </div>
 
-    <!-- User Profile Tab -->
-    <div v-if="activeTab === 'profile'" class="tab-content">
-      <!-- Search & Add -->
-      <div class="content-toolbar">
-        <div class="search-wrapper">
-          <Search class="search-icon" :size="14" :stroke-width="2" />
-          <input
-            v-model="factSearch"
-            type="text"
-            class="search-input"
-            placeholder="Search facts..."
-          />
-        </div>
-        <button class="add-btn" @click="showAddFactModal = true">
-          <Plus :size="14" :stroke-width="2" />
-          Add Fact
+    <!-- Search -->
+    <div class="search-section">
+      <div class="search-wrapper">
+        <Search class="search-icon" :size="14" :stroke-width="2" />
+        <input
+          v-model="searchQuery"
+          type="text"
+          class="search-input"
+          placeholder="Search memories..."
+          @input="memoryStore.setSearchQuery(searchQuery)"
+        />
+        <button v-if="searchQuery" class="clear-btn" @click="clearSearch">
+          <X :size="14" :stroke-width="2" />
         </button>
       </div>
+    </div>
 
-      <!-- Loading State -->
-      <div v-if="profileLoading" class="loading-state">
-        <div class="loading-spinner"></div>
-        <span>Loading profile...</span>
-      </div>
-
-      <!-- Empty State -->
-      <div v-else-if="!profile || filteredFacts.length === 0" class="empty-state">
-        <div class="empty-icon">
-          <User :size="48" :stroke-width="1.5" />
-        </div>
-        <p class="empty-title">No facts yet</p>
-        <p class="empty-desc">Facts are learned from your conversations, or you can add them manually.</p>
-        <button class="empty-action" @click="showAddFactModal = true">
-          <Plus :size="14" :stroke-width="2" />
-          Add Your First Fact
-        </button>
-      </div>
-
-      <!-- Facts List -->
-      <div v-else class="facts-container">
-        <div v-for="category in factCategories" :key="category" class="category-section">
-          <div
-            class="category-header"
-            @click="toggleCategory(category)"
+    <!-- Tag Filters -->
+    <div class="tag-section" v-if="memoryStore.tagCloud.length > 0">
+      <!-- Collapsed view: show top tags + expand button -->
+      <div class="tag-filters-row">
+        <span class="tag-label">Tags:</span>
+        <div class="tag-list">
+          <button
+            v-for="tag in topTags"
+            :key="tag.tag"
+            :class="['tag-btn', { active: memoryStore.selectedTags.includes(tag.tag) }]"
+            :style="getTagStyle(tag.tag, memoryStore.selectedTags.includes(tag.tag))"
+            @click="memoryStore.toggleTagFilter(tag.tag)"
           >
-            <ChevronRight
-              class="chevron"
-              :class="{ expanded: expandedCategories.has(category) }"
-              :size="16"
-              :stroke-width="2"
-            />
-            <component :is="getCategoryIcon(category)" class="category-icon" :size="16" :stroke-width="2" />
-            <span class="category-name">{{ getCategoryLabel(category) }}</span>
-            <span class="category-count">{{ getFactsByCategory(category).length }}</span>
+            {{ tag.tag }}
+            <span class="tag-count">{{ tag.count }}</span>
+          </button>
+        </div>
+        <button
+          v-if="memoryStore.tagCloud.length > 5"
+          class="expand-btn"
+          @click="tagExpanded = !tagExpanded"
+        >
+          <ChevronDown :size="14" :class="{ rotated: tagExpanded }" />
+          <span>{{ tagExpanded ? 'Less' : `+${memoryStore.tagCloud.length - 5} more` }}</span>
+        </button>
+        <button
+          v-if="memoryStore.selectedTags.length > 0"
+          class="clear-filters-btn"
+          @click="memoryStore.clearFilters()"
+        >
+          Clear
+        </button>
+      </div>
+
+      <!-- Expanded view: show all tags grouped -->
+      <div v-if="tagExpanded" class="tag-expanded">
+        <div class="tag-group">
+          <div class="tag-group-header">
+            <span class="group-label">Popular</span>
+            <span class="group-count">{{ popularTags.length }}</span>
           </div>
-
-          <Transition name="expand">
-            <div v-if="expandedCategories.has(category)" class="category-content">
-              <FactCard
-                v-for="fact in getFactsByCategory(category)"
-                :key="fact.id"
-                :fact="fact"
-                @update="handleUpdateFact"
-                @delete="handleDeleteFact"
-              />
-            </div>
-          </Transition>
-        </div>
-      </div>
-    </div>
-
-    <!-- Agent Memory Tab -->
-    <div v-if="activeTab === 'agent'" class="tab-content">
-      <!-- Agent Selector -->
-      <div class="agent-selector">
-        <span class="selector-label">Select Agent</span>
-        <div class="agent-chips">
-          <AgentChip
-            v-for="agent in agents"
-            :key="agent.id"
-            :agent="agent"
-            :selected="selectedAgentId === agent.id"
-            @select="selectAgent(agent.id)"
-          />
-        </div>
-      </div>
-
-      <!-- No Agent Selected -->
-      <div v-if="!selectedAgentId" class="empty-state">
-        <div class="empty-icon">
-          <Heart :size="48" :stroke-width="1.5" />
-        </div>
-        <p class="empty-title">Select an agent</p>
-        <p class="empty-desc">Choose an agent above to view your shared memories.</p>
-      </div>
-
-      <!-- Loading -->
-      <div v-else-if="memoryLoading" class="loading-state">
-        <div class="loading-spinner"></div>
-        <span>Loading memories...</span>
-      </div>
-
-      <!-- No Relationship -->
-      <div v-else-if="!relationship" class="empty-state">
-        <div class="empty-icon">
-          <Heart :size="48" :stroke-width="1.5" />
-        </div>
-        <p class="empty-title">No memories yet</p>
-        <p class="empty-desc">Start chatting with this agent to build memories together.</p>
-      </div>
-
-      <!-- Agent Memory Content -->
-      <div v-else class="agent-memory-container">
-        <!-- Relationship Card -->
-        <div class="relationship-card">
-          <div class="relationship-header">
-            <span class="section-title">Relationship</span>
-            <div class="mood-badge" :class="relationship.agentFeelings?.currentMood || 'neutral'">
-              {{ getMoodEmoji(relationship.agentFeelings?.currentMood) }}
-              {{ relationship.agentFeelings?.currentMood || 'neutral' }}
-            </div>
-          </div>
-
-          <p v-if="relationship.agentFeelings?.notes" class="mood-notes">
-            "{{ relationship.agentFeelings.notes }}"
-          </p>
-
-          <div class="stats-grid">
-            <div class="stat-item">
-              <div class="stat-header">
-                <span class="stat-label">Trust</span>
-                <span class="stat-value">{{ relationship.relationship.trustLevel }}%</span>
-              </div>
-              <div class="stat-bar">
-                <div
-                  class="stat-fill trust"
-                  :style="{ width: relationship.relationship.trustLevel + '%' }"
-                />
-              </div>
-            </div>
-
-            <div class="stat-item">
-              <div class="stat-header">
-                <span class="stat-label">Familiarity</span>
-                <span class="stat-value">{{ relationship.relationship.familiarity }}%</span>
-              </div>
-              <div class="stat-bar">
-                <div
-                  class="stat-fill familiarity"
-                  :style="{ width: relationship.relationship.familiarity + '%' }"
-                />
-              </div>
-            </div>
-
-            <div class="stat-item inline">
-              <span class="stat-label">Interactions</span>
-              <span class="stat-value">{{ relationship.relationship.totalInteractions }}</span>
-            </div>
-
-            <div class="stat-item inline">
-              <span class="stat-label">Last chat</span>
-              <span class="stat-value">{{ formatRelativeTime(relationship.relationship.lastInteraction) }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Memories Section -->
-        <div class="memories-section">
-          <div class="section-header">
-            <span class="section-title">Memories ({{ memories.length }})</span>
-            <button class="add-btn small" @click="showAddMemoryModal = true">
-              <Plus :size="12" :stroke-width="2" />
-              Add
+          <div class="tag-group-items">
+            <button
+              v-for="tag in popularTags"
+              :key="tag.tag"
+              :class="['tag-btn', { active: memoryStore.selectedTags.includes(tag.tag) }]"
+              :style="getTagStyle(tag.tag, memoryStore.selectedTags.includes(tag.tag))"
+              @click="memoryStore.toggleTagFilter(tag.tag)"
+            >
+              {{ tag.tag }}
+              <span class="tag-count">{{ tag.count }}</span>
             </button>
           </div>
-
-          <!-- Search Memories -->
-          <div class="search-wrapper" v-if="memories.length > 0">
-            <Search class="search-icon" :size="14" :stroke-width="2" />
-            <input
-              v-model="memorySearch"
-              type="text"
-              class="search-input"
-              placeholder="Search memories..."
-            />
+        </div>
+        <div class="tag-group" v-if="otherTags.length > 0">
+          <div class="tag-group-header">
+            <span class="group-label">Other</span>
+            <span class="group-count">{{ otherTags.length }}</span>
           </div>
-
-          <!-- Memories List -->
-          <div v-if="filteredMemories.length === 0" class="empty-state small">
-            <p class="empty-title">No memories</p>
-            <p class="empty-desc">Add memories to help this agent remember important things.</p>
-          </div>
-          <div v-else class="memories-list">
-            <MemoryCard
-              v-for="memory in filteredMemories"
-              :key="memory.id"
-              :memory="memory"
-              @delete="handleDeleteMemory"
-            />
+          <div class="tag-group-items">
+            <button
+              v-for="tag in otherTags"
+              :key="tag.tag"
+              :class="['tag-btn', { active: memoryStore.selectedTags.includes(tag.tag) }]"
+              :style="getTagStyle(tag.tag, memoryStore.selectedTags.includes(tag.tag))"
+              @click="memoryStore.toggleTagFilter(tag.tag)"
+            >
+              {{ tag.tag }}
+            </button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Modals -->
-    <AddFactModal
-      :visible="showAddFactModal"
-      @close="showAddFactModal = false"
-      @save="handleAddFact"
-    />
+    <!-- Loading State -->
+    <div v-if="isLoading" class="loading-state">
+      <div class="loading-spinner"></div>
+      <span>Loading memories...</span>
+    </div>
 
-    <AddMemoryModal
-      :visible="showAddMemoryModal"
-      @close="showAddMemoryModal = false"
-      @save="handleAddMemory"
-    />
+    <!-- Empty State -->
+    <div v-else-if="memoryStore.filteredFiles.length === 0" class="empty-state">
+      <FileText :size="48" :stroke-width="1.5" class="empty-icon" />
+      <p class="empty-title" v-if="memoryStore.totalFiles === 0">No memory files yet</p>
+      <p class="empty-title" v-else>No files match your search</p>
+      <p class="empty-desc">Memory files are created when AI learns from conversations.</p>
+    </div>
+
+    <!-- File List -->
+    <div v-else class="file-list">
+      <div
+        v-for="file in memoryStore.filteredFiles"
+        :key="file.path"
+        class="file-item"
+        @click="openEditor(file.path)"
+      >
+        <div class="file-info">
+          <div class="file-title">{{ file.title }}</div>
+          <div class="file-path">{{ file.path }}</div>
+          <div class="file-meta">
+            <div v-if="file.metadata.tags?.length" class="file-tags" :title="file.metadata.tags.join(', ')">
+              <button
+                v-for="tag in file.metadata.tags.slice(0, 2)"
+                :key="tag"
+                class="tag"
+                :style="getTagStyle(tag, false)"
+                @click.stop="memoryStore.toggleTagFilter(tag)"
+              >
+                {{ tag }}
+              </button>
+              <span v-if="file.metadata.tags.length > 2" class="more-tags" :title="file.metadata.tags.slice(2).join(', ')">
+                +{{ file.metadata.tags.length - 2 }}
+              </span>
+            </div>
+            <span class="file-date">{{ formatDate(file.metadata.updated || file.metadata.created) }}</span>
+          </div>
+        </div>
+        <button class="delete-btn" @click.stop="handleDelete(file.path)" title="Delete">
+          <Trash2 :size="14" :stroke-width="2" />
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useUserProfileStore } from '@/stores/user-profile'
-import { useAgentMemoryStore } from '@/stores/agent-memory'
-import { useCustomAgentsStore } from '@/stores/custom-agents'
-import type { UserFactCategory, AgentMemoryCategory } from '@/types'
-import FactCard from './memory/FactCard.vue'
-import MemoryCard from './memory/MemoryCard.vue'
-import AgentChip from './memory/AgentChip.vue'
-import AddFactModal from './memory/AddFactModal.vue'
-import AddMemoryModal from './memory/AddMemoryModal.vue'
+import { useMemoryManagerStore } from '@/stores/memory-manager'
 import {
-  User,
-  Heart,
-  FolderOpen,
   Search,
-  Plus,
-  ChevronRight,
-  CircleUser,
-  Flag,
-  Fingerprint,
-  SlidersHorizontal
+  X,
+  Download,
+  Upload,
+  FolderOpen,
+  FileText,
+  Trash2,
+  ChevronDown
 } from 'lucide-vue-next'
 
-const userProfileStore = useUserProfileStore()
-const agentMemoryStore = useAgentMemoryStore()
-const customAgentsStore = useCustomAgentsStore()
+const emit = defineEmits<{
+  'open-file': [filePath: string]
+}>()
 
-// Tab state
-const activeTab = ref<'profile' | 'agent'>('profile')
+const memoryStore = useMemoryManagerStore()
 
-// User Profile state
-const profileLoading = ref(false)
-const factSearch = ref('')
-const expandedCategories = ref<Set<string>>(new Set(['personal', 'preference', 'goal', 'trait']))
-const showAddFactModal = ref(false)
+// List view state
+const searchQuery = ref('')
+const isLoading = ref(false)
+const isExporting = ref(false)
+const isImporting = ref(false)
+const tagExpanded = ref(false)
 
-// Agent Memory state
-const selectedAgentId = ref('')
-const memoryLoading = ref(false)
-const memorySearch = ref('')
-const showAddMemoryModal = ref(false)
+// Tag computed properties
+const topTags = computed(() => memoryStore.tagCloud.slice(0, 5))
+const popularTags = computed(() => memoryStore.tagCloud.filter(t => t.count >= 2))
+const otherTags = computed(() => memoryStore.tagCloud.filter(t => t.count < 2))
 
-// Computed - User Profile
-const profile = computed(() => userProfileStore.profile)
-const facts = computed(() => userProfileStore.facts)
-const factCategories: UserFactCategory[] = ['personal', 'preference', 'goal', 'trait']
+// Generate consistent color for a tag based on its name
+const TAG_COLORS = [
+  { bg: 'rgba(59, 130, 246, 0.15)', text: '#3b82f6' },   // blue
+  { bg: 'rgba(34, 197, 94, 0.15)', text: '#22c55e' },    // green
+  { bg: 'rgba(168, 85, 247, 0.15)', text: '#a855f7' },   // purple
+  { bg: 'rgba(249, 115, 22, 0.15)', text: '#f97316' },   // orange
+  { bg: 'rgba(236, 72, 153, 0.15)', text: '#ec4899' },   // pink
+  { bg: 'rgba(20, 184, 166, 0.15)', text: '#14b8a6' },   // teal
+  { bg: 'rgba(245, 158, 11, 0.15)', text: '#f59e0b' },   // amber
+  { bg: 'rgba(99, 102, 241, 0.15)', text: '#6366f1' },   // indigo
+]
 
-const filteredFacts = computed(() => {
-  if (!factSearch.value.trim()) return facts.value
-  const query = factSearch.value.toLowerCase()
-  return facts.value.filter(f => f.content.toLowerCase().includes(query))
-})
-
-// Computed - Agent Memory
-const agents = computed(() => customAgentsStore.customAgents)
-const relationship = computed(() => agentMemoryStore.currentRelationship)
-const memories = computed(() => agentMemoryStore.memories)
-
-const filteredMemories = computed(() => {
-  const sorted = [...memories.value].sort((a, b) => b.strength - a.strength)
-  if (!memorySearch.value.trim()) return sorted
-  const query = memorySearch.value.toLowerCase()
-  return sorted.filter(m => m.content.toLowerCase().includes(query))
-})
-
-// Methods - User Profile
-function getCategoryLabel(category: UserFactCategory): string {
-  const labels: Record<UserFactCategory, string> = {
-    personal: 'Personal',
-    preference: 'Preferences',
-    goal: 'Goals',
-    trait: 'Traits'
+function getTagColor(tag: string) {
+  // Simple hash to get consistent color for each tag
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) {
+    hash = tag.charCodeAt(i) + ((hash << 5) - hash)
   }
-  return labels[category]
+  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length]
 }
 
-const categoryIcons = {
-  personal: CircleUser,
-  preference: SlidersHorizontal,
-  goal: Flag,
-  trait: Fingerprint
-} as const
-
-function getCategoryIcon(category: UserFactCategory) {
-  return categoryIcons[category]
-}
-
-function getFactsByCategory(category: UserFactCategory) {
-  const categoryFacts = filteredFacts.value.filter(f => f.category === category)
-  return categoryFacts
-}
-
-function toggleCategory(category: string) {
-  if (expandedCategories.value.has(category)) {
-    expandedCategories.value.delete(category)
-  } else {
-    expandedCategories.value.add(category)
+function getTagStyle(tag: string, isActive: boolean) {
+  if (isActive) {
+    return {
+      background: 'var(--accent)',
+      borderColor: 'var(--accent)',
+      color: 'white'
+    }
   }
-  expandedCategories.value = new Set(expandedCategories.value)
-}
-
-async function handleAddFact(data: { content: string; category: UserFactCategory; confidence: number }) {
-  await userProfileStore.addFact(data.content, data.category, data.confidence)
-  showAddFactModal.value = false
-}
-
-async function handleUpdateFact(factId: string, updates: { content?: string; confidence?: number }) {
-  await userProfileStore.updateFact(factId, updates)
-}
-
-async function handleDeleteFact(factId: string) {
-  await userProfileStore.deleteFact(factId)
-}
-
-// Methods - Agent Memory
-function selectAgent(agentId: string) {
-  selectedAgentId.value = agentId
-  loadAgentMemory()
-}
-
-async function loadAgentMemory() {
-  if (!selectedAgentId.value) {
-    agentMemoryStore.clearRelationship()
-    return
+  const color = getTagColor(tag)
+  return {
+    background: color.bg,
+    borderColor: 'transparent',
+    color: color.text
   }
-  memoryLoading.value = true
+}
+
+// Load data on mount
+onMounted(async () => {
+  isLoading.value = true
   try {
-    await agentMemoryStore.loadRelationship(selectedAgentId.value)
+    await memoryStore.loadAll()
   } finally {
-    memoryLoading.value = false
+    isLoading.value = false
+  }
+})
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  if (days < 7) return `${days}d ago`
+  return date.toLocaleDateString()
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  memoryStore.clearFilters()
+}
+
+// Open file in ChatContainer editor
+function openEditor(path: string) {
+  emit('open-file', path)
+}
+
+async function handleDelete(path: string) {
+  const fileName = path.split('/').pop() || path
+  if (confirm(`Delete "${fileName}"?`)) {
+    await memoryStore.deleteFile(path)
   }
 }
 
-function getMoodEmoji(mood?: string): string {
-  const emojis: Record<string, string> = {
-    happy: '😊',
-    neutral: '😐',
-    concerned: '😟',
-    excited: '🤩'
-  }
-  return emojis[mood || 'neutral'] || '😐'
-}
-
-function formatRelativeTime(timestamp: number): string {
-  if (!timestamp) return 'Never'
-  const now = Date.now()
-  const diff = now - timestamp
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-
-  if (days > 0) return `${days}d ago`
-  if (hours > 0) return `${hours}h ago`
-  if (minutes > 0) return `${minutes}m ago`
-  return 'Just now'
-}
-
-async function handleAddMemory(data: { content: string; category: AgentMemoryCategory; emotionalWeight: number }) {
-  if (!selectedAgentId.value) return
-  await agentMemoryStore.addMemory(selectedAgentId.value, data.content, data.category, data.emotionalWeight)
-  showAddMemoryModal.value = false
-}
-
-async function handleDeleteMemory(memoryId: string) {
-  const success = await agentMemoryStore.deleteMemory(memoryId)
-  if (!success) {
-    console.error('Failed to delete memory:', memoryId)
+async function handleExport() {
+  isExporting.value = true
+  try {
+    const filePath = await memoryStore.exportWithDialog({ includeMetadata: true })
+    if (filePath) {
+      alert(`Exported to: ${filePath}`)
+    }
+  } finally {
+    isExporting.value = false
   }
 }
 
-// Open folder
-async function openDataFolder() {
+async function handleImport() {
+  isImporting.value = true
+  try {
+    const result = await memoryStore.importWithDialog()
+    if (result) {
+      alert(`Imported: ${result.imported} files\nSkipped: ${result.skipped} files`)
+    }
+  } finally {
+    isImporting.value = false
+  }
+}
+
+async function openMemoryFolder() {
   try {
     const dataPath = await window.electronAPI.getDataPath()
-    await window.electronAPI.openPath(dataPath)
+    await window.electronAPI.openPath(`${dataPath}/memory`)
   } catch (err) {
-    console.error('Failed to open data folder:', err)
+    console.error('Failed to open memory folder:', err)
   }
 }
-
-// Load initial data
-onMounted(async () => {
-  profileLoading.value = true
-  try {
-    await userProfileStore.loadProfile()
-    await customAgentsStore.loadCustomAgents()
-  } finally {
-    profileLoading.value = false
-  }
-})
 </script>
 
 <style scoped>
@@ -444,21 +312,47 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-/* Tabs */
-.memory-tabs {
+/* Header */
+.memory-header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 12px 20px;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
 }
 
-.open-folder-btn {
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.file-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  background: var(--hover);
+  border-radius: 10px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
-  margin-left: auto;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -467,67 +361,36 @@ onMounted(async () => {
   transition: all 0.15s ease;
 }
 
-.open-folder-btn:hover {
+.action-btn:hover:not(:disabled) {
   background: var(--hover);
   color: var(--text-primary);
 }
 
-.tab-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-.tab-btn:hover {
-  background: var(--hover);
-  color: var(--text-primary);
-}
-
-.tab-btn.active {
-  background: var(--accent-main);
-  color: var(--bg-app);
-}
-
-/* Tab Content */
-.tab-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 20px;
-}
-
-/* Content Toolbar */
-.content-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+/* Search */
+.search-section {
+  padding: 12px 20px;
 }
 
 .search-wrapper {
-  flex: 1;
   position: relative;
+  display: flex;
+  align-items: center;
 }
 
 .search-icon {
   position: absolute;
   left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
   color: var(--text-muted);
 }
 
 .search-input {
   width: 100%;
-  padding: 10px 12px 10px 36px;
+  padding: 10px 36px;
   font-size: 13px;
   color: var(--text-primary);
   background: var(--bg);
@@ -545,29 +408,174 @@ onMounted(async () => {
   color: var(--text-faint);
 }
 
-.add-btn {
+.clear-btn {
+  position: absolute;
+  right: 8px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 500;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
   border: none;
-  border-radius: 10px;
-  background: var(--accent);
-  color: white;
+  border-radius: 50%;
+  background: var(--hover);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+/* Tag Section */
+.tag-section {
+  padding: 0 20px 12px;
+}
+
+.tag-filters-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.tag-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tag-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
-  white-space: nowrap;
 }
 
-.add-btn:hover {
-  opacity: 0.9;
+.tag-btn:hover {
+  filter: brightness(0.95);
+  transform: translateY(-1px);
 }
 
-.add-btn.small {
-  padding: 6px 12px;
+.tag-btn.active {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: white !important;
+}
+
+.tag-count {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.expand-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 16px;
+  background: var(--hover);
+  color: var(--text-secondary);
   font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.expand-btn:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.expand-btn svg {
+  transition: transform 0.2s ease;
+}
+
+.expand-btn svg.rotated {
+  transform: rotate(180deg);
+}
+
+.clear-filters-btn {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 16px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clear-filters-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* Tag Expanded Section */
+.tag-expanded {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tag-group {
+  margin-bottom: 12px;
+}
+
+.tag-group:last-child {
+  margin-bottom: 0;
+}
+
+.tag-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.group-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.group-count {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--hover);
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+
+.tag-group-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 /* Loading State */
@@ -604,10 +612,6 @@ onMounted(async () => {
   text-align: center;
 }
 
-.empty-state.small {
-  padding: 30px 20px;
-}
-
 .empty-icon {
   color: var(--text-muted);
   opacity: 0.4;
@@ -624,270 +628,499 @@ onMounted(async () => {
 .empty-desc {
   font-size: 13px;
   color: var(--text-secondary);
-  margin: 0 0 20px;
+  margin: 0;
   max-width: 280px;
 }
 
-.empty-action {
+/* File List */
+.file-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 18px;
-  font-size: 13px;
-  font-weight: 500;
-  border: none;
-  border-radius: 10px;
-  background: var(--accent);
-  color: white;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.empty-action:hover {
-  opacity: 0.9;
+.file-item:hover {
+  border-color: var(--accent);
+  background: var(--hover);
 }
 
-/* Facts Container */
-.facts-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.file-info {
+  flex: 1;
+  min-width: 0;
 }
 
-/* Category Section */
-.category-section {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 14px;
+.file-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.category-header {
+.file-path {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-meta {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 16px;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.15s ease;
+  font-size: 11px;
 }
 
-.category-header:hover {
-  background: var(--hover);
-}
-
-.chevron {
-  color: var(--text-muted);
-  transition: transform 0.2s ease;
-}
-
-.chevron.expanded {
-  transform: rotate(90deg);
-}
-
-.category-icon {
-  color: var(--accent);
-  flex-shrink: 0;
-}
-
-.category-name {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.category-count {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--hover);
-  color: var(--text-muted);
-}
-
-.category-content {
-  padding: 8px 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Expand Transition */
-.expand-enter-active,
-.expand-leave-active {
-  transition: all 0.2s ease;
-  overflow: hidden;
-}
-
-.expand-enter-from,
-.expand-leave-to {
-  opacity: 0;
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-/* Agent Selector */
-.agent-selector {
-  margin-bottom: 20px;
-}
-
-.selector-label {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
-  margin-bottom: 10px;
-}
-
-.agent-chips {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* Agent Memory Container */
-.agent-memory-container {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-/* Relationship Card */
-.relationship-card {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 16px;
-}
-
-.relationship-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.mood-badge {
+.file-tags {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  text-transform: capitalize;
 }
 
-.mood-badge.happy {
-  background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
-}
-
-.mood-badge.neutral {
-  background: rgba(107, 114, 128, 0.15);
-  color: #9ca3af;
-}
-
-.mood-badge.concerned {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-}
-
-.mood-badge.excited {
-  background: rgba(168, 85, 247, 0.15);
-  color: #a855f7;
-}
-
-.mood-notes {
-  font-size: 13px;
-  font-style: italic;
-  color: var(--text-secondary);
-  margin: 0 0 16px;
-  padding: 10px 14px;
-  background: var(--hover);
+.file-tags .tag {
+  padding: 2px 8px;
+  border: none;
   border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
+.file-tags .tag:hover {
+  filter: brightness(0.9);
+  transform: scale(1.05);
 }
 
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.more-tags {
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: help;
 }
 
-.stat-item.inline {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.stat-header {
-  display: flex;
-  justify-content: space-between;
-}
-
-.stat-label {
-  font-size: 12px;
+.file-date {
   color: var(--text-muted);
 }
 
-.stat-value {
-  font-size: 12px;
-  font-weight: 600;
+.delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+
+.file-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+/* ======================== EDITOR VIEW STYLES ======================== */
+
+/* Editor Header */
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.editor-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.back-btn:hover {
+  background: var(--hover);
   color: var(--text-primary);
 }
 
-.stat-bar {
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
+.editor-title-area {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.editor-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.stat-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s ease;
+.editor-path-badge {
+  font-size: 11px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  background: var(--bg);
+  border-radius: 6px;
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.stat-fill.trust {
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+/* Editor Tabs */
+.editor-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-app);
 }
 
-.stat-fill.familiarity {
-  background: linear-gradient(90deg, #22c55e, #4ade80);
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-/* Memories Section */
-.memories-section {
+.tab-btn:hover {
+  background: var(--hover);
+  color: var(--text-primary);
+}
+
+.tab-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+.tab-shortcut {
+  font-size: 10px;
+  opacity: 0.6;
+  font-family: 'SF Mono', 'Monaco', monospace;
+}
+
+.tab-btn.active .tab-shortcut {
+  opacity: 0.8;
+}
+
+/* Editor Body */
+.editor-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-content {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
+}
+
+/* Content Tab */
+.content-tab {
+  display: flex;
+  flex-direction: column;
+}
+
+.full-editor {
+  width: 100%;
+  flex: 1;
+  min-height: 400px;
+  padding: 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  resize: none;
+  transition: border-color 0.15s ease;
+}
+
+.full-editor:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.full-editor::placeholder {
+  color: var(--text-faint);
+}
+
+/* Metadata Tab */
+.metadata-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.metadata-section {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 16px;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .section-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
-.memories-list {
+.section-header svg {
+  color: var(--text-muted);
+}
+
+/* Tags Editor */
+.tags-editor {
+  padding: 16px;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.remove-tag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.15);
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: all 0.15s ease;
+}
+
+.remove-tag:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.tag-input-wrapper {
+  flex: 1;
+  min-width: 100px;
+}
+
+.tag-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+}
+
+.tag-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+.tag-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* File Info Grid */
+.info-grid {
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
+  gap: 12px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.info-label {
+  width: 80px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.info-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.info-value.monospace {
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.importance-stars {
+  display: flex;
+  gap: 2px;
+  color: var(--accent);
+}
+
+.importance-value {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+/* Editor Footer */
+.editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.footer-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.footer-hint kbd {
+  padding: 2px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: 11px;
+}
+
+.hint-divider {
+  margin: 0 4px;
+  opacity: 0.5;
+}
+
+.footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn.secondary {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.btn.secondary:hover {
+  background: var(--hover);
+}
+
+.btn.primary {
+  background: var(--accent);
+  border: none;
+  color: white;
+}
+
+.btn.primary:hover {
+  opacity: 0.9;
+}
+
+.btn.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

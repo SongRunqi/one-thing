@@ -12,9 +12,32 @@
           <ArrowDown :size="10" :stroke-width="2" />{{ gitStatus.behind }}
         </span>
       </div>
-      <button class="refresh-btn" @click="loadGitStatus" :disabled="isLoading" title="Refresh">
-        <RefreshCw :size="14" :stroke-width="1.5" :class="{ spinning: isLoading }" />
-      </button>
+      <div class="header-actions" v-if="gitStatus?.isRepo">
+        <button
+          class="action-btn"
+          @click="pullChanges"
+          :disabled="isOperating"
+          title="Pull"
+        >
+          <ArrowDown :size="12" :stroke-width="1.5" />
+        </button>
+        <button
+          class="action-btn"
+          @click="pushChanges"
+          :disabled="isOperating"
+          title="Push"
+        >
+          <ArrowUp :size="12" :stroke-width="1.5" />
+        </button>
+        <button
+          class="action-btn commit"
+          @click="openCommitDialog"
+          :disabled="!hasStaged || isOperating"
+          title="Commit"
+        >
+          <GitCommitHorizontal :size="12" :stroke-width="1.5" />
+        </button>
+      </div>
     </div>
 
     <!-- Loading State -->
@@ -55,15 +78,32 @@
           <ChevronRight :size="14" :stroke-width="1.5" :class="{ rotated: !collapsedSections.staged }" />
           <span class="section-title">Staged Changes</span>
           <span class="section-count">{{ gitStatus.staged.length }}</span>
+          <button
+            class="section-action"
+            @click.stop="unstageAll"
+            :disabled="isOperating"
+            title="Unstage All"
+          >
+            <Minus :size="12" :stroke-width="1.5" />
+          </button>
         </div>
         <div v-show="!collapsedSections.staged" class="section-content">
           <div
             v-for="file in gitStatus.staged"
             :key="file.path"
-            class="file-item"
+            class="file-item clickable"
+            @click="openDiffPreview(file.path, true)"
           >
             <span class="file-status staged">{{ file.status }}</span>
             <span class="file-path">{{ file.path }}</span>
+            <button
+              class="file-action"
+              @click.stop="unstageFile(file.path)"
+              :disabled="isOperating"
+              title="Unstage"
+            >
+              <Minus :size="12" :stroke-width="1.5" />
+            </button>
           </div>
         </div>
       </div>
@@ -74,15 +114,32 @@
           <ChevronRight :size="14" :stroke-width="1.5" :class="{ rotated: !collapsedSections.changes }" />
           <span class="section-title">Changes</span>
           <span class="section-count">{{ gitStatus.changes.length }}</span>
+          <button
+            class="section-action"
+            @click.stop="stageAllChanges"
+            :disabled="isOperating"
+            title="Stage All"
+          >
+            <Plus :size="12" :stroke-width="1.5" />
+          </button>
         </div>
         <div v-show="!collapsedSections.changes" class="section-content">
           <div
             v-for="file in gitStatus.changes"
             :key="file.path"
-            class="file-item"
+            class="file-item clickable"
+            @click="openDiffPreview(file.path, false)"
           >
             <span class="file-status modified">{{ file.status }}</span>
             <span class="file-path">{{ file.path }}</span>
+            <button
+              class="file-action"
+              @click.stop="stageFile(file.path)"
+              :disabled="isOperating"
+              title="Stage"
+            >
+              <Plus :size="12" :stroke-width="1.5" />
+            </button>
           </div>
         </div>
       </div>
@@ -93,15 +150,32 @@
           <ChevronRight :size="14" :stroke-width="1.5" :class="{ rotated: !collapsedSections.untracked }" />
           <span class="section-title">Untracked</span>
           <span class="section-count">{{ gitStatus.untracked.length }}</span>
+          <button
+            class="section-action"
+            @click.stop="stageAllUntracked"
+            :disabled="isOperating"
+            title="Add All"
+          >
+            <Plus :size="12" :stroke-width="1.5" />
+          </button>
         </div>
         <div v-show="!collapsedSections.untracked" class="section-content">
           <div
             v-for="file in gitStatus.untracked"
             :key="file"
-            class="file-item"
+            class="file-item clickable"
+            @click="openFilePreview(file)"
           >
             <span class="file-status untracked">?</span>
             <span class="file-path">{{ file }}</span>
+            <button
+              class="file-action"
+              @click.stop="stageFile(file)"
+              :disabled="isOperating"
+              title="Add"
+            >
+              <Plus :size="12" :stroke-width="1.5" />
+            </button>
           </div>
         </div>
       </div>
@@ -119,19 +193,46 @@
 import { ref, computed, watch, reactive, onMounted } from 'vue'
 import {
   GitBranch,
-  RefreshCw,
+  GitCommitHorizontal,
   AlertCircle,
   FolderX,
   ChevronRight,
   ArrowUp,
   ArrowDown,
   Check,
+  Plus,
+  Minus,
 } from 'lucide-vue-next'
+import { useRightSidebarStore } from '@/stores/right-sidebar'
 
 const props = defineProps<{
   workingDirectory?: string
   sessionId?: string
 }>()
+
+const emit = defineEmits<{
+  'open-diff': [data: { filePath: string; workingDirectory: string; sessionId: string; isStaged: boolean }]
+  'open-commit-dialog': []
+}>()
+
+const rightSidebarStore = useRightSidebarStore()
+
+// For staged/changed files: emit event to show diff in chat overlay
+function openDiffPreview(filePath: string, isStaged: boolean) {
+  if (!props.workingDirectory || !props.sessionId) return
+  emit('open-diff', {
+    filePath,
+    workingDirectory: props.workingDirectory,
+    sessionId: props.sessionId,
+    isStaged,
+  })
+}
+
+// For untracked files: show file content in sidebar
+function openFilePreview(filePath: string) {
+  if (!props.workingDirectory) return
+  rightSidebarStore.openPreviewByPath(filePath, props.workingDirectory)
+}
 
 interface GitFileChange {
   path: string
@@ -149,6 +250,7 @@ interface GitStatus {
 }
 
 const isLoading = ref(false)
+const isOperating = ref(false)
 const error = ref<string | null>(null)
 const gitStatus = ref<GitStatus | null>(null)
 
@@ -165,6 +267,10 @@ const noChanges = computed(() => {
     gitStatus.value.changes.length === 0 &&
     gitStatus.value.untracked.length === 0
   )
+})
+
+const hasStaged = computed(() => {
+  return gitStatus.value && gitStatus.value.staged.length > 0
 })
 
 function toggleSection(section: keyof typeof collapsedSections) {
@@ -194,9 +300,9 @@ async function loadGitStatus() {
       return
     }
 
-    const output = result.result || ''
+    const output = getToolOutput(result)
 
-    if (output.trim() === 'NOT_A_GIT_REPO') {
+    if (output.includes('NOT_A_GIT_REPO')) {
       gitStatus.value = {
         isRepo: false,
         staged: [],
@@ -258,6 +364,87 @@ watch(() => props.workingDirectory, () => {
 onMounted(() => {
   loadGitStatus()
 })
+
+// Git operations
+async function executeGitCommand(command: string): Promise<boolean> {
+  if (!props.workingDirectory || !props.sessionId) return false
+
+  isOperating.value = true
+  try {
+    const result = await window.electronAPI.executeTool(
+      'bash',
+      { command, working_directory: props.workingDirectory },
+      `git-op-${Date.now()}`,
+      props.sessionId
+    )
+    return result.success
+  } catch (err) {
+    console.error('[GitTab] Git command failed:', err)
+    return false
+  } finally {
+    isOperating.value = false
+  }
+}
+
+async function stageFile(filePath: string) {
+  const escapedPath = filePath.replace(/"/g, '\\"')
+  if (await executeGitCommand(`git add "${escapedPath}"`)) {
+    await loadGitStatus()
+  }
+}
+
+async function unstageFile(filePath: string) {
+  const escapedPath = filePath.replace(/"/g, '\\"')
+  if (await executeGitCommand(`git reset HEAD "${escapedPath}"`)) {
+    await loadGitStatus()
+  }
+}
+
+async function stageAllChanges() {
+  if (await executeGitCommand('git add -u')) {
+    await loadGitStatus()
+  }
+}
+
+async function stageAllUntracked() {
+  if (await executeGitCommand('git add .')) {
+    await loadGitStatus()
+  }
+}
+
+async function unstageAll() {
+  if (await executeGitCommand('git reset HEAD')) {
+    await loadGitStatus()
+  }
+}
+
+function openCommitDialog() {
+  emit('open-commit-dialog')
+}
+
+async function pushChanges() {
+  await executeGitCommand('git push')
+}
+
+async function pullChanges() {
+  if (await executeGitCommand('git pull')) {
+    await loadGitStatus()
+  }
+}
+
+defineExpose({
+  refresh: loadGitStatus,
+})
+
+function getToolOutput(result: { result?: unknown }): string {
+  const raw = result.result
+  if (typeof raw === 'string') return raw
+  if (raw && typeof raw === 'object') {
+    const output = (raw as { output?: unknown }).output
+    if (typeof output === 'string') return output
+  }
+  return ''
+}
 </script>
 
 <style scoped>
@@ -272,9 +459,48 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border-divider);
   background: transparent;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.action-btn.commit {
+  color: var(--accent);
+}
+
+.action-btn.commit:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb, 99, 102, 241), 0.15);
 }
 
 .branch-info {
@@ -308,43 +534,6 @@ onMounted(() => {
 .sync-badge.behind {
   background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
-}
-
-.refresh-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.refresh-btn:hover:not(:disabled) {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.refresh-btn:disabled {
-  opacity: 0.5;
-}
-
-.refresh-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.25);
-}
-
-.refresh-btn .spinning {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 /* Loading skeleton */
@@ -465,13 +654,42 @@ onMounted(() => {
 }
 
 .section-count {
-  margin-left: auto;
   padding: 1px 6px;
   border-radius: 10px;
   background: var(--hover);
   font-size: 10px;
   font-weight: 500;
   color: var(--muted);
+}
+
+.section-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+
+.section-header:hover .section-action {
+  opacity: 1;
+}
+
+.section-action:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--accent);
+}
+
+.section-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .section-content {
@@ -488,6 +706,14 @@ onMounted(() => {
 
 .file-item:hover {
   background: var(--hover);
+}
+
+.file-item.clickable {
+  cursor: pointer;
+}
+
+.file-item.clickable:active {
+  background: var(--bg-elevated);
 }
 
 .file-status {
@@ -511,10 +737,41 @@ onMounted(() => {
 }
 
 .file-path {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
+}
+
+.file-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.file-item:hover .file-action {
+  opacity: 1;
+}
+
+.file-action:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--accent);
+}
+
+.file-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .no-changes {

@@ -19,6 +19,12 @@ import { GrepTool } from './grep.js'
 import { SkillTool } from './skill.js'
 import { PlanTool } from './plan.js'
 import { CustomAgentTool } from './custom-agent.js'
+import { MemoryTool } from './memory.js'
+
+// Automation tools
+import { MouseTool } from './mouse.js'
+import { KeyboardTool } from './keyboard.js'
+import { ScreenshotTool } from './screenshot.js'
 
 // All built-in tools (Tool.define() format)
 // Note: SkillTool is async and needs separate initialization
@@ -30,6 +36,11 @@ const builtinTools = [
   GlobTool,
   GrepTool,
   PlanTool,
+  MemoryTool,
+  // Automation tools
+  MouseTool,
+  KeyboardTool,
+  ScreenshotTool,
 ]
 
 // Async tools that need initialization with context

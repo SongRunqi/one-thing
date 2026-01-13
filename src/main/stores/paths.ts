@@ -81,6 +81,11 @@ export function getAgentMemoryPath(agentId: string): string {
   return path.join(getAgentMemoryDir(), `${agentId}.json`)
 }
 
+// Screenshots directory (for automation screenshot captures)
+export function getScreenshotsDir(): string {
+  return path.join(getStorePath(), 'screenshots')
+}
+
 // Media paths for generated images
 export function getMediaDir(): string {
   return path.join(getStorePath(), 'media')
@@ -172,6 +177,7 @@ export function ensureStoreDirs(): void {
     getAgentAvatarsDir(),
     getUserProfileDir(),
     getAgentMemoryDir(),
+    getScreenshotsDir(),
     getMediaDir(),
     getMediaImagesDir(),
     getToolOutputsDir(),

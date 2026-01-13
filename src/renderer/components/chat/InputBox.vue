@@ -947,7 +947,10 @@ function handleQuickCommandExecuted(result: {
   error?: string
 }) {
   if (result.success) {
-    showCommandFeedback('success', result.message || 'Done')
+    // Only show feedback if there's a message
+    if (result.message) {
+      showCommandFeedback('success', result.message)
+    }
   } else {
     showCommandFeedback('error', result.error || 'Command failed')
   }

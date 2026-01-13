@@ -2,9 +2,17 @@
   <!-- 只在有内容显示时渲染容器 -->
   <Transition name="container-fade">
     <div v-if="shouldShowContainer" class="thinking-container">
-      <!-- Waiting status (streaming, no content yet, no reasoning) -->
+      <!-- Loading memory status -->
       <Transition name="thinking-fade" mode="out-in">
-        <div v-if="isStreaming && !hasContent && !reasoning" key="waiting" class="thinking-status">
+        <div v-if="loadingMemory && isStreaming && !hasContent && !reasoning" key="loading-memory" class="thinking-status">
+          <div class="thinking-status-row">
+            <span class="thinking-text flowing">Extracting memory</span>
+            <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+          </div>
+        </div>
+
+        <!-- Waiting status (streaming, no content yet, no reasoning) -->
+        <div v-else-if="isStreaming && !hasContent && !reasoning" key="waiting" class="thinking-status">
           <div class="thinking-status-row">
             <span class="thinking-text flowing">Waiting</span>
             <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
@@ -53,6 +61,7 @@ interface Props {
   reasoning?: string
   thinkingStartTime?: number
   thinkingTime?: number
+  loadingMemory?: boolean
 }
 
 const props = defineProps<Props>()
@@ -82,11 +91,12 @@ const renderedReasoning = computed(() => {
   return renderMarkdown(cleanedContent, false)
 })
 
-// 是否应该显示容器（有 Waiting 或有 Reasoning 时才显示）
+// 是否应该显示容器（有 Loading Memory、Waiting 或有 Reasoning 时才显示）
 const shouldShowContainer = computed(() => {
+  const showLoadingMemory = props.loadingMemory && props.isStreaming && !props.hasContent && !props.reasoning
   const showWaiting = props.isStreaming && !props.hasContent && !props.reasoning
   const showReasoning = !!props.reasoning
-  return showWaiting || showReasoning
+  return showLoadingMemory || showWaiting || showReasoning
 })
 
 function toggleExpand() {

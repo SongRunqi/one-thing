@@ -178,6 +178,7 @@
           @update:settings="handleEmbeddingSettingsUpdate"
         />
       </div>
+
     </div>
 
     <SettingsFooter

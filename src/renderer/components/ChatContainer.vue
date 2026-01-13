@@ -8,8 +8,18 @@
       @mouseleave="$emit('hide-floating-sidebar')"
     ></div>
 
+    <!-- Memory Editor View (full-screen mode) -->
+    <div v-if="selectedMemoryFilePath" class="chat-panels">
+      <div class="full-page-container">
+        <MemoryEditor
+          :file-path="selectedMemoryFilePath"
+          @close="$emit('close-memory-file')"
+        />
+      </div>
+    </div>
+
     <!-- Create/Edit Agent Page (full-screen mode) -->
-    <div v-if="showAgentCreate || editingAgent" class="chat-panels">
+    <div v-else-if="showAgentCreate || editingAgent" class="chat-panels">
       <div class="full-page-container">
         <CreateAgentPage
           :agent="editingAgent"
@@ -66,6 +76,16 @@
         class="panel-resizer"
         :style="{ left: getResizerPosition(index) }"
         @mousedown="startResize($event, index)"
+      />
+
+      <!-- Diff Overlay -->
+      <DiffOverlay
+        :visible="showDiffOverlay || false"
+        :file-path="diffOverlayData?.filePath || ''"
+        :working-directory="diffOverlayData?.workingDirectory || ''"
+        :session-id="diffOverlayData?.sessionId || ''"
+        :is-staged="diffOverlayData?.isStaged || false"
+        @close="$emit('close-diff-overlay')"
       />
     </div>
 
@@ -137,7 +157,17 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
 import CreateAgentPage from '@/components/agent/CreateAgentPage.vue'
+import MemoryEditor from '@/components/MemoryEditor.vue'
+import DiffOverlay from '@/components/chat/DiffOverlay.vue'
 import type { CustomAgent } from '@/types'
+
+// Type for diff overlay data
+interface DiffOverlayData {
+  filePath: string
+  workingDirectory: string
+  sessionId: string
+  isStaged: boolean
+}
 
 interface Panel {
   id: string
@@ -154,6 +184,9 @@ const props = defineProps<{
   mediaPanelOpen?: boolean
   showAgentCreate?: boolean
   editingAgent?: CustomAgent | null
+  selectedMemoryFilePath?: string | null
+  showDiffOverlay?: boolean
+  diffOverlayData?: DiffOverlayData | null
 }>()
 
 const emit = defineEmits<{
@@ -167,6 +200,8 @@ const emit = defineEmits<{
   'close-agent-create': []
   'agent-created': [agent: CustomAgent]
   'agent-saved': [agent: CustomAgent]
+  'close-memory-file': []
+  'close-diff-overlay': []
 }>()
 
 // Handle agent creation

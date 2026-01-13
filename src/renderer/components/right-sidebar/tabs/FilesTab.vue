@@ -1,95 +1,177 @@
 <template>
   <div class="files-tab">
-    <!-- Header with refresh button (can be hidden when parent provides it) -->
+    <!-- Header (can be hidden when parent provides it) -->
     <div v-if="!hideHeader" class="tab-header" :title="workingDirectory">
-      <span class="header-title">Explorer</span>
-      <button class="refresh-btn" @click="refresh" :disabled="isLoading" title="Refresh">
-        <RefreshCw :size="14" :stroke-width="1.5" :class="{ spinning: isLoading }" />
-      </button>
+      <div class="header-left">
+        <span class="header-title">Changed Files</span>
+        <span v-if="displayFiles.length" class="header-count">{{ displayFiles.length }}</span>
+        <span
+          v-if="displayFiles.length"
+          class="header-hint"
+          title="Only Edit/Write tool changes are tracked"
+        >
+          Edit/Write only
+        </span>
+      </div>
+      <div v-if="displayFiles.length" class="header-stats">
+        <span class="stat-add">+{{ summary.totalAdditions }}</span>
+        <span class="stat-del">-{{ summary.totalDeletions }}</span>
+      </div>
     </div>
 
-    <!-- Loading State -->
-    <div v-if="isLoading && !hasTree" class="loading-state">
-      <div class="skeleton-tree">
-        <div v-for="i in 8" :key="i" class="skeleton-item" :style="{ paddingLeft: `${(i % 3) * 16 + 8}px` }">
-          <div class="skeleton-icon"></div>
-          <div class="skeleton-name" :style="{ width: `${60 + Math.random() * 80}px` }"></div>
+    <!-- Empty State -->
+    <div v-if="!sessionId" class="empty-state">
+      <FolderOpen :size="32" :stroke-width="1.5" />
+      <p class="empty-text">No active session</p>
+      <p class="empty-hint">Select a chat session to see changed files</p>
+    </div>
+
+    <!-- Changed Files -->
+    <div v-else-if="displayFiles.length" class="changes-list">
+      <div class="section">
+        <div class="section-header" @click="toggleSection('changes')">
+          <ChevronRight :size="14" :stroke-width="1.5" :class="{ rotated: !collapsedSections.changes }" />
+          <span class="section-title">Changes</span>
+          <span class="section-count">{{ displayFiles.length }}</span>
+        </div>
+        <div v-show="!collapsedSections.changes" class="section-content">
+          <button
+            v-for="file in displayFiles"
+            :key="file.filePath"
+            type="button"
+            class="file-item"
+            :class="{ active: activePath === file.filePath }"
+            :title="file.filePath"
+            @click="openFile(file)"
+          >
+            <span class="file-status" :class="file.statusClass">{{ file.statusLabel }}</span>
+            <span class="file-path">{{ file.displayPath }}</span>
+            <span class="file-meta">
+              <span v-if="file.isNew" class="badge-new">new</span>
+              <span v-if="file.additions > 0" class="stat-add">+{{ file.additions }}</span>
+              <span v-if="file.deletions > 0" class="stat-del">-{{ file.deletions }}</span>
+            </span>
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- Error State -->
-    <div v-else-if="error" class="error-state">
-      <AlertCircle :size="32" :stroke-width="1.5" />
-      <p class="error-text">{{ error }}</p>
-      <button class="retry-btn" @click="refresh">Retry</button>
-    </div>
-
-    <!-- Empty State -->
-    <div v-else-if="!workingDirectory" class="empty-state">
+    <!-- No changes -->
+    <div v-else class="empty-state">
       <FolderOpen :size="32" :stroke-width="1.5" />
-      <p class="empty-text">No working directory</p>
-      <p class="empty-hint">Select a chat session with a working directory</p>
-    </div>
-
-    <!-- File Tree -->
-    <div v-else class="file-tree-container">
-      <FileTree
-        :nodes="fileTree"
-        :depth="0"
-        @toggle="handleToggle"
-        @select="handleSelect"
-      />
+      <p class="empty-text">No changes yet</p>
+      <p class="empty-hint">Edits from Edit/Write tools will appear here</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
-import { RefreshCw, AlertCircle, FolderOpen } from 'lucide-vue-next'
+import { computed, reactive } from 'vue'
+import { FolderOpen, ChevronRight } from 'lucide-vue-next'
 import { useRightSidebarStore } from '@/stores/right-sidebar'
-import FileTree from '../files/FileTree.vue'
+import { collectFileChanges } from '@/services/commands/files'
+import type { FileChangeData } from '@/services/commands/files'
 
 const props = defineProps<{
   workingDirectory?: string
+  sessionId?: string
   hideHeader?: boolean
 }>()
 
 const store = useRightSidebarStore()
 
-// Computed properties
-const isLoading = computed(() => store.isCurrentTreeLoading)
-const error = computed(() => store.fileTreeError)
-const fileTree = computed(() => store.currentFileTree)
-const hasTree = computed(() => fileTree.value.length > 0)
+type DisplayFile = FileChangeData & {
+  displayPath: string
+  statusLabel: string
+  statusClass: string
+}
 
-// Load file tree when working directory changes
-watch(() => props.workingDirectory, (newDir) => {
-  if (newDir) {
-    store.loadFileTree(newDir)
-  }
-}, { immediate: true })
+const displayFiles = computed<DisplayFile[]>(() => {
+  if (!props.sessionId) return []
 
-onMounted(() => {
-  if (props.workingDirectory) {
-    store.loadFileTree(props.workingDirectory)
+  return collectFileChanges(props.sessionId).map((file) => {
+    const displayPath = getDisplayPath(file.filePath)
+    return {
+      ...file,
+      displayPath,
+      statusLabel: getStatusLabel(file),
+      statusClass: getStatusClass(file),
+    }
+  })
+})
+
+const summary = computed(() => {
+  const files = displayFiles.value
+  return {
+    totalAdditions: files.reduce((sum, file) => sum + file.additions, 0),
+    totalDeletions: files.reduce((sum, file) => sum + file.deletions, 0),
   }
 })
 
+const activePath = computed(() => store.previewFile?.path || store.previewDiff?.path || '')
+
+const collapsedSections = reactive({
+  changes: false,
+})
+
 function refresh() {
-  if (props.workingDirectory) {
-    store.loadFileTree(props.workingDirectory, true)
+  // No-op: changes are derived from chat state and update reactively.
+}
+
+function toggleSection(section: keyof typeof collapsedSections) {
+  collapsedSections[section] = !collapsedSections[section]
+}
+
+function openFile(file: FileChangeData) {
+  const resolvedPath = resolveFilePath(file.filePath)
+  store.openDiffPreview(resolvedPath)
+  const diff = file.diff
+  if (diff && diff.trim()) {
+    store.setPreviewDiff(diff)
+  } else {
+    store.setPreviewError('No diff available')
   }
 }
 
-function handleToggle(path: string) {
-  store.toggleExpanded(path)
+function getDisplayPath(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/')
+  const base = props.workingDirectory?.replace(/\\/g, '/').replace(/\/$/, '')
+  let relative = normalized
+
+  if (base && normalized.startsWith(base)) {
+    relative = normalized.slice(base.length).replace(/^\/+/, '')
+  }
+
+  return relative || normalized
 }
 
-function handleSelect(node: import('@/types').FileTreeNode) {
-  // Open file preview panel
-  store.openPreview(node)
+function resolveFilePath(filePath: string): string {
+  if (/^([A-Za-z]:[\\/]|\\\\|\/)/.test(filePath)) {
+    return filePath
+  }
+
+  if (!props.workingDirectory) return filePath
+
+  const base = props.workingDirectory.replace(/[\\/]$/, '')
+  const cleaned = filePath.replace(/^[/\\]+/, '')
+  return `${base}/${cleaned}`
 }
+
+function getStatusLabel(file: FileChangeData): string {
+  if (file.isNew) return 'A'
+  if (file.deletions > 0 && file.additions === 0) return 'D'
+  return 'M'
+}
+
+function getStatusClass(file: FileChangeData): string {
+  if (file.isNew) return 'added'
+  if (file.deletions > 0 && file.additions === 0) return 'deleted'
+  return 'modified'
+}
+
+defineExpose({
+  refresh,
+})
 </script>
 
 <style scoped>
@@ -104,9 +186,17 @@ function handleSelect(node: import('@/types').FileTreeNode) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border-divider);
   background: transparent;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .header-title {
@@ -117,111 +207,39 @@ function handleSelect(node: import('@/types').FileTreeNode) {
   text-transform: uppercase;
 }
 
-.refresh-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
+.header-count {
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--hover);
+  font-size: 10px;
+  font-weight: 600;
   color: var(--muted);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.refresh-btn:hover:not(:disabled) {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.refresh-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.refresh-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.25);
-}
-
-.refresh-btn .spinning {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Loading skeleton */
-.loading-state {
-  padding: 12px;
-}
-
-.skeleton-tree {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.skeleton-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.skeleton-icon {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  background: var(--hover);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-.skeleton-name {
-  height: 12px;
-  border-radius: 4px;
-  background: var(--hover);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* Error state */
-.error-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 16px;
+.header-hint {
+  font-size: 10px;
   color: var(--muted);
-  text-align: center;
-}
-
-.error-text {
-  margin: 12px 0;
-  font-size: 13px;
-  color: var(--error, #ef4444);
-}
-
-.retry-btn {
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.retry-btn:hover {
   background: var(--hover);
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: help;
+  white-space: nowrap;
+}
+
+.header-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.stat-add {
+  color: #22c55e;
+}
+
+.stat-del {
+  color: #ef4444;
 }
 
 /* Empty state */
@@ -247,10 +265,128 @@ function handleSelect(node: import('@/types').FileTreeNode) {
   color: var(--muted);
 }
 
-/* File tree container */
-.file-tree-container {
+/* Changed files list */
+.changes-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 6px 0;
+}
+
+.section {
+  margin-bottom: 8px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.section-header:hover {
+  background: var(--hover);
+}
+
+.section-header svg {
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.section-header svg.rotated {
+  transform: rotate(90deg);
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+
+.section-count {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--hover);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.section-content {
+  padding: 4px 0;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 12px 4px 28px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+}
+
+.file-item:hover {
+  background: var(--hover);
+}
+
+.file-item.active {
+  background: var(--bg-elevated);
+}
+
+.file-status {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.file-status.added {
+  color: #22c55e;
+}
+
+.file-status.modified {
+  color: #f59e0b;
+}
+
+.file-status.deleted {
+  color: #ef4444;
+}
+
+.file-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.file-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.badge-new {
+  text-transform: uppercase;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.12);
 }
 </style>

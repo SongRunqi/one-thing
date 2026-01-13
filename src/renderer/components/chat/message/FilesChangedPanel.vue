@@ -29,6 +29,17 @@
         </svg>
         <span>Rollback All</span>
       </button>
+      <!-- Close Button -->
+      <button
+        class="close-btn"
+        @click.stop="handleClose"
+        title="Close panel"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
     </div>
 
     <!-- Empty state -->
@@ -93,6 +104,7 @@
             v-if="selectedFile.diff"
             :diff="selectedFile.diff"
             maxHeight="100%"
+            :showFileName="false"
           />
           <div class="diff-empty" v-else>
             <span>No diff available</span>
@@ -116,6 +128,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   (e: 'rollback', files: FileChangeData[]): void
+  (e: 'close'): void
 }>()
 
 /** 已回滚的文件路径集合 */
@@ -147,6 +160,11 @@ watch(() => props.data, () => {
 
 function selectFile(file: FileChangeData) {
   selectedFile.value = file
+}
+
+// Handle close - emit to parent for persistent deletion
+function handleClose() {
+  emit('close')
 }
 
 /**
@@ -573,5 +591,27 @@ function getFileDir(filePath: string): string {
 .rollback-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+/* Close button */
+.close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.close-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: rgb(239, 68, 68);
+  border-color: rgb(239, 68, 68);
 }
 </style>

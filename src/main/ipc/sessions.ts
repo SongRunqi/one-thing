@@ -276,4 +276,15 @@ export function registerSessionHandlers() {
       return { success: false, error: error.message || 'Failed to remove message' }
     }
   })
+
+  // Generic remove message by ID (for close button functionality)
+  ipcMain.handle('remove-message', async (_event, { sessionId, messageId }) => {
+    try {
+      store.deleteMessage(sessionId, messageId)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Sessions] Failed to remove message:', error)
+      return { success: false, error: error.message || 'Failed to remove message' }
+    }
+  })
 }

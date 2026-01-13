@@ -16,6 +16,7 @@
         @close="closeMediaPanel"
         @create-agent="openAgentDialog()"
         @edit-agent="openAgentDialog"
+        @open-memory-file="openMemoryFile"
       />
 
       <!-- Floating sidebar overlay backdrop -->
@@ -54,6 +55,9 @@
         :media-panel-open="showMediaPanel"
         :show-agent-create="showAgentCreate"
         :editing-agent="editingAgent"
+        :selected-memory-file-path="selectedMemoryFilePath"
+        :show-diff-overlay="showDiffOverlay"
+        :diff-overlay-data="diffOverlayData"
         @close-settings="showSettings = false"
         @open-settings="showSettings = true"
         @close-agent-settings="showAgentSettings = false"
@@ -64,12 +68,26 @@
         @close-agent-create="closeAgentCreate"
         @agent-created="handleAgentCreated"
         @agent-saved="handleAgentSaved"
+        @close-memory-file="closeMemoryFile"
+        @close-diff-overlay="closeDiffOverlay"
       />
 
       <!-- Right Panel (Sidebar + Preview) -->
       <RightPanel
         :session-id="sessionsStore.currentSessionId"
         :working-directory="sessionsStore.currentSession?.workingDirectory"
+        @open-diff="openDiffOverlay"
+        @open-commit-dialog="openCommitDialog"
+      />
+
+      <!-- Commit Dialog -->
+      <CommitDialog
+        :visible="showCommitDialog"
+        :staged-count="stagedFilesCount"
+        :working-directory="sessionsStore.currentSession?.workingDirectory || ''"
+        :session-id="sessionsStore.currentSessionId || ''"
+        @close="closeCommitDialog"
+        @committed="handleCommitted"
       />
     </div>
 
@@ -142,7 +160,16 @@ import WorkspaceDialog from '@/components/WorkspaceDialog.vue'
 import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
+import CommitDialog from '@/components/git/CommitDialog.vue'
 import type { Workspace, CustomAgent } from '@/types'
+
+// Type for diff overlay data
+interface DiffOverlayData {
+  filePath: string
+  workingDirectory: string
+  sessionId: string
+  isStaged: boolean
+}
 
 // Detect if this is the settings window or image preview window
 const isSettingsWindow = window.location.hash.startsWith('#/settings')
@@ -175,6 +202,17 @@ const showMediaPanel = ref(false)
 const editingAgent = ref<CustomAgent | null>(null)
 const showAgentSettings = ref(false)
 const showAgentCreate = ref(false)
+
+// Memory state
+const selectedMemoryFilePath = ref<string | null>(null)
+
+// Diff overlay state
+const showDiffOverlay = ref(false)
+const diffOverlayData = ref<DiffOverlayData | null>(null)
+
+// Commit dialog state
+const showCommitDialog = ref(false)
+const stagedFilesCount = ref(0)
 
 function openWorkspaceDialog(workspace?: Workspace) {
   editingWorkspace.value = workspace || null
@@ -213,6 +251,41 @@ function handleAgentSaved(_agent: CustomAgent) {
   editingAgent.value = null
   showAgentCreate.value = false
   // Agent is already updated in the store by CreateAgentPage
+}
+
+function openMemoryFile(filePath: string) {
+  selectedMemoryFilePath.value = filePath
+}
+
+function closeMemoryFile() {
+  selectedMemoryFilePath.value = null
+}
+
+// Diff overlay functions
+function openDiffOverlay(data: DiffOverlayData) {
+  diffOverlayData.value = data
+  showDiffOverlay.value = true
+}
+
+function closeDiffOverlay() {
+  showDiffOverlay.value = false
+  diffOverlayData.value = null
+}
+
+// Commit dialog functions
+function openCommitDialog(stagedCount: number) {
+  stagedFilesCount.value = stagedCount
+  showCommitDialog.value = true
+}
+
+function closeCommitDialog() {
+  showCommitDialog.value = false
+}
+
+function handleCommitted() {
+  // Refresh git status after commit
+  // The GitTab will handle this via its own refresh mechanism
+  closeCommitDialog()
 }
 
 function toggleMediaPanel() {

@@ -10,6 +10,8 @@ import { registerCustomAgentHandlers, initializeCustomAgents } from './custom-ag
 import { registerWorkspaceHandlers } from './workspaces.js'
 import { registerUserProfileHandlers } from './user-profile.js'
 import { registerAgentMemoryHandlers } from './agent-memory.js'
+import { registerMemoryFeedbackHandlers } from './memory-feedback.js'
+import { registerMemoryHandlers } from './memory.js'
 import { registerShellHandlers } from './shell.js'
 import { registerMediaHandlers } from './media.js'
 import { registerPermissionHandlers } from './permission.js'
@@ -32,6 +34,8 @@ export function initializeIPC() {
   registerWorkspaceHandlers()
   registerUserProfileHandlers()
   registerAgentMemoryHandlers()
+  registerMemoryFeedbackHandlers()
+  registerMemoryHandlers()
   registerShellHandlers()
   registerMediaHandlers()
   registerPermissionHandlers()

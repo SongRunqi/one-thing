@@ -3,9 +3,7 @@
  */
 
 import type { CommandDefinition, CommandContext, CommandResult } from '@/types/commands'
-import { useChatStore } from '@/stores/chat'
-import { useSessionsStore } from '@/stores/sessions'
-import { useWorkspacesStore } from '@/stores/workspaces'
+import { useRightSidebarStore } from '@/stores/right-sidebar'
 
 /**
  * Git file status
@@ -335,70 +333,13 @@ export const gitCommand: CommandDefinition = {
   description: 'Show git status, recent commits, and quick actions',
   usage: '/git',
 
-  async execute(context: CommandContext): Promise<CommandResult> {
-    const sessionsStore = useSessionsStore()
-    const chatStore = useChatStore()
-    const workspacesStore = useWorkspacesStore()
+  async execute(_context: CommandContext): Promise<CommandResult> {
+    const rightSidebarStore = useRightSidebarStore()
 
-    // Get working directory: session > workspace > error
-    const session = sessionsStore.sessions.find((s) => s.id === context.sessionId)
-    const workspace = session?.workspaceId
-      ? workspacesStore.workspaces.find((w) => w.id === session.workspaceId)
-      : null
-    const workingDirectory = session?.workingDirectory || workspace?.workingDirectory
+    // Open right sidebar and switch to git tab
+    rightSidebarStore.open()
+    rightSidebarStore.setActiveTab('git')
 
-    // If no working directory, prompt user to set one
-    if (!workingDirectory) {
-      return {
-        success: false,
-        error: 'No working directory set. Use /cd to set one first.',
-      }
-    }
-
-    try {
-      const gitData = await collectGitInfo(context.sessionId, workingDirectory)
-
-      // Remove existing git-status message from this session (keep only one)
-      // First, remove from backend (persistent storage)
-      const removeResult = await window.electronAPI.removeGitStatusMessage(context.sessionId)
-      if (removeResult.removedId) {
-        // Also remove from Vue state for immediate UI update
-        chatStore.removeMessage(context.sessionId, removeResult.removedId)
-      }
-
-      // Create new message with unique ID
-      const messageId = `system-git-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-      const systemMessage = {
-        id: messageId,
-        role: 'system' as const,
-        content: JSON.stringify(gitData),
-        timestamp: Date.now(),
-      }
-
-      // Persist to backend
-      await window.electronAPI.addSystemMessage(context.sessionId, systemMessage)
-
-      // Add to Vue state for immediate display
-      chatStore.addMessageToState(context.sessionId, systemMessage)
-
-      if (!gitData.isRepo) {
-        return {
-          success: false,
-          error: 'Not a git repository',
-        }
-      }
-
-      const branchName = gitData.branch?.current || 'unknown'
-      return {
-        success: true,
-        message: `${branchName}: ${gitData.summary.totalChanges} change(s)`,
-      }
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to get git status'
-      return {
-        success: false,
-        error: errorMessage,
-      }
-    }
+    return { success: true }
   },
 }

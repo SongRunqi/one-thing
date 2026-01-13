@@ -32,31 +32,21 @@
 
     </div>
 
-    <!-- User message navigation buttons (outside scrollable area, inside wrapper) -->
-    <div v-if="userMessageIndices.length >= 1" class="nav-buttons">
-      <Tooltip text="Previous (double-click for first)" position="left">
+    <!-- User message navigation rail (timeline) -->
+    <div v-if="userMessageIndices.length > 1" class="nav-rail">
+      <div ref="navRailTrackRef" class="nav-rail-track" @click="handleRailClick">
+        <div class="nav-rail-line"></div>
         <button
-          class="nav-btn"
-          :disabled="!canGoPrev && isCurrentMessageTopVisible"
-          @click="handlePrevClick"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 15l-6-6-6 6"/>
-          </svg>
-        </button>
-      </Tooltip>
-      <span class="nav-position">{{ currentUserMessageNavIndex + 1 }}/{{ userMessageIndices.length }}</span>
-      <Tooltip text="Next (double-click for last)" position="left">
-        <button
-          class="nav-btn"
-          :disabled="!canGoNext"
-          @click="handleNextClick"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M6 9l6 6 6-6"/>
-          </svg>
-        </button>
-      </Tooltip>
+          v-for="marker in displayNavMarkers"
+          :key="marker.messageId"
+          class="nav-marker"
+          :class="{ active: marker.navIndex === currentUserMessageNavIndex }"
+          :style="{ top: `${marker.position * 100}%` }"
+          :title="marker.label"
+          @click.stop="handleMarkerClick(marker.navIndex)"
+        ></button>
+      </div>
+      <span class="nav-counter">{{ navCounter }}</span>
     </div>
 
     <!-- Reject Reason Dialog -->
@@ -105,7 +95,6 @@ import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw } from 'v
 import type { ChatMessage, AgentVoice, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
-import Tooltip from '../common/Tooltip.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useCustomAgentsStore } from '@/stores/custom-agents'
@@ -115,6 +104,13 @@ import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
 interface BranchInfo {
   id: string
   name: string
+}
+
+interface NavMarker {
+  navIndex: number
+  messageId: string
+  position: number
+  label: string
 }
 
 interface Props {
@@ -140,6 +136,8 @@ const sessionsStore = useSessionsStore()
 const customAgentsStore = useCustomAgentsStore()
 const settingsStore = useSettingsStore()
 const messageListRef = ref<HTMLElement | null>(null)
+const navRailTrackRef = ref<HTMLElement | null>(null)
+const navMarkers = ref<NavMarker[]>([])
 
 // Reject reason dialog state
 const showRejectDialog = ref(false)
@@ -201,14 +199,11 @@ const userScrolledAway = ref(false)
 let lastScrollTop = 0
 let scrollCooldownTimer: ReturnType<typeof setTimeout> | null = null
 
-// Click timers for distinguishing single vs double click
-let prevClickTimer: ReturnType<typeof setTimeout> | null = null
-let nextClickTimer: ReturnType<typeof setTimeout> | null = null
-const DOUBLE_CLICK_DELAY = 250 // ms
-
 // Flag to prevent scroll handler from overriding navigation index during active navigation
 let isActivelyNavigating = false
 let navigationCooldownTimer: ReturnType<typeof setTimeout> | null = null
+let navMarkerUpdateFrame: number | null = null
+let navResizeObserver: ResizeObserver | null = null
 
 // Get indices of user messages
 const userMessageIndices = computed(() => {
@@ -218,19 +213,34 @@ const userMessageIndices = computed(() => {
     .map(item => item.index)
 })
 
-// Navigation state
-const canGoPrev = computed(() => {
-  if (userMessageIndices.value.length === 0) return false
-  return currentUserMessageNavIndex.value > 0
+const navCounter = computed(() => {
+  if (userMessageIndices.value.length === 0) return '0/0'
+  const index = currentUserMessageNavIndex.value >= 0 ? currentUserMessageNavIndex.value + 1 : 1
+  return `${index}/${userMessageIndices.value.length}`
 })
 
-const canGoNext = computed(() => {
-  if (userMessageIndices.value.length === 0) return false
-  return currentUserMessageNavIndex.value < userMessageIndices.value.length - 1
-})
+const displayNavMarkers = computed<NavMarker[]>(() => {
+  const total = userMessageIndices.value.length
+  if (total === 0) return []
 
-// Check if current message top is visible (for enabling prev button even at first message)
-const isCurrentMessageTopVisible = ref(true)
+  const fallbackMarkers = userMessageIndices.value.map((messageIndex, navIndex) => {
+    const message = props.messages[messageIndex]
+    const position = total > 1 ? navIndex / (total - 1) : 0.5
+    return {
+      navIndex,
+      messageId: message?.id || `nav-${navIndex}`,
+      position: Math.min(0.98, Math.max(0.02, position)),
+      label: message ? buildNavMarkerLabel(message, navIndex) : `${navIndex + 1}/${total}`
+    }
+  })
+
+  if (navMarkers.value.length === 0) {
+    return fallbackMarkers
+  }
+
+  const markerMap = new Map(navMarkers.value.map(marker => [marker.messageId, marker]))
+  return fallbackMarkers.map(marker => markerMap.get(marker.messageId) || marker)
+})
 
 // Get the currently highlighted message ID for navigation
 // Only returns a value if user has actually navigated (not on session switch)
@@ -244,131 +254,72 @@ const highlightedMessageId = computed(() => {
 
 // Initialize navigation index when messages change
 watch(
-  () => props.messages.length,
-  () => {
-    // Reset navigation state when messages change (e.g., session switch)
+  [effectiveSessionId, () => props.messages.length],
+  ([newSessionId], [oldSessionId]) => {
+    // Reset navigation state when messages or sessions change
     hasNavigated.value = false
+
+    // Clear cached markers when session changes to avoid stale position data
+    if (newSessionId !== oldSessionId) {
+      navMarkers.value = []
+    }
+
     // Reset to last user message when messages change
     if (userMessageIndices.value.length > 0) {
       currentUserMessageNavIndex.value = userMessageIndices.value.length - 1
     } else {
       currentUserMessageNavIndex.value = -1
     }
+
+    // Schedule marker update after DOM renders
+    // Use double nextTick to ensure TransitionGroup animations have started
+    nextTick(() => {
+      nextTick(() => scheduleNavMarkerUpdate())
+    })
   },
-  { immediate: true }
+  { immediate: true, flush: 'post' }
 )
 
-// Navigate to previous user message
-// If current message top is not visible, scroll to current message top first
-function goToPrevUserMessage() {
+// Ensure nav markers are updated when user message count changes
+// This handles the case where messages are loaded asynchronously after app restart
+watch(
+  () => userMessageIndices.value.length,
+  (newLen, oldLen) => {
+    if (newLen !== oldLen && newLen > 0) {
+      nextTick(() => scheduleNavMarkerUpdate())
+    }
+  }
+)
+
+function navigateToUserMessage(navIndex: number) {
+  if (navIndex < 0 || navIndex >= userMessageIndices.value.length) return
   hasNavigated.value = true
+  currentUserMessageNavIndex.value = navIndex
+  scrollToUserMessage(navIndex)
+}
 
-  // First check if current message's top is visible
-  const currentMessageIndex = userMessageIndices.value[currentUserMessageNavIndex.value]
-  if (currentMessageIndex !== undefined && messageListRef.value) {
-    const message = props.messages[currentMessageIndex]
-    if (message) {
-      const messageEl = messageListRef.value.querySelector(`[data-message-id="${message.id}"]`)
-      if (messageEl) {
-        const containerRect = messageListRef.value.getBoundingClientRect()
-        const messageRect = messageEl.getBoundingClientRect()
+function handleMarkerClick(navIndex: number) {
+  navigateToUserMessage(navIndex)
+}
 
-        // If message top is above the visible area (with some threshold), scroll to current message top first
-        if (messageRect.top < containerRect.top - 10) {
-          // Prevent scroll handler from overriding the navigation index
-          isActivelyNavigating = true
-          if (navigationCooldownTimer) {
-            clearTimeout(navigationCooldownTimer)
-          }
-          messageEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          navigationCooldownTimer = setTimeout(() => {
-            isActivelyNavigating = false
-          }, 2600)
-          return
-        }
-      }
+function handleRailClick(event: MouseEvent) {
+  if (!navRailTrackRef.value || displayNavMarkers.value.length === 0) return
+  const rect = navRailTrackRef.value.getBoundingClientRect()
+  if (rect.height <= 0) return
+
+  const ratio = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))
+  let closestMarker = displayNavMarkers.value[0]
+  let closestDistance = Math.abs(closestMarker.position - ratio)
+
+  for (const marker of displayNavMarkers.value) {
+    const distance = Math.abs(marker.position - ratio)
+    if (distance < closestDistance) {
+      closestMarker = marker
+      closestDistance = distance
     }
   }
 
-  // If current message top is already visible, go to previous message
-  if (!canGoPrev.value) return
-  currentUserMessageNavIndex.value--
-  scrollToUserMessage(currentUserMessageNavIndex.value)
-}
-
-// Navigate to next user message
-function goToNextUserMessage() {
-  if (!canGoNext.value) return
-  hasNavigated.value = true
-  currentUserMessageNavIndex.value++
-  scrollToUserMessage(currentUserMessageNavIndex.value)
-}
-
-// Navigate to first user message (double-click)
-function goToFirstUserMessage() {
-  if (userMessageIndices.value.length === 0) return
-  hasNavigated.value = true
-  currentUserMessageNavIndex.value = 0
-  scrollToUserMessage(0)
-}
-
-// Navigate to bottom of message list (double-click down button)
-function goToLastUserMessage() {
-  hasNavigated.value = true
-  // Update navigation index to last user message (if any)
-  if (userMessageIndices.value.length > 0) {
-    currentUserMessageNavIndex.value = userMessageIndices.value.length - 1
-  }
-  // Scroll to absolute bottom
-  if (messageListRef.value) {
-    // Prevent scroll handler from overriding the navigation index
-    isActivelyNavigating = true
-    if (navigationCooldownTimer) {
-      clearTimeout(navigationCooldownTimer)
-    }
-
-    messageListRef.value.scrollTo({
-      top: messageListRef.value.scrollHeight,
-      behavior: 'smooth'
-    })
-
-    // Reset flag after scroll animation completes
-    navigationCooldownTimer = setTimeout(() => {
-      isActivelyNavigating = false
-    }, 800)
-  }
-}
-
-// Handle prev button click with single/double click distinction
-function handlePrevClick() {
-  if (prevClickTimer) {
-    // Double click detected
-    clearTimeout(prevClickTimer)
-    prevClickTimer = null
-    goToFirstUserMessage()
-  } else {
-    // Start timer for single click
-    prevClickTimer = setTimeout(() => {
-      prevClickTimer = null
-      goToPrevUserMessage()
-    }, DOUBLE_CLICK_DELAY)
-  }
-}
-
-// Handle next button click with single/double click distinction
-function handleNextClick() {
-  if (nextClickTimer) {
-    // Double click detected
-    clearTimeout(nextClickTimer)
-    nextClickTimer = null
-    goToLastUserMessage()
-  } else {
-    // Start timer for single click
-    nextClickTimer = setTimeout(() => {
-      nextClickTimer = null
-      goToNextUserMessage()
-    }, DOUBLE_CLICK_DELAY)
-  }
+  navigateToUserMessage(closestMarker.navIndex)
 }
 
 // Scroll to a specific user message by nav index
@@ -394,6 +345,82 @@ function scrollToUserMessage(navIndex: number) {
       isActivelyNavigating = false
     }, 2600)
   }
+}
+
+function formatNavTime(timestamp: number): string {
+  const date = new Date(timestamp)
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+function buildNavMarkerLabel(message: ChatMessage, navIndex: number): string {
+  const total = userMessageIndices.value.length
+  const rawContent = typeof message.content === 'string' ? message.content : ''
+  const compact = rawContent.replace(/\s+/g, ' ').trim()
+  const snippet = compact ? compact.slice(0, 48) : 'No text'
+  return `${navIndex + 1}/${total} ${formatNavTime(message.timestamp)} - ${snippet}`
+}
+
+function updateNavMarkers() {
+  const listEl = messageListRef.value
+  if (!listEl || userMessageIndices.value.length === 0) {
+    navMarkers.value = []
+    return
+  }
+
+  // Use scrollHeight for total content height (includes scrolled-out content)
+  const totalHeight = listEl.scrollHeight || 1
+  const markers: NavMarker[] = []
+  const total = userMessageIndices.value.length
+
+  for (let navIndex = 0; navIndex < userMessageIndices.value.length; navIndex++) {
+    const messageIndex = userMessageIndices.value[navIndex]
+    const message = props.messages[messageIndex]
+    if (!message) continue
+
+    const messageEl = listEl.querySelector(`[data-message-id="${message.id}"]`) as HTMLElement | null
+    const fallbackPosition = total > 1 ? navIndex / (total - 1) : 0.5
+    let position = Math.min(0.98, Math.max(0.02, fallbackPosition))
+
+    if (messageEl) {
+      // Use getBoundingClientRect for reliable position calculation
+      // Account for current scroll position to get absolute position within scrollable content
+      const listRect = listEl.getBoundingClientRect()
+      const messageRect = messageEl.getBoundingClientRect()
+
+      // Calculate center position relative to scroll container
+      const scrollTop = listEl.scrollTop
+      const messageCenterInViewport = messageRect.top + messageRect.height / 2
+      const listTopInViewport = listRect.top
+      const messageCenterRelativeToList = messageCenterInViewport - listTopInViewport + scrollTop
+
+      const ratio = messageCenterRelativeToList / totalHeight
+      position = Math.min(0.98, Math.max(0.02, ratio))
+    }
+
+    markers.push({
+      navIndex,
+      messageId: message.id,
+      position,
+      label: buildNavMarkerLabel(message, navIndex)
+    })
+  }
+
+  navMarkers.value = markers
+}
+
+function scheduleNavMarkerUpdate() {
+  // Cancel any pending update and reschedule to ensure we use latest data
+  // This fixes the issue where session switching could cause markers to disappear
+  // due to RAF executing before messages are fully loaded
+  if (navMarkerUpdateFrame !== null) {
+    cancelAnimationFrame(navMarkerUpdateFrame)
+  }
+  navMarkerUpdateFrame = requestAnimationFrame(() => {
+    navMarkerUpdateFrame = null
+    updateNavMarkers()
+  })
 }
 
 // Check if current session can create branches (only root sessions can)
@@ -477,20 +504,6 @@ function updateVisibleUserMessageIndex() {
   }
 
   currentUserMessageNavIndex.value = closestIndex
-
-  // Update visibility of current message top
-  const currentMessageIndex = userMessageIndices.value[closestIndex]
-  if (currentMessageIndex !== undefined) {
-    const message = props.messages[currentMessageIndex]
-    if (message) {
-      const messageEl = container.querySelector(`[data-message-id="${message.id}"]`)
-      if (messageEl) {
-        const rect = messageEl.getBoundingClientRect()
-        // Message top is visible if it's within the container bounds (with threshold)
-        isCurrentMessageTopVisible.value = rect.top >= containerRect.top - 10
-      }
-    }
-  }
 }
 
 // Handle wheel events to detect user intent to scroll
@@ -772,7 +785,12 @@ onMounted(() => {
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
     messageListRef.value.addEventListener('wheel', handleWheel, { passive: true })
+    if (typeof ResizeObserver !== 'undefined') {
+      navResizeObserver = new ResizeObserver(() => scheduleNavMarkerUpdate())
+      navResizeObserver.observe(messageListRef.value)
+    }
   }
+  nextTick(() => scheduleNavMarkerUpdate())
 
   // Listen for permission requests from backend
   cleanupPermissionListener = window.electronAPI.onPermissionRequest(handlePermissionRequest)
@@ -789,14 +807,16 @@ onUnmounted(() => {
   if (scrollCooldownTimer) {
     clearTimeout(scrollCooldownTimer)
   }
-  if (prevClickTimer) {
-    clearTimeout(prevClickTimer)
-  }
-  if (nextClickTimer) {
-    clearTimeout(nextClickTimer)
-  }
   if (navigationCooldownTimer) {
     clearTimeout(navigationCooldownTimer)
+  }
+  if (navMarkerUpdateFrame !== null) {
+    cancelAnimationFrame(navMarkerUpdateFrame)
+    navMarkerUpdateFrame = null
+  }
+  if (navResizeObserver) {
+    navResizeObserver.disconnect()
+    navResizeObserver = null
   }
   // Cleanup permission listener
   if (cleanupPermissionListener) {
@@ -852,6 +872,7 @@ watch(
     if (messageListRef.value && !userScrolledAway.value) {
       messageListRef.value.scrollTop = messageListRef.value.scrollHeight
     }
+    scheduleNavMarkerUpdate()
   },
   { deep: true }
 )
@@ -864,6 +885,13 @@ watch(
     if (wasLoading && !isLoading) {
       userScrolledAway.value = false
     }
+  }
+)
+
+watch(
+  [messageListDensity, customLineHeight, chatFontSize],
+  () => {
+    nextTick(() => scheduleNavMarkerUpdate())
   }
 )
 
@@ -1355,6 +1383,8 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   /* Match parent container's border-radius for proper clipping at bottom corners */
   border-bottom-left-radius: var(--radius-lg);
   border-bottom-right-radius: var(--radius-lg);
+  /* Required for correct offsetTop calculation in nav markers */
+  position: relative;
 }
 
 /* Message list density modes */
@@ -1401,64 +1431,76 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   transform: translateY(20px) scale(0.95);
 }
 
-/* User message navigation buttons */
-.nav-buttons {
+/* User message navigation rail */
+.nav-rail {
   position: absolute;
-  bottom: 140px;
-  right: 16px;
+  top: 16px;
+  bottom: calc(var(--composer-height, 140px) + 16px);
+  right: 12px;
+  width: 22px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   z-index: 100;
   user-select: none;
 }
 
-.nav-position {
-  font-size: 11px;
+.nav-rail-track {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  cursor: pointer;
+}
+
+.nav-rail-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 999px;
+}
+
+.nav-marker {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text) 35%, var(--border));
+  background: color-mix(in srgb, var(--text) 65%, transparent);
+  opacity: 0.75;
+  z-index: 1;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.nav-marker:hover {
+  transform: translate(-50%, -50%) scale(1.2);
+  background: var(--text);
+  opacity: 1;
+}
+
+.nav-marker.active {
+  width: 11px;
+  height: 11px;
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent);
+  opacity: 1;
+}
+
+.nav-counter {
+  font-size: 10px;
   color: var(--muted);
   background: var(--panel);
-  padding: 2px 8px;
-  border-radius: 8px;
+  padding: 2px 6px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
-}
-
-.nav-btn {
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel);
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-
-.nav-btn:hover:not(:disabled) {
-  background: var(--hover);
-  color: var(--text);
-  border-color: rgba(59, 130, 246, 0.3);
-  transform: scale(1.05);
-}
-
-.nav-btn:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.nav-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-html[data-theme='light'] .nav-btn {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 /* Responsive styles */
@@ -1473,15 +1515,19 @@ html[data-theme='light'] .nav-btn {
     border-radius: 14px;
   }
 
-  .nav-buttons {
-    right: 12px;
-    bottom: 120px;
+  .nav-rail {
+    right: 10px;
+    width: 20px;
   }
 
-  .nav-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
+  .nav-marker {
+    width: 6px;
+    height: 6px;
+  }
+
+  .nav-marker.active {
+    width: 10px;
+    height: 10px;
   }
 }
 
@@ -1514,25 +1560,24 @@ html[data-theme='light'] .nav-btn {
     height: 16px;
   }
 
-  .nav-buttons {
-    right: 12px;
-    bottom: 100px;
+  .nav-rail {
+    right: 8px;
+    width: 18px;
   }
 
-  .nav-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
+  .nav-marker {
+    width: 5px;
+    height: 5px;
   }
 
-  .nav-btn svg {
-    width: 14px;
-    height: 14px;
+  .nav-marker.active {
+    width: 9px;
+    height: 9px;
   }
 
-  .nav-position {
-    font-size: 10px;
-    padding: 2px 6px;
+  .nav-counter {
+    font-size: 9px;
+    padding: 1px 5px;
   }
 }
 

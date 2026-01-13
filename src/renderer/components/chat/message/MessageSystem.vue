@@ -9,12 +9,14 @@
     @action="handleGitAction"
     @file-action="handleGitFileAction"
     @refresh="handleGitRefresh"
+    @close="handleClose"
   />
 
   <!-- Special rendering for files-changed message -->
   <FilesChangedPanel
     v-else-if="filesChangedData"
     :data="filesChangedData"
+    @close="handleClose"
   />
 
   <!-- Special rendering for context-compact message -->
@@ -60,6 +62,7 @@ interface Props {
   content: string
   timestamp: number
   sessionId?: string
+  messageId?: string
 }
 
 const props = defineProps<Props>()
@@ -230,6 +233,24 @@ async function handleGitRefresh() {
     console.error('[Git Refresh] Error:', error)
   } finally {
     isRefreshing.value = false
+  }
+}
+
+// Handle close - persistently delete the message
+async function handleClose() {
+  const sessionId = getSessionId()
+  if (!sessionId || !props.messageId) {
+    console.warn('[MessageSystem] Cannot close: missing sessionId or messageId')
+    return
+  }
+
+  try {
+    // Remove from backend (persistent storage)
+    await window.electronAPI.removeMessage(sessionId, props.messageId)
+    // Remove from Vue state for immediate UI update
+    chatStore.removeMessage(sessionId, props.messageId)
+  } catch (error) {
+    console.error('[MessageSystem] Failed to close:', error)
   }
 }
 </script>

@@ -351,6 +351,8 @@ export interface ElectronAPI {
   addSystemMessage: (sessionId: string, message: { id: string; role: string; content: string; timestamp: number }) => Promise<{ success: boolean; error?: string }>
   removeFilesChangedMessage: (sessionId: string) => Promise<{ success: boolean; removedId?: string | null; error?: string }>
   removeGitStatusMessage: (sessionId: string) => Promise<{ success: boolean; removedId?: string | null; error?: string }>
+  // Generic remove message by ID (for close button functionality)
+  removeMessage: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>
   // Plan update listener (for Planning workflow)
   onPlanUpdated: (callback: (data: { sessionId: string; plan: SessionPlan }) => void) => () => void
   onContextSizeUpdated: (callback: (data: { sessionId: string; contextSize: number }) => void) => () => void

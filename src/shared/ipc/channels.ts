@@ -159,6 +159,26 @@ export const IPC_CHANNELS = {
   AGENT_MEMORY_UPDATE_RELATIONSHIP: 'agent-memory:update-relationship',
   AGENT_MEMORY_RECORD_INTERACTION: 'agent-memory:record-interaction',
 
+  // Memory Feedback related
+  MEMORY_FEEDBACK_RECORD: 'memory-feedback:record',
+  MEMORY_FEEDBACK_GET_STATS: 'memory-feedback:get-stats',
+
+  // Memory Management related
+  MEMORY_LIST_FILES: 'memory:list-files',
+  MEMORY_GET_FILE: 'memory:get-file',
+  MEMORY_UPDATE_FILE: 'memory:update-file',
+  MEMORY_DELETE_FILE: 'memory:delete-file',
+  MEMORY_DELETE_FILES: 'memory:delete-files',
+  MEMORY_EXPORT: 'memory:export',
+  MEMORY_EXPORT_WITH_DIALOG: 'memory:export-with-dialog',
+  MEMORY_IMPORT: 'memory:import',
+  MEMORY_IMPORT_WITH_DIALOG: 'memory:import-with-dialog',
+  MEMORY_GET_TAGS: 'memory:get-tags',
+  MEMORY_RENAME_TAG: 'memory:rename-tag',
+  MEMORY_DELETE_TAG: 'memory:delete-tag',
+  MEMORY_GET_STATS: 'memory:get-stats',
+  MEMORY_REBUILD_INDEX: 'memory:rebuild-index',
+
   // Theme related
   THEME_GET_ALL: 'themes:get-all',
   THEME_GET: 'themes:get',

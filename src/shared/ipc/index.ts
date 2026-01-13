@@ -26,6 +26,7 @@ export type {
 
 // Chat types
 export type {
+  RetrievedMemory,
   ContentPart,
   StepType,
   Step,
@@ -263,6 +264,42 @@ export type {
   RecordInteractionRequest,
   RecordInteractionResponse,
 } from './agent-memory.js'
+
+// Memory Feedback types
+export type {
+  RecordFeedbackRequest,
+  RecordFeedbackResponse,
+  GetFeedbackStatsRequest,
+  GetFeedbackStatsResponse,
+} from './memory-feedback.js'
+
+// Memory Management types
+export type {
+  MemoryFileInfo,
+  TagInfo,
+  MemoryStats,
+  BatchDeleteResult,
+  ExportOptions,
+  ImportResult,
+  ListFilesResponse,
+  GetFileRequest,
+  GetFileResponse,
+  UpdateFileRequest,
+  DeleteFileRequest,
+  DeleteFilesRequest,
+  DeleteFilesResponse,
+  ExportRequest,
+  ExportResponse,
+  ImportRequest,
+  ImportResponse as MemoryImportResponse,
+  GetTagsResponse,
+  RenameTagRequest,
+  RenameTagResponse,
+  DeleteTagRequest,
+  DeleteTagResponse,
+  GetStatsResponse,
+  RebuildIndexResponse,
+} from './memory.js'
 
 // Permission types
 export type {

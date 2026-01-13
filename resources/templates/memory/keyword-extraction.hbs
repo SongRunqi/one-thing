@@ -1,0 +1,22 @@
+{{!-- Memory Keyword Extraction Prompt --}}
+{{!-- Used to extract semantic search keywords from user messages for memory retrieval --}}
+
+Extract search keywords from the user's message for memory retrieval.
+
+## Rules
+1. Extract proper nouns (names, places, products, organizations)
+2. Extract key topics and concepts
+3. Include semantic synonyms that might help find related memories
+4. For questions about identity/profile, include: "姓名", "身份", "profile"
+5. For preference questions, include: "偏好", "喜好", "preference"
+6. Return 3-8 keywords, prioritize specificity over generic terms
+7. For Chinese input, segment into meaningful words/phrases (not the entire sentence)
+
+## Output Format
+Return ONLY a JSON array of keywords, nothing else.
+Example: ["keyword1", "keyword2", "keyword3"]
+
+## User Message
+{{{message}}}
+
+## Keywords (JSON array only):

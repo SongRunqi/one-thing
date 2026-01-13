@@ -27,6 +27,7 @@
       :content="message.content"
       :timestamp="message.timestamp"
       :sessionId="message.sessionId"
+      :messageId="message.id"
     />
 
     <!-- Normal user/assistant message -->
@@ -48,6 +49,7 @@
           :reasoning="message.reasoning"
           :thinkingStartTime="message.thinkingStartTime"
           :thinkingTime="message.thinkingTime"
+          :loadingMemory="isLoadingMemory"
           @updateThinkingTime="handleUpdateThinkingTime"
         />
 
@@ -203,6 +205,12 @@ const selectionToolbarPosition = ref({ top: 0, left: 0 })
 
 // Computed
 const isHighlighted = computed(() => props.isHighlighted || false)
+
+// Check if message is loading memory (has loading-memory contentPart)
+const isLoadingMemory = computed(() => {
+  if (!props.message.contentParts) return false
+  return props.message.contentParts.some(part => part.type === 'loading-memory')
+})
 
 // Format time
 function formatTime(timestamp: number): string {

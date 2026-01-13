@@ -33,7 +33,7 @@
       <!-- Content Area -->
       <div class="media-content">
         <!-- Memory Content -->
-        <MemoryContent v-if="activeNav === 'memory'" />
+        <MemoryContent v-if="activeNav === 'memory'" @open-file="handleOpenMemoryFile" />
 
         <!-- Agents Content -->
         <AgentsContent
@@ -158,10 +158,11 @@ const props = defineProps<{
   initialTab?: string
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   close: []
   'create-agent': []
   'edit-agent': [agent: CustomAgent]
+  'open-memory-file': [filePath: string]
 }>()
 
 const mediaStore = useMediaStore()
@@ -227,6 +228,11 @@ const navItems = [
   { id: 'boosts', label: 'Boosts', icon: Zap },
   { id: 'archive', label: 'Archived Chats', icon: Archive },
 ]
+
+// Handle opening memory file in chat area
+function handleOpenMemoryFile(filePath: string) {
+  emit('open-memory-file', filePath)
+}
 </script>
 
 <style scoped>

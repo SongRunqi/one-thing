@@ -1,0 +1,210 @@
+/**
+ * Shared Markdown Rendering Styles
+ * Used by MessageBubble.vue and MemoryEditor.vue
+ *
+ * Usage: Apply class="content" to the container element that uses v-html
+ */
+
+/* Paragraphs */
+.content :deep(p) {
+  margin: 0 0 var(--content-spacing, 0.75em) 0;
+}
+
+.content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* Lists */
+.content :deep(ul),
+.content :deep(ol) {
+  margin: calc(var(--content-spacing, 0.75em) * 0.67) 0;
+  padding-left: 1.5em;
+}
+
+.content :deep(li) {
+  margin: calc(var(--content-spacing, 0.75em) * 0.33) 0;
+}
+
+/* Headings */
+.content :deep(h1),
+.content :deep(h2),
+.content :deep(h3),
+.content :deep(h4) {
+  margin: calc(var(--content-spacing, 0.75em) * 1.33) 0 calc(var(--content-spacing, 0.75em) * 0.67) 0;
+  font-weight: 600;
+}
+
+.content :deep(h1) { font-size: 1.4em; }
+.content :deep(h2) { font-size: 1.25em; }
+.content :deep(h3) { font-size: 1.1em; }
+
+/* Blockquotes */
+.content :deep(blockquote) {
+  margin: var(--content-spacing, 0.75em) 0;
+  padding: calc(var(--content-spacing, 0.75em) * 0.67) 1em;
+  border-left: 3px solid var(--accent);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0 8px 8px 0;
+}
+
+/* Links */
+.content :deep(a) {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.content :deep(a:hover) {
+  text-decoration: underline;
+}
+
+/* Horizontal rule */
+.content :deep(hr) {
+  border: none;
+  height: 1px;
+  background: var(--border-subtle, var(--border));
+  margin: 1em 0;
+  opacity: 0.5;
+}
+
+/* Images */
+.content :deep(img) {
+  max-width: 400px;
+  max-height: 400px;
+  width: auto;
+  height: auto;
+  border-radius: 12px;
+  margin: 8px 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.content :deep(img:hover) {
+  transform: scale(1.02);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+html[data-theme='light'] .content :deep(img) {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+html[data-theme='light'] .content :deep(img:hover) {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+/* Table styles */
+.content :deep(table) {
+  border-collapse: collapse;
+  margin: var(--content-spacing, 0.75em) 0;
+  width: 100%;
+}
+
+.content :deep(th),
+.content :deep(td) {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.content :deep(th) {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+}
+
+/* Inline code */
+.content :deep(.inline-code) {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 0.9em;
+}
+
+html[data-theme='light'] .content :deep(.inline-code) {
+  background: rgba(0, 0, 0, 0.06);
+  color: #e45649;
+}
+
+/* Code block container */
+.content :deep(.code-block-container) {
+  margin: var(--content-spacing, 0.75em) 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border-code, var(--border));
+  background: var(--bg-code-block, rgba(0, 0, 0, 0.3));
+}
+
+.content :deep(.code-block-header) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-code-header, rgba(255, 255, 255, 0.05));
+  border-bottom: 1px solid var(--border-code, var(--border));
+}
+
+.content :deep(.code-block-lang) {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: lowercase;
+}
+
+.content :deep(.code-block-copy) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.content :deep(.code-block-copy:hover) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.content :deep(pre) {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+
+.content :deep(code) {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* highlight.js base - syntax colors are handled by global hljs-theme.css */
+.content :deep(.hljs) {
+  background: transparent;
+  color: var(--text-code-block, #e6e6e6);
+}
+
+/* MathJax / LaTeX styles */
+.content :deep(mjx-container) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+
+.content :deep(mjx-container[display="true"]) {
+  display: block;
+  text-align: center;
+  margin: var(--content-spacing, 0.75em) 0;
+  padding: 8px 0;
+}
+
+.content :deep(mjx-container svg) {
+  max-width: 100%;
+  height: auto;
+  color: var(--text);
+}
+
+html[data-theme='light'] .content :deep(mjx-container svg) {
+  color: #1a1a1a;
+}

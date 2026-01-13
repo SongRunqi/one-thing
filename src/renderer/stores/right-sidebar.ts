@@ -90,9 +90,16 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
   // ==================== File Preview State ====================
 
   const previewFile = ref<FilePreview | null>(null)
+  const previewDiff = ref<{
+    path: string
+    diff: string
+    oldContent?: string  // Old file content for expand unchanged feature
+    newContent?: string  // New file content for expand unchanged feature
+  } | null>(null)
   const isPreviewOpen = ref(false)
   const isPreviewLoading = ref(false)
   const previewError = ref<string | null>(null)
+  const previewMode = ref<'file' | 'diff'>('file')
 
   // ==================== Computed Properties ====================
 
@@ -295,6 +302,8 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
 
     isPreviewLoading.value = true
     previewError.value = null
+    previewMode.value = 'file'
+    previewDiff.value = null
 
     try {
       const response = await window.electronAPI.readFileContent(file.path)
@@ -319,10 +328,157 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     }
   }
 
+  function openDiffPreview(filePath: string) {
+    previewMode.value = 'diff'
+    previewFile.value = null
+    previewDiff.value = { path: filePath, diff: '' }
+    isPreviewOpen.value = true
+    isPreviewLoading.value = true
+    previewError.value = null
+  }
+
+  function setPreviewDiff(diff: string) {
+    if (previewDiff.value) {
+      previewDiff.value = { ...previewDiff.value, diff }
+    }
+    isPreviewLoading.value = false
+    previewError.value = null
+  }
+
+  function setPreviewError(error: string) {
+    previewError.value = error
+    isPreviewLoading.value = false
+  }
+
   function closePreview() {
     isPreviewOpen.value = false
     previewFile.value = null
+    previewDiff.value = null
     previewError.value = null
+    previewMode.value = 'file'
+  }
+
+  // Helper to extract tool output from bash execution result
+  // bash tool returns: { success, result: { stdout, stderr, exitCode, ... } }
+  function getToolOutput(result: { result?: unknown }): string {
+    const raw = result.result
+    if (typeof raw === 'string') return raw
+    if (raw && typeof raw === 'object') {
+      // bash tool returns stdout in the result object
+      const stdout = (raw as { stdout?: unknown }).stdout
+      if (typeof stdout === 'string') return stdout
+      // fallback: check for output field
+      const output = (raw as { output?: unknown }).output
+      if (typeof output === 'string') return output
+    }
+    return ''
+  }
+
+  async function openPreviewByPath(filePath: string, workingDirectory: string) {
+    isPreviewLoading.value = true
+    previewError.value = null
+    previewMode.value = 'file'
+    previewDiff.value = null
+
+    try {
+      // Construct full path if relative
+      const fullPath = filePath.startsWith('/')
+        ? filePath
+        : `${workingDirectory}/${filePath}`
+
+      const response = await window.electronAPI.readFileContent(fullPath)
+
+      if (response.success && response.content !== undefined) {
+        const lines = response.content.split('\n')
+        // Extract filename from path
+        const name = filePath.split('/').pop() || filePath
+        previewFile.value = {
+          path: fullPath,
+          name,
+          content: response.content,
+          language: getLanguageFromPath(filePath),
+          lineCount: lines.length,
+        }
+        isPreviewOpen.value = true
+      } else {
+        previewError.value = response.error || 'Failed to read file'
+      }
+    } catch (error) {
+      previewError.value = error instanceof Error ? error.message : 'Unknown error'
+    } finally {
+      isPreviewLoading.value = false
+    }
+  }
+
+  async function openGitDiffPreview(
+    filePath: string,
+    workingDirectory: string,
+    sessionId: string,
+    isStaged: boolean = false
+  ) {
+    // Use diff preview mode (will use DiffView component with unified style)
+    openDiffPreview(filePath)
+
+    try {
+      const diffCommand = isStaged
+        ? `git diff --cached -- "${filePath}"`
+        : `git diff -- "${filePath}"`
+
+      // Construct full path for reading current file
+      const fullPath = filePath.startsWith('/')
+        ? filePath
+        : `${workingDirectory}/${filePath}`
+
+      // Execute diff command and get file contents in parallel for expand feature
+      const [diffResult, oldContentResult, newContentResult] = await Promise.all([
+        // Get the diff (git diff is read-only, auto-approved)
+        window.electronAPI.executeTool(
+          'bash',
+          { command: diffCommand, working_directory: workingDirectory },
+          `git-diff-${Date.now()}`,
+          sessionId
+        ),
+        // Get old content from HEAD (git show is read-only, auto-approved)
+        window.electronAPI.executeTool(
+          'bash',
+          {
+            command: `git show HEAD:"${filePath}"`,
+            working_directory: workingDirectory
+          },
+          `git-show-old-${Date.now()}`,
+          sessionId
+        ),
+        // Get new content (current file on disk) - use readFileContent to avoid bash permission
+        window.electronAPI.readFileContent(fullPath)
+      ])
+
+      if (diffResult.success) {
+        const diff = getToolOutput(diffResult)
+        // Get old content from git show result
+        // Note: git show returns error for new files (not in HEAD), which is fine
+        const oldContentRaw = oldContentResult.success ? getToolOutput(oldContentResult) : ''
+        // Get new content from readFileContent result (different format)
+        const newContentRaw = newContentResult.success ? (newContentResult.content || '') : ''
+        // Convert empty strings to undefined - library needs actual content for expand feature
+        const oldContent = oldContentRaw || undefined
+        const newContent = newContentRaw || undefined
+
+        // Set preview diff with file contents for expand feature
+        previewDiff.value = {
+          path: filePath,
+          diff: diff || '(No changes)',
+          oldContent,
+          newContent
+        }
+      } else {
+        setPreviewError(diffResult.error || 'Failed to get diff')
+      }
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : 'Unknown error')
+    } finally {
+      // Always clear loading state
+      isPreviewLoading.value = false
+    }
   }
 
   // ==================== Watchers ====================
@@ -355,9 +511,11 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     extractedDocuments,
     // File Preview State
     previewFile,
+    previewDiff,
     isPreviewOpen,
     isPreviewLoading,
     previewError,
+    previewMode,
 
     // Computed
     currentWorkingDirectory,
@@ -383,6 +541,11 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     clearExtractedDocuments,
     // File Preview Actions
     openPreview,
+    openPreviewByPath,
+    openGitDiffPreview,
+    openDiffPreview,
+    setPreviewDiff,
+    setPreviewError,
     closePreview,
   }
 })

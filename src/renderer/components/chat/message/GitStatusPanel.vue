@@ -30,6 +30,16 @@
             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
           </svg>
         </button>
+        <button
+          class="close-btn"
+          @click="handleClose"
+          title="Close panel"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
 
       <div v-if="data.branch?.upstream" class="tracking-info">
@@ -186,6 +196,8 @@
                     :diff="getDiffState(file.path)?.content || ''"
                     :loading="getDiffState(file.path)?.loading"
                     :error="getDiffState(file.path)?.error"
+                    :fileName="file.path"
+                    :showFileName="false"
                   />
                 </div>
               </Transition>
@@ -262,6 +274,8 @@
                     :diff="getDiffState(file.path)?.content || ''"
                     :loading="getDiffState(file.path)?.loading"
                     :error="getDiffState(file.path)?.error"
+                    :fileName="file.path"
+                    :showFileName="false"
                   />
                 </div>
               </Transition>
@@ -409,6 +423,7 @@ const emit = defineEmits<{
   (e: 'action', action: string): void
   (e: 'file-action', action: string, filePath: string): void
   (e: 'refresh'): void
+  (e: 'close'): void
 }>()
 
 // State
@@ -510,6 +525,11 @@ function showToast(message: string) {
 function handleRefresh() {
   if (isLoading.value) return
   emit('refresh')
+}
+
+// Handle close - emit to parent for persistent deletion
+function handleClose() {
+  emit('close')
 }
 
 // Toggle diff expansion for a file
@@ -668,6 +688,26 @@ function emitFileAction(action: string, filePath: string) {
 
 .refresh-btn.spinning svg {
   animation: spin 1s linear infinite;
+}
+
+.close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.close-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: rgb(239, 68, 68);
+  border-color: rgb(239, 68, 68);
 }
 
 @keyframes spin {

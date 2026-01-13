@@ -21,6 +21,7 @@ export type TemplateName =
   | 'skills/awareness'
   | 'skills/direct'
   | 'skills/tool'
+  | 'memory/keyword-extraction'
 
 /**
  * Plan item status
@@ -146,6 +147,13 @@ export interface ContextCompactVariables {
 }
 
 /**
+ * Variables for keyword extraction template (memory/keyword-extraction.hbs)
+ */
+export interface KeywordExtractionVariables {
+  message: string
+}
+
+/**
  * Union type of all template variable types
  */
 export type TemplateVariables =
@@ -154,4 +162,5 @@ export type TemplateVariables =
   | CustomAgentVariables
   | SkillsVariables
   | ContextCompactVariables
+  | KeywordExtractionVariables
   | Record<string, unknown>

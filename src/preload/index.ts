@@ -182,6 +182,10 @@ const electronAPI = {
   removeGitStatusMessage: (sessionId: string) =>
     ipcRenderer.invoke('remove-git-status-message', { sessionId }),
 
+  // Generic remove message by ID (for close button functionality)
+  removeMessage: (sessionId: string, messageId: string) =>
+    ipcRenderer.invoke('remove-message', { sessionId, messageId }),
+
   // Plan update listener (for Planning workflow)
   onPlanUpdated: (callback: (data: { sessionId: string; plan: any }) => void) => {
     const listener = (_event: any, data: any) => callback(data)
@@ -543,6 +547,56 @@ const electronAPI = {
 
   recordAgentInteraction: (agentId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_RECORD_INTERACTION, { agentId }),
+
+  // Memory Feedback methods
+  recordMemoryFeedback: (filePath: string, feedbackType: 'positive' | 'negative') =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_FEEDBACK_RECORD, { filePath, feedbackType }),
+
+  getMemoryFeedbackStats: (filePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_FEEDBACK_GET_STATS, { filePath }),
+
+  // Memory Management methods
+  memoryListFiles: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LIST_FILES),
+
+  memoryGetFile: (path: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GET_FILE, { path }),
+
+  memoryUpdateFile: (path: string, content: string, metadata?: Record<string, unknown>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_UPDATE_FILE, { path, content, metadata }),
+
+  memoryDeleteFile: (path: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_DELETE_FILE, { path }),
+
+  memoryDeleteFiles: (paths: string[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_DELETE_FILES, { paths }),
+
+  memoryExport: (options: { includeMetadata: boolean; filter?: { tags?: string[]; dateRange?: [string, string] } }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_EXPORT, { options }),
+
+  memoryExportWithDialog: (options: { includeMetadata: boolean; filter?: { tags?: string[]; dateRange?: [string, string] } }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_EXPORT_WITH_DIALOG, { options }),
+
+  memoryImport: (filePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_IMPORT, { filePath }),
+
+  memoryImportWithDialog: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_IMPORT_WITH_DIALOG),
+
+  memoryGetTags: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GET_TAGS),
+
+  memoryRenameTag: (oldTag: string, newTag: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_RENAME_TAG, { oldTag, newTag }),
+
+  memoryDeleteTag: (tag: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_DELETE_TAG, { tag }),
+
+  memoryGetStats: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GET_STATS),
+
+  memoryRebuildIndex: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_REBUILD_INDEX),
 
   // Shell methods
   openPath: (filePath: string) =>

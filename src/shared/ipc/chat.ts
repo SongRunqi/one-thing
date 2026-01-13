@@ -7,11 +7,21 @@ import type { ToolCall } from './tools.js'
 import type { BuiltinAgentMode } from './agents.js'
 import type { SessionPlan } from './plan.js'
 
+// Retrieved memory item for feedback UI
+export interface RetrievedMemory {
+  path: string          // Relative path in memory directory
+  title: string         // File title
+  score: number         // Relevance score (0-100)
+  matchType: 'tag' | 'keyword' | 'related'  // How it was matched
+}
+
 // Content part types for sequential display
 export type ContentPart =
   | { type: 'text'; content: string }
   | { type: 'tool-call'; toolCalls: ToolCall[] }
   | { type: 'waiting' }  // Waiting for AI continuation after tool call
+  | { type: 'loading-memory' }  // Loading memory from text files
+  | { type: 'retrieved-memories'; memories: RetrievedMemory[] }  // Retrieved memories with feedback UI
   | { type: 'data-steps'; turnIndex: number }    // Placeholder for steps panel (rendered inline)
 
 // Step types for showing AI reasoning process

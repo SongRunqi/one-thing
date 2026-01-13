@@ -24,30 +24,76 @@
             <span class="panel-tab-label">{{ tab.label }}</span>
           </button>
         </div>
+        <div class="panel-actions">
+          <button
+            v-if="canRefresh"
+            class="panel-action-btn"
+            title="Refresh git status"
+            :disabled="isRefreshing"
+            @click="handleRefresh"
+          >
+            <RefreshCw :size="14" :stroke-width="1.5" :class="{ spinning: isRefreshing }" />
+          </button>
+          <button
+            class="panel-action-btn close-btn"
+            title="Close panel"
+            @click="store.close()"
+          >
+            <X :size="14" :stroke-width="1.5" />
+          </button>
+        </div>
       </div>
 
       <div class="panel-body">
         <!-- Sidebar Section -->
         <div class="sidebar-section" :style="sidebarStyle">
           <RightSidebar
+            ref="rightSidebarRef"
             :visible="true"
             :session-id="sessionId"
             :working-directory="workingDirectory"
             @close="store.close()"
+            @open-diff="emit('open-diff', $event)"
+            @open-commit-dialog="emit('open-commit-dialog')"
           />
         </div>
 
         <!-- Divider (between sidebar and preview, only when preview is open) -->
         <div
-          v-if="store.isPreviewOpen"
+          v-if="previewVisible"
           class="divider"
           :class="{ active: isDividerResizing }"
           @mousedown="startDividerResize"
         ></div>
 
         <!-- Preview Section -->
-        <div v-if="store.isPreviewOpen" class="preview-section">
-          <FilePreviewPanel />
+        <div v-if="previewVisible" class="preview-section">
+          <div v-if="isPreviewLoading" class="preview-loading">
+            <div class="loading-spinner"></div>
+            <span>Loading diff...</span>
+          </div>
+          <div v-else-if="previewError" class="preview-error">
+            <span>{{ previewError }}</span>
+          </div>
+          <!-- Diff preview (only mode) -->
+          <template v-if="previewDiff">
+            <div class="preview-toolbar">
+              <span class="preview-filename">{{ previewDiff.path }}</span>
+            </div>
+            <DiffView
+              :diff="previewDiff.diff"
+              :fileName="previewDiff.path"
+              :showFileName="false"
+              :allowStyleToggle="false"
+              :allowCopy="false"
+              :expandUnchanged="true"
+              :expansionLineCount="5"
+              :oldContent="previewDiff.oldContent"
+              :newContent="previewDiff.newContent"
+              maxHeight="100%"
+              diffStyle="unified"
+            />
+          </template>
         </div>
       </div>
     </div>
@@ -55,18 +101,30 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onUnmounted } from 'vue'
-import { FolderTree, GitBranch, FileCode } from 'lucide-vue-next'
+import { computed, ref, onUnmounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { FolderTree, GitBranch, FileCode, RefreshCw, X } from 'lucide-vue-next'
 import { useRightSidebarStore } from '@/stores/right-sidebar'
 import { RightSidebar } from '@/components/right-sidebar'
-import FilePreviewPanel from '@/components/file-preview/FilePreviewPanel.vue'
+import DiffView from '@/components/chat/message/DiffView.vue'
 
-defineProps<{
+const props = defineProps<{
   sessionId?: string
   workingDirectory?: string
 }>()
 
+const emit = defineEmits<{
+  'open-diff': [data: { filePath: string; workingDirectory: string; sessionId: string; isStaged: boolean }]
+  'open-commit-dialog': []
+}>()
+
 const store = useRightSidebarStore()
+
+type RightSidebarHandle = {
+  refreshActive: () => void
+}
+
+const rightSidebarRef = ref<RightSidebarHandle | null>(null)
 
 const tabs = [
   { id: 'files' as const, label: 'Files', icon: FolderTree },
@@ -74,13 +132,27 @@ const tabs = [
   { id: 'documents' as const, label: 'Docs', icon: FileCode },
 ]
 
+const canRefresh = computed(() => store.activeTab === 'git')
+const isRefreshing = computed(() => false)
+// Enable preview panel for both Files and Git tabs
+// Get reactive refs from store
+const { previewDiff, isPreviewLoading, previewError } = storeToRefs(store)
+
+const previewVisible = computed(() =>
+  (store.activeTab === 'files' || store.activeTab === 'git') && store.isPreviewOpen
+)
+
+function handleRefresh() {
+  rightSidebarRef.value?.refreshActive()
+}
+
 // ==================== Panel Style ====================
 const panelStyle = computed(() => ({
   width: `${store.panelWidth}px`,
 }))
 
 const sidebarStyle = computed(() => ({
-  width: store.isPreviewOpen ? `${store.sidebarWidth}px` : '100%',
+  width: previewVisible.value ? `${store.sidebarWidth}px` : '100%',
   flexShrink: 0,
 }))
 
@@ -114,6 +186,10 @@ function handlePanelResize(event: MouseEvent) {
   const delta = startX.value - event.clientX
   const newWidth = Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, startWidth.value + delta))
   store.setPanelWidth(newWidth)
+
+  if (previewVisible.value) {
+    clampSidebarWidth(newWidth)
+  }
 }
 
 function stopPanelResize() {
@@ -134,6 +210,13 @@ const MIN_SIDEBAR_WIDTH = 200
 const MAX_SIDEBAR_WIDTH = 500
 const MIN_PREVIEW_WIDTH = 250
 const DIVIDER_GAP = 0 // Divider is an overlay; no layout width.
+
+function clampSidebarWidth(panelWidth: number) {
+  const maxSidebarWidth = Math.min(MAX_SIDEBAR_WIDTH, panelWidth - MIN_PREVIEW_WIDTH - DIVIDER_GAP)
+  if (store.sidebarWidth > maxSidebarWidth) {
+    store.setSidebarWidth(Math.max(0, maxSidebarWidth))
+  }
+}
 
 function startDividerResize(event: MouseEvent) {
   event.preventDefault()
@@ -190,6 +273,12 @@ onUnmounted(() => {
   }
   document.body.style.cursor = ''
   document.body.style.userSelect = ''
+})
+
+watch(() => previewVisible.value, (open) => {
+  if (open) {
+    clampSidebarWidth(store.panelWidth)
+  }
 })
 </script>
 
@@ -292,6 +381,61 @@ html[data-theme='light'] .right-panel {
   letter-spacing: 0.01em;
 }
 
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.panel-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.panel-action-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.panel-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.panel-action-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.25);
+}
+
+.panel-action-btn.close-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.panel-action-btn .spinning {
+  animation: spin 1s linear infinite;
+}
+
+.panel-actions :deep(svg) {
+  width: 1em;
+  height: 1em;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .panel-body {
   display: flex;
   flex: 1;
@@ -322,11 +466,11 @@ html[data-theme='light'] .right-panel {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 0;
-  width: 1px;
+  left: -2px;
+  width: 4px;
+  border-radius: 999px;
   background: var(--border-subtle);
   opacity: 0;
-  transform: translateX(-0.5px);
   transition: background 0.15s ease, opacity 0.15s ease;
 }
 
@@ -359,6 +503,63 @@ html[data-theme='light'] .right-panel {
   min-width: 0;
   height: 100%;
   overflow: hidden;
+}
+
+/* Remove border from DiffView in preview */
+.preview-section :deep(.diff-view) {
+  border: none;
+  border-radius: 0;
+}
+
+/* Preview toolbar */
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--bg-code-header);
+  border-bottom: 1px solid var(--border-code);
+  flex-shrink: 0;
+}
+
+.preview-filename {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-loading,
+.preview-error,
+.preview-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.preview-error {
+  color: var(--text-error);
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin-loader 0.8s linear infinite;
+}
+
+@keyframes spin-loader {
+  to { transform: rotate(360deg); }
 }
 
 /* Transition */

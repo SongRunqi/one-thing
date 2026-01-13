@@ -131,6 +131,11 @@
                 @confirm="(tc, r) => emit('confirmTool', tc, r)"
                 @reject="(tc) => emit('rejectTool', tc)"
               />
+              <!-- Retrieved memories with feedback UI -->
+              <RetrievedMemoriesPanel
+                v-else-if="part.type === 'retrieved-memories' && part.memories.length > 0"
+                :memories="part.memories"
+              />
             </template>
           </TransitionGroup>
         </template>
@@ -199,6 +204,7 @@ import ToolCallGroup from '../ToolCallGroup.vue'
 import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
 import InfographicBlock from '../InfographicBlock.vue'
+import RetrievedMemoriesPanel from './RetrievedMemoriesPanel.vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
 import type { InfographicConfig } from '@shared/ipc/infographics'
@@ -261,6 +267,11 @@ const otherParts = computed(() => {
   let foundFirstWaiting = false
 
   return props.contentParts.filter(p => {
+    // 跳过 loading-memory（由 MessageThinking 处理）
+    if (p.type === 'loading-memory') {
+      return false
+    }
+
     // 跳过第一个 waiting（由 MessageThinking 处理）
     // 但保留后续的 waiting（tool loop 中的等待）
     if (p.type === 'waiting') {
@@ -285,6 +296,7 @@ function getOtherPartKey(part: ContentPart, index: number): string {
   if (part.type === 'tool-call') return `tool-call-${index}`
   if (part.type === 'data-steps') return `steps-${part.turnIndex ?? index}`
   if (part.type === 'waiting') return `waiting-${index}`
+  if (part.type === 'retrieved-memories') return `retrieved-memories-${index}`
   return `part-${index}`
 }
 
