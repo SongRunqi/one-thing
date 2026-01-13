@@ -32,11 +32,8 @@ import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
 import { sendUIMessageFinish } from './stream-helpers.js'
 import { formatMessagesForLog, buildSystemPrompt, buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
 import {
-  formatUserProfilePrompt,
-  retrieveRelevantFacts,
-  retrieveRelevantAgentMemories,
-  formatAgentMemoryPrompt,
   getTextFromContent,
+  textRecordAgentInteraction,
 } from './memory-helpers.js'
 import { getProviderApiType } from './provider-helpers.js'
 import { executeToolAndUpdate } from './tool-execution.js'
@@ -699,64 +696,16 @@ export async function executeStreamGeneration(
       }
     }
 
-    // Get user profile (shared) and agent memory (per-agent) for personalization
-    let userProfilePrompt: string | undefined
-    let agentMemoryPrompt: string | undefined
-    let agentIdForInteraction: string | undefined
+    // Memory auto-injection disabled for faster response
+    // Memory can be loaded on-demand via tools or commands if needed
 
-    // Get the last user message for retrieval-based memory injection
-    const lastUserMessageContent = historyMessages
-      .filter(m => m.role === 'user')
-      .pop()?.content
-    const lastUserMessage = lastUserMessageContent ? getTextFromContent(lastUserMessageContent) : ''
-
-    // Check if memory is enabled in settings
-    const memorySettings = store.getSettings()
-    const memoryEnabled = memorySettings.embedding?.memoryEnabled !== false
-
-    // Retrieve relevant user facts based on conversation context (semantic search)
-    if (memoryEnabled) {
-      try {
-        const storage = getStorage()
-        const relevantFacts = await retrieveRelevantFacts(storage, lastUserMessage, 10, 0.3)
-        userProfilePrompt = formatUserProfilePrompt(relevantFacts)
-        if (relevantFacts.length > 0) {
-          console.log(`[Chat] Retrieved ${relevantFacts.length} relevant facts for context`)
-        }
-      } catch (error) {
-        console.error('Failed to retrieve relevant facts:', error)
-      }
-    }
-
-    // Load agent-specific memory only for agent sessions
-    if (session?.agentId) {
-      agentIdForInteraction = session.agentId
-      if (memoryEnabled) {
-        try {
-          const storage = getStorage()
-          const relationship = await storage.agentMemory.getRelationship(session.agentId)
-          if (relationship) {
-            // Use semantic search to retrieve context-relevant memories
-            const relevantMemories = await retrieveRelevantAgentMemories(
-              storage, session.agentId, lastUserMessage, 5, 0.3
-            )
-            if (relevantMemories.length > 0) {
-              console.log(`[Chat] Retrieved ${relevantMemories.length} relevant agent memories for context`)
-            }
-            agentMemoryPrompt = formatAgentMemoryPrompt(relationship, relevantMemories)
-          }
-        } catch (error) {
-          console.error('Failed to load agent memory:', error)
-        }
-      }
-    }
+    // Track agent ID for interaction recording (not for memory injection)
+    const agentIdForInteraction = session?.agentId
 
     const systemPrompt = buildSystemPrompt({
       hasTools,
       skills: enabledSkills,
       workspaceSystemPrompt: characterSystemPrompt,
-      userProfilePrompt,
-      agentMemoryPrompt,
       providerId: ctx.providerId,
       workingDirectory: sessionWorkingDir,
       builtinMode: session?.builtinMode,
@@ -825,8 +774,8 @@ export async function executeStreamGeneration(
       // Record interaction for agent sessions (update relationship stats)
       if (agentIdForInteraction) {
         try {
-          const storage = getStorage()
-          await storage.agentMemory.recordInteraction(agentIdForInteraction)
+          // Use text-based memory system
+          await textRecordAgentInteraction(agentIdForInteraction)
           console.log('[Backend] Recorded interaction for agent:', agentIdForInteraction)
         } catch (error) {
           console.error('Failed to record agent interaction:', error)

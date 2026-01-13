@@ -1,11 +1,23 @@
 /**
  * Memory Helpers Module
  * Handles user profile and agent memory retrieval and formatting
+ *
+ * This module now supports TWO memory systems:
+ * 1. Legacy: SQLite + embeddings (old functions)
+ * 2. Text-based: Markdown files (new functions prefixed with text*)
  */
 
 import type { UserFact, AgentUserRelationship, AgentMood, AgentMemory } from '../../../shared/ipc.js'
 import type { IStorageProvider } from '../../storage/interfaces.js'
 import type { AIMessageContent } from '../../providers/index.js'
+
+// Import text-based memory system
+import {
+  loadCoreMemory,
+  loadAgentMemory,
+  formatMemoryPrompt as formatTextMemoryPrompt,
+  recordAgentInteraction,
+} from '../../services/memory-text/index.js'
 
 /**
  * Format user profile facts into a readable prompt
@@ -161,4 +173,66 @@ export function getTextFromContent(content: AIMessageContent): string {
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map(part => part.text)
     .join('\n')
+}
+
+// ============================================================================
+// TEXT-BASED MEMORY SYSTEM (New)
+// ============================================================================
+
+/**
+ * Result of text memory loading
+ */
+export interface TextMemoryResult {
+  prompt: string | undefined
+  retrievedFiles: Array<{
+    path: string
+    title: string
+    score: number
+    matchType: 'tag' | 'keyword' | 'related'
+  }>
+}
+
+/**
+ * Load memory for chat using text-based system
+ * Only loads core memory (profile.md) and agent relationship memory.
+ * Keyword-based topic retrieval is disabled for faster response.
+ *
+ * @param userMessage - Unused, kept for API compatibility
+ * @param agentId - Optional agent ID for agent-specific memories
+ */
+export async function textLoadMemoryForChat(
+  userMessage: string,
+  agentId?: string
+): Promise<TextMemoryResult> {
+  try {
+    // Only load core memory (profile.md) and agent memory
+    // Skip keyword-based topic retrieval for faster response
+    const [coreMemory, agentMemory] = await Promise.all([
+      loadCoreMemory(),
+      agentId ? loadAgentMemory(agentId) : Promise.resolve(undefined),
+    ])
+
+    // Format without topic memory (3rd param undefined)
+    const prompt = formatTextMemoryPrompt(coreMemory, agentMemory, undefined)
+
+    if (prompt) {
+      console.log(`[TextMemory] Loaded core memory: core=${coreMemory ? 1 : 0}, agent=${agentMemory ? 1 : 0}`)
+    }
+
+    return { prompt, retrievedFiles: [] }
+  } catch (error) {
+    console.error('[TextMemory] Failed to load memory:', error)
+    return { prompt: undefined, retrievedFiles: [] }
+  }
+}
+
+/**
+ * Record an interaction for text-based agent memory
+ */
+export async function textRecordAgentInteraction(agentId: string): Promise<void> {
+  try {
+    await recordAgentInteraction(agentId)
+  } catch (error) {
+    console.error('[TextMemory] Failed to record interaction:', error)
+  }
 }
