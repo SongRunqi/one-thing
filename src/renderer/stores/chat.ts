@@ -946,14 +946,15 @@ export const useChatStore = defineStore('chat', () => {
 
     // Set states
     sessionLoading.value.set(sessionId, true)
-    sessionGenerating.value.set(sessionId, true)
     triggerRef(sessionLoading)
-    triggerRef(sessionGenerating)
 
     try {
       // Call IPC (listeners already set up globally by IPC Hub)
       const response = await window.electronAPI.sendMessageStream(sessionId, content, attachments)
-
+      sessionLoading.value.set(sessionId, false)
+      triggerRef(sessionLoading)
+      sessionGenerating.value.set(sessionId, true)
+      triggerRef(sessionGenerating)
       if (!response.success) {
         sessionError.value.set(sessionId, response.error || 'Failed to send message')
         sessionErrorDetails.value.set(sessionId, response.errorDetails || null)

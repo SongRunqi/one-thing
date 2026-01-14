@@ -22,14 +22,14 @@ import type {
  * Get the user agents directory path
  */
 export function getUserAgentsPath(): string {
-  return path.join(os.homedir(), '.claude', 'agents')
+  return path.join(os.homedir(), '.0nething', 'agents')
 }
 
 /**
  * Get the project agents directory path
  */
 export function getProjectAgentsPath(workingDirectory: string): string {
-  return path.join(workingDirectory, '.claude', 'agents')
+  return path.join(workingDirectory, '.0nething', 'agents')
 }
 
 /**

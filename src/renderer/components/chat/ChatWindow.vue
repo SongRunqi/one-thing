@@ -48,7 +48,6 @@
       <SettingsPanel v-if="showSettings" @close="emit('closeSettings')" />
     </Transition>
 
-    <!-- Agent Settings Panel removed - use CustomAgentDialog instead -->
   </main>
 </template>
 
