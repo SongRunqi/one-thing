@@ -59,6 +59,17 @@ interface ModelCache {
 const CACHE_TTL = Infinity
 const MODELS_DEV_API = 'https://models.dev/api.json'
 
+// ============ 模型能力结果缓存 ============
+// 缓存 modelSupportsReasoningSync 和 modelSupportsImageGeneration 的结果
+const modelCapabilityCache = new Map<string, {
+  reasoning?: boolean
+  imageGeneration?: boolean
+}>()
+
+function getCapabilityCacheKey(modelId: string, providerId?: string): string {
+  return `${providerId || 'unknown'}:${modelId}`
+}
+
 // Provider ID mapping from Models.dev to our provider IDs
 const PROVIDER_MAPPING: Record<string, string> = {
   'openai': 'openai',
@@ -420,21 +431,35 @@ export async function modelSupportsReasoning(modelId: string, providerId?: strin
  * This is needed for streaming where we can't await
  */
 export function modelSupportsReasoningSync(modelId: string, providerId?: string): boolean {
-  // First try cache
+  // 检查结果缓存
+  const cacheKey = getCapabilityCacheKey(modelId, providerId)
+  const cached = modelCapabilityCache.get(cacheKey)
+  if (cached?.reasoning !== undefined) {
+    return cached.reasoning
+  }
+
+  let result = false
+
+  // First try Models.dev cache
   if (cache.modelsDevData) {
     // Try the specific provider first
     if (providerId) {
       const modelsDevProviderId = REVERSE_PROVIDER_MAPPING[providerId] || providerId
       const provider = cache.modelsDevData[modelsDevProviderId]
       if (provider?.models[modelId]) {
-        return provider.models[modelId].reasoning === true
+        result = provider.models[modelId].reasoning === true
+        // 缓存结果
+        modelCapabilityCache.set(cacheKey, { ...cached, reasoning: result })
+        return result
       }
     }
 
     // Search across all providers
     for (const provider of Object.values(cache.modelsDevData)) {
       if (provider.models[modelId]) {
-        return provider.models[modelId].reasoning === true
+        result = provider.models[modelId].reasoning === true
+        modelCapabilityCache.set(cacheKey, { ...cached, reasoning: result })
+        return result
       }
     }
   }
@@ -444,9 +469,14 @@ export function modelSupportsReasoningSync(modelId: string, providerId?: string)
   const reasoningPatterns = ['reasoner', 'o1-', 'o3-', '-o1', '-o3', 'thinking']
   // Exclude non-reasoning models that might match patterns
   if (lowerModelId.includes('gpt-5.2-chat') || lowerModelId.includes('gpt-5.2-instant')) {
-    return false
+    result = false
+  } else {
+    result = reasoningPatterns.some(p => lowerModelId.includes(p))
   }
-  return reasoningPatterns.some(p => lowerModelId.includes(p))
+
+  // 缓存结果
+  modelCapabilityCache.set(cacheKey, { ...cached, reasoning: result })
+  return result
 }
 
 /**
@@ -454,25 +484,32 @@ export function modelSupportsReasoningSync(modelId: string, providerId?: string)
  * Uses Models.dev's modalities.output field for accurate detection
  */
 export async function modelSupportsImageGeneration(modelId: string, providerId?: string): Promise<boolean> {
-  console.log(`[ModelRegistry] Checking image generation support for: ${modelId} (provider: ${providerId})`)
+  // 检查结果缓存
+  const cacheKey = getCapabilityCacheKey(modelId, providerId)
+  const cached = modelCapabilityCache.get(cacheKey)
+  if (cached?.imageGeneration !== undefined) {
+    return cached.imageGeneration
+  }
+
   const lowerModelId = modelId.toLowerCase()
+  let result = false
 
   // FIRST: Check name-based patterns (highest priority for known image models)
-  // This ensures we catch image models even if Models.dev data is incomplete
   const imageGenPatterns = ['dall-e', 'dalle', 'imagen', 'gpt-image', 'flux', 'stable-diffusion', 'midjourney']
 
   // Special case for Gemini image models
   const hasGemini = lowerModelId.includes('gemini')
   const hasImage = lowerModelId.includes('image')
-  console.log(`[ModelRegistry] Name check: hasGemini=${hasGemini}, hasImage=${hasImage}`)
   if (hasGemini && hasImage) {
-    console.log(`[ModelRegistry] Model ${modelId} detected as Gemini image model by name pattern`)
-    return true
+    result = true
+    modelCapabilityCache.set(cacheKey, { ...cached, imageGeneration: result })
+    return result
   }
 
   if (imageGenPatterns.some(p => lowerModelId.includes(p))) {
-    console.log(`[ModelRegistry] Model ${modelId} detected as image generation model by name pattern`)
-    return true
+    result = true
+    modelCapabilityCache.set(cacheKey, { ...cached, imageGeneration: result })
+    return result
   }
 
   // SECOND: Try to find in Models.dev data
@@ -487,24 +524,25 @@ export async function modelSupportsImageGeneration(modelId: string, providerId?:
       const provider = cache.modelsDevData[modelsDevProviderId]
       if (provider?.models[modelId]) {
         const outputModalities = provider.models[modelId].modalities?.output || []
-        const supportsImage = outputModalities.includes('image')
-        console.log(`[ModelRegistry] Model ${modelId} image_output=${supportsImage} (modalities: ${outputModalities.join(', ')})`)
-        return supportsImage
+        result = outputModalities.includes('image')
+        modelCapabilityCache.set(cacheKey, { ...cached, imageGeneration: result })
+        return result
       }
     }
 
     // Search across all providers
-    for (const [provId, provider] of Object.entries(cache.modelsDevData)) {
+    for (const provider of Object.values(cache.modelsDevData)) {
       if (provider.models[modelId]) {
         const outputModalities = provider.models[modelId].modalities?.output || []
-        const supportsImage = outputModalities.includes('image')
-        console.log(`[ModelRegistry] Model ${modelId} image_output=${supportsImage} (from ${provId})`)
-        return supportsImage
+        result = outputModalities.includes('image')
+        modelCapabilityCache.set(cacheKey, { ...cached, imageGeneration: result })
+        return result
       }
     }
   }
 
-  console.log(`[ModelRegistry] Model ${modelId} not found in registry, assuming no image generation`)
+  // 缓存默认结果
+  modelCapabilityCache.set(cacheKey, { ...cached, imageGeneration: false })
   return false
 }
 

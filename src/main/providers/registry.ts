@@ -14,6 +14,43 @@ import { oauthManager } from '../services/auth/oauth-manager.js'
 // Registry storage
 const providers = new Map<string, ProviderDefinition>()
 
+// ============ Provider 实例缓存 ============
+const providerInstanceCache = new Map<string, {
+  instance: ProviderInstance
+  createdAt: number
+}>()
+const PROVIDER_CACHE_TTL = 5 * 60 * 1000  // 5 分钟
+
+function getProviderCacheKey(providerId: string, config: ProviderConfig): string {
+  return `${providerId}#${config.apiKey || ''}#${config.baseUrl || ''}`
+}
+
+function cleanExpiredProviderCache(): void {
+  const now = Date.now()
+  for (const [key, value] of providerInstanceCache.entries()) {
+    if (now - value.createdAt > PROVIDER_CACHE_TTL) {
+      providerInstanceCache.delete(key)
+    }
+  }
+}
+
+/**
+ * Invalidate provider cache for a specific provider or all providers
+ */
+export function invalidateProviderCache(providerId?: string): void {
+  if (providerId) {
+    for (const key of providerInstanceCache.keys()) {
+      if (key.startsWith(providerId + '#')) {
+        providerInstanceCache.delete(key)
+      }
+    }
+    console.log(`[Provider] Cache invalidated for: ${providerId}`)
+  } else {
+    providerInstanceCache.clear()
+    console.log('[Provider] All caches invalidated')
+  }
+}
+
 /**
  * Initialize the registry with built-in providers
  */
@@ -87,7 +124,7 @@ export function getProviderDefinition(providerId: string): ProviderDefinition | 
 }
 
 /**
- * Create a provider instance
+ * Create a provider instance (with caching)
  *
  * @param providerId - The provider ID (built-in or custom-*)
  * @param config - Provider configuration including API key and optional base URL
@@ -97,18 +134,35 @@ export function createProviderInstance(
   providerId: string,
   config: ProviderConfig & { apiType?: 'openai' | 'anthropic' }
 ): ProviderInstance {
+  // 清理过期缓存
+  cleanExpiredProviderCache()
+
+  const cacheKey = getProviderCacheKey(providerId, config)
+  const cached = providerInstanceCache.get(cacheKey)
+
+  // 有缓存直接返回
+  if (cached) {
+    return cached.instance
+  }
+
+  let instance: ProviderInstance
+
   // Handle user-defined custom providers
   if (providerId.startsWith('custom-')) {
-    return createCustomProviderInstance(config)
+    instance = createCustomProviderInstance(config)
+  } else {
+    // Look up registered provider
+    const definition = providers.get(providerId)
+    if (!definition) {
+      throw new Error(`Unsupported provider: ${providerId}`)
+    }
+    instance = definition.create(config)
   }
 
-  // Look up registered provider
-  const definition = providers.get(providerId)
-  if (!definition) {
-    throw new Error(`Unsupported provider: ${providerId}`)
-  }
+  // 缓存实例
+  providerInstanceCache.set(cacheKey, { instance, createdAt: Date.now() })
 
-  return definition.create(config)
+  return instance
 }
 
 /**

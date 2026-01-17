@@ -136,11 +136,9 @@ export const useSessionsStore = defineStore('sessions', () => {
         // If session has no saved model, keep using current global settings
         // (already loaded at app startup, no need to reload)
 
-        // Load messages for this session from backend
-        // The chat store now manages per-session state in Maps
-        // If the session already has messages loaded (e.g., from streaming),
-        // we merge with backend data to get the latest state
-        await chatStore.loadMessages(sessionId)
+        // Use messages directly from switchSession response (already fetched)
+        // This avoids a duplicate IPC call that loadMessages() would make
+        chatStore.setMessagesFromSession(sessionId, response.session.messages || [])
 
         // Also load usage data for this session
         await chatStore.loadSessionUsage(sessionId)

@@ -12,6 +12,31 @@ import { getWorkspace } from './workspaces.js'
 import { getSettings } from './settings.js'
 import { expandPath } from '../tools/core/sandbox.js'
 
+// ============ Session 内存缓存 ============
+const sessionCache = new Map<string, ChatSession>()
+
+/**
+ * 统一的保存函数 - 同时写磁盘和更新缓存
+ */
+function saveSessionToFile(sessionId: string, session: ChatSession): void {
+  writeJsonFile(getSessionPath(sessionId), session)
+  sessionCache.set(sessionId, session)
+}
+
+/**
+ * 失效单个 session 缓存
+ */
+export function invalidateSessionCache(sessionId: string): void {
+  sessionCache.delete(sessionId)
+}
+
+/**
+ * 清空所有缓存（应用重启时可能需要）
+ */
+export function clearAllSessionCache(): void {
+  sessionCache.clear()
+}
+
 /**
  * Sanitize a session after loading - clean up UI-only states
  * Note: Step/toolCall statuses are NOT modified here to preserve state across session switches
@@ -167,6 +192,13 @@ export function getSessions(): ChatSession[] {
 
 // Get a single session by ID
 export function getSession(sessionId: string): ChatSession | undefined {
+  // 检查缓存
+  const cached = sessionCache.get(sessionId)
+  if (cached) {
+    return cached
+  }
+
+  // 从磁盘读取
   const sessionPath = getSessionPath(sessionId)
   const session = readJsonFile<ChatSession | null>(sessionPath, null)
   if (!session) return undefined
@@ -177,7 +209,12 @@ export function getSession(sessionId: string): ChatSession | undefined {
   }
 
   // Sanitize session to clean up interrupted states
-  return sanitizeSession(session)
+  const sanitized = sanitizeSession(session)
+
+  // 存入缓存
+  sessionCache.set(sessionId, sanitized)
+
+  return sanitized
 }
 
 // Create a new session
@@ -210,7 +247,7 @@ export function createSession(sessionId: string, name: string, workspaceId?: str
   }
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   // Update index
   const index = loadSessionsIndex()
@@ -286,7 +323,7 @@ export function createBranchSession(
   }
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   // Update index
   const index = loadSessionsIndex()
@@ -338,6 +375,7 @@ export function deleteSession(sessionId: string): DeleteSessionResult {
   // Delete all session files
   for (const id of allIdsToDelete) {
     deleteJsonFile(getSessionPath(id))
+    sessionCache.delete(id)  // 清除缓存
   }
 
   // Update index - remove all deleted sessions
@@ -368,7 +406,7 @@ export function renameSession(sessionId: string, newName: string): void {
   session.name = newName
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   // Update index (only name, not updatedAt)
   const index = loadSessionsIndex()
@@ -387,7 +425,7 @@ export function updateSessionPin(sessionId: string, isPinned: boolean): void {
   session.isPinned = isPinned
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   // Update index
   const index = loadSessionsIndex()
@@ -411,7 +449,7 @@ export function updateSessionArchived(sessionId: string, isArchived: boolean, ar
   }
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   // Update index
   const index = loadSessionsIndex()
@@ -439,7 +477,7 @@ export function updateSessionAgent(sessionId: string, agentId: string | null): v
   }
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   // Update index
   const index = loadSessionsIndex()
@@ -467,7 +505,7 @@ export function updateSessionWorkingDirectory(sessionId: string, workingDirector
   }
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 }
 
 // Update session builtin mode (Ask mode / Build mode)
@@ -482,7 +520,7 @@ export function updateSessionBuiltinMode(sessionId: string, mode: 'build' | 'ask
   }
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 }
 
 // Update session plan (Planning workflow)
@@ -497,7 +535,7 @@ export function updateSessionPlan(sessionId: string, plan: SessionPlan | null): 
   }
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 }
 
 // Get session plan
@@ -515,7 +553,7 @@ export function inheritSessionWorkingDirectory(sessionId: string, workingDirecto
   session.workingDirectory = expandPath(workingDirectory)
 
   // Save session file without updating timestamp
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 }
 
 // Update session token usage (does not affect sort order)
@@ -539,7 +577,7 @@ export function updateSessionTokenUsage(
   session.contextSize = turnUsage.inputTokens
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 }
 
 // Get session token usage
@@ -574,7 +612,7 @@ export function addMessage(sessionId: string, message: ChatMessage): void {
   session.updatedAt = Date.now()
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   // Update index timestamp
   const index = loadSessionsIndex()
@@ -604,7 +642,7 @@ export function insertMessageAfter(sessionId: string, afterMessageId: string, me
   session.updatedAt = Date.now()
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -621,7 +659,7 @@ export function deleteMessage(sessionId: string, messageId: string): boolean {
   session.updatedAt = Date.now()
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -671,7 +709,7 @@ export function updateMessageAndTruncate(
   session.updatedAt = Date.now()
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   // Update index timestamp
   const index = loadSessionsIndex()
@@ -695,7 +733,7 @@ export function updateMessageContent(sessionId: string, messageId: string, newCo
   message.content = newContent
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -711,7 +749,7 @@ export function updateMessageReasoning(sessionId: string, messageId: string, rea
   message.reasoning = reasoning
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -727,7 +765,7 @@ export function updateMessageStreaming(sessionId: string, messageId: string, isS
   message.isStreaming = isStreaming
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -747,7 +785,7 @@ export function updateMessageUsage(
   message.usage = usage
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -763,7 +801,7 @@ export function updateMessageToolCalls(sessionId: string, messageId: string, too
   message.toolCalls = toolCalls
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -779,7 +817,7 @@ export function updateMessageContentParts(sessionId: string, messageId: string, 
   message.contentParts = contentParts
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -800,7 +838,7 @@ export function addMessageContentPart(sessionId: string, messageId: string, part
   message.contentParts.push(part)
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -816,7 +854,7 @@ export function updateMessageThinkingTime(sessionId: string, messageId: string, 
   message.thinkingTime = thinkingTime
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -832,7 +870,7 @@ export function updateMessageSkill(sessionId: string, messageId: string, skillUs
   message.skillUsed = skillUsed
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -848,7 +886,7 @@ export function updateMessageError(sessionId: string, messageId: string, errorDe
   message.errorDetails = errorDetails
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -897,7 +935,7 @@ export function addMessageStep(sessionId: string, messageId: string, step: Step)
         parentStep.childSteps.push(step)
       }
       // Save session file
-      writeJsonFile(getSessionPath(sessionId), session)
+      saveSessionToFile(sessionId, session)
       return true
     }
     // Parent not found - fall through to add as top-level step
@@ -916,7 +954,7 @@ export function addMessageStep(sessionId: string, messageId: string, step: Step)
   }
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -938,7 +976,7 @@ export function updateMessageStep(sessionId: string, messageId: string, stepId: 
   Object.assign(step, updates)
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   return true
 }
@@ -967,7 +1005,7 @@ export function updateStepsUsageByTurn(
 
   if (updatedStepIds.length > 0) {
     // Save session file
-    writeJsonFile(getSessionPath(sessionId), session)
+    saveSessionToFile(sessionId, session)
   }
 
   return updatedStepIds
@@ -988,7 +1026,7 @@ export function updateSessionSummary(
   session.updatedAt = Date.now()
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   // Update index timestamp
   const index = loadSessionsIndex()
@@ -1009,6 +1047,7 @@ export function deleteSessionsByWorkspace(workspaceId: string): number {
   // Delete session files
   for (const session of sessionsToDelete) {
     deleteJsonFile(getSessionPath(session.id))
+    sessionCache.delete(session.id)  // 清除缓存
   }
 
   // Update index - remove deleted sessions
@@ -1035,7 +1074,7 @@ export function updateSessionModel(sessionId: string, provider: string, model: s
   session.lastModel = model
 
   // Save session file
-  writeJsonFile(getSessionPath(sessionId), session)
+  saveSessionToFile(sessionId, session)
 
   // Update index (without changing updatedAt)
   const index = loadSessionsIndex()

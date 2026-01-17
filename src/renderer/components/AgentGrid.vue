@@ -21,11 +21,15 @@
           {{ agent.avatar.value }}
         </span>
         <img
-          v-else
+          v-else-if="agent.avatar.value"
           :src="getImageSrc(agent.avatar.value)"
           class="agent-image"
           alt=""
         />
+        <!-- Fallback if avatar exists but value is missing -->
+        <span v-else class="agent-default">
+          {{ agent.name.charAt(0).toUpperCase() }}
+        </span>
       </button>
       <!-- Deselect button (shown on hover when selected) -->
       <button
@@ -102,7 +106,12 @@ const contextMenu = reactive({
   agent: null as CustomAgent | null
 })
 
-function getImageSrc(value: string): string {
+function getImageSrc(value: string | undefined): string {
+  // Handle undefined or empty values
+  if (!value) {
+    return ''
+  }
+
   if (value.startsWith('data:')) {
     return value
   }

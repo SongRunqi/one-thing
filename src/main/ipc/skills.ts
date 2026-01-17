@@ -17,9 +17,13 @@ import {
 } from '../skills/index.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
 
-// Cache of loaded skills
+// Cache of loaded skills (for IPC handlers - global skills without workingDirectory)
 let skillsCache: SkillDefinition[] = []
 let isInitialized = false
+
+// ============ Skills 内存缓存 (按 workingDirectory) ============
+// 缓存在切换 workDir 或手动刷新时失效，无 TTL
+const skillsCacheByDir = new Map<string, SkillDefinition[]>()
 
 /**
  * Initialize the skill system
@@ -75,6 +79,9 @@ export function registerSkillHandlers() {
   // Refresh skills from filesystem
   ipcMain.handle(IPC_CHANNELS.SKILLS_REFRESH, async () => {
     try {
+      // 清除所有缓存，强制重新加载
+      invalidateSkillsCache()
+
       skillsCache = loadAllSkills()
 
       // Apply enabled state from settings
@@ -158,6 +165,9 @@ export function registerSkillHandlers() {
       const skill = createSkill(name, description, instructions, source as SkillSource)
       skillsCache.push(skill)
 
+      // 清除所有缓存，因为新 skill 可能在任何 workDir 下可见
+      invalidateSkillsCache()
+
       return {
         success: true,
         skill,
@@ -179,6 +189,8 @@ export function registerSkillHandlers() {
 
       if (deleted) {
         skillsCache = skillsCache.filter(s => s.id !== skillId)
+        // 清除所有缓存
+        invalidateSkillsCache()
       }
 
       return {
@@ -238,27 +250,57 @@ export function getLoadedSkills(): SkillDefinition[] {
 }
 
 /**
- * Get skills for a specific session, including project skills based on workingDirectory
- * This function dynamically loads project skills using upward traversal
- *
- * @param workingDirectory - Session's working directory for project skill discovery
- * @returns Array of enabled skills (user + project + plugin)
+ * Apply enabled state from settings to skills (creates a copy to avoid mutating cache)
  */
-export function getSkillsForSession(workingDirectory?: string): SkillDefinition[] {
-  // Load skills with workingDirectory for upward traversal
-  const allSkills = loadAllSkills(workingDirectory)
-
-  // Apply enabled state from settings
+function applySkillSettings(skills: SkillDefinition[]): SkillDefinition[] {
   const settings = getSettings()
+  // 复制数组避免修改缓存
+  const result = skills.map(s => ({ ...s }))
+
   if (settings.skills?.skills) {
-    for (const skill of allSkills) {
+    for (const skill of result) {
       const skillSettings = settings.skills.skills[skill.id]
       if (skillSettings !== undefined) {
         skill.enabled = skillSettings.enabled
       }
     }
   }
+  return result.filter(s => s.enabled)
+}
 
-  // Return only enabled skills
-  return allSkills.filter(s => s.enabled)
+/**
+ * Invalidate skills cache for a specific workingDirectory or all caches
+ */
+export function invalidateSkillsCache(workingDirectory?: string): void {
+  if (workingDirectory) {
+    skillsCacheByDir.delete(workingDirectory)
+    console.log(`[Skills] Cache invalidated for: ${workingDirectory}`)
+  } else {
+    skillsCacheByDir.clear()
+    console.log('[Skills] All caches invalidated')
+  }
+}
+
+/**
+ * Get skills for a specific session, including project skills based on workingDirectory
+ * Uses per-workingDirectory caching to avoid repeated filesystem traversal
+ *
+ * @param workingDirectory - Session's working directory for project skill discovery
+ * @returns Array of enabled skills (user + project + plugin)
+ */
+export function getSkillsForSession(workingDirectory?: string): SkillDefinition[] {
+  const cacheKey = workingDirectory || '__global__'
+  const cached = skillsCacheByDir.get(cacheKey)
+
+  // 有缓存直接返回（应用设置后）
+  if (cached) {
+    return applySkillSettings(cached)
+  }
+
+  // 缓存不存在，加载并缓存
+  console.log(`[Skills] Cache MISS for: ${cacheKey} - loading from filesystem`)
+  const allSkills = loadAllSkills(workingDirectory)
+  skillsCacheByDir.set(cacheKey, allSkills)
+
+  return applySkillSettings(allSkills)
 }

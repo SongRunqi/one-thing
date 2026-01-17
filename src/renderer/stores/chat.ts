@@ -847,6 +847,35 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
+   * Set messages for a session directly (without IPC call)
+   * Used when messages are already available (e.g., from switchSession response)
+   * This avoids duplicate IPC calls
+   */
+  function setMessagesFromSession(sessionId: string, rawMessages: ChatMessage[]) {
+    let messages = (rawMessages || []).map(rebuildContentParts)
+
+    // If this session has an active stream, preserve the in-memory streaming message
+    // This prevents losing isStreaming, content, reasoning, steps etc. during session switch
+    const activeStreamMessageId = activeStreams.value.get(sessionId)
+    if (activeStreamMessageId) {
+      const existingMessages = sessionMessages.value.get(sessionId) || []
+      const streamingMessage = existingMessages.find(m => m.id === activeStreamMessageId)
+      if (streamingMessage) {
+        // Replace backend version with in-memory version to preserve full state
+        const index = messages.findIndex(m => m.id === activeStreamMessageId)
+        if (index !== -1) {
+          messages[index] = streamingMessage
+        } else {
+          // Edge case: backend doesn't have this message yet, append it
+          messages.push(streamingMessage)
+        }
+      }
+    }
+
+    setSessionMessages(sessionId, messages)
+  }
+
+  /**
    * Load session usage from backend
    */
   async function loadSessionUsage(sessionId: string) {
@@ -1310,6 +1339,7 @@ export const useChatStore = defineStore('chat', () => {
 
     // Actions
     loadMessages,
+    setMessagesFromSession,
     loadSessionUsage,
     sendMessage,
     editAndResend,

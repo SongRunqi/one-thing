@@ -2,6 +2,9 @@ import type { AppSettings } from '../../shared/ipc.js'
 import { AIProvider } from '../../shared/ipc.js'
 import { getSettingsPath, readJsonFile, writeJsonFile } from './paths.js'
 
+// 内存缓存 - 避免每次都读取文件
+let cachedSettings: AppSettings | null = null
+
 const defaultSettings: AppSettings = {
   ai: {
     provider: AIProvider.OpenAI,
@@ -248,12 +251,28 @@ function migrateSettings(settings: any): AppSettings {
 }
 
 export function getSettings(): AppSettings {
+  // 如果有缓存，直接返回
+  if (cachedSettings !== null) {
+    return cachedSettings
+  }
+
+  // 首次调用，从磁盘读取并缓存
   const settings = readJsonFile(getSettingsPath(), defaultSettings)
-  return migrateSettings(settings)
+  cachedSettings = migrateSettings(settings)
+  return cachedSettings
 }
 
 export function saveSettings(settings: AppSettings): void {
   writeJsonFile(getSettingsPath(), settings)
+  // 更新缓存
+  cachedSettings = settings
+}
+
+/**
+ * 手动刷新缓存（用于热重载或外部修改场景）
+ */
+export function invalidateSettingsCache(): void {
+  cachedSettings = null
 }
 
 export { defaultSettings }
