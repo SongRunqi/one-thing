@@ -122,7 +122,7 @@
               v-for="session in filteredSessions"
               :key="session.id"
               class="search-result-item"
-              :class="{ active: session.id === currentSession?.id }"
+              :class="{ active: session.id === sessionsStore.currentSession?.id }"
               @click="selectSession(session.id)"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -273,8 +273,7 @@ function closeDiffOverlay() {
 }
 
 // Commit dialog functions
-function openCommitDialog(stagedCount: number) {
-  stagedFilesCount.value = stagedCount
+function openCommitDialog() {
   showCommitDialog.value = true
 }
 

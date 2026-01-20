@@ -31,15 +31,18 @@
           :class="{ active: currentAgentId === agent.id }"
           @click="$emit('select', agent.id)"
         >
-          <span v-if="agent.avatar.type === 'emoji'" class="agent-dropdown-emoji">
+          <span v-if="agent.avatar?.type === 'emoji'" class="agent-dropdown-emoji">
             {{ agent.avatar.value }}
           </span>
           <img
-            v-else
+            v-else-if="agent.avatar?.type === 'image'"
             :src="'file://' + agent.avatar.value"
             class="agent-dropdown-img"
             alt=""
           />
+          <div v-else class="agent-dropdown-icon">
+            <Bot :size="16" :stroke-width="2" />
+          </div>
           <span class="agent-dropdown-name">{{ agent.name }}</span>
         </button>
       </div>
@@ -48,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import { MessageSquare } from 'lucide-vue-next'
+import { MessageSquare, Bot } from 'lucide-vue-next'
 import type { Agent } from '@/types'
 
 defineProps<{

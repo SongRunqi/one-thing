@@ -107,6 +107,14 @@ function setupApplicationMenu(mainWindow: BrowserWindow) {
       submenu: [
         { role: 'about' as const },
         { type: 'separator' as const },
+        {
+          label: 'Settings...',
+          accelerator: 'Cmd+,',
+          click: () => {
+            openSettingsWindow(mainWindow)
+          },
+        },
+        { type: 'separator' as const },
         { role: 'services' as const },
         { type: 'separator' as const },
         { role: 'hide' as const },
@@ -280,13 +288,24 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
 
   // Load settings page with theme parameters
   const themeParams = `theme=${effectiveTheme}&colorTheme=${colorTheme}`
+  const preloadPath = path.join(__dirname, '../preload/index.js')
+  console.log('[Settings] Creating settings window with preload:', preloadPath)
+  console.log('[Settings] isDevelopment:', isDevelopment)
+
   if (isDevelopment) {
-    settingsWindow.loadURL(`http://127.0.0.1:5173/#/settings?${themeParams}`)
+    const url = `http://127.0.0.1:5173/#/settings?${themeParams}`
+    console.log('[Settings] Loading URL:', url)
+    settingsWindow.loadURL(url)
   } else {
     settingsWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
       hash: `/settings?${themeParams}`
     })
   }
+
+  // Add error handling
+  settingsWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('[Settings] Failed to load:', errorCode, errorDescription)
+  })
 
   return settingsWindow
 }

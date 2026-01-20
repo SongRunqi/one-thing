@@ -299,6 +299,9 @@ export type {
   DeleteTagResponse,
   GetStatsResponse,
   RebuildIndexResponse,
+  // Re-exported from memory-text types
+  ParsedMemoryFile,
+  MemoryFileMetadata,
 } from './memory.js'
 
 // Permission types

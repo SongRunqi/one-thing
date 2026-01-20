@@ -134,11 +134,8 @@ export function getBuiltinSkillsPath(): string {
   const isDev = !app.isPackaged
 
   if (isDev) {
-    // Development: resources/skills relative to project root
-    // When running `electron dist/main/index.js`, app.getAppPath() returns dist/main
-    // We need to go up TWO levels to reach project root
-    const projectRoot = path.resolve(app.getAppPath(), '..', '..')
-    return path.join(projectRoot, 'resources', 'skills')
+    // Development: use process.cwd() which is the project root when using electron-vite
+    return path.join(process.cwd(), 'resources', 'skills')
   } else {
     // Production: resources are copied to app.asar.unpacked or extraResources
     return path.join(process.resourcesPath, 'skills')

@@ -18,8 +18,10 @@
  * Agent avatar configuration (used by CustomAgent)
  */
 export interface AgentAvatar {
-  type: 'emoji' | 'image'
-  value: string // emoji character or image path/URL
+  type: 'emoji' | 'icon' | 'image'
+  value?: string // emoji character or image path/URL
+  icon?: string // lucide icon name for type='icon'
+  gradient?: string // gradient style for type='icon'
 }
 
 /**

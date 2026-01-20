@@ -106,6 +106,7 @@ const defaultSettings: AppSettings = {
     shortcuts: {
       sendMessage: { key: 'Enter' },
       newChat: { key: 'n', metaKey: true },
+      closeChat: { key: 'w', metaKey: true },
       toggleSidebar: { key: 'b', metaKey: true },
       focusInput: { key: '/' },
     },

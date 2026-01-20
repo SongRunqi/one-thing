@@ -94,15 +94,16 @@
 
     <!-- Custom Provider Dialog -->
     <CustomProviderDialog
-      v-if="showCustomProviderDialog"
-      :provider="editingProvider"
+      :visible="showCustomProviderDialog"
+      :is-editing="!!editingProvider"
+      :initial-data="editingProvider || undefined"
       @close="closeCustomProviderDialog"
       @save="saveCustomProvider"
     />
 
     <!-- Unsaved Changes Dialog -->
     <UnsavedChangesDialog
-      v-if="showUnsavedDialog"
+      :visible="showUnsavedDialog"
       @discard="handleDiscardChanges"
       @save="handleSaveAndClose"
       @cancel="showUnsavedDialog = false"
@@ -127,7 +128,7 @@ import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
 import EmbeddingSettingsPanel from './settings/EmbeddingSettingsPanel.vue'
 
 // Dialogs
-import CustomProviderDialog from './settings/CustomProviderDialog.vue'
+import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
 import UnsavedChangesDialog from './settings/UnsavedChangesDialog.vue'
 
 const settingsStore = useSettingsStore()
@@ -343,8 +344,21 @@ function closeCustomProviderDialog() {
   editingProvider.value = null
 }
 
-function saveCustomProvider(provider: CustomProviderConfig) {
+function saveCustomProvider(form: CustomProviderForm) {
   if (!localSettings.value) return
+
+  // Convert form to config, preserving id if editing
+  const provider: CustomProviderConfig = {
+    id: editingProvider.value?.id || `custom-${Date.now()}`,
+    name: form.name,
+    description: form.description,
+    apiType: form.apiType,
+    baseUrl: form.baseUrl,
+    apiKey: form.apiKey,
+    model: form.model,
+    selectedModels: editingProvider.value?.selectedModels || [form.model],
+    enabled: editingProvider.value?.enabled ?? true,
+  }
 
   const providers = [...localSettings.value.ai.customProviders]
   const existingIndex = providers.findIndex(p => p.id === provider.id)

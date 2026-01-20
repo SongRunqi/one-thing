@@ -8,12 +8,12 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, triggerRef } from 'vue'
-import type { ChatMessage, MessageAttachment, Step } from '@/types'
+import type { ChatMessage, MessageAttachment, Step, ContentPart } from '@/types'
 
 // Stream chunk type from IPC
 interface StreamChunk {
   type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace'
-    | 'tool_input_start' | 'tool_input_delta'
+    | 'tool_input_start' | 'tool_input_delta' | 'content_part'
   content: string
   messageId: string
   sessionId?: string
@@ -24,6 +24,8 @@ interface StreamChunk {
   toolCallId?: string
   toolName?: string
   argsTextDelta?: string
+  // For content_part chunks (interleaved text and steps)
+  contentPart?: ContentPart
 }
 
 // Stream complete data from IPC

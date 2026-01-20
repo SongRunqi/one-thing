@@ -232,7 +232,7 @@ const emit = defineEmits<{
   contentClick: [event: MouseEvent]
   textSelection: [text: string, position: { top: number; left: number }]
   executeTool: [toolCall: ToolCall]
-  confirmTool: [toolCall: ToolCall, response: 'once' | 'always']
+  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always']
   rejectTool: [toolCall: ToolCall]
 }>()
 

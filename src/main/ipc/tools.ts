@@ -70,6 +70,15 @@ export function registerToolHandlers() {
   // Uses async version to include tools with dynamic descriptions
   ipcMain.handle(IPC_CHANNELS.GET_TOOLS, async () => {
     try {
+      // Set init context for async tools (like SkillTool, CustomAgentTool)
+      // Use the first session's working directory, or current directory if no sessions
+      const sessions = store.getSessions()
+      const workingDirectory = sessions.length > 0 ? sessions[0].workingDirectory : process.cwd()
+
+      setInitContext({
+        workingDirectory,
+      } as any)
+
       // Get all tools (legacy + V2 static + V2 async) and filter out MCP tools
       const allTools = await getAllToolsAsync()
       const builtinTools: ToolDefinition[] = allTools

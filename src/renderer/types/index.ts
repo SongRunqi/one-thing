@@ -46,6 +46,14 @@ import type {
   ContentPart,
   Step,
   StepType,
+  // Memory types
+  MemoryFileInfo,
+  TagInfo,
+  MemoryStats,
+  BatchDeleteResult,
+  ImportResult,
+  ExportOptions,
+  ParsedMemoryFile,
   // UIMessage types (AI SDK 5.x compatible)
   UIMessage,
   UIMessagePart,
@@ -170,6 +178,8 @@ import type {
   FilePreview,
   FileReadRequest,
   FileReadResponse,
+  // Memory types for manager
+  MemoryFileMetadata,
 } from '../../shared/ipc'
 
 export type {
@@ -280,6 +290,15 @@ export type {
   FilePreview,
   FileReadRequest,
   FileReadResponse,
+  // Memory types
+  MemoryFileInfo,
+  TagInfo,
+  MemoryStats,
+  BatchDeleteResult,
+  ImportResult,
+  ExportOptions,
+  ParsedMemoryFile,
+  MemoryFileMetadata,
 }
 
 // Gallery image type for image preview window
@@ -305,7 +324,7 @@ export interface ElectronAPI {
   sendMessage: (sessionId: string, message: string, attachments?: MessageAttachment[]) => Promise<SendMessageResponse>
   sendMessageStream: (sessionId: string, message: string, attachments?: MessageAttachment[]) => Promise<StreamSendMessageResponse>
   onStreamChunk: (callback: (chunk: {
-    type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace' | 'tool_input_start' | 'tool_input_delta'
+    type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace' | 'tool_input_start' | 'tool_input_delta' | 'content_part'
     content: string
     messageId: string
     sessionId?: string
@@ -316,6 +335,8 @@ export interface ElectronAPI {
     toolCallId?: string
     toolName?: string
     argsTextDelta?: string
+    // For content_part chunks (interleaved text and steps)
+    contentPart?: ContentPart
   }) => void) => () => void
   onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
@@ -397,9 +418,12 @@ export interface ElectronAPI {
   updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolCall>) => Promise<{ success: boolean }>
   updateContentParts: (sessionId: string, messageId: string, contentParts: ContentPart[]) => Promise<{ success: boolean }>
   abortStream: (sessionId?: string) => Promise<{ success: boolean }>
+  getActiveStreams: () => Promise<{ success: boolean; streams?: string[] }>
+  resumeAfterToolConfirm: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>
 
   // Permission methods
-  respondToPermission: (request: { sessionId: string; permissionId: string; response: PermissionResponse }) => Promise<{ success: boolean; error?: string }>
+  respondToPermission: (request: { sessionId: string; permissionId: string; response: 'once' | 'session' | 'workspace' | 'reject' | 'always'; rejectReason?: string }) => Promise<{ success: boolean; error?: string }>
+  clearSessionPermissions: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   getPendingPermissions: (sessionId: string) => Promise<{ success: boolean; pending?: PermissionInfo[]; error?: string }>
   onPermissionRequest: (callback: (info: PermissionInfo) => void) => () => void
 
@@ -448,11 +472,11 @@ export interface ElectronAPI {
   updateMessageThinkingTime: (sessionId: string, messageId: string, thinkingTime: number) => Promise<{ success: boolean }>
 
   // Dialog methods
-  showOpenDialog: (options: { properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>; title?: string; defaultPath?: string }) => Promise<{ canceled: boolean; filePaths: string[] }>
+  showOpenDialog: (options: { properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>; title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<{ canceled: boolean; filePaths: string[] }>
 
   // Workspace methods
   getWorkspaces: () => Promise<GetWorkspacesResponse>
-  createWorkspace: (name: string, avatar: WorkspaceAvatar, systemPrompt: string) => Promise<CreateWorkspaceResponse>
+  createWorkspace: (name: string, avatar: WorkspaceAvatar, workingDirectory: string | undefined, systemPrompt: string) => Promise<CreateWorkspaceResponse>
   updateWorkspace: (id: string, updates: { name?: string; avatar?: WorkspaceAvatar; systemPrompt?: string }) => Promise<UpdateWorkspaceResponse>
   deleteWorkspace: (workspaceId: string) => Promise<DeleteWorkspaceResponse>
   switchWorkspace: (workspaceId: string | null) => Promise<SwitchWorkspaceResponse>
@@ -553,6 +577,48 @@ export interface ElectronAPI {
   // CustomAgent pin methods
   pinCustomAgent: (agentId: string) => Promise<PinCustomAgentResponse>
   unpinCustomAgent: (agentId: string) => Promise<UnpinCustomAgentResponse>
+
+  // Tools methods (additional)
+  getAvailableBuiltinTools: () => Promise<Array<{ id: string; name: string; description: string }>>
+  refreshAsyncTools: (workingDirectory?: string) => Promise<{ success: boolean; error?: string }>
+
+  // Window methods
+  setWindowButtonVisibility: (visible: boolean) => Promise<{ success: boolean }>
+
+  // Memory Feedback methods
+  recordMemoryFeedback: (filePath: string, feedbackType: 'positive' | 'negative') => Promise<{ success: boolean; error?: string }>
+  getMemoryFeedbackStats: (filePath: string) => Promise<{ success: boolean; stats?: { positive: number; negative: number }; error?: string }>
+
+  // Memory Management methods
+  memoryListFiles: () => Promise<{ success: boolean; files?: MemoryFileInfo[]; error?: string }>
+  memoryGetFile: (path: string) => Promise<{ success: boolean; file?: ParsedMemoryFile; error?: string }>
+  memoryUpdateFile: (path: string, content: string, metadata?: Partial<MemoryFileMetadata>) => Promise<{ success: boolean; error?: string }>
+  memoryDeleteFile: (path: string) => Promise<{ success: boolean; error?: string }>
+  memoryDeleteFiles: (paths: string[]) => Promise<{ success: boolean; result?: BatchDeleteResult; error?: string }>
+  memoryExport: (options: ExportOptions) => Promise<{ success: boolean; filePath?: string; error?: string }>
+  memoryExportWithDialog: (options: ExportOptions) => Promise<{ success: boolean; filePath?: string | null; error?: string }>
+  memoryImport: (filePath: string) => Promise<{ success: boolean; result?: ImportResult; error?: string }>
+  memoryImportWithDialog: () => Promise<{ success: boolean; result?: ImportResult | null; error?: string }>
+  memoryGetTags: () => Promise<{ success: boolean; tags?: TagInfo[]; error?: string }>
+  memoryRenameTag: (oldTag: string, newTag: string) => Promise<{ success: boolean; affected?: number; error?: string }>
+  memoryDeleteTag: (tag: string) => Promise<{ success: boolean; affected?: number; error?: string }>
+  memoryGetStats: () => Promise<{ success: boolean; stats?: MemoryStats; error?: string }>
+  memoryRebuildIndex: () => Promise<{ success: boolean; error?: string }>
+
+  // Execute skill method (note: may not be fully implemented)
+  executeSkill: (skillId: string, options: { sessionId: string; input?: string }) => Promise<{ success: boolean; result?: { output?: string }; error?: string }>
+
+  // Plugin methods
+  getPlugins: () => Promise<{ success: boolean; plugins?: any[]; error?: string }>
+  getPlugin: (pluginId: string) => Promise<{ success: boolean; plugin?: any; error?: string }>
+  installPlugin: (request: { source: string; type?: string }) => Promise<{ success: boolean; plugin?: any; error?: string }>
+  uninstallPlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
+  enablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
+  disablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
+  reloadPlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
+  updatePluginConfig: (request: { pluginId: string; config: Record<string, unknown> }) => Promise<{ success: boolean; error?: string }>
+  getPluginDirectories: () => Promise<{ success: boolean; directories?: { plugins: string; npm: string; local: string }; error?: string }>
+  openPluginDirectory: (dirType: 'plugins' | 'npm' | 'local') => Promise<{ success: boolean; error?: string }>
 }
 
 declare global {

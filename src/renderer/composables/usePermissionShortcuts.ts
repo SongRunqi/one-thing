@@ -39,18 +39,18 @@ export function usePermissionShortcuts(
   handlers: PermissionShortcutHandlers | LegacyPermissionShortcutHandlers
 ) {
   // Normalize handlers: support both new and legacy format
+  const isNewFormat = 'onAllowSession' in handlers
+  const newHandlers = handlers as PermissionShortcutHandlers
+  const legacyHandlers = handlers as LegacyPermissionShortcutHandlers
+
   const normalizedHandlers: PermissionShortcutHandlers = {
     onAllowOnce: handlers.onAllowOnce,
     // Map legacy onAllowAlways to new onAllowSession
-    onAllowSession: 'onAllowSession' in handlers
-      ? handlers.onAllowSession
-      : (handlers as LegacyPermissionShortcutHandlers).onAllowAlways,
+    onAllowSession: isNewFormat ? newHandlers.onAllowSession : legacyHandlers.onAllowAlways,
     // New workspace handler (fallback to session if not provided)
     onAllowWorkspace: 'onAllowWorkspace' in handlers
-      ? handlers.onAllowWorkspace
-      : ('onAllowSession' in handlers
-        ? handlers.onAllowSession
-        : (handlers as LegacyPermissionShortcutHandlers).onAllowAlways),
+      ? newHandlers.onAllowWorkspace
+      : (isNewFormat ? newHandlers.onAllowSession : legacyHandlers.onAllowAlways),
     onReject: handlers.onReject,
   }
 

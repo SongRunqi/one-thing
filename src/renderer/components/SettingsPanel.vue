@@ -271,6 +271,8 @@ function initializeSettings() {
     localSettings.value.general = {
       animationSpeed: 0.25,
       sendShortcut: 'enter',
+      colorTheme: 'blue',
+      baseTheme: 'obsidian',
     }
   } else if (!localSettings.value.general.sendShortcut) {
     localSettings.value.general.sendShortcut = 'enter'

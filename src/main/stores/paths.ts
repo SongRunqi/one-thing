@@ -133,8 +133,8 @@ export function getDocsDir(): string {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'docs')
   }
-  // Development: relative to project root
-  return path.join(app.getAppPath(), 'resources', 'docs')
+  // Development: use process.cwd() which is the project root when using electron-vite
+  return path.join(process.cwd(), 'resources', 'docs')
 }
 
 export function getMacOSAutomationDocsPath(): string {

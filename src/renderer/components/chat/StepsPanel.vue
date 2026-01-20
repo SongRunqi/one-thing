@@ -249,7 +249,7 @@ function isAgentStep(step: Step): boolean {
 /**
  * Handle confirm from AgentExecutionPanel
  */
-function handleAgentConfirm(step: Step, type: 'allow' | 'always') {
+function handleAgentConfirm(step: Step, type: 'once' | 'session' | 'workspace' | 'always') {
   const toolCall = step.toolCall || {
     id: step.id,
     toolId: step.toolCall?.toolName || 'unknown',
@@ -260,7 +260,7 @@ function handleAgentConfirm(step: Step, type: 'allow' | 'always') {
     requiresConfirmation: true,
     customAgentPermissionId: (step as any).customAgentPermissionId,
   }
-  emit('confirm', toolCall, type === 'allow' ? 'once' : 'always')
+  emit('confirm', toolCall, type)
 }
 
 /**

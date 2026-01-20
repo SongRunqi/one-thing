@@ -1,11 +1,10 @@
-appId: com.aichat.app
-productName: AI Chat
+appId: com.onething.app
+productName: 0neThing
 directories:
   buildResources: public
   output: release
 files:
-  - dist/renderer
-  - dist/main/index.js
+  - out/**/*
   - package.json
   - node_modules
 

@@ -203,7 +203,7 @@ onMounted(async () => {
 
   // Listen for new image generation events (image already saved by main process)
   unsubscribe = window.electronAPI.onImageGenerated(async (data) => {
-    console.log('[MediaPanel] Image generated (already saved):', data.mediaId)
+    console.log('[MediaPanel] Image generated (already saved):', data.id)
     // Just reload the media list to show the new image
     await mediaStore.loadMedia()
   })

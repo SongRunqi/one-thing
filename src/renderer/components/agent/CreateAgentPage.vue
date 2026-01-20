@@ -122,14 +122,15 @@ const submitButtonText = computed(() => {
 })
 
 // Tab configuration
-const tabs = [
+type TabId = 'basic' | 'prompt' | 'tools' | 'settings'
+const tabs: Array<{ id: TabId; label: string; icon: typeof User }> = [
   { id: 'basic', label: 'Basic', icon: User },
   { id: 'prompt', label: 'Prompt', icon: FileText },
   { id: 'tools', label: 'Tools', icon: Wrench },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
-const activeTab = ref<'basic' | 'prompt' | 'tools' | 'settings'>('basic')
+const activeTab = ref<TabId>('basic')
 
 // Form state
 const form = reactive<{

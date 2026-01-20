@@ -49,9 +49,8 @@ class PromptManager {
 
     // Set templates path based on environment
     if (this.isDev) {
-      // Development: resources/templates relative to project root
-      const projectRoot = path.resolve(app.getAppPath(), '..', '..')
-      this.templatesPath = path.join(projectRoot, 'resources', 'templates')
+      // Development: use process.cwd() which is the project root when using electron-vite
+      this.templatesPath = path.join(process.cwd(), 'resources', 'templates')
     } else {
       // Production: process.resourcesPath contains copied resources
       this.templatesPath = path.join(process.resourcesPath, 'templates')

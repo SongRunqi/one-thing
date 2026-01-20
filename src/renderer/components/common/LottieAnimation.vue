@@ -52,7 +52,7 @@ onMounted(() => {
   if (!container.value) return
 
   // 支持两种加载方式：animationData 或 path
-  const config: Parameters<typeof lottie.loadAnimation>[0] = {
+  const baseConfig = {
     container: container.value,
     renderer: props.renderer,
     loop: props.loop,
@@ -60,15 +60,20 @@ onMounted(() => {
   }
 
   if (props.animationData) {
-    config.animationData = props.animationData
+    animation = lottie.loadAnimation({
+      ...baseConfig,
+      animationData: props.animationData,
+    })
   } else if (props.path) {
-    config.path = props.path
+    animation = lottie.loadAnimation({
+      ...baseConfig,
+      path: props.path,
+    })
   } else {
     console.warn('LottieAnimation: 需要提供 animationData 或 path')
     return
   }
 
-  animation = lottie.loadAnimation(config)
   animation.setSpeed(props.speed)
 
   // 事件监听
