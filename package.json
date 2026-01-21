@@ -2,6 +2,10 @@
   "name": "0neThing",
   "version": "0.1.0",
   "description": "A chat ",
+  "author": {
+    "name": "SongRunqi",
+    "email": "yitiansong4@gmail.com"
+  },
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
@@ -40,6 +44,7 @@
     "better-sqlite3": "^12.5.0",
     "diff": "^8.0.2",
     "electron-store": "^8.1.0",
+    "electron-updater": "^6.7.3",
     "eventemitter3": "^5.0.1",
     "execa": "^9.6.1",
     "handlebars": "^4.7.8",
