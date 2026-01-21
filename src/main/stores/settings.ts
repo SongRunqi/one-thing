@@ -1,99 +1,19 @@
 import type { AppSettings } from '../../shared/ipc.js'
 import { AIProvider } from '../../shared/ipc.js'
 import { getSettingsPath, readJsonFile, writeJsonFile } from './paths.js'
+import { createDefaultSettings, mergeWithDefaults } from '../../shared/defaults/settings.js'
+import * as fs from 'fs'
 
-// 内存缓存 - 避免每次都读取文件
-let cachedSettings: AppSettings | null = null
+// ============================================================================
+// Settings Singleton State
+// ============================================================================
 
-const defaultSettings: AppSettings = {
-  ai: {
-    provider: AIProvider.OpenAI,
-    temperature: 0.3,
-    providers: {
-      [AIProvider.OpenAI]: {
-        apiKey: '',
-        model: 'gpt-4',
-        selectedModels: ['gpt-4', 'gpt-4o', 'gpt-3.5-turbo'],
-      },
-      [AIProvider.Claude]: {
-        apiKey: '',
-        model: 'claude-sonnet-4-5-20250929',
-        selectedModels: ['claude-sonnet-4-5-20250929', 'claude-3-5-haiku-20241022'],
-      },
-      [AIProvider.Custom]: {
-        apiKey: '',
-        baseUrl: '',
-        model: '',
-        selectedModels: [],
-      },
-      [AIProvider.DeepSeek]: {
-        apiKey: '',
-        model: 'deepseek-chat',
-        selectedModels: ['deepseek-chat', 'deepseek-reasoner'],
-      },
-      [AIProvider.Kimi]: {
-        apiKey: '',
-        model: 'moonshot-v1-8k',
-        selectedModels: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-      },
-      [AIProvider.Zhipu]: {
-        apiKey: '',
-        model: 'glm-4',
-        selectedModels: ['glm-4', 'glm-4v', 'glm-3-turbo'],
-      },
-    },
-  },
-  theme: 'dark',
-  general: {
-    animationSpeed: 0.25,
-    sendShortcut: 'enter',
-    colorTheme: 'blue',
-    baseTheme: 'obsidian',
-    themeId: 'flexoki',  // Default JSON theme (deprecated, use darkThemeId/lightThemeId)
-    darkThemeId: 'flexoki',
-    lightThemeId: 'flexoki',
-    quickCommands: [
-      { commandId: 'cd', enabled: true },
-      { commandId: 'git', enabled: true },
-      { commandId: 'files', enabled: true },
-    ],
-  },
-  tools: {
-    enableToolCalls: true,
-    tools: {
-      get_current_time: { enabled: true, autoExecute: true },
-      calculator: { enabled: true, autoExecute: true },
-    },
-    bash: {
-      enableSandbox: true,
-      defaultWorkingDirectory: '',
-      allowedDirectories: [],
-      confirmDangerousCommands: true,
-      dangerousCommandWhitelist: [],
-    },
-  },
-  // Chat settings for model parameters and display
-  chat: {
-    temperature: 0.7,
-    maxTokens: 4096,
-    topP: 1,
-    presencePenalty: 0,
-    frequencyPenalty: 0,
-    branchOpenInSplitScreen: true,
-    chatFontSize: 14,
-  },
-  // Embedding settings for memory system
-  embedding: {
-    provider: 'openai',
-    openai: {
-      model: 'text-embedding-3-small',
-      dimensions: 384,  // Use reduced dimensions for efficiency
-    },
-    local: {
-      model: 'all-MiniLM-L6-v2',
-    },
-  },
-}
+// Single instance - initialized once at startup
+let settingsInstance: AppSettings | null = null
+let initPromise: Promise<AppSettings> | null = null
+
+// Legacy alias for backward compatibility
+const defaultSettings = createDefaultSettings()
 
 // Migrate old settings format to new format
 function migrateSettings(settings: any): AppSettings {
@@ -250,29 +170,140 @@ function migrateSettings(settings: any): AppSettings {
   return settings as AppSettings
 }
 
-export function getSettings(): AppSettings {
-  // 如果有缓存，直接返回
-  if (cachedSettings !== null) {
-    return cachedSettings
+// ============================================================================
+// Async Initialization (Recommended for startup)
+// ============================================================================
+
+/**
+ * Initialize settings asynchronously at startup
+ * This should be called once during app initialization before any getSettings() calls
+ *
+ * @returns Promise<AppSettings> - The loaded settings
+ */
+export async function initializeSettings(): Promise<AppSettings> {
+  // Return existing instance if already initialized
+  if (settingsInstance !== null) {
+    console.log('[Settings] Already initialized, returning cached instance')
+    return settingsInstance
   }
 
-  // 首次调用，从磁盘读取并缓存
-  const settings = readJsonFile(getSettingsPath(), defaultSettings)
-  cachedSettings = migrateSettings(settings)
-  return cachedSettings
-}
+  // Return pending promise if initialization is in progress
+  if (initPromise !== null) {
+    console.log('[Settings] Initialization in progress, waiting...')
+    return initPromise
+  }
 
-export function saveSettings(settings: AppSettings): void {
-  writeJsonFile(getSettingsPath(), settings)
-  // 更新缓存
-  cachedSettings = settings
+  console.log('[Settings] Starting async initialization...')
+
+  // Create initialization promise
+  initPromise = (async () => {
+    const settingsPath = getSettingsPath()
+
+    try {
+      // Use async file read
+      const data = await fs.promises.readFile(settingsPath, 'utf-8')
+      const parsed = JSON.parse(data)
+      settingsInstance = migrateSettings(parsed)
+      console.log('[Settings] Loaded from disk successfully')
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        // File doesn't exist - use defaults
+        console.log('[Settings] No settings file found, using defaults')
+        settingsInstance = createDefaultSettings()
+        await saveSettingsAsync(settingsInstance)
+      } else {
+        // Parse error or other - use defaults but log the error
+        console.error('[Settings] Error loading settings, using defaults:', error.message)
+        settingsInstance = createDefaultSettings()
+        await saveSettingsAsync(settingsInstance)
+      }
+    }
+
+    return settingsInstance
+  })()
+
+  return initPromise
 }
 
 /**
- * 手动刷新缓存（用于热重载或外部修改场景）
+ * Check if settings have been initialized
+ */
+export function isSettingsInitialized(): boolean {
+  return settingsInstance !== null
+}
+
+// ============================================================================
+// Sync Getters (Hot path - after initialization)
+// ============================================================================
+
+/**
+ * Get settings synchronously (for hot path after initialization)
+ * Falls back to sync read if not yet initialized (backward compatibility)
+ *
+ * @returns AppSettings
+ */
+export function getSettings(): AppSettings {
+  // Return cached instance if available
+  if (settingsInstance !== null) {
+    return settingsInstance
+  }
+
+  // Fallback: sync read for backward compatibility
+  // This should rarely happen if initializeSettings() is called at startup
+  console.warn('[Settings] getSettings() called before initialization, using sync fallback')
+  const settings = readJsonFile(getSettingsPath(), defaultSettings)
+  settingsInstance = migrateSettings(settings)
+  return settingsInstance
+}
+
+// ============================================================================
+// Save Operations
+// ============================================================================
+
+/**
+ * Save settings asynchronously (recommended)
+ * Updates both disk and memory cache
+ */
+export async function saveSettingsAsync(settings: AppSettings): Promise<void> {
+  const settingsPath = getSettingsPath()
+  await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+  settingsInstance = settings
+  console.log('[Settings] Saved to disk asynchronously')
+}
+
+/**
+ * Save settings synchronously (for backward compatibility)
+ * Updates both disk and memory cache
+ */
+export function saveSettings(settings: AppSettings): void {
+  writeJsonFile(getSettingsPath(), settings)
+  settingsInstance = settings
+}
+
+// ============================================================================
+// Cache Management
+// ============================================================================
+
+/**
+ * Invalidate settings cache (for hot reload or external modification)
+ * Next getSettings() call will reload from disk
  */
 export function invalidateSettingsCache(): void {
-  cachedSettings = null
+  settingsInstance = null
+  initPromise = null
+  console.log('[Settings] Cache invalidated')
 }
+
+/**
+ * Update settings in memory without saving to disk
+ * Useful for temporary overrides
+ */
+export function updateSettingsInMemory(settings: AppSettings): void {
+  settingsInstance = settings
+}
+
+// ============================================================================
+// Exports
+// ============================================================================
 
 export { defaultSettings }

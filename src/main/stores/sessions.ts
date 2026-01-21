@@ -1,5 +1,14 @@
 import fs from 'fs'
-import type { ChatMessage, ChatSession, ToolCall, Step, ContentPart, SessionPlan } from '../../shared/ipc.js'
+import type {
+  ChatMessage,
+  ChatSession,
+  ToolCall,
+  Step,
+  ContentPart,
+  SessionPlan,
+  SessionMeta,
+  SessionDetails,
+} from '../../shared/ipc.js'
 import {
   getSessionsDir,
   getSessionPath,
@@ -11,9 +20,13 @@ import { getCurrentSessionId, setCurrentSessionId } from './app-state.js'
 import { getWorkspace } from './workspaces.js'
 import { getSettings } from './settings.js'
 import { expandPath } from '../tools/core/sandbox.js'
+import { LRUCache } from './lru-cache.js'
 
-// ============ Session 内存缓存 ============
-const sessionCache = new Map<string, ChatSession>()
+// ============ Session 内存缓存 (LRU) ============
+// Keep only the 10 most recently accessed sessions in memory
+// This prevents memory bloat when users have many sessions
+const SESSION_CACHE_SIZE = 10
+const sessionCache = new LRUCache<string, ChatSession>(SESSION_CACHE_SIZE)
 
 /**
  * 统一的保存函数 - 同时写磁盘和更新缓存
@@ -35,6 +48,18 @@ export function invalidateSessionCache(sessionId: string): void {
  */
 export function clearAllSessionCache(): void {
   sessionCache.clear()
+}
+
+/**
+ * 获取 LRU 缓存统计信息（调试用）
+ */
+export function getSessionCacheStats(): { size: number; maxSize: number; cachedSessionIds: string[] } {
+  const stats = sessionCache.getStats()
+  return {
+    size: stats.size,
+    maxSize: stats.maxSize,
+    cachedSessionIds: stats.keys,
+  }
 }
 
 /**
@@ -144,21 +169,7 @@ export function sanitizeAllSessionsOnStartup(): void {
 }
 
 // Session metadata stored in index for quick listing
-interface SessionMeta {
-  id: string
-  name: string
-  createdAt: number
-  updatedAt: number
-  parentSessionId?: string
-  branchFromMessageId?: string
-  lastModel?: string
-  lastProvider?: string
-  isPinned?: boolean
-  isArchived?: boolean  // Archived (soft-deleted) session
-  archivedAt?: number   // Timestamp when session was archived
-  workspaceId?: string  // Associated workspace ID
-  agentId?: string  // Associated agent ID for system prompt
-}
+// Note: SessionMeta is imported from shared/ipc.js (Phase 4 optimization)
 
 // Get sessions index path
 function getSessionsIndexPath(): string {
@@ -175,7 +186,7 @@ function saveSessionsIndex(index: SessionMeta[]): void {
   writeJsonFile(getSessionsIndexPath(), index)
 }
 
-// Get all sessions with full data
+// Get all sessions with full data (legacy, for backward compatibility)
 export function getSessions(): ChatSession[] {
   const index = loadSessionsIndex()
   const sessions: ChatSession[] = []
@@ -188,6 +199,71 @@ export function getSessions(): ChatSession[] {
   }
 
   return sessions
+}
+
+// ============================================================================
+// Optimized Session Loading (Metadata Separation)
+// ============================================================================
+
+/**
+ * Get sessions list with metadata only (no messages)
+ * This is the optimized version for fast startup
+ */
+export function getSessionsList(): SessionMeta[] {
+  return loadSessionsIndex()
+}
+
+/**
+ * Get session details without messages
+ * Used for session activation before loading messages
+ */
+export function getSessionDetails(sessionId: string): SessionDetails | undefined {
+  const session = getSession(sessionId)
+  if (!session) return undefined
+
+  // Extract details (everything except messages)
+  const { messages, ...details } = session
+  return {
+    ...details,
+    messageCount: messages.length,
+  }
+}
+
+/**
+ * Get session messages only
+ * Called separately after activating a session
+ */
+export function getSessionMessages(sessionId: string): ChatMessage[] | undefined {
+  const session = getSession(sessionId)
+  return session?.messages
+}
+
+/**
+ * Extract session metadata for index storage
+ * Called when saving a session to update the index
+ */
+function extractSessionMeta(session: ChatSession): SessionMeta {
+  // Get first user message as preview
+  const firstUserMessage = session.messages.find(m => m.role === 'user')
+  const previewText = firstUserMessage?.content.slice(0, 100)
+
+  return {
+    id: session.id,
+    name: session.name,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    parentSessionId: session.parentSessionId,
+    branchFromMessageId: session.branchFromMessageId,
+    lastModel: session.lastModel,
+    lastProvider: session.lastProvider,
+    isPinned: session.isPinned,
+    isArchived: session.isArchived,
+    archivedAt: session.archivedAt,
+    workspaceId: session.workspaceId,
+    agentId: session.agentId,
+    messageCount: session.messages.length,
+    previewText,
+  }
 }
 
 // Get a single session by ID
@@ -542,6 +618,76 @@ export function updateSessionPlan(sessionId: string, plan: SessionPlan | null): 
 export function getSessionPlan(sessionId: string): SessionPlan | undefined {
   const session = getSession(sessionId)
   return session?.plan
+}
+
+// ============================================================================
+// Provider Configuration Caching
+// ============================================================================
+
+/**
+ * Cache provider configuration for a session
+ * This is called when user selects a model, avoiding repeated settings lookups during chat
+ *
+ * @param sessionId - The session to cache config for
+ * @param providerId - The provider ID
+ * @param model - The model ID
+ */
+export function cacheSessionProviderConfig(
+  sessionId: string,
+  providerId: string,
+  model: string
+): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  const settings = getSettings()
+  const providerConfig = settings.ai.providers[providerId]
+
+  // Cache the provider config (excluding sensitive data like API key)
+  session.cachedProviderConfig = {
+    providerId,
+    model,
+    baseUrl: providerConfig?.baseUrl,
+    temperature: settings.ai.temperature,
+    cachedAt: Date.now(),
+  }
+
+  // Also update lastProvider and lastModel for backward compatibility
+  session.lastProvider = providerId
+  session.lastModel = model
+
+  // Save session file (does not update updatedAt to avoid reordering)
+  saveSessionToFile(sessionId, session)
+
+  // Update index with provider/model info
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.lastProvider = providerId
+    meta.lastModel = model
+    saveSessionsIndex(index)
+  }
+}
+
+/**
+ * Get cached provider config for a session
+ * Returns undefined if no config is cached
+ */
+export function getCachedProviderConfig(sessionId: string) {
+  const session = getSession(sessionId)
+  return session?.cachedProviderConfig
+}
+
+/**
+ * Invalidate cached provider config for a session
+ * Call this when settings change that affect the cached config
+ */
+export function invalidateCachedProviderConfig(sessionId: string): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  delete session.cachedProviderConfig
+  saveSessionToFile(sessionId, session)
 }
 
 // Inherit working directory from workspace (does not update updatedAt)
@@ -1070,20 +1216,8 @@ export function updateSessionModel(sessionId: string, provider: string, model: s
   const session = getSession(sessionId)
   if (!session) return false
 
-  session.lastProvider = provider
-  session.lastModel = model
-
-  // Save session file
-  saveSessionToFile(sessionId, session)
-
-  // Update index (without changing updatedAt)
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.lastProvider = provider
-    meta.lastModel = model
-    saveSessionsIndex(index)
-  }
+  // Use cacheSessionProviderConfig to update both cache and lastProvider/lastModel
+  cacheSessionProviderConfig(sessionId, provider, model)
 
   return true
 }

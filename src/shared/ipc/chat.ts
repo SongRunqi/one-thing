@@ -103,6 +103,65 @@ export interface ChatMessage {
   }
 }
 
+// Cached provider configuration for session-level optimization
+export interface CachedProviderConfig {
+  providerId: string
+  model: string
+  baseUrl?: string
+  temperature?: number
+  cachedAt: number  // Timestamp when this config was cached
+}
+
+// ============================================================================
+// Session Metadata Types (for optimized loading)
+// ============================================================================
+
+/**
+ * Lightweight session metadata for list display
+ * Does not include messages array for fast loading
+ */
+export interface SessionMeta {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt: number
+  parentSessionId?: string
+  branchFromMessageId?: string
+  lastModel?: string
+  lastProvider?: string
+  isPinned?: boolean
+  isArchived?: boolean
+  archivedAt?: number
+  workspaceId?: string
+  agentId?: string
+  // Additional metadata for display (computed on save)
+  messageCount?: number      // Number of messages in session
+  previewText?: string       // First user message preview (truncated)
+}
+
+/**
+ * Session details without messages array
+ * Used for session activation (before loading messages)
+ */
+export interface SessionDetails extends SessionMeta {
+  workingDirectory?: string
+  summary?: string
+  summaryUpToMessageId?: string
+  summaryCreatedAt?: number
+  totalInputTokens?: number
+  totalOutputTokens?: number
+  totalTokens?: number
+  lastInputTokens?: number
+  contextSize?: number
+  builtinMode?: BuiltinAgentMode
+  plan?: SessionPlan
+  cachedProviderConfig?: CachedProviderConfig
+}
+
+// ============================================================================
+// Full Session Type (with messages)
+// ============================================================================
+
 export interface ChatSession {
   id: string
   name: string
@@ -134,6 +193,9 @@ export interface ChatSession {
   builtinMode?: BuiltinAgentMode  // 'build' (default) | 'ask'
   // Planning workflow (AI creates task plan, executes step by step)
   plan?: SessionPlan
+  // Cached provider configuration (for session-level optimization)
+  // Set when user selects a model, used during chat to avoid repeated settings lookups
+  cachedProviderConfig?: CachedProviderConfig
 }
 
 // IPC Request/Response types
@@ -250,5 +312,37 @@ export interface GenerateTitleRequest {
 export interface GenerateTitleResponse {
   success: boolean
   title?: string
+  error?: string
+}
+
+// ============================================================================
+// Optimized Session IPC Types
+// ============================================================================
+
+/**
+ * Response for GET_SESSIONS_LIST - returns metadata only (no messages)
+ */
+export interface GetSessionsListResponse {
+  success: boolean
+  sessions?: SessionMeta[]
+  error?: string
+}
+
+/**
+ * Response for ACTIVATE_SESSION - returns session details (no messages)
+ */
+export interface ActivateSessionResponse {
+  success: boolean
+  session?: SessionDetails
+  messageCount?: number  // Number of messages in session
+  error?: string
+}
+
+/**
+ * Response for GET_SESSION_MESSAGES - returns messages array
+ */
+export interface GetSessionMessagesResponse {
+  success: boolean
+  messages?: ChatMessage[]
   error?: string
 }

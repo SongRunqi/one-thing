@@ -3,6 +3,7 @@ import { ref, toRaw, computed } from 'vue'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, OpenRouterModel } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
 import type { AIProvider, ModelInfo } from '../../shared/ipc'
+import { createDefaultSettings } from '../../shared/defaults/settings'
 
 // Read initial theme from what index.html already set (via URL hash or localStorage)
 // This prevents the flash where Vue overwrites the correct theme with defaults
@@ -27,99 +28,11 @@ function getInitialTheme(): 'light' | 'dark' | 'system' {
 
 const initialTheme = getInitialTheme()
 
+// Use shared default settings (single source of truth)
 const defaultSettings: AppSettings = {
-  ai: {
-    provider: AIProviderEnum.OpenAI,
-    temperature: 0.7,
-    providers: {
-      [AIProviderEnum.OpenAI]: {
-        apiKey: '',
-        model: 'gpt-4',
-        selectedModels: ['gpt-4', 'gpt-4o', 'gpt-3.5-turbo'],
-      },
-      [AIProviderEnum.Claude]: {
-        apiKey: '',
-        model: 'claude-sonnet-4-5-20250929',
-        selectedModels: ['claude-sonnet-4-5-20250929', 'claude-3-5-haiku-20241022'],
-      },
-      [AIProviderEnum.DeepSeek]: {
-        apiKey: '',
-        model: 'deepseek-chat',
-        selectedModels: ['deepseek-chat', 'deepseek-reasoner'],
-      },
-      [AIProviderEnum.Kimi]: {
-        apiKey: '',
-        model: 'moonshot-v1-8k',
-        selectedModels: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-      },
-      [AIProviderEnum.Zhipu]: {
-        apiKey: '',
-        model: 'glm-4-flash',
-        selectedModels: ['glm-4-flash', 'glm-4-plus', 'glm-4'],
-      },
-      [AIProviderEnum.OpenRouter]: {
-        apiKey: '',
-        model: 'openai/gpt-4o',
-        selectedModels: [
-          'openai/gpt-4o',
-          'openai/gpt-4o-mini',
-          'anthropic/claude-3.5-sonnet',
-          'google/gemini-pro-1.5',
-          'meta-llama/llama-3.1-70b-instruct',
-        ],
-      },
-      [AIProviderEnum.Gemini]: {
-        apiKey: '',
-        model: 'gemini-2.0-flash-exp',
-        selectedModels: ['gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-      },
-      [AIProviderEnum.ClaudeCode]: {
-        model: 'claude-sonnet-4-20250514',
-        selectedModels: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022', 'claude-opus-4-20250514'],
-        authType: 'oauth',
-      },
-      [AIProviderEnum.GitHubCopilot]: {
-        model: 'gpt-4o',
-        selectedModels: ['gpt-4o', 'gpt-4o-mini', 'o1-preview', 'o1-mini'],
-        authType: 'oauth',
-      },
-      [AIProviderEnum.Custom]: {
-        apiKey: '',
-        baseUrl: '',
-        model: '',
-        selectedModels: [],
-      },
-    },
-    customProviders: [],
-  },
-  // Use the initial theme read from document/localStorage to avoid flash
+  ...createDefaultSettings(),
+  // Override theme with initial theme to avoid flash
   theme: initialTheme,
-  general: {
-    animationSpeed: 0.25,
-    sendShortcut: 'enter',
-    colorTheme: 'blue',
-    baseTheme: 'obsidian',
-    themeId: 'flexoki',  // Default JSON theme (deprecated)
-    darkThemeId: 'flexoki',
-    lightThemeId: 'flexoki',
-    messageListDensity: 'comfortable',
-    shortcuts: {
-      sendMessage: { key: 'Enter' },
-      newChat: { key: 'n', metaKey: true },
-      closeChat: { key: 'w', metaKey: true },
-      toggleSidebar: { key: 'b', metaKey: true },
-      focusInput: { key: '/' },
-    },
-    quickCommands: [
-      { commandId: 'cd', enabled: true },
-      { commandId: 'git', enabled: true },
-      { commandId: 'files', enabled: true },
-    ],
-  },
-  tools: {
-    enableToolCalls: true,
-    tools: {},
-  },
 }
 
 export const useSettingsStore = defineStore('settings', () => {

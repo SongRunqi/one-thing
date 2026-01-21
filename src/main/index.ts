@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import { createWindow } from './window.js'
 import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills, initializeCustomAgents } from './ipc/handlers.js'
 import { initializeStores } from './store.js'
+import { initializeSettings } from './stores/settings.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
 import { initializeTextMemory } from './services/memory-text/index.js'
@@ -34,6 +35,9 @@ app.on('ready', async () => {
 
   // Initialize stores and migrate data if needed
   initializeStores()
+
+  // Initialize settings asynchronously (before any settings access)
+  await initializeSettings()
 
   // Run agent migration (from old Built-in Agent to CustomAgent format)
   // This must run after stores init but before custom agents are loaded

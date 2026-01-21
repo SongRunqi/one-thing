@@ -47,6 +47,64 @@ export function registerSessionHandlers() {
     return { success: true, sessions: store.getSessions() }
   })
 
+  // ============================================================================
+  // Optimized Session Loading (Phase 4: Metadata Separation)
+  // ============================================================================
+
+  // 获取会话列表（仅元数据，不含消息）- 用于快速启动
+  ipcMain.handle(IPC_CHANNELS.GET_SESSIONS_LIST, async () => {
+    try {
+      const sessions = store.getSessionsList()
+      return { success: true, sessions }
+    } catch (error: any) {
+      console.error('[Sessions] Failed to get sessions list:', error)
+      return { success: false, error: error.message || 'Failed to get sessions list' }
+    }
+  })
+
+  // 激活会话（返回详情，不含消息）- 用于会话切换时获取元数据
+  ipcMain.handle(IPC_CHANNELS.ACTIVATE_SESSION, async (_event, { sessionId }) => {
+    try {
+      const session = store.getSessionDetails(sessionId)
+      if (!session) {
+        return { success: false, error: 'Session not found' }
+      }
+
+      // If session has no workingDirectory but its workspace does, inherit it
+      if (!session.workingDirectory && session.workspaceId) {
+        const workspace = store.getWorkspace(session.workspaceId)
+        if (workspace?.workingDirectory) {
+          store.inheritSessionWorkingDirectory(sessionId, workspace.workingDirectory)
+          session.workingDirectory = workspace.workingDirectory
+        }
+      }
+
+      store.setCurrentSessionId(sessionId)
+      return {
+        success: true,
+        session,
+        messageCount: session.messageCount ?? 0,
+      }
+    } catch (error: any) {
+      console.error('[Sessions] Failed to activate session:', error)
+      return { success: false, error: error.message || 'Failed to activate session' }
+    }
+  })
+
+  // 获取会话消息（按需加载）- 仅在需要显示消息时调用
+  ipcMain.handle(IPC_CHANNELS.GET_SESSION_MESSAGES, async (_event, { sessionId }) => {
+    try {
+      const messages = store.getSessionMessages(sessionId)
+      if (!messages) {
+        return { success: false, error: 'Session not found' }
+      }
+      return { success: true, messages }
+    } catch (error: any) {
+      console.error('[Sessions] Failed to get session messages:', error)
+      return { success: false, error: error.message || 'Failed to get messages' }
+    }
+  })
+
   // 创建新会话
   ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name, workspaceId, agentId }) => {
     const sessionId = uuidv4()

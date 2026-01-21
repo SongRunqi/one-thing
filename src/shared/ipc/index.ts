@@ -33,6 +33,10 @@ export type {
   AttachmentMediaType,
   MessageAttachment,
   ChatMessage,
+  // Session-level optimization (Phase 4: Metadata Separation)
+  CachedProviderConfig,
+  SessionMeta,
+  SessionDetails,
   ChatSession,
   SendMessageRequest,
   SendMessageResponse,
@@ -55,6 +59,10 @@ export type {
   UpdateSessionPinResponse,
   GenerateTitleRequest,
   GenerateTitleResponse,
+  // Optimized session loading (Phase 4)
+  GetSessionsListResponse,
+  ActivateSessionResponse,
+  GetSessionMessagesResponse,
 } from './chat.js'
 
 // Provider types

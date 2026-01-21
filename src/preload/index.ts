@@ -172,6 +172,29 @@ const electronAPI = {
   getSessionBuiltinMode: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_BUILTIN_MODE, { sessionId }),
 
+  // ============================================================================
+  // Optimized Session Loading (Phase 4: Metadata Separation)
+  // ============================================================================
+
+  // Get sessions list (metadata only, no messages) - for fast startup
+  getSessionsList: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SESSIONS_LIST),
+
+  // Activate session (returns details, no messages) - for session switching
+  activateSession: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.ACTIVATE_SESSION, { sessionId }),
+
+  // Get session messages (on-demand loading) - only when messages need to be displayed
+  getSessionMessages: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_MESSAGES, { sessionId }),
+
+  // Listen for messages changed event (for real-time sync)
+  onSessionMessagesChanged: (callback: (data: { sessionId: string; action: 'added' | 'updated' | 'deleted'; messageId?: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.SESSION_MESSAGES_CHANGED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SESSION_MESSAGES_CHANGED, listener)
+  },
+
   // System message methods (for /files command persistence)
   addSystemMessage: (sessionId: string, message: { id: string; role: string; content: string; timestamp: number }) =>
     ipcRenderer.invoke('add-system-message', { sessionId, message }),

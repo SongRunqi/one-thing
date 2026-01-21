@@ -1,14 +1,22 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatSession } from '@/types'
+import type { ChatSession, SessionMeta, SessionDetails } from '@/types'
 import { useChatStore } from './chat'
 import { useWorkspacesStore } from './workspaces'
 import { useSettingsStore } from './settings'
 
+// Base session type for list display - can be either metadata-only or full session
+// This allows mixed loading: metadata on startup, full session after switching
+type SessionListItem = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary' | 'plan'>>
+
 export const useSessionsStore = defineStore('sessions', () => {
-  const sessions = ref<ChatSession[]>([])
+  // Sessions list stores metadata-only items initially
+  // Full session data is loaded on-demand when switching sessions
+  const sessions = ref<SessionListItem[]>([])
   const currentSessionId = ref<string>('')
   const isLoading = ref(false)
+  // Track if current session is "active" (messages loaded in memory)
+  const isActive = ref(false)
 
   const currentSession = computed(() =>
     sessions.value.find(s => s.id === currentSessionId.value)
@@ -17,11 +25,11 @@ export const useSessionsStore = defineStore('sessions', () => {
   const sessionCount = computed(() => sessions.value.length)
 
   // Filter sessions by current workspace (excluding archived), sorted by createdAt desc (stable order)
-  const filteredSessions = computed(() => {
+  const filteredSessions = computed((): SessionListItem[] => {
     const workspacesStore = useWorkspacesStore()
     const workspaceId = workspacesStore.currentWorkspaceId
 
-    let filtered: ChatSession[]
+    let filtered: SessionListItem[]
     if (workspaceId === null) {
       // Default mode: show sessions without workspace (exclude archived)
       filtered = sessions.value.filter(s => !s.workspaceId && !s.isArchived)
@@ -45,13 +53,34 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   const filteredSessionCount = computed(() => filteredSessions.value.length)
 
+  /**
+   * Load sessions list (metadata only, no messages)
+   * This is optimized for fast startup - messages are loaded on-demand
+   */
   async function loadSessions() {
+    isLoading.value = true
+    try {
+      // Use optimized API that returns only metadata (no messages)
+      const response = await window.electronAPI.getSessionsList()
+      if (response.success) {
+        sessions.value = response.sessions || []
+        // Don't auto-create new chat on app open - let user choose
+      }
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
+   * Legacy load function for backward compatibility
+   * Loads full sessions with messages (use sparingly)
+   */
+  async function loadSessionsFull() {
     isLoading.value = true
     try {
       const response = await window.electronAPI.getSessions()
       if (response.success) {
         sessions.value = response.sessions || []
-        // Don't auto-create new chat on app open - let user choose
       }
     } finally {
       isLoading.value = false
@@ -65,9 +94,10 @@ export const useSessionsStore = defineStore('sessions', () => {
 
       // Check if there's already an empty "New Chat" session in the current workspace (no messages)
       // Only reuse if no specific agent is requested, and only top-level sessions (not branches)
+      // Use messageCount (from metadata) instead of messages array (which may not be loaded)
       if (!agentId) {
         const existingEmptySession = filteredSessions.value.find(
-          s => (s.name === 'New Chat' || s.name === '') && (!s.messages || s.messages.length === 0) && !s.parentSessionId
+          s => (s.name === 'New Chat' || s.name === '') && (s.messageCount === 0 || s.messageCount === undefined) && !s.parentSessionId
         )
 
         if (existingEmptySession) {
@@ -111,7 +141,69 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  /**
+   * Switch to a session using optimized two-step loading:
+   * 1. Activate session (get details, no messages) - fast
+   * 2. Load messages on-demand
+   */
   async function switchSession(sessionId: string) {
+    try {
+      const chatStore = useChatStore()
+      const settingsStore = useSettingsStore()
+
+      // Step 1: Activate session (returns details without messages)
+      const activateResponse = await window.electronAPI.activateSession(sessionId)
+      if (!activateResponse.success || !activateResponse.session) {
+        console.error('Failed to activate session:', activateResponse.error)
+        return
+      }
+
+      const sessionDetails = activateResponse.session as SessionDetails
+
+      // Update current session ID and active state
+      currentSessionId.value = sessionId
+      isActive.value = true
+
+      // Update local session data with latest from backend
+      // This ensures workingDirectory and other fields are in sync
+      const localSession = sessions.value.find(s => s.id === sessionId)
+      if (localSession) {
+        Object.assign(localSession, sessionDetails)
+      }
+
+      // Sync model selection if session has a saved model (from cached config)
+      if (sessionDetails.lastProvider && sessionDetails.lastModel) {
+        // Session has saved model - show it in UI
+        settingsStore.updateAIProvider(sessionDetails.lastProvider as any)
+        settingsStore.updateModel(sessionDetails.lastModel, sessionDetails.lastProvider as any)
+      }
+      // If session has no saved model, keep using current global settings
+
+      // Step 2: Load messages on-demand (separate IPC call)
+      const messagesResponse = await window.electronAPI.getSessionMessages(sessionId)
+      if (messagesResponse.success) {
+        chatStore.setMessagesFromSession(sessionId, messagesResponse.messages || [])
+      } else {
+        // If messages fail to load, set empty array
+        chatStore.setMessagesFromSession(sessionId, [])
+        console.warn('Failed to load messages for session:', messagesResponse.error)
+      }
+
+      // Also load usage data for this session
+      await chatStore.loadSessionUsage(sessionId)
+
+      return sessionDetails
+    } catch (error) {
+      console.error('Failed to switch session:', error)
+      isActive.value = false
+    }
+  }
+
+  /**
+   * Legacy switch function that uses the old API (full session with messages)
+   * Use this for backward compatibility when needed
+   */
+  async function switchSessionLegacy(sessionId: string) {
     try {
       const response = await window.electronAPI.switchSession(sessionId)
       if (response.success && response.session) {
@@ -119,34 +211,25 @@ export const useSessionsStore = defineStore('sessions', () => {
         const settingsStore = useSettingsStore()
 
         currentSessionId.value = sessionId
+        isActive.value = true
 
-        // Update local session data with latest from backend
-        // This ensures workingDirectory and other fields are in sync
         const localSession = sessions.value.find(s => s.id === sessionId)
         if (localSession) {
           Object.assign(localSession, response.session)
         }
 
-        // Sync model selection if session has a saved model
         if (response.session.lastProvider && response.session.lastModel) {
-          // Session has saved model - show it in UI
           settingsStore.updateAIProvider(response.session.lastProvider as any)
           settingsStore.updateModel(response.session.lastModel, response.session.lastProvider as any)
         }
-        // If session has no saved model, keep using current global settings
-        // (already loaded at app startup, no need to reload)
 
-        // Use messages directly from switchSession response (already fetched)
-        // This avoids a duplicate IPC call that loadMessages() would make
         chatStore.setMessagesFromSession(sessionId, response.session.messages || [])
-
-        // Also load usage data for this session
         await chatStore.loadSessionUsage(sessionId)
 
         return response.session
       }
     } catch (error) {
-      console.error('Failed to switch session:', error)
+      console.error('Failed to switch session (legacy):', error)
     }
   }
 
@@ -154,7 +237,9 @@ export const useSessionsStore = defineStore('sessions', () => {
     const session = sessions.value.find(s => s.id === sessionId)
 
     // If session has no messages, permanently delete instead of archiving
-    if (!session || !session.messages || session.messages.length === 0) {
+    // Use messageCount (from metadata) instead of messages array
+    const hasMessages = session && (session.messageCount && session.messageCount > 0)
+    if (!session || !hasMessages) {
       // Find the index of session to delete for switching logic
       const activeSessions = filteredSessions.value
       const sessionIndex = activeSessions.findIndex(s => s.id === sessionId)
@@ -367,15 +452,18 @@ export const useSessionsStore = defineStore('sessions', () => {
     sessions,
     currentSessionId,
     isLoading,
+    isActive,
     currentSession,
     sessionCount,
     filteredSessions,
     filteredSessionCount,
     archivedSessions,
     loadSessions,
+    loadSessionsFull,
     createSession,
     createSessionWithoutSwitch,
     switchSession,
+    switchSessionLegacy,
     deleteSession,
     archiveSession,
     restoreSession,

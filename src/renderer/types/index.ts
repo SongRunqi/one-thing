@@ -1,6 +1,12 @@
 import type {
   ChatMessage,
   ChatSession,
+  SessionMeta,
+  SessionDetails,
+  CachedProviderConfig,
+  GetSessionsListResponse,
+  ActivateSessionResponse,
+  GetSessionMessagesResponse,
   AISettings,
   AppSettings,
   AIProvider,
@@ -185,6 +191,12 @@ import type {
 export type {
   ChatMessage,
   ChatSession,
+  SessionMeta,
+  SessionDetails,
+  CachedProviderConfig,
+  GetSessionsListResponse,
+  ActivateSessionResponse,
+  GetSessionMessagesResponse,
   AISettings,
   AppSettings,
   AIProvider,
@@ -368,6 +380,11 @@ export interface ElectronAPI {
   // Builtin mode (Ask/Build) methods
   setSessionBuiltinMode: (sessionId: string, mode: BuiltinAgentMode) => Promise<{ success: boolean; mode?: BuiltinAgentMode; error?: string }>
   getSessionBuiltinMode: (sessionId: string) => Promise<{ success: boolean; mode?: BuiltinAgentMode; error?: string }>
+  // Optimized session loading (Phase 4: Metadata Separation)
+  getSessionsList: () => Promise<GetSessionsListResponse>
+  activateSession: (sessionId: string) => Promise<ActivateSessionResponse>
+  getSessionMessages: (sessionId: string) => Promise<GetSessionMessagesResponse>
+  onSessionMessagesChanged: (callback: (data: { sessionId: string; action: 'added' | 'updated' | 'deleted'; messageId?: string }) => void) => () => void
   // System message methods (for /files command persistence)
   addSystemMessage: (sessionId: string, message: { id: string; role: string; content: string; timestamp: number }) => Promise<{ success: boolean; error?: string }>
   removeFilesChangedMessage: (sessionId: string) => Promise<{ success: boolean; removedId?: string | null; error?: string }>

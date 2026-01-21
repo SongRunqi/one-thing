@@ -100,12 +100,44 @@ const CLAUDE_CODE_MODEL_PATTERNS = [
   'claude-4',
 ]
 
-let cache: ModelCache = {
-  models: new Map(),
-  allModels: [],
-  modelsDevData: null,
-  lastFetched: 0,
+import {
+  loadModelsDevCache,
+  saveModelsDevCache,
+  hasCacheData,
+  getCacheAge,
+} from '../../stores/models-dev-cache.js'
+
+// Initialize cache - try to load from disk first
+function initializeCache(): ModelCache {
+  const persisted = loadModelsDevCache()
+
+  if (hasCacheData(persisted)) {
+    // Restore cache from disk
+    const modelsByProvider = new Map<string, OpenRouterModel[]>()
+    for (const [providerId, models] of Object.entries(persisted!.modelsByProvider)) {
+      modelsByProvider.set(providerId, models as OpenRouterModel[])
+    }
+
+    console.log(`[ModelRegistry] Using persisted cache (${getCacheAge(persisted)})`)
+    return {
+      models: modelsByProvider,
+      allModels: persisted!.allModels as OpenRouterModel[],
+      modelsDevData: persisted!.modelsDevData as ModelsDevResponse | null,
+      lastFetched: persisted!.lastFetched,
+    }
+  }
+
+  // No valid cache, start empty (will fetch on first use)
+  console.log('[ModelRegistry] No persisted cache, will fetch on first use')
+  return {
+    models: new Map(),
+    allModels: [],
+    modelsDevData: null,
+    lastFetched: 0,
+  }
 }
+
+let cache: ModelCache = initializeCache()
 
 // Friendly name aliases for models (more fun names!)
 const MODEL_NAME_ALIASES: Record<string, string> = {
@@ -224,7 +256,10 @@ function processModelsDevData(data: ModelsDevResponse): {
 }
 
 /**
- * Refresh the model cache
+ * Refresh the model cache from network and persist to disk
+ * This should only be called:
+ * 1. When user manually triggers refresh
+ * 2. When cache is completely empty (first run)
  */
 async function refreshCache(): Promise<void> {
   try {
@@ -237,6 +272,14 @@ async function refreshCache(): Promise<void> {
       modelsDevData: data,
       lastFetched: Date.now(),
     }
+
+    // Persist to disk for next startup
+    const modelsByProvider: Record<string, OpenRouterModel[]> = {}
+    for (const [providerId, providerModels] of models) {
+      modelsByProvider[providerId] = providerModels
+    }
+    saveModelsDevCache(data, modelsByProvider, allModels)
+
     console.log('[ModelRegistry] Cache refreshed with', allModels.length, 'models')
   } catch (error) {
     console.error('[ModelRegistry] Failed to refresh cache:', error)
@@ -245,18 +288,19 @@ async function refreshCache(): Promise<void> {
 }
 
 /**
- * Check if cache is stale
+ * Check if cache has data (regardless of age)
+ * We no longer use TTL-based staleness - cache is valid until user manually refreshes
  */
-function isCacheStale(): boolean {
-  return Date.now() - cache.lastFetched > CACHE_TTL
+function hasCacheLoaded(): boolean {
+  return cache.allModels.length > 0
 }
 
 /**
  * Get models for a specific provider
  */
 export async function getModelsForProvider(providerId: string): Promise<OpenRouterModel[]> {
-  // Refresh cache if stale or empty
-  if (isCacheStale() || cache.allModels.length === 0) {
+  // Only refresh if cache is completely empty (first run without persisted cache)
+  if (!hasCacheLoaded()) {
     await refreshCache()
   }
 
@@ -275,7 +319,7 @@ export async function getModelsForProvider(providerId: string): Promise<OpenRout
  * Get all available models
  */
 export async function getAllModels(): Promise<OpenRouterModel[]> {
-  if (isCacheStale() || cache.allModels.length === 0) {
+  if (!hasCacheLoaded()) {
     await refreshCache()
   }
 
@@ -302,7 +346,7 @@ export async function searchModels(query: string, providerId?: string): Promise<
  * Get model by ID
  */
 export async function getModelById(modelId: string): Promise<OpenRouterModel | undefined> {
-  if (isCacheStale() || cache.allModels.length === 0) {
+  if (!hasCacheLoaded()) {
     await refreshCache()
   }
 
@@ -324,7 +368,7 @@ export async function getModelMaxOutputTokens(modelId: string): Promise<number> 
  * Uses Models.dev's tool_call field for accurate detection
  */
 export async function modelSupportsTools(modelId: string, providerId?: string): Promise<boolean> {
-  if (isCacheStale() || cache.modelsDevData === null) {
+  if (!hasCacheLoaded() || cache.modelsDevData === null) {
     await refreshCache()
   }
 
@@ -378,7 +422,7 @@ export async function modelSupportsTools(modelId: string, providerId?: string): 
  * Reasoning models (like DeepSeek Reasoner, o1, o3) don't support temperature
  */
 export async function modelSupportsReasoning(modelId: string, providerId?: string): Promise<boolean> {
-  if (isCacheStale() || cache.modelsDevData === null) {
+  if (!hasCacheLoaded() || cache.modelsDevData === null) {
     await refreshCache()
   }
 
@@ -513,7 +557,7 @@ export async function modelSupportsImageGeneration(modelId: string, providerId?:
   }
 
   // SECOND: Try to find in Models.dev data
-  if (isCacheStale() || cache.modelsDevData === null) {
+  if (!hasCacheLoaded() || cache.modelsDevData === null) {
     await refreshCache()
   }
 
@@ -555,12 +599,13 @@ export async function forceRefresh(): Promise<void> {
 
 /**
  * Get cache status
+ * Note: isStale is now false once cache is loaded (no TTL-based expiration)
  */
 export function getCacheStatus(): { lastFetched: number; modelCount: number; isStale: boolean } {
   return {
     lastFetched: cache.lastFetched,
     modelCount: cache.allModels.length,
-    isStale: isCacheStale(),
+    isStale: !hasCacheLoaded(), // Cache is "stale" only when empty
   }
 }
 
@@ -600,7 +645,7 @@ const EMBEDDING_PROVIDER_MAPPING: Record<string, string> = {
  * Returns models with dimension info from limit.output field
  */
 export async function getEmbeddingModelsForProvider(providerId: string): Promise<EmbeddingModelInfo[]> {
-  if (isCacheStale() || cache.modelsDevData === null) {
+  if (!hasCacheLoaded() || cache.modelsDevData === null) {
     await refreshCache()
   }
 
@@ -649,7 +694,7 @@ export async function getEmbeddingModelsForProvider(providerId: string): Promise
  * Get all embedding models from all providers
  */
 export async function getAllEmbeddingModels(): Promise<EmbeddingModelInfo[]> {
-  if (isCacheStale() || cache.modelsDevData === null) {
+  if (!hasCacheLoaded() || cache.modelsDevData === null) {
     await refreshCache()
   }
 
@@ -689,7 +734,7 @@ export async function getAllEmbeddingModels(): Promise<EmbeddingModelInfo[]> {
  * Get dimension for a specific embedding model
  */
 export async function getEmbeddingDimension(modelId: string): Promise<number | null> {
-  if (isCacheStale() || cache.modelsDevData === null) {
+  if (!hasCacheLoaded() || cache.modelsDevData === null) {
     await refreshCache()
   }
 

@@ -1,41 +1,52 @@
 <template>
   <div class="empty-state default-theme">
-    <div class="hero-section">
-      <!-- Warm gradient orb -->
-      <div class="warm-orb">
-        <span class="orb-icon">✨</span>
-      </div>
-      <div class="empty-title">
-        <span class="title-text">one thing</span>
-      </div>
-      <div class="empty-subtitle">有什么我可以帮助你的吗？</div>
+    <!-- Ambient background -->
+    <div class="ambient-bg">
+      <div class="gradient-orb orb-1"></div>
+      <div class="gradient-orb orb-2"></div>
     </div>
 
-    <!-- Suggestion Cards -->
-    <div class="suggestion-grid">
-      <div class="suggestion-card" @click="$emit('suggestion', '帮我写一段代码，实现一个简单的功能。')">
-        <div class="card-inner">
-          <span class="card-icon">💻</span>
-          <span>写代码</span>
+    <div class="content-wrapper">
+      <!-- Hero Section -->
+      <div class="hero-section">
+        <div class="logo-container">
+          <div class="logo-ring">
+            <div class="logo-inner">
+              <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5L12 3Z" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 12L20 7.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+                <path d="M12 12V21" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+                <path d="M12 12L4 7.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-content">
+          <h1 class="title">
+            <span class="title-gradient">0neThing</span>
+          </h1>
+          <p class="subtitle">有什么我可以帮助你的？</p>
         </div>
       </div>
-      <div class="suggestion-card" @click="$emit('suggestion', '帮我写一篇文章，主题是...')">
-        <div class="card-inner">
-          <span class="card-icon">✍️</span>
-          <span>写文章</span>
-        </div>
-      </div>
-      <div class="suggestion-card" @click="$emit('suggestion', '和我一起头脑风暴，探讨一下...')">
-        <div class="card-inner">
-          <span class="card-icon">💡</span>
-          <span>头脑风暴</span>
-        </div>
-      </div>
-      <div class="suggestion-card" @click="$emit('suggestion', '帮我解释一下这个概念：')">
-        <div class="card-inner">
-          <span class="card-icon">📚</span>
-          <span>学习新知</span>
-        </div>
+
+      <!-- Suggestion Cards -->
+      <div class="suggestions">
+        <button
+          v-for="suggestion in suggestions"
+          :key="suggestion.id"
+          class="suggestion-card"
+          @click="$emit('suggestion', suggestion.prompt)"
+        >
+          <span class="card-icon">{{ suggestion.icon }}</span>
+          <div class="card-content">
+            <span class="card-title">{{ suggestion.title }}</span>
+            <span class="card-desc">{{ suggestion.desc }}</span>
+          </div>
+          <svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12h14M12 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
     </div>
   </div>
@@ -45,143 +56,327 @@
 defineEmits<{
   suggestion: [text: string]
 }>()
+
+const suggestions = [
+  {
+    id: 'code',
+    icon: '⌘',
+    title: '写代码',
+    desc: '帮你实现功能或解决问题',
+    prompt: '帮我写一段代码，实现一个简单的功能。'
+  },
+  {
+    id: 'write',
+    icon: '✎',
+    title: '写作',
+    desc: '文章、文案、邮件等',
+    prompt: '帮我写一篇文章，主题是...'
+  },
+  {
+    id: 'brainstorm',
+    icon: '◈',
+    title: '头脑风暴',
+    desc: '激发灵感，探索创意',
+    prompt: '和我一起头脑风暴，探讨一下...'
+  },
+  {
+    id: 'learn',
+    icon: '◎',
+    title: '学习',
+    desc: '解释概念、解答疑问',
+    prompt: '帮我解释一下这个概念：'
+  }
+]
 </script>
 
 <style scoped>
-/* Default Theme - 温馨舒适风格 */
 .empty-state.default-theme {
   position: absolute;
   inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: transparent;
   overflow: hidden;
   user-select: none;
-  transform: translateZ(0);
 }
 
+/* Ambient Background */
+.ambient-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.gradient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.4;
+  animation: float 20s ease-in-out infinite;
+}
+
+.orb-1 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.3) 0%, transparent 70%);
+  top: -100px;
+  right: -100px;
+  animation-delay: 0s;
+}
+
+.orb-2 {
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.2) 0%, transparent 70%);
+  bottom: -50px;
+  left: -50px;
+  animation-delay: -10s;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(20px, -20px) scale(1.05); }
+  50% { transform: translate(0, 10px) scale(0.95); }
+  75% { transform: translate(-20px, -10px) scale(1.02); }
+}
+
+/* Content Wrapper */
+.content-wrapper {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 48px;
+  padding: 24px;
+  animation: fadeIn 0.6s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Hero Section */
 .hero-section {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
-  margin-bottom: 40px;
-  position: relative;
-  z-index: 2;
+  gap: 24px;
 }
 
-/* Warm gradient orb */
-.warm-orb {
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 30%, #fbbf24 60%, #f59e0b 100%);
+.logo-container {
+  position: relative;
+}
+
+.logo-ring {
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  background: linear-gradient(
+    135deg,
+    rgba(var(--accent-rgb), 0.15) 0%,
+    rgba(var(--accent-rgb), 0.05) 100%
+  );
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow:
-    0 0 40px rgba(251, 191, 36, 0.3),
-    0 0 80px rgba(251, 191, 36, 0.15);
-  animation: orb-glow 4s ease-in-out infinite;
+  position: relative;
+  transition: all 0.3s ease;
 }
 
-.orb-icon {
-  font-size: 40px;
-  animation: orb-float 3s ease-in-out infinite;
+.logo-ring::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 20px;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(var(--accent-rgb), 0.4),
+    transparent 50%,
+    rgba(var(--accent-rgb), 0.1)
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
 }
 
-@keyframes orb-glow {
-  0%, 100% {
-    box-shadow:
-      0 0 40px rgba(251, 191, 36, 0.3),
-      0 0 80px rgba(251, 191, 36, 0.15);
-    transform: scale(1);
-  }
-  50% {
-    box-shadow:
-      0 0 50px rgba(251, 191, 36, 0.4),
-      0 0 100px rgba(251, 191, 36, 0.2);
-    transform: scale(1.02);
-  }
+.logo-inner {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
 }
 
-@keyframes orb-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
+.logo-icon {
+  width: 28px;
+  height: 28px;
+  color: var(--accent);
 }
 
-.empty-title {
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 32px;
+.text-content {
+  text-align: center;
+}
+
+.title {
+  font-size: 28px;
   font-weight: 600;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.02em;
 }
 
-.title-text {
-  background: linear-gradient(90deg, var(--text), #d97706);
+.title-gradient {
+  background: linear-gradient(
+    135deg,
+    var(--text-primary) 0%,
+    var(--accent) 100%
+  );
   -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-.empty-subtitle {
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 14px;
-  color: var(--text-secondary);
-  opacity: 0.8;
+.subtitle {
+  font-size: 15px;
+  color: var(--text-muted);
+  margin: 0;
+  font-weight: 400;
 }
 
 /* Suggestion Cards */
-.suggestion-grid {
+.suggestions {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  gap: 12px;
   width: 100%;
-  max-width: 500px;
-  padding: 0 24px;
-  z-index: 2;
-  animation: cards-fade-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-  opacity: 0;
-}
-
-@keyframes cards-fade-in {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  max-width: 480px;
 }
 
 .suggestion-card {
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.3), transparent, rgba(245, 158, 11, 0.2));
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.card-inner {
-  padding: 16px;
-  background: var(--bg-elevated);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-radius: 11px;
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text);
-  transition: all 0.3s ease;
+  padding: 14px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+
+.suggestion-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(var(--accent-rgb), 0.08) 0%,
+    transparent 50%
+  );
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
 .suggestion-card:hover {
-  transform: translateY(-4px);
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.5), rgba(245, 158, 11, 0.3));
-  box-shadow: 0 10px 30px rgba(251, 191, 36, 0.15);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md), 0 0 0 1px rgba(var(--accent-rgb), 0.1);
 }
 
-.suggestion-card:hover .card-inner {
-  background: var(--hover);
+.suggestion-card:hover::before {
+  opacity: 1;
 }
 
-.card-icon { font-size: 20px; }
+.suggestion-card:active {
+  transform: translateY(0);
+}
+
+.card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: rgba(var(--accent-rgb), 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--accent);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.card-content {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.card-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.card-desc {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-arrow {
+  width: 16px;
+  height: 16px;
+  color: var(--text-faint);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.suggestion-card:hover .card-arrow {
+  opacity: 1;
+  transform: translateX(0);
+  color: var(--accent);
+}
+
+/* Responsive */
+@media (max-width: 500px) {
+  .suggestions {
+    grid-template-columns: 1fr;
+  }
+
+  .content-wrapper {
+    gap: 36px;
+  }
+
+  .title {
+    font-size: 24px;
+  }
+}
 </style>

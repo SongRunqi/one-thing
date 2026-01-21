@@ -5,11 +5,15 @@
  */
 
 import { ref, computed, watch, nextTick } from 'vue'
-import type { ChatSession } from '@/types'
+import type { ChatSession, SessionMeta } from '@/types'
 import { useSessionsStore } from '@/stores/sessions'
 
+// Base session type for organizer - compatible with both metadata-only and full sessions
+// This allows the organizer to work with metadata loaded on startup (no messages)
+type SessionBase = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary' | 'plan'>>
+
 // Extended session interface with branch information
-export interface SessionWithBranches extends ChatSession {
+export interface SessionWithBranches extends SessionBase {
   branches: SessionWithBranches[]
   depth: number
   hasBranches: boolean
@@ -124,7 +128,7 @@ export function useSessionOrganizer() {
   }
 
   // Check if any ancestor of a session is collapsed
-  function isAncestorCollapsed(session: ChatSession): boolean {
+  function isAncestorCollapsed(session: SessionBase): boolean {
     let current = session
     while (current.parentSessionId) {
       if (collapsedParents.value.has(current.parentSessionId)) {
@@ -138,7 +142,7 @@ export function useSessionOrganizer() {
   }
 
   // Get branch depth (how deep the branch is)
-  function getBranchDepth(session: ChatSession): number {
+  function getBranchDepth(session: SessionBase): number {
     let depth = 0
     let current = session
     while (current.parentSessionId) {
@@ -151,7 +155,7 @@ export function useSessionOrganizer() {
   }
 
   // Organize sessions with their branches into a hierarchical structure
-  function organizeSessionsWithBranches(sessions: ChatSession[]): SessionWithBranches[] {
+  function organizeSessionsWithBranches(sessions: SessionBase[]): SessionWithBranches[] {
     const sessionMap = new Map<string, SessionWithBranches>()
     const rootSessions: SessionWithBranches[] = []
 
@@ -252,7 +256,7 @@ export function useSessionOrganizer() {
   }
 
   // Get flat sessions list: pinned first, then by updatedAt (no date grouping)
-  function getFlatSessions(filteredSessions: ChatSession[]): SessionWithBranches[] {
+  function getFlatSessions(filteredSessions: SessionBase[]): SessionWithBranches[] {
     const organizedSessions = organizeSessionsWithBranches(filteredSessions)
 
     // Separate pinned and unpinned sessions
@@ -315,7 +319,7 @@ export function useSessionOrganizer() {
   }
 
   // Get session preview text
-  function getSessionPreview(session: ChatSession): string {
+  function getSessionPreview(session: SessionBase): string {
     if (!session.messages || session.messages.length === 0) {
       return 'No messages yet'
     }

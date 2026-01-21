@@ -57,6 +57,12 @@ export const IPC_CHANNELS = {
   GET_SESSION_BUILTIN_MODE: 'sessions:get-builtin-mode',
   PLAN_UPDATED: 'sessions:plan-updated',
 
+  // Session optimization (metadata separation)
+  GET_SESSIONS_LIST: 'sessions:get-list',           // Returns SessionMeta[] only (no messages)
+  ACTIVATE_SESSION: 'sessions:activate',            // Mark session as active, return details
+  GET_SESSION_MESSAGES: 'sessions:get-messages',    // Returns ChatMessage[] for a session
+  SESSION_MESSAGES_CHANGED: 'sessions:messages-changed',  // Event: messages added/updated
+
   // Settings related
   GET_SETTINGS: 'settings:get',
   SAVE_SETTINGS: 'settings:save',
