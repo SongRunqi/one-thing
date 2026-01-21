@@ -14,14 +14,14 @@ import { generateText, streamText, convertToModelMessages, wrapLanguageModel, ty
 import type { UIMessage as AISDKUIMessage } from 'ai'
 import { devToolsMiddleware } from '@ai-sdk/devtools'
 import { z } from 'zod'
-import isDev from 'electron-is-dev'
+import { app } from 'electron'
 
 /**
  * Wrap model with DevTools middleware in development mode
  * This enables inspection at http://localhost:4983 via `npx @ai-sdk/devtools`
  */
 function wrapWithDevTools<T extends LanguageModel>(model: T): T {
-  if (!isDev) return model
+  if (app.isPackaged) return model
    
   return wrapLanguageModel({
     model: model as any,
