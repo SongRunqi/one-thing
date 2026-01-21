@@ -804,6 +804,64 @@ const electronAPI = {
 
   openPluginDirectory: (dirType: 'plugins' | 'npm' | 'local') =>
     ipcRenderer.invoke(PLUGIN_CHANNELS.OPEN_DIRECTORY, dirType),
+
+  // Update methods (auto-update functionality)
+  checkForUpdate: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
+
+  downloadUpdate: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_DOWNLOAD),
+
+  installUpdate: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL),
+
+  getUpdateStatus: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_AVAILABLE),
+
+  onUpdateAvailable: (callback: (info: {
+    version: string
+    releaseDate: string
+    releaseNotes?: string | null
+    releaseName?: string | null
+  }) => void) => {
+    const listener = (_event: any, info: any) => callback(info)
+    ipcRenderer.on(IPC_CHANNELS.UPDATE_AVAILABLE, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_AVAILABLE, listener)
+  },
+
+  onUpdateNotAvailable: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on(IPC_CHANNELS.UPDATE_NOT_AVAILABLE, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_NOT_AVAILABLE, listener)
+  },
+
+  onUpdateProgress: (callback: (progress: {
+    bytesPerSecond: number
+    percent: number
+    transferred: number
+    total: number
+  }) => void) => {
+    const listener = (_event: any, progress: any) => callback(progress)
+    ipcRenderer.on(IPC_CHANNELS.UPDATE_PROGRESS, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_PROGRESS, listener)
+  },
+
+  onUpdateDownloaded: (callback: (info: {
+    version: string
+    releaseDate: string
+    releaseNotes?: string | null
+    releaseName?: string | null
+  }) => void) => {
+    const listener = (_event: any, info: any) => callback(info)
+    ipcRenderer.on(IPC_CHANNELS.UPDATE_DOWNLOADED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_DOWNLOADED, listener)
+  },
+
+  onUpdateError: (callback: (data: { error: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.UPDATE_ERROR, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_ERROR, listener)
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

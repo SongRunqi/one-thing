@@ -421,6 +421,15 @@ export type {
 
 export { PLUGIN_CHANNELS } from './plugins.js'
 
+// Update types (auto-update functionality)
+export type {
+  UpdateInfo,
+  UpdateProgress,
+  CheckUpdateResponse,
+  DownloadUpdateResponse,
+  InstallUpdateResponse,
+} from './updates.js'
+
 // Re-export tool state mapping utilities
 export type { LegacyToolStatus } from '../tool-state-mapping.js'
 

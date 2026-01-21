@@ -636,6 +636,17 @@ export interface ElectronAPI {
   updatePluginConfig: (request: { pluginId: string; config: Record<string, unknown> }) => Promise<{ success: boolean; error?: string }>
   getPluginDirectories: () => Promise<{ success: boolean; directories?: { plugins: string; npm: string; local: string }; error?: string }>
   openPluginDirectory: (dirType: 'plugins' | 'npm' | 'local') => Promise<{ success: boolean; error?: string }>
+
+  // Update methods (auto-update functionality)
+  checkForUpdate: () => Promise<{ success: boolean; available: boolean; updateInfo?: { version: string; releaseDate: string; releaseNotes?: string | null; releaseName?: string | null }; error?: string }>
+  downloadUpdate: () => Promise<{ success: boolean; error?: string }>
+  installUpdate: () => Promise<{ success: boolean; error?: string }>
+  getUpdateStatus: () => Promise<{ success: boolean; available: boolean; downloaded: boolean; updateInfo?: { version: string; releaseDate: string; releaseNotes?: string | null; releaseName?: string | null } }>
+  onUpdateAvailable: (callback: (info: { version: string; releaseDate: string; releaseNotes?: string | null; releaseName?: string | null }) => void) => () => void
+  onUpdateNotAvailable: (callback: () => void) => () => void
+  onUpdateProgress: (callback: (progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => void) => () => void
+  onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string; releaseNotes?: string | null; releaseName?: string | null }) => void) => () => void
+  onUpdateError: (callback: (data: { error: string }) => void) => () => void
 }
 
 declare global {

@@ -246,4 +246,14 @@ export const IPC_CHANNELS = {
   PLUGINS_UPDATE_CONFIG: 'plugins:update-config',
   PLUGINS_GET_DIRECTORIES: 'plugins:get-directories',
   PLUGINS_OPEN_DIRECTORY: 'plugins:open-directory',
+
+  // Auto-update related
+  UPDATE_CHECK: 'update:check',
+  UPDATE_DOWNLOAD: 'update:download',
+  UPDATE_INSTALL: 'update:install',
+  UPDATE_AVAILABLE: 'update:available',
+  UPDATE_NOT_AVAILABLE: 'update:not-available',
+  UPDATE_PROGRESS: 'update:progress',
+  UPDATE_DOWNLOADED: 'update:downloaded',
+  UPDATE_ERROR: 'update:error',
 } as const

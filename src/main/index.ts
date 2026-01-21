@@ -2,7 +2,7 @@ import { app, BrowserWindow, protocol, net } from 'electron'
 import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { createWindow } from './window.js'
-import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills, initializeCustomAgents } from './ipc/handlers.js'
+import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills, initializeCustomAgents, initializeUpdater } from './ipc/handlers.js'
 import { initializeStores } from './store.js'
 import { initializeSettings } from './stores/settings.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
@@ -75,6 +75,9 @@ app.on('ready', async () => {
 
   // Create window first for fast startup
   mainWindow = createWindow()
+
+  // Initialize auto-updater (checks for updates after startup)
+  initializeUpdater()
 
   // Initialize MCP system asynchronously (don't block startup)
   initializeMCP().catch(err => {

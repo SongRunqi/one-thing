@@ -1,5 +1,13 @@
 appId: com.onething.app
 productName: 0neThing
+
+# Auto-update configuration - uses GitHub releases
+publish:
+  provider: github
+  owner: SongRunqi
+  repo: one-thing
+  releaseType: release
+
 directories:
   buildResources: public
   output: release
