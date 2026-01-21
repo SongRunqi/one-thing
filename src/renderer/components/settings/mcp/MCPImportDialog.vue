@@ -1,12 +1,26 @@
 <template>
   <Teleport to="body">
-    <div v-if="show" class="dialog-overlay" @click.self="$emit('close')">
+    <div
+      v-if="show"
+      class="dialog-overlay"
+      @click.self="$emit('close')"
+    >
       <div class="dialog import-dialog">
         <div class="dialog-header">
           <h3>Import MCP Servers</h3>
-          <button class="close-btn" @click="$emit('close')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
+          <button
+            class="close-btn"
+            @click="$emit('close')"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -18,9 +32,16 @@
               :class="['import-tab', { active: activeTab === 'file' }]"
               @click="switchTab('file')"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
-                <polyline points="13 2 13 9 20 9"/>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" />
+                <polyline points="13 2 13 9 20 9" />
               </svg>
               From File
             </button>
@@ -28,9 +49,23 @@
               :class="['import-tab', { active: activeTab === 'paste' }]"
               @click="switchTab('paste')"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/>
-                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" />
+                <rect
+                  x="8"
+                  y="2"
+                  width="8"
+                  height="4"
+                  rx="1"
+                  ry="1"
+                />
               </svg>
               Quick Paste
             </button>
@@ -38,60 +73,123 @@
               :class="['import-tab', { active: activeTab === 'presets' }]"
               @click="switchTab('presets')"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               </svg>
               Presets
             </button>
           </div>
 
           <!-- File Import Tab -->
-          <div v-if="activeTab === 'file'" class="import-tab-content">
+          <div
+            v-if="activeTab === 'file'"
+            class="import-tab-content"
+          >
             <p class="import-description">
               Import MCP configurations from a JSON file. Supports Claude Desktop format.
             </p>
-            <button class="select-file-btn" @click="selectImportFile">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            <button
+              class="select-file-btn"
+              @click="selectImportFile"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
               </svg>
               Select JSON File
             </button>
-            <div v-if="fileInfo" class="file-info">
+            <div
+              v-if="fileInfo"
+              class="file-info"
+            >
               <span class="file-name">{{ fileInfo.name }}</span>
               <span class="server-count">{{ fileInfo.serverCount }} server(s) found</span>
             </div>
           </div>
 
           <!-- Quick Paste Tab -->
-          <div v-if="activeTab === 'paste'" class="import-tab-content">
+          <div
+            v-if="activeTab === 'paste'"
+            class="import-tab-content"
+          >
             <p class="import-description">
               Paste a JSON configuration or command line to add a server.
             </p>
             <textarea
               v-model="pasteContent"
               class="form-textarea"
-              placeholder='Paste JSON config or command line:
+              placeholder="Paste JSON config or command line:
 
-{"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path"]}
+{&quot;command&quot;: &quot;npx&quot;, &quot;args&quot;: [&quot;-y&quot;, &quot;@modelcontextprotocol/server-filesystem&quot;, &quot;/path&quot;]}
 
 or:
 
-npx -y @modelcontextprotocol/server-filesystem /path'
+npx -y @modelcontextprotocol/server-filesystem /path"
               rows="6"
               @input="parsePasteContent"
-            ></textarea>
-            <div v-if="pasteResult" class="parse-result">
-              <div v-if="pasteResult.success" class="parse-success">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="20 6 9 17 4 12"/>
+            />
+            <div
+              v-if="pasteResult"
+              class="parse-result"
+            >
+              <div
+                v-if="pasteResult.success"
+                class="parse-success"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="20 6 9 17 4 12" />
                 </svg>
                 <span>{{ pasteResult.type }}</span>
               </div>
-              <div v-else class="parse-error">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="8" x2="12" y2="12"/>
-                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+              <div
+                v-else
+                class="parse-error"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="10"
+                  />
+                  <line
+                    x1="12"
+                    y1="8"
+                    x2="12"
+                    y2="12"
+                  />
+                  <line
+                    x1="12"
+                    y1="16"
+                    x2="12.01"
+                    y2="16"
+                  />
                 </svg>
                 <span>{{ pasteResult.error }}</span>
               </div>
@@ -99,7 +197,10 @@ npx -y @modelcontextprotocol/server-filesystem /path'
           </div>
 
           <!-- Presets Tab -->
-          <div v-if="activeTab === 'presets'" class="import-tab-content">
+          <div
+            v-if="activeTab === 'presets'"
+            class="import-tab-content"
+          >
             <p class="import-description">
               Choose from popular MCP servers to quickly get started.
             </p>
@@ -131,14 +232,26 @@ npx -y @modelcontextprotocol/server-filesystem /path'
                   <span class="preset-name">{{ preset.name }}</span>
                   <span class="preset-desc">{{ preset.description }}</span>
                 </div>
-                <svg v-if="selectedPreset?.id === preset.id" class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="20 6 9 17 4 12"/>
+                <svg
+                  v-if="selectedPreset?.id === preset.id"
+                  class="check-icon"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
             </div>
 
             <!-- Parameter configuration -->
-            <div v-if="selectedPreset && selectedPreset.parameters && selectedPreset.parameters.length > 0" class="preset-params">
+            <div
+              v-if="selectedPreset && selectedPreset.parameters && selectedPreset.parameters.length > 0"
+              class="preset-params"
+            >
               <h4>Configuration</h4>
               <div
                 v-for="param in selectedPreset.parameters"
@@ -147,17 +260,26 @@ npx -y @modelcontextprotocol/server-filesystem /path'
               >
                 <label class="form-label">
                   {{ param.name }}
-                  <span v-if="param.required" class="required">*</span>
+                  <span
+                    v-if="param.required"
+                    class="required"
+                  >*</span>
                 </label>
-                <div v-if="param.type === 'path'" class="path-input-group">
+                <div
+                  v-if="param.type === 'path'"
+                  class="path-input-group"
+                >
                   <input
                     v-model="presetParams[param.key]"
                     type="text"
                     class="form-input"
                     :placeholder="param.placeholder"
                     @input="updatePresetServer"
-                  />
-                  <button class="browse-btn" @click="browseForPath(param.key)">
+                  >
+                  <button
+                    class="browse-btn"
+                    @click="browseForPath(param.key)"
+                  >
                     Browse
                   </button>
                 </div>
@@ -168,13 +290,16 @@ npx -y @modelcontextprotocol/server-filesystem /path'
                   class="form-input"
                   :placeholder="param.placeholder"
                   @input="updatePresetServer"
-                />
+                >
               </div>
             </div>
           </div>
 
           <!-- Preview of servers to import -->
-          <div v-if="serversToImport.length > 0" class="import-preview">
+          <div
+            v-if="serversToImport.length > 0"
+            class="import-preview"
+          >
             <h4>Servers to Import ({{ serversToImport.length }})</h4>
             <div class="preview-list">
               <div
@@ -183,7 +308,11 @@ npx -y @modelcontextprotocol/server-filesystem /path'
                 :class="['preview-item', { selected: selectedServers.has(index) }]"
                 @click="toggleServerSelection(index)"
               >
-                <input type="checkbox" :checked="selectedServers.has(index)" @click.stop />
+                <input
+                  type="checkbox"
+                  :checked="selectedServers.has(index)"
+                  @click.stop
+                >
                 <div class="preview-info">
                   <span class="preview-name">{{ server.name }}</span>
                   <span class="preview-command">{{ getServerSummary(server) }}</span>
@@ -192,17 +321,25 @@ npx -y @modelcontextprotocol/server-filesystem /path'
             </div>
           </div>
 
-          <div v-if="error" class="error-message">
+          <div
+            v-if="error"
+            class="error-message"
+          >
             {{ error }}
           </div>
         </div>
 
         <div class="dialog-footer">
-          <button class="btn secondary" @click="$emit('close')">Cancel</button>
+          <button
+            class="btn secondary"
+            @click="$emit('close')"
+          >
+            Cancel
+          </button>
           <button
             class="btn primary"
-            @click="handleImport"
             :disabled="selectedServers.size === 0 || isImporting"
+            @click="handleImport"
           >
             {{ isImporting ? 'Importing...' : `Import ${selectedServers.size} Server(s)` }}
           </button>

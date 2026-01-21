@@ -8,136 +8,162 @@
   <!-- Main App Mode -->
   <ErrorBoundary v-else>
     <div class="app-shell">
-    <!-- Main Content - No Header -->
-    <div class="app-content">
-      <!-- Media Panel (left side) -->
-      <MediaPanel
-        :visible="showMediaPanel"
-        @close="closeMediaPanel"
-        @create-agent="openAgentDialog()"
-        @edit-agent="openAgentDialog"
-        @open-memory-file="openMemoryFile"
+      <!-- Main Content - No Header -->
+      <div class="app-content">
+        <!-- Media Panel (left side) -->
+        <MediaPanel
+          :visible="showMediaPanel"
+          @close="closeMediaPanel"
+          @create-agent="openAgentDialog()"
+          @edit-agent="openAgentDialog"
+          @open-memory-file="openMemoryFile"
+        />
+
+        <!-- Floating sidebar overlay backdrop -->
+        <!--      <div-->
+        <!--        v-if="sidebarFloating"-->
+        <!--        :class="['sidebar-floating-backdrop', { closing: sidebarFloatingClosing }]"-->
+        <!--        @click="closeFloatingSidebar"-->
+        <!--      ></div>-->
+
+        <Sidebar
+          :collapsed="sidebarCollapsed && !sidebarFloating"
+          :floating="sidebarFloating"
+          :floating-closing="sidebarFloatingClosing"
+          :no-transition="sidebarNoTransition"
+          :width="sidebarWidth"
+          :media-panel-open="showMediaPanel"
+          @open-settings="showSettings = true"
+          @toggle-collapse="handleSidebarToggle"
+          @open-search="openSearch"
+          @create-new-chat="createNewChat"
+          @toggle-media-panel="toggleMediaPanel"
+          @open-workspace-dialog="openWorkspaceDialog()"
+          @edit-workspace="openWorkspaceDialog"
+          @open-agent-dialog="openAgentDialog()"
+          @edit-agent="openAgentDialog"
+          @resize="handleSidebarResize"
+          @mouseleave="handleSidebarMouseLeave"
+        />
+        <ChatContainer
+          ref="chatContainerRef"
+          :show-settings="showSettings"
+          :show-agent-settings="showAgentSettings"
+          :sidebar-collapsed="sidebarCollapsed"
+          :sidebar-floating="sidebarFloating"
+          :show-hover-trigger="sidebarCollapsed && !sidebarFloating && !showMediaPanel"
+          :media-panel-open="showMediaPanel"
+          :show-agent-create="showAgentCreate"
+          :editing-agent="editingAgent"
+          :selected-memory-file-path="selectedMemoryFilePath"
+          :show-diff-overlay="showDiffOverlay"
+          :diff-overlay-data="diffOverlayData"
+          @close-settings="showSettings = false"
+          @open-settings="showSettings = true"
+          @close-agent-settings="showAgentSettings = false"
+          @open-agent-settings="showAgentSettings = true"
+          @toggle-sidebar="handleSidebarToggle"
+          @show-floating-sidebar="handleTriggerEnter"
+          @hide-floating-sidebar="handleTriggerLeave"
+          @close-agent-create="closeAgentCreate"
+          @agent-created="handleAgentCreated"
+          @agent-saved="handleAgentSaved"
+          @close-memory-file="closeMemoryFile"
+          @close-diff-overlay="closeDiffOverlay"
+        />
+
+        <!-- Right Panel (Sidebar + Preview) -->
+        <RightPanel
+          :session-id="sessionsStore.currentSessionId"
+          :working-directory="sessionsStore.currentSession?.workingDirectory"
+          @open-diff="openDiffOverlay"
+          @open-commit-dialog="openCommitDialog"
+        />
+
+        <!-- Commit Dialog -->
+        <CommitDialog
+          :visible="showCommitDialog"
+          :staged-count="stagedFilesCount"
+          :working-directory="sessionsStore.currentSession?.workingDirectory || ''"
+          :session-id="sessionsStore.currentSessionId || ''"
+          @close="closeCommitDialog"
+          @committed="handleCommitted"
+        />
+      </div>
+
+      <!-- Workspace Dialog -->
+      <WorkspaceDialog
+        :visible="showWorkspaceDialog"
+        :workspace="editingWorkspace"
+        @close="closeWorkspaceDialog"
       />
 
-      <!-- Floating sidebar overlay backdrop -->
-<!--      <div-->
-<!--        v-if="sidebarFloating"-->
-<!--        :class="['sidebar-floating-backdrop', { closing: sidebarFloatingClosing }]"-->
-<!--        @click="closeFloatingSidebar"-->
-<!--      ></div>-->
-
-      <Sidebar
-        :collapsed="sidebarCollapsed && !sidebarFloating"
-        :floating="sidebarFloating"
-        :floating-closing="sidebarFloatingClosing"
-        :no-transition="sidebarNoTransition"
-        :width="sidebarWidth"
-        :media-panel-open="showMediaPanel"
-        @open-settings="showSettings = true"
-        @toggle-collapse="handleSidebarToggle"
-        @open-search="openSearch"
-        @create-new-chat="createNewChat"
-        @toggle-media-panel="toggleMediaPanel"
-        @open-workspace-dialog="openWorkspaceDialog()"
-        @edit-workspace="openWorkspaceDialog"
-        @open-agent-dialog="openAgentDialog()"
-        @edit-agent="openAgentDialog"
-        @resize="handleSidebarResize"
-        @mouseleave="handleSidebarMouseLeave"
-      />
-      <ChatContainer
-        ref="chatContainerRef"
-        :show-settings="showSettings"
-        :show-agent-settings="showAgentSettings"
-        :sidebar-collapsed="sidebarCollapsed"
-        :sidebar-floating="sidebarFloating"
-        :show-hover-trigger="sidebarCollapsed && !sidebarFloating && !showMediaPanel"
-        :media-panel-open="showMediaPanel"
-        :show-agent-create="showAgentCreate"
-        :editing-agent="editingAgent"
-        :selected-memory-file-path="selectedMemoryFilePath"
-        :show-diff-overlay="showDiffOverlay"
-        :diff-overlay-data="diffOverlayData"
-        @close-settings="showSettings = false"
-        @open-settings="showSettings = true"
-        @close-agent-settings="showAgentSettings = false"
-        @open-agent-settings="showAgentSettings = true"
-        @toggle-sidebar="handleSidebarToggle"
-        @show-floating-sidebar="handleTriggerEnter"
-        @hide-floating-sidebar="handleTriggerLeave"
-        @close-agent-create="closeAgentCreate"
-        @agent-created="handleAgentCreated"
-        @agent-saved="handleAgentSaved"
-        @close-memory-file="closeMemoryFile"
-        @close-diff-overlay="closeDiffOverlay"
-      />
-
-      <!-- Right Panel (Sidebar + Preview) -->
-      <RightPanel
-        :session-id="sessionsStore.currentSessionId"
-        :working-directory="sessionsStore.currentSession?.workingDirectory"
-        @open-diff="openDiffOverlay"
-        @open-commit-dialog="openCommitDialog"
-      />
-
-      <!-- Commit Dialog -->
-      <CommitDialog
-        :visible="showCommitDialog"
-        :staged-count="stagedFilesCount"
-        :working-directory="sessionsStore.currentSession?.workingDirectory || ''"
-        :session-id="sessionsStore.currentSessionId || ''"
-        @close="closeCommitDialog"
-        @committed="handleCommitted"
-      />
-    </div>
-
-    <!-- Workspace Dialog -->
-    <WorkspaceDialog
-      :visible="showWorkspaceDialog"
-      :workspace="editingWorkspace"
-      @close="closeWorkspaceDialog"
-    />
-
-    <!-- Search Overlay (teleported to body) -->
-    <Teleport to="body">
-      <div v-if="showSearchOverlay" class="search-overlay" @click.self="showSearchOverlay = false">
-        <div class="search-modal">
-          <div class="search-input-wrapper">
-            <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.35-4.35"/>
-            </svg>
-            <input
-              ref="searchInput"
-              v-model="searchQuery"
-              type="text"
-              class="search-input"
-              placeholder="Search chats..."
-              @keydown.escape="showSearchOverlay = false"
-              @keydown.enter="selectFirstResult"
-            />
-          </div>
-          <div class="search-results">
-            <div
-              v-for="session in filteredSessions"
-              :key="session.id"
-              class="search-result-item"
-              :class="{ active: session.id === sessionsStore.currentSession?.id }"
-              @click="selectSession(session.id)"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      <!-- Search Overlay (teleported to body) -->
+      <Teleport to="body">
+        <div
+          v-if="showSearchOverlay"
+          class="search-overlay"
+          @click.self="showSearchOverlay = false"
+        >
+          <div class="search-modal">
+            <div class="search-input-wrapper">
+              <svg
+                class="search-icon"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle
+                  cx="11"
+                  cy="11"
+                  r="8"
+                />
+                <path d="m21 21-4.35-4.35" />
               </svg>
-              <span class="result-name">{{ session.name || 'New chat' }}</span>
+              <input
+                ref="searchInput"
+                v-model="searchQuery"
+                type="text"
+                class="search-input"
+                placeholder="Search chats..."
+                @keydown.escape="showSearchOverlay = false"
+                @keydown.enter="selectFirstResult"
+              >
             </div>
-            <div v-if="filteredSessions.length === 0" class="no-results">
-              No chats found
+            <div class="search-results">
+              <div
+                v-for="session in filteredSessions"
+                :key="session.id"
+                class="search-result-item"
+                :class="{ active: session.id === sessionsStore.currentSession?.id }"
+                @click="selectSession(session.id)"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span class="result-name">{{ session.name || 'New chat' }}</span>
+              </div>
+              <div
+                v-if="filteredSessions.length === 0"
+                class="no-results"
+              >
+                No chats found
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </Teleport>
-  </div>
+      </Teleport>
+    </div>
   </ErrorBoundary>
 </template>
 

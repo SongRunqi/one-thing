@@ -4,13 +4,15 @@
       v-if="visible"
       class="agent-dropdown-backdrop"
       @click="$emit('close')"
-    ></div>
+    />
     <div
       v-if="visible"
       class="agent-dropdown"
       :style="dropdownStyle"
     >
-      <div class="agent-dropdown-header">Select Agent</div>
+      <div class="agent-dropdown-header">
+        Select Agent
+      </div>
       <div class="agent-dropdown-list">
         <!-- No Agent option -->
         <button
@@ -19,7 +21,10 @@
           @click="$emit('select', null)"
         >
           <div class="agent-dropdown-icon">
-            <MessageSquare :size="16" :stroke-width="2" />
+            <MessageSquare
+              :size="16"
+              :stroke-width="2"
+            />
           </div>
           <span class="agent-dropdown-name">No Agent</span>
         </button>
@@ -31,7 +36,10 @@
           :class="{ active: currentAgentId === agent.id }"
           @click="$emit('select', agent.id)"
         >
-          <span v-if="agent.avatar?.type === 'emoji'" class="agent-dropdown-emoji">
+          <span
+            v-if="agent.avatar?.type === 'emoji'"
+            class="agent-dropdown-emoji"
+          >
             {{ agent.avatar.value }}
           </span>
           <img
@@ -39,9 +47,15 @@
             :src="'file://' + agent.avatar.value"
             class="agent-dropdown-img"
             alt=""
-          />
-          <div v-else class="agent-dropdown-icon">
-            <Bot :size="16" :stroke-width="2" />
+          >
+          <div
+            v-else
+            class="agent-dropdown-icon"
+          >
+            <Bot
+              :size="16"
+              :stroke-width="2"
+            />
           </div>
           <span class="agent-dropdown-name">{{ agent.name }}</span>
         </button>

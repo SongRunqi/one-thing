@@ -2,8 +2,12 @@
   <div class="tab-content">
     <!-- Temperature -->
     <section class="settings-section">
-      <h3 class="section-title">Temperature</h3>
-      <p class="section-desc">Controls the randomness of model output. Lower values make output more deterministic, higher values make it more random and creative.</p>
+      <h3 class="section-title">
+        Temperature
+      </h3>
+      <p class="section-desc">
+        Controls the randomness of model output. Lower values make output more deterministic, higher values make it more random and creative.
+      </p>
 
       <div class="form-group">
         <label class="form-label">
@@ -12,13 +16,13 @@
         </label>
         <input
           :value="chatSettings.temperature"
-          @input="updateTemperature(($event.target as HTMLInputElement).valueAsNumber)"
           type="range"
           min="0"
           max="2"
           step="0.05"
           class="form-slider"
-        />
+          @input="updateTemperature(($event.target as HTMLInputElement).valueAsNumber)"
+        >
         <div class="slider-labels">
           <span>Precise (0)</span>
           <span>Balanced (1)</span>
@@ -41,8 +45,12 @@
 
     <!-- Max Tokens -->
     <section class="settings-section">
-      <h3 class="section-title">Max Output Tokens</h3>
-      <p class="section-desc">Maximum number of tokens the model can generate. Larger values allow longer responses, but may increase response time and cost.</p>
+      <h3 class="section-title">
+        Max Output Tokens
+      </h3>
+      <p class="section-desc">
+        Maximum number of tokens the model can generate. Larger values allow longer responses, but may increase response time and cost.
+      </p>
 
       <div class="form-group">
         <label class="form-label">
@@ -51,13 +59,13 @@
         </label>
         <input
           :value="chatSettings.maxTokens"
-          @input="updateMaxTokens(($event.target as HTMLInputElement).valueAsNumber)"
           type="range"
           min="256"
           max="32768"
           step="256"
           class="form-slider"
-        />
+          @input="updateMaxTokens(($event.target as HTMLInputElement).valueAsNumber)"
+        >
         <div class="slider-labels">
           <span>256</span>
           <span>16K</span>
@@ -83,18 +91,22 @@
         <input
           type="number"
           :value="chatSettings.maxTokens"
-          @input="updateMaxTokens(Number(($event.target as HTMLInputElement).value))"
           min="256"
           max="128000"
           class="number-input"
-        />
+          @input="updateMaxTokens(Number(($event.target as HTMLInputElement).value))"
+        >
       </div>
     </section>
 
     <!-- Branch Settings -->
     <section class="settings-section">
-      <h3 class="section-title">Branch Settings</h3>
-      <p class="section-desc">Controls branch session creation behavior.</p>
+      <h3 class="section-title">
+        Branch Settings
+      </h3>
+      <p class="section-desc">
+        Controls branch session creation behavior.
+      </p>
 
       <div class="toggle-row">
         <div class="toggle-info">
@@ -105,15 +117,19 @@
           :class="['toggle-switch', { active: chatSettings.branchOpenInSplitScreen }]"
           @click="updateBranchOpenInSplitScreen(!chatSettings.branchOpenInSplitScreen)"
         >
-          <span class="toggle-knob"></span>
+          <span class="toggle-knob" />
         </button>
       </div>
     </section>
 
     <!-- Chat Display -->
     <section class="settings-section">
-      <h3 class="section-title">Chat Display</h3>
-      <p class="section-desc">Customize the appearance of chat messages.</p>
+      <h3 class="section-title">
+        Chat Display
+      </h3>
+      <p class="section-desc">
+        Customize the appearance of chat messages.
+      </p>
 
       <div class="form-group">
         <label class="form-label">
@@ -122,13 +138,13 @@
         </label>
         <input
           :value="chatSettings.chatFontSize"
-          @input="updateChatFontSize(($event.target as HTMLInputElement).valueAsNumber)"
           type="range"
           min="12"
           max="20"
           step="1"
           class="form-slider"
-        />
+          @input="updateChatFontSize(($event.target as HTMLInputElement).valueAsNumber)"
+        >
         <div class="slider-labels">
           <span>12px</span>
           <span>20px</span>
@@ -150,8 +166,12 @@
 
     <!-- Context Compacting -->
     <section class="settings-section">
-      <h3 class="section-title">Context Compacting</h3>
-      <p class="section-desc">Automatically compress conversation history when context usage reaches the threshold. This helps maintain performance during long conversations.</p>
+      <h3 class="section-title">
+        Context Compacting
+      </h3>
+      <p class="section-desc">
+        Automatically compress conversation history when context usage reaches the threshold. This helps maintain performance during long conversations.
+      </p>
 
       <div class="form-group">
         <label class="form-label">
@@ -160,13 +180,13 @@
         </label>
         <input
           :value="chatSettings.contextCompactThreshold ?? 85"
-          @input="updateContextCompactThreshold(($event.target as HTMLInputElement).valueAsNumber)"
           type="range"
           min="50"
           max="100"
           step="5"
           class="form-slider"
-        />
+          @input="updateContextCompactThreshold(($event.target as HTMLInputElement).valueAsNumber)"
+        >
         <div class="slider-labels">
           <span>50%</span>
           <span>75%</span>
@@ -189,31 +209,49 @@
 
     <!-- Advanced Settings (collapsed by default) -->
     <section class="settings-section">
-      <button class="advanced-toggle" @click="showAdvanced = !showAdvanced">
-        <svg :class="['toggle-icon', { rotated: showAdvanced }]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 12 15 18 9"/>
+      <button
+        class="advanced-toggle"
+        @click="showAdvanced = !showAdvanced"
+      >
+        <svg
+          :class="['toggle-icon', { rotated: showAdvanced }]"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <polyline points="6 9 12 15 18 9" />
         </svg>
-        <h3 class="section-title inline">Advanced Settings</h3>
+        <h3 class="section-title inline">
+          Advanced Settings
+        </h3>
       </button>
 
       <Transition name="slide">
-        <div v-if="showAdvanced" class="advanced-content">
+        <div
+          v-if="showAdvanced"
+          class="advanced-content"
+        >
           <!-- Top P -->
           <div class="form-group">
             <label class="form-label">
               Top P (Nucleus Sampling)
               <span class="label-value">{{ (chatSettings.topP ?? 1).toFixed(2) }}</span>
             </label>
-            <p class="field-desc">Controls sampling diversity. Lower values restrict selection to highest probability tokens.</p>
+            <p class="field-desc">
+              Controls sampling diversity. Lower values restrict selection to highest probability tokens.
+            </p>
             <input
               :value="chatSettings.topP ?? 1"
-              @input="updateTopP(($event.target as HTMLInputElement).valueAsNumber)"
               type="range"
               min="0"
               max="1"
               step="0.05"
               class="form-slider"
-            />
+              @input="updateTopP(($event.target as HTMLInputElement).valueAsNumber)"
+            >
             <div class="slider-labels">
               <span>0</span>
               <span>1</span>
@@ -226,16 +264,18 @@
               Presence Penalty
               <span class="label-value">{{ (chatSettings.presencePenalty ?? 0).toFixed(2) }}</span>
             </label>
-            <p class="field-desc">Increases likelihood of discussing new topics. Positive values encourage the model to talk about new content.</p>
+            <p class="field-desc">
+              Increases likelihood of discussing new topics. Positive values encourage the model to talk about new content.
+            </p>
             <input
               :value="chatSettings.presencePenalty ?? 0"
-              @input="updatePresencePenalty(($event.target as HTMLInputElement).valueAsNumber)"
               type="range"
               min="-2"
               max="2"
               step="0.1"
               class="form-slider"
-            />
+              @input="updatePresencePenalty(($event.target as HTMLInputElement).valueAsNumber)"
+            >
             <div class="slider-labels">
               <span>-2</span>
               <span>0</span>
@@ -249,16 +289,18 @@
               Frequency Penalty
               <span class="label-value">{{ (chatSettings.frequencyPenalty ?? 0).toFixed(2) }}</span>
             </label>
-            <p class="field-desc">Reduces likelihood of repeating the same words. Positive values make the model less likely to repeat what it has already said.</p>
+            <p class="field-desc">
+              Reduces likelihood of repeating the same words. Positive values make the model less likely to repeat what it has already said.
+            </p>
             <input
               :value="chatSettings.frequencyPenalty ?? 0"
-              @input="updateFrequencyPenalty(($event.target as HTMLInputElement).valueAsNumber)"
               type="range"
               min="-2"
               max="2"
               step="0.1"
               class="form-slider"
-            />
+              @input="updateFrequencyPenalty(($event.target as HTMLInputElement).valueAsNumber)"
+            >
             <div class="slider-labels">
               <span>-2</span>
               <span>0</span>
@@ -271,10 +313,20 @@
 
     <!-- Reset to defaults -->
     <section class="settings-section">
-      <button class="reset-btn" @click="resetToDefaults">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-          <path d="M3 3v5h5"/>
+      <button
+        class="reset-btn"
+        @click="resetToDefaults"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
         </svg>
         Reset to Defaults
       </button>

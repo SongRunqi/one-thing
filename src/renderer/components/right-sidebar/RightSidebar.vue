@@ -1,5 +1,8 @@
 <template>
-  <div v-if="visible" class="right-sidebar">
+  <div
+    v-if="visible"
+    class="right-sidebar"
+  >
     <!-- Content Area -->
     <div class="sidebar-content">
       <!-- Files Tab -->
@@ -21,7 +24,10 @@
       />
 
       <!-- Documents Tab -->
-      <DocumentsTab v-else-if="store.activeTab === 'documents'" :session-id="sessionId" />
+      <DocumentsTab
+        v-else-if="store.activeTab === 'documents'"
+        :session-id="sessionId"
+      />
     </div>
   </div>
 </template>

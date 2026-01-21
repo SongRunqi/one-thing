@@ -1,13 +1,22 @@
 <template>
-  <div class="tools-dropdown" ref="dropdownRef">
+  <div
+    ref="dropdownRef"
+    class="tools-dropdown"
+  >
     <button
       class="toolbar-btn tools-btn"
       :class="{ active: toolsEnabled }"
       :title="toolsEnabled ? 'Tools enabled' : 'Tools disabled'"
       @click="togglePanel"
     >
-      <Toolbox :size="18" :stroke-width="2" />
-      <span v-if="toolsEnabled" class="tools-status-dot"></span>
+      <Toolbox
+        :size="18"
+        :stroke-width="2"
+      />
+      <span
+        v-if="toolsEnabled"
+        class="tools-status-dot"
+      />
     </button>
 
     <Teleport to="body">
@@ -20,39 +29,67 @@
         <!-- Master toggle -->
         <div class="tools-menu-header">
           <div class="tools-menu-title">
-            <Toolbox :size="16" :stroke-width="2" />
+            <Toolbox
+              :size="16"
+              :stroke-width="2"
+            />
             <span>Tools</span>
           </div>
           <label class="tools-toggle">
-            <input type="checkbox" :checked="toolsEnabled" @change="toggleTools" />
-            <span class="tools-toggle-slider"></span>
+            <input
+              type="checkbox"
+              :checked="toolsEnabled"
+              @change="toggleTools"
+            >
+            <span class="tools-toggle-slider" />
           </label>
         </div>
 
         <!-- Tool list (grouped) -->
         <div class="tools-menu-list">
-          <div v-for="group in groupedTools" :key="group.id" class="tool-group">
+          <div
+            v-for="group in groupedTools"
+            :key="group.id"
+            class="tool-group"
+          >
             <div
               class="tool-group-header"
               :class="{ collapsed: group.collapsed, disabled: !toolsEnabled }"
             >
-              <div class="group-header-left" @click="toggleGroupCollapse(group.id)">
-                <ChevronDown class="group-chevron" :size="12" :stroke-width="2" />
+              <div
+                class="group-header-left"
+                @click="toggleGroupCollapse(group.id)"
+              >
+                <ChevronDown
+                  class="group-chevron"
+                  :size="12"
+                  :stroke-width="2"
+                />
                 <span class="group-name">{{ group.name }}</span>
-                <span v-if="group.source === 'mcp'" class="group-badge mcp">MCP</span>
+                <span
+                  v-if="group.source === 'mcp'"
+                  class="group-badge mcp"
+                >MCP</span>
                 <span class="group-count">{{ group.tools.length }}</span>
               </div>
-              <label v-if="group.source === 'mcp'" class="tool-item-toggle" @click.stop>
+              <label
+                v-if="group.source === 'mcp'"
+                class="tool-item-toggle"
+                @click.stop
+              >
                 <input
                   type="checkbox"
                   :checked="isGroupEnabled(group)"
                   :disabled="!toolsEnabled"
                   @change="toggleGroupEnabled(group)"
-                />
-                <span class="tool-item-toggle-slider"></span>
+                >
+                <span class="tool-item-toggle-slider" />
               </label>
             </div>
-            <div class="tool-group-items" :class="{ collapsed: group.collapsed }">
+            <div
+              class="tool-group-items"
+              :class="{ collapsed: group.collapsed }"
+            >
               <div
                 v-for="tool in group.tools"
                 :key="tool.id"
@@ -60,26 +97,38 @@
                 :class="{ disabled: !toolsEnabled || (group.source === 'mcp' && !isGroupEnabled(group)) }"
               >
                 <span class="tool-name">{{ tool.name || tool.id }}</span>
-                <label v-if="group.source === 'builtin'" class="tool-item-toggle">
+                <label
+                  v-if="group.source === 'builtin'"
+                  class="tool-item-toggle"
+                >
                   <input
                     type="checkbox"
                     :checked="isToolEnabled(tool.id)"
                     :disabled="!toolsEnabled"
                     @change="toggleToolEnabled(tool.id)"
-                  />
-                  <span class="tool-item-toggle-slider"></span>
+                  >
+                  <span class="tool-item-toggle-slider" />
                 </label>
               </div>
             </div>
           </div>
-          <div v-if="availableTools.length === 0" class="tools-empty">
+          <div
+            v-if="availableTools.length === 0"
+            class="tools-empty"
+          >
             No tools available
           </div>
         </div>
 
         <!-- Settings link -->
-        <button class="tools-menu-settings" @click="openSettings">
-          <Settings :size="14" :stroke-width="2" />
+        <button
+          class="tools-menu-settings"
+          @click="openSettings"
+        >
+          <Settings
+            :size="14"
+            :stroke-width="2"
+          />
           <span>Advanced Settings</span>
         </button>
       </div>

@@ -1,7 +1,9 @@
 <template>
   <div class="settings-section">
     <div class="settings-group">
-      <h3 class="group-title">Execution Limits</h3>
+      <h3 class="group-title">
+        Execution Limits
+      </h3>
 
       <div class="setting-row">
         <div class="setting-info">
@@ -10,12 +12,12 @@
         </div>
         <input
           :value="maxToolCalls"
-          @input="$emit('update:maxToolCalls', parseInt(($event.target as HTMLInputElement).value) || 20)"
           type="number"
           min="1"
           max="100"
           class="setting-input"
-        />
+          @input="$emit('update:maxToolCalls', parseInt(($event.target as HTMLInputElement).value) || 20)"
+        >
       </div>
 
       <div class="setting-row">
@@ -25,22 +27,27 @@
         </div>
         <input
           :value="timeoutMs"
-          @input="$emit('update:timeoutMs', parseInt(($event.target as HTMLInputElement).value) || 120000)"
           type="number"
           min="1000"
           max="600000"
           step="1000"
           class="setting-input"
-        />
+          @input="$emit('update:timeoutMs', parseInt(($event.target as HTMLInputElement).value) || 120000)"
+        >
       </div>
     </div>
 
     <div class="settings-group">
-      <h3 class="group-title">Built-in Tools</h3>
+      <h3 class="group-title">
+        Built-in Tools
+      </h3>
 
       <div class="builtin-toggle">
         <div class="toggle-info">
-          <Blocks :size="18" :stroke-width="2" />
+          <Blocks
+            :size="18"
+            :stroke-width="2"
+          />
           <div class="toggle-text">
             <span class="toggle-title">Allow Built-in Tools</span>
             <span class="toggle-desc">Enable access to standard tools like file operations and web search</span>
@@ -54,8 +61,13 @@
       </div>
 
       <!-- Built-in Tools Selector -->
-      <div v-if="allowBuiltinTools" class="tools-selector">
-        <p class="selector-hint">Select which built-in tools this agent can use:</p>
+      <div
+        v-if="allowBuiltinTools"
+        class="tools-selector"
+      >
+        <p class="selector-hint">
+          Select which built-in tools this agent can use:
+        </p>
         <div class="tools-toggle-list">
           <div
             v-for="tool in availableBuiltinTools"
@@ -68,7 +80,10 @@
               <span class="tool-toggle-name">{{ tool.name }}</span>
               <span class="tool-toggle-desc">{{ tool.description }}</span>
             </div>
-            <div class="mini-toggle" :class="{ active: allowedBuiltinTools.includes(tool.id) }" />
+            <div
+              class="mini-toggle"
+              :class="{ active: allowedBuiltinTools.includes(tool.id) }"
+            />
           </div>
         </div>
       </div>

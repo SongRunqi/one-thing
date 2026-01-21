@@ -1,15 +1,36 @@
 <template>
   <div :class="['tool-inline', statusClass, { expanded: isExpanded, 'needs-confirm': toolCall.requiresConfirmation }]">
     <!-- Main Row (always visible) -->
-    <div class="tool-row" @click="toggleExpand">
+    <div
+      class="tool-row"
+      @click="toggleExpand"
+    >
       <!-- Status indicator -->
       <span class="status-indicator">
-        <span v-if="toolCall.status === 'input-streaming'" class="flowing-text">Streaming</span>
-        <span v-else-if="toolCall.status === 'executing'" class="flowing-text">Running</span>
-        <span v-else-if="toolCall.status === 'completed'" class="status-done">✓</span>
-        <span v-else-if="toolCall.status === 'failed'" class="status-error">✗</span>
-        <span v-else-if="toolCall.requiresConfirmation" class="flowing-text">Confirm</span>
-        <span v-else class="status-pending">○</span>
+        <span
+          v-if="toolCall.status === 'input-streaming'"
+          class="flowing-text"
+        >Streaming</span>
+        <span
+          v-else-if="toolCall.status === 'executing'"
+          class="flowing-text"
+        >Running</span>
+        <span
+          v-else-if="toolCall.status === 'completed'"
+          class="status-done"
+        >✓</span>
+        <span
+          v-else-if="toolCall.status === 'failed'"
+          class="status-error"
+        >✗</span>
+        <span
+          v-else-if="toolCall.requiresConfirmation"
+          class="flowing-text"
+        >Confirm</span>
+        <span
+          v-else
+          class="status-pending"
+        >○</span>
       </span>
 
       <!-- Tool name -->
@@ -19,59 +40,103 @@
       <span class="tool-preview">{{ previewText }}</span>
 
       <!-- Spacer -->
-      <div class="spacer"></div>
+      <div class="spacer" />
 
       <!-- Status text -->
-      <span v-if="!toolCall.requiresConfirmation" class="status-text">
+      <span
+        v-if="!toolCall.requiresConfirmation"
+        class="status-text"
+      >
         {{ statusText }}
-        <span v-if="executionTime" class="exec-time">{{ executionTime }}</span>
+        <span
+          v-if="executionTime"
+          class="exec-time"
+        >{{ executionTime }}</span>
       </span>
 
       <!-- Confirmation buttons (stop propagation to prevent expand) -->
-      <div v-if="toolCall.requiresConfirmation" class="confirm-buttons" @click.stop>
+      <div
+        v-if="toolCall.requiresConfirmation"
+        class="confirm-buttons"
+        @click.stop
+      >
         <AllowSplitButton @confirm="(response) => $emit('confirm', toolCall, response)" />
-        <button class="btn-inline btn-reject" @click="$emit('reject', toolCall)" title="Reject (D/Esc)">
+        <button
+          class="btn-inline btn-reject"
+          title="Reject (D/Esc)"
+          @click="$emit('reject', toolCall)"
+        >
           Reject <kbd>D</kbd>
         </button>
       </div>
 
       <!-- Expand indicator -->
-      <svg v-if="hasExpandableContent" :class="['expand-icon', { rotated: isExpanded }]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="6 9 12 15 18 9"/>
+      <svg
+        v-if="hasExpandableContent"
+        :class="['expand-icon', { rotated: isExpanded }]"
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <polyline points="6 9 12 15 18 9" />
       </svg>
     </div>
 
     <!-- Streaming content for write/edit tools -->
     <Transition name="slide">
-      <div v-if="streamingContentInfo && (streamingContentInfo.filePath || streamingContentInfo.content)" class="streaming-content">
+      <div
+        v-if="streamingContentInfo && (streamingContentInfo.filePath || streamingContentInfo.content)"
+        class="streaming-content"
+      >
         <div class="streaming-header">
           <span class="streaming-path">{{ streamingContentInfo.filePath || 'Parsing...' }}</span>
           <span class="streaming-indicator flowing-text">Writing...</span>
         </div>
-        <pre v-if="streamingContentInfo.content" class="streaming-code"><code>{{ streamingContentInfo.content }}</code></pre>
+        <pre
+          v-if="streamingContentInfo.content"
+          class="streaming-code"
+        ><code>{{ streamingContentInfo.content }}</code></pre>
       </div>
     </Transition>
 
     <!-- Expanded content -->
     <Transition name="slide">
-      <div v-if="isExpanded && hasExpandableContent" class="tool-details">
+      <div
+        v-if="isExpanded && hasExpandableContent"
+        class="tool-details"
+      >
         <!-- Live output for executing -->
-        <div v-if="toolCall.status === 'executing' && toolCall.result" class="detail-section live">
+        <div
+          v-if="toolCall.status === 'executing' && toolCall.result"
+          class="detail-section live"
+        >
           <pre>{{ truncateOutput(String(toolCall.result)) }}</pre>
         </div>
 
         <!-- Arguments (if not just command) -->
-        <div v-if="hasNonCommandArgs" class="detail-section">
-          <div class="detail-label">Arguments</div>
+        <div
+          v-if="hasNonCommandArgs"
+          class="detail-section"
+        >
+          <div class="detail-label">
+            Arguments
+          </div>
           <pre>{{ formatNonCommandArgs() }}</pre>
         </div>
 
         <!-- Result -->
-        <div v-if="toolCall.result && toolCall.status !== 'executing'" class="detail-section">
-          <div class="detail-label">Result</div>
+        <div
+          v-if="toolCall.result && toolCall.status !== 'executing'"
+          class="detail-section"
+        >
+          <div class="detail-label">
+            Result
+          </div>
           <pre>{{ formatResult(toolCall.result) }}</pre>
         </div>
-
       </div>
     </Transition>
   </div>

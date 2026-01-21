@@ -5,7 +5,7 @@
       <SelectionToolbar
         :visible="showSelectionToolbar"
         :position="selectionToolbarPosition"
-        :selectedText="selectedText"
+        :selected-text="selectedText"
         @copy="handleSelectionCopy"
         @quote="handleSelectionQuote"
         @branch="handleSelectionBranch"
@@ -17,7 +17,7 @@
     <MessageError
       v-if="message.role === 'error'"
       :content="message.content"
-      :errorDetails="message.errorDetails"
+      :error-details="message.errorDetails"
       :timestamp="message.timestamp"
     />
 
@@ -26,8 +26,8 @@
       v-else-if="message.role === 'system'"
       :content="message.content"
       :timestamp="message.timestamp"
-      :sessionId="message.sessionId"
-      :messageId="message.id"
+      :session-id="message.sessionId"
+      :message-id="message.id"
     />
 
     <!-- Normal user/assistant message -->
@@ -44,43 +44,68 @@
         <!-- Thinking/Waiting status -->
         <MessageThinking
           v-if="message.role === 'assistant'"
-          :isStreaming="message.isStreaming || false"
-          :hasContent="!!message.content || !!(message.toolCalls?.length) || !!(message.steps?.length)"
+          :is-streaming="message.isStreaming || false"
+          :has-content="!!message.content || !!(message.toolCalls?.length) || !!(message.steps?.length)"
           :reasoning="message.reasoning"
-          :thinkingStartTime="message.thinkingStartTime"
-          :thinkingTime="message.thinkingTime"
-          :loadingMemory="isLoadingMemory"
-          @updateThinkingTime="handleUpdateThinkingTime"
+          :thinking-start-time="message.thinkingStartTime"
+          :thinking-time="message.thinkingTime"
+          :loading-memory="isLoadingMemory"
+          @update-thinking-time="handleUpdateThinkingTime"
         />
 
         <!-- Message bubble -->
         <MessageBubble
           :role="message.role"
           :content="message.content"
-          :contentParts="message.contentParts"
+          :content-parts="message.contentParts"
           :attachments="message.attachments"
-          :toolCalls="message.toolCalls"
+          :tool-calls="message.toolCalls"
           :steps="message.steps"
-          :skillUsed="message.skillUsed"
-          :isStreaming="message.isStreaming"
-          :isEditing="isEditing"
-          :editContent="editContent"
-          :sessionId="message.sessionId"
-          @submitEdit="handleSubmitEdit"
-          @cancelEdit="handleCancelEdit"
-          @openImage="handleOpenImage"
-          @textSelection="handleTextSelection"
-          @executeTool="handleToolExecute"
-          @confirmTool="handleToolConfirm"
-          @rejectTool="handleToolReject"
+          :skill-used="message.skillUsed"
+          :is-streaming="message.isStreaming"
+          :is-editing="isEditing"
+          :edit-content="editContent"
+          :session-id="message.sessionId"
+          @submit-edit="handleSubmitEdit"
+          @cancel-edit="handleCancelEdit"
+          @open-image="handleOpenImage"
+          @text-selection="handleTextSelection"
+          @execute-tool="handleToolExecute"
+          @confirm-tool="handleToolConfirm"
+          @reject-tool="handleToolReject"
         />
 
         <!-- Inline error for assistant messages that failed mid-stream -->
-        <div v-if="message.role === 'assistant' && message.errorDetails" class="inline-error">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
+        <div
+          v-if="message.role === 'assistant' && message.errorDetails"
+          class="inline-error"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+            />
+            <line
+              x1="12"
+              y1="8"
+              x2="12"
+              y2="12"
+            />
+            <line
+              x1="12"
+              y1="16"
+              x2="12.01"
+              y2="16"
+            />
           </svg>
           <span class="inline-error-text">{{ message.errorDetails }}</span>
         </div>
@@ -96,7 +121,10 @@
 
         <!-- Message footer -->
         <div class="message-footer">
-          <div v-if="message.role !== 'user'" class="meta">
+          <div
+            v-if="message.role !== 'user'"
+            class="meta"
+          >
             {{ formatTime(message.timestamp) }}
           </div>
           <MessageActions
@@ -106,13 +134,13 @@
             :branches="branches"
             :usage="message.usage"
             :model="message.model"
-            :voiceConfig="voiceConfig"
-            :messageId="message.id"
+            :voice-config="voiceConfig"
+            :message-id="message.id"
             @edit="startEdit"
             @regenerate="handleRegenerate"
             @branch="handleBranch"
-            @goToBranch="handleGoToBranch"
-            @menuOpen="handleMenuOpen"
+            @go-to-branch="handleGoToBranch"
+            @menu-open="handleMenuOpen"
           />
         </div>
       </div>

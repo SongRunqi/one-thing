@@ -3,9 +3,9 @@
   <GitStatusPanel
     v-if="gitStatusData"
     :data="gitStatusData"
-    :isRefreshing="isRefreshing"
-    :workingDirectory="currentWorkingDirectory"
-    :sessionId="currentSessionId"
+    :is-refreshing="isRefreshing"
+    :working-directory="currentWorkingDirectory"
+    :session-id="currentSessionId"
     @action="handleGitAction"
     @file-action="handleGitFileAction"
     @refresh="handleGitRefresh"
@@ -26,18 +26,41 @@
   />
 
   <!-- Default system message rendering -->
-  <div v-else class="message system">
+  <div
+    v-else
+    class="message system"
+  >
     <div class="system-icon">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-        <line x1="16" y1="13" x2="8" y2="13"/>
-        <line x1="16" y1="17" x2="8" y2="17"/>
-        <polyline points="10 9 9 9 8 9"/>
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line
+          x1="16"
+          y1="13"
+          x2="8"
+          y2="13"
+        />
+        <line
+          x1="16"
+          y1="17"
+          x2="8"
+          y2="17"
+        />
+        <polyline points="10 9 9 9 8 9" />
       </svg>
     </div>
     <div class="system-bubble">
-      <div class="system-content" v-html="renderedContent"></div>
+      <div
+        class="system-content"
+        v-html="renderedContent"
+      />
       <div class="system-footer">
         <span class="system-time">{{ formattedTime }}</span>
       </div>

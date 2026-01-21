@@ -1,12 +1,26 @@
 <template>
-  <div class="retrieved-memories-panel" :class="{ collapsed: isCollapsed }">
-    <div class="panel-header" @click="toggleCollapse">
+  <div
+    class="retrieved-memories-panel"
+    :class="{ collapsed: isCollapsed }"
+  >
+    <div
+      class="panel-header"
+      @click="toggleCollapse"
+    >
       <div class="header-left">
-        <svg class="icon brain" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 2a9 9 0 0 1 9 9c0 3.86-3.14 7-7 7h-2a7 7 0 0 1-7-7 9 9 0 0 1 9-9z"/>
-          <path d="M12 2c-1.5 0-3 .5-4 1.5a5 5 0 0 0-1 3.5"/>
-          <path d="M9 18v4"/>
-          <path d="M15 18v4"/>
+        <svg
+          class="icon brain"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M12 2a9 9 0 0 1 9 9c0 3.86-3.14 7-7 7h-2a7 7 0 0 1-7-7 9 9 0 0 1 9-9z" />
+          <path d="M12 2c-1.5 0-3 .5-4 1.5a5 5 0 0 0-1 3.5" />
+          <path d="M9 18v4" />
+          <path d="M15 18v4" />
         </svg>
         <span class="title">Retrieved Memories</span>
         <span class="count">({{ memories.length }})</span>
@@ -22,13 +36,16 @@
           stroke="currentColor"
           stroke-width="2"
         >
-          <polyline points="9 18 15 12 9 6"/>
+          <polyline points="9 18 15 12 9 6" />
         </svg>
       </div>
     </div>
 
     <Transition name="slide">
-      <div v-show="!isCollapsed" class="panel-content">
+      <div
+        v-show="!isCollapsed"
+        class="panel-content"
+      >
         <div
           v-for="mem in memories"
           :key="mem.path"
@@ -36,34 +53,46 @@
           :class="{ 'has-feedback': feedbackGiven[mem.path] }"
         >
           <div class="memory-info">
-            <span class="memory-title" :title="mem.path">{{ mem.title }}</span>
+            <span
+              class="memory-title"
+              :title="mem.path"
+            >{{ mem.title }}</span>
             <div class="memory-meta">
-              <span class="match-badge" :class="mem.matchType">
+              <span
+                class="match-badge"
+                :class="mem.matchType"
+              >
                 {{ matchTypeLabel[mem.matchType] }}
               </span>
               <span class="score">{{ Math.round(mem.score) }}%</span>
             </div>
           </div>
 
-          <div class="feedback-buttons" v-if="!feedbackGiven[mem.path]">
+          <div
+            v-if="!feedbackGiven[mem.path]"
+            class="feedback-buttons"
+          >
             <button
               class="feedback-btn positive"
-              @click.stop="giveFeedback(mem.path, 'positive')"
               :disabled="isSubmitting[mem.path]"
               title="Helpful"
+              @click.stop="giveFeedback(mem.path, 'positive')"
             >
               👍
             </button>
             <button
               class="feedback-btn negative"
-              @click.stop="giveFeedback(mem.path, 'negative')"
               :disabled="isSubmitting[mem.path]"
               title="Not Helpful"
+              @click.stop="giveFeedback(mem.path, 'negative')"
             >
               👎
             </button>
           </div>
-          <div v-else class="feedback-status">
+          <div
+            v-else
+            class="feedback-status"
+          >
             <span :class="feedbackGiven[mem.path]">
               {{ feedbackGiven[mem.path] === 'positive' ? '👍' : '👎' }}
             </span>

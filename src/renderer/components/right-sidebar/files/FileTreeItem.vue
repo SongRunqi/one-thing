@@ -7,10 +7,20 @@
       @click="handleClick"
     >
       <!-- Expand/Collapse icon for directories -->
-      <span v-if="isDirectory" class="expand-icon" :class="{ expanded: isExpanded }">
-        <ChevronRight :size="14" :stroke-width="1.5" />
+      <span
+        v-if="isDirectory"
+        class="expand-icon"
+        :class="{ expanded: isExpanded }"
+      >
+        <ChevronRight
+          :size="14"
+          :stroke-width="1.5"
+        />
       </span>
-      <span v-else class="expand-spacer"></span>
+      <span
+        v-else
+        class="expand-spacer"
+      />
 
       <!-- File/Folder icon -->
       <component
@@ -22,12 +32,18 @@
       />
 
       <!-- Name -->
-      <span class="item-name" :title="node.path">{{ node.name }}</span>
+      <span
+        class="item-name"
+        :title="node.path"
+      >{{ node.name }}</span>
     </div>
 
     <!-- Children (if directory and expanded) -->
     <Transition name="expand">
-      <div v-if="isDirectory && isExpanded && node.children" class="children">
+      <div
+        v-if="isDirectory && isExpanded && node.children"
+        class="children"
+      >
         <FileTreeItem
           v-for="child in sortedChildren"
           :key="child.path"

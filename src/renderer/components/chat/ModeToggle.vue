@@ -1,24 +1,36 @@
 <template>
-  <div class="mode-toggle" :class="{ 'is-ask': currentMode === 'ask' }">
+  <div
+    class="mode-toggle"
+    :class="{ 'is-ask': currentMode === 'ask' }"
+  >
     <button
       class="mode-btn"
       :class="{ active: currentMode === 'build' }"
-      @click="setMode('build')"
       title="Build mode - Full editing capabilities"
+      @click="setMode('build')"
     >
-      <Hammer :size="14" :stroke-width="2" />
+      <Hammer
+        :size="14"
+        :stroke-width="2"
+      />
       <span class="mode-label">Build</span>
     </button>
     <button
       class="mode-btn"
       :class="{ active: currentMode === 'ask' }"
-      @click="setMode('ask')"
       title="Ask mode - Read-only exploration"
+      @click="setMode('ask')"
     >
-      <MessageCircleQuestion :size="14" :stroke-width="2" />
+      <MessageCircleQuestion
+        :size="14"
+        :stroke-width="2"
+      />
       <span class="mode-label">Ask</span>
     </button>
-    <div class="mode-indicator" :class="currentMode"></div>
+    <div
+      class="mode-indicator"
+      :class="currentMode"
+    />
   </div>
 </template>
 

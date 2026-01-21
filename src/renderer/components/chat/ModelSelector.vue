@@ -1,15 +1,34 @@
 <template>
-  <div class="model-selector" ref="selectorRef" :class="{ compact: isCompact }">
-    <button class="model-selector-btn" @click="openPanel" :title="displayName || 'Select model'">
+  <div
+    ref="selectorRef"
+    class="model-selector"
+    :class="{ compact: isCompact }"
+  >
+    <button
+      class="model-selector-btn"
+      :title="displayName || 'Select model'"
+      @click="openPanel"
+    >
       <!-- Provider icon -->
       <span class="provider-icon">
-        <ProviderIcon :provider="currentProvider" :size="18" />
+        <ProviderIcon
+          :provider="currentProvider"
+          :size="18"
+        />
       </span>
       <!-- Model name (hidden in compact mode) -->
       <span class="model-text">{{ displayName }}</span>
       <!-- Chevron -->
-      <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="6 9 12 15 18 9"/>
+      <svg
+        class="chevron-icon"
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <polyline points="6 9 12 15 18 9" />
       </svg>
     </button>
 

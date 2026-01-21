@@ -2,7 +2,10 @@
   <div class="prompt-section">
     <div class="prompt-header">
       <label class="form-label">System Prompt</label>
-      <span class="char-count" :class="{ warning: systemPrompt.length > 5000 }">
+      <span
+        class="char-count"
+        :class="{ warning: systemPrompt.length > 5000 }"
+      >
         {{ systemPrompt.length.toLocaleString() }} characters
       </span>
     </div>
@@ -11,7 +14,6 @@
       <textarea
         ref="textareaRef"
         :value="systemPrompt"
-        @input="handleInput"
         class="prompt-editor"
         placeholder="Define the agent's behavior, expertise, and how it should use its tools...
 
@@ -20,17 +22,24 @@ Examples of what to include:
 - What tasks it should help with
 - How it should approach problems
 - Any specific instructions or constraints"
+        @input="handleInput"
         @keydown="handleKeydown"
       />
     </div>
 
     <div class="prompt-tips">
       <div class="tip">
-        <FileText :size="14" :stroke-width="2" />
+        <FileText
+          :size="14"
+          :stroke-width="2"
+        />
         <span>Write clear, specific instructions for best results</span>
       </div>
       <div class="tip">
-        <Lightbulb :size="14" :stroke-width="2" />
+        <Lightbulb
+          :size="14"
+          :stroke-width="2"
+        />
         <span>Include examples of expected behavior when helpful</span>
       </div>
     </div>

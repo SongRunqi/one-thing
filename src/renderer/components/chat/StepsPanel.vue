@@ -1,6 +1,13 @@
 <template>
-  <div class="steps-panel" v-if="steps && steps.length > 0" :data-depth="depth">
-    <template v-for="step in steps" :key="step.id">
+  <div
+    v-if="steps && steps.length > 0"
+    class="steps-panel"
+    :data-depth="depth"
+  >
+    <template
+      v-for="step in steps"
+      :key="step.id"
+    >
       <!-- Agent Step: Use AgentExecutionPanel for steps with childSteps -->
       <AgentExecutionPanel
         v-if="isAgentStep(step)"
@@ -18,10 +25,19 @@
         :style="{ '--depth': depth }"
       >
         <!-- Main Row - Simplified: icon + tool + preview + actions -->
-        <div class="step-row" @click="toggleExpand(step.id)">
+        <div
+          class="step-row"
+          @click="toggleExpand(step.id)"
+        >
           <!-- Status icon (single, clear) -->
-          <span class="status-icon" :class="step.status">
-            <span v-if="step.status === 'running'" class="spinner"></span>
+          <span
+            class="status-icon"
+            :class="step.status"
+          >
+            <span
+              v-if="step.status === 'running'"
+              class="spinner"
+            />
             <span v-else-if="step.status === 'completed'">✓</span>
             <span v-else-if="step.status === 'failed'">✗</span>
             <span v-else-if="step.status === 'cancelled'">—</span>
@@ -36,44 +52,78 @@
           <span class="step-title">{{ truncateTitle(step.title, 40) }}</span>
 
           <!-- Right side: error OR buttons OR expand icon -->
-          <span v-if="step.status === 'failed' && step.error" class="error-tag">
+          <span
+            v-if="step.status === 'failed' && step.error"
+            class="error-tag"
+          >
             {{ truncateError(step.error, 30) }}
           </span>
 
           <template v-else-if="step.status === 'awaiting-confirmation'">
-            <div class="confirm-buttons" @click.stop>
+            <div
+              class="confirm-buttons"
+              @click.stop
+            >
               <AllowSplitButton @confirm="(response) => handleConfirm(step, response)" />
-              <button class="btn-reject" @click="handleReject(step)" title="Reject (D/Esc)">Reject</button>
+              <button
+                class="btn-reject"
+                title="Reject (D/Esc)"
+                @click="handleReject(step)"
+              >
+                Reject
+              </button>
             </div>
           </template>
 
           <svg
             v-else-if="hasExpandableContent(step)"
             :class="['expand-icon', { rotated: expandedSteps.has(step.id) }]"
-            width="14" height="14" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="2"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
           >
-            <polyline points="6 9 12 15 18 9"/>
+            <polyline points="6 9 12 15 18 9" />
           </svg>
         </div>
 
         <!-- Expanded Content -->
         <Transition name="slide">
-          <div v-if="shouldShowContent(step)" class="step-details">
+          <div
+            v-if="shouldShowContent(step)"
+            class="step-details"
+          >
             <!-- Streaming diff preview (during input-streaming for edit/write tools) -->
-            <Transition name="streaming-fade" mode="out-in">
-              <div v-if="getStreamingContent(step)" key="streaming" class="detail-section streaming-diff">
+            <Transition
+              name="streaming-fade"
+              mode="out-in"
+            >
+              <div
+                v-if="getStreamingContent(step)"
+                key="streaming"
+                class="detail-section streaming-diff"
+              >
                 <div class="streaming-header">
                   <span class="streaming-path">{{ getStreamingContent(step)?.filePath || 'Parsing...' }}</span>
                   <span class="streaming-indicator flowing-text">Writing...</span>
                 </div>
-                <pre v-if="getStreamingContent(step)?.content" class="streaming-code"><code>{{ getStreamingContent(step)?.content }}</code></pre>
+                <pre
+                  v-if="getStreamingContent(step)?.content"
+                  class="streaming-code"
+                ><code>{{ getStreamingContent(step)?.content }}</code></pre>
               </div>
             </Transition>
 
             <!-- Diff preview for edit tool (awaiting-confirmation or completed) -->
-            <div v-if="(step.status === 'awaiting-confirmation' || step.status === 'completed') && getDiffFromStep(step)" class="detail-section diff-preview">
-              <div class="detail-label">Changes</div>
+            <div
+              v-if="(step.status === 'awaiting-confirmation' || step.status === 'completed') && getDiffFromStep(step)"
+              class="detail-section diff-preview"
+            >
+              <div class="detail-label">
+                Changes
+              </div>
               <div class="diff-content">
                 <!-- File header inside code block (IDE style) -->
                 <div class="diff-header">
@@ -82,31 +132,52 @@
                     <span class="additions">+{{ getDiffFromStep(step)?.additions || 0 }}</span>
                     <span class="deletions">-{{ getDiffFromStep(step)?.deletions || 0 }}</span>
                   </span>
-                  <span v-if="step.status === 'completed'" class="diff-status-badge">Applied</span>
+                  <span
+                    v-if="step.status === 'completed'"
+                    class="diff-status-badge"
+                  >Applied</span>
                 </div>
                 <!-- Diff lines -->
-                <div v-for="(line, idx) in getVisibleDiffLines(step)" :key="idx" :class="['diff-line', line.class]">
+                <div
+                  v-for="(line, idx) in getVisibleDiffLines(step)"
+                  :key="idx"
+                  :class="['diff-line', line.class]"
+                >
                   <span class="line-number old">{{ line.oldNum || '' }}</span>
                   <span class="line-number new">{{ line.newNum || '' }}</span>
                   <span class="line-prefix">{{ line.prefix }}</span>
-                  <span class="line-content" :class="{ 'line-deleted-text': line.class === 'diff-del' }">{{ line.content }}</span>
+                  <span
+                    class="line-content"
+                    :class="{ 'line-deleted-text': line.class === 'diff-del' }"
+                  >{{ line.content }}</span>
                 </div>
               </div>
             </div>
 
             <!-- Live output for running -->
-            <div v-if="step.status === 'running' && step.result" class="detail-section live">
+            <div
+              v-if="step.status === 'running' && step.result"
+              class="detail-section live"
+            >
               <pre>{{ truncateOutput(step.result) }}</pre>
             </div>
 
             <!-- Thinking -->
-            <div v-if="step.thinking && expandedSteps.has(step.id)" class="detail-section">
-              <div class="detail-label">💭 Thinking</div>
+            <div
+              v-if="step.thinking && expandedSteps.has(step.id)"
+              class="detail-section"
+            >
+              <div class="detail-label">
+                💭 Thinking
+              </div>
               <pre class="thinking">{{ step.thinking }}</pre>
             </div>
 
             <!-- Tool Agent Result -->
-            <div v-if="step.toolAgentResult && expandedSteps.has(step.id)" class="detail-section">
+            <div
+              v-if="step.toolAgentResult && expandedSteps.has(step.id)"
+              class="detail-section"
+            >
               <div class="agent-header">
                 <span :class="['agent-badge', step.toolAgentResult.success ? 'success' : 'failed']">
                   {{ step.toolAgentResult.success ? 'Success' : 'Failed' }}
@@ -117,23 +188,37 @@
             </div>
 
             <!-- Arguments - JSON beautified format (hidden for edit tool which shows diff instead) -->
-            <div v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step) && step.toolCall?.toolName !== 'edit'" class="detail-section args-section">
-              <div class="detail-label">Arguments</div>
+            <div
+              v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step) && step.toolCall?.toolName !== 'edit'"
+              class="detail-section args-section"
+            >
+              <div class="detail-label">
+                Arguments
+              </div>
               <pre class="args-json">{{ formatArgsJson(step.toolCall.arguments) }}</pre>
             </div>
 
             <!-- Result -->
-            <div v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running'" class="detail-section">
-              <div class="detail-label">Result</div>
+            <div
+              v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running'"
+              class="detail-section"
+            >
+              <div class="detail-label">
+                Result
+              </div>
               <pre>{{ formatResult(step.result) }}</pre>
             </div>
 
             <!-- Summary -->
-            <div v-if="step.summary && expandedSteps.has(step.id)" class="detail-section">
-              <div class="detail-label">📝 Analysis</div>
+            <div
+              v-if="step.summary && expandedSteps.has(step.id)"
+              class="detail-section"
+            >
+              <div class="detail-label">
+                📝 Analysis
+              </div>
               <pre class="summary">{{ step.summary }}</pre>
             </div>
-
           </div>
         </Transition>
       </div>

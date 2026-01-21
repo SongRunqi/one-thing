@@ -3,21 +3,46 @@
     <!-- Editor Header -->
     <div class="editor-header">
       <div class="header-left">
-        <button class="back-btn" @click="emit('close')" title="Back to list (Esc)">
-          <ArrowLeft :size="18" :stroke-width="2" />
+        <button
+          class="back-btn"
+          title="Back to list (Esc)"
+          @click="emit('close')"
+        >
+          <ArrowLeft
+            :size="18"
+            :stroke-width="2"
+          />
         </button>
         <div class="editor-title-area">
-          <h2 class="editor-title">{{ editorTitle }}</h2>
+          <h2 class="editor-title">
+            {{ editorTitle }}
+          </h2>
           <span class="editor-path-badge">{{ props.filePath }}</span>
         </div>
       </div>
       <div class="header-actions">
-        <button v-if="!isEditMode" class="edit-btn" @click="isEditMode = true" title="Edit (⌘E)">
-          <Edit2 :size="14" :stroke-width="2" />
+        <button
+          v-if="!isEditMode"
+          class="edit-btn"
+          title="Edit (⌘E)"
+          @click="isEditMode = true"
+        >
+          <Edit2
+            :size="14"
+            :stroke-width="2"
+          />
           <span>Edit</span>
         </button>
-        <button v-else class="done-btn" @click="isEditMode = false" title="Done editing">
-          <Check :size="14" :stroke-width="2" />
+        <button
+          v-else
+          class="done-btn"
+          title="Done editing"
+          @click="isEditMode = false"
+        >
+          <Check
+            :size="14"
+            :stroke-width="2"
+          />
           <span>Done</span>
         </button>
       </div>
@@ -29,7 +54,10 @@
         :class="['tab-btn', { active: editorTab === 'content' }]"
         @click="editorTab = 'content'"
       >
-        <FileText :size="14" :stroke-width="2" />
+        <FileText
+          :size="14"
+          :stroke-width="2"
+        />
         <span>Content</span>
         <span class="tab-shortcut">⌘1</span>
       </button>
@@ -37,7 +65,10 @@
         :class="['tab-btn', { active: editorTab === 'metadata' }]"
         @click="editorTab = 'metadata'"
       >
-        <Tag :size="14" :stroke-width="2" />
+        <Tag
+          :size="14"
+          :stroke-width="2"
+        />
         <span>Metadata</span>
         <span class="tab-shortcut">⌘2</span>
       </button>
@@ -46,13 +77,25 @@
     <!-- Tab Content -->
     <div class="editor-body">
       <!-- Content Tab -->
-      <div v-if="editorTab === 'content'" class="tab-content content-tab">
+      <div
+        v-if="editorTab === 'content'"
+        class="tab-content content-tab"
+      >
         <!-- View Mode: Rendered Markdown -->
-        <div v-if="!isEditMode" class="markdown-view">
+        <div
+          v-if="!isEditMode"
+          class="markdown-view"
+        >
           <!-- Metadata Card (简洁版) -->
-          <div v-if="fileMetadata && hasVisibleMetadata" class="metadata-card">
+          <div
+            v-if="fileMetadata && hasVisibleMetadata"
+            class="metadata-card"
+          >
             <!-- Tags Row -->
-            <div v-if="fileMetadata.tags?.length" class="metadata-tags">
+            <div
+              v-if="fileMetadata.tags?.length"
+              class="metadata-tags"
+            >
               <span
                 v-for="tag in fileMetadata.tags"
                 :key="tag"
@@ -63,22 +106,43 @@
 
             <!-- Info Row: importance + updated + source -->
             <div class="metadata-info">
-              <span v-if="fileMetadata.importance" class="info-item" :title="`Importance: ${fileMetadata.importance}/5`">
-                <Star :size="12" :stroke-width="2" fill="currentColor" />
+              <span
+                v-if="fileMetadata.importance"
+                class="info-item"
+                :title="`Importance: ${fileMetadata.importance}/5`"
+              >
+                <Star
+                  :size="12"
+                  :stroke-width="2"
+                  fill="currentColor"
+                />
                 <span>{{ fileMetadata.importance }}</span>
               </span>
-              <span v-if="fileMetadata.updated" class="info-item" :title="formatFullDate(fileMetadata.updated)">
-                <Clock :size="12" :stroke-width="2" />
+              <span
+                v-if="fileMetadata.updated"
+                class="info-item"
+                :title="formatFullDate(fileMetadata.updated)"
+              >
+                <Clock
+                  :size="12"
+                  :stroke-width="2"
+                />
                 <span>{{ formatRelativeDate(fileMetadata.updated) }}</span>
               </span>
-              <span v-if="fileMetadata.source" class="info-item source">
+              <span
+                v-if="fileMetadata.source"
+                class="info-item source"
+              >
                 {{ fileMetadata.source }}
               </span>
             </div>
           </div>
 
           <!-- Markdown Content (使用共享样式) -->
-          <div v-html="renderedContent" class="content"></div>
+          <div
+            class="content"
+            v-html="renderedContent"
+          />
         </div>
 
         <!-- Edit Mode: Textarea Editor -->
@@ -89,15 +153,21 @@
           class="full-editor"
           placeholder="Memory content (Markdown supported)..."
           spellcheck="false"
-        ></textarea>
+        />
       </div>
 
       <!-- Metadata Tab -->
-      <div v-if="editorTab === 'metadata'" class="tab-content metadata-tab">
+      <div
+        v-if="editorTab === 'metadata'"
+        class="tab-content metadata-tab"
+      >
         <!-- Tags Section -->
         <div class="metadata-section">
           <div class="section-header">
-            <Tag :size="14" :stroke-width="2" />
+            <Tag
+              :size="14"
+              :stroke-width="2"
+            />
             <span>Tags</span>
           </div>
           <div class="tags-editor">
@@ -109,8 +179,14 @@
                 :style="getTagStyle(tag, false)"
               >
                 {{ tag }}
-                <button class="remove-tag" @click="removeTag(tag)">
-                  <X :size="12" :stroke-width="2" />
+                <button
+                  class="remove-tag"
+                  @click="removeTag(tag)"
+                >
+                  <X
+                    :size="12"
+                    :stroke-width="2"
+                  />
                 </button>
               </span>
               <div class="tag-input-wrapper">
@@ -121,7 +197,7 @@
                   placeholder="Add tag..."
                   @keydown.enter.prevent="addTag"
                   @keydown.tab.prevent="addTag"
-                />
+                >
               </div>
             </div>
           </div>
@@ -130,7 +206,10 @@
         <!-- File Info Section -->
         <div class="metadata-section">
           <div class="section-header">
-            <Info :size="14" :stroke-width="2" />
+            <Info
+              :size="14"
+              :stroke-width="2"
+            />
             <span>File Info</span>
           </div>
           <div class="info-grid">
@@ -138,19 +217,34 @@
               <span class="info-label">Path</span>
               <span class="info-value monospace">{{ props.filePath }}</span>
             </div>
-            <div class="info-row" v-if="selectedFileMetadata?.created">
+            <div
+              v-if="selectedFileMetadata?.created"
+              class="info-row"
+            >
               <span class="info-label">Created</span>
               <span class="info-value">{{ formatFullDate(selectedFileMetadata.created) }}</span>
             </div>
-            <div class="info-row" v-if="selectedFileMetadata?.updated">
+            <div
+              v-if="selectedFileMetadata?.updated"
+              class="info-row"
+            >
               <span class="info-label">Updated</span>
               <span class="info-value">{{ formatFullDate(selectedFileMetadata.updated) }}</span>
             </div>
-            <div class="info-row" v-if="selectedFileMetadata?.importance !== undefined">
+            <div
+              v-if="selectedFileMetadata?.importance !== undefined"
+              class="info-row"
+            >
               <span class="info-label">Importance</span>
               <span class="info-value">
                 <span class="importance-stars">
-                  <Star v-for="n in 5" :key="n" :size="12" :fill="n <= selectedFileMetadata.importance ? 'currentColor' : 'none'" :stroke-width="2" />
+                  <Star
+                    v-for="n in 5"
+                    :key="n"
+                    :size="12"
+                    :fill="n <= selectedFileMetadata.importance ? 'currentColor' : 'none'"
+                    :stroke-width="2"
+                  />
                 </span>
                 <span class="importance-value">{{ selectedFileMetadata.importance }}/5</span>
               </span>
@@ -161,7 +255,10 @@
     </div>
 
     <!-- Editor Footer (only shown in edit mode) -->
-    <div v-if="isEditMode" class="editor-footer">
+    <div
+      v-if="isEditMode"
+      class="editor-footer"
+    >
       <div class="footer-hint">
         <kbd>⌘</kbd><kbd>Enter</kbd> to save
         <span class="hint-divider">•</span>
@@ -170,16 +267,31 @@
         <kbd>⌘</kbd><kbd>E</kbd> to view
       </div>
       <div class="footer-actions">
-        <button class="btn secondary" @click="emit('close')">Cancel</button>
-        <button class="btn primary" @click="saveAndClose" :disabled="!hasChanges">
-          <Check :size="14" :stroke-width="2" />
+        <button
+          class="btn secondary"
+          @click="emit('close')"
+        >
+          Cancel
+        </button>
+        <button
+          class="btn primary"
+          :disabled="!hasChanges"
+          @click="saveAndClose"
+        >
+          <Check
+            :size="14"
+            :stroke-width="2"
+          />
           Save Changes
         </button>
       </div>
     </div>
 
     <!-- View Mode Footer Hint -->
-    <div v-else class="editor-footer view-footer">
+    <div
+      v-else
+      class="editor-footer view-footer"
+    >
       <div class="footer-hint">
         <kbd>⌘</kbd><kbd>E</kbd> to edit
         <span class="hint-divider">•</span>

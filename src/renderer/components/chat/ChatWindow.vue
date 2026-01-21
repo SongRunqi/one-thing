@@ -37,17 +37,29 @@
         />
 
         <!-- v-memo prevents unnecessary re-renders during tool_input_delta streaming -->
-        <div class="composer" v-memo="[isGenerating, effectiveSessionId]">
-          <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="isGenerating" :session-id="effectiveSessionId" />
+        <div
+          v-memo="[isGenerating, effectiveSessionId]"
+          class="composer"
+        >
+          <InputBox
+            ref="inputBoxRef"
+            :is-loading="isGenerating"
+            :session-id="effectiveSessionId"
+            @send-message="handleSendMessage"
+            @stop-generation="handleStopGeneration"
+            @open-tool-settings="handleOpenToolSettings"
+          />
         </div>
       </div>
     </div>
 
     <!-- Settings Panel overlay -->
     <Transition name="settings-fade">
-      <SettingsPanel v-if="showSettings" @close="emit('closeSettings')" />
+      <SettingsPanel
+        v-if="showSettings"
+        @close="emit('closeSettings')"
+      />
     </Transition>
-
   </main>
 </template>
 

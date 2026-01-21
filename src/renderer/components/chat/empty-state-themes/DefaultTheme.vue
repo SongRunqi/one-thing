@@ -2,8 +2,8 @@
   <div class="empty-state default-theme">
     <!-- Ambient background -->
     <div class="ambient-bg">
-      <div class="gradient-orb orb-1"></div>
-      <div class="gradient-orb orb-2"></div>
+      <div class="gradient-orb orb-1" />
+      <div class="gradient-orb orb-2" />
     </div>
 
     <div class="content-wrapper">
@@ -12,11 +12,36 @@
         <div class="logo-container">
           <div class="logo-ring">
             <div class="logo-inner">
-              <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5L12 3Z" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M12 12L20 7.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
-                <path d="M12 12V21" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
-                <path d="M12 12L4 7.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+              <svg
+                class="logo-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5L12 3Z"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M12 12L20 7.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  opacity="0.5"
+                />
+                <path
+                  d="M12 12V21"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  opacity="0.5"
+                />
+                <path
+                  d="M12 12L4 7.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  opacity="0.5"
+                />
               </svg>
             </div>
           </div>
@@ -26,7 +51,9 @@
           <h1 class="title">
             <span class="title-gradient">0neThing</span>
           </h1>
-          <p class="subtitle">有什么我可以帮助你的？</p>
+          <p class="subtitle">
+            有什么我可以帮助你的？
+          </p>
         </div>
       </div>
 
@@ -43,8 +70,18 @@
             <span class="card-title">{{ suggestion.title }}</span>
             <span class="card-desc">{{ suggestion.desc }}</span>
           </div>
-          <svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 12h14M12 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/>
+          <svg
+            class="card-arrow"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              d="M5 12h14M12 5l7 7-7 7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
           </svg>
         </button>
       </div>

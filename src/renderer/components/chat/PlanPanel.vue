@@ -1,7 +1,15 @@
 <template>
   <Transition name="plan-slide">
-    <div v-if="plan?.items.length" class="plan-panel" :class="{ collapsed: isCollapsed }">
-      <div class="plan-header" :class="{ 'no-border': isCollapsed }" @click="toggleCollapse">
+    <div
+      v-if="plan?.items.length"
+      class="plan-panel"
+      :class="{ collapsed: isCollapsed }"
+    >
+      <div
+        class="plan-header"
+        :class="{ 'no-border': isCollapsed }"
+        @click="toggleCollapse"
+      >
         <div class="header-left">
           <ChevronDown
             :size="14"
@@ -9,11 +17,17 @@
             :class="{ rotated: isCollapsed }"
           />
           <span class="plan-title">Plan</span>
-          <span class="plan-status" :class="statusClass">{{ statusText }}</span>
+          <span
+            class="plan-status"
+            :class="statusClass"
+          >{{ statusText }}</span>
         </div>
         <span class="plan-progress">{{ completedCount }}/{{ plan.items.length }}</span>
       </div>
-      <div class="plan-items-wrapper" :class="{ expanded: !isCollapsed }">
+      <div
+        class="plan-items-wrapper"
+        :class="{ expanded: !isCollapsed }"
+      >
         <div class="plan-items">
           <div
             v-for="(item, index) in plan.items"
@@ -21,10 +35,24 @@
             class="plan-item"
             :class="item.status"
           >
-            <div class="status-indicator" :class="item.status">
-              <Check v-if="item.status === 'completed'" :size="12" :stroke-width="3" />
-              <Play v-else-if="item.status === 'in_progress'" :size="10" :stroke-width="2.5" />
-              <div v-else class="empty-dot"></div>
+            <div
+              class="status-indicator"
+              :class="item.status"
+            >
+              <Check
+                v-if="item.status === 'completed'"
+                :size="12"
+                :stroke-width="3"
+              />
+              <Play
+                v-else-if="item.status === 'in_progress'"
+                :size="10"
+                :stroke-width="2.5"
+              />
+              <div
+                v-else
+                class="empty-dot"
+              />
             </div>
             <span class="item-number">{{ index + 1 }}.</span>
             <span class="item-content">

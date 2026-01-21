@@ -1,5 +1,8 @@
 <template>
-  <div ref="container" class="lottie-container"></div>
+  <div
+    ref="container"
+    class="lottie-container"
+  />
 </template>
 
 <script setup lang="ts">

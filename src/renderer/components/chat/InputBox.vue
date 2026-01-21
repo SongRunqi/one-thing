@@ -1,5 +1,8 @@
 <template>
-  <div class="composer-wrapper" ref="composerWrapperRef">
+  <div
+    ref="composerWrapperRef"
+    class="composer-wrapper"
+  >
     <!-- Hidden file input -->
     <input
       ref="fileInputRef"
@@ -8,43 +11,87 @@
       accept="image/*,.pdf,.doc,.docx,.txt,.md,.json,.csv"
       style="display: none"
       @change="handleFileSelect"
-    />
+    >
 
     <!-- Attachment previews (shown above composer when files are attached) -->
-    <div v-if="attachedFiles.length > 0" class="attachments-preview">
+    <div
+      v-if="attachedFiles.length > 0"
+      class="attachments-preview"
+    >
       <div
         v-for="file in attachedFiles"
         :key="file.id"
         class="attachment-item"
         :class="{ 'is-image': file.mediaType === 'image' }"
       >
-        <img v-if="file.preview" :src="file.preview" :alt="file.fileName" class="attachment-thumb" />
-        <div v-else class="attachment-icon">
-          <FileText :size="20" :stroke-width="2" />
+        <img
+          v-if="file.preview"
+          :src="file.preview"
+          :alt="file.fileName"
+          class="attachment-thumb"
+        >
+        <div
+          v-else
+          class="attachment-icon"
+        >
+          <FileText
+            :size="20"
+            :stroke-width="2"
+          />
         </div>
         <span class="attachment-name">{{ file.fileName }}</span>
-        <button class="attachment-remove" @click="removeAttachment(file.id)" title="Remove">
-          <X :size="14" :stroke-width="2.5" />
+        <button
+          class="attachment-remove"
+          title="Remove"
+          @click="removeAttachment(file.id)"
+        >
+          <X
+            :size="14"
+            :stroke-width="2.5"
+          />
         </button>
       </div>
     </div>
 
     <!-- Quoted text context (shown above input when text is referenced) -->
-    <div v-if="quotedText" class="quoted-context">
-      <div class="quoted-bar"></div>
+    <div
+      v-if="quotedText"
+      class="quoted-context"
+    >
+      <div class="quoted-bar" />
       <div class="quoted-content-wrapper">
-        <div class="quoted-text">{{ quotedText }}</div>
-        <button class="remove-quote-btn" @click="clearQuotedText" title="Remove">
-          <X :size="16" :stroke-width="2.5" />
+        <div class="quoted-text">
+          {{ quotedText }}
+        </div>
+        <button
+          class="remove-quote-btn"
+          title="Remove"
+          @click="clearQuotedText"
+        >
+          <X
+            :size="16"
+            :stroke-width="2.5"
+          />
         </button>
       </div>
     </div>
 
     <!-- Command Feedback -->
     <Transition name="fade">
-      <div v-if="commandFeedback" :class="['command-feedback', commandFeedback.type]">
-        <Check v-if="commandFeedback.type === 'success'" :size="14" :stroke-width="2.5" />
-        <X v-else :size="14" :stroke-width="2.5" />
+      <div
+        v-if="commandFeedback"
+        :class="['command-feedback', commandFeedback.type]"
+      >
+        <Check
+          v-if="commandFeedback.type === 'success'"
+          :size="14"
+          :stroke-width="2.5"
+        />
+        <X
+          v-else
+          :size="14"
+          :stroke-width="2.5"
+        />
         <span>{{ commandFeedback.message }}</span>
       </div>
     </Transition>
@@ -92,7 +139,11 @@
     <!-- Plan Panel (紧贴 composer 上方显示) -->
     <PlanPanel :session-id="effectiveSessionId" />
 
-    <div class="composer" :class="{ focused: isFocused }" @click="focusTextarea">
+    <div
+      class="composer"
+      :class="{ focused: isFocused }"
+      @click="focusTextarea"
+    >
       <!-- Input area - full width -->
       <div class="input-area">
         <textarea
@@ -100,6 +151,7 @@
           v-model="messageInput"
           class="composer-input"
           placeholder="Ask anything..."
+          rows="1"
           @keydown="handleKeyDown"
           @focus="handleFocus"
           @blur="handleBlur"
@@ -107,7 +159,6 @@
           @paste="handlePaste"
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
-          rows="1"
         />
       </div>
 
@@ -115,8 +166,15 @@
       <div class="composer-toolbar">
         <!-- Left side: attach and tools -->
         <div class="toolbar-left">
-          <button class="toolbar-btn" title="Attach file" @click="handleAttach">
-            <Paperclip :size="18" :stroke-width="2" />
+          <button
+            class="toolbar-btn"
+            title="Attach file"
+            @click="handleAttach"
+          >
+            <Paperclip
+              :size="18"
+              :stroke-width="2"
+            />
           </button>
 
           <!-- Tools menu component -->
@@ -135,27 +193,40 @@
           <ContextIndicator :session-id="props.sessionId" />
 
           <!-- Mode toggle (Build/Plan) -->
-          <ModeToggle ref="modeToggleRef" :session-id="effectiveSessionId" />
+          <ModeToggle
+            ref="modeToggleRef"
+            :session-id="effectiveSessionId"
+          />
         </div>
 
         <!-- Right side: send/stop button -->
-        <div class="toolbar-right" @click.stop>
+        <div
+          class="toolbar-right"
+          @click.stop
+        >
           <button
             v-if="isLoading || isSending"
             class="send-btn stop-btn"
-            @click="stopGeneration"
             title="Stop generation"
+            @click="stopGeneration"
           >
-            <Square :size="16" fill="currentColor" :stroke-width="0" />
+            <Square
+              :size="16"
+              fill="currentColor"
+              :stroke-width="0"
+            />
           </button>
           <button
             v-else
             class="send-btn"
-            @click="sendMessage"
             :disabled="!canSend"
             title="Send message"
+            @click="sendMessage"
           >
-            <Send :size="18" :stroke-width="2" />
+            <Send
+              :size="18"
+              :stroke-width="2"
+            />
           </button>
         </div>
       </div>

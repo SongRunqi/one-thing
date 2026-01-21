@@ -2,7 +2,9 @@
   <div class="tab-content">
     <!-- Mode (Light/Dark/System) -->
     <section class="settings-section">
-      <h3 class="section-title">Mode</h3>
+      <h3 class="section-title">
+        Mode
+      </h3>
 
       <div class="theme-cards">
         <div
@@ -11,15 +13,15 @@
         >
           <div class="theme-preview system">
             <div class="preview-half light">
-              <div class="preview-sidebar"></div>
+              <div class="preview-sidebar" />
               <div class="preview-content">
-                <div class="preview-line"></div>
+                <div class="preview-line" />
               </div>
             </div>
             <div class="preview-half dark">
-              <div class="preview-sidebar"></div>
+              <div class="preview-sidebar" />
               <div class="preview-content">
-                <div class="preview-line"></div>
+                <div class="preview-line" />
               </div>
             </div>
           </div>
@@ -30,10 +32,10 @@
           @click="updateTheme('light')"
         >
           <div class="theme-preview light">
-            <div class="preview-sidebar"></div>
+            <div class="preview-sidebar" />
             <div class="preview-content">
-              <div class="preview-line"></div>
-              <div class="preview-line short"></div>
+              <div class="preview-line" />
+              <div class="preview-line short" />
             </div>
           </div>
           <span>Light</span>
@@ -43,10 +45,10 @@
           @click="updateTheme('dark')"
         >
           <div class="theme-preview dark">
-            <div class="preview-sidebar"></div>
+            <div class="preview-sidebar" />
             <div class="preview-content">
-              <div class="preview-line"></div>
-              <div class="preview-line short"></div>
+              <div class="preview-line" />
+              <div class="preview-line short" />
             </div>
           </div>
           <span>Dark</span>
@@ -56,13 +58,17 @@
 
     <!-- Theme Selection -->
     <section class="settings-section">
-      <h3 class="section-title">Theme</h3>
-      <ThemeSelectorPanel @themeChange="handleThemeChange" />
+      <h3 class="section-title">
+        Theme
+      </h3>
+      <ThemeSelectorPanel @theme-change="handleThemeChange" />
     </section>
 
     <!-- Accent Color -->
     <section class="settings-section">
-      <h3 class="section-title">Accent Color</h3>
+      <h3 class="section-title">
+        Accent Color
+      </h3>
 
       <div class="color-theme-grid">
         <button
@@ -70,12 +76,18 @@
           :key="color.id"
           :class="['color-theme-btn', { active: currentColorTheme === color.id }]"
           :style="{ '--theme-main': color.main, '--theme-sub': color.sub }"
-          @click="updateColorTheme(color.id)"
           :title="color.name"
+          @click="updateColorTheme(color.id)"
         >
           <div class="color-dots">
-            <span class="color-dot main" title="Main (300)"></span>
-            <span class="color-dot sub" title="Sub (100)"></span>
+            <span
+              class="color-dot main"
+              title="Main (300)"
+            />
+            <span
+              class="color-dot sub"
+              title="Sub (100)"
+            />
           </div>
           <span class="color-name">{{ color.name }}</span>
         </button>
@@ -84,7 +96,9 @@
 
     <!-- Message Display Density -->
     <section class="settings-section">
-      <h3 class="section-title">Message Display</h3>
+      <h3 class="section-title">
+        Message Display
+      </h3>
 
       <div class="density-cards">
         <div
@@ -92,10 +106,10 @@
           @click="updateDensity('compact')"
         >
           <div class="density-preview compact">
-            <div class="density-line"></div>
-            <div class="density-line short"></div>
-            <div class="density-line"></div>
-            <div class="density-line short"></div>
+            <div class="density-line" />
+            <div class="density-line short" />
+            <div class="density-line" />
+            <div class="density-line short" />
           </div>
           <span>Compact</span>
         </div>
@@ -104,9 +118,9 @@
           @click="updateDensity('comfortable')"
         >
           <div class="density-preview comfortable">
-            <div class="density-line"></div>
-            <div class="density-line short"></div>
-            <div class="density-line"></div>
+            <div class="density-line" />
+            <div class="density-line short" />
+            <div class="density-line" />
           </div>
           <span>Comfortable</span>
         </div>
@@ -115,28 +129,31 @@
           @click="updateDensity('spacious')"
         >
           <div class="density-preview spacious">
-            <div class="density-line"></div>
-            <div class="density-line short"></div>
+            <div class="density-line" />
+            <div class="density-line short" />
           </div>
           <span>Spacious</span>
         </div>
       </div>
 
       <!-- Line Height Slider -->
-      <div class="form-group" style="margin-top: 16px;">
+      <div
+        class="form-group"
+        style="margin-top: 16px;"
+      >
         <label class="form-label">
           Line Height
           <span class="label-value">{{ currentLineHeight.toFixed(1) }}</span>
         </label>
         <input
           :value="currentLineHeight"
-          @input="updateLineHeight(($event.target as HTMLInputElement).valueAsNumber)"
           type="range"
           min="1.2"
           max="2.2"
           step="0.1"
           class="form-slider"
-        />
+          @input="updateLineHeight(($event.target as HTMLInputElement).valueAsNumber)"
+        >
         <div class="slider-labels">
           <span>Compact</span>
           <span>Spacious</span>
@@ -146,7 +163,9 @@
 
     <!-- Animation -->
     <section class="settings-section">
-      <h3 class="section-title">Animation</h3>
+      <h3 class="section-title">
+        Animation
+      </h3>
 
       <div class="form-group">
         <label class="form-label">
@@ -155,20 +174,19 @@
         </label>
         <input
           :value="settings.general.animationSpeed"
-          @input="updateAnimationSpeed(($event.target as HTMLInputElement).valueAsNumber)"
           type="range"
           min="0.05"
           max="0.5"
           step="0.05"
           class="form-slider"
-        />
+          @input="updateAnimationSpeed(($event.target as HTMLInputElement).valueAsNumber)"
+        >
         <div class="slider-labels">
           <span>Fast</span>
           <span>Slow</span>
         </div>
       </div>
     </section>
-
   </div>
 </template>
 

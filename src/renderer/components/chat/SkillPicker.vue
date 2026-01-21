@@ -1,5 +1,8 @@
 <template>
-  <div class="skill-picker" v-if="visible && filteredSkills.length > 0">
+  <div
+    v-if="visible && filteredSkills.length > 0"
+    class="skill-picker"
+  >
     <div class="skill-picker-header">
       <span class="title">Available Skills</span>
       <span class="count">{{ filteredSkills.length }}</span>
@@ -13,19 +16,46 @@
         @mouseenter="selectedIndex = index"
       >
         <div class="skill-icon">
-          <svg v-if="skill.source === 'user'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
-            <circle cx="12" cy="7" r="4"/>
+          <svg
+            v-if="skill.source === 'user'"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+            <circle
+              cx="12"
+              cy="7"
+              r="4"
+            />
           </svg>
-          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+          <svg
+            v-else
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
           </svg>
         </div>
         <div class="skill-info">
-          <div class="skill-name">{{ skill.name }}</div>
-          <div class="skill-description">{{ skill.description }}</div>
+          <div class="skill-name">
+            {{ skill.name }}
+          </div>
+          <div class="skill-description">
+            {{ skill.description }}
+          </div>
         </div>
-        <div class="skill-source-badge" :class="skill.source">
+        <div
+          class="skill-source-badge"
+          :class="skill.source"
+        >
           {{ skill.source === 'user' ? 'User' : 'Project' }}
         </div>
       </div>

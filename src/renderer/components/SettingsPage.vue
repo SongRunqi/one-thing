@@ -1,15 +1,21 @@
 <template>
   <div class="settings-page">
     <!-- macOS-style titlebar drag region -->
-    <div class="titlebar-drag-region"></div>
+    <div class="titlebar-drag-region" />
 
     <!-- Loading State -->
-    <div v-if="isLoading" class="loading-state">
-      <div class="loading-spinner"></div>
+    <div
+      v-if="isLoading"
+      class="loading-state"
+    >
+      <div class="loading-spinner" />
       <span>Loading settings...</span>
     </div>
 
-    <div v-else class="settings-layout">
+    <div
+      v-else
+      class="settings-layout"
+    >
       <!-- Left Sidebar -->
       <nav class="settings-nav">
         <div class="nav-section">
@@ -19,7 +25,10 @@
             :class="['nav-item', { active: activeTab === item.id }]"
             @click="activeTab = item.id"
           >
-            <component :is="item.icon" class="nav-icon" />
+            <component
+              :is="item.icon"
+              class="nav-icon"
+            />
             <span class="nav-label">{{ item.label }}</span>
           </button>
         </div>
@@ -28,7 +37,9 @@
       <!-- Right Content Area -->
       <main class="settings-content">
         <header class="content-header">
-          <h1 class="content-title">{{ currentNavItem?.label }}</h1>
+          <h1 class="content-title">
+            {{ currentNavItem?.label }}
+          </h1>
         </header>
 
         <div class="content-body">
@@ -85,7 +96,10 @@
               @update:settings="handleEmbeddingSettingsUpdate"
             />
           </template>
-          <div v-else class="loading-content">
+          <div
+            v-else
+            class="loading-content"
+          >
             Loading...
           </div>
         </div>

@@ -22,7 +22,7 @@ import isDev from 'electron-is-dev'
  */
 function wrapWithDevTools<T extends LanguageModel>(model: T): T {
   if (!isDev) return model
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   return wrapLanguageModel({
     model: model as any,
     middleware: devToolsMiddleware(),

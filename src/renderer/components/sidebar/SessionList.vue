@@ -1,7 +1,7 @@
 <template>
   <div class="session-list-wrapper">
     <!-- Top scroll indicator line -->
-    <div :class="['scroll-indicator-top', { visible: isOverflowing }]"></div>
+    <div :class="['scroll-indicator-top', { visible: isOverflowing }]" />
 
     <div
       ref="listRef"
@@ -14,8 +14,16 @@
         class="session-item new-chat-item"
         @click="$emit('create-new-chat')"
       >
-        <svg class="new-chat-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 5v14M5 12h14"/>
+        <svg
+          class="new-chat-icon"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M12 5v14M5 12h14" />
         </svg>
         <span class="session-name">New Chat</span>
       </div>
@@ -40,7 +48,10 @@
         @delete="$emit('delete', session.id)"
       />
 
-      <div v-if="sessions.length === 0" class="empty-sessions">
+      <div
+        v-if="sessions.length === 0"
+        class="empty-sessions"
+      >
         <span>No chats yet</span>
       </div>
     </div>

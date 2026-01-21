@@ -1,70 +1,124 @@
 <template>
   <div :class="['server-item', { expanded: isExpanded }]">
-    <div class="server-header" @click="$emit('toggle-expand')">
+    <div
+      class="server-header"
+      @click="$emit('toggle-expand')"
+    >
       <div class="server-info">
-        <div class="server-status" :class="server.status" :title="statusText">
+        <div
+          class="server-status"
+          :class="server.status"
+          :title="statusText"
+        >
           <div class="status-indicator">
-            <div class="status-dot"></div>
-            <div class="status-ring"></div>
-            <div class="status-pulse"></div>
+            <div class="status-dot" />
+            <div class="status-ring" />
+            <div class="status-pulse" />
           </div>
         </div>
         <div class="server-details">
-          <div class="server-name">{{ server.config.name }}</div>
+          <div class="server-name">
+            {{ server.config.name }}
+          </div>
           <div class="server-meta">
-            <span class="transport-badge" :class="server.config.transport">
+            <span
+              class="transport-badge"
+              :class="server.config.transport"
+            >
               {{ server.config.transport.toUpperCase() }}
             </span>
-            <span v-if="server.status === 'connected'" class="capability-count">
+            <span
+              v-if="server.status === 'connected'"
+              class="capability-count"
+            >
               {{ server.tools.length }} tools
             </span>
           </div>
         </div>
       </div>
       <div class="server-actions">
-        <Tooltip text="Auto-connect on startup" position="top">
-          <label class="toggle small" @click.stop>
+        <Tooltip
+          text="Auto-connect on startup"
+          position="top"
+        >
+          <label
+            class="toggle small"
+            @click.stop
+          >
             <input
               type="checkbox"
               :checked="server.config.enabled"
               @change="$emit('toggle-enabled', ($event.target as HTMLInputElement).checked)"
-            />
-            <span class="toggle-slider"></span>
+            >
+            <span class="toggle-slider" />
           </label>
         </Tooltip>
-        <Tooltip :text="server.status === 'connected' ? 'Stop' : 'Start'" position="top">
+        <Tooltip
+          :text="server.status === 'connected' ? 'Stop' : 'Start'"
+          position="top"
+        >
           <button
             class="icon-btn small connect-btn"
             :class="{
               'is-loading': isConnecting,
               'is-connected': server.status === 'connected'
             }"
-            @click.stop="$emit('toggle-connect')"
             :disabled="!server.config.enabled || isConnecting"
+            @click.stop="$emit('toggle-connect')"
           >
-            <Loader2 v-if="isConnecting" class="loading-spinner" :size="14" />
-            <Pause v-else-if="server.status === 'connected'" :size="14" />
-            <Play v-else :size="14" />
+            <Loader2
+              v-if="isConnecting"
+              class="loading-spinner"
+              :size="14"
+            />
+            <Pause
+              v-else-if="server.status === 'connected'"
+              :size="14"
+            />
+            <Play
+              v-else
+              :size="14"
+            />
           </button>
         </Tooltip>
-        <Tooltip text="Edit" position="top">
+        <Tooltip
+          text="Edit"
+          position="top"
+        >
           <button
             class="icon-btn small"
             @click.stop="$emit('edit')"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
             </svg>
           </button>
         </Tooltip>
-        <Tooltip text="Delete" position="top">
+        <Tooltip
+          text="Delete"
+          position="top"
+        >
           <button
             class="icon-btn small danger"
             @click.stop="$emit('delete')"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
             </svg>
           </button>
         </Tooltip>
@@ -77,59 +131,112 @@
           stroke="currentColor"
           stroke-width="2"
         >
-          <polyline points="6 9 12 15 18 9"/>
+          <polyline points="6 9 12 15 18 9" />
         </svg>
       </div>
     </div>
 
     <!-- Expanded Content -->
-    <div v-if="isExpanded" class="server-expanded">
+    <div
+      v-if="isExpanded"
+      class="server-expanded"
+    >
       <!-- Error Message -->
-      <div v-if="server.error" class="server-error">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
+      <div
+        v-if="server.error"
+        class="server-error"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+          />
+          <line
+            x1="12"
+            y1="8"
+            x2="12"
+            y2="12"
+          />
+          <line
+            x1="12"
+            y1="16"
+            x2="12.01"
+            y2="16"
+          />
         </svg>
         <span>{{ server.error }}</span>
       </div>
 
       <!-- Connection Info -->
       <div class="connection-info">
-        <div v-if="server.config.transport === 'stdio'" class="info-row">
+        <div
+          v-if="server.config.transport === 'stdio'"
+          class="info-row"
+        >
           <span class="info-label">Command:</span>
           <code class="info-value">{{ server.config.command }} {{ (server.config.args || []).join(' ') }}</code>
         </div>
-        <div v-else class="info-row">
+        <div
+          v-else
+          class="info-row"
+        >
           <span class="info-label">URL:</span>
           <code class="info-value">{{ server.config.url }}</code>
         </div>
-        <div v-if="server.connectedAt" class="info-row">
+        <div
+          v-if="server.connectedAt"
+          class="info-row"
+        >
           <span class="info-label">Connected:</span>
           <span class="info-value">{{ formatTime(server.connectedAt) }}</span>
         </div>
       </div>
 
       <!-- Tools List -->
-      <div v-if="server.tools.length > 0" class="capabilities-section">
+      <div
+        v-if="server.tools.length > 0"
+        class="capabilities-section"
+      >
         <div class="capabilities-header">
           <span class="capabilities-title">Tools ({{ server.tools.length }})</span>
         </div>
         <div class="tools-list">
-          <div v-for="tool in server.tools" :key="tool.name" class="tool-item">
+          <div
+            v-for="tool in server.tools"
+            :key="tool.name"
+            class="tool-item"
+          >
             <span class="tool-name">{{ tool.name }}</span>
-            <span v-if="tool.description" class="tool-desc">{{ tool.description }}</span>
+            <span
+              v-if="tool.description"
+              class="tool-desc"
+            >{{ tool.description }}</span>
           </div>
         </div>
       </div>
 
       <!-- Resources List -->
-      <div v-if="server.resources.length > 0" class="capabilities-section">
+      <div
+        v-if="server.resources.length > 0"
+        class="capabilities-section"
+      >
         <div class="capabilities-header">
           <span class="capabilities-title">Resources ({{ server.resources.length }})</span>
         </div>
         <div class="resources-list">
-          <div v-for="resource in server.resources" :key="resource.uri" class="resource-item">
+          <div
+            v-for="resource in server.resources"
+            :key="resource.uri"
+            class="resource-item"
+          >
             <span class="resource-name">{{ resource.name }}</span>
             <span class="resource-uri">{{ resource.uri }}</span>
           </div>

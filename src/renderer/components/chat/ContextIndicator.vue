@@ -1,10 +1,10 @@
 <template>
   <div
+    ref="indicatorRef"
     class="context-indicator"
     :class="[statusClass, { compact: isCompact, compacting: isCompacting }]"
     @mouseenter="handleMouseEnter"
     @mouseleave="showTooltip = false"
-    ref="indicatorRef"
   >
     <!-- Icon: Show Loader2 when compacting, Zap otherwise -->
     <Loader2
@@ -26,8 +26,15 @@
     <!-- Hover tooltip (teleported to body to avoid clipping) -->
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="showTooltip" class="context-tooltip" :style="tooltipStyle">
-          <div v-if="isCompacting" class="tooltip-row compacting-status">
+        <div
+          v-if="showTooltip"
+          class="context-tooltip"
+          :style="tooltipStyle"
+        >
+          <div
+            v-if="isCompacting"
+            class="tooltip-row compacting-status"
+          >
             <span>⏳ Compacting context...</span>
           </div>
           <template v-else>
@@ -35,7 +42,7 @@
               <span>Context:</span>
               <span class="tooltip-value">{{ formatTokens(currentContextSize) }} / {{ formatTokens(contextLength) }}</span>
             </div>
-            <div class="tooltip-divider"></div>
+            <div class="tooltip-divider" />
             <div class="tooltip-row">
               <span>Total:</span>
               <span class="tooltip-value">{{ formatTokens(totalTokens) }}</span>

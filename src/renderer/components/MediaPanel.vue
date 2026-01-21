@@ -1,10 +1,13 @@
 <template>
   <Transition name="media-panel">
-    <div v-if="visible" class="media-panel">
+    <div
+      v-if="visible"
+      class="media-panel"
+    >
       <!-- Navigation -->
       <div class="media-nav">
         <!-- Traffic lights space -->
-        <div class="traffic-lights-space"></div>
+        <div class="traffic-lights-space" />
         <div class="nav-items">
           <button
             v-for="item in navItems"
@@ -13,18 +16,42 @@
             :class="{ active: activeNav === item.id }"
             @click="activeNav = item.id"
           >
-            <component :is="item.icon" :size="20" :stroke-width="1.5" class="nav-icon" />
+            <component
+              :is="item.icon"
+              :size="20"
+              :stroke-width="1.5"
+              class="nav-icon"
+            />
             <span class="nav-label">{{ item.label }}</span>
-            <span v-if="item.id === 'media' && mediaStore.images.length > 0" class="nav-badge">
+            <span
+              v-if="item.id === 'media' && mediaStore.images.length > 0"
+              class="nav-badge"
+            >
               {{ mediaStore.images.length }}
             </span>
           </button>
         </div>
         <div class="nav-footer">
-          <button class="nav-close-btn" @click="$emit('close')" title="Close panel">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="19" y1="12" x2="5" y2="12"/>
-              <polyline points="12 19 5 12 12 5"/>
+          <button
+            class="nav-close-btn"
+            title="Close panel"
+            @click="$emit('close')"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <line
+                x1="19"
+                y1="12"
+                x2="5"
+                y2="12"
+              />
+              <polyline points="12 19 5 12 12 5" />
             </svg>
           </button>
         </div>
@@ -33,7 +60,10 @@
       <!-- Content Area -->
       <div class="media-content">
         <!-- Memory Content -->
-        <MemoryContent v-if="activeNav === 'memory'" @open-file="handleOpenMemoryFile" />
+        <MemoryContent
+          v-if="activeNav === 'memory'"
+          @open-file="handleOpenMemoryFile"
+        />
 
         <!-- Agents Content -->
         <AgentsContent
@@ -50,50 +80,101 @@
               type="text"
               class="search-input"
               placeholder="Search images..."
-            />
+            >
           </div>
 
           <div class="content-body">
             <!-- Image Grid -->
-            <div v-if="filteredImages.length > 0" class="media-grid">
+            <div
+              v-if="filteredImages.length > 0"
+              class="media-grid"
+            >
               <div
                 v-for="image in filteredImages"
                 :key="image.id"
                 class="media-item"
                 @click="openImage(image)"
               >
-                <img :src="mediaStore.getImageUrl(image)" :alt="image.prompt" class="media-thumbnail" />
+                <img
+                  :src="mediaStore.getImageUrl(image)"
+                  :alt="image.prompt"
+                  class="media-thumbnail"
+                >
                 <div class="media-overlay">
-                  <p class="media-prompt">{{ image.prompt }}</p>
+                  <p class="media-prompt">
+                    {{ image.prompt }}
+                  </p>
                   <span class="media-model">{{ image.model }}</span>
                 </div>
                 <!-- Delete button -->
                 <button
                   class="delete-btn"
-                  @click.stop="deleteImage(image.id)"
                   title="Delete image"
+                  @click.stop="deleteImage(image.id)"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    <line x1="10" y1="11" x2="10" y2="17"/>
-                    <line x1="14" y1="11" x2="14" y2="17"/>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    <line
+                      x1="10"
+                      y1="11"
+                      x2="10"
+                      y2="17"
+                    />
+                    <line
+                      x1="14"
+                      y1="11"
+                      x2="14"
+                      y2="17"
+                    />
                   </svg>
                 </button>
               </div>
             </div>
 
             <!-- Empty State -->
-            <div v-else class="empty-state">
+            <div
+              v-else
+              class="empty-state"
+            >
               <div class="empty-icon">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                  <circle cx="8.5" cy="8.5" r="1.5"/>
-                  <polyline points="21 15 16 10 5 21"/>
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <rect
+                    x="3"
+                    y="3"
+                    width="18"
+                    height="18"
+                    rx="2"
+                    ry="2"
+                  />
+                  <circle
+                    cx="8.5"
+                    cy="8.5"
+                    r="1.5"
+                  />
+                  <polyline points="21 15 16 10 5 21" />
                 </svg>
               </div>
-              <p class="empty-text">No images yet</p>
-              <p class="empty-hint">AI-generated images will appear here</p>
+              <p class="empty-text">
+                No images yet
+              </p>
+              <p class="empty-hint">
+                AI-generated images will appear here
+              </p>
             </div>
           </div>
         </template>
@@ -111,20 +192,42 @@
               type="text"
               class="search-input"
               placeholder="Search..."
-            />
+            >
           </div>
 
           <div class="content-body">
             <div class="empty-state">
               <div class="empty-icon">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                  <circle cx="8.5" cy="8.5" r="1.5"/>
-                  <polyline points="21 15 16 10 5 21"/>
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <rect
+                    x="3"
+                    y="3"
+                    width="18"
+                    height="18"
+                    rx="2"
+                    ry="2"
+                  />
+                  <circle
+                    cx="8.5"
+                    cy="8.5"
+                    r="1.5"
+                  />
+                  <polyline points="21 15 16 10 5 21" />
                 </svg>
               </div>
-              <p class="empty-text">Coming soon</p>
-              <p class="empty-hint">This feature is under development</p>
+              <p class="empty-text">
+                Coming soon
+              </p>
+              <p class="empty-hint">
+                This feature is under development
+              </p>
             </div>
           </div>
         </template>

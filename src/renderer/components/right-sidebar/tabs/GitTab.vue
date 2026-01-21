@@ -2,92 +2,179 @@
   <div class="git-tab">
     <!-- Header -->
     <div class="tab-header">
-      <div class="branch-info" v-if="gitStatus">
-        <GitBranch :size="14" :stroke-width="1.5" />
+      <div
+        v-if="gitStatus"
+        class="branch-info"
+      >
+        <GitBranch
+          :size="14"
+          :stroke-width="1.5"
+        />
         <span class="branch-name">{{ gitStatus.branch || 'Unknown' }}</span>
-        <span v-if="gitStatus.ahead" class="sync-badge ahead" title="Ahead">
-          <ArrowUp :size="10" :stroke-width="2" />{{ gitStatus.ahead }}
+        <span
+          v-if="gitStatus.ahead"
+          class="sync-badge ahead"
+          title="Ahead"
+        >
+          <ArrowUp
+            :size="10"
+            :stroke-width="2"
+          />{{ gitStatus.ahead }}
         </span>
-        <span v-if="gitStatus.behind" class="sync-badge behind" title="Behind">
-          <ArrowDown :size="10" :stroke-width="2" />{{ gitStatus.behind }}
+        <span
+          v-if="gitStatus.behind"
+          class="sync-badge behind"
+          title="Behind"
+        >
+          <ArrowDown
+            :size="10"
+            :stroke-width="2"
+          />{{ gitStatus.behind }}
         </span>
       </div>
-      <div class="header-actions" v-if="gitStatus?.isRepo">
+      <div
+        v-if="gitStatus?.isRepo"
+        class="header-actions"
+      >
         <button
           class="action-btn"
-          @click="pullChanges"
           :disabled="isOperating"
           title="Pull"
+          @click="pullChanges"
         >
-          <ArrowDown :size="12" :stroke-width="1.5" />
+          <ArrowDown
+            :size="12"
+            :stroke-width="1.5"
+          />
         </button>
         <button
           class="action-btn"
-          @click="pushChanges"
           :disabled="isOperating"
           title="Push"
+          @click="pushChanges"
         >
-          <ArrowUp :size="12" :stroke-width="1.5" />
+          <ArrowUp
+            :size="12"
+            :stroke-width="1.5"
+          />
         </button>
         <button
           class="action-btn commit"
-          @click="openCommitDialog"
           :disabled="!hasStaged || isOperating"
           title="Commit"
+          @click="openCommitDialog"
         >
-          <GitCommitHorizontal :size="12" :stroke-width="1.5" />
+          <GitCommitHorizontal
+            :size="12"
+            :stroke-width="1.5"
+          />
         </button>
       </div>
     </div>
 
     <!-- Loading State -->
-    <div v-if="isLoading && !gitStatus" class="loading-state">
+    <div
+      v-if="isLoading && !gitStatus"
+      class="loading-state"
+    >
       <div class="skeleton-section">
-        <div class="skeleton-header"></div>
-        <div class="skeleton-item"></div>
-        <div class="skeleton-item"></div>
+        <div class="skeleton-header" />
+        <div class="skeleton-item" />
+        <div class="skeleton-item" />
       </div>
     </div>
 
     <!-- Error State -->
-    <div v-else-if="error" class="error-state">
-      <AlertCircle :size="32" :stroke-width="1.5" />
-      <p class="error-text">{{ error }}</p>
-      <button class="retry-btn" @click="loadGitStatus">Retry</button>
+    <div
+      v-else-if="error"
+      class="error-state"
+    >
+      <AlertCircle
+        :size="32"
+        :stroke-width="1.5"
+      />
+      <p class="error-text">
+        {{ error }}
+      </p>
+      <button
+        class="retry-btn"
+        @click="loadGitStatus"
+      >
+        Retry
+      </button>
     </div>
 
     <!-- No Working Directory -->
-    <div v-else-if="!workingDirectory" class="empty-state">
-      <GitBranch :size="32" :stroke-width="1.5" />
-      <p class="empty-text">No working directory</p>
-      <p class="empty-hint">Select a chat session with a working directory</p>
+    <div
+      v-else-if="!workingDirectory"
+      class="empty-state"
+    >
+      <GitBranch
+        :size="32"
+        :stroke-width="1.5"
+      />
+      <p class="empty-text">
+        No working directory
+      </p>
+      <p class="empty-hint">
+        Select a chat session with a working directory
+      </p>
     </div>
 
     <!-- Not a Git Repository -->
-    <div v-else-if="!gitStatus?.isRepo" class="empty-state">
-      <FolderX :size="32" :stroke-width="1.5" />
-      <p class="empty-text">Not a Git repository</p>
-      <p class="empty-hint">This directory is not tracked by Git</p>
+    <div
+      v-else-if="!gitStatus?.isRepo"
+      class="empty-state"
+    >
+      <FolderX
+        :size="32"
+        :stroke-width="1.5"
+      />
+      <p class="empty-text">
+        Not a Git repository
+      </p>
+      <p class="empty-hint">
+        This directory is not tracked by Git
+      </p>
     </div>
 
     <!-- Git Status Content -->
-    <div v-else class="git-content">
+    <div
+      v-else
+      class="git-content"
+    >
       <!-- Staged Changes -->
-      <div v-if="gitStatus.staged.length > 0" class="section">
-        <div class="section-header" @click="toggleSection('staged')">
-          <ChevronRight :size="14" :stroke-width="1.5" :class="{ rotated: !collapsedSections.staged }" />
+      <div
+        v-if="gitStatus.staged.length > 0"
+        class="section"
+      >
+        <div
+          class="section-header"
+          @click="toggleSection('staged')"
+        >
+          <ChevronRight
+            :size="14"
+            :stroke-width="1.5"
+            :class="{ rotated: !collapsedSections.staged }"
+          />
           <span class="section-title">Staged Changes</span>
           <span class="section-count">{{ gitStatus.staged.length }}</span>
           <button
             class="section-action"
-            @click.stop="unstageAll"
             :disabled="isOperating"
             title="Unstage All"
+            @click.stop="unstageAll"
           >
-            <Minus :size="12" :stroke-width="1.5" />
+            <Minus
+              :size="12"
+              :stroke-width="1.5"
+            />
           </button>
         </div>
-        <div v-show="!collapsedSections.staged" class="section-content">
+        <div
+          v-show="!collapsedSections.staged"
+          class="section-content"
+        >
           <div
             v-for="file in gitStatus.staged"
             :key="file.path"
@@ -98,32 +185,51 @@
             <span class="file-path">{{ file.path }}</span>
             <button
               class="file-action"
-              @click.stop="unstageFile(file.path)"
               :disabled="isOperating"
               title="Unstage"
+              @click.stop="unstageFile(file.path)"
             >
-              <Minus :size="12" :stroke-width="1.5" />
+              <Minus
+                :size="12"
+                :stroke-width="1.5"
+              />
             </button>
           </div>
         </div>
       </div>
 
       <!-- Unstaged Changes -->
-      <div v-if="gitStatus.changes.length > 0" class="section">
-        <div class="section-header" @click="toggleSection('changes')">
-          <ChevronRight :size="14" :stroke-width="1.5" :class="{ rotated: !collapsedSections.changes }" />
+      <div
+        v-if="gitStatus.changes.length > 0"
+        class="section"
+      >
+        <div
+          class="section-header"
+          @click="toggleSection('changes')"
+        >
+          <ChevronRight
+            :size="14"
+            :stroke-width="1.5"
+            :class="{ rotated: !collapsedSections.changes }"
+          />
           <span class="section-title">Changes</span>
           <span class="section-count">{{ gitStatus.changes.length }}</span>
           <button
             class="section-action"
-            @click.stop="stageAllChanges"
             :disabled="isOperating"
             title="Stage All"
+            @click.stop="stageAllChanges"
           >
-            <Plus :size="12" :stroke-width="1.5" />
+            <Plus
+              :size="12"
+              :stroke-width="1.5"
+            />
           </button>
         </div>
-        <div v-show="!collapsedSections.changes" class="section-content">
+        <div
+          v-show="!collapsedSections.changes"
+          class="section-content"
+        >
           <div
             v-for="file in gitStatus.changes"
             :key="file.path"
@@ -134,32 +240,51 @@
             <span class="file-path">{{ file.path }}</span>
             <button
               class="file-action"
-              @click.stop="stageFile(file.path)"
               :disabled="isOperating"
               title="Stage"
+              @click.stop="stageFile(file.path)"
             >
-              <Plus :size="12" :stroke-width="1.5" />
+              <Plus
+                :size="12"
+                :stroke-width="1.5"
+              />
             </button>
           </div>
         </div>
       </div>
 
       <!-- Untracked Files -->
-      <div v-if="gitStatus.untracked.length > 0" class="section">
-        <div class="section-header" @click="toggleSection('untracked')">
-          <ChevronRight :size="14" :stroke-width="1.5" :class="{ rotated: !collapsedSections.untracked }" />
+      <div
+        v-if="gitStatus.untracked.length > 0"
+        class="section"
+      >
+        <div
+          class="section-header"
+          @click="toggleSection('untracked')"
+        >
+          <ChevronRight
+            :size="14"
+            :stroke-width="1.5"
+            :class="{ rotated: !collapsedSections.untracked }"
+          />
           <span class="section-title">Untracked</span>
           <span class="section-count">{{ gitStatus.untracked.length }}</span>
           <button
             class="section-action"
-            @click.stop="stageAllUntracked"
             :disabled="isOperating"
             title="Add All"
+            @click.stop="stageAllUntracked"
           >
-            <Plus :size="12" :stroke-width="1.5" />
+            <Plus
+              :size="12"
+              :stroke-width="1.5"
+            />
           </button>
         </div>
-        <div v-show="!collapsedSections.untracked" class="section-content">
+        <div
+          v-show="!collapsedSections.untracked"
+          class="section-content"
+        >
           <div
             v-for="file in gitStatus.untracked"
             :key="file"
@@ -170,19 +295,28 @@
             <span class="file-path">{{ file }}</span>
             <button
               class="file-action"
-              @click.stop="stageFile(file)"
               :disabled="isOperating"
               title="Add"
+              @click.stop="stageFile(file)"
             >
-              <Plus :size="12" :stroke-width="1.5" />
+              <Plus
+                :size="12"
+                :stroke-width="1.5"
+              />
             </button>
           </div>
         </div>
       </div>
 
       <!-- No Changes -->
-      <div v-if="noChanges" class="no-changes">
-        <Check :size="32" :stroke-width="1.5" />
+      <div
+        v-if="noChanges"
+        class="no-changes"
+      >
+        <Check
+          :size="32"
+          :stroke-width="1.5"
+        />
         <p>Working tree clean</p>
       </div>
     </div>

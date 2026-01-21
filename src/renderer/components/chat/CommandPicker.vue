@@ -1,5 +1,8 @@
 <template>
-  <div class="command-picker" v-if="visible && filteredCommands.length > 0">
+  <div
+    v-if="visible && filteredCommands.length > 0"
+    class="command-picker"
+  >
     <div class="command-picker-header">
       <span class="title">Commands</span>
       <span class="count">{{ filteredCommands.length }}</span>
@@ -13,16 +16,34 @@
         @mouseenter="selectedIndex = index"
       >
         <div class="command-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <polyline points="4 17 10 11 4 5" />
-            <line x1="12" y1="19" x2="20" y2="19" />
+            <line
+              x1="12"
+              y1="19"
+              x2="20"
+              y2="19"
+            />
           </svg>
         </div>
         <div class="command-info">
-          <div class="command-name">/{{ command.id }}</div>
-          <div class="command-description">{{ command.description }}</div>
+          <div class="command-name">
+            /{{ command.id }}
+          </div>
+          <div class="command-description">
+            {{ command.description }}
+          </div>
         </div>
-        <div class="command-usage">{{ command.usage }}</div>
+        <div class="command-usage">
+          {{ command.usage }}
+        </div>
       </div>
     </div>
     <div class="command-picker-hint">

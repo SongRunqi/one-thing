@@ -3,14 +3,24 @@
     <!-- Header -->
     <div class="panel-header">
       <div class="header-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
         </svg>
       </div>
       <span class="header-title">Changed Files</span>
       <span class="header-count">({{ displayFiles.length }})</span>
-      <span class="header-hint" title="Only Edit and Write tool changes are tracked">Edit/Write only</span>
+      <span
+        class="header-hint"
+        title="Only Edit and Write tool changes are tracked"
+      >Edit/Write only</span>
       <span class="header-stats">
         <span class="stat-add">+{{ summary.totalAdditions }}</span>
         <span class="stat-del">-{{ summary.totalDeletions }}</span>
@@ -19,36 +29,66 @@
       <button
         v-if="hasRollbackableFiles"
         class="rollback-all-btn"
-        @click.stop="rollbackAll"
         :disabled="isRollingBack"
         title="Rollback all changes"
+        @click.stop="rollbackAll"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-          <path d="M3 3v5h5"/>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
         </svg>
         <span>Rollback All</span>
       </button>
       <!-- Close Button -->
       <button
         class="close-btn"
-        @click.stop="handleClose"
         title="Close panel"
+        @click.stop="handleClose"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <line
+            x1="18"
+            y1="6"
+            x2="6"
+            y2="18"
+          />
+          <line
+            x1="6"
+            y1="6"
+            x2="18"
+            y2="18"
+          />
         </svg>
       </button>
     </div>
 
     <!-- Empty state -->
-    <div v-if="displayFiles.length === 0" class="empty-state">
+    <div
+      v-if="displayFiles.length === 0"
+      class="empty-state"
+    >
       All changes have been rolled back
     </div>
 
     <!-- Content area -->
-    <div v-else class="panel-content">
+    <div
+      v-else
+      class="panel-content"
+    >
       <!-- File list -->
       <div class="file-list">
         <div
@@ -58,31 +98,58 @@
           @click="selectFile(file)"
         >
           <div class="file-icon">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
             </svg>
           </div>
           <div class="file-info">
-            <div class="file-name">{{ getFileName(file.filePath) }}</div>
-            <div class="file-path">{{ getFileDir(file.filePath) }}</div>
+            <div class="file-name">
+              {{ getFileName(file.filePath) }}
+            </div>
+            <div class="file-path">
+              {{ getFileDir(file.filePath) }}
+            </div>
           </div>
           <div class="file-stats">
-            <span v-if="file.isNew" class="badge-new">new</span>
-            <span v-if="file.additions > 0" class="stat-add">+{{ file.additions }}</span>
-            <span v-if="file.deletions > 0" class="stat-del">-{{ file.deletions }}</span>
+            <span
+              v-if="file.isNew"
+              class="badge-new"
+            >new</span>
+            <span
+              v-if="file.additions > 0"
+              class="stat-add"
+            >+{{ file.additions }}</span>
+            <span
+              v-if="file.deletions > 0"
+              class="stat-del"
+            >-{{ file.deletions }}</span>
           </div>
           <!-- Rollback button for each file -->
           <button
             v-if="canRollback(file)"
             class="rollback-btn"
-            @click.stop="rollbackFile(file)"
             :disabled="isRollingBack"
             title="Rollback this file"
+            @click.stop="rollbackFile(file)"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-              <path d="M3 3v5h5"/>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
             </svg>
           </button>
         </div>
@@ -90,23 +157,39 @@
 
       <!-- Detail view -->
       <div class="detail-view">
-        <div v-if="!selectedFile" class="detail-placeholder">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M15 15l6 6m-11-4a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/>
+        <div
+          v-if="!selectedFile"
+          class="detail-placeholder"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path d="M15 15l6 6m-11-4a7 7 0 1 1 0-14 7 7 0 0 1 0 14z" />
           </svg>
           <span>Select a file to view changes</span>
         </div>
-        <div v-else class="diff-container">
+        <div
+          v-else
+          class="diff-container"
+        >
           <div class="diff-header">
             <span class="diff-filename">{{ selectedFile.filePath }}</span>
           </div>
           <DiffView
             v-if="selectedFile.diff"
             :diff="selectedFile.diff"
-            maxHeight="100%"
-            :showFileName="false"
+            max-height="100%"
+            :show-file-name="false"
           />
-          <div class="diff-empty" v-else>
+          <div
+            v-else
+            class="diff-empty"
+          >
             <span>No diff available</span>
           </div>
         </div>

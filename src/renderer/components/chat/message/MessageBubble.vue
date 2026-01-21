@@ -1,13 +1,16 @@
 <template>
   <div
     v-if="hasVisibleContent"
+    ref="bubbleRef"
     class="bubble"
     :class="{ editing: isEditing, [role]: true }"
-    ref="bubbleRef"
     @mouseup="handleTextSelection"
   >
     <!-- Attachments preview (shown above text for user messages) -->
-    <div v-if="attachments && attachments.length > 0" class="message-attachments">
+    <div
+      v-if="attachments && attachments.length > 0"
+      class="message-attachments"
+    >
       <div
         v-for="attachment in attachments"
         :key="attachment.id"
@@ -20,11 +23,21 @@
           :alt="attachment.fileName"
           class="attachment-image"
           @click="emit('openImage', attachment)"
-        />
-        <div v-else class="attachment-file">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
+        >
+        <div
+          v-else
+          class="attachment-file"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
           </svg>
           <span class="attachment-file-name">{{ attachment.fileName }}</span>
         </div>
@@ -32,15 +45,28 @@
     </div>
 
     <!-- Skill usage badge -->
-    <div v-if="skillUsed && role === 'assistant'" class="skill-badge">
-      <svg class="skill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+    <div
+      v-if="skillUsed && role === 'assistant'"
+      class="skill-badge"
+    >
+      <svg
+        class="skill-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
       </svg>
       <span class="skill-name">{{ skillUsed }}</span>
     </div>
 
     <!-- Edit mode for user messages -->
-    <div v-if="isEditing" class="edit-container" @click.stop>
+    <div
+      v-if="isEditing"
+      class="edit-container"
+      @click.stop
+    >
       <textarea
         ref="editTextarea"
         v-model="localEditContent"
@@ -49,11 +75,15 @@
         @compositionstart="isEditComposing = true"
         @compositionend="isEditComposing = false"
         @input="adjustEditTextareaHeight"
-      ></textarea>
+      />
     </div>
 
     <!-- Normal display -->
-    <div v-else class="content-display" @click="handleContentClick">
+    <div
+      v-else
+      class="content-display"
+      @click="handleContentClick"
+    >
       <!-- Collapsible wrapper (only for user messages) -->
       <div
         ref="contentRef"
@@ -73,7 +103,7 @@
               class="content"
               :class="{ typing: isTyping }"
               v-html="renderContentMarkdown(firstTextPart.content)"
-            ></div>
+            />
           </Transition>
 
           <!-- Other parts: tool-call, steps, additional text (with TransitionGroup) -->
@@ -83,9 +113,15 @@
             tag="div"
             class="other-parts-container"
           >
-            <template v-for="(part, index) in otherParts" :key="getOtherPartKey(part, index)">
+            <template
+              v-for="(part, index) in otherParts"
+              :key="getOtherPartKey(part, index)"
+            >
               <!-- Tool loop waiting (工具执行后等待 AI 继续) -->
-              <div v-if="part.type === 'waiting'" class="tool-loop-waiting">
+              <div
+                v-if="part.type === 'waiting'"
+                class="tool-loop-waiting"
+              >
                 <span class="thinking-text flowing">Waiting</span>
               </div>
               <!-- Additional text parts (after the first one) -->
@@ -93,19 +129,19 @@
                 v-else-if="part.type === 'text'"
                 class="content"
                 v-html="renderContentMarkdown(part.content)"
-              ></div>
+              />
               <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
               <template v-else-if="part.type === 'tool-call' && (!hasSteps || hasInputStreamingToolCalls(part.toolCalls))">
                 <template v-if="!hasSteps">
                   <!-- No steps at all, show all tool calls -->
                   <ToolCallGroup
-                    :toolCalls="part.toolCalls"
+                    :tool-calls="part.toolCalls"
                     @execute="(tc) => emit('executeTool', tc)"
                   />
                   <ToolCallItem
                     v-for="tc in part.toolCalls"
                     :key="tc.id"
-                    :toolCall="tc"
+                    :tool-call="tc"
                     @execute="(tc) => emit('executeTool', tc)"
                     @confirm="(tc, r) => emit('confirmTool', tc, r)"
                     @reject="(tc) => emit('rejectTool', tc)"
@@ -116,7 +152,7 @@
                   <ToolCallItem
                     v-for="tc in getToolCallsWithoutSteps(part.toolCalls)"
                     :key="tc.id"
-                    :toolCall="tc"
+                    :tool-call="tc"
                     @execute="(tc) => emit('executeTool', tc)"
                     @confirm="(tc, r) => emit('confirmTool', tc, r)"
                     @reject="(tc) => emit('rejectTool', tc)"
@@ -146,13 +182,13 @@
           <template v-if="toolCalls && toolCalls.length > 0 && (!hasSteps || hasInputStreamingToolCalls(toolCalls))">
             <template v-if="!hasSteps">
               <ToolCallGroup
-                :toolCalls="toolCalls"
+                :tool-calls="toolCalls"
                 @execute="(tc) => emit('executeTool', tc)"
               />
               <ToolCallItem
                 v-for="tc in toolCalls"
                 :key="tc.id"
-                :toolCall="tc"
+                :tool-call="tc"
                 @execute="(tc) => emit('executeTool', tc)"
                 @confirm="(tc, r) => emit('confirmTool', tc, r)"
                 @reject="(tc) => emit('rejectTool', tc)"
@@ -162,14 +198,17 @@
               <ToolCallItem
                 v-for="tc in getToolCallsWithoutSteps(toolCalls)"
                 :key="tc.id"
-                :toolCall="tc"
+                :tool-call="tc"
                 @execute="(tc) => emit('executeTool', tc)"
                 @confirm="(tc, r) => emit('confirmTool', tc, r)"
                 @reject="(tc) => emit('rejectTool', tc)"
               />
             </template>
           </template>
-          <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
+          <div
+            :class="['content', { typing: isTyping }]"
+            v-html="renderedContent"
+          />
         </template>
       </div>
 

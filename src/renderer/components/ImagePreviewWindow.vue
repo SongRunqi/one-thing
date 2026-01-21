@@ -1,14 +1,23 @@
 <template>
-  <div class="image-preview-window" :class="{ 'is-dragging': isDragging, 'gallery-mode': isGalleryMode }">
+  <div
+    class="image-preview-window"
+    :class="{ 'is-dragging': isDragging, 'gallery-mode': isGalleryMode }"
+  >
     <!-- Drag region for window -->
-    <div class="drag-region"></div>
+    <div class="drag-region" />
 
     <!-- Gallery sidebar (left thumbnails) -->
-    <div v-if="isGalleryMode" class="gallery-sidebar">
+    <div
+      v-if="isGalleryMode"
+      class="gallery-sidebar"
+    >
       <div class="sidebar-header">
         <span class="image-count">{{ images.length }} images</span>
       </div>
-      <div class="thumbnail-list" ref="thumbnailListRef">
+      <div
+        ref="thumbnailListRef"
+        class="thumbnail-list"
+      >
         <div
           v-for="(img, index) in images"
           :key="img.id"
@@ -16,7 +25,10 @@
           :class="{ active: currentIndex === index }"
           @click="selectImage(index)"
         >
-          <img :src="img.thumbnail || img.src" :alt="img.alt || 'Image'" />
+          <img
+            :src="img.thumbnail || img.src"
+            :alt="img.alt || 'Image'"
+          >
         </div>
       </div>
     </div>
@@ -25,8 +37,8 @@
     <div class="preview-area">
       <!-- Image container -->
       <div
-        class="image-container"
         ref="containerRef"
+        class="image-container"
         @wheel="handleWheel"
         @mousedown="startDrag"
         @mousemove="onDrag"
@@ -41,12 +53,18 @@
           :style="imageStyle"
           @load="onImageLoad"
           @error="onImageError"
-        />
-        <div v-else class="loading-state">
-          <div class="loading-spinner"></div>
+        >
+        <div
+          v-else
+          class="loading-state"
+        >
+          <div class="loading-spinner" />
           <span>Loading image...</span>
         </div>
-        <div v-if="loadError" class="error-state">
+        <div
+          v-if="loadError"
+          class="error-state"
+        >
           <span>Failed to load image</span>
         </div>
       </div>
@@ -54,69 +72,219 @@
       <!-- Controls bar -->
       <div class="controls-bar">
         <div class="controls-left">
-          <span class="image-name" :title="imageAlt">{{ imageAlt || 'Image' }}</span>
+          <span
+            class="image-name"
+            :title="imageAlt"
+          >{{ imageAlt || 'Image' }}</span>
         </div>
         <div class="controls-center">
           <!-- Navigation for gallery mode -->
           <template v-if="isGalleryMode">
-            <button class="control-btn" @click="prevImage" :disabled="currentIndex === 0" title="Previous (←)">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="15 18 9 12 15 6"/>
+            <button
+              class="control-btn"
+              :disabled="currentIndex === 0"
+              title="Previous (←)"
+              @click="prevImage"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
             <span class="nav-info">{{ currentIndex + 1 }} / {{ images.length }}</span>
-            <button class="control-btn" @click="nextImage" :disabled="currentIndex >= images.length - 1" title="Next (→)">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 18 15 12 9 6"/>
+            <button
+              class="control-btn"
+              :disabled="currentIndex >= images.length - 1"
+              title="Next (→)"
+              @click="nextImage"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="9 18 15 12 9 6" />
               </svg>
             </button>
-            <div class="divider"></div>
+            <div class="divider" />
           </template>
-          <button class="control-btn" @click="zoomOut" title="Zoom out (-)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              <line x1="8" y1="11" x2="14" y2="11"/>
+          <button
+            class="control-btn"
+            title="Zoom out (-)"
+            @click="zoomOut"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle
+                cx="11"
+                cy="11"
+                r="8"
+              />
+              <line
+                x1="21"
+                y1="21"
+                x2="16.65"
+                y2="16.65"
+              />
+              <line
+                x1="8"
+                y1="11"
+                x2="14"
+                y2="11"
+              />
             </svg>
           </button>
           <span class="zoom-level">{{ Math.round(scale * 100) }}%</span>
-          <button class="control-btn" @click="zoomIn" title="Zoom in (+)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              <line x1="11" y1="8" x2="11" y2="14"/>
-              <line x1="8" y1="11" x2="14" y2="11"/>
+          <button
+            class="control-btn"
+            title="Zoom in (+)"
+            @click="zoomIn"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle
+                cx="11"
+                cy="11"
+                r="8"
+              />
+              <line
+                x1="21"
+                y1="21"
+                x2="16.65"
+                y2="16.65"
+              />
+              <line
+                x1="11"
+                y1="8"
+                x2="11"
+                y2="14"
+              />
+              <line
+                x1="8"
+                y1="11"
+                x2="14"
+                y2="11"
+              />
             </svg>
           </button>
-          <button class="control-btn" @click="resetView" title="Reset (0)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-              <path d="M3 3v5h5"/>
+          <button
+            class="control-btn"
+            title="Reset (0)"
+            @click="resetView"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
             </svg>
           </button>
-          <div class="divider"></div>
-          <button class="control-btn" @click="fitToWindow" title="Fit to window">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2"/>
-              <path d="M9 3v18"/>
-              <path d="M15 3v18"/>
-              <path d="M3 9h18"/>
-              <path d="M3 15h18"/>
+          <div class="divider" />
+          <button
+            class="control-btn"
+            title="Fit to window"
+            @click="fitToWindow"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect
+                x="3"
+                y="3"
+                width="18"
+                height="18"
+                rx="2"
+              />
+              <path d="M9 3v18" />
+              <path d="M15 3v18" />
+              <path d="M3 9h18" />
+              <path d="M3 15h18" />
             </svg>
           </button>
-          <button class="control-btn" @click="actualSize" title="Actual size (1)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2"/>
-              <text x="12" y="16" text-anchor="middle" font-size="10" fill="currentColor" stroke="none">1:1</text>
+          <button
+            class="control-btn"
+            title="Actual size (1)"
+            @click="actualSize"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect
+                x="3"
+                y="3"
+                width="18"
+                height="18"
+                rx="2"
+              />
+              <text
+                x="12"
+                y="16"
+                text-anchor="middle"
+                font-size="10"
+                fill="currentColor"
+                stroke="none"
+              >1:1</text>
             </svg>
           </button>
         </div>
         <div class="controls-right">
-          <button class="control-btn" @click="downloadImage" title="Download">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
+          <button
+            class="control-btn"
+            title="Download"
+            @click="downloadImage"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line
+                x1="12"
+                y1="15"
+                x2="12"
+                y2="3"
+              />
             </svg>
           </button>
         </div>

@@ -1,11 +1,34 @@
 <template>
   <div class="custom-tool-editor">
     <div class="editor-header">
-      <h4 class="editor-title">{{ isNew ? 'Add Tool' : 'Edit Tool' }}</h4>
-      <button class="close-btn" @click="$emit('cancel')" title="Cancel">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
+      <h4 class="editor-title">
+        {{ isNew ? 'Add Tool' : 'Edit Tool' }}
+      </h4>
+      <button
+        class="close-btn"
+        title="Cancel"
+        @click="$emit('cancel')"
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <line
+            x1="18"
+            y1="6"
+            x2="6"
+            y2="18"
+          />
+          <line
+            x1="6"
+            y1="6"
+            x2="18"
+            y2="18"
+          />
         </svg>
       </button>
     </div>
@@ -22,7 +45,7 @@
               type="text"
               placeholder="e.g., git-status"
               :disabled="!isNew"
-            />
+            >
           </div>
           <div class="form-group">
             <label class="form-label">Name</label>
@@ -31,7 +54,7 @@
               class="form-input"
               type="text"
               placeholder="e.g., Git Status"
-            />
+            >
           </div>
         </div>
 
@@ -42,7 +65,7 @@
             class="form-input"
             type="text"
             placeholder="Describe what this tool does"
-          />
+          >
         </div>
       </div>
 
@@ -55,9 +78,21 @@
             :class="{ active: form.executionType === 'bash' }"
             @click="form.executionType = 'bash'"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="4 17 10 11 4 5"/>
-              <line x1="12" y1="19" x2="20" y2="19"/>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="4 17 10 11 4 5" />
+              <line
+                x1="12"
+                y1="19"
+                x2="20"
+                y2="19"
+              />
             </svg>
             Bash
           </button>
@@ -66,17 +101,36 @@
             :class="{ active: form.executionType === 'http' }"
             @click="form.executionType = 'http'"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="2" y1="12" x2="22" y2="12"/>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+              />
+              <line
+                x1="2"
+                y1="12"
+                x2="22"
+                y2="12"
+              />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
             </svg>
             HTTP
           </button>
         </div>
 
         <!-- Bash Execution Config -->
-        <div v-if="form.executionType === 'bash'" class="execution-config">
+        <div
+          v-if="form.executionType === 'bash'"
+          class="execution-config"
+        >
           <div class="form-group">
             <label class="form-label">Command</label>
             <textarea
@@ -94,21 +148,37 @@
               class="form-input"
               type="number"
               placeholder="30000"
-            />
+            >
           </div>
         </div>
 
         <!-- HTTP Execution Config -->
-        <div v-if="form.executionType === 'http'" class="execution-config">
+        <div
+          v-if="form.executionType === 'http'"
+          class="execution-config"
+        >
           <div class="form-row">
             <div class="form-group method-select">
               <label class="form-label">Method</label>
-              <select v-model="form.httpMethod" class="form-select">
-                <option value="GET">GET</option>
-                <option value="POST">POST</option>
-                <option value="PUT">PUT</option>
-                <option value="PATCH">PATCH</option>
-                <option value="DELETE">DELETE</option>
+              <select
+                v-model="form.httpMethod"
+                class="form-select"
+              >
+                <option value="GET">
+                  GET
+                </option>
+                <option value="POST">
+                  POST
+                </option>
+                <option value="PUT">
+                  PUT
+                </option>
+                <option value="PATCH">
+                  PATCH
+                </option>
+                <option value="DELETE">
+                  DELETE
+                </option>
               </select>
             </div>
             <div class="form-group flex-grow">
@@ -118,7 +188,7 @@
                 class="form-input code"
                 type="text"
                 placeholder="https://api.example.com/{{endpoint}}"
-              />
+              >
             </div>
           </div>
           <div class="form-group">
@@ -126,7 +196,7 @@
             <textarea
               v-model="form.httpHeaders"
               class="form-textarea code"
-              placeholder='{"Authorization": "Bearer {{token}}"}'
+              placeholder="{&quot;Authorization&quot;: &quot;Bearer {{token}}&quot;}"
               rows="2"
             />
           </div>
@@ -135,32 +205,57 @@
             <textarea
               v-model="form.httpBody"
               class="form-textarea code"
-              placeholder='{"query": "{{query}}"}'
+              placeholder="{&quot;query&quot;: &quot;{{query}}&quot;}"
               rows="3"
             />
           </div>
         </div>
-
       </div>
 
       <!-- Parameters -->
       <div class="form-section">
         <div class="section-header">
           <label class="form-label">Parameters</label>
-          <button class="add-param-btn" @click="addParameter">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
+          <button
+            class="add-param-btn"
+            @click="addParameter"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <line
+                x1="12"
+                y1="5"
+                x2="12"
+                y2="19"
+              />
+              <line
+                x1="5"
+                y1="12"
+                x2="19"
+                y2="12"
+              />
             </svg>
             Add
           </button>
         </div>
 
-        <div v-if="form.parameters.length === 0" class="empty-params">
+        <div
+          v-if="form.parameters.length === 0"
+          class="empty-params"
+        >
           No parameters defined
         </div>
 
-        <div v-else class="params-list">
+        <div
+          v-else
+          class="params-list"
+        >
           <div
             v-for="(param, index) in form.parameters"
             :key="index"
@@ -172,25 +267,58 @@
                 class="param-input name"
                 type="text"
                 placeholder="name"
-              />
-              <select v-model="param.type" class="param-select">
-                <option value="string">string</option>
-                <option value="number">number</option>
-                <option value="boolean">boolean</option>
-                <option value="object">object</option>
-                <option value="array">array</option>
+              >
+              <select
+                v-model="param.type"
+                class="param-select"
+              >
+                <option value="string">
+                  string
+                </option>
+                <option value="number">
+                  number
+                </option>
+                <option value="boolean">
+                  boolean
+                </option>
+                <option value="object">
+                  object
+                </option>
+                <option value="array">
+                  array
+                </option>
               </select>
               <label class="required-toggle">
                 <input
-                  type="checkbox"
                   v-model="param.required"
-                />
+                  type="checkbox"
+                >
                 Required
               </label>
-              <button class="remove-param-btn" @click="removeParameter(index)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
+              <button
+                class="remove-param-btn"
+                @click="removeParameter(index)"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line
+                    x1="18"
+                    y1="6"
+                    x2="6"
+                    y2="18"
+                  />
+                  <line
+                    x1="6"
+                    y1="6"
+                    x2="18"
+                    y2="18"
+                  />
                 </svg>
               </button>
             </div>
@@ -199,14 +327,19 @@
               class="param-input description"
               type="text"
               placeholder="Description"
-            />
+            >
           </div>
         </div>
       </div>
     </div>
 
     <div class="editor-actions">
-      <button class="btn secondary" @click="$emit('cancel')">Cancel</button>
+      <button
+        class="btn secondary"
+        @click="$emit('cancel')"
+      >
+        Cancel
+      </button>
       <button
         class="btn primary"
         :disabled="!isValid"

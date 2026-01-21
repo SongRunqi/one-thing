@@ -1,40 +1,101 @@
 <template>
   <!-- Hide when input-streaming - ToolCallItem handles its own display -->
-  <Transition name="tool-status" mode="out-in">
-    <div v-if="!hasInputStreaming" :class="['tool-call-status', statusClass]" :key="statusKey">
+  <Transition
+    name="tool-status"
+    mode="out-in"
+  >
+    <div
+      v-if="!hasInputStreaming"
+      :key="statusKey"
+      :class="['tool-call-status', statusClass]"
+    >
       <!-- Executing: flowing text animation -->
       <template v-if="hasExecuting">
-        <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <polyline points="12 6 12 12 16 14"/>
+        <svg
+          class="status-icon"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+          />
+          <polyline points="12 6 12 12 16 14" />
         </svg>
         <span class="status-text flowing">{{ executingText }}</span>
       </template>
 
       <!-- Completed: show checkmark -->
       <template v-else-if="hasCompleted">
-        <svg class="status-icon completed-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-          <polyline points="22 4 12 14.01 9 11.01"/>
+        <svg
+          class="status-icon completed-icon"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+          <polyline points="22 4 12 14.01 9 11.01" />
         </svg>
         <span class="status-text completed-text">{{ completedText }}</span>
       </template>
 
       <!-- All Failed (no executing, no completed) -->
       <template v-else-if="hasFailed">
-        <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="15" y1="9" x2="9" y2="15"/>
-          <line x1="9" y1="9" x2="15" y2="15"/>
+        <svg
+          class="status-icon"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+          />
+          <line
+            x1="15"
+            y1="9"
+            x2="9"
+            y2="15"
+          />
+          <line
+            x1="9"
+            y1="9"
+            x2="15"
+            y2="15"
+          />
         </svg>
         <span class="status-text">{{ failedText }}</span>
       </template>
 
       <!-- Pending: flowing text animation but static clock icon -->
       <template v-else>
-        <svg class="status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <polyline points="12 6 12 12 16 14"/>
+        <svg
+          class="status-icon"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+          />
+          <polyline points="12 6 12 12 16 14" />
         </svg>
         <span class="status-text flowing">{{ pendingText }}</span>
       </template>
