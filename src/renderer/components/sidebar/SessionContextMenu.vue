@@ -65,13 +65,16 @@
 </template>
 
 <script setup lang="ts">
-import type { ChatSession } from '@/types'
+import type { SessionMeta, ChatSession } from '@/types'
+
+// Base session type for context menu - works with both metadata-only and full sessions
+type SessionBase = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary' | 'plan'>>
 
 interface Props {
   show: boolean
   x: number
   y: number
-  session: ChatSession | null
+  session: SessionBase | null
 }
 
 interface Emits {

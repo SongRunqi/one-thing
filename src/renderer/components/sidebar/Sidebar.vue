@@ -152,7 +152,7 @@ const contextMenu = ref({
   show: false,
   x: 0,
   y: 0,
-  session: null as ChatSession | null,
+  session: null as SessionWithBranches | null,
 })
 
 // Computed sidebar style
@@ -237,7 +237,7 @@ async function handleContextDelete() {
 }
 
 // Inline rename handlers
-function startInlineRename(session: ChatSession) {
+function startInlineRename(session: SessionWithBranches) {
   editingSessionId.value = session.id
   editingName.value = session.name || ''
 }
