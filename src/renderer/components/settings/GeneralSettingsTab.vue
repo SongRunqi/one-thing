@@ -187,14 +187,92 @@
         </div>
       </div>
     </section>
+
+    <!-- About & Updates -->
+    <section class="settings-section">
+      <h3 class="section-title">
+        About & Updates
+      </h3>
+
+      <div class="about-info">
+        <div class="app-name">0neThing</div>
+        <div class="app-version">Version {{ appVersion }}</div>
+      </div>
+
+      <div class="update-section">
+        <div v-if="updatesStore.downloaded" class="update-status ready">
+          <div class="update-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+          </div>
+          <div class="update-text">
+            <div class="update-title">Update Ready</div>
+            <div class="update-desc">Version {{ updatesStore.updateInfo?.version }} is ready to install</div>
+          </div>
+          <button class="btn-primary" @click="installUpdate">
+            Restart to Update
+          </button>
+        </div>
+
+        <div v-else-if="updatesStore.downloading" class="update-status downloading">
+          <div class="update-icon spinning">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+          </div>
+          <div class="update-text">
+            <div class="update-title">Downloading Update...</div>
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: `${updatesStore.downloadPercent}%` }"></div>
+            </div>
+            <div class="update-desc">{{ Math.round(updatesStore.downloadPercent) }}%</div>
+          </div>
+        </div>
+
+        <div v-else-if="updatesStore.available" class="update-status available">
+          <div class="update-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </div>
+          <div class="update-text">
+            <div class="update-title">Update Available</div>
+            <div class="update-desc">Version {{ updatesStore.updateInfo?.version }}</div>
+          </div>
+          <button class="btn-primary" @click="downloadUpdate">
+            Download
+          </button>
+        </div>
+
+        <div v-else class="update-status">
+          <div class="update-text">
+            <div v-if="updatesStore.checking" class="update-desc">Checking for updates...</div>
+            <div v-else-if="updatesStore.error" class="update-desc error">{{ updatesStore.error }}</div>
+            <div v-else class="update-desc">You're up to date</div>
+          </div>
+          <button
+            class="btn-secondary"
+            :disabled="updatesStore.checking"
+            @click="checkForUpdate"
+          >
+            {{ updatesStore.checking ? 'Checking...' : 'Check for Updates' }}
+          </button>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import type { AppSettings, ColorTheme } from '@/types'
 import type { MessageListDensity } from '../../../shared/ipc'
 import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
+import { useUpdatesStore } from '@/stores/updates'
 
 const props = defineProps<{
   settings: AppSettings
@@ -203,6 +281,35 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:settings': [settings: AppSettings]
 }>()
+
+// Updates store
+const updatesStore = useUpdatesStore()
+
+// App version from package.json (injected by Vite)
+const appVersion = __APP_VERSION__
+
+// Update actions
+function checkForUpdate() {
+  updatesStore.checkForUpdate()
+}
+
+function downloadUpdate() {
+  updatesStore.downloadUpdate()
+}
+
+function installUpdate() {
+  updatesStore.installUpdate()
+}
+
+// Setup listeners on mount
+onMounted(() => {
+  updatesStore.setupListeners()
+  updatesStore.fetchStatus()
+})
+
+onUnmounted(() => {
+  updatesStore.cleanupListeners()
+})
 
 // Color theme definitions with Flexoki 300 (main) and 100 (sub) shades
 const colorThemes = [
@@ -669,4 +776,147 @@ function updateLineHeight(lineHeight: number) {
   }
 }
 
+/* About & Updates */
+.about-info {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.app-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.app-version {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.update-section {
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.update-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.update-status.downloading {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.update-status.downloading .update-icon {
+  align-self: flex-start;
+}
+
+.update-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.update-status.ready .update-icon {
+  background: #22c55e;
+}
+
+.update-icon.spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.update-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.update-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.update-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.update-desc.error {
+  color: #ef4444;
+}
+
+.progress-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 8px 0 4px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.btn-primary {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+.btn-secondary {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.btn-secondary:hover {
+  background: var(--hover);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 </style>

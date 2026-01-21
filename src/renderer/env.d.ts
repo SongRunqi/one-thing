@@ -6,3 +6,6 @@ declare module '*.vue' {
   export default component
 }
 
+// App version injected by Vite from package.json
+declare const __APP_VERSION__: string
+

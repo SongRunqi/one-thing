@@ -164,8 +164,6 @@
         </div>
       </Teleport>
 
-      <!-- Update Notification (floating toast) -->
-      <UpdateNotification />
     </div>
   </ErrorBoundary>
 </template>
@@ -190,7 +188,6 @@ import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
 import CommitDialog from '@/components/git/CommitDialog.vue'
-import UpdateNotification from '@/components/common/UpdateNotification.vue'
 import type { Workspace, CustomAgent } from '@/types'
 
 // Type for diff overlay data
