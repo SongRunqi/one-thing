@@ -697,20 +697,33 @@ export async function executeStreamGeneration(
       }
     }
 
-    // Load memory for personalized responses
+    // Check memory settings
+    const globalMemoryEnabled = ctx.settings.embedding?.memoryEnabled !== false  // Default: true
+    const agentForMemory = session?.agentId 
+      ? getCustomAgentById(session.agentId, session.workingDirectory)
+      : undefined
+    const agentMemoryEnabled = agentForMemory?.enableMemory !== false  // Default: true
+    const shouldLoadMemory = globalMemoryEnabled && agentMemoryEnabled
+
+    // Load memory for personalized responses (if enabled)
     const agentIdForMemory = session?.agentId
     const agentIdForInteraction = agentIdForMemory  // Keep for interaction recording
-    const lastMessageContent = historyMessages[historyMessages.length - 1]?.content
-    const userMessageText = typeof lastMessageContent === 'string' 
-      ? lastMessageContent 
-      : getTextFromContent(lastMessageContent as any || '')
-    const memoryResult = await textLoadMemoryForChat(userMessageText, agentIdForMemory)
+    let memoryPrompt: string | undefined
+    
+    if (shouldLoadMemory) {
+      const lastMessageContent = historyMessages[historyMessages.length - 1]?.content
+      const userMessageText = typeof lastMessageContent === 'string' 
+        ? lastMessageContent 
+        : getTextFromContent(lastMessageContent as any || '')
+      const memoryResult = await textLoadMemoryForChat(userMessageText, agentIdForMemory)
+      memoryPrompt = memoryResult.prompt
+    }
 
     const systemPrompt = buildSystemPrompt({
       hasTools,
       skills: enabledSkills,
       workspaceSystemPrompt: characterSystemPrompt,
-      userProfilePrompt: memoryResult.prompt,  // 注入 Memory
+      userProfilePrompt: memoryPrompt,  // 注入 Memory (if enabled)
       providerId: ctx.providerId,
       workingDirectory: sessionWorkingDir,
       builtinMode: session?.builtinMode,
