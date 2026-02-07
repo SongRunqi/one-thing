@@ -666,7 +666,19 @@ export async function executeStreamGeneration(
     // Use async version to include tools with dynamic descriptions
     // Pass toolSettings.tools to filter based on user's per-tool enabled settings
     const allEnabledTools = ctx.toolSettings?.enableToolCalls ? await getEnabledToolsAsync(ctx.toolSettings.tools) : []
-    const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
+    
+    // Check if memory is enabled in settings - if disabled, filter out memory tool
+    const memoryEnabled = ctx.settings.embedding?.memoryEnabled !== false
+    const enabledTools = allEnabledTools.filter(t => {
+      // Filter out MCP tools (handled separately)
+      if (t.id.startsWith('mcp:')) return false
+      // Filter out memory tool if memory is disabled
+      if (t.id === 'memory' && !memoryEnabled) {
+        console.log('[Chat] Memory tool disabled because memoryEnabled=false')
+        return false
+      }
+      return true
+    })
     const mcpTools = ctx.toolSettings?.enableToolCalls ? getMCPToolsForAI(ctx.toolSettings.tools) : {}
 
     // Check if the current model supports tools using Models.dev tool_call field
