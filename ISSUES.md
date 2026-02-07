@@ -21,11 +21,10 @@
 
 ## 🟡 中优先级
 
-### 4. Memory 系统未接入主流程 ⚠️ 已验证
-**位置**: `src/main/ipc/chat/memory-helpers.ts`
-**问题**: `textLoadMemoryForChat` 函数已实现，但未在 tool-loop.ts 中被调用
-**状态**: Memory 系统代码完整，但未接入对话流程
-**建议**: 在 executeStreamGeneration() 中调用 textLoadMemoryForChat()
+### 4. ~~Memory 系统未接入主流程~~ ✅ 已修复
+**位置**: `src/main/ipc/chat/tool-loop.ts`
+**修复**: 在 executeStreamGeneration() 中调用 textLoadMemoryForChat()
+**状态**: ✅ 2026-02-07 已修复并合并
 
 ### 5. 工具循环最大100轮
 **位置**: `tool-loop.ts` MAX_TOOL_TURNS = 100
