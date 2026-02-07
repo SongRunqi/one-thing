@@ -53,6 +53,16 @@ export interface GeneralSettings {
   messageListDensity?: MessageListDensity  // Message list display density, default 'comfortable'
   messageLineHeight?: number  // Message line height, 1.2-2.2, default 1.6
   quickCommands?: QuickCommandConfig[]  // Quick command buttons shown above InputBox
+  // User profile for lightweight context injection
+  userProfile?: UserProfileSettings
+}
+
+// Lightweight user profile for system prompt injection (low token, high value)
+export interface UserProfileSettings {
+  name?: string           // User's name
+  timezone?: string       // Timezone (e.g., 'Asia/Shanghai')
+  language?: string       // Preferred language (e.g., 'zh-CN', 'en')
+  customInfo?: string     // Brief custom info (max 100 chars)
 }
 
 // Chat settings for model parameters

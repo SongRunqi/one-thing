@@ -34,7 +34,6 @@ import { formatMessagesForLog, buildSystemPrompt, buildHistoryMessages, type His
 import {
   getTextFromContent,
   textRecordAgentInteraction,
-  textLoadMemoryForChat,
 } from './memory-helpers.js'
 import { getProviderApiType } from './provider-helpers.js'
 import { executeToolAndUpdate } from './tool-execution.js'
@@ -697,33 +696,39 @@ export async function executeStreamGeneration(
       }
     }
 
-    // Check memory settings
-    const globalMemoryEnabled = ctx.settings.embedding?.memoryEnabled !== false  // Default: true
-    const agentForMemory = session?.agentId 
-      ? getCustomAgentById(session.agentId, session.workingDirectory)
-      : undefined
-    const agentMemoryEnabled = agentForMemory?.enableMemory !== false  // Default: true
-    const shouldLoadMemory = globalMemoryEnabled && agentMemoryEnabled
-
-    // Load memory for personalized responses (if enabled)
-    const agentIdForMemory = session?.agentId
-    const agentIdForInteraction = agentIdForMemory  // Keep for interaction recording
-    let memoryPrompt: string | undefined
+    // Build lightweight user context (low token, high value)
+    // Detailed memory is accessed via Memory tool on-demand
+    const userProfile = ctx.settings.general?.userProfile
+    const agentIdForInteraction = session?.agentId
     
-    if (shouldLoadMemory) {
-      const lastMessageContent = historyMessages[historyMessages.length - 1]?.content
-      const userMessageText = typeof lastMessageContent === 'string' 
-        ? lastMessageContent 
-        : getTextFromContent(lastMessageContent as any || '')
-      const memoryResult = await textLoadMemoryForChat(userMessageText, agentIdForMemory)
-      memoryPrompt = memoryResult.prompt
+    // Format lightweight context (~30-50 tokens)
+    const contextParts: string[] = []
+    if (userProfile?.name) {
+      contextParts.push(`User: ${userProfile.name}`)
     }
+    if (userProfile?.timezone) {
+      contextParts.push(`Timezone: ${userProfile.timezone}`)
+    }
+    if (userProfile?.language) {
+      contextParts.push(`Language: ${userProfile.language}`)
+    }
+    // Add current time (always useful)
+    contextParts.push(`Current time: ${new Date().toLocaleString('zh-CN', { 
+      timeZone: userProfile?.timezone || 'Asia/Shanghai',
+      dateStyle: 'full',
+      timeStyle: 'short'
+    })}`)
+    if (userProfile?.customInfo) {
+      contextParts.push(`Note: ${userProfile.customInfo}`)
+    }
+    
+    const userContextPrompt = contextParts.length > 0 ? contextParts.join('\n') : undefined
 
     const systemPrompt = buildSystemPrompt({
       hasTools,
       skills: enabledSkills,
       workspaceSystemPrompt: characterSystemPrompt,
-      userProfilePrompt: memoryPrompt,  // 注入 Memory (if enabled)
+      userProfilePrompt: userContextPrompt,  // Lightweight user context (~30-50 tokens)
       providerId: ctx.providerId,
       workingDirectory: sessionWorkingDir,
       builtinMode: session?.builtinMode,
