@@ -18,7 +18,9 @@
     "build:linux": "npm run build && electron-builder --linux",
     "postinstall": "electron-builder install-app-deps",
     "release": "bash scripts/release.sh",
-    "lint": "eslint . --fix"
+    "lint": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.1",
@@ -74,6 +76,7 @@
     "globals": "^15.14.0",
     "typescript": "^5.1.6",
     "vite": "^7.2.7",
+    "vitest": "^4.0.18",
     "vue-tsc": "^3.1.8"
   }
 }
