@@ -181,6 +181,11 @@ export namespace Permission {
   }
 
   /**
+   * Reject mode determines AI behavior after rejection
+   */
+  export type RejectMode = 'stop' | 'continue'
+
+  /**
    * Respond to a permission request
    */
   export function respond(input: {
@@ -189,6 +194,8 @@ export namespace Permission {
     response: Response | LegacyResponse
     /** Optional reason for rejection */
     rejectReason?: string
+    /** Reject mode: 'stop' (default) or 'continue' (let AI try another way) */
+    rejectMode?: RejectMode
   }): boolean {
     const session = getSession(input.sessionId)
     const pending = session.pending.get(input.permissionId)
@@ -211,7 +218,8 @@ export namespace Permission {
         input.permissionId,
         pending.info.callId,
         pending.info.metadata,
-        input.rejectReason
+        input.rejectReason,
+        input.rejectMode || 'stop'
       ))
       return true
     }
@@ -280,19 +288,30 @@ export namespace Permission {
    * Error thrown when permission is rejected
    */
   export class RejectedError extends Error {
+    /** Reject mode: 'stop' = end tool loop, 'continue' = let AI try another way */
+    public readonly mode: RejectMode
+
     constructor(
       public readonly sessionId: string,
       public readonly permissionId: string,
       public readonly toolCallId?: string,
       public readonly metadata?: Record<string, unknown>,
-      reason?: string
+      reason?: string,
+      mode: RejectMode = 'stop'
     ) {
       // If user provided a reason, include it directly; otherwise use default message
-      const message = reason
+      const baseMessage = reason
         ? `User rejected this operation: ${reason}`
-        : 'The user rejected permission to use this tool. You may try again with different parameters.'
+        : 'The user rejected permission to use this tool.'
+      
+      // Add hint based on mode
+      const message = mode === 'continue'
+        ? `${baseMessage} The user wants you to try a different approach.`
+        : `${baseMessage} You may try again with different parameters.`
+      
       super(message)
       this.name = 'PermissionRejectedError'
+      this.mode = mode
     }
   }
 }

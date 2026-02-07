@@ -686,6 +686,7 @@ const electronAPI = {
     permissionId: string
     response: 'once' | 'session' | 'workspace' | 'reject' | 'always'  // 'always' for legacy compatibility
     rejectReason?: string
+    rejectMode?: 'stop' | 'continue'  // 'stop' = end loop, 'continue' = try another way
   }) => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_RESPOND, request),
 
   getPendingPermissions: (sessionId: string) =>

@@ -30,12 +30,17 @@ export type PermissionResponse = 'once' | 'session' | 'workspace' | 'reject'
 /** Legacy alias for backwards compatibility */
 export type LegacyPermissionResponse = 'once' | 'always' | 'reject'
 
+/** Reject mode determines AI behavior after rejection */
+export type RejectMode = 'stop' | 'continue'
+
 export interface PermissionRespondRequest {
   sessionId: string
   permissionId: string
   response: PermissionResponse
   /** Optional reason for rejection */
   rejectReason?: string
+  /** Reject mode: 'stop' (default) or 'continue' (let AI try another way) */
+  rejectMode?: RejectMode
 }
 
 // Agent permission configuration

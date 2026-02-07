@@ -269,6 +269,7 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
 
 function updateBraveApiKey(apiKey: string) {
   const webSearch = {
+    enabled: props.settings.tools.webSearch?.enabled ?? true,
     ...props.settings.tools.webSearch,
     braveApiKey: apiKey.trim() || undefined
   }

@@ -63,6 +63,18 @@
               </button>
             </div>
             <div class="reject-dialog-body">
+              <div class="reject-mode-options">
+                <label class="reject-mode-option">
+                  <input type="radio" v-model="rejectMode" value="stop" />
+                  <span class="reject-mode-label">拒绝并停止</span>
+                  <span class="reject-mode-hint">AI 将停止执行</span>
+                </label>
+                <label class="reject-mode-option">
+                  <input type="radio" v-model="rejectMode" value="continue" />
+                  <span class="reject-mode-label">拒绝，换个方式</span>
+                  <span class="reject-mode-hint">AI 将尝试其他方法</span>
+                </label>
+              </div>
               <textarea
                 ref="rejectReasonInputRef"
                 v-model="rejectReason"
@@ -142,6 +154,7 @@ const navMarkers = ref<NavMarker[]>([])
 // Reject reason dialog state
 const showRejectDialog = ref(false)
 const rejectReason = ref('')
+const rejectMode = ref<'stop' | 'continue'>('stop')
 const pendingRejectToolCall = ref<any>(null)
 const rejectReasonInputRef = ref<HTMLTextAreaElement | null>(null)
 
@@ -1218,6 +1231,7 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
 function openRejectDialog(toolCall: any) {
   pendingRejectToolCall.value = toolCall
   rejectReason.value = ''
+  rejectMode.value = 'stop'  // Reset to default
   showRejectDialog.value = true
   // Focus the textarea after dialog opens
   nextTick(() => {
@@ -1228,7 +1242,11 @@ function openRejectDialog(toolCall: any) {
 // Confirm rejection with reason
 function confirmReject() {
   if (pendingRejectToolCall.value) {
-    handleRejectTool(pendingRejectToolCall.value, rejectReason.value.trim() || undefined)
+    handleRejectTool(
+      pendingRejectToolCall.value,
+      rejectReason.value.trim() || undefined,
+      rejectMode.value
+    )
   }
   cancelReject()
 }
@@ -1240,8 +1258,8 @@ function cancelReject() {
   pendingRejectToolCall.value = null
 }
 
-// Handle tool rejection with optional reason
-async function handleRejectTool(toolCall: any, rejectReasonArg?: string) {
+// Handle tool rejection with optional reason and mode
+async function handleRejectTool(toolCall: any, rejectReasonArg?: string, rejectModeArg: 'stop' | 'continue' = 'stop') {
   // Update the tool call status to cancelled/rejected
   const currentSession = panelSession.value
   if (!currentSession) return
@@ -1307,6 +1325,7 @@ async function handleRejectTool(toolCall: any, rejectReasonArg?: string) {
         permissionId,
         response: 'reject',
         rejectReason: rejectReasonArg,
+        rejectMode: rejectModeArg,
       })
     } catch (error) {
       console.error('Failed to respond to permission:', error)
@@ -1640,6 +1659,53 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
 
 .reject-dialog-body {
   padding: 20px;
+}
+
+.reject-mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.reject-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.reject-mode-option:hover {
+  background: var(--hover);
+  border-color: var(--primary);
+}
+
+.reject-mode-option:has(input:checked) {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: var(--primary);
+}
+
+.reject-mode-option input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.reject-mode-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.reject-mode-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: auto;
 }
 
 .reject-reason-input {
