@@ -21,10 +21,11 @@
 
 ## 🟡 中优先级
 
-### 4. Memory 系统未充分使用
-**位置**: `~/.0nething/memory/`
-**问题**: 目录结构已定义，但可能未被充分调用
-**状态**: 需要验证实际使用情况
+### 4. Memory 系统未接入主流程 ⚠️ 已验证
+**位置**: `src/main/ipc/chat/memory-helpers.ts`
+**问题**: `textLoadMemoryForChat` 函数已实现，但未在 tool-loop.ts 中被调用
+**状态**: Memory 系统代码完整，但未接入对话流程
+**建议**: 在 executeStreamGeneration() 中调用 textLoadMemoryForChat()
 
 ### 5. 工具循环最大100轮
 **位置**: `tool-loop.ts` MAX_TOOL_TURNS = 100
