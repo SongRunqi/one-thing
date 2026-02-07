@@ -114,6 +114,27 @@
       </div>
     </section>
 
+    <!-- Web Search Settings -->
+    <section class="settings-section" v-if="settings.tools.enableToolCalls && hasWebSearchTool">
+      <h3 class="section-title">Web Search</h3>
+      
+      <div class="form-group">
+        <label class="form-label">Brave Search API Key</label>
+        <input
+          type="password"
+          class="form-input"
+          :value="settings.tools.webSearch?.braveApiKey || ''"
+          @input="updateBraveApiKey(($event.target as HTMLInputElement).value)"
+          placeholder="Enter your Brave Search API key"
+        />
+        <p class="form-hint">
+          Get your free API key at 
+          <a href="https://brave.com/search/api/" target="_blank" class="link">brave.com/search/api</a>
+          (2,000 queries/month free)
+        </p>
+      </div>
+    </section>
+
     <!-- Bash Tool Settings -->
     <BashSettingsPanel
       v-if="settings.tools.enableToolCalls && hasBashTool"
@@ -145,6 +166,11 @@ const displayTools = computed(() => {
 // Check if bash tool is available
 const hasBashTool = computed(() => {
   return props.tools.some(tool => tool.id === 'bash')
+})
+
+// Check if web search tool is available
+const hasWebSearchTool = computed(() => {
+  return props.tools.some(tool => tool.id === 'web_search')
 })
 
 // Available providers for Tool Agent
@@ -238,6 +264,17 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
   emit('update:settings', {
     ...props.settings,
     tools: { ...props.settings.tools, tools }
+  })
+}
+
+function updateBraveApiKey(apiKey: string) {
+  const webSearch = {
+    ...props.settings.tools.webSearch,
+    braveApiKey: apiKey.trim() || undefined
+  }
+  emit('update:settings', {
+    ...props.settings,
+    tools: { ...props.settings.tools, webSearch }
   })
 }
 </script>
@@ -515,6 +552,45 @@ function setToolAutoExecute(toolId: string, autoExecute: boolean) {
   font-size: 12px;
   color: var(--text-muted);
   min-width: 80px;
+}
+
+/* Form Input */
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background-color: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.form-input:hover {
+  border-color: var(--accent);
+  background-color: var(--panel-2);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.form-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+/* Link */
+.link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
 }
 
 /* Responsive */
