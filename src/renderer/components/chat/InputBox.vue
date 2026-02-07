@@ -10,35 +10,11 @@
       @change="handleFileSelect"
     />
 
-    <!-- Attachment previews (shown above composer when files are attached) -->
-    <div v-if="attachedFiles.length > 0" class="attachments-preview">
-      <div
-        v-for="file in attachedFiles"
-        :key="file.id"
-        class="attachment-item"
-        :class="{ 'is-image': file.mediaType === 'image' }"
-      >
-        <img v-if="file.preview" :src="file.preview" :alt="file.fileName" class="attachment-thumb" />
-        <div v-else class="attachment-icon">
-          <FileText :size="20" :stroke-width="2" />
-        </div>
-        <span class="attachment-name">{{ file.fileName }}</span>
-        <button class="attachment-remove" @click="removeAttachment(file.id)" title="Remove">
-          <X :size="14" :stroke-width="2.5" />
-        </button>
-      </div>
-    </div>
+    <!-- Attachment previews -->
+    <AttachmentPreview :files="attachedFiles" @remove="removeAttachment" />
 
-    <!-- Quoted text context (shown above input when text is referenced) -->
-    <div v-if="quotedText" class="quoted-context">
-      <div class="quoted-bar"></div>
-      <div class="quoted-content-wrapper">
-        <div class="quoted-text">{{ quotedText }}</div>
-        <button class="remove-quote-btn" @click="clearQuotedText" title="Remove">
-          <X :size="16" :stroke-width="2.5" />
-        </button>
-      </div>
-    </div>
+    <!-- Quoted text context -->
+    <QuotedContext :text="quotedText" @clear="clearQuotedText" />
 
     <!-- Command Feedback -->
     <Transition name="fade">
@@ -49,7 +25,7 @@
       </div>
     </Transition>
 
-    <!-- Command Picker (positioned above composer) -->
+    <!-- Command Picker -->
     <CommandPicker
       :visible="showCommandPicker"
       :query="commandQuery"
@@ -57,7 +33,7 @@
       @close="handleCommandPickerClose"
     />
 
-    <!-- Skill Picker (positioned above composer) -->
+    <!-- Skill Picker -->
     <SkillPicker
       :visible="showSkillPicker"
       :query="skillTriggerQuery"
@@ -66,7 +42,7 @@
       @close="handleSkillPickerClose"
     />
 
-    <!-- File Picker (positioned above composer, for @ file search) -->
+    <!-- File Picker -->
     <FilePicker
       :visible="showFilePicker"
       :query="fileQuery"
@@ -75,7 +51,7 @@
       @close="handleFilePickerClose"
     />
 
-    <!-- Path Picker (positioned above composer, for /cd path completion) -->
+    <!-- Path Picker -->
     <PathPicker
       :visible="showPathPicker"
       :path-input="pathQuery"
@@ -83,17 +59,17 @@
       @close="handlePathPickerClose"
     />
 
-    <!-- Quick Command Bar (configurable command buttons) -->
+    <!-- Quick Command Bar -->
     <QuickCommandBar
       :session-id="effectiveSessionId"
       @executed="handleQuickCommandExecuted"
     />
 
-    <!-- Plan Panel (紧贴 composer 上方显示) -->
+    <!-- Plan Panel -->
     <PlanPanel :session-id="effectiveSessionId" />
 
     <div class="composer" :class="{ focused: isFocused }" @click="focusTextarea">
-      <!-- Input area - full width -->
+      <!-- Input area -->
       <div class="input-area">
         <textarea
           ref="textareaRef"
@@ -101,9 +77,9 @@
           class="composer-input"
           placeholder="Ask anything..."
           @keydown="handleKeyDown"
-          @focus="handleFocus"
-          @blur="handleBlur"
-          @input="handleInput"
+          @focus="isFocused = true"
+          @blur="isFocused = false"
+          @input="adjustHeight"
           @paste="handlePaste"
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
@@ -113,32 +89,20 @@
 
       <!-- Bottom toolbar -->
       <div class="composer-toolbar">
-        <!-- Left side: attach and tools -->
         <div class="toolbar-left">
           <button class="toolbar-btn" title="Attach file" @click="handleAttach">
             <Paperclip :size="18" :stroke-width="2" />
           </button>
-
-          <!-- Tools menu component -->
           <ToolsMenu
-            @tools-enabled-change="handleToolsEnabledChange"
-            @open-settings="openToolSettings"
+            @tools-enabled-change="(enabled: boolean) => emit('toolsEnabledChange', enabled)"
+            @open-settings="() => emit('openToolSettings')"
           />
-
-          <!-- Skills menu component -->
-          <SkillsMenu @open-settings="openToolSettings" />
-
-          <!-- Model selector component -->
+          <SkillsMenu @open-settings="() => emit('openToolSettings')" />
           <ModelSelector :session-id="props.sessionId" />
-
-          <!-- Context indicator component -->
           <ContextIndicator :session-id="props.sessionId" />
-
-          <!-- Mode toggle (Build/Plan) -->
           <ModeToggle ref="modeToggleRef" :session-id="effectiveSessionId" />
         </div>
 
-        <!-- Right side: send/stop button -->
         <div class="toolbar-right" @click.stop>
           <button
             v-if="isLoading || isSending"
@@ -167,9 +131,11 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
-import { useChatStore } from '@/stores/chat'
-import type { SkillDefinition, MessageAttachment, AttachmentMediaType } from '@/types'
-import type { CommandDefinition } from '@/types/commands'
+import type { MessageAttachment } from '@/types'
+
+// Sub-components
+import AttachmentPreview from './AttachmentPreview.vue'
+import QuotedContext from './QuotedContext.vue'
 import SkillPicker from './SkillPicker.vue'
 import CommandPicker from './CommandPicker.vue'
 import FilePicker from './FilePicker.vue'
@@ -181,14 +147,14 @@ import ToolsMenu from './ToolsMenu.vue'
 import SkillsMenu from './SkillsMenu.vue'
 import ModeToggle from './ModeToggle.vue'
 import PlanPanel from './PlanPanel.vue'
-import { FileText, X, Paperclip, Square, Send, Check } from 'lucide-vue-next'
-import { getCommands, findCommand, filterCommands } from '@/services/commands'
+import { X, Paperclip, Square, Send, Check } from 'lucide-vue-next'
+import { findCommand } from '@/services/commands'
 
-// Local interface for file preview (extends MessageAttachment with preview)
-interface AttachedFile extends Omit<MessageAttachment, 'base64Data'> {
-  preview?: string       // Data URL for preview display
-  base64Data: string     // Base64 encoded file data
-}
+// Composables
+import { useAttachments } from '@/composables/useAttachments'
+import { useInputHistory } from '@/composables/useInputHistory'
+import { usePickerOrchestration } from '@/composables/usePickerOrchestration'
+import { useCommandFeedback } from '@/composables/useCommandFeedback'
 
 interface Props {
   isLoading?: boolean
@@ -211,9 +177,21 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
-const chatStore = useChatStore()
 
-// Get the effective session ID for this panel
+// Core state
+const messageInput = ref('')
+const quotedText = ref('')
+const isFocused = ref(false)
+const isSending = ref(false)
+const isComposing = ref(false)
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const composerWrapperRef = ref<HTMLElement | null>(null)
+const modeToggleRef = ref<InstanceType<typeof ModeToggle> | null>(null)
+
+// Session input cache
+const sessionInputCache = new Map<string, string>()
+
+// Get the effective session ID
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
 
 // Get the working directory for file search
@@ -224,80 +202,66 @@ const workingDirectory = computed(() => {
   return session?.workingDirectory || ''
 })
 
-// Cache input text per session
-const sessionInputCache = new Map<string, string>()
+// --- Composables ---
 
-const messageInput = ref('')
-const quotedText = ref('')
-const isFocused = ref(false)
-const isSending = ref(false)
-const isComposing = ref(false)
-const textareaRef = ref<HTMLTextAreaElement | null>(null)
-const composerWrapperRef = ref<HTMLElement | null>(null)
-const fileInputRef = ref<HTMLInputElement | null>(null)
-const attachedFiles = ref<AttachedFile[]>([])
-const modeToggleRef = ref<InstanceType<typeof ModeToggle> | null>(null)
+const {
+  attachedFiles,
+  fileInputRef,
+  handleAttach,
+  handleFileSelect,
+  handlePaste,
+  removeAttachment,
+  clearAttachments,
+  toMessageAttachments,
+} = useAttachments()
 
-// ============ 历史导航状态 ============
-const historyIndex = ref(-1)  // -1 表示不在历史模式，0 是最近一条
-const originalInput = ref('')  // 导航前的原始输入
+function adjustHeight() {
+  const textarea = textareaRef.value
+  if (!textarea) return
+  textarea.style.height = 'auto'
+  const newHeight = Math.min(Math.max(textarea.scrollHeight, 24), 200)
+  textarea.style.height = `${newHeight}px`
+}
 
-// 当前会话的用户消息历史（最新在前）
-const userMessageHistory = computed(() => {
-  const sessionId = effectiveSessionId.value
-  if (!sessionId) return []
-  const messages = chatStore.sessionMessages.get(sessionId) || []
-  return messages
-    .filter(m => m.role === 'user' && m.content.trim())
-    .map(m => m.content)
-    .reverse()
+const {
+  resetHistoryNavigation,
+  handleHistoryNavigation,
+  checkHistoryEdit,
+} = useInputHistory(effectiveSessionId, messageInput, textareaRef, adjustHeight)
+
+const {
+  enabledSkills,
+  loadSkills,
+  showSkillPicker,
+  skillTriggerQuery,
+  handleSkillSelect,
+  handleSkillPickerClose,
+  showCommandPicker,
+  commandQuery,
+  handleCommandSelect,
+  handleCommandPickerClose,
+  showFilePicker,
+  fileQuery,
+  handleFilePickerSelect,
+  handleFilePickerClose,
+  showPathPicker,
+  pathQuery,
+  handlePathPickerSelect,
+  handlePathPickerClose,
+  anyPickerVisible,
+  closeAllPickers,
+} = usePickerOrchestration(messageInput, workingDirectory, textareaRef, adjustHeight, checkHistoryEdit)
+
+const { commandFeedback, showCommandFeedback } = useCommandFeedback()
+
+// --- Computed ---
+
+const canSend = computed(() => {
+  const hasContent = messageInput.value.trim().length > 0 || attachedFiles.value.length > 0
+  return hasContent && !props.isLoading
 })
 
-// ResizeObserver for dynamic height tracking
-let composerResizeObserver: ResizeObserver | null = null
-
-function handleFocus() {
-  isFocused.value = true
-}
-
-function handleBlur() {
-  isFocused.value = false
-}
-
-function handleInput() {
-  adjustHeight()
-}
-
-// Skills state
-const availableSkills = ref<SkillDefinition[]>([])
-const showSkillPicker = ref(false)
-const skillTriggerQuery = ref('')
-
-// Commands state
-const showCommandPicker = ref(false)
-const commandQuery = ref('')
-
-// File picker state (for @ file search)
-const showFilePicker = ref(false)
-const fileQuery = ref('')
-
-// Path picker state (for /cd path completion)
-const showPathPicker = ref(false)
-const pathQuery = ref('')
-
-// Command feedback state
-const commandFeedback = ref<{ type: 'success' | 'error'; message: string } | null>(null)
-let feedbackTimeout: ReturnType<typeof setTimeout> | null = null
-
-function showCommandFeedback(type: 'success' | 'error', message: string) {
-  if (feedbackTimeout) {
-    clearTimeout(feedbackTimeout)
-  }
-  commandFeedback.value = { type, message }
-  feedbackTimeout = setTimeout(() => {
-    commandFeedback.value = null
-  }, 3000)
-}
+// --- Watchers ---
 
 // Reset isSending when generation completes
 watch(() => props.isLoading, (loading) => {
@@ -307,17 +271,13 @@ watch(() => props.isLoading, (loading) => {
 })
 
 // Cache input text when switching sessions
-let previousSessionId: string | null = null
 watch(effectiveSessionId, (newSessionId, oldSessionId) => {
-  // Save current input to cache for the old session
   if (oldSessionId && messageInput.value) {
     sessionInputCache.set(oldSessionId, messageInput.value)
   }
-  // Clear input if old session had content (will restore from cache if available)
   if (oldSessionId) {
     messageInput.value = ''
   }
-  // Restore cached input for the new session
   if (newSessionId) {
     const cachedInput = sessionInputCache.get(newSessionId)
     if (cachedInput) {
@@ -327,107 +287,42 @@ watch(effectiveSessionId, (newSessionId, oldSessionId) => {
       })
     }
   }
-  // 切换会话时重置历史导航
   resetHistoryNavigation()
-  previousSessionId = newSessionId ?? null
 }, { immediate: true })
 
-function handleToolsEnabledChange(enabled: boolean) {
-  emit('toolsEnabledChange', enabled)
-}
+// --- ResizeObserver ---
 
-function openToolSettings() {
-  emit('openToolSettings')
-}
+let composerResizeObserver: ResizeObserver | null = null
 
-const canSend = computed(() => {
-  const hasContent = messageInput.value.trim().length > 0 || attachedFiles.value.length > 0
-  return hasContent && !props.isLoading
-})
+onMounted(async () => {
+  adjustHeight()
+  await loadSkills()
 
-// Check if current model supports image input (vision capability)
-const currentModelSupportsVision = computed(() => {
-  const provider = settingsStore.settings.ai.provider
-  const modelId = settingsStore.settings.ai.providers[provider]?.model
-  const models = settingsStore.getCachedModels(provider)
-  const model = models.find(m => m.id === modelId)
-  return model?.architecture?.input_modalities?.includes('image') || false
-})
-
-// ============ 历史导航辅助函数 ============
-
-// 检查光标是否在第一行
-function isCursorOnFirstLine(): boolean {
-  const textarea = textareaRef.value
-  if (!textarea || !textarea.value) return true
-  return !textarea.value.substring(0, textarea.selectionStart).includes('\n')
-}
-
-// 检查光标是否在最后一行
-function isCursorOnLastLine(): boolean {
-  const textarea = textareaRef.value
-  if (!textarea || !textarea.value) return true
-  return !textarea.value.substring(textarea.selectionStart).includes('\n')
-}
-
-// 重置历史导航状态
-function resetHistoryNavigation() {
-  historyIndex.value = -1
-  originalInput.value = ''
-}
-
-// 处理历史导航
-function handleHistoryNavigation(direction: 'up' | 'down'): boolean {
-  const history = userMessageHistory.value
-  if (history.length === 0) return false
-
-  if (direction === 'up') {
-    // 检查是否可以触发导航
-    if (messageInput.value !== '' && !isCursorOnFirstLine()) return false
-    // 首次进入历史模式，保存原始输入
-    if (historyIndex.value === -1) originalInput.value = messageInput.value
-    const newIndex = historyIndex.value + 1
-    // 到达边界，消费事件但不改变内容
-    if (newIndex >= history.length) return true
-    historyIndex.value = newIndex
-    messageInput.value = history[newIndex]
-  } else {
-    // 不在历史模式，不处理
-    if (historyIndex.value === -1) return false
-    if (!isCursorOnLastLine()) return false
-    const newIndex = historyIndex.value - 1
-    if (newIndex < 0) {
-      // 返回到原始输入
-      historyIndex.value = -1
-      messageInput.value = originalInput.value
-      originalInput.value = ''
-    } else {
-      historyIndex.value = newIndex
-      messageInput.value = history[newIndex]
-    }
+  if (composerWrapperRef.value) {
+    composerResizeObserver = new ResizeObserver((entries) => {
+      const height = entries[0].contentRect.height
+      document.documentElement.style.setProperty('--composer-height', `${height + 40}px`)
+    })
+    composerResizeObserver.observe(composerWrapperRef.value)
   }
+})
 
-  // 调整高度并将光标移到末尾
-  nextTick(() => {
-    adjustHeight()
-    if (textareaRef.value) {
-      textareaRef.value.selectionStart = textareaRef.value.selectionEnd = textareaRef.value.value.length
-    }
-  })
-  return true
-}
+onUnmounted(() => {
+  if (composerResizeObserver) {
+    composerResizeObserver.disconnect()
+    composerResizeObserver = null
+  }
+})
+
+// --- Core handlers ---
 
 function handleKeyDown(e: KeyboardEvent) {
   if (isComposing.value) return
 
   // Don't handle send shortcuts when any picker is visible
-  // (they handle Enter/Tab themselves)
-  // Exception: PathPicker uses Tab for completion, Enter still sends the command
-  const anyPickerVisible = showCommandPicker.value || showSkillPicker.value || showFilePicker.value
   const pathPickerVisible = showPathPicker.value
 
-  if (anyPickerVisible && (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-    // Let the picker handle these keys
+  if (anyPickerVisible.value && (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
     return
   }
 
@@ -436,17 +331,15 @@ function handleKeyDown(e: KeyboardEvent) {
     if (e.key === 'Tab' || e.key === 'Escape' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       return
     }
-    // Enter sends the command immediately
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      showPathPicker.value = false
-      pathQuery.value = ''
+      closeAllPickers()
       sendMessage()
       return
     }
   }
 
-  // 历史导航处理 (↑/↓ 键)
+  // History navigation (up/down arrows)
   if (e.key === 'ArrowUp') {
     if (handleHistoryNavigation('up')) {
       e.preventDefault()
@@ -460,9 +353,8 @@ function handleKeyDown(e: KeyboardEvent) {
     }
   }
 
-  // Tab or Shift+Tab toggles between Build/Ask mode (only when input is empty)
+  // Tab toggles between Build/Ask mode (only when input is empty)
   if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    // Only toggle mode when input is empty
     if (messageInput.value.trim() === '') {
       e.preventDefault()
       modeToggleRef.value?.toggleMode()
@@ -513,25 +405,21 @@ async function sendMessage() {
     const command = findCommand(commandId)
 
     if (command) {
-      // Execute command locally (don't send to AI)
       const result = await command.execute({
         sessionId: effectiveSessionId.value,
         args: argsString.split(/\s+/).filter(Boolean),
         rawArgs: argsString,
       })
 
-      // Show feedback
       if (result.success) {
         showCommandFeedback('success', result.message || 'Done')
       } else {
         showCommandFeedback('error', result.error || `/${commandId} failed`)
       }
 
-      // Clear input
       messageInput.value = ''
       resetHistoryNavigation()
-      showCommandPicker.value = false
-      commandQuery.value = ''
+      closeAllPickers()
       nextTick(() => {
         adjustHeight()
         textareaRef.value?.focus()
@@ -549,36 +437,21 @@ async function sendMessage() {
     fullMessage = `${quotedLines}\n\n${messageInput.value}`
   }
 
-  // Convert attached files to MessageAttachment format (without preview)
-  const attachments: MessageAttachment[] | undefined = attachedFiles.value.length > 0
-    ? attachedFiles.value.map(f => ({
-        id: f.id,
-        fileName: f.fileName,
-        mimeType: f.mimeType,
-        size: f.size,
-        mediaType: f.mediaType,
-        base64Data: f.base64Data,
-        width: f.width,
-        height: f.height,
-      }))
-    : undefined
+  const attachments = toMessageAttachments()
 
   emit('sendMessage', fullMessage, attachments)
   messageInput.value = ''
   resetHistoryNavigation()
   quotedText.value = ''
-  attachedFiles.value = [] // Clear attachments after sending
-  // Clear the cache for this session since message was sent
+  clearAttachments()
   if (effectiveSessionId.value) {
     sessionInputCache.delete(effectiveSessionId.value)
   }
   nextTick(() => {
     adjustHeight()
-    // Reset scroll position to top
     if (textareaRef.value) {
       textareaRef.value.scrollTop = 0
     }
-    // Refocus the textarea after sending
     textareaRef.value?.focus()
   })
 }
@@ -587,143 +460,28 @@ function stopGeneration() {
   emit('stopGeneration')
 }
 
-function adjustHeight() {
-  const textarea = textareaRef.value
-  if (!textarea) return
-
-  textarea.style.height = 'auto'
-  const newHeight = Math.min(Math.max(textarea.scrollHeight, 24), 200)
-  textarea.style.height = `${newHeight}px`
+function focusTextarea() {
+  textareaRef.value?.focus()
 }
 
-function handleAttach() {
-  fileInputRef.value?.click()
-}
+// --- Quick Command Bar handler ---
 
-// File handling functions
-function getMediaType(mimeType: string): AttachmentMediaType {
-  if (mimeType.startsWith('image/')) return 'image'
-  if (mimeType.startsWith('audio/')) return 'audio'
-  if (mimeType.startsWith('video/')) return 'video'
-  if (mimeType === 'application/pdf' || mimeType.includes('document') || mimeType.includes('word')) return 'document'
-  return 'file'
-}
-
-// Process a single file and add to attachments
-async function processFile(file: File): Promise<boolean> {
-  const maxFileSize = 10 * 1024 * 1024 // 10MB limit
-  if (file.size > maxFileSize) {
-    console.warn(`File ${file.name} is too large (max 10MB)`)
-    return false
-  }
-
-  const id = `attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`
-  const mediaType = getMediaType(file.type)
-  const base64Data = await readFileAsBase64(file)
-
-  const attachedFile: AttachedFile = {
-    id,
-    fileName: file.name,
-    mimeType: file.type || 'application/octet-stream',
-    size: file.size,
-    mediaType,
-    base64Data,
-  }
-
-  // Generate preview for images
-  if (mediaType === 'image') {
-    attachedFile.preview = await createImagePreview(file)
-    const dimensions = await getImageDimensions(attachedFile.preview)
-    attachedFile.width = dimensions.width
-    attachedFile.height = dimensions.height
-  }
-
-  attachedFiles.value = [...attachedFiles.value, attachedFile]
-  return true
-}
-
-// Handle paste event - allow image paste only if model supports vision
-async function handlePaste(event: ClipboardEvent) {
-  const items = event.clipboardData?.items
-  if (!items) return
-
-  for (const item of items) {
-    if (item.type.startsWith('image/')) {
-      // Check if current model supports image input
-      if (!currentModelSupportsVision.value) {
-        // Debug: output current model info
-        const provider = settingsStore.settings.ai.provider
-        const modelId = settingsStore.settings.ai.providers[provider]?.model
-        const models = settingsStore.getCachedModels(provider)
-        const model = models.find(m => m.id === modelId)
-        console.warn('[InputBox] Current model does not support image input:', {
-          provider,
-          modelId,
-          modelFound: !!model,
-          inputModalities: model?.architecture?.input_modalities,
-          cachedModelsCount: models.length,
-        })
-        return // Don't prevent default - allow text to be pasted normally
-      }
-
-      event.preventDefault()
-      const file = item.getAsFile()
-      if (file) {
-        await processFile(file)
-      }
-      return // Only process first image
+function handleQuickCommandExecuted(result: {
+  commandId: string
+  success: boolean
+  message?: string
+  error?: string
+}) {
+  if (result.success) {
+    if (result.message) {
+      showCommandFeedback('success', result.message)
     }
+  } else {
+    showCommandFeedback('error', result.error || 'Command failed')
   }
 }
 
-async function handleFileSelect(event: Event) {
-  const input = event.target as HTMLInputElement
-  const files = input.files
-  if (!files || files.length === 0) return
-
-  for (const file of Array.from(files)) {
-    await processFile(file)
-  }
-
-  // Reset input for re-selection
-  input.value = ''
-}
-
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      // Remove data URL prefix to get pure base64
-      const base64 = result.split(',')[1]
-      resolve(base64)
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-function createImagePreview(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-function getImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.onload = () => resolve({ width: img.width, height: img.height })
-    img.onerror = () => resolve({ width: 0, height: 0 })
-    img.src = dataUrl
-  })
-}
-
-function removeAttachment(id: string) {
-  attachedFiles.value = attachedFiles.value.filter(f => f.id !== id)
-}
+// --- Exposed methods ---
 
 function setQuotedText(text: string) {
   quotedText.value = text
@@ -734,10 +492,6 @@ function setQuotedText(text: string) {
 
 function clearQuotedText() {
   quotedText.value = ''
-}
-
-function focusTextarea() {
-  textareaRef.value?.focus()
 }
 
 function setMessageInput(text: string) {
@@ -754,207 +508,6 @@ defineExpose({
   setMessageInput,
   focus: focusTextarea,
 })
-
-onMounted(async () => {
-  adjustHeight()
-  await loadSkills()
-
-  if (composerWrapperRef.value) {
-    composerResizeObserver = new ResizeObserver((entries) => {
-      const height = entries[0].contentRect.height
-      document.documentElement.style.setProperty('--composer-height', `${height + 40}px`)
-    })
-    composerResizeObserver.observe(composerWrapperRef.value)
-  }
-})
-
-onUnmounted(() => {
-  if (composerResizeObserver) {
-    composerResizeObserver.disconnect()
-    composerResizeObserver = null
-  }
-})
-
-async function loadSkills() {
-  try {
-    const response = await window.electronAPI.getSkills()
-    if (response.success && response.skills) {
-      availableSkills.value = response.skills
-    }
-  } catch (error) {
-    console.error('Failed to load skills:', error)
-  }
-}
-
-const enabledSkills = computed(() => {
-  return availableSkills.value.filter(s => s.enabled)
-})
-
-watch(messageInput, (newValue) => {
-  // 检测用户是否在历史模式下编辑（而非通过导航设置）
-  if (historyIndex.value !== -1) {
-    const history = userMessageHistory.value
-    // 如果当前值不匹配当前历史记录，说明用户开始编辑
-    if (history[historyIndex.value] !== newValue) {
-      historyIndex.value = -1
-      originalInput.value = ''
-    }
-  }
-
-  // Check for command pattern first: /word (without space - still typing command name)
-  const commandMatch = newValue.match(/^\/(\w*)$/)
-
-  if (commandMatch) {
-    const query = commandMatch[1]
-    const commands = filterCommands(query)
-    if (commands.length > 0) {
-      commandQuery.value = query
-      showCommandPicker.value = true
-      showSkillPicker.value = false
-      showFilePicker.value = false
-      showPathPicker.value = false
-      skillTriggerQuery.value = ''
-      fileQuery.value = ''
-      pathQuery.value = ''
-      return
-    }
-  }
-
-  // Close command picker if not matching command pattern
-  showCommandPicker.value = false
-  commandQuery.value = ''
-
-  // Check for /cd path completion pattern: /cd <path>
-  const cdMatch = newValue.match(/^\/cd\s+(.*)$/)
-  if (cdMatch) {
-    pathQuery.value = cdMatch[1]
-    showPathPicker.value = true
-    showFilePicker.value = false
-    showSkillPicker.value = false
-    skillTriggerQuery.value = ''
-    fileQuery.value = ''
-    return
-  }
-
-  // Close path picker if not matching /cd pattern
-  showPathPicker.value = false
-  pathQuery.value = ''
-
-  // Check for @ file search pattern: @xxx (anywhere in text, matches the last @)
-  // Only trigger if there's a working directory set
-  const fileMatch = newValue.match(/@([^\s@]*)$/)
-  if (fileMatch && workingDirectory.value) {
-    fileQuery.value = fileMatch[1]
-    showFilePicker.value = true
-    showSkillPicker.value = false
-    skillTriggerQuery.value = ''
-    return
-  }
-
-  // Close file picker if not matching file pattern
-  showFilePicker.value = false
-  fileQuery.value = ''
-
-  // Fall back to skill matching
-  const triggerMatch = newValue.match(/^([/@]\w*)$/)
-  if (triggerMatch && enabledSkills.value.length > 0) {
-    skillTriggerQuery.value = triggerMatch[1]
-    showSkillPicker.value = true
-  } else {
-    showSkillPicker.value = false
-    skillTriggerQuery.value = ''
-  }
-})
-
-async function handleSkillSelect(skill: SkillDefinition) {
-  showSkillPicker.value = false
-
-  try {
-    const inputContent = messageInput.value.replace(/^[/@]\w*\s*/, '')
-
-    const result = await window.electronAPI.executeSkill(skill.id, {
-      sessionId: '',
-      input: inputContent,
-    })
-
-    if (result.success && result.result?.output) {
-      messageInput.value = result.result.output
-      await nextTick()
-      adjustHeight()
-      textareaRef.value?.focus()
-    }
-  } catch (error) {
-    console.error('Failed to execute skill:', error)
-  }
-}
-
-function handleSkillPickerClose() {
-  showSkillPicker.value = false
-}
-
-// Command handling
-async function handleCommandSelect(command: CommandDefinition) {
-  showCommandPicker.value = false
-  // Fill in the command in the input, user can add arguments
-  messageInput.value = `/${command.id} `
-  await nextTick()
-  adjustHeight()
-  textareaRef.value?.focus()
-}
-
-function handleCommandPickerClose() {
-  showCommandPicker.value = false
-  commandQuery.value = ''
-}
-
-// File picker handling
-async function handleFilePickerSelect(filePath: string) {
-  showFilePicker.value = false
-  // Replace @xxx with the selected file path
-  messageInput.value = messageInput.value.replace(/@[^\s@]*$/, `@${filePath} `)
-  fileQuery.value = ''
-  await nextTick()
-  adjustHeight()
-  textareaRef.value?.focus()
-}
-
-function handleFilePickerClose() {
-  showFilePicker.value = false
-  fileQuery.value = ''
-}
-
-// Path picker handling (for /cd command)
-async function handlePathPickerSelect(selectedPath: string) {
-  showPathPicker.value = false
-  // Replace the path part after /cd with the selected path
-  messageInput.value = `/cd ${selectedPath}`
-  pathQuery.value = ''
-  await nextTick()
-  adjustHeight()
-  textareaRef.value?.focus()
-}
-
-function handlePathPickerClose() {
-  showPathPicker.value = false
-  pathQuery.value = ''
-}
-
-// Quick command bar handling
-function handleQuickCommandExecuted(result: {
-  commandId: string
-  success: boolean
-  message?: string
-  error?: string
-}) {
-  if (result.success) {
-    // Only show feedback if there's a message
-    if (result.message) {
-      showCommandFeedback('success', result.message)
-    }
-  } else {
-    showCommandFeedback('error', result.error || 'Command failed')
-  }
-}
 </script>
 
 <style scoped>
@@ -964,7 +517,7 @@ function handleQuickCommandExecuted(result: {
   position: relative;
 }
 
-/* Command feedback - toast style, doesn't affect layout */
+/* Command feedback - toast style */
 .command-feedback {
   position: absolute;
   top: -40px;
@@ -1000,152 +553,6 @@ function handleQuickCommandExecuted(result: {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-}
-
-/* Attachment preview */
-.attachments-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
-}
-
-.attachment-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--bg-elevated);
-  border-radius: 8px;
-  max-width: 200px;
-  animation: slideInDown 0.2s ease-out;
-}
-
-.attachment-item.is-image {
-  padding: 4px;
-  background: var(--bg-hover);
-}
-
-.attachment-thumb {
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 6px;
-}
-
-.attachment-icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-}
-
-.attachment-name {
-  flex: 1;
-  font-size: 12px;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100px;
-}
-
-.attachment-remove {
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  border-radius: 4px;
-  opacity: 0.6;
-  transition: all 0.15s ease;
-}
-
-.attachment-remove:hover {
-  background: rgba(var(--color-danger-rgb), 0.15);
-  color: var(--text-error);
-  opacity: 1;
-}
-
-/* Quoted text context */
-.quoted-context {
-  display: flex;
-  gap: 10px;
-  padding: 12px 14px;
-  margin-bottom: 8px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  position: relative;
-  animation: slideInDown 0.2s ease-out;
-  box-shadow: var(--shadow-sm);
-}
-
-@keyframes slideInDown {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.quoted-bar {
-  width: 3px;
-  background: linear-gradient(to bottom, rgba(var(--accent-rgb), 0.6), rgba(var(--accent-rgb), 0.3));
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-.quoted-content-wrapper {
-  flex: 1;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
-}
-
-.quoted-text {
-  flex: 1;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text);
-  opacity: 0.75;
-  max-height: 80px;
-  overflow-y: auto;
-  min-width: 0;
-  word-wrap: break-word;
-  white-space: pre-wrap;
-}
-
-.quoted-text::-webkit-scrollbar { width: 3px; }
-.quoted-text::-webkit-scrollbar-track { background: transparent; }
-.quoted-text::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
-
-.remove-quote-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-  opacity: 0.6;
-}
-
-.remove-quote-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  opacity: 1;
 }
 
 /* Main composer container */
@@ -1195,8 +602,6 @@ function handleQuickCommandExecuted(result: {
   user-select: none;
   -webkit-user-select: none;
 }
-
-/* Removed: textarea is never disabled - users can type while waiting */
 
 .composer-input::-webkit-scrollbar { width: 4px; }
 .composer-input::-webkit-scrollbar-track { background: transparent; }
