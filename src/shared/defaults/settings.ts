@@ -200,7 +200,9 @@ export function createDefaultSettings(): AppSettings {
 export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
   const defaults = createDefaultSettings()
 
-  return {
+  // Use type assertion because we know defaults provides all required fields
+  // and spread operations preserve those values
+  const merged = {
     ai: {
       ...defaults.ai,
       ...settings.ai,
@@ -238,4 +240,6 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     mcp: settings.mcp,
     skills: settings.skills,
   }
+
+  return merged as AppSettings
 }

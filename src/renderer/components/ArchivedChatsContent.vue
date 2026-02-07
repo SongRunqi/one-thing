@@ -166,7 +166,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
-import type { ChatSession } from '@/types'
+import type { ChatSession, ChatMessage } from '@/types'
 
 const sessionsStore = useSessionsStore()
 const searchQuery = ref('')
@@ -194,8 +194,11 @@ const filteredSessions = computed(() => {
   )
 })
 
+// Session type for archived list (messages may be undefined for optimized loading)
+type ArchivedSession = Omit<ChatSession, 'messages'> & { messages?: ChatMessage[] }
+
 // Group sessions by date
-function groupByDate(sessions: ChatSession[]): { label: string; sessions: ChatSession[]; isParent?: boolean }[] {
+function groupByDate(sessions: ArchivedSession[]): { label: string; sessions: ArchivedSession[]; isParent?: boolean }[] {
   if (sessions.length === 0) return []
 
   const today = new Date()
@@ -214,7 +217,7 @@ function groupByDate(sessions: ChatSession[]): { label: string; sessions: ChatSe
   monthAgo.setMonth(monthAgo.getMonth() - 1)
   const monthAgoStart = monthAgo.getTime()
 
-  const groups: { label: string; sessions: ChatSession[]; isParent?: boolean }[] = [
+  const groups: { label: string; sessions: ArchivedSession[]; isParent?: boolean }[] = [
     { label: 'Today', sessions: [] },
     { label: 'Yesterday', sessions: [] },
     { label: 'This Week', sessions: [] },
@@ -241,10 +244,10 @@ function groupByDate(sessions: ChatSession[]): { label: string; sessions: ChatSe
 }
 
 // Group sessions by branch relationship
-function groupByBranch(sessions: ChatSession[]): { label: string; sessions: ChatSession[]; isParent?: boolean }[] {
+function groupByBranch(sessions: ArchivedSession[]): { label: string; sessions: ArchivedSession[]; isParent?: boolean }[] {
   if (sessions.length === 0) return []
 
-  const groups: { label: string; sessions: ChatSession[]; isParent?: boolean }[] = []
+  const groups: { label: string; sessions: ArchivedSession[]; isParent?: boolean }[] = []
 
   // First, find all parent sessions (sessions without parentSessionId or whose parent is not archived)
   const parentSessions = sessions.filter(s => {
@@ -257,9 +260,9 @@ function groupByBranch(sessions: ChatSession[]): { label: string; sessions: Chat
   // For each parent, create a group with it and its branches
   for (const parent of parentSessions) {
     // Find all branches of this parent (recursively)
-    function findBranches(parentId: string): ChatSession[] {
+    function findBranches(parentId: string): ArchivedSession[] {
       const directBranches = sessions.filter(s => s.parentSessionId === parentId)
-      let allBranches: ChatSession[] = [...directBranches]
+      let allBranches: ArchivedSession[] = [...directBranches]
       for (const branch of directBranches) {
         allBranches = allBranches.concat(findBranches(branch.id))
       }
@@ -334,17 +337,17 @@ function getBranchCount(sessionId: string): number {
 }
 
 // View archived chat (switch to it in ChatWindow)
-async function viewChat(session: ChatSession) {
+async function viewChat(session: ArchivedSession) {
   await sessionsStore.switchSession(session.id)
 }
 
 // Restore chat from archive
-async function restoreChat(session: ChatSession) {
+async function restoreChat(session: ArchivedSession) {
   await sessionsStore.restoreSession(session.id)
 }
 
 // Confirm and permanently delete chat
-async function confirmDelete(session: ChatSession) {
+async function confirmDelete(session: ArchivedSession) {
   const confirmed = confirm(`Permanently delete "${session.name || 'Untitled Chat'}"? This cannot be undone.`)
   if (confirmed) {
     await sessionsStore.permanentlyDeleteSession(session.id)

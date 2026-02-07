@@ -308,10 +308,12 @@ export function uiMessageToChatMessage(uiMsg: UIMessage): ChatMessage {
  * 将 ToolUIPart 转换回 ToolCall
  */
 export function uiPartToToolCall(part: ToolUIPart): ToolCall {
+  // Extract tool name from type format 'tool-{toolName}' or use provided toolName
+  const extractedToolName = part.toolName ?? part.type.replace(/^tool-/, '')
   return {
     id: part.toolCallId,
-    toolId: part.toolName,
-    toolName: part.toolName,
+    toolId: extractedToolName,
+    toolName: extractedToolName,
     arguments: part.input || {},
     status: uiStateToLegacyStatus(part.state),
     result: part.output,

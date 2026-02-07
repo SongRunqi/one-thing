@@ -124,10 +124,14 @@ export class MCPClient {
 
     console.log(`[MCP:${this.id}] Connecting via stdio: ${command} ${args.join(' ')}`)
 
+    // Filter out undefined values from process.env and merge with custom env
+    const filteredProcessEnv = Object.fromEntries(
+      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)
+    )
     this.transport = new StdioClientTransport({
       command,
       args,
-      env: env ? { ...process.env, ...env } : undefined,
+      env: env ? { ...filteredProcessEnv, ...env } : undefined,
       cwd,
     })
   }

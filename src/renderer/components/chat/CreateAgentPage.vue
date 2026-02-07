@@ -353,7 +353,7 @@ const isSubmitting = ref(false)
 // Tool editor state
 const showToolEditor = ref(false)
 const editingToolIndex = ref(-1)
-const editingTool = ref<CustomToolDefinition | null>(null)
+const editingTool = ref<CustomToolDefinition | undefined>(undefined)
 
 // Common emojis for avatar selection
 const commonEmojis = [
@@ -443,7 +443,7 @@ function getImageSrc(value: string): string {
 // Tool management
 function addNewTool() {
   editingToolIndex.value = -1
-  editingTool.value = null
+  editingTool.value = undefined
   showToolEditor.value = true
 }
 
@@ -471,7 +471,7 @@ function handleToolSave(tool: CustomToolDefinition) {
 function closeToolEditor() {
   showToolEditor.value = false
   editingToolIndex.value = -1
-  editingTool.value = null
+  editingTool.value = undefined
 }
 
 // Helpers for display

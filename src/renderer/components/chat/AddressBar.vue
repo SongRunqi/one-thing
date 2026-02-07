@@ -42,11 +42,11 @@
       title="Select agent"
     >
       <template v-if="agent">
-        <span v-if="agent.avatar.type === 'emoji'" class="agent-avatar-emoji">
-          {{ agent.avatar.value }}
+        <span v-if="agent.avatar?.type === 'emoji'" class="agent-avatar-emoji">
+          {{ agent.avatar?.value }}
         </span>
         <img
-          v-else
+          v-else-if="agent.avatar"
           :src="'file://' + agent.avatar.value"
           class="agent-avatar-img"
           alt=""

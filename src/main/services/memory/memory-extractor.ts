@@ -107,9 +107,9 @@ export async function extractMemoriesFromConversation(
     const response = await generateChatResponse(
       providerId,
       {
-        apiKey: providerConfig.apiKey,
+        apiKey: providerConfig.apiKey ?? '',
         baseUrl: providerConfig.baseUrl,
-        model: providerConfig.model,
+        model: providerConfig.model ?? '',
       },
       [{ role: 'user', content: prompt }],
       { temperature: 0.3, maxTokens: 500 }  // Low temperature for consistent JSON output

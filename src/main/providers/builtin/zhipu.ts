@@ -8,7 +8,7 @@
  * - Tool calls
  */
 
-import type { LanguageModelV2, LanguageModelV2StreamPart } from '@ai-sdk/provider'
+import type { LanguageModelV2, LanguageModelV2StreamPart, LanguageModelV2CallOptions, LanguageModelV2FunctionTool } from '@ai-sdk/provider'
 import type { ProviderDefinition } from '../types.js'
 
 // Check if model supports thinking mode (GLM-4.5 and above)
@@ -96,7 +96,7 @@ function createZhipuModel(modelId: string, apiKey: string, baseUrl: string): Lan
     modelId,
     defaultObjectGenerationMode: undefined,
 
-    async doGenerate(options) {
+    async doGenerate(options: LanguageModelV2CallOptions) {
       const { prompt, tools, ...rest } = options
 
       // Convert AI SDK messages to Zhipu format
@@ -129,17 +129,18 @@ function createZhipuModel(modelId: string, apiKey: string, baseUrl: string): Lan
 
       // Add tools if provided
       if (tools && tools.length > 0) {
-        request.tools = tools
-          .filter((tool) => tool.type === 'function')
-          .map((tool: any) => ({
+        const convertedTools = tools
+          .filter((tool): tool is LanguageModelV2FunctionTool => tool.type === 'function')
+          .map((tool) => ({
             type: 'function' as const,
             function: {
               name: tool.name,
               description: tool.description,
-              parameters: tool.parameters as Record<string, unknown>,
+              parameters: tool.inputSchema as Record<string, unknown>,
             },
           }))
-        if (request.tools.length > 0) {
+        if (convertedTools.length > 0) {
+          request.tools = convertedTools
           request.tool_choice = 'auto'
         }
       }
@@ -216,7 +217,7 @@ function createZhipuModel(modelId: string, apiKey: string, baseUrl: string): Lan
       }
     },
 
-    async doStream(options) {
+    async doStream(options: LanguageModelV2CallOptions) {
       const { prompt, tools, ...rest } = options
 
       // Convert AI SDK messages to Zhipu format
@@ -249,17 +250,18 @@ function createZhipuModel(modelId: string, apiKey: string, baseUrl: string): Lan
 
       // Add tools if provided
       if (tools && tools.length > 0) {
-        request.tools = tools
-          .filter((tool) => tool.type === 'function')
-          .map((tool: any) => ({
+        const convertedTools = tools
+          .filter((tool): tool is LanguageModelV2FunctionTool => tool.type === 'function')
+          .map((tool) => ({
             type: 'function' as const,
             function: {
               name: tool.name,
               description: tool.description,
-              parameters: tool.parameters as Record<string, unknown>,
+              parameters: tool.inputSchema as Record<string, unknown>,
             },
           }))
-        if (request.tools.length > 0) {
+        if (convertedTools.length > 0) {
+          request.tools = convertedTools
           request.tool_choice = 'auto'
         }
       }
@@ -636,7 +638,7 @@ const zhipuProvider: ProviderDefinition = {
   create: ({ apiKey, baseUrl }) => {
     const finalBaseUrl = baseUrl || 'https://open.bigmodel.cn/api/paas/v4'
     return {
-      createModel: (modelId: string) => createZhipuModel(modelId, apiKey, finalBaseUrl) as any,
+      createModel: (modelId: string) => createZhipuModel(modelId, apiKey ?? '', finalBaseUrl) as any,
     }
   },
 }

@@ -206,9 +206,9 @@ async function performCompacting(
       messages,
       providerId: ctx.providerId,
       providerConfig: {
-        apiKey: ctx.providerConfig.apiKey,
+        apiKey: ctx.providerConfig.apiKey ?? '',
         baseUrl: ctx.providerConfig.baseUrl,
-        model: ctx.providerConfig.model,
+        model: ctx.providerConfig.model ?? '',
       },
     }
 
@@ -369,7 +369,7 @@ export async function runStream(
       stream = streamChatResponseWithTools(
         ctx.providerId,
         {
-          apiKey: ctx.providerConfig.apiKey,
+          apiKey: ctx.providerConfig.apiKey ?? '',
           baseUrl: ctx.providerConfig.baseUrl,
           model,
           apiType,
@@ -651,9 +651,9 @@ export async function executeStreamGeneration(
         workingDirectory: sessionWorkingDir,
         providerId: ctx.providerId,
         providerConfig: {
-          apiKey: ctx.providerConfig.apiKey,
+          apiKey: ctx.providerConfig.apiKey ?? '',
           baseUrl: ctx.providerConfig.baseUrl,
-          model: ctx.providerConfig.model,
+          model: ctx.providerConfig.model ?? '',
         },
         // For CustomAgentTool: agent enabled settings
         agentSettings: ctx.toolSettings?.agents,
@@ -849,7 +849,7 @@ export async function executeStreamGeneration(
       // Just mark it with error details instead of deleting
       processor.finalize()
 
-      const errorDetailsStr = extractErrorDetails(error)
+      const errorDetailsStr = extractErrorDetails(error) ?? ''
       const errorContent = error.message || 'Streaming error'
 
       // Update the assistant message with error details

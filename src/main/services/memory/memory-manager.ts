@@ -152,9 +152,9 @@ async function decideMemoryOperation(
     const response = await generateChatResponse(
       providerId,
       {
-        apiKey: providerConfig.apiKey,
+        apiKey: providerConfig.apiKey ?? '',
         baseUrl: providerConfig.baseUrl,
-        model: providerConfig.model,
+        model: providerConfig.model ?? '',
       },
       [{ role: 'user', content: prompt }],
       { temperature: 0.1, maxTokens: 800 }  // Increased for UPDATE operations with long mergedContent

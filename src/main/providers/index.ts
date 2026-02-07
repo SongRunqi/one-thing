@@ -14,14 +14,14 @@ import { generateText, streamText, convertToModelMessages, wrapLanguageModel, ty
 import type { UIMessage as AISDKUIMessage } from 'ai'
 import { devToolsMiddleware } from '@ai-sdk/devtools'
 import { z } from 'zod'
-import isDev from 'electron-is-dev'
+import { app } from 'electron'
 
 /**
  * Wrap model with DevTools middleware in development mode
  * This enables inspection at http://localhost:4983 via `npx @ai-sdk/devtools`
  */
 function wrapWithDevTools<T extends LanguageModel>(model: T): T {
-  if (!isDev) return model
+  if (app.isPackaged) return model
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return wrapLanguageModel({
     model: model as any,
@@ -1040,7 +1040,7 @@ export async function* streamChatWithUIMessages(
   // This handles all the complexity of converting parts to the correct format
   let modelMessages
   try {
-    modelMessages = convertToModelMessages(aiSDKMessages)
+    modelMessages = await convertToModelMessages(aiSDKMessages)
     console.log(`[Provider] UIMessage -> ModelMessage conversion successful`)
     console.log(`[Provider] ModelMessages:`, JSON.stringify(formatMessagesForLog(modelMessages), null, 2))
   } catch (error) {

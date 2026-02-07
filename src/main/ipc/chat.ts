@@ -66,6 +66,7 @@ import {
   createStreamProcessor,
   type StreamContext,
 } from './chat/stream-processor.js'
+import type { ProviderConfigWithKey } from './chat/stream-executor.js'
 import {
   executeToolAndUpdate,
 } from './chat/tool-execution.js'
@@ -326,8 +327,10 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
     }
 
     // Create config with the API key (for OAuth providers, this is the OAuth token)
-    const configWithApiKey = {
+    const configWithApiKey: ProviderConfigWithKey = {
       ...providerConfig,
+      model: effectiveModel,
+      selectedModels: providerConfig?.selectedModels ?? [effectiveModel],
       apiKey,
     }
 
@@ -595,8 +598,10 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     }
 
     // Create config with the API key (for OAuth providers, this is the OAuth token)
-    const configWithApiKey = {
+    const configWithApiKey: ProviderConfigWithKey = {
       ...providerConfig,
+      model: effectiveModel,
+      selectedModels: providerConfig?.selectedModels ?? [effectiveModel],
       apiKey,
     }
 
@@ -704,7 +709,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
 
     // Get settings and validate (use session-level model if available)
     const settings = store.getSettings()
-    const { providerId, providerConfig } = getEffectiveProviderConfig(settings, sessionId)
+    const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
     // Get API key (handles OAuth providers)
     const apiKey = await getApiKeyForProvider(providerId, providerConfig)
@@ -719,8 +724,10 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     }
 
     // Create config with the API key (for OAuth providers, this is the OAuth token)
-    const configWithApiKey = {
+    const configWithApiKey: ProviderConfigWithKey = {
       ...providerConfig,
+      model: effectiveModel,
+      selectedModels: providerConfig?.selectedModels ?? [effectiveModel],
       apiKey,
     }
 

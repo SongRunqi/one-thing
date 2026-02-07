@@ -250,11 +250,12 @@ function isAgentStep(step: Step): boolean {
  * Handle confirm from AgentExecutionPanel
  */
 function handleAgentConfirm(step: Step, type: 'once' | 'session' | 'workspace' | 'always') {
-  const toolCall = step.toolCall || {
+  const existingToolCall = step.toolCall as ToolCall | undefined
+  const toolCall = existingToolCall || {
     id: step.id,
-    toolId: step.toolCall?.toolName || 'unknown',
-    toolName: step.toolCall?.toolName || 'unknown',
-    arguments: step.toolCall?.arguments || {},
+    toolId: existingToolCall?.toolName || 'unknown',
+    toolName: existingToolCall?.toolName || 'unknown',
+    arguments: existingToolCall?.arguments || {},
     status: 'pending' as const,
     timestamp: step.timestamp,
     requiresConfirmation: true,
@@ -267,11 +268,12 @@ function handleAgentConfirm(step: Step, type: 'once' | 'session' | 'workspace' |
  * Handle reject from AgentExecutionPanel
  */
 function handleAgentReject(step: Step) {
-  const toolCall = step.toolCall || {
+  const existingToolCall = step.toolCall as ToolCall | undefined
+  const toolCall = existingToolCall || {
     id: step.id,
-    toolId: step.toolCall?.toolName || 'unknown',
-    toolName: step.toolCall?.toolName || 'unknown',
-    arguments: step.toolCall?.arguments || {},
+    toolId: existingToolCall?.toolName || 'unknown',
+    toolName: existingToolCall?.toolName || 'unknown',
+    arguments: existingToolCall?.arguments || {},
     status: 'pending' as const,
     timestamp: step.timestamp,
     requiresConfirmation: true,

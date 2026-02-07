@@ -97,7 +97,7 @@ export class SQLiteUserProfileStorage implements IUserProfileStorage {
         sources: JSON.parse(f.sources || '[]'),
         createdAt: f.created_at,
         updatedAt: f.updated_at,
-        embedding: f.embedding ? deserializeEmbedding(f.embedding) : undefined,
+        embedding: deserializeEmbedding(f.embedding),
       })),
       createdAt: profileRow.created_at,
       updatedAt: profileRow.updated_at,
@@ -222,7 +222,7 @@ export class SQLiteUserProfileStorage implements IUserProfileStorage {
       sources: JSON.parse(f.sources || '[]'),
       createdAt: f.created_at,
       updatedAt: f.updated_at,
-      embedding: f.embedding ? deserializeEmbedding(f.embedding) : undefined,
+      embedding: deserializeEmbedding(f.embedding),
     }))
   }
 
@@ -515,7 +515,7 @@ export class SQLiteAgentMemoryStorage implements IAgentMemoryStorage {
       recallCount: row.recall_count,
       linkedMemories: JSON.parse(row.linked_memories || '[]'),
       vividness: row.vividness,
-      embedding: row.embedding ? deserializeEmbedding(row.embedding) : undefined,
+      embedding: deserializeEmbedding(row.embedding),
     }))
   }
 
@@ -1096,8 +1096,8 @@ function serializeEmbedding(embedding: number[]): Buffer {
 /**
  * Deserialize embedding from buffer
  */
-function deserializeEmbedding(buffer: Buffer | null): number[] | null {
-  if (!buffer) return null
+function deserializeEmbedding(buffer: Buffer | null | undefined): number[] | undefined {
+  if (!buffer) return undefined
   const embedding: number[] = []
   for (let i = 0; i < buffer.length; i += 4) {
     embedding.push(buffer.readFloatLE(i))

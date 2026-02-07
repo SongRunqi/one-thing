@@ -141,7 +141,7 @@ export async function executeToolAgent(
       const stream = streamChatResponseWithTools(
         context.providerId,
         {
-          apiKey: context.providerConfig.apiKey,
+          apiKey: context.providerConfig.apiKey ?? '',
           baseUrl: context.providerConfig.baseUrl,
           model: modelId,
         },

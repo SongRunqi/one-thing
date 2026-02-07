@@ -289,7 +289,7 @@ function handleToolExecute(toolCall: ToolCall) {
   emit('executeTool', toolCall)
 }
 
-function handleToolConfirm(toolCall: ToolCall, response: 'once' | 'always') {
+function handleToolConfirm(toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always') {
   emit('confirmTool', toolCall, response)
 }
 

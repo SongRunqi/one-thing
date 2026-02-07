@@ -11,7 +11,7 @@
       </span>
       <img
         v-else-if="agent.avatar?.type === 'image'"
-        :src="getImageSrc(agent.avatar.value)"
+        :src="getImageSrc(agent.avatar?.value ?? '')"
         class="avatar-image"
         alt=""
       />
