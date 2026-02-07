@@ -58,10 +58,11 @@ function setupContentSecurityPolicy() {
     const cspDirectives = [
       // Default: only allow from self
       "default-src 'self'",
-      // Scripts: self, and unsafe-eval only in dev for HMR
+      // Scripts: self, and unsafe-inline for theme caching scripts in index.html
+      // unsafe-eval only in dev for HMR
       isDevelopment
         ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-        : "script-src 'self'",
+        : "script-src 'self' 'unsafe-inline'",
       // Styles: self and unsafe-inline (Vue uses inline styles)
       "style-src 'self' 'unsafe-inline'",
       // Images: self, data URIs, https, file, and media protocol for local images

@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md - 0neThing 项目状态
 
-> 最后更新: 2026-02-07 | PM: Qiqi
+> 最后更新: 2026-02-07 23:35 | PM: Qiqi
 
 ## 📋 项目概述
 
@@ -108,11 +108,29 @@ src/
 ## 🔧 开发命令
 
 ```bash
-pnpm dev          # 开发模式
-pnpm build        # 构建
-pnpm test         # 运行测试
-pnpm typecheck    # 类型检查
+bun dev           # 开发模式
+bun run build     # 构建
+bun run build:mac # 打包 Mac DMG/ZIP
+bun test          # 运行测试
+bun run typecheck # 类型检查
 ```
+
+---
+
+## 📦 打包状态
+
+| 平台 | 状态 | 输出 |
+|------|------|------|
+| macOS arm64 | ✅ 成功 | `release/0neThing-0.1.0-arm64.dmg` (213MB) |
+| Windows | 🔘 未测试 | — |
+| Linux | 🔘 未测试 | — |
+
+### 打包说明
+
+- **打包器**: electron-builder v26.4.0
+- **签名**: ad-hoc (无 Apple Developer 证书)
+- **公证**: 跳过 (分发时需配置)
+- **注意**: bun 不支持依赖树提取，使用 NPM collector
 
 ---
 
