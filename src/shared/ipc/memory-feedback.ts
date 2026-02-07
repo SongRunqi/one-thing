@@ -2,6 +2,8 @@
  * IPC Type Definitions for Memory Feedback System
  */
 
+import { defineRouter } from './router.js'
+
 export interface RecordFeedbackRequest {
   filePath: string         // Memory file relative path (e.g., "topics/vue.md")
   feedbackType: 'positive' | 'negative'
@@ -25,3 +27,29 @@ export interface GetFeedbackStatsResponse {
   }
   error?: string
 }
+
+// --- Router Definition ---
+
+/** Route types for memory-feedback domain */
+export type MemoryFeedbackRoutes = {
+  record: {
+    input: RecordFeedbackRequest
+    output: RecordFeedbackResponse
+  }
+  getStats: {
+    input: GetFeedbackStatsRequest
+    output: GetFeedbackStatsResponse
+  }
+}
+
+/**
+ * Memory feedback router - single source of truth for IPC channels & types.
+ *
+ * Generated channels:
+ * - record   → "memory-feedback:record"
+ * - getStats → "memory-feedback:get-stats"
+ */
+export const memoryFeedbackRouter = defineRouter<MemoryFeedbackRoutes>(
+  'memory-feedback',
+  ['record', 'getStats']
+)

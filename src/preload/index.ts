@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS, AIProvider, MessageAttachment, PLUGIN_CHANNELS } from '../shared/ipc.js'
 import type { UIMessageStreamData, InstallPluginRequest, UpdatePluginConfigRequest } from '../shared/ipc.js'
+import { createRouterAPI } from './create-api.js'
+import { memoryFeedbackRouter } from '../shared/ipc/memory-feedback.js'
 
 const electronAPI = {
   // Chat methods
@@ -571,12 +573,17 @@ const electronAPI = {
   recordAgentInteraction: (agentId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_RECORD_INTERACTION, { agentId }),
 
-  // Memory Feedback methods
+  // Memory Feedback methods (legacy - use memoryFeedback router API instead)
+  /** @deprecated Use memoryFeedback.record() instead */
   recordMemoryFeedback: (filePath: string, feedbackType: 'positive' | 'negative') =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_FEEDBACK_RECORD, { filePath, feedbackType }),
 
+  /** @deprecated Use memoryFeedback.getStats() instead */
   getMemoryFeedbackStats: (filePath: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_FEEDBACK_GET_STATS, { filePath }),
+
+  // Router-based API: memory feedback
+  memoryFeedback: createRouterAPI(memoryFeedbackRouter),
 
   // Memory Management methods
   memoryListFiles: () =>

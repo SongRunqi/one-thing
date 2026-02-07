@@ -9,6 +9,10 @@
 // IPC Channel Constants
 export { IPC_CHANNELS } from './channels.js'
 
+// IPC Router infrastructure
+export { defineRouter, getChannelName } from './router.js'
+export type { RouteConfig, DomainRoutes, Router, RouteHandlers, RouteAPI } from './router.js'
+
 // Tool types
 export type {
   GetToolsResponse,
@@ -273,13 +277,15 @@ export type {
   RecordInteractionResponse,
 } from './agent-memory.js'
 
-// Memory Feedback types
+// Memory Feedback types & router
 export type {
   RecordFeedbackRequest,
   RecordFeedbackResponse,
   GetFeedbackStatsRequest,
   GetFeedbackStatsResponse,
+  MemoryFeedbackRoutes,
 } from './memory-feedback.js'
+export { memoryFeedbackRouter } from './memory-feedback.js'
 
 // Memory Management types
 export type {

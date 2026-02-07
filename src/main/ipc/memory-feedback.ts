@@ -2,26 +2,19 @@
  * Memory Feedback IPC Handlers
  *
  * Handles IPC communication for memory feedback system.
+ * Uses the IPC Router for type-safe handler registration.
  */
 
-import { ipcMain } from 'electron'
-import { IPC_CHANNELS } from '../../shared/ipc/channels.js'
+import { registerRouter } from './register-router.js'
+import { memoryFeedbackRouter } from '../../shared/ipc/memory-feedback.js'
 import { recordMemoryFeedback, getMemoryFeedbackStats } from '../services/memory-text/memory-feedback.js'
-import type {
-  RecordFeedbackRequest,
-  RecordFeedbackResponse,
-  GetFeedbackStatsRequest,
-  GetFeedbackStatsResponse
-} from '../../shared/ipc/memory-feedback.js'
 
 /**
- * Register memory feedback IPC handlers
+ * Register memory feedback IPC handlers via router
  */
 export function registerMemoryFeedbackHandlers(): void {
-  // Record user feedback (👍 or 👎)
-  ipcMain.handle(
-    IPC_CHANNELS.MEMORY_FEEDBACK_RECORD,
-    async (_, req: RecordFeedbackRequest): Promise<RecordFeedbackResponse> => {
+  registerRouter(memoryFeedbackRouter, {
+    record: async (req) => {
       try {
         await recordMemoryFeedback(req.filePath, req.feedbackType)
         return { success: true }
@@ -29,13 +22,9 @@ export function registerMemoryFeedbackHandlers(): void {
         console.error('[IPC] Failed to record memory feedback:', error)
         return { success: false, error: error.message }
       }
-    }
-  )
+    },
 
-  // Get feedback statistics for a memory file
-  ipcMain.handle(
-    IPC_CHANNELS.MEMORY_FEEDBACK_GET_STATS,
-    async (_, req: GetFeedbackStatsRequest): Promise<GetFeedbackStatsResponse> => {
+    getStats: async (req) => {
       try {
         const stats = await getMemoryFeedbackStats(req.filePath)
         if (!stats) {
@@ -46,8 +35,6 @@ export function registerMemoryFeedbackHandlers(): void {
         console.error('[IPC] Failed to get memory feedback stats:', error)
         return { success: false, error: error.message }
       }
-    }
-  )
-
-  console.log('[IPC] Memory feedback handlers registered')
+    },
+  })
 }

@@ -165,8 +165,10 @@ export const IPC_CHANNELS = {
   AGENT_MEMORY_UPDATE_RELATIONSHIP: 'agent-memory:update-relationship',
   AGENT_MEMORY_RECORD_INTERACTION: 'agent-memory:record-interaction',
 
-  // Memory Feedback related
+  // Memory Feedback related (deprecated: use memoryFeedbackRouter from ./memory-feedback.ts)
+  /** @deprecated Use memoryFeedbackRouter instead */
   MEMORY_FEEDBACK_RECORD: 'memory-feedback:record',
+  /** @deprecated Use memoryFeedbackRouter instead */
   MEMORY_FEEDBACK_GET_STATS: 'memory-feedback:get-stats',
 
   // Memory Management related
