@@ -34,6 +34,7 @@ import { formatMessagesForLog, buildSystemPrompt, buildHistoryMessages, type His
 import {
   getTextFromContent,
   textRecordAgentInteraction,
+  textLoadMemoryForChat,
 } from './memory-helpers.js'
 import { getProviderApiType } from './provider-helpers.js'
 import { executeToolAndUpdate } from './tool-execution.js'
@@ -696,16 +697,20 @@ export async function executeStreamGeneration(
       }
     }
 
-    // Memory auto-injection disabled for faster response
-    // Memory can be loaded on-demand via tools or commands if needed
-
-    // Track agent ID for interaction recording (not for memory injection)
-    const agentIdForInteraction = session?.agentId
+    // Load memory for personalized responses
+    const agentIdForMemory = session?.agentId
+    const agentIdForInteraction = agentIdForMemory  // Keep for interaction recording
+    const lastMessageContent = historyMessages[historyMessages.length - 1]?.content
+    const userMessageText = typeof lastMessageContent === 'string' 
+      ? lastMessageContent 
+      : getTextFromContent(lastMessageContent as any || '')
+    const memoryResult = await textLoadMemoryForChat(userMessageText, agentIdForMemory)
 
     const systemPrompt = buildSystemPrompt({
       hasTools,
       skills: enabledSkills,
       workspaceSystemPrompt: characterSystemPrompt,
+      userProfilePrompt: memoryResult.prompt,  // 注入 Memory
       providerId: ctx.providerId,
       workingDirectory: sessionWorkingDir,
       builtinMode: session?.builtinMode,
