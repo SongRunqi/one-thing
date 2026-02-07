@@ -26,6 +26,9 @@ import { MouseTool } from './mouse.js'
 import { KeyboardTool } from './keyboard.js'
 import { ScreenshotTool } from './screenshot.js'
 
+// Web search
+import { WebSearchTool } from './web-search/index.js'
+
 // All built-in tools (Tool.define() format)
 // Note: SkillTool is async and needs separate initialization
 const builtinTools = [
@@ -41,6 +44,8 @@ const builtinTools = [
   MouseTool,
   KeyboardTool,
   ScreenshotTool,
+  // Web tools
+  WebSearchTool,
 ]
 
 // Async tools that need initialization with context

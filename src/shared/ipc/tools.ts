@@ -95,6 +95,14 @@ export interface ToolAgentSettings {
   model?: string                  // Optional: use different model for Tool Agent
 }
 
+// Web Search settings
+export interface WebSearchSettings {
+  enabled: boolean                // Master switch for web search
+  braveApiKey?: string            // Brave Search API key
+  defaultProvider?: 'brave'       // Default search provider (extensible)
+  defaultCount?: number           // Default number of results (1-10)
+}
+
 export interface ToolSettings {
   // Global tool settings
   enableToolCalls: boolean   // Master switch for tool calls
@@ -112,6 +120,8 @@ export interface ToolSettings {
   bash?: BashToolSettings
   // Tool Agent settings (provider/model for tool execution)
   toolAgentSettings?: ToolAgentSettings
+  // Web Search settings
+  webSearch?: WebSearchSettings
 }
 
 // Stream message types
