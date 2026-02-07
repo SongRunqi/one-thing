@@ -156,7 +156,7 @@ export const useSettingsStore = defineStore('settings', () => {
         window.electronAPI.getModelNameAliases(),
       ])
 
-      if (settingsResponse.success) {
+      if (settingsResponse.success && settingsResponse.settings) {
         settings.value = settingsResponse.settings
         // Ensure customProviders array exists
         if (!settings.value.ai.customProviders) {

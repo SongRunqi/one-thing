@@ -162,7 +162,7 @@ const emit = defineEmits<{
   goToBranch: [sessionId: string]
   quote: [quotedText: string]
   executeTool: [toolCall: ToolCall]
-  confirmTool: [toolCall: ToolCall, response: 'once' | 'always']
+  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always']
   rejectTool: [toolCall: ToolCall]
   updateThinkingTime: [messageId: string, thinkingTime: number]
 }>()

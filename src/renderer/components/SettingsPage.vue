@@ -332,7 +332,7 @@ watch(localSettings, (newSettings) => {
 
 // Custom provider management
 function editCustomProvider(providerId: string) {
-  const provider = localSettings.value?.ai.customProviders.find(p => p.id === providerId)
+  const provider = localSettings.value?.ai.customProviders?.find(p => p.id === providerId)
   if (provider) {
     editingProvider.value = provider
     showCustomProviderDialog.value = true
@@ -360,7 +360,7 @@ function saveCustomProvider(form: CustomProviderForm) {
     enabled: editingProvider.value?.enabled ?? true,
   }
 
-  const providers = [...localSettings.value.ai.customProviders]
+  const providers = [...(localSettings.value.ai.customProviders ?? [])]
   const existingIndex = providers.findIndex(p => p.id === provider.id)
 
   if (existingIndex >= 0) {

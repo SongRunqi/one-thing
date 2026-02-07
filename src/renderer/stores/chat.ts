@@ -1034,8 +1034,9 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       // Create streaming assistant message
+      const messageId = response.messageId || `assistant-${Date.now()}`
       const assistantMessage: ChatMessage = {
-        id: response.messageId,
+        id: messageId,
         role: 'assistant',
         content: '',
         timestamp: Date.now(),
@@ -1046,7 +1047,7 @@ export const useChatStore = defineStore('chat', () => {
       setSessionMessages(sessionId, [...messages])
 
       // Record active stream
-      activeStreams.value.set(sessionId, response.messageId)
+      activeStreams.value.set(sessionId, messageId)
       triggerRef(activeStreams)
 
       // Hide loading (message bubble shows its own streaming state)
@@ -1133,8 +1134,9 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       // Create streaming assistant message
+      const editMessageId = response.messageId || `assistant-${Date.now()}`
       const assistantMessage: ChatMessage = {
-        id: response.messageId,
+        id: editMessageId,
         role: 'assistant',
         content: '',
         timestamp: Date.now(),
@@ -1145,7 +1147,7 @@ export const useChatStore = defineStore('chat', () => {
       setSessionMessages(sessionId, [...messages])
 
       // Record active stream
-      activeStreams.value.set(sessionId, response.messageId)
+      activeStreams.value.set(sessionId, editMessageId)
       triggerRef(activeStreams)
 
       // Hide loading

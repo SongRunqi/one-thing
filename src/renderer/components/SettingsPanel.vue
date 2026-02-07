@@ -195,7 +195,7 @@
 <script setup lang="ts">
 import { ref, toRaw, onMounted, computed } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import type { AppSettings, AIProvider, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'
+import type { AppSettings, AIProvider, ProviderInfo, CustomProviderConfig, ToolDefinition, EmbeddingSettings } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -388,7 +388,7 @@ function handleSkillsSettingsUpdate(skillsSettings: { enableSkills: boolean; ski
 }
 
 // Handle Embedding settings update
-function handleEmbeddingSettingsUpdate(embeddingSettings: { provider: 'openai' | 'local'; openai?: any; local?: any }) {
+function handleEmbeddingSettingsUpdate(embeddingSettings: EmbeddingSettings) {
   localSettings.value.embedding = embeddingSettings
 }
 
@@ -430,7 +430,7 @@ function openEditCustomProvider(providerId: string) {
     description: provider.description || '',
     apiType: provider.apiType,
     baseUrl: provider.baseUrl || '',
-    apiKey: provider.apiKey,
+    apiKey: provider.apiKey ?? '',
     model: provider.model,
   }
   showCustomProviderDialog.value = true

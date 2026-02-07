@@ -251,17 +251,21 @@ function isAgentStep(step: Step): boolean {
  */
 function handleAgentConfirm(step: Step, type: 'once' | 'session' | 'workspace' | 'always') {
   const existingToolCall = step.toolCall as ToolCall | undefined
-  const toolCall = existingToolCall || {
+  const baseToolCall: ToolCall = existingToolCall ?? {
     id: step.id,
-    toolId: existingToolCall?.toolName || 'unknown',
-    toolName: existingToolCall?.toolName || 'unknown',
-    arguments: existingToolCall?.arguments || {},
+    toolId: step.title?.split(':')[0] || 'unknown',
+    toolName: step.title?.split(':')[0] || 'unknown',
+    arguments: {},
     status: 'pending' as const,
     timestamp: step.timestamp,
     requiresConfirmation: true,
-    customAgentPermissionId: (step as any).customAgentPermissionId,
   }
-  emit('confirm', toolCall, type)
+  // Add customAgentPermissionId if present on step
+  const toolCall = baseToolCall as ToolCall & { customAgentPermissionId?: string }
+  if ((step as any).customAgentPermissionId) {
+    toolCall.customAgentPermissionId = (step as any).customAgentPermissionId
+  }
+  emit('confirm', toolCall as ToolCall, type)
 }
 
 /**
@@ -269,17 +273,21 @@ function handleAgentConfirm(step: Step, type: 'once' | 'session' | 'workspace' |
  */
 function handleAgentReject(step: Step) {
   const existingToolCall = step.toolCall as ToolCall | undefined
-  const toolCall = existingToolCall || {
+  const baseToolCall: ToolCall = existingToolCall ?? {
     id: step.id,
-    toolId: existingToolCall?.toolName || 'unknown',
-    toolName: existingToolCall?.toolName || 'unknown',
-    arguments: existingToolCall?.arguments || {},
+    toolId: step.title?.split(':')[0] || 'unknown',
+    toolName: step.title?.split(':')[0] || 'unknown',
+    arguments: {},
     status: 'pending' as const,
     timestamp: step.timestamp,
     requiresConfirmation: true,
-    customAgentPermissionId: (step as any).customAgentPermissionId,
   }
-  emit('reject', toolCall)
+  // Add customAgentPermissionId if present on step
+  const toolCall = baseToolCall as ToolCall & { customAgentPermissionId?: string }
+  if ((step as any).customAgentPermissionId) {
+    toolCall.customAgentPermissionId = (step as any).customAgentPermissionId
+  }
+  emit('reject', toolCall as ToolCall)
 }
 
 function hasExpandableContent(step: Step): boolean {

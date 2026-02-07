@@ -572,15 +572,15 @@ const currentPendingPermission = computed<{ message: ChatMessage; toolCall: Tool
             // Construct a toolCall-like object from the step if toolCall is missing
             // Use type assertion since customAgentPermissionId is a custom extension
             const existingToolCall = childStep.toolCall as ToolCall | undefined
-            const toolCallFromStep = (existingToolCall || {
+            const toolCallFromStep: ToolCall & { customAgentPermissionId?: string } = existingToolCall ?? {
               id: childStep.id,
               toolId: childStep.type === 'command' ? 'bash' : childStep.type,
               toolName: childStep.title?.split(':')[0] || 'unknown',
-              arguments: existingToolCall?.arguments || {},
+              arguments: {},
               status: 'pending' as const,
               timestamp: childStep.timestamp,
               requiresConfirmation: true,
-            }) as ToolCall & { customAgentPermissionId?: string }
+            }
             toolCallFromStep.customAgentPermissionId = (childStep as any).customAgentPermissionId
             return { message, toolCall: toolCallFromStep as ToolCall }
           }

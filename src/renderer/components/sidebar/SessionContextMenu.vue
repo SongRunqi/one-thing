@@ -31,13 +31,13 @@
 </template>
 
 <script setup lang="ts">
-import type { ChatSession } from '@/types'
+import type { SessionWithBranches } from './useSessionOrganizer'
 
 interface Props {
   show: boolean
   x: number
   y: number
-  session: ChatSession | null
+  session: SessionWithBranches | null
 }
 
 interface Emits {
