@@ -29,8 +29,14 @@
       </svg>
     </div>
     <div class="error-bubble">
-      <div class="error-content">
-        {{ content }}
+      <div class="error-header">
+        <span
+          v-if="categoryLabel"
+          class="error-category"
+        >{{ categoryLabel }}</span>
+        <div class="error-content">
+          {{ content }}
+        </div>
       </div>
       <div
         v-if="errorDetails"
@@ -39,6 +45,26 @@
         {{ errorDetails }}
       </div>
       <div class="error-footer">
+        <button
+          v-if="retryable"
+          class="retry-btn"
+          @click="$emit('retry')"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          Retry
+        </button>
         <span class="error-time">{{ formattedTime }}</span>
       </div>
     </div>
@@ -51,10 +77,28 @@ import { computed } from 'vue'
 interface Props {
   content: string
   errorDetails?: string
+  errorCategory?: string
+  retryable?: boolean
   timestamp: number
 }
 
 const props = defineProps<Props>()
+
+defineEmits<{
+  retry: []
+}>()
+
+const categoryLabel = computed(() => {
+  switch (props.errorCategory) {
+    case 'network': return '\uD83C\uDF10 Network Error'
+    case 'auth': return '\uD83D\uDD11 Auth Error'
+    case 'quota': return '\u26A0\uFE0F Rate Limit'
+    case 'context': return '\uD83D\uDCC4 Context Limit'
+    case 'provider': return '\u2601\uFE0F Provider Error'
+    case 'validation': return '\u2757 Validation Error'
+    default: return ''
+  }
+})
 
 const formattedTime = computed(() => {
   const date = new Date(props.timestamp)
@@ -93,6 +137,18 @@ const formattedTime = computed(() => {
   background: rgba(239, 68, 68, 0.08);
 }
 
+.error-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.error-category {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(239, 68, 68, 0.85);
+}
+
 .error-content {
   font-size: 14px;
   color: rgba(255, 255, 255, 0.9);
@@ -122,7 +178,40 @@ html[data-theme='light'] .error-details {
 .error-footer {
   margin-top: 8px;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 12px;
+}
+
+.retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.retry-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+html[data-theme='light'] .retry-btn {
+  color: rgba(0, 0, 0, 0.75);
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+html[data-theme='light'] .retry-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 .error-time {

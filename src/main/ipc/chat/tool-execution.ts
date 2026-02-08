@@ -4,7 +4,10 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import * as store from '../../store.js'
+import {
+  getSession,
+  updateMessageToolCalls,
+} from '../../stores/sessions.js'
 import type { Step, StepType, SkillDefinition, ToolCall } from '../../../shared/ipc.js'
 import { executeTool } from '../../tools/index.js'
 import { isMCPTool, executeMCPTool } from '../../mcp/index.js'
@@ -12,7 +15,28 @@ import type { ToolExecutionContext, ToolExecutionResult } from '../../tools/type
 import type { StreamContext } from './stream-processor.js'
 import { checkToolPermission } from '../../agents/builtin-agents.js'
 import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
+import { sendUIToolCall } from './stream-helpers.js'
+import type { ToolUIState } from '../../../shared/ipc.js'
 import { hookManager } from '../../plugins/hooks/index.js'
+import { classifyError } from '../../../shared/errors.js'
+
+/**
+ * Map ToolCall status to UIMessage ToolUIState and send via UIMessage stream
+ */
+function sendToolCallAsUIPart(ctx: StreamContext, toolCall: ToolCall) {
+  let state: ToolUIState = 'input-available'
+  if (toolCall.status === 'executing') state = 'input-available'
+  else if (toolCall.status === 'completed') state = 'output-available'
+  else if (toolCall.status === 'failed' || toolCall.status === 'cancelled') state = 'output-error'
+
+  sendUIToolCall(
+    ctx.sender, ctx.sessionId, ctx.assistantMessageId,
+    toolCall.id, toolCall.toolName, state,
+    toolCall.arguments,
+    toolCall.result,
+    toolCall.error,
+  )
+}
 
 /**
  * Detect if a bash command is reading a skill file and extract skill name
@@ -142,14 +166,15 @@ export async function executeToolDirectly(
     const result = await executeTool(toolName, args, execContext)
     return result
   } catch (error: any) {
-    console.error(`[DirectExec] Tool execution error:`, error)
-    // Check if error is due to abort signal
+    // Check if error is due to abort signal (before classifying)
     const isAborted = context.abortSignal?.aborted ||
       error.message?.includes('cancelled') ||
       error.message?.includes('aborted')
+    const appError = classifyError(error)
+    console.error(`[DirectExec][${appError.category}] Tool execution error:`, error)
     return {
       success: false,
-      error: error.message || 'Unknown error during tool execution',
+      error: appError.message,
       aborted: isAborted,
     }
   }
@@ -195,8 +220,8 @@ export async function executeToolAndUpdate(
     toolCall.status = 'failed'
     toolCall.error = 'Execution cancelled by user'
     toolCall.endTime = Date.now()
-    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-    emitter.sendToolResult(toolCall)
+    updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+    sendToolCallAsUIPart(ctx, toolCall)
     return
   }
 
@@ -209,7 +234,7 @@ export async function executeToolAndUpdate(
 
   // Check if a placeholder step already exists (from streaming input start)
   // Priority: use existingStepId from processor (most reliable), then fallback to store lookup
-  const session = store.getSession(ctx.sessionId)
+  const session = getSession(ctx.sessionId)
   const message = session?.messages?.find(m => m.id === ctx.assistantMessageId)
   let existingStep: Step | undefined
   
@@ -248,9 +273,9 @@ export async function executeToolAndUpdate(
   toolCall.status = 'executing'
   toolCall.startTime = Date.now()
 
-  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+  updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
   // Send executing status to frontend so UI shows "Calling..." with spinner
-  emitter.sendToolCall(toolCall)
+  sendToolCallAsUIPart(ctx, toolCall)
 
   let result: {
     success: boolean
@@ -280,8 +305,8 @@ export async function executeToolAndUpdate(
       error: permCheck.reason,
     })
 
-    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-    emitter.sendToolResult(toolCall)
+    updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+    sendToolCallAsUIPart(ctx, toolCall)
     return
   }
 
@@ -308,8 +333,8 @@ export async function executeToolAndUpdate(
         error: toolCall.error,
       })
 
-      store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-      emitter.sendToolResult(toolCall)
+      updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+      sendToolCallAsUIPart(ctx, toolCall)
       return
     }
 
@@ -445,6 +470,6 @@ export async function executeToolAndUpdate(
     })
   }
 
-  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-  emitter.sendToolResult(toolCall)
+  updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+  sendToolCallAsUIPart(ctx, toolCall)
 }

@@ -3,7 +3,15 @@
  * Handles tool loop execution and streaming generation
  */
 
-import * as store from '../../store.js'
+import {
+  getSession,
+  addMessageContentPart,
+  updateStepsUsageByTurn,
+  updateMessageContent,
+  updateMessageUsage,
+  updateMessageError,
+} from '../../stores/sessions.js'
+import { getWorkspace } from '../../stores/workspaces.js'
 import { IPC_CHANNELS } from '../../../shared/ipc.js'
 import type { SkillDefinition, ToolCall, ChatMessage } from '../../../shared/ipc.js'
 import { hookManager } from '../../plugins/hooks/index.js'
@@ -29,13 +37,14 @@ import { shouldCompact, executeCompacting, type CompactingContext } from '../../
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
 import { createStreamProcessor } from './stream-processor.js'
 import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
-import { sendUIMessageFinish } from './stream-helpers.js'
+import { sendUITextDelta } from './stream-helpers.js'
 import { formatMessagesForLog, buildSystemPrompt, buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
 import {
   getTextFromContent,
   textRecordAgentInteraction,
 } from './memory-helpers.js'
 import { getProviderApiType } from './provider-helpers.js'
+import { classifyError } from '../../../shared/errors.js'
 import { executeToolAndUpdate } from './tool-execution.js'
 import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages } from './chat-logger.js'
 
@@ -84,18 +93,15 @@ function persistTurnContentParts(
   // Note: IPC messages for content_part are sent earlier (before tool execution) for proper ordering
   // Here we only persist to store and send IPC for turns WITHOUT tool calls
   if (turnState.content.value) {
-    store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
+    addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
       type: 'text',
       content: turnState.content.value,
     })
-    // Only send IPC if no tool calls (otherwise already sent before tool execution)
-    if (turnState.toolCalls.length === 0) {
-      emitter.sendContentPart({ type: 'text', content: turnState.content.value })
-    }
+    // Note: UIMessage stream handles text content delivery, no legacy IPC needed
   }
 
   if (turnState.toolCalls.length > 0) {
-    store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
+    addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
       type: 'data-steps',
       turnIndex,
     })
@@ -192,7 +198,7 @@ async function performCompacting(
 
   try {
     // Get session and its messages for compacting
-    const session = store.getSession(ctx.sessionId)
+    const session = getSession(ctx.sessionId)
     if (!session) {
       console.warn('[ToolLoop] Session not found for compacting:', ctx.sessionId)
       emitter.sendCompactCompleted({ success: false, error: 'Session not found' })
@@ -240,7 +246,7 @@ function rebuildConversationMessages(
   systemPrompt: string,
   conversationMessages: ToolChatMessage[]
 ): void {
-  const updatedSession = store.getSession(ctx.sessionId)
+  const updatedSession = getSession(ctx.sessionId)
   if (updatedSession) {
     const compactedHistory = buildHistoryMessages(
       updatedSession.messages as ChatMessage[],
@@ -316,7 +322,7 @@ export async function runStream(
     // Checkpoint 1: Pre-request compacting check
     // Check session.contextSize before sending API request
     // ============================================================
-    const session = store.getSession(ctx.sessionId)
+    const session = getSession(ctx.sessionId)
     if (session?.contextSize && shouldCompact(session.contextSize, modelContextLength)) {
       console.log(`[ToolLoop] Pre-request compacting: contextSize=${session.contextSize}, threshold=${Math.floor(modelContextLength * 0.85)}`)
       const compacted = await performCompacting(ctx, emitter)
@@ -325,11 +331,7 @@ export async function runStream(
       }
     }
 
-    // Send continuation at the START of each turn (except first) to show waiting indicator
-    // This ensures waiting is displayed BEFORE the LLM call starts
-    if (currentTurn > 1) {
-      emitter.sendContinuation()
-    }
+    // Note: continuation indicators are handled by UIMessage stream parts
 
     // Get model's actual max output tokens and cap user setting
     // This prevents errors when switching between models with different output limits
@@ -437,16 +439,7 @@ export async function runStream(
 
           const toolCall = processor.handleToolCallChunk(chunk.toolCall)
 
-          // Send data-steps placeholder BEFORE executing the first tool of this turn
-          // This ensures proper ordering: text -> data-steps -> STEP_ADDED events
-          if (turn.toolCalls.length === 0) {
-            // First tool call of this turn - send text content_part first (if any)
-            if (turn.content.value) {
-              emitter.sendContentPart({ type: 'text', content: turn.content.value })
-            }
-            // Then send data-steps placeholder
-            emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
-          }
+          // Note: content ordering is handled by UIMessage stream parts and Step events
 
           turn.toolCalls.push(toolCall)
 
@@ -500,7 +493,7 @@ export async function runStream(
 
     // Update all steps in this turn with the turn's usage data
     if (turnUsage && turn.toolCalls.length > 0) {
-      const updatedStepIds = store.updateStepsUsageByTurn(
+      const updatedStepIds = updateStepsUsageByTurn(
         ctx.sessionId,
         ctx.assistantMessageId,
         currentTurn,
@@ -561,10 +554,10 @@ export async function runStream(
         const fullContent = existingContent + truncationMessage
 
         // Update store with combined content
-        store.updateMessageContent(ctx.sessionId, ctx.assistantMessageId, fullContent)
+        updateMessageContent(ctx.sessionId, ctx.assistantMessageId, fullContent)
 
-        // Send the truncation message to UI (append, not replace)
-        emitter.sendTextChunk(truncationMessage)
+        // Send the truncation message to UI via UIMessage stream
+        sendUITextDelta(ctx.sender, ctx.sessionId, ctx.assistantMessageId, truncationMessage)
       }
 
       console.log(`[Backend] No tool calls in turn ${currentTurn}, finishReason: ${turn.finishReason}, ending loop`)
@@ -611,7 +604,7 @@ export async function executeStreamGeneration(
     console.log('[Backend] Starting streaming for message:', ctx.assistantMessageId)
 
     // Get session and agent info first (needed for tool init context)
-    const session = store.getSession(ctx.sessionId)
+    const session = getSession(ctx.sessionId)
     const currentAgent = session?.agentId
       ? getCustomAgentById(session.agentId, session.workingDirectory)
       : undefined
@@ -702,7 +695,7 @@ export async function executeStreamGeneration(
 
     // Fallback to workspace system prompt if no agent prompt (for migration/backwards compatibility)
     if (!characterSystemPrompt && session?.workspaceId) {
-      const workspace = store.getWorkspace(session.workspaceId)
+      const workspace = getWorkspace(session.workspaceId)
       if (workspace?.systemPrompt) {
         characterSystemPrompt = workspace.systemPrompt
       }
@@ -790,17 +783,15 @@ export async function executeStreamGeneration(
     // Only finalize and run post-processing if not paused for tool confirmation
     if (!pausedForConfirmation) {
       processor.finalize()
-      const updatedSession = store.getSession(ctx.sessionId)
+      const updatedSession = getSession(ctx.sessionId)
       emitter.sendStreamComplete({
         sessionName: updatedSession?.name || sessionName,
         usage: ctx.accumulatedUsage,
         lastTurnUsage: ctx.lastTurnUsage,  // For correct context size calculation
       })
-      // Also send UIMessage finish chunk with usage for new clients
-      sendUIMessageFinish(ctx.sender, ctx.sessionId, ctx.assistantMessageId, 'stop', ctx.accumulatedUsage)
       // Save usage to message for future token subtraction on edit/regenerate
       if (ctx.accumulatedUsage) {
-        store.updateMessageUsage(ctx.sessionId, ctx.assistantMessageId, ctx.accumulatedUsage)
+        updateMessageUsage(ctx.sessionId, ctx.assistantMessageId, ctx.accumulatedUsage)
         // Update session usage cache (pass lastTurnUsage for correct context size)
         updateSessionUsage(ctx.sessionId, ctx.accumulatedUsage, ctx.lastTurnUsage)
       }
@@ -840,7 +831,7 @@ export async function executeStreamGeneration(
           }).catch(err => console.error('[Backend] message:post hook failed:', err))
         }
 
-        const updatedSessionForTriggers = store.getSession(ctx.sessionId)
+        const updatedSessionForTriggers = getSession(ctx.sessionId)
         if (updatedSessionForTriggers) {
           const triggerContext: TriggerContext = {
             sessionId: ctx.sessionId,
@@ -871,36 +862,35 @@ export async function executeStreamGeneration(
       console.log('[Backend] Stream aborted by user')
       processor.finalize()
       emitter.sendStreamComplete({
-        sessionName: store.getSession(ctx.sessionId)?.name,
+        sessionName: getSession(ctx.sessionId)?.name,
         aborted: true,
       })
     } else {
-      console.error('[Backend] Streaming error:', error)
-
-      // Import extractErrorDetails for error handling
-      const { extractErrorDetails } = await import('./provider-helpers.js')
+      const appError = classifyError(error)
+      console.error(`[Backend][${appError.category}] Streaming error:`, error)
 
       // Keep the assistant message with any content already generated
       // Just mark it with error details instead of deleting
       processor.finalize()
 
-      const errorDetailsStr = extractErrorDetails(error) ?? ''
-      const errorContent = error.message || 'Streaming error'
+      const errorDetailsStr = appError.technicalDetail ?? ''
 
       // Update the assistant message with error details
-      store.updateMessageError(ctx.sessionId, ctx.assistantMessageId, errorDetailsStr)
+      updateMessageError(ctx.sessionId, ctx.assistantMessageId, errorDetailsStr)
 
       // Send error event to frontend (message is preserved, error is added)
       emitter.sendStreamError({
-        error: errorContent,
+        error: appError.message,
         errorDetails: errorDetailsStr,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
         preserved: true,  // Flag to indicate message content is preserved
       })
 
       // Also send stream complete to properly finalize the UI state
       emitter.sendStreamComplete({
-        sessionName: store.getSession(ctx.sessionId)?.name,
-        error: errorContent,
+        sessionName: getSession(ctx.sessionId)?.name,
+        error: appError.message,
       })
     }
 

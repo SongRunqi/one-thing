@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 import { getAvailableProviders } from '../providers/index.js'
 
 export function registerProvidersHandlers() {
@@ -12,10 +13,14 @@ export function registerProvidersHandlers() {
         providers,
       }
     } catch (error: any) {
-      console.error('Error getting providers:', error)
+      const appError = classifyError(error)
+      console.error(`[Providers][${appError.category}] Error getting providers:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to get providers',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })

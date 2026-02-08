@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { AgentMemoryCategory } from '../../shared/ipc.js'
 import { getStorage } from '../storage/index.js'
+import { classifyError } from '../../shared/errors.js'
 
 export function registerAgentMemoryHandlers() {
   // Get agent relationship
@@ -13,8 +14,9 @@ export function registerAgentMemoryHandlers() {
         const relationship = await storage.agentMemory.getRelationship(agentId)
         return { success: true, relationship }
       } catch (error: any) {
-        console.error('Error getting agent relationship:', error)
-        return { success: false, error: error.message || 'Failed to get relationship' }
+        const appError = classifyError(error)
+        console.error(`[AgentMemory][${appError.category}] Error getting agent relationship:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     }
   )
@@ -39,8 +41,9 @@ export function registerAgentMemoryHandlers() {
         })
         return { success: true, memory }
       } catch (error: any) {
-        console.error('Error adding agent memory:', error)
-        return { success: false, error: error.message || 'Failed to add memory' }
+        const appError = classifyError(error)
+        console.error(`[AgentMemory][${appError.category}] Error adding agent memory:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     }
   )
@@ -54,8 +57,9 @@ export function registerAgentMemoryHandlers() {
         const success = await storage.agentMemory.deleteMemory(memoryId)
         return { success }
       } catch (error: any) {
-        console.error('Error deleting agent memory:', error)
-        return { success: false, error: error.message || 'Failed to delete memory' }
+        const appError = classifyError(error)
+        console.error(`[AgentMemory][${appError.category}] Error deleting agent memory:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     }
   )
@@ -72,8 +76,9 @@ export function registerAgentMemoryHandlers() {
         }
         return { success: true, memory }
       } catch (error: any) {
-        console.error('Error recalling memory:', error)
-        return { success: false, error: error.message || 'Failed to recall memory' }
+        const appError = classifyError(error)
+        console.error(`[AgentMemory][${appError.category}] Error recalling memory:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     }
   )
@@ -87,8 +92,9 @@ export function registerAgentMemoryHandlers() {
         const memories = await storage.agentMemory.getActiveMemories(agentId, limit)
         return { success: true, memories }
       } catch (error: any) {
-        console.error('Error getting active memories:', error)
-        return { success: false, error: error.message || 'Failed to get memories' }
+        const appError = classifyError(error)
+        console.error(`[AgentMemory][${appError.category}] Error getting active memories:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     }
   )
@@ -102,8 +108,9 @@ export function registerAgentMemoryHandlers() {
         const relationship = await storage.agentMemory.updateRelationship(agentId, updates)
         return { success: true, relationship }
       } catch (error: any) {
-        console.error('Error updating relationship:', error)
-        return { success: false, error: error.message || 'Failed to update relationship' }
+        const appError = classifyError(error)
+        console.error(`[AgentMemory][${appError.category}] Error updating relationship:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     }
   )
@@ -117,8 +124,9 @@ export function registerAgentMemoryHandlers() {
         const relationship = await storage.agentMemory.recordInteraction(agentId)
         return { success: true, relationship }
       } catch (error: any) {
-        console.error('Error recording interaction:', error)
-        return { success: false, error: error.message || 'Failed to record interaction' }
+        const appError = classifyError(error)
+        console.error(`[AgentMemory][${appError.category}] Error recording interaction:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     }
   )

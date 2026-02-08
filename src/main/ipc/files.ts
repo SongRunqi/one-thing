@@ -9,6 +9,7 @@ import * as fs from 'fs/promises'
 import * as os from 'os'
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 import { listFiles } from '../utils/ripgrep.js'
 
 // Types for file listing
@@ -22,6 +23,9 @@ export interface ListFilesResponse {
   success: boolean
   files: string[]
   error?: string
+  errorDetails?: string
+  errorCategory?: string
+  retryable?: boolean
 }
 
 // Types for file rollback
@@ -34,6 +38,9 @@ export interface RollbackRequest {
 export interface RollbackResponse {
   success: boolean
   error?: string
+  errorDetails?: string
+  errorCategory?: string
+  retryable?: boolean
 }
 
 // Types for directory listing (for /cd path completion)
@@ -55,6 +62,9 @@ export interface FileReadResponse {
   encoding?: string
   size?: number
   error?: string
+  errorDetails?: string
+  errorCategory?: string
+  retryable?: boolean
 }
 
 export interface ListDirsResponse {
@@ -62,6 +72,9 @@ export interface ListDirsResponse {
   dirs: string[]     // Full paths to directories
   basePath: string   // Expanded base path
   error?: string
+  errorDetails?: string
+  errorCategory?: string
+  retryable?: boolean
 }
 
 /**
@@ -100,12 +113,16 @@ export function registerFilesHandlers() {
         }
 
         return { success: true, files }
-      } catch (error) {
-        console.error('[Files IPC] Failed to list files:', error)
+      } catch (error: any) {
+        const appError = classifyError(error)
+        console.error(`[Files][${appError.category}] Failed to list files:`, error)
         return {
           success: false,
           files: [],
-          error: error instanceof Error ? error.message : 'Failed to list files',
+          error: appError.message,
+          errorDetails: appError.technicalDetail,
+          errorCategory: appError.category,
+          retryable: appError.retryable,
         }
       }
     }
@@ -133,11 +150,15 @@ export function registerFilesHandlers() {
         }
 
         return { success: true }
-      } catch (error) {
-        console.error('[Files IPC] Failed to rollback file:', error)
+      } catch (error: any) {
+        const appError = classifyError(error)
+        console.error(`[Files][${appError.category}] Failed to rollback file:`, error)
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to rollback file',
+          error: appError.message,
+          errorDetails: appError.technicalDetail,
+          errorCategory: appError.category,
+          retryable: appError.retryable,
         }
       }
     }
@@ -210,13 +231,17 @@ export function registerFilesHandlers() {
         dirs.sort((a, b) => path.basename(a).localeCompare(path.basename(b)))
 
         return { success: true, dirs, basePath: expandedPath }
-      } catch (error) {
-        console.error('[Files IPC] Failed to list directories:', error)
+      } catch (error: any) {
+        const appError = classifyError(error)
+        console.error(`[Files][${appError.category}] Failed to list directories:`, error)
         return {
           success: false,
           dirs: [],
           basePath: '',
-          error: error instanceof Error ? error.message : 'Failed to list directories',
+          error: appError.message,
+          errorDetails: appError.technicalDetail,
+          errorCategory: appError.category,
+          retryable: appError.retryable,
         }
       }
     }
@@ -257,20 +282,25 @@ export function registerFilesHandlers() {
           encoding: 'utf-8',
           size: stats.size,
         }
-      } catch (error) {
-        console.error('[Files IPC] Failed to read file content:', error)
-
+      } catch (error: any) {
         // Check for specific error types
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          console.error('[Files] Failed to read file content:', error)
           return { success: false, error: 'File not found' }
         }
         if ((error as NodeJS.ErrnoException).code === 'EACCES') {
+          console.error('[Files] Failed to read file content:', error)
           return { success: false, error: 'Permission denied' }
         }
 
+        const appError = classifyError(error)
+        console.error(`[Files][${appError.category}] Failed to read file content:`, error)
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to read file',
+          error: appError.message,
+          errorDetails: appError.technicalDetail,
+          errorCategory: appError.category,
+          retryable: appError.retryable,
         }
       }
     }

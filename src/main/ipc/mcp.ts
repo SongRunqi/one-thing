@@ -35,6 +35,7 @@ import {
   type MCPReadConfigFileResponse,
 } from '../../shared/ipc.js'
 import * as fs from 'fs'
+import { classifyError } from '../../shared/errors.js'
 import { MCPManager, registerMCPTools } from '../mcp/index.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
 
@@ -66,10 +67,11 @@ async function handleGetServers(): Promise<MCPGetServersResponse> {
       servers,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to get servers:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to get servers:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to get servers',
+      error: appError.message,
     }
   }
 }
@@ -114,10 +116,11 @@ async function handleAddServer(request: MCPAddServerRequest): Promise<MCPAddServ
       server: cleanState,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to add server:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to add server:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to add server',
+      error: appError.message,
     }
   }
 }
@@ -156,10 +159,11 @@ async function handleUpdateServer(request: MCPUpdateServerRequest): Promise<MCPU
       server: serverState,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to update server:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to update server:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to update server',
+      error: appError.message,
     }
   }
 }
@@ -184,10 +188,11 @@ async function handleRemoveServer(request: MCPRemoveServerRequest): Promise<MCPR
 
     return { success: true }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to remove server:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to remove server:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to remove server',
+      error: appError.message,
     }
   }
 }
@@ -221,10 +226,11 @@ async function handleConnectServer(request: MCPConnectServerRequest): Promise<MC
       server: serverState,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to connect server:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to connect server:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to connect server',
+      error: appError.message,
     }
   }
 }
@@ -243,10 +249,11 @@ async function handleDisconnectServer(request: MCPDisconnectServerRequest): Prom
 
     return { success: true }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to disconnect server:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to disconnect server:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to disconnect server',
+      error: appError.message,
     }
   }
 }
@@ -270,10 +277,11 @@ async function handleRefreshServer(request: MCPRefreshServerRequest): Promise<MC
       server: serverState,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to refresh server:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to refresh server:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to refresh server',
+      error: appError.message,
     }
   }
 }
@@ -289,10 +297,11 @@ async function handleGetTools(): Promise<MCPGetToolsResponse> {
       tools,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to get tools:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to get tools:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to get tools',
+      error: appError.message,
     }
   }
 }
@@ -313,10 +322,11 @@ async function handleCallTool(request: MCPCallToolRequest): Promise<MCPCallToolR
       isError: result.isError,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to call tool:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to call tool:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to call tool',
+      error: appError.message,
     }
   }
 }
@@ -332,10 +342,11 @@ async function handleGetResources(): Promise<MCPGetResourcesResponse> {
       resources,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to get resources:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to get resources:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to get resources',
+      error: appError.message,
     }
   }
 }
@@ -355,10 +366,11 @@ async function handleReadResource(request: MCPReadResourceRequest): Promise<MCPR
       error: result.error,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to read resource:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to read resource:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to read resource',
+      error: appError.message,
     }
   }
 }
@@ -374,10 +386,11 @@ async function handleGetPrompts(): Promise<MCPGetPromptsResponse> {
       prompts,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to get prompts:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to get prompts:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to get prompts',
+      error: appError.message,
     }
   }
 }
@@ -397,10 +410,11 @@ async function handleGetPrompt(request: MCPGetPromptRequest): Promise<MCPGetProm
       error: result.error,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to get prompt:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to get prompt:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to get prompt',
+      error: appError.message,
     }
   }
 }
@@ -427,10 +441,11 @@ async function handleReadConfigFile(request: MCPReadConfigFileRequest): Promise<
       content: parsed,
     }
   } catch (error: any) {
-    console.error('[MCP IPC] Failed to read config file:', error)
+    const appError = classifyError(error)
+    console.error(`[MCP][${appError.category}] Failed to read config file:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to read config file',
+      error: appError.message,
     }
   }
 }

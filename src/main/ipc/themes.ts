@@ -5,6 +5,7 @@
 
 import { ipcMain, shell } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 import type {
   GetThemesResponse,
   GetThemeResponse,
@@ -55,8 +56,9 @@ export function registerThemeHandlers() {
       const themes = getThemeList()
       return { success: true, themes }
     } catch (error: any) {
-      console.error('[Theme IPC] Error getting themes:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Theme][${appError.category}] Error getting themes:`, error)
+      return { success: false, error: appError.message }
     }
   })
 
@@ -76,8 +78,9 @@ export function registerThemeHandlers() {
 
         return { success: true, theme }
       } catch (error: any) {
-        console.error('[Theme IPC] Error getting theme:', error)
-        return { success: false, error: error.message }
+        const appError = classifyError(error)
+        console.error(`[Theme][${appError.category}] Error getting theme:`, error)
+        return { success: false, error: appError.message }
       }
     }
   )
@@ -98,8 +101,9 @@ export function registerThemeHandlers() {
         const cssVariables = applyTheme(themeId, mode)
         return { success: true, cssVariables }
       } catch (error: any) {
-        console.error('[Theme IPC] Error applying theme:', error)
-        return { success: false, error: error.message }
+        const appError = classifyError(error)
+        console.error(`[Theme][${appError.category}] Error applying theme:`, error)
+        return { success: false, error: appError.message }
       }
     }
   )
@@ -112,8 +116,9 @@ export function registerThemeHandlers() {
         const themes = refreshThemes(projectPath)
         return { success: true, themes }
       } catch (error: any) {
-        console.error('[Theme IPC] Error refreshing themes:', error)
-        return { success: false, error: error.message }
+        const appError = classifyError(error)
+        console.error(`[Theme][${appError.category}] Error refreshing themes:`, error)
+        return { success: false, error: appError.message }
       }
     }
   )
@@ -125,8 +130,9 @@ export function registerThemeHandlers() {
       await shell.openPath(themesPath)
       return { success: true }
     } catch (error: any) {
-      console.error('[Theme IPC] Error opening themes folder:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Theme][${appError.category}] Error opening themes folder:`, error)
+      return { success: false, error: appError.message }
     }
   })
 
