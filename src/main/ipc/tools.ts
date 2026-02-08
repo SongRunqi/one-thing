@@ -9,6 +9,7 @@
 
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS, type ToolDefinition, type ToolCall } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 import {
   getAllToolsV2,
   getAllToolsV2Async,
@@ -98,10 +99,14 @@ export function registerToolHandlers() {
         tools: builtinTools,
       }
     } catch (error: any) {
-      console.error('[Tools IPC] Error getting tools:', error)
+      const appError = classifyError(error)
+      console.error(`[Tools][${appError.category}] Error getting tools:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to get tools',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })
@@ -129,10 +134,14 @@ export function registerToolHandlers() {
         error: result.error,
       }
     } catch (error: any) {
-      console.error('[Tools IPC] Error executing tool:', error)
+      const appError = classifyError(error)
+      console.error(`[Tools][${appError.category}] Error executing tool:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to execute tool',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })
@@ -157,10 +166,14 @@ export function registerToolHandlers() {
       await initializeAsyncTools()
       return { success: true }
     } catch (error: any) {
-      console.error('[Tools IPC] Error refreshing async tools:', error)
+      const appError = classifyError(error)
+      console.error(`[Tools][${appError.category}] Error refreshing async tools:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to refresh async tools',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })
@@ -222,10 +235,14 @@ export function registerToolHandlers() {
 
       return { success: true }
     } catch (error: any) {
-      console.error('[Tools IPC] Error updating tool call:', error)
+      const appError = classifyError(error)
+      console.error(`[Tools][${appError.category}] Error updating tool call:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to update tool call',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })

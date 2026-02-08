@@ -6,6 +6,7 @@
 
 import { ipcMain, shell } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 import type { SkillDefinition, SkillSource } from '../../shared/ipc.js'
 import {
   loadAllSkills,
@@ -68,10 +69,14 @@ export function registerSkillHandlers() {
         skills: skillsCache,
       }
     } catch (error: any) {
-      console.error('[Skills IPC] Error getting skills:', error)
+      const appError = classifyError(error)
+      console.error(`[Skills][${appError.category}] Error getting skills:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to get skills',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })
@@ -100,10 +105,14 @@ export function registerSkillHandlers() {
         skills: skillsCache,
       }
     } catch (error: any) {
-      console.error('[Skills IPC] Error refreshing skills:', error)
+      const appError = classifyError(error)
+      console.error(`[Skills][${appError.category}] Error refreshing skills:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to refresh skills',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })
@@ -126,10 +135,14 @@ export function registerSkillHandlers() {
         content,
       }
     } catch (error: any) {
-      console.error('[Skills IPC] Error reading skill file:', error)
+      const appError = classifyError(error)
+      console.error(`[Skills][${appError.category}] Error reading skill file:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to read skill file',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })
@@ -149,10 +162,14 @@ export function registerSkillHandlers() {
       await shell.openPath(skill.directoryPath)
       return { success: true }
     } catch (error: any) {
-      console.error('[Skills IPC] Error opening skill directory:', error)
+      const appError = classifyError(error)
+      console.error(`[Skills][${appError.category}] Error opening skill directory:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to open skill directory',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })
@@ -173,10 +190,14 @@ export function registerSkillHandlers() {
         skill,
       }
     } catch (error: any) {
-      console.error('[Skills IPC] Error creating skill:', error)
+      const appError = classifyError(error)
+      console.error(`[Skills][${appError.category}] Error creating skill:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to create skill',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })
@@ -198,10 +219,14 @@ export function registerSkillHandlers() {
         error: deleted ? undefined : 'Skill not found',
       }
     } catch (error: any) {
-      console.error('[Skills IPC] Error deleting skill:', error)
+      const appError = classifyError(error)
+      console.error(`[Skills][${appError.category}] Error deleting skill:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to delete skill',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })
@@ -230,10 +255,14 @@ export function registerSkillHandlers() {
 
       return { success: true }
     } catch (error: any) {
-      console.error('[Skills IPC] Error toggling skill:', error)
+      const appError = classifyError(error)
+      console.error(`[Skills][${appError.category}] Error toggling skill:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to toggle skill',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })

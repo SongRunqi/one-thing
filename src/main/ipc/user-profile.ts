@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 import { getStorage } from '../storage/index.js'
 
 export function registerUserProfileHandlers() {
@@ -10,8 +11,9 @@ export function registerUserProfileHandlers() {
       const profile = await storage.userProfile.getProfile()
       return { success: true, profile }
     } catch (error: any) {
-      console.error('Error getting user profile:', error)
-      return { success: false, error: error.message || 'Failed to get user profile' }
+      const appError = classifyError(error)
+      console.error(`[UserProfile][${appError.category}] Error getting user profile:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -29,8 +31,9 @@ export function registerUserProfileHandlers() {
         )
         return { success: true, fact }
       } catch (error: any) {
-        console.error('Error adding user fact:', error)
-        return { success: false, error: error.message || 'Failed to add fact' }
+        const appError = classifyError(error)
+        console.error(`[UserProfile][${appError.category}] Error adding user fact:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     }
   )
@@ -51,8 +54,9 @@ export function registerUserProfileHandlers() {
         }
         return { success: true, fact }
       } catch (error: any) {
-        console.error('Error updating user fact:', error)
-        return { success: false, error: error.message || 'Failed to update fact' }
+        const appError = classifyError(error)
+        console.error(`[UserProfile][${appError.category}] Error updating user fact:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     }
   )
@@ -69,8 +73,9 @@ export function registerUserProfileHandlers() {
         }
         return { success: true }
       } catch (error: any) {
-        console.error('Error deleting user fact:', error)
-        return { success: false, error: error.message || 'Failed to delete fact' }
+        const appError = classifyError(error)
+        console.error(`[UserProfile][${appError.category}] Error deleting user fact:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     }
   )

@@ -5,6 +5,7 @@
 
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
 import type { AppSettings } from '../../shared/ipc.js'
 import * as fs from 'fs/promises'
@@ -141,9 +142,10 @@ export function registerSettingsIOHandlers() {
     try {
       const exportedData = await exportSettings()
       return { success: true, data: exportedData }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      return { success: false, error: errorMessage }
+    } catch (error: any) {
+      const appError = classifyError(error)
+      console.error(`[SettingsIO][${appError.category}] Failed to export settings:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
   
@@ -176,9 +178,10 @@ export function registerSettingsIOHandlers() {
       )
       
       return { success: true, path: result.filePath }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      return { success: false, error: errorMessage }
+    } catch (error: any) {
+      const appError = classifyError(error)
+      console.error(`[SettingsIO][${appError.category}] Failed to export settings with dialog:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
   
@@ -219,9 +222,10 @@ export function registerSettingsIOHandlers() {
       })
       
       return { success: true }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      return { success: false, error: errorMessage }
+    } catch (error: any) {
+      const appError = classifyError(error)
+      console.error(`[SettingsIO][${appError.category}] Failed to import settings with dialog:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 }
