@@ -6,6 +6,7 @@
 import type { ToolCall } from './tools.js'
 import type { BuiltinAgentMode } from './agents.js'
 import type { SessionPlan } from './plan.js'
+import type { UIMessage } from './ui-message.js'
 
 // Retrieved memory item for feedback UI
 export interface RetrievedMemory {
@@ -196,6 +197,15 @@ export interface ChatSession {
   // Cached provider configuration (for session-level optimization)
   // Set when user selects a model, used during chat to avoid repeated settings lookups
   cachedProviderConfig?: CachedProviderConfig
+  // ============================================================================
+  // REQ-005: UIMessage storage (Phase 1)
+  // New sessions store UIMessage[] as the source of truth.
+  // Old sessions without uiMessages are auto-migrated on load.
+  // The `messages` field is kept in sync for backward compatibility (Phase 2-4 will remove it).
+  // ============================================================================
+  uiMessages?: UIMessage[]
+  /** @internal Migration marker - version of UIMessage migration applied */
+  _uiMessageVersion?: number
 }
 
 // IPC Request/Response types

@@ -8,6 +8,7 @@ import type {
   SessionPlan,
   SessionMeta,
   SessionDetails,
+  UIMessage,
 } from '../../shared/ipc.js'
 import {
   getSessionsDir,
@@ -21,6 +22,58 @@ import { getWorkspace } from './workspaces.js'
 import { getSettings } from './settings.js'
 import { expandPath } from '../utils/path-utils.js'
 import { LRUCache } from './lru-cache.js'
+import {
+  chatMessageToUIMessage,
+  uiMessageToChatMessage,
+} from '../../shared/message-converters.js'
+
+// ============ REQ-005: UIMessage Migration ============
+// Version number for UIMessage storage format
+const UI_MESSAGE_VERSION = 1
+
+/**
+ * Check if a session needs UIMessage migration (old format without uiMessages)
+ */
+function needsUIMessageMigration(session: ChatSession): boolean {
+  // Already migrated if uiMessages exists with correct version
+  if (session.uiMessages && session._uiMessageVersion === UI_MESSAGE_VERSION) {
+    return false
+  }
+  // No messages to migrate
+  if (session.messages.length === 0 && (!session.uiMessages || session.uiMessages.length === 0)) {
+    return false
+  }
+  return true
+}
+
+/**
+ * Ensure session has uiMessages populated (migrate if needed)
+ * Mutates the session in-place and returns whether migration was performed
+ */
+function ensureUIMessages(session: ChatSession): boolean {
+  if (!needsUIMessageMigration(session)) {
+    return false
+  }
+
+  // Migrate: convert ChatMessage[] to UIMessage[]
+  session.uiMessages = session.messages.map(chatMessageToUIMessage)
+  session._uiMessageVersion = UI_MESSAGE_VERSION
+
+  console.log(`[Sessions] UIMessage migration applied for session: ${session.id} (${session.messages.length} messages)`)
+  return true
+}
+
+/**
+ * Sync uiMessages back to messages (keep backward compat during Phase 1)
+ * Called after modifications to ensure both fields stay in sync
+ */
+function syncUIMessagesToMessages(session: ChatSession): void {
+  if (session.uiMessages) {
+    // Keep messages in sync for backward compatibility
+    // This allows Phase 2+ code to gradually stop using messages field
+    session.messages = session.uiMessages.map(uiMessageToChatMessage)
+  }
+}
 
 // ============ Session 内存缓存 (LRU) ============
 // Keep only the 10 most recently accessed sessions in memory
@@ -30,8 +83,19 @@ const sessionCache = new LRUCache<string, ChatSession>(SESSION_CACHE_SIZE)
 
 /**
  * 统一的保存函数 - 同时写磁盘和更新缓存
+ * REQ-005: Always keeps uiMessages in sync with messages when saving
  */
 function saveSessionToFile(sessionId: string, session: ChatSession): void {
+  // REQ-005: Sync messages → uiMessages before saving
+  // This ensures uiMessages is always up-to-date on disk
+  if (!session.uiMessages || session._uiMessageVersion !== UI_MESSAGE_VERSION) {
+    ensureUIMessages(session)
+  } else {
+    // If uiMessages exists but messages was modified (e.g., by stream processor),
+    // re-derive uiMessages from the current messages to keep them in sync
+    session.uiMessages = session.messages.map(chatMessageToUIMessage)
+  }
+
   writeJsonFile(getSessionPath(sessionId), session)
   sessionCache.set(sessionId, session)
 }
@@ -161,8 +225,17 @@ export function sanitizeAllSessionsOnStartup(): void {
       }
     }
 
+    // REQ-005: Also trigger UIMessage migration during startup
+    if (ensureUIMessages(session)) {
+      modified = true
+    }
+
     // Only write back if modified
     if (modified) {
+      // If messages were sanitized, re-sync uiMessages
+      if (session.uiMessages) {
+        session.uiMessages = session.messages.map(chatMessageToUIMessage)
+      }
       writeJsonFile(sessionPath, session)
     }
   }
@@ -230,12 +303,22 @@ export function getSessionDetails(sessionId: string): SessionDetails | undefined
 }
 
 /**
- * Get session messages only
+ * Get session messages only (ChatMessage format for backward compat)
  * Called separately after activating a session
  */
 export function getSessionMessages(sessionId: string): ChatMessage[] | undefined {
   const session = getSession(sessionId)
   return session?.messages
+}
+
+/**
+ * REQ-005: Get session messages in UIMessage format
+ * Returns UIMessage[] directly without conversion (the source of truth)
+ * Ready for Phase 2+ consumers that need UIMessage format
+ */
+export function getSessionUIMessages(sessionId: string): UIMessage[] | undefined {
+  const session = getSession(sessionId)
+  return session?.uiMessages
 }
 
 /**
@@ -284,8 +367,17 @@ export function getSession(sessionId: string): ChatSession | undefined {
     session.workingDirectory = expandPath(session.workingDirectory)
   }
 
+  // REQ-005: Auto-migrate to UIMessage format on load
+  const migrated = ensureUIMessages(session)
+
   // Sanitize session to clean up interrupted states
   const sanitized = sanitizeSession(session)
+
+  // If migration was performed, save back to disk (lazy migration)
+  if (migrated) {
+    writeJsonFile(sessionPath, sanitized)
+    console.log(`[Sessions] Lazy UIMessage migration saved for session: ${sessionId}`)
+  }
 
   // 存入缓存
   sessionCache.set(sessionId, sanitized)
@@ -320,6 +412,9 @@ export function createSession(sessionId: string, name: string, workspaceId?: str
     workspaceId,
     agentId,
     workingDirectory,
+    // REQ-005: New sessions start with UIMessage format
+    uiMessages: [],
+    _uiMessageVersion: UI_MESSAGE_VERSION,
   }
 
   // Save session file
@@ -390,6 +485,9 @@ export function createBranchSession(
     updatedAt: Date.now(),
     parentSessionId,
     branchFromMessageId,
+    // REQ-005: Branch sessions also use UIMessage format
+    uiMessages: inheritedMessages.map(chatMessageToUIMessage),
+    _uiMessageVersion: UI_MESSAGE_VERSION,
     workspaceId: inheritedWorkspaceId,
     agentId: inheritedAgentId,
     workingDirectory,
