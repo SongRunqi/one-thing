@@ -35,6 +35,8 @@ export interface StreamCompleteData {
 export interface StreamErrorData {
   error: string
   errorDetails?: string
+  errorCategory?: string
+  retryable?: boolean
   preserved?: boolean
 }
 
@@ -160,6 +162,8 @@ export function createIPCEmitter(ctx: StreamContext): IPCEmitter {
           messageId: assistantMessageId,
           error: data.error,
           errorDetails: data.errorDetails,
+          errorCategory: data.errorCategory,
+          retryable: data.retryable,
         },
       }
       sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, streamData)

@@ -882,6 +882,8 @@ export async function executeStreamGeneration(
       emitter.sendStreamError({
         error: appError.message,
         errorDetails: errorDetailsStr,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
         preserved: true,  // Flag to indicate message content is preserved
       })
 

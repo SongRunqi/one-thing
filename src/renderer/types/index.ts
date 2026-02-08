@@ -330,6 +330,8 @@ export interface StreamSendMessageResponse {
   sessionName?: string
   error?: string
   errorDetails?: string
+  errorCategory?: string
+  retryable?: boolean
 }
 
 export interface ElectronAPI {

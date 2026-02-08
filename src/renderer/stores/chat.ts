@@ -367,6 +367,8 @@ export const useChatStore = defineStore('chat', () => {
       content: errorChunk.error || 'Streaming error',
       timestamp: Date.now(),
       errorDetails: errorChunk.errorDetails,
+      errorCategory: errorChunk.errorCategory,
+      retryable: errorChunk.retryable,
     }
     messages.push(errorMessage)
 
@@ -957,6 +959,8 @@ export const useChatStore = defineStore('chat', () => {
           content: response.error || 'Failed to send message',
           timestamp: Date.now(),
           errorDetails: response.errorDetails,
+          errorCategory: response.errorCategory,
+          retryable: response.retryable,
         }
         messages.push(errorMessage)
         setSessionMessages(sessionId, [...messages])
@@ -1080,6 +1084,8 @@ export const useChatStore = defineStore('chat', () => {
           content: response.error || 'Failed to edit and resend',
           timestamp: Date.now(),
           errorDetails: response.errorDetails,
+          errorCategory: response.errorCategory,
+          retryable: response.retryable,
         }
         messages.push(errorMessage)
         setSessionMessages(sessionId, [...messages])

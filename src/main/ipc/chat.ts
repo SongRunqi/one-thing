@@ -1041,6 +1041,8 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
             content: appError.message,
             timestamp: Date.now(),
             errorDetails: appError.technicalDetail,
+            errorCategory: appError.category,
+            retryable: appError.retryable,
           }
           addMessage(sessionId, errorMessage)
 
@@ -1052,6 +1054,8 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
               messageId,
               error: appError.message,
               errorDetails: appError.technicalDetail,
+              errorCategory: appError.category,
+              retryable: appError.retryable,
             },
           }
           sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, errorStreamData)
