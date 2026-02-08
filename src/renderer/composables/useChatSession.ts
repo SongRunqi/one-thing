@@ -12,7 +12,7 @@
  */
 
 import { computed, watch, toValue, type MaybeRef } from 'vue'
-import type { ChatMessage, MessageAttachment } from '@/types'
+import type { ChatMessage, MessageAttachment, UIMessage } from '@/types'
 import { useChatStore } from '@/stores/chat'
 
 export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
@@ -27,7 +27,16 @@ export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
   })
 
   // Exposed state (computed from store)
-  const messages = computed(() => state.value?.messages.value || [])
+  // UIMessage[] — the unified data source for all UI components
+  const messages = computed<UIMessage[]>(() => {
+    const sid = sessionId.value
+    if (!sid) return []
+    return chatStore.getSessionUIMessages(sid).value
+  })
+
+  // Legacy ChatMessage[] — kept for components not yet migrated
+  const legacyMessages = computed(() => state.value?.messages.value || [])
+
   const isLoading = computed(() => state.value?.isLoading.value || false)
   const isGenerating = computed(() => state.value?.isGenerating.value || false)
   const error = computed(() => state.value?.error.value || null)
@@ -117,6 +126,7 @@ export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
   return {
     // State (from store)
     messages,
+    legacyMessages,
     isLoading,
     isGenerating,
     error,

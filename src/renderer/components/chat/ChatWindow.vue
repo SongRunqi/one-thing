@@ -11,7 +11,7 @@
       :show-split-button="canClose !== undefined"
       :can-close="!!canClose"
       :is-right-sidebar-open="rightSidebarStore.isOpen"
-      :messages="panelMessages"
+      :messages="panelLegacyMessages"
       @toggle-sidebar="emit('toggleSidebar')"
       @toggle-right-sidebar="rightSidebarStore.toggle()"
       @open-directory-picker="openWorkingDirectoryPicker"
@@ -27,7 +27,7 @@
     <div class="chat-container">
       <div class="chat-main">
         <MessageList
-          :messages="panelMessages"
+          :messages="panelLegacyMessages"
           :is-loading="isLoading"
           :session-id="effectiveSessionId"
           @set-quoted-text="handleSetQuotedText"
@@ -112,6 +112,7 @@ const effectiveSessionId = computed(() => props.sessionId || sessionsStore.curre
 // Use independent chat session state
 const {
   messages,
+  legacyMessages,
   isLoading,
   isGenerating,
   sendMessage: chatSendMessage,
@@ -127,8 +128,11 @@ const currentSession = computed(() => {
   return sessionsStore.sessions.find(s => s.id === sid) || null
 })
 
-// Messages for this panel (from composable)
+// Messages for this panel
+// UIMessage[] — unified data source (for new components)
 const panelMessages = computed(() => messages.value)
+// Legacy ChatMessage[] — for components not yet migrated (MessageList, MessageItem, etc.)
+const panelLegacyMessages = computed(() => legacyMessages.value)
 
 // Get the agent for current session
 const sessionAgent = computed(() => {
