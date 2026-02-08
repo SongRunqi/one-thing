@@ -1024,7 +1024,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
           // Add an error message to the session (persisted)
           const errorMessage: ChatMessage = {
             id: `error-${Date.now()}`,
-            role: 'error',
+            role: 'assistant',
             content: error.message || 'Streaming error',
             timestamp: Date.now(),
             errorDetails: extractErrorDetails(error),

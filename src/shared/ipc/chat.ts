@@ -81,7 +81,7 @@ export interface MessageAttachment {
 export interface ChatMessage {
   id: string
   sessionId?: string  // Session ID this message belongs to (for context isolation)
-  role: 'user' | 'assistant' | 'error' | 'system'  // 'error' and 'system' are display-only, not saved to backend
+  role: 'user' | 'assistant' | 'system'  // 'system' is display-only
   content: string
   timestamp: number
   isStreaming?: boolean

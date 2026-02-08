@@ -24,7 +24,6 @@ import { expandPath } from '../utils/path-utils.js'
 import { LRUCache } from './lru-cache.js'
 import {
   chatMessageToUIMessage,
-  uiMessageToChatMessage,
 } from '../../shared/message-converters.js'
 
 // ============ REQ-005: UIMessage Migration ============
@@ -63,17 +62,6 @@ function ensureUIMessages(session: ChatSession): boolean {
   return true
 }
 
-/**
- * Sync uiMessages back to messages (keep backward compat during Phase 1)
- * Called after modifications to ensure both fields stay in sync
- */
-function syncUIMessagesToMessages(session: ChatSession): void {
-  if (session.uiMessages) {
-    // Keep messages in sync for backward compatibility
-    // This allows Phase 2+ code to gradually stop using messages field
-    session.messages = session.uiMessages.map(uiMessageToChatMessage)
-  }
-}
 
 // ============ Session 内存缓存 (LRU) ============
 // Keep only the 10 most recently accessed sessions in memory

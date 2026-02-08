@@ -363,7 +363,7 @@ export const useChatStore = defineStore('chat', () => {
     const messages = getSessionMessagesRef(sessionId)
     const errorMessage: ChatMessage = {
       id: `error-${Date.now()}`,
-      role: 'error',
+      role: 'assistant',
       content: errorChunk.error || 'Streaming error',
       timestamp: Date.now(),
       errorDetails: errorChunk.errorDetails,
@@ -908,7 +908,7 @@ export const useChatStore = defineStore('chat', () => {
         // Add error message
         const errorMessage: ChatMessage = {
           id: `error-${Date.now()}`,
-          role: 'error',
+          role: 'assistant',
           content: response.error || 'Failed to send message',
           timestamp: Date.now(),
           errorDetails: response.errorDetails,
@@ -1031,7 +1031,7 @@ export const useChatStore = defineStore('chat', () => {
 
         const errorMessage: ChatMessage = {
           id: `error-${Date.now()}`,
-          role: 'error',
+          role: 'assistant',
           content: response.error || 'Failed to edit and resend',
           timestamp: Date.now(),
           errorDetails: response.errorDetails,
@@ -1183,7 +1183,7 @@ export const useChatStore = defineStore('chat', () => {
    * Add a local-only message (not saved to backend)
    * Used for system messages like /files command output
    */
-  function addLocalMessage(sessionId: string, message: { role: 'system' | 'error'; content: string }) {
+  function addLocalMessage(sessionId: string, message: { role: 'system' | 'assistant'; content: string; errorDetails?: string }) {
     const messages = getSessionMessagesRef(sessionId)
     const localMessage: ChatMessage = {
       id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -1191,6 +1191,7 @@ export const useChatStore = defineStore('chat', () => {
       role: message.role,
       content: message.content,
       timestamp: Date.now(),
+      errorDetails: message.errorDetails,
     }
     messages.push(localMessage)
     setSessionMessages(sessionId, [...messages])

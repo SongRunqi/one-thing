@@ -15,7 +15,7 @@
 
     <!-- Error message -->
     <MessageError
-      v-if="message.role === 'error'"
+      v-if="message.errorDetails"
       :content="message.content"
       :error-details="message.errorDetails"
       :timestamp="message.timestamp"
