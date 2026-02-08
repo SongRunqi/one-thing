@@ -32,6 +32,8 @@ if (process.env.ELECTRON_USER_DATA) {
 let mainWindow: BrowserWindow | null = null
 
 app.on('ready', async () => {
+  const t0 = performance.now()
+
   // Register custom protocol for media files
   protocol.handle('media', (request) => {
     const filename = decodeURIComponent(request.url.slice('media://'.length))
@@ -44,6 +46,7 @@ app.on('ready', async () => {
 
   // Initialize settings asynchronously (before any settings access)
   await initializeSettings()
+  console.log(`[Startup] Settings: ${(performance.now() - t0).toFixed(0)}ms`)
 
   // Run agent migration (from old Built-in Agent to CustomAgent format)
   // This must run after stores init but before custom agents are loaded
@@ -55,6 +58,7 @@ app.on('ready', async () => {
   } catch (error) {
     console.error('[Startup] Agent migration failed:', error)
   }
+  console.log(`[Startup] Migration: ${(performance.now() - t0).toFixed(0)}ms`)
 
   // Clean up interrupted sessions from previous app instance
   sanitizeAllSessionsOnStartup()
@@ -81,6 +85,7 @@ app.on('ready', async () => {
 
   // Create window first for fast startup
   mainWindow = createWindow()
+  console.log(`[Startup] Window visible: ${(performance.now() - t0).toFixed(0)}ms`)
 
   // Initialize MCP system asynchronously (don't block startup)
   initializeMCP().catch(err => {
@@ -99,6 +104,7 @@ app.on('ready', async () => {
 
   // Initialize updater (check for updates from GitHub)
   initializeUpdater(mainWindow)
+  console.log(`[Startup] Fully ready: ${(performance.now() - t0).toFixed(0)}ms`)
 })
 
 app.on('window-all-closed', () => {
