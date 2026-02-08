@@ -7,11 +7,10 @@
  * 3. 不需要每次发送消息都设置/清理监听器
  *
  * Phase 2 (REQ-005): Legacy STREAM_CHUNK removed.
- * All stream data flows through unified onUIMessageStream channel.
+ * Phase 3 (REQ-005): UIMessagesStore merged into ChatStore. Single store handles all stream data.
  */
 
 import { useChatStore } from '@/stores/chat'
-import { useUIMessagesStore } from '@/stores/ui-messages'
 
 let initialized = false
 
@@ -25,14 +24,13 @@ export function initializeIPCHub() {
   // Unified UIMessage stream (handles text, reasoning, tool, finish, error)
   window.electronAPI.onUIMessageStream((data) => {
     const chatStore = useChatStore()
-    const uiMessagesStore = useUIMessagesStore()
 
     if (data.chunk.type === 'part') {
-      // Forward part chunks to UIMessagesStore for rendering
-      uiMessagesStore.handleUIMessageChunk(data)
+      // Forward part chunks to ChatStore for UIMessage rendering
+      chatStore.handleUIMessageChunk(data)
     } else if (data.chunk.type === 'finish') {
-      // Handle stream completion (usage, state cleanup, session name)
-      uiMessagesStore.handleUIMessageChunk(data)
+      // Handle stream completion (UIMessage parts finalization + usage/state cleanup)
+      chatStore.handleUIMessageChunk(data)
       chatStore.handleStreamFinish(data)
     } else if (data.chunk.type === 'error') {
       // Handle stream error

@@ -8,7 +8,24 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, triggerRef } from 'vue'
-import type { ChatMessage, MessageAttachment, Step, UIMessageStreamData } from '@/types'
+import type {
+  ChatMessage,
+  MessageAttachment,
+  Step,
+  UIMessage,
+  UIMessagePart,
+  UIMessageStreamData,
+  TextUIPart,
+  ReasoningUIPart,
+  ToolUIPart,
+} from '@/types'
+import {
+  upsertPart,
+  updateToolPart,
+  getMessageText,
+  getMessageReasoning,
+  getToolParts,
+} from '../../shared/message-converters.js'
 
 // Step data from IPC
 interface StepData {
@@ -63,6 +80,16 @@ export const useChatStore = defineStore('chat', () => {
 
   // Context compacting state per session
   const sessionCompacting = ref<Map<string, boolean>>(new Map())
+
+  // UIMessage per session (unified message format, AI SDK 5.x)
+  const sessionUIMessages = ref<Map<string, UIMessage[]>>(new Map())
+
+  // Per-session stream state for UIMessage part tracking
+  const uiStreamState = ref<Map<string, {
+    messageId: string
+    textPartIndex?: number
+    reasoningPartIndex?: number
+  }>>(new Map())
 
   // ============ UI State (Persisted across re-renders) ============
 
@@ -362,12 +389,186 @@ export const useChatStore = defineStore('chat', () => {
     triggerRef(activeStreams)
   }
 
-  // Legacy handler removed in Phase 2 (REQ-005)
-  // handleStreamChunk, handleStreamComplete, handleStreamError replaced by
-  // handleStreamFinish and handleStreamErrorFromUIMessage above
+  // ============ UIMessage State Management (merged from UIMessagesStore, Phase 3 REQ-005) ============
 
-  // Legacy handlers (handleStreamChunk, handleStreamComplete, handleStreamError)
-  // removed in Phase 2 (REQ-005). Replaced by handleStreamFinish and handleStreamErrorFromUIMessage above.
+  /**
+   * Get UIMessages for a session (mutable reference)
+   */
+  function getSessionUIMessagesRef(sessionId: string): UIMessage[] {
+    let msgs = sessionUIMessages.value.get(sessionId)
+    if (!msgs) {
+      msgs = []
+      sessionUIMessages.value.set(sessionId, msgs)
+    }
+    return msgs
+  }
+
+  /**
+   * Set UIMessages for a session and trigger reactivity
+   */
+  function setSessionUIMessages(sessionId: string, msgs: UIMessage[]) {
+    sessionUIMessages.value.set(sessionId, msgs)
+    triggerRef(sessionUIMessages)
+  }
+
+  /**
+   * Load UIMessages for a session directly
+   */
+  function loadUIMessages(sessionId: string, msgs: UIMessage[]) {
+    setSessionUIMessages(sessionId, msgs)
+  }
+
+  /**
+   * Clear UIMessages for a session
+   */
+  function clearSessionUIMessages(sessionId: string) {
+    sessionUIMessages.value.set(sessionId, [])
+    triggerRef(sessionUIMessages)
+  }
+
+  /**
+   * Add a UIMessage to a session
+   */
+  function addUIMessage(sessionId: string, message: UIMessage) {
+    const msgs = getSessionUIMessagesRef(sessionId)
+    msgs.push(message)
+    setSessionUIMessages(sessionId, [...msgs])
+  }
+
+  /**
+   * Update a UIMessage by ID within a session
+   */
+  function updateUIMessage(sessionId: string, messageId: string, updates: Partial<UIMessage>) {
+    const msgs = getSessionUIMessagesRef(sessionId)
+    const index = msgs.findIndex(m => m.id === messageId)
+    if (index === -1) return
+    msgs[index] = { ...msgs[index], ...updates }
+    setSessionUIMessages(sessionId, [...msgs])
+  }
+
+  /**
+   * Upsert a part in a UIMessage within a session
+   */
+  function upsertUIMessagePart(sessionId: string, messageId: string, part: UIMessagePart, partIndex?: number) {
+    const msgs = getSessionUIMessagesRef(sessionId)
+    const msgIndex = msgs.findIndex(m => m.id === messageId)
+    if (msgIndex === -1) return
+    msgs[msgIndex] = upsertPart(msgs[msgIndex], part, partIndex)
+    setSessionUIMessages(sessionId, [...msgs])
+  }
+
+  /**
+   * Update a tool part in a UIMessage within a session
+   */
+  function updateUIMessageToolPart(sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolUIPart>) {
+    const msgs = getSessionUIMessagesRef(sessionId)
+    const msgIndex = msgs.findIndex(m => m.id === messageId)
+    if (msgIndex === -1) return
+    msgs[msgIndex] = updateToolPart(msgs[msgIndex], toolCallId, updates)
+    setSessionUIMessages(sessionId, [...msgs])
+  }
+
+  /**
+   * Handle a UIMessage stream chunk (merged from UIMessagesStore)
+   */
+  function handleUIMessageChunk(data: UIMessageStreamData) {
+    const { sessionId, messageId, chunk } = data
+
+    if (chunk.type === 'part') {
+      // Get or create stream state
+      let streamState = uiStreamState.value.get(sessionId)
+      if (!streamState) {
+        streamState = { messageId }
+        uiStreamState.value.set(sessionId, streamState)
+      }
+
+      const part = chunk.part
+      const partIndex = chunk.partIndex
+      const msgs = getSessionUIMessagesRef(sessionId)
+      const msg = msgs.find(m => m.id === messageId)
+
+      if (part.type === 'text') {
+        if (partIndex !== undefined) {
+          streamState.textPartIndex = partIndex
+          upsertUIMessagePart(sessionId, messageId, part, partIndex)
+        } else if (msg) {
+          const existingTextIndex = msg.parts.findIndex(p => p.type === 'text')
+          if (existingTextIndex !== -1) {
+            const existingText = msg.parts[existingTextIndex] as TextUIPart
+            const updatedPart: TextUIPart = {
+              type: 'text',
+              text: existingText.text + (part as TextUIPart).text,
+              state: (part as TextUIPart).state,
+            }
+            upsertUIMessagePart(sessionId, messageId, updatedPart, existingTextIndex)
+          } else {
+            upsertUIMessagePart(sessionId, messageId, part)
+          }
+        }
+      } else if (part.type === 'reasoning') {
+        if (partIndex !== undefined) {
+          streamState.reasoningPartIndex = partIndex
+          upsertUIMessagePart(sessionId, messageId, part, partIndex)
+        } else if (msg) {
+          const existingReasoningIndex = msg.parts.findIndex(p => p.type === 'reasoning')
+          if (existingReasoningIndex !== -1) {
+            const existingReasoning = msg.parts[existingReasoningIndex] as ReasoningUIPart
+            const updatedPart: ReasoningUIPart = {
+              type: 'reasoning',
+              text: existingReasoning.text + (part as ReasoningUIPart).text,
+              state: (part as ReasoningUIPart).state,
+            }
+            upsertUIMessagePart(sessionId, messageId, updatedPart, existingReasoningIndex)
+          } else {
+            upsertUIMessagePart(sessionId, messageId, part)
+          }
+        }
+      } else if (part.type.startsWith('tool-')) {
+        const toolPart = part as ToolUIPart
+        if (msg) {
+          const existingToolIndex = msg.parts.findIndex(
+            p => p.type.startsWith('tool-') && (p as ToolUIPart).toolCallId === toolPart.toolCallId
+          )
+          if (existingToolIndex !== -1) {
+            upsertUIMessagePart(sessionId, messageId, part, existingToolIndex)
+          } else {
+            upsertUIMessagePart(sessionId, messageId, part)
+          }
+        }
+      } else {
+        if (partIndex !== undefined) {
+          upsertUIMessagePart(sessionId, messageId, part, partIndex)
+        } else {
+          upsertUIMessagePart(sessionId, messageId, part)
+        }
+      }
+    } else if (chunk.type === 'finish') {
+      // Stream finished — clean up UI stream state and finalize parts
+      uiStreamState.value.delete(sessionId)
+
+      const msgs = getSessionUIMessagesRef(sessionId)
+      const msg = msgs.find(m => m.id === messageId)
+      if (msg) {
+        const updatedParts = msg.parts.map(part => {
+          if (part.type === 'text' && (part as TextUIPart).state === 'streaming') {
+            return { ...part, state: 'done' } as TextUIPart
+          }
+          if (part.type === 'reasoning' && (part as ReasoningUIPart).state === 'streaming') {
+            return { ...part, state: 'done' } as ReasoningUIPart
+          }
+          return part
+        })
+        updateUIMessage(sessionId, messageId, { parts: updatedParts })
+      }
+    }
+  }
+
+  /**
+   * Get UIMessages for a session (reactive computed)
+   */
+  function getSessionUIMessages(sessionId: string) {
+    return computed(() => sessionUIMessages.value.get(sessionId) || [])
+  }
 
   /**
    * Find a step by ID in a nested step structure
@@ -1045,12 +1246,23 @@ export const useChatStore = defineStore('chat', () => {
     // Event handlers (called by IPC Hub)
     handleStreamFinish,
     handleStreamErrorFromUIMessage,
+    handleUIMessageChunk,
     handleStepAdded,
     handleStepUpdated,
     handleSkillActivated,
     handleContextSizeUpdated,
     handleContextCompactStarted,
     handleContextCompactCompleted,
+
+    // UIMessage state (merged from UIMessagesStore, Phase 3 REQ-005)
+    sessionUIMessages,
+    getSessionUIMessages,
+    loadUIMessages,
+    clearSessionUIMessages,
+    addUIMessage,
+    updateUIMessage,
+    upsertUIMessagePart,
+    updateUIMessageToolPart,
 
     // Actions
     loadMessages,
