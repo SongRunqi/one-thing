@@ -25,6 +25,7 @@ import {
   getMessageText,
   getMessageReasoning,
   getToolParts,
+  chatMessageToUIMessage,
 } from '../../shared/message-converters.js'
 
 // Step data from IPC
@@ -357,6 +358,12 @@ export const useChatStore = defineStore('chat', () => {
 
     setSessionMessages(sessionId, [...messages])
 
+    // Also update UIMessages: remove streaming assistant and add error UIMessage
+    if (messageId) {
+      removeUIMessage(sessionId, messageId)
+    }
+    addUIMessage(sessionId, chatMessageToUIMessage(errorMessage))
+
     // Clear generating state
     sessionGenerating.value.set(sessionId, false)
     sessionLoading.value.set(sessionId, false)
@@ -415,6 +422,14 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * Update a UIMessage by ID within a session
    */
+  function removeUIMessage(sessionId: string, messageId: string) {
+    const msgs = getSessionUIMessagesRef(sessionId)
+    const index = msgs.findIndex(m => m.id === messageId)
+    if (index === -1) return
+    msgs.splice(index, 1)
+    setSessionUIMessages(sessionId, [...msgs])
+  }
+
   function updateUIMessage(sessionId: string, messageId: string, updates: Partial<UIMessage>) {
     const msgs = getSessionUIMessagesRef(sessionId)
     const index = msgs.findIndex(m => m.id === messageId)
@@ -864,10 +879,13 @@ export const useChatStore = defineStore('chat', () => {
       attachments,
     }
 
-    // Add to session messages
+    // Add to session messages (legacy)
     const messages = getSessionMessagesRef(sessionId)
     messages.push(userMessage)
     setSessionMessages(sessionId, [...messages])
+
+    // Add to UIMessages (the actual data source for UI components)
+    addUIMessage(sessionId, chatMessageToUIMessage(userMessage))
 
     // Set states
     sessionLoading.value.set(sessionId, true)
@@ -912,6 +930,8 @@ export const useChatStore = defineStore('chat', () => {
         if (tempIndex !== -1) {
           messages[tempIndex] = response.userMessage
         }
+        // Also update in UIMessages
+        updateUIMessage(sessionId, userMessage.id, chatMessageToUIMessage(response.userMessage))
       }
 
       // Update session name immediately if it was renamed
@@ -941,6 +961,14 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.push(assistantMessage)
       setSessionMessages(sessionId, [...messages])
+
+      // Also create UIMessage for the assistant (so streaming chunks can update it)
+      addUIMessage(sessionId, {
+        id: messageId,
+        role: 'assistant',
+        parts: [],
+        metadata: { timestamp: Date.now() },
+      })
 
       // Record active stream
       activeStreams.value.set(sessionId, messageId)
@@ -992,6 +1020,13 @@ export const useChatStore = defineStore('chat', () => {
       // Remove all messages after this one
       messages.splice(messageIndex + 1)
       setSessionMessages(sessionId, [...messages])
+
+      // Sync UIMessages: keep only up to and including this message
+      const uiMsgs = getSessionUIMessagesRef(sessionId)
+      const uiIndex = uiMsgs.findIndex(m => m.id === messageId)
+      if (uiIndex !== -1) {
+        setSessionUIMessages(sessionId, uiMsgs.slice(0, uiIndex + 1))
+      }
     }
 
     // Reload session usage after truncation (backend subtracts deleted messages' tokens)
@@ -1023,6 +1058,7 @@ export const useChatStore = defineStore('chat', () => {
         }
         messages.push(errorMessage)
         setSessionMessages(sessionId, [...messages])
+        addUIMessage(sessionId, chatMessageToUIMessage(errorMessage))
 
         sessionLoading.value.set(sessionId, false)
         sessionGenerating.value.set(sessionId, false)
@@ -1043,6 +1079,14 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.push(assistantMessage)
       setSessionMessages(sessionId, [...messages])
+
+      // Also create UIMessage for the assistant (so streaming chunks can update it)
+      addUIMessage(sessionId, {
+        id: editMessageId,
+        role: 'assistant',
+        parts: [],
+        metadata: { timestamp: Date.now() },
+      })
 
       // Record active stream
       activeStreams.value.set(sessionId, editMessageId)
