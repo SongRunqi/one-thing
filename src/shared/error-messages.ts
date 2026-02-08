@@ -6,7 +6,7 @@
  * More specific patterns should come before generic ones.
  */
 
-import { ErrorCategory } from './errors.js'
+import { ErrorCategory } from './error-types.js'
 
 export interface ErrorPattern {
   pattern: RegExp
