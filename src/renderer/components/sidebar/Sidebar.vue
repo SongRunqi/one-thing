@@ -3,7 +3,11 @@
     :class="['sidebar', { collapsed, floating, 'floating-closing': floatingClosing, resizing: isResizing }]"
     :style="sidebarStyle"
   >
-    <div v-show="showContent" class="sidebar-content" :class="{ 'content-hidden': collapsed && !floating }">
+    <div
+      v-show="showContent"
+      class="sidebar-content"
+      :class="{ 'content-hidden': collapsed && !floating }"
+    >
       <!-- Sidebar Header: Traffic lights space + Search + New Chat -->
       <SidebarHeader
         :search-query="localSearchQuery"

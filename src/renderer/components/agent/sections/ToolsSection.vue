@@ -5,21 +5,40 @@
         <label class="form-label">Custom Tools</label>
         <span class="tool-count">{{ customTools.length }} tool{{ customTools.length !== 1 ? 's' : '' }}</span>
       </div>
-      <button class="add-tool-btn" @click="addNewTool">
-        <Plus :size="16" :stroke-width="2" />
+      <button
+        class="add-tool-btn"
+        @click="addNewTool"
+      >
+        <Plus
+          :size="16"
+          :stroke-width="2"
+        />
         Add Tool
       </button>
     </div>
 
-    <div v-if="customTools.length === 0" class="empty-tools">
+    <div
+      v-if="customTools.length === 0"
+      class="empty-tools"
+    >
       <div class="empty-tools-icon">
-        <Wrench :size="32" :stroke-width="1.5" />
+        <Wrench
+          :size="32"
+          :stroke-width="1.5"
+        />
       </div>
-      <p class="empty-tools-text">No tools defined yet</p>
-      <p class="empty-tools-hint">Add custom tools that this agent can use to complete tasks</p>
+      <p class="empty-tools-text">
+        No tools defined yet
+      </p>
+      <p class="empty-tools-hint">
+        Add custom tools that this agent can use to complete tasks
+      </p>
     </div>
 
-    <div v-else class="tools-list">
+    <div
+      v-else
+      class="tools-list"
+    >
       <div
         v-for="(tool, index) in customTools"
         :key="tool.id"
@@ -28,30 +47,58 @@
         <div class="tool-info">
           <div class="tool-header">
             <span class="tool-name">{{ tool.name || 'Unnamed Tool' }}</span>
-            <span class="tool-type" :class="tool.execution.type">
+            <span
+              class="tool-type"
+              :class="tool.execution.type"
+            >
               {{ tool.execution.type }}
             </span>
           </div>
-          <p class="tool-description">{{ tool.description || 'No description' }}</p>
+          <p class="tool-description">
+            {{ tool.description || 'No description' }}
+          </p>
           <div class="tool-meta">
             <span class="param-count">{{ tool.parameters.length }} param{{ tool.parameters.length !== 1 ? 's' : '' }}</span>
-            <span v-if="tool.execution.type === 'bash'" class="exec-preview">
+            <span
+              v-if="tool.execution.type === 'bash'"
+              class="exec-preview"
+            >
               {{ truncateCommand(tool.execution.command) }}
             </span>
-            <span v-else-if="tool.execution.type === 'http'" class="exec-preview">
+            <span
+              v-else-if="tool.execution.type === 'http'"
+              class="exec-preview"
+            >
               {{ tool.execution.method }} {{ truncateUrl(tool.execution.url) }}
             </span>
-            <span v-else-if="tool.execution.type === 'builtin'" class="exec-preview">
+            <span
+              v-else-if="tool.execution.type === 'builtin'"
+              class="exec-preview"
+            >
               {{ tool.execution.toolId }}
             </span>
           </div>
         </div>
         <div class="tool-actions">
-          <button class="tool-action-btn" @click="editTool(index)" title="Edit">
-            <Pencil :size="16" :stroke-width="2" />
+          <button
+            class="tool-action-btn"
+            title="Edit"
+            @click="editTool(index)"
+          >
+            <Pencil
+              :size="16"
+              :stroke-width="2"
+            />
           </button>
-          <button class="tool-action-btn danger" @click="removeTool(index)" title="Remove">
-            <Trash2 :size="16" :stroke-width="2" />
+          <button
+            class="tool-action-btn danger"
+            title="Remove"
+            @click="removeTool(index)"
+          >
+            <Trash2
+              :size="16"
+              :stroke-width="2"
+            />
           </button>
         </div>
       </div>
@@ -59,7 +106,11 @@
 
     <!-- Tool Editor Dialog -->
     <Teleport to="body">
-      <div v-if="showToolEditor" class="tool-editor-overlay" @click.self="closeToolEditor">
+      <div
+        v-if="showToolEditor"
+        class="tool-editor-overlay"
+        @click.self="closeToolEditor"
+      >
         <div class="tool-editor-dialog">
           <CustomToolEditor
             :tool="editingTool"

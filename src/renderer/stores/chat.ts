@@ -821,7 +821,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const response = await window.electronAPI.getSession(sessionId)
       if (response.success && response.session) {
-        let messages = (response.session.messages || []).map(rebuildContentParts)
+        const messages = (response.session.messages || []).map(rebuildContentParts)
 
         // If this session has an active stream, preserve the in-memory streaming message
         // This prevents losing isStreaming, content, reasoning, steps etc. during session switch
@@ -854,7 +854,7 @@ export const useChatStore = defineStore('chat', () => {
    * This avoids duplicate IPC calls
    */
   function setMessagesFromSession(sessionId: string, rawMessages: ChatMessage[]) {
-    let messages = (rawMessages || []).map(rebuildContentParts)
+    const messages = (rawMessages || []).map(rebuildContentParts)
 
     // If this session has an active stream, preserve the in-memory streaming message
     // This prevents losing isStreaming, content, reasoning, steps etc. during session switch

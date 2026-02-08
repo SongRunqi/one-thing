@@ -1,10 +1,17 @@
 <template>
   <div class="files-tab">
     <!-- Header (can be hidden when parent provides it) -->
-    <div v-if="!hideHeader" class="tab-header" :title="workingDirectory">
+    <div
+      v-if="!hideHeader"
+      class="tab-header"
+      :title="workingDirectory"
+    >
       <div class="header-left">
         <span class="header-title">Changed Files</span>
-        <span v-if="displayFiles.length" class="header-count">{{ displayFiles.length }}</span>
+        <span
+          v-if="displayFiles.length"
+          class="header-count"
+        >{{ displayFiles.length }}</span>
         <span
           v-if="displayFiles.length"
           class="header-hint"
@@ -13,28 +20,54 @@
           Edit/Write only
         </span>
       </div>
-      <div v-if="displayFiles.length" class="header-stats">
+      <div
+        v-if="displayFiles.length"
+        class="header-stats"
+      >
         <span class="stat-add">+{{ summary.totalAdditions }}</span>
         <span class="stat-del">-{{ summary.totalDeletions }}</span>
       </div>
     </div>
 
     <!-- Empty State -->
-    <div v-if="!sessionId" class="empty-state">
-      <FolderOpen :size="32" :stroke-width="1.5" />
-      <p class="empty-text">No active session</p>
-      <p class="empty-hint">Select a chat session to see changed files</p>
+    <div
+      v-if="!sessionId"
+      class="empty-state"
+    >
+      <FolderOpen
+        :size="32"
+        :stroke-width="1.5"
+      />
+      <p class="empty-text">
+        No active session
+      </p>
+      <p class="empty-hint">
+        Select a chat session to see changed files
+      </p>
     </div>
 
     <!-- Changed Files -->
-    <div v-else-if="displayFiles.length" class="changes-list">
+    <div
+      v-else-if="displayFiles.length"
+      class="changes-list"
+    >
       <div class="section">
-        <div class="section-header" @click="toggleSection('changes')">
-          <ChevronRight :size="14" :stroke-width="1.5" :class="{ rotated: !collapsedSections.changes }" />
+        <div
+          class="section-header"
+          @click="toggleSection('changes')"
+        >
+          <ChevronRight
+            :size="14"
+            :stroke-width="1.5"
+            :class="{ rotated: !collapsedSections.changes }"
+          />
           <span class="section-title">Changes</span>
           <span class="section-count">{{ displayFiles.length }}</span>
         </div>
-        <div v-show="!collapsedSections.changes" class="section-content">
+        <div
+          v-show="!collapsedSections.changes"
+          class="section-content"
+        >
           <button
             v-for="file in displayFiles"
             :key="file.filePath"
@@ -44,12 +77,24 @@
             :title="file.filePath"
             @click="openFile(file)"
           >
-            <span class="file-status" :class="file.statusClass">{{ file.statusLabel }}</span>
+            <span
+              class="file-status"
+              :class="file.statusClass"
+            >{{ file.statusLabel }}</span>
             <span class="file-path">{{ file.displayPath }}</span>
             <span class="file-meta">
-              <span v-if="file.isNew" class="badge-new">new</span>
-              <span v-if="file.additions > 0" class="stat-add">+{{ file.additions }}</span>
-              <span v-if="file.deletions > 0" class="stat-del">-{{ file.deletions }}</span>
+              <span
+                v-if="file.isNew"
+                class="badge-new"
+              >new</span>
+              <span
+                v-if="file.additions > 0"
+                class="stat-add"
+              >+{{ file.additions }}</span>
+              <span
+                v-if="file.deletions > 0"
+                class="stat-del"
+              >-{{ file.deletions }}</span>
             </span>
           </button>
         </div>
@@ -57,10 +102,20 @@
     </div>
 
     <!-- No changes -->
-    <div v-else class="empty-state">
-      <FolderOpen :size="32" :stroke-width="1.5" />
-      <p class="empty-text">No changes yet</p>
-      <p class="empty-hint">Edits from Edit/Write tools will appear here</p>
+    <div
+      v-else
+      class="empty-state"
+    >
+      <FolderOpen
+        :size="32"
+        :stroke-width="1.5"
+      />
+      <p class="empty-text">
+        No changes yet
+      </p>
+      <p class="empty-hint">
+        Edits from Edit/Write tools will appear here
+      </p>
     </div>
   </div>
 </template>

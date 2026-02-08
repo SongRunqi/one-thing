@@ -1,18 +1,39 @@
 <template>
-  <div v-if="files.length > 0" class="attachments-preview">
+  <div
+    v-if="files.length > 0"
+    class="attachments-preview"
+  >
     <div
       v-for="file in files"
       :key="file.id"
       class="attachment-item"
       :class="{ 'is-image': file.mediaType === 'image' }"
     >
-      <img v-if="file.preview" :src="file.preview" :alt="file.fileName" class="attachment-thumb" />
-      <div v-else class="attachment-icon">
-        <FileText :size="20" :stroke-width="2" />
+      <img
+        v-if="file.preview"
+        :src="file.preview"
+        :alt="file.fileName"
+        class="attachment-thumb"
+      >
+      <div
+        v-else
+        class="attachment-icon"
+      >
+        <FileText
+          :size="20"
+          :stroke-width="2"
+        />
       </div>
       <span class="attachment-name">{{ file.fileName }}</span>
-      <button class="attachment-remove" @click="emit('remove', file.id)" title="Remove">
-        <X :size="14" :stroke-width="2.5" />
+      <button
+        class="attachment-remove"
+        title="Remove"
+        @click="emit('remove', file.id)"
+      >
+        <X
+          :size="14"
+          :stroke-width="2.5"
+        />
       </button>
     </div>
   </div>

@@ -1,83 +1,232 @@
 <template>
-  <div class="infographic-wrapper" :class="{ 'has-error': hasError, 'is-code-view': showCode }">
+  <div
+    class="infographic-wrapper"
+    :class="{ 'has-error': hasError, 'is-code-view': showCode }"
+  >
     <!-- 加载状态 -->
-    <div v-if="isLoading" class="infographic-loading">
-      <div class="loading-spinner"></div>
+    <div
+      v-if="isLoading"
+      class="infographic-loading"
+    >
+      <div class="loading-spinner" />
     </div>
 
     <!-- 错误状态 -->
-    <div v-else-if="hasError" class="infographic-error">
+    <div
+      v-else-if="hasError"
+      class="infographic-error"
+    >
       <div class="error-icon">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+          />
+          <line
+            x1="12"
+            y1="8"
+            x2="12"
+            y2="12"
+          />
+          <line
+            x1="12"
+            y1="16"
+            x2="12.01"
+            y2="16"
+          />
         </svg>
       </div>
-      <div class="error-message">{{ errorMessage }}</div>
-      <button class="retry-btn" @click="renderInfographic">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M23 4v6h-6M1 20v-6h6"/>
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+      <div class="error-message">
+        {{ errorMessage }}
+      </div>
+      <button
+        class="retry-btn"
+        @click="renderInfographic"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M23 4v6h-6M1 20v-6h6" />
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
         </svg>
         重试
       </button>
     </div>
 
     <!-- 图表区域容器（与代码区域互斥） -->
-    <div v-show="!showCode && !isLoading && !hasError" class="infographic-content">
+    <div
+      v-show="!showCode && !isLoading && !hasError"
+      class="infographic-content"
+    >
       <!-- 图表容器（点击放大） -->
-      <div ref="containerRef" class="infographic-canvas" @click="openPreview"></div>
+      <div
+        ref="containerRef"
+        class="infographic-canvas"
+        @click="openPreview"
+      />
 
       <!-- 悬浮操作按钮 -->
       <div class="infographic-actions">
-        <button class="action-btn" @click="toggleCode" :title="showCode ? '隐藏代码' : '查看代码'">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="16 18 22 12 16 6"/>
-            <polyline points="8 6 2 12 8 18"/>
+        <button
+          class="action-btn"
+          :title="showCode ? '隐藏代码' : '查看代码'"
+          @click="toggleCode"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <polyline points="16 18 22 12 16 6" />
+            <polyline points="8 6 2 12 8 18" />
           </svg>
         </button>
-        <button class="action-btn" @click="exportPNG" title="导出 PNG">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2"/>
-            <circle cx="8.5" cy="8.5" r="1.5"/>
-            <path d="M21 15l-5-5L5 21"/>
+        <button
+          class="action-btn"
+          title="导出 PNG"
+          @click="exportPNG"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect
+              x="3"
+              y="3"
+              width="18"
+              height="18"
+              rx="2"
+            />
+            <circle
+              cx="8.5"
+              cy="8.5"
+              r="1.5"
+            />
+            <path d="M21 15l-5-5L5 21" />
           </svg>
         </button>
-        <button class="action-btn" @click="exportSVG" title="导出 SVG">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
+        <button
+          class="action-btn"
+          title="导出 SVG"
+          @click="exportSVG"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line
+              x1="12"
+              y1="15"
+              x2="12"
+              y2="3"
+            />
           </svg>
         </button>
-        <button class="action-btn" @click="copyConfig" :title="copyLabel">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        <button
+          class="action-btn"
+          :title="copyLabel"
+          @click="copyConfig"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect
+              x="9"
+              y="9"
+              width="13"
+              height="13"
+              rx="2"
+              ry="2"
+            />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
         </button>
       </div>
     </div>
 
     <!-- 代码预览区域（使用与普通代码块一致的样式） -->
-    <div v-if="showCode && !isLoading && !hasError" class="code-block-container">
+    <div
+      v-if="showCode && !isLoading && !hasError"
+      class="code-block-container"
+    >
       <div class="code-block-header">
-        <div class="code-block-lang">infographic</div>
+        <div class="code-block-lang">
+          infographic
+        </div>
         <div class="code-block-actions">
-          <button class="code-block-copy" @click="copyConfig" :title="copyLabel">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          <button
+            class="code-block-copy"
+            :title="copyLabel"
+            @click="copyConfig"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect
+                x="9"
+                y="9"
+                width="13"
+                height="13"
+                rx="2"
+                ry="2"
+              />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
             <span>{{ copyLabel }}</span>
           </button>
-          <button class="code-block-copy" @click="toggleCode" title="查看图表">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 3v18h18"/>
-              <path d="M18 17V9"/>
-              <path d="M13 17V5"/>
-              <path d="M8 17v-3"/>
+          <button
+            class="code-block-copy"
+            title="查看图表"
+            @click="toggleCode"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M3 3v18h18" />
+              <path d="M18 17V9" />
+              <path d="M13 17V5" />
+              <path d="M8 17v-3" />
             </svg>
             <span>图表</span>
           </button>
@@ -89,8 +238,15 @@
     <!-- 全屏预览遮罩层 -->
     <Teleport to="body">
       <Transition name="preview-fade">
-        <div v-if="showPreview" class="infographic-preview-overlay" @click="closePreview">
-          <div class="preview-container" @click.stop>
+        <div
+          v-if="showPreview"
+          class="infographic-preview-overlay"
+          @click="closePreview"
+        >
+          <div
+            class="preview-container"
+            @click.stop
+          >
             <div
               class="preview-canvas"
               :style="{
@@ -104,34 +260,100 @@
               @mouseup="endDrag"
               @mouseleave="endDrag"
               v-html="previewContent"
-            ></div>
+            />
 
             <!-- 缩放控制栏 -->
             <div class="preview-controls">
-              <button @click="zoomOut" title="缩小">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="5" y1="12" x2="19" y2="12"/>
+              <button
+                title="缩小"
+                @click="zoomOut"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line
+                    x1="5"
+                    y1="12"
+                    x2="19"
+                    y2="12"
+                  />
                 </svg>
               </button>
               <span class="zoom-level">{{ Math.round(previewScale * 100) }}%</span>
-              <button @click="zoomIn" title="放大">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
+              <button
+                title="放大"
+                @click="zoomIn"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line
+                    x1="12"
+                    y1="5"
+                    x2="12"
+                    y2="19"
+                  />
+                  <line
+                    x1="5"
+                    y1="12"
+                    x2="19"
+                    y2="12"
+                  />
                 </svg>
               </button>
-              <button @click="resetPreview" title="重置">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                  <path d="M3 3v5h5"/>
+              <button
+                title="重置"
+                @click="resetPreview"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                  <path d="M3 3v5h5" />
                 </svg>
               </button>
             </div>
 
-            <button class="preview-close" @click="closePreview" title="关闭">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
+            <button
+              class="preview-close"
+              title="关闭"
+              @click="closePreview"
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line
+                  x1="18"
+                  y1="6"
+                  x2="6"
+                  y2="18"
+                />
+                <line
+                  x1="6"
+                  y1="6"
+                  x2="18"
+                  y2="18"
+                />
               </svg>
             </button>
           </div>

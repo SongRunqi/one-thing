@@ -1,5 +1,8 @@
 <template>
-  <div class="composer-wrapper" ref="composerWrapperRef">
+  <div
+    ref="composerWrapperRef"
+    class="composer-wrapper"
+  >
     <!-- Hidden file input -->
     <input
       ref="fileInputRef"
@@ -8,19 +11,36 @@
       accept="image/*,.pdf,.doc,.docx,.txt,.md,.json,.csv"
       style="display: none"
       @change="handleFileSelect"
-    />
+    >
 
     <!-- Attachment previews -->
-    <AttachmentPreview :files="attachedFiles" @remove="removeAttachment" />
+    <AttachmentPreview
+      :files="attachedFiles"
+      @remove="removeAttachment"
+    />
 
     <!-- Quoted text context -->
-    <QuotedContext :text="quotedText" @clear="clearQuotedText" />
+    <QuotedContext
+      :text="quotedText"
+      @clear="clearQuotedText"
+    />
 
     <!-- Command Feedback -->
     <Transition name="fade">
-      <div v-if="commandFeedback" :class="['command-feedback', commandFeedback.type]">
-        <Check v-if="commandFeedback.type === 'success'" :size="14" :stroke-width="2.5" />
-        <X v-else :size="14" :stroke-width="2.5" />
+      <div
+        v-if="commandFeedback"
+        :class="['command-feedback', commandFeedback.type]"
+      >
+        <Check
+          v-if="commandFeedback.type === 'success'"
+          :size="14"
+          :stroke-width="2.5"
+        />
+        <X
+          v-else
+          :size="14"
+          :stroke-width="2.5"
+        />
         <span>{{ commandFeedback.message }}</span>
       </div>
     </Transition>
@@ -68,7 +88,11 @@
     <!-- Plan Panel -->
     <PlanPanel :session-id="effectiveSessionId" />
 
-    <div class="composer" :class="{ focused: isFocused }" @click="focusTextarea">
+    <div
+      class="composer"
+      :class="{ focused: isFocused }"
+      @click="focusTextarea"
+    >
       <!-- Input area -->
       <div class="input-area">
         <textarea
@@ -76,6 +100,7 @@
           v-model="messageInput"
           class="composer-input"
           placeholder="Ask anything..."
+          rows="1"
           @keydown="handleKeyDown"
           @focus="isFocused = true"
           @blur="isFocused = false"
@@ -83,15 +108,21 @@
           @paste="handlePaste"
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
-          rows="1"
         />
       </div>
 
       <!-- Bottom toolbar -->
       <div class="composer-toolbar">
         <div class="toolbar-left">
-          <button class="toolbar-btn" title="Attach file" @click="handleAttach">
-            <Paperclip :size="18" :stroke-width="2" />
+          <button
+            class="toolbar-btn"
+            title="Attach file"
+            @click="handleAttach"
+          >
+            <Paperclip
+              :size="18"
+              :stroke-width="2"
+            />
           </button>
           <ToolsMenu
             @tools-enabled-change="(enabled: boolean) => emit('toolsEnabledChange', enabled)"
@@ -100,26 +131,39 @@
           <SkillsMenu @open-settings="() => emit('openToolSettings')" />
           <ModelSelector :session-id="props.sessionId" />
           <ContextIndicator :session-id="props.sessionId" />
-          <ModeToggle ref="modeToggleRef" :session-id="effectiveSessionId" />
+          <ModeToggle
+            ref="modeToggleRef"
+            :session-id="effectiveSessionId"
+          />
         </div>
 
-        <div class="toolbar-right" @click.stop>
+        <div
+          class="toolbar-right"
+          @click.stop
+        >
           <button
             v-if="isLoading || isSending"
             class="send-btn stop-btn"
-            @click="stopGeneration"
             title="Stop generation"
+            @click="stopGeneration"
           >
-            <Square :size="16" fill="currentColor" :stroke-width="0" />
+            <Square
+              :size="16"
+              fill="currentColor"
+              :stroke-width="0"
+            />
           </button>
           <button
             v-else
             class="send-btn"
-            @click="sendMessage"
             :disabled="!canSend"
             title="Send message"
+            @click="sendMessage"
           >
-            <Send :size="18" :stroke-width="2" />
+            <Send
+              :size="18"
+              :stroke-width="2"
+            />
           </button>
         </div>
       </div>

@@ -1,13 +1,22 @@
 <template>
-  <div class="skills-dropdown" ref="dropdownRef">
+  <div
+    ref="dropdownRef"
+    class="skills-dropdown"
+  >
     <button
       class="toolbar-btn skills-btn"
       :class="{ active: skillsEnabled }"
       :title="skillsEnabled ? 'Skills enabled' : 'Skills disabled'"
       @click="togglePanel"
     >
-      <SquareFunction :size="18" :stroke-width="2" />
-      <span v-if="skillsEnabled" class="skills-status-dot"></span>
+      <SquareFunction
+        :size="18"
+        :stroke-width="2"
+      />
+      <span
+        v-if="skillsEnabled"
+        class="skills-status-dot"
+      />
     </button>
 
     <Teleport to="body">
@@ -20,30 +29,54 @@
         <!-- Master toggle -->
         <div class="skills-menu-header">
           <div class="skills-menu-title">
-            <SquareFunction :size="16" :stroke-width="2" />
+            <SquareFunction
+              :size="16"
+              :stroke-width="2"
+            />
             <span>Skills</span>
           </div>
           <label class="skills-toggle">
-            <input type="checkbox" :checked="skillsEnabled" @change="toggleSkillsEnabled" />
-            <span class="skills-toggle-slider"></span>
+            <input
+              type="checkbox"
+              :checked="skillsEnabled"
+              @change="toggleSkillsEnabled"
+            >
+            <span class="skills-toggle-slider" />
           </label>
         </div>
 
         <!-- Skills list (grouped by source) -->
         <div class="skills-menu-list">
-          <div v-for="group in groupedSkills" :key="group.id" class="skill-group">
+          <div
+            v-for="group in groupedSkills"
+            :key="group.id"
+            class="skill-group"
+          >
             <div
               class="skill-group-header"
               :class="{ collapsed: group.collapsed, disabled: !skillsEnabled }"
             >
-              <div class="group-header-left" @click="toggleGroupCollapse(group.id)">
-                <ChevronDown class="group-chevron" :size="12" :stroke-width="2" />
+              <div
+                class="group-header-left"
+                @click="toggleGroupCollapse(group.id)"
+              >
+                <ChevronDown
+                  class="group-chevron"
+                  :size="12"
+                  :stroke-width="2"
+                />
                 <span class="group-name">{{ group.name }}</span>
-                <span class="group-badge" :class="group.source">{{ group.sourceLabel }}</span>
+                <span
+                  class="group-badge"
+                  :class="group.source"
+                >{{ group.sourceLabel }}</span>
                 <span class="group-count">{{ group.skills.length }}</span>
               </div>
             </div>
-            <div class="skill-group-items" :class="{ collapsed: group.collapsed }">
+            <div
+              class="skill-group-items"
+              :class="{ collapsed: group.collapsed }"
+            >
               <div
                 v-for="skill in group.skills"
                 :key="skill.id"
@@ -57,20 +90,29 @@
                     :checked="isSkillEnabled(skill.id)"
                     :disabled="!skillsEnabled"
                     @change="toggleSkillEnabled(skill.id)"
-                  />
-                  <span class="skill-item-toggle-slider"></span>
+                  >
+                  <span class="skill-item-toggle-slider" />
                 </label>
               </div>
             </div>
           </div>
-          <div v-if="availableSkills.length === 0" class="skills-empty">
+          <div
+            v-if="availableSkills.length === 0"
+            class="skills-empty"
+          >
             No skills available
           </div>
         </div>
 
         <!-- Settings link -->
-        <button class="skills-menu-settings" @click="openSettings">
-          <Settings :size="14" :stroke-width="2" />
+        <button
+          class="skills-menu-settings"
+          @click="openSettings"
+        >
+          <Settings
+            :size="14"
+            :stroke-width="2"
+          />
           <span>Advanced Settings</span>
         </button>
       </div>

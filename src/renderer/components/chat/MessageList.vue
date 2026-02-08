@@ -1,41 +1,47 @@
 <template>
   <div class="message-list-wrapper">
     <div
+      ref="messageListRef"
       :class="['message-list', `density-${messageListDensity}`]"
       :style="messageListStyles"
-      ref="messageListRef"
     >
-    <EmptyState
-      v-if="messages.length === 0 && !isLoading"
-      @suggestion="handleSuggestion"
-    />
-    <TransitionGroup name="msg-list">
-      <MessageItem
-        v-for="message in messages"
-        :key="message.id"
-        :message="message"
-        :branches="getBranchesForMessage(message.id)"
-        :can-branch="canCreateBranch"
-        :is-highlighted="message.id === highlightedMessageId"
-        :voice-config="currentAgentVoiceConfig"
-        @edit="handleEdit"
-        @branch="handleBranch"
-        @go-to-branch="handleGoToBranch"
-        @quote="handleQuote"
-        @regenerate="handleRegenerate"
-        @execute-tool="handleExecuteTool"
-        @confirm-tool="handleConfirmTool"
-        @reject-tool="handleRejectTool"
-        @update-thinking-time="handleUpdateThinkingTime"
+      <EmptyState
+        v-if="messages.length === 0 && !isLoading"
+        @suggestion="handleSuggestion"
       />
-    </TransitionGroup>
-
+      <TransitionGroup name="msg-list">
+        <MessageItem
+          v-for="message in messages"
+          :key="message.id"
+          :message="message"
+          :branches="getBranchesForMessage(message.id)"
+          :can-branch="canCreateBranch"
+          :is-highlighted="message.id === highlightedMessageId"
+          :voice-config="currentAgentVoiceConfig"
+          @edit="handleEdit"
+          @branch="handleBranch"
+          @go-to-branch="handleGoToBranch"
+          @quote="handleQuote"
+          @regenerate="handleRegenerate"
+          @execute-tool="handleExecuteTool"
+          @confirm-tool="handleConfirmTool"
+          @reject-tool="handleRejectTool"
+          @update-thinking-time="handleUpdateThinkingTime"
+        />
+      </TransitionGroup>
     </div>
 
     <!-- User message navigation rail (timeline) -->
-    <div v-if="userMessageIndices.length > 1" class="nav-rail">
-      <div ref="navRailTrackRef" class="nav-rail-track" @click="handleRailClick">
-        <div class="nav-rail-line"></div>
+    <div
+      v-if="userMessageIndices.length > 1"
+      class="nav-rail"
+    >
+      <div
+        ref="navRailTrackRef"
+        class="nav-rail-track"
+        @click="handleRailClick"
+      >
+        <div class="nav-rail-line" />
         <button
           v-for="marker in displayNavMarkers"
           :key="marker.messageId"
@@ -44,7 +50,7 @@
           :style="{ top: `${marker.position * 100}%` }"
           :title="marker.label"
           @click.stop="handleMarkerClick(marker.navIndex)"
-        ></button>
+        />
       </div>
       <span class="nav-counter">{{ navCounter }}</span>
     </div>
@@ -52,25 +58,47 @@
     <!-- Reject Reason Dialog -->
     <Teleport to="body">
       <Transition name="modal-fade">
-        <div v-if="showRejectDialog" class="reject-dialog-overlay" @click.self="cancelReject">
+        <div
+          v-if="showRejectDialog"
+          class="reject-dialog-overlay"
+          @click.self="cancelReject"
+        >
           <div class="reject-dialog">
             <div class="reject-dialog-header">
               <span class="reject-dialog-title">拒绝原因</span>
-              <button class="reject-dialog-close" @click="cancelReject">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
+              <button
+                class="reject-dialog-close"
+                @click="cancelReject"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>
             </div>
             <div class="reject-dialog-body">
               <div class="reject-mode-options">
                 <label class="reject-mode-option">
-                  <input type="radio" v-model="rejectMode" value="stop" />
+                  <input
+                    v-model="rejectMode"
+                    type="radio"
+                    value="stop"
+                  >
                   <span class="reject-mode-label">拒绝并停止</span>
                   <span class="reject-mode-hint">AI 将停止执行</span>
                 </label>
                 <label class="reject-mode-option">
-                  <input type="radio" v-model="rejectMode" value="continue" />
+                  <input
+                    v-model="rejectMode"
+                    type="radio"
+                    value="continue"
+                  >
                   <span class="reject-mode-label">拒绝，换个方式</span>
                   <span class="reject-mode-hint">AI 将尝试其他方法</span>
                 </label>
@@ -84,14 +112,22 @@
                 @keydown.enter.ctrl="confirmReject"
                 @keydown.enter.meta="confirmReject"
                 @keydown.escape="cancelReject"
-              ></textarea>
-              <div class="reject-dialog-hint">按 Ctrl+Enter 确认，Esc 取消</div>
+              />
+              <div class="reject-dialog-hint">
+                按 Ctrl+Enter 确认，Esc 取消
+              </div>
             </div>
             <div class="reject-dialog-footer">
-              <button class="reject-dialog-btn reject-dialog-btn-cancel" @click="cancelReject">
+              <button
+                class="reject-dialog-btn reject-dialog-btn-cancel"
+                @click="cancelReject"
+              >
                 取消
               </button>
-              <button class="reject-dialog-btn reject-dialog-btn-confirm" @click="confirmReject">
+              <button
+                class="reject-dialog-btn reject-dialog-btn-confirm"
+                @click="confirmReject"
+              >
                 确认拒绝
               </button>
             </div>

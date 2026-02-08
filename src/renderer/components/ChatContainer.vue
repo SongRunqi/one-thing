@@ -6,10 +6,13 @@
       class="sidebar-hover-trigger"
       @mouseenter="$emit('show-floating-sidebar')"
       @mouseleave="$emit('hide-floating-sidebar')"
-    ></div>
+    />
 
     <!-- Memory Editor View (full-screen mode) -->
-    <div v-if="selectedMemoryFilePath" class="chat-panels">
+    <div
+      v-if="selectedMemoryFilePath"
+      class="chat-panels"
+    >
       <div class="full-page-container">
         <MemoryEditor
           :file-path="selectedMemoryFilePath"
@@ -19,7 +22,10 @@
     </div>
 
     <!-- Create/Edit Agent Page (full-screen mode) -->
-    <div v-else-if="showAgentCreate || editingAgent" class="chat-panels">
+    <div
+      v-else-if="showAgentCreate || editingAgent"
+      class="chat-panels"
+    >
       <div class="full-page-container">
         <CreateAgentPage
           :agent="editingAgent"
@@ -30,18 +36,41 @@
       </div>
     </div>
 
-    <div v-else class="chat-panels">
+    <div
+      v-else
+      class="chat-panels"
+    >
       <!-- Empty state when no sessions -->
-      <div v-if="!sessionsStore.currentSessionId" class="empty-state">
+      <div
+        v-if="!sessionsStore.currentSessionId"
+        class="empty-state"
+      >
         <div class="empty-state-content">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           <h3>No Active Chat</h3>
           <p>Start a new conversation to begin</p>
-          <button class="new-chat-btn" @click="createNewSession">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 5v14M5 12h14"/>
+          <button
+            class="new-chat-btn"
+            @click="createNewSession"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 5v14M5 12h14" />
             </svg>
             New Chat
           </button>
@@ -49,8 +78,8 @@
       </div>
       <!-- Chat panels when session exists -->
       <ChatWindow
-        v-else
         v-for="(panel, index) in panels"
+        v-else
         :key="panel.id"
         :ref="el => setPanelRef(panel.id, el)"
         :session-id="panel.sessionId"
@@ -91,20 +120,45 @@
 
     <!-- Session Picker Dialog -->
     <Teleport to="body">
-      <div v-if="showSessionPicker" class="session-picker-overlay" @click.self="closeSessionPicker">
+      <div
+        v-if="showSessionPicker"
+        class="session-picker-overlay"
+        @click.self="closeSessionPicker"
+      >
         <div class="session-picker-dialog">
           <div class="session-picker-header">
             <h3>Select Session for Split View</h3>
-            <button class="close-btn" @click="closeSessionPicker">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 6L6 18M6 6l12 12"/>
+            <button
+              class="close-btn"
+              @click="closeSessionPicker"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
           </div>
           <div class="session-picker-search">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.35-4.35"/>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle
+                cx="11"
+                cy="11"
+                r="8"
+              />
+              <path d="m21 21-4.35-4.35" />
             </svg>
             <input
               ref="sessionSearchInput"
@@ -112,7 +166,7 @@
               type="text"
               placeholder="Search sessions..."
               @keydown.escape="closeSessionPicker"
-            />
+            >
           </div>
           <div class="session-picker-list">
             <!-- New Chat option (only show when not searching) -->
@@ -121,8 +175,15 @@
               class="session-picker-item new-chat-item"
               @click="createNewChatForSplit"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 5v14M5 12h14"/>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M12 5v14M5 12h14" />
               </svg>
               <span class="session-name">New Chat</span>
               <span class="new-badge">Create</span>
@@ -136,13 +197,26 @@
               :class="{ current: session.id === sessionsStore.currentSessionId }"
               @click="selectSessionForSplit(session.id)"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
               <span class="session-name">{{ session.name || 'New chat' }}</span>
-              <span v-if="session.id === sessionsStore.currentSessionId" class="current-badge">Current</span>
+              <span
+                v-if="session.id === sessionsStore.currentSessionId"
+                class="current-badge"
+              >Current</span>
             </button>
-            <div v-if="filteredSessions.length === 0" class="no-sessions">
+            <div
+              v-if="filteredSessions.length === 0"
+              class="no-sessions"
+            >
               No sessions found
             </div>
           </div>

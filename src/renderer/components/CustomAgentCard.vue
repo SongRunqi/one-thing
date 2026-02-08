@@ -6,7 +6,10 @@
   >
     <!-- Avatar -->
     <div class="agent-avatar">
-      <span v-if="agent.avatar?.type === 'emoji'" class="avatar-emoji">
+      <span
+        v-if="agent.avatar?.type === 'emoji'"
+        class="avatar-emoji"
+      >
         {{ agent.avatar.value }}
       </span>
       <img
@@ -14,11 +17,25 @@
         :src="getImageSrc(agent.avatar?.value ?? '')"
         class="avatar-image"
         alt=""
-      />
-      <span v-else class="avatar-default">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="8" r="4"/>
-          <path d="M20 21a8 8 0 10-16 0"/>
+      >
+      <span
+        v-else
+        class="avatar-default"
+      >
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <circle
+            cx="12"
+            cy="8"
+            r="4"
+          />
+          <path d="M20 21a8 8 0 10-16 0" />
         </svg>
       </span>
     </div>
@@ -26,16 +43,33 @@
     <!-- Info -->
     <div class="agent-info">
       <div class="agent-header">
-        <h4 class="agent-name">{{ agent.name }}</h4>
-        <span class="agent-source" :class="agent.source">
+        <h4 class="agent-name">
+          {{ agent.name }}
+        </h4>
+        <span
+          class="agent-source"
+          :class="agent.source"
+        >
           {{ agent.source }}
         </span>
       </div>
-      <p class="agent-description">{{ agent.description }}</p>
+      <p class="agent-description">
+        {{ agent.description }}
+      </p>
       <div class="agent-meta">
-        <span class="tool-count" :title="toolNames">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        <span
+          class="tool-count"
+          :title="toolNames"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
           </svg>
           {{ totalToolCount }} tools
         </span>
@@ -48,11 +82,18 @@
       <button
         class="action-btn pin-btn"
         :class="{ pinned: isPinned }"
-        @click.stop="$emit('toggle-pin', agent)"
         :title="isPinned ? 'Unpin from sidebar' : 'Pin to sidebar'"
+        @click.stop="$emit('toggle-pin', agent)"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" :fill="isPinned ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
-          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          :fill="isPinned ? 'currentColor' : 'none'"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
         </svg>
       </button>
       <!-- Enable/Disable toggle -->
@@ -62,16 +103,38 @@
         :title="enabled !== false ? 'Enabled' : 'Disabled'"
         @click.stop="$emit('toggle', agent)"
       />
-      <button class="action-btn" @click.stop="$emit('edit', agent)" title="Edit">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+      <button
+        class="action-btn"
+        title="Edit"
+        @click.stop="$emit('edit', agent)"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
         </svg>
       </button>
-      <button class="action-btn danger" @click.stop="$emit('delete', agent)" title="Delete">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"/>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+      <button
+        class="action-btn danger"
+        title="Delete"
+        @click.stop="$emit('delete', agent)"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
         </svg>
       </button>
     </div>

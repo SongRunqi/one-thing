@@ -1,10 +1,20 @@
 <template>
   <!-- 只在有内容显示时渲染容器 -->
   <Transition name="container-fade">
-    <div v-if="shouldShowContainer" class="thinking-container">
+    <div
+      v-if="shouldShowContainer"
+      class="thinking-container"
+    >
       <!-- Loading memory status -->
-      <Transition name="thinking-fade" mode="out-in">
-        <div v-if="loadingMemory && isStreaming && !hasContent && !reasoning" key="loading-memory" class="thinking-status">
+      <Transition
+        name="thinking-fade"
+        mode="out-in"
+      >
+        <div
+          v-if="loadingMemory && isStreaming && !hasContent && !reasoning"
+          key="loading-memory"
+          class="thinking-status"
+        >
           <div class="thinking-status-row">
             <span class="thinking-text flowing">Extracting memory</span>
             <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
@@ -12,7 +22,11 @@
         </div>
 
         <!-- Waiting status (streaming, no content yet, no reasoning) -->
-        <div v-else-if="isStreaming && !hasContent && !reasoning" key="waiting" class="thinking-status">
+        <div
+          v-else-if="isStreaming && !hasContent && !reasoning"
+          key="waiting"
+          class="thinking-status"
+        >
           <div class="thinking-status-row">
             <span class="thinking-text flowing">Waiting</span>
             <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
@@ -20,28 +34,65 @@
         </div>
 
         <!-- Thinking/Thought status (has reasoning) -->
-        <div v-else-if="reasoning" key="reasoning" class="thinking-status">
+        <div
+          v-else-if="reasoning"
+          key="reasoning"
+          class="thinking-status"
+        >
           <div class="thinking-with-content">
-            <div class="thinking-status-row" @click="toggleExpand">
+            <div
+              class="thinking-status-row"
+              @click="toggleExpand"
+            >
               <!-- Still thinking: animated with transition -->
-              <Transition name="status-text-fade" mode="out-in">
-                <span v-if="isStreaming && !hasContent" key="thinking" class="thinking-text flowing">Thinking</span>
+              <Transition
+                name="status-text-fade"
+                mode="out-in"
+              >
+                <span
+                  v-if="isStreaming && !hasContent"
+                  key="thinking"
+                  class="thinking-text flowing"
+                >Thinking</span>
                 <!-- Done thinking: static "Thought for X seconds" -->
-                <span v-else key="thought" class="thinking-text thought">Thought for {{ formatThinkingTime(displayTime) }}</span>
+                <span
+                  v-else
+                  key="thought"
+                  class="thinking-text thought"
+                >Thought for {{ formatThinkingTime(displayTime) }}</span>
               </Transition>
               <!-- Show time separately only when still thinking -->
               <Transition name="time-fade">
-                <span v-if="isStreaming && !hasContent" class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+                <span
+                  v-if="isStreaming && !hasContent"
+                  class="thinking-time"
+                >{{ formatThinkingTime(thinkingElapsed) }}</span>
               </Transition>
-              <button class="thinking-toggle-btn" :class="{ expanded: isExpanded }">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M6 9l6 6 6-6"/>
+              <button
+                class="thinking-toggle-btn"
+                :class="{ expanded: isExpanded }"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M6 9l6 6 6-6" />
                 </svg>
               </button>
             </div>
             <Transition name="expand">
-              <div v-if="isExpanded" class="thinking-content-wrapper">
-                <div class="thinking-content" v-html="renderedReasoning"></div>
+              <div
+                v-if="isExpanded"
+                class="thinking-content-wrapper"
+              >
+                <div
+                  class="thinking-content"
+                  v-html="renderedReasoning"
+                />
               </div>
             </Transition>
           </div>

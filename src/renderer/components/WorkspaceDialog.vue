@@ -1,12 +1,27 @@
 <template>
   <Teleport to="body">
-    <div v-if="visible" class="dialog-overlay" @click.self="handleClose">
+    <div
+      v-if="visible"
+      class="dialog-overlay"
+      @click.self="handleClose"
+    >
       <div class="dialog workspace-dialog">
         <div class="dialog-header">
           <div class="dialog-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-              <circle cx="12" cy="7" r="4"/>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle
+                cx="12"
+                cy="7"
+                r="4"
+              />
             </svg>
           </div>
           <h3>{{ isEditing ? 'Edit Workspace' : 'Create Workspace' }}</h3>
@@ -17,8 +32,14 @@
           <div class="form-group">
             <label class="form-label">Avatar</label>
             <div class="avatar-picker">
-              <div class="avatar-preview" @click="toggleAvatarPicker">
-                <span v-if="form.avatar.type === 'emoji'" class="preview-emoji">
+              <div
+                class="avatar-preview"
+                @click="toggleAvatarPicker"
+              >
+                <span
+                  v-if="form.avatar.type === 'emoji'"
+                  class="preview-emoji"
+                >
                   {{ form.avatar.value || '?' }}
                 </span>
                 <img
@@ -26,11 +47,31 @@
                   :src="getImageSrc(form.avatar.value)"
                   class="preview-image"
                   alt=""
-                />
-                <span v-else class="preview-placeholder">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="5" x2="12" y2="19"/>
-                    <line x1="5" y1="12" x2="19" y2="12"/>
+                >
+                <span
+                  v-else
+                  class="preview-placeholder"
+                >
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <line
+                      x1="12"
+                      y1="5"
+                      x2="12"
+                      y2="19"
+                    />
+                    <line
+                      x1="5"
+                      y1="12"
+                      x2="19"
+                      y2="12"
+                    />
                   </svg>
                 </span>
               </div>
@@ -53,7 +94,10 @@
             </div>
 
             <!-- Emoji Grid -->
-            <div v-if="showEmojiPicker && avatarPickerMode === 'emoji'" class="emoji-picker">
+            <div
+              v-if="showEmojiPicker && avatarPickerMode === 'emoji'"
+              class="emoji-picker"
+            >
               <div class="emoji-grid">
                 <button
                   v-for="emoji in commonEmojis"
@@ -77,7 +121,7 @@
               type="text"
               placeholder="e.g., English Teacher"
               maxlength="50"
-            />
+            >
           </div>
 
           <!-- Working Directory -->
@@ -90,22 +134,49 @@
                 type="text"
                 placeholder="Select a default working directory..."
                 readonly
-              />
-              <button class="btn secondary browse-btn" @click="selectDirectory">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              >
+              <button
+                class="btn secondary browse-btn"
+                @click="selectDirectory"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 </svg>
                 Browse
               </button>
               <button
                 v-if="form.workingDirectory"
                 class="btn icon-btn clear-btn"
-                @click="form.workingDirectory = ''"
                 title="Clear"
+                @click="form.workingDirectory = ''"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line
+                    x1="18"
+                    y1="6"
+                    x2="6"
+                    y2="18"
+                  />
+                  <line
+                    x1="6"
+                    y1="6"
+                    x2="18"
+                    y2="18"
+                  />
                 </svg>
               </button>
             </div>
@@ -130,12 +201,25 @@
         </div>
 
         <div class="dialog-actions">
-          <button v-if="isEditing" class="btn danger-ghost" @click="handleDelete">
+          <button
+            v-if="isEditing"
+            class="btn danger-ghost"
+            @click="handleDelete"
+          >
             Delete
           </button>
           <div class="dialog-actions-right">
-            <button class="btn secondary" @click="handleClose">Cancel</button>
-            <button class="btn primary" :disabled="!isValid" @click="handleSave">
+            <button
+              class="btn secondary"
+              @click="handleClose"
+            >
+              Cancel
+            </button>
+            <button
+              class="btn primary"
+              :disabled="!isValid"
+              @click="handleSave"
+            >
               {{ isEditing ? 'Save' : 'Create' }}
             </button>
           </div>

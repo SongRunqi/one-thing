@@ -10,16 +10,25 @@
       </div>
       <button
         class="toggle-btn"
-        @click="isExpanded = !isExpanded"
         :title="isExpanded ? 'Collapse' : 'Expand'"
+        @click="isExpanded = !isExpanded"
       >
-        <ChevronDown :size="16" :class="{ rotated: !isExpanded }" />
+        <ChevronDown
+          :size="16"
+          :class="{ rotated: !isExpanded }"
+        />
       </button>
     </div>
 
     <Transition name="expand">
-      <div v-if="isExpanded" class="panel-body">
-        <div class="summary-content" v-html="renderedSummary"></div>
+      <div
+        v-if="isExpanded"
+        class="panel-body"
+      >
+        <div
+          class="summary-content"
+          v-html="renderedSummary"
+        />
       </div>
     </Transition>
   </div>

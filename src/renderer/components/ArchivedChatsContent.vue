@@ -7,33 +7,82 @@
         type="text"
         class="search-input"
         placeholder="Search archived chats..."
-      />
+      >
       <!-- Grouping Mode Toggle -->
       <div class="grouping-toggle">
         <button
           class="toggle-btn"
           :class="{ active: groupingMode === 'date' }"
-          @click="groupingMode = 'date'"
           title="Group by date"
+          @click="groupingMode = 'date'"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-            <line x1="16" y1="2" x2="16" y2="6"/>
-            <line x1="8" y1="2" x2="8" y2="6"/>
-            <line x1="3" y1="10" x2="21" y2="10"/>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect
+              x="3"
+              y="4"
+              width="18"
+              height="18"
+              rx="2"
+              ry="2"
+            />
+            <line
+              x1="16"
+              y1="2"
+              x2="16"
+              y2="6"
+            />
+            <line
+              x1="8"
+              y1="2"
+              x2="8"
+              y2="6"
+            />
+            <line
+              x1="3"
+              y1="10"
+              x2="21"
+              y2="10"
+            />
           </svg>
         </button>
         <button
           class="toggle-btn"
           :class="{ active: groupingMode === 'branch' }"
-          @click="groupingMode = 'branch'"
           title="Group by branch"
+          @click="groupingMode = 'branch'"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="6" y1="3" x2="6" y2="15"/>
-            <circle cx="18" cy="6" r="3"/>
-            <circle cx="6" cy="18" r="3"/>
-            <path d="M18 9a9 9 0 0 1-9 9"/>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line
+              x1="6"
+              y1="3"
+              x2="6"
+              y2="15"
+            />
+            <circle
+              cx="18"
+              cy="6"
+              r="3"
+            />
+            <circle
+              cx="6"
+              cy="18"
+              r="3"
+            />
+            <path d="M18 9a9 9 0 0 1-9 9" />
           </svg>
         </button>
       </div>
@@ -42,14 +91,21 @@
     <!-- Archived Chats List -->
     <div class="content-body">
       <!-- Loading State -->
-      <div v-if="sessionsStore.isLoading" class="loading-state">
-        <div class="loading-spinner"></div>
+      <div
+        v-if="sessionsStore.isLoading"
+        class="loading-state"
+      >
+        <div class="loading-spinner" />
         <p>Loading archived chats...</p>
       </div>
 
       <!-- Grouped Chats -->
       <template v-else-if="groupedChats.length > 0">
-        <div v-for="(group, index) in groupedChats" :key="`${group.label}-${group.sessions[0]?.id || index}`" class="chat-group">
+        <div
+          v-for="(group, index) in groupedChats"
+          :key="`${group.label}-${group.sessions[0]?.id || index}`"
+          class="chat-group"
+        >
           <h4
             class="group-title"
             :class="{ collapsed: collapsedGroups.has(group.label) }"
@@ -59,32 +115,99 @@
             <svg
               class="group-chevron"
               :class="{ collapsed: collapsedGroups.has(group.label) }"
-              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
             >
-              <polyline points="6 9 12 15 18 9"/>
+              <polyline points="6 9 12 15 18 9" />
             </svg>
             <!-- Date icon -->
-            <svg v-if="groupingMode === 'date'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-              <line x1="16" y1="2" x2="16" y2="6"/>
-              <line x1="8" y1="2" x2="8" y2="6"/>
-              <line x1="3" y1="10" x2="21" y2="10"/>
+            <svg
+              v-if="groupingMode === 'date'"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect
+                x="3"
+                y="4"
+                width="18"
+                height="18"
+                rx="2"
+                ry="2"
+              />
+              <line
+                x1="16"
+                y1="2"
+                x2="16"
+                y2="6"
+              />
+              <line
+                x1="8"
+                y1="2"
+                x2="8"
+                y2="6"
+              />
+              <line
+                x1="3"
+                y1="10"
+                x2="21"
+                y2="10"
+              />
             </svg>
             <!-- Branch icon for parent sessions -->
-            <svg v-else-if="group.isParent" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            <svg
+              v-else-if="group.isParent"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
             <!-- Branch icon for branch groups -->
-            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="6" y1="3" x2="6" y2="15"/>
-              <circle cx="18" cy="6" r="3"/>
-              <circle cx="6" cy="18" r="3"/>
-              <path d="M18 9a9 9 0 0 1-9 9"/>
+            <svg
+              v-else
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <line
+                x1="6"
+                y1="3"
+                x2="6"
+                y2="15"
+              />
+              <circle
+                cx="18"
+                cy="6"
+                r="3"
+              />
+              <circle
+                cx="6"
+                cy="18"
+                r="3"
+              />
+              <path d="M18 9a9 9 0 0 1-9 9" />
             </svg>
             {{ group.label }}
             <span class="group-count">{{ group.sessions.length }}</span>
           </h4>
-          <div v-show="!collapsedGroups.has(group.label)" class="chat-list">
+          <div
+            v-show="!collapsedGroups.has(group.label)"
+            class="chat-list"
+          >
             <div
               v-for="session in group.sessions"
               :key="session.id"
@@ -95,50 +218,125 @@
               }"
               @click="viewChat(session)"
             >
-              <div class="chat-icon" :class="{ 'branch-icon': session.parentSessionId }">
+              <div
+                class="chat-icon"
+                :class="{ 'branch-icon': session.parentSessionId }"
+              >
                 <!-- Branch icon -->
-                <svg v-if="session.parentSessionId" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="6" y1="3" x2="6" y2="15"/>
-                  <circle cx="18" cy="6" r="3"/>
-                  <circle cx="6" cy="18" r="3"/>
-                  <path d="M18 9a9 9 0 0 1-9 9"/>
+                <svg
+                  v-if="session.parentSessionId"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line
+                    x1="6"
+                    y1="3"
+                    x2="6"
+                    y2="15"
+                  />
+                  <circle
+                    cx="18"
+                    cy="6"
+                    r="3"
+                  />
+                  <circle
+                    cx="6"
+                    cy="18"
+                    r="3"
+                  />
+                  <path d="M18 9a9 9 0 0 1-9 9" />
                 </svg>
                 <!-- Chat icon -->
-                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                <svg
+                  v-else
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
               </div>
               <div class="chat-info">
-                <h5 class="chat-name">{{ session.name || 'Untitled Chat' }}</h5>
+                <h5 class="chat-name">
+                  {{ session.name || 'Untitled Chat' }}
+                </h5>
                 <p class="chat-meta">
                   <!-- Branch parent indicator -->
-                  <span v-if="session.parentSessionId" class="chat-branch">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="15 18 9 12 15 6"/>
+                  <span
+                    v-if="session.parentSessionId"
+                    class="chat-branch"
+                  >
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <polyline points="15 18 9 12 15 6" />
                     </svg>
                     {{ getParentName(session.parentSessionId) }}
                   </span>
-                  <span v-else class="chat-time">{{ formatTime(session.archivedAt || session.updatedAt) }}</span>
-                  <span v-if="session.messages?.length" class="chat-messages">
+                  <span
+                    v-else
+                    class="chat-time"
+                  >{{ formatTime(session.archivedAt || session.updatedAt) }}</span>
+                  <span
+                    v-if="session.messages?.length"
+                    class="chat-messages"
+                  >
                     {{ session.messages.length }} messages
                   </span>
                   <!-- Show branch count if has children -->
-                  <span v-if="getBranchCount(session.id) > 0" class="chat-branches">
+                  <span
+                    v-if="getBranchCount(session.id) > 0"
+                    class="chat-branches"
+                  >
                     {{ getBranchCount(session.id) }} branch{{ getBranchCount(session.id) > 1 ? 'es' : '' }}
                   </span>
                 </p>
               </div>
               <div class="chat-actions">
-                <button class="action-btn" @click.stop="restoreChat(session)" title="Restore">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="1 4 1 10 7 10"/>
-                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                <button
+                  class="action-btn"
+                  title="Restore"
+                  @click.stop="restoreChat(session)"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
                   </svg>
                 </button>
-                <button class="action-btn danger" @click.stop="confirmDelete(session)" title="Delete permanently">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                <button
+                  class="action-btn danger"
+                  title="Delete permanently"
+                  @click.stop="confirmDelete(session)"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                   </svg>
                 </button>
               </div>
@@ -148,16 +346,40 @@
       </template>
 
       <!-- Empty State -->
-      <div v-else class="empty-state">
+      <div
+        v-else
+        class="empty-state"
+      >
         <div class="empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <polyline points="21 8 21 21 3 21 3 8"/>
-            <rect x="1" y="3" width="22" height="5"/>
-            <line x1="10" y1="12" x2="14" y2="12"/>
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <polyline points="21 8 21 21 3 21 3 8" />
+            <rect
+              x="1"
+              y="3"
+              width="22"
+              height="5"
+            />
+            <line
+              x1="10"
+              y1="12"
+              x2="14"
+              y2="12"
+            />
           </svg>
         </div>
-        <p class="empty-text">No archived chats</p>
-        <p class="empty-hint">Deleted chats will appear here</p>
+        <p class="empty-text">
+          No archived chats
+        </p>
+        <p class="empty-hint">
+          Deleted chats will appear here
+        </p>
       </div>
     </div>
   </div>

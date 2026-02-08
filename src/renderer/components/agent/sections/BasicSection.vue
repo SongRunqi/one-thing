@@ -3,13 +3,22 @@
     <!-- Avatar Picker - Compact Popover Style -->
     <div class="form-group">
       <label class="form-label">Avatar</label>
-      <div class="avatar-picker-compact" ref="pickerRef">
+      <div
+        ref="pickerRef"
+        class="avatar-picker-compact"
+      >
         <!-- Clickable Preview -->
-        <div class="avatar-trigger" @click="showPicker = !showPicker">
-          <div class="avatar-preview" :style="previewStyle">
+        <div
+          class="avatar-trigger"
+          @click="showPicker = !showPicker"
+        >
+          <div
+            class="avatar-preview"
+            :style="previewStyle"
+          >
             <component
-              v-if="avatar.type === 'icon' && avatar.icon"
               :is="getIconComponent(avatar.icon)"
+              v-if="avatar.type === 'icon' && avatar.icon"
               :size="28"
               :stroke-width="1.5"
               class="avatar-icon"
@@ -19,16 +28,28 @@
               :src="getImageSrc(avatar.value)"
               class="preview-image"
               alt=""
+            >
+            <Bot
+              v-else
+              :size="28"
+              :stroke-width="1.5"
+              class="avatar-icon"
             />
-            <Bot v-else :size="28" :stroke-width="1.5" class="avatar-icon" />
           </div>
           <span class="avatar-hint">Click to customize</span>
-          <ChevronDown :size="16" class="avatar-chevron" :class="{ open: showPicker }" />
+          <ChevronDown
+            :size="16"
+            class="avatar-chevron"
+            :class="{ open: showPicker }"
+          />
         </div>
 
         <!-- Popover -->
         <Transition name="popover">
-          <div v-if="showPicker" class="avatar-popover">
+          <div
+            v-if="showPicker"
+            class="avatar-popover"
+          >
             <!-- Icon Selection -->
             <div class="popover-section">
               <span class="popover-label">Icon</span>
@@ -38,10 +59,14 @@
                   :key="iconName"
                   class="icon-btn"
                   :class="{ selected: avatar.type === 'icon' && avatar.icon === iconName }"
-                  @click="selectIcon(iconName)"
                   :title="iconName"
+                  @click="selectIcon(iconName)"
                 >
-                  <component :is="getIconComponent(iconName)" :size="18" :stroke-width="1.5" />
+                  <component
+                    :is="getIconComponent(iconName)"
+                    :size="18"
+                    :stroke-width="1.5"
+                  />
                 </button>
               </div>
             </div>
@@ -56,8 +81,8 @@
                   class="gradient-btn"
                   :class="{ selected: avatar.gradient === gradient.id }"
                   :style="{ background: gradient.value }"
-                  @click="selectGradient(gradient.id)"
                   :title="gradient.name"
+                  @click="selectGradient(gradient.id)"
                 />
               </div>
             </div>
@@ -66,8 +91,14 @@
             <div class="popover-divider" />
 
             <!-- Image Upload -->
-            <button class="upload-btn" @click="selectImage">
-              <ImageIcon :size="16" :stroke-width="2" />
+            <button
+              class="upload-btn"
+              @click="selectImage"
+            >
+              <ImageIcon
+                :size="16"
+                :stroke-width="2"
+              />
               Upload Custom Image
             </button>
           </div>
@@ -80,12 +111,12 @@
       <label class="form-label">Name</label>
       <input
         :value="name"
-        @input="$emit('update:name', ($event.target as HTMLInputElement).value)"
         class="form-input"
         type="text"
         placeholder="e.g., Git Helper, API Client"
         maxlength="50"
-      />
+        @input="$emit('update:name', ($event.target as HTMLInputElement).value)"
+      >
     </div>
 
     <!-- Description -->
@@ -93,20 +124,26 @@
       <label class="form-label">Description</label>
       <input
         :value="description"
-        @input="$emit('update:description', ($event.target as HTMLInputElement).value)"
         class="form-input"
         type="text"
         placeholder="A short description of what this agent does"
         maxlength="200"
-      />
+        @input="$emit('update:description', ($event.target as HTMLInputElement).value)"
+      >
       <span class="form-hint">This will be shown to the main LLM when selecting this agent.</span>
     </div>
 
     <!-- Memory Toggle (Prominent) -->
     <div class="form-group">
-      <div class="memory-card" :class="{ enabled: enableMemory }">
+      <div
+        class="memory-card"
+        :class="{ enabled: enableMemory }"
+      >
         <div class="memory-info">
-          <BrainIcon :size="20" :stroke-width="2" />
+          <BrainIcon
+            :size="20"
+            :stroke-width="2"
+          />
           <div class="memory-text">
             <span class="memory-title">Agent Memory</span>
             <span class="memory-desc">Include user profile and relationship context in conversations</span>
@@ -124,30 +161,42 @@
     <div class="form-group">
       <label class="form-label">Save Location</label>
       <div class="source-options">
-        <label class="source-option" :class="{ active: source === 'user' }">
+        <label
+          class="source-option"
+          :class="{ active: source === 'user' }"
+        >
           <input
             type="radio"
             :checked="source === 'user'"
-            @change="$emit('update:source', 'user')"
             class="source-radio"
-          />
+            @change="$emit('update:source', 'user')"
+          >
           <div class="source-content">
-            <UserIcon :size="16" :stroke-width="2" />
+            <UserIcon
+              :size="16"
+              :stroke-width="2"
+            />
             <div>
               <span class="source-title">User</span>
               <span class="source-desc">Available in all projects</span>
             </div>
           </div>
         </label>
-        <label class="source-option" :class="{ active: source === 'project' }">
+        <label
+          class="source-option"
+          :class="{ active: source === 'project' }"
+        >
           <input
             type="radio"
             :checked="source === 'project'"
-            @change="$emit('update:source', 'project')"
             class="source-radio"
-          />
+            @change="$emit('update:source', 'project')"
+          >
           <div class="source-content">
-            <FolderOpen :size="16" :stroke-width="2" />
+            <FolderOpen
+              :size="16"
+              :stroke-width="2"
+            />
             <div>
               <span class="source-title">Project</span>
               <span class="source-desc">Only in current workspace</span>

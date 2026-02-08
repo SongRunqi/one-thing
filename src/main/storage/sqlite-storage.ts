@@ -466,7 +466,7 @@ export class SQLiteAgentMemoryStorage implements IAgentMemoryStorage {
     // Strengthen memory
     const now = Date.now()
     const newRecallCount = row.recall_count + 1
-    let newStrength = Math.min(100, row.strength + 5)
+    const newStrength = Math.min(100, row.strength + 5)
     let newVividness = row.vividness
 
     // Upgrade vividness based on recall count

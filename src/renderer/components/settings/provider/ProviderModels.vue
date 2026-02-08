@@ -1,11 +1,13 @@
 <template>
   <section class="detail-section">
     <div class="section-header">
-      <h3 class="section-title">Models <span class="count-badge">{{ selectedCount }} selected</span></h3>
+      <h3 class="section-title">
+        Models <span class="count-badge">{{ selectedCount }} selected</span>
+      </h3>
       <button
         class="refresh-btn"
-        @click="$emit('refresh')"
         :disabled="isLoading"
+        @click="$emit('refresh')"
       >
         <svg
           :class="{ spinning: isLoading }"
@@ -16,22 +18,40 @@
           stroke="currentColor"
           stroke-width="2"
         >
-          <path d="M23 4v6h-6M1 20v-6h6"/>
-          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+          <path d="M23 4v6h-6M1 20v-6h6" />
+          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
         </svg>
         {{ isLoading ? 'Loading...' : 'Refresh' }}
       </button>
     </div>
 
-    <div v-if="error" class="error-message">
+    <div
+      v-if="error"
+      class="error-message"
+    >
       {{ error }}
     </div>
 
     <!-- Search box -->
-    <div v-if="models.length > 0" class="model-search">
-      <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"/>
-        <path d="M21 21l-4.35-4.35"/>
+    <div
+      v-if="models.length > 0"
+      class="model-search"
+    >
+      <svg
+        class="search-icon"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <circle
+          cx="11"
+          cy="11"
+          r="8"
+        />
+        <path d="M21 21l-4.35-4.35" />
       </svg>
       <input
         :value="searchQuery"
@@ -39,20 +59,30 @@
         class="search-input"
         placeholder="Search models..."
         @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
-      />
+      >
       <button
         v-if="searchQuery"
         class="search-clear"
         @click="$emit('update:searchQuery', '')"
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M18 6L6 18M6 6l12 12"/>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M18 6L6 18M6 6l12 12" />
         </svg>
       </button>
     </div>
 
     <!-- Model List -->
-    <div v-if="filteredModels.length > 0" class="model-list">
+    <div
+      v-if="filteredModels.length > 0"
+      class="model-list"
+    >
       <label
         v-for="model in filteredModels"
         :key="model.id"
@@ -60,28 +90,58 @@
         @click="$emit('toggle', model.id)"
       >
         <span class="model-checkbox">
-          <svg v-if="isModelSelected(model.id)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-            <path d="M20 6L9 17l-5-5"/>
+          <svg
+            v-if="isModelSelected(model.id)"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+          >
+            <path d="M20 6L9 17l-5-5" />
           </svg>
         </span>
         <span class="model-name">{{ model.name || model.id }}</span>
         <span class="model-caps">
-          <Eye v-if="hasVision(model)" :size="12" title="Vision" />
-          <Image v-if="hasImageGeneration(model)" :size="12" title="Image Generation" />
-          <Wrench v-if="hasTools(model)" :size="12" title="Tool Use" />
-          <Brain v-if="hasReasoning(model)" :size="12" title="Reasoning" />
+          <Eye
+            v-if="hasVision(model)"
+            :size="12"
+            title="Vision"
+          />
+          <Image
+            v-if="hasImageGeneration(model)"
+            :size="12"
+            title="Image Generation"
+          />
+          <Wrench
+            v-if="hasTools(model)"
+            :size="12"
+            title="Tool Use"
+          />
+          <Brain
+            v-if="hasReasoning(model)"
+            :size="12"
+            title="Reasoning"
+          />
         </span>
         <span class="model-context">{{ formatContextLength(model.context_length) }}</span>
       </label>
     </div>
 
     <!-- No results -->
-    <div v-else-if="searchQuery" class="no-results">
+    <div
+      v-else-if="searchQuery"
+      class="no-results"
+    >
       No models match "{{ searchQuery }}"
     </div>
 
     <!-- Add custom model -->
-    <div v-else class="add-model-section">
+    <div
+      v-else
+      class="add-model-section"
+    >
       <div class="add-model-row">
         <input
           :value="newModelInput"
@@ -90,12 +150,18 @@
           placeholder="Enter model ID (e.g., gpt-4o)"
           @input="$emit('update:newModelInput', ($event.target as HTMLInputElement).value)"
           @keydown.enter="$emit('add-custom')"
-        />
-        <button class="add-model-btn" @click="$emit('add-custom')" :disabled="!newModelInput.trim()">
+        >
+        <button
+          class="add-model-btn"
+          :disabled="!newModelInput.trim()"
+          @click="$emit('add-custom')"
+        >
           Add
         </button>
       </div>
-      <p class="form-hint">Enter model name or click Refresh to fetch available models</p>
+      <p class="form-hint">
+        Enter model name or click Refresh to fetch available models
+      </p>
     </div>
   </section>
 </template>

@@ -467,7 +467,7 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
   console.log(`[Skills] User skills path: ${userSkillsPath}, found ${userSkills.length} skills:`, userSkills.map(s => s.name))
 
   // 3. Project skills (with upward traversal if workingDirectory provided)
-  let projectSkills: SkillDefinition[] = []
+  const projectSkills: SkillDefinition[] = []
   if (workingDirectory) {
     // Use upward traversal to find all .claude/skills directories
     // IMPORTANT: Exclude user skills path to avoid duplication (it's already loaded above)

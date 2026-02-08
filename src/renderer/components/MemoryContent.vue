@@ -3,18 +3,46 @@
     <!-- Header -->
     <div class="memory-header">
       <div class="header-left">
-        <h2 class="title">Memory Files</h2>
-        <span class="file-count" v-if="!isLoading">{{ memoryStore.totalFiles }} files</span>
+        <h2 class="title">
+          Memory Files
+        </h2>
+        <span
+          v-if="!isLoading"
+          class="file-count"
+        >{{ memoryStore.totalFiles }} files</span>
       </div>
       <div class="header-actions">
-        <button class="action-btn" @click="handleExport" :disabled="isExporting || memoryStore.totalFiles === 0" title="Export">
-          <Download :size="16" :stroke-width="2" />
+        <button
+          class="action-btn"
+          :disabled="isExporting || memoryStore.totalFiles === 0"
+          title="Export"
+          @click="handleExport"
+        >
+          <Download
+            :size="16"
+            :stroke-width="2"
+          />
         </button>
-        <button class="action-btn" @click="handleImport" :disabled="isImporting" title="Import">
-          <Upload :size="16" :stroke-width="2" />
+        <button
+          class="action-btn"
+          :disabled="isImporting"
+          title="Import"
+          @click="handleImport"
+        >
+          <Upload
+            :size="16"
+            :stroke-width="2"
+          />
         </button>
-        <button class="action-btn" @click="openMemoryFolder" title="Open folder">
-          <FolderOpen :size="16" :stroke-width="2" />
+        <button
+          class="action-btn"
+          title="Open folder"
+          @click="openMemoryFolder"
+        >
+          <FolderOpen
+            :size="16"
+            :stroke-width="2"
+          />
         </button>
       </div>
     </div>
@@ -22,22 +50,36 @@
     <!-- Search -->
     <div class="search-section">
       <div class="search-wrapper">
-        <Search class="search-icon" :size="14" :stroke-width="2" />
+        <Search
+          class="search-icon"
+          :size="14"
+          :stroke-width="2"
+        />
         <input
           v-model="searchQuery"
           type="text"
           class="search-input"
           placeholder="Search memories..."
           @input="memoryStore.setSearchQuery(searchQuery)"
-        />
-        <button v-if="searchQuery" class="clear-btn" @click="clearSearch">
-          <X :size="14" :stroke-width="2" />
+        >
+        <button
+          v-if="searchQuery"
+          class="clear-btn"
+          @click="clearSearch"
+        >
+          <X
+            :size="14"
+            :stroke-width="2"
+          />
         </button>
       </div>
     </div>
 
     <!-- Tag Filters -->
-    <div class="tag-section" v-if="memoryStore.tagCloud.length > 0">
+    <div
+      v-if="memoryStore.tagCloud.length > 0"
+      class="tag-section"
+    >
       <!-- Collapsed view: show top tags + expand button -->
       <div class="tag-filters-row">
         <span class="tag-label">Tags:</span>
@@ -58,7 +100,10 @@
           class="expand-btn"
           @click="tagExpanded = !tagExpanded"
         >
-          <ChevronDown :size="14" :class="{ rotated: tagExpanded }" />
+          <ChevronDown
+            :size="14"
+            :class="{ rotated: tagExpanded }"
+          />
           <span>{{ tagExpanded ? 'Less' : `+${memoryStore.tagCloud.length - 5} more` }}</span>
         </button>
         <button
@@ -71,7 +116,10 @@
       </div>
 
       <!-- Expanded view: show all tags grouped -->
-      <div v-if="tagExpanded" class="tag-expanded">
+      <div
+        v-if="tagExpanded"
+        class="tag-expanded"
+      >
         <div class="tag-group">
           <div class="tag-group-header">
             <span class="group-label">Popular</span>
@@ -90,7 +138,10 @@
             </button>
           </div>
         </div>
-        <div class="tag-group" v-if="otherTags.length > 0">
+        <div
+          v-if="otherTags.length > 0"
+          class="tag-group"
+        >
           <div class="tag-group-header">
             <span class="group-label">Other</span>
             <span class="group-count">{{ otherTags.length }}</span>
@@ -111,21 +162,46 @@
     </div>
 
     <!-- Loading State -->
-    <div v-if="isLoading" class="loading-state">
-      <div class="loading-spinner"></div>
+    <div
+      v-if="isLoading"
+      class="loading-state"
+    >
+      <div class="loading-spinner" />
       <span>Loading memories...</span>
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="memoryStore.filteredFiles.length === 0" class="empty-state">
-      <FileText :size="48" :stroke-width="1.5" class="empty-icon" />
-      <p class="empty-title" v-if="memoryStore.totalFiles === 0">No memory files yet</p>
-      <p class="empty-title" v-else>No files match your search</p>
-      <p class="empty-desc">Memory files are created when AI learns from conversations.</p>
+    <div
+      v-else-if="memoryStore.filteredFiles.length === 0"
+      class="empty-state"
+    >
+      <FileText
+        :size="48"
+        :stroke-width="1.5"
+        class="empty-icon"
+      />
+      <p
+        v-if="memoryStore.totalFiles === 0"
+        class="empty-title"
+      >
+        No memory files yet
+      </p>
+      <p
+        v-else
+        class="empty-title"
+      >
+        No files match your search
+      </p>
+      <p class="empty-desc">
+        Memory files are created when AI learns from conversations.
+      </p>
     </div>
 
     <!-- File List -->
-    <div v-else class="file-list">
+    <div
+      v-else
+      class="file-list"
+    >
       <div
         v-for="file in memoryStore.filteredFiles"
         :key="file.path"
@@ -133,10 +209,18 @@
         @click="openEditor(file.path)"
       >
         <div class="file-info">
-          <div class="file-title">{{ file.title }}</div>
-          <div class="file-path">{{ file.path }}</div>
+          <div class="file-title">
+            {{ file.title }}
+          </div>
+          <div class="file-path">
+            {{ file.path }}
+          </div>
           <div class="file-meta">
-            <div v-if="file.metadata.tags?.length" class="file-tags" :title="file.metadata.tags.join(', ')">
+            <div
+              v-if="file.metadata.tags?.length"
+              class="file-tags"
+              :title="file.metadata.tags.join(', ')"
+            >
               <button
                 v-for="tag in file.metadata.tags.slice(0, 2)"
                 :key="tag"
@@ -146,15 +230,26 @@
               >
                 {{ tag }}
               </button>
-              <span v-if="file.metadata.tags.length > 2" class="more-tags" :title="file.metadata.tags.slice(2).join(', ')">
+              <span
+                v-if="file.metadata.tags.length > 2"
+                class="more-tags"
+                :title="file.metadata.tags.slice(2).join(', ')"
+              >
                 +{{ file.metadata.tags.length - 2 }}
               </span>
             </div>
             <span class="file-date">{{ formatDate(file.metadata.updated || file.metadata.created) }}</span>
           </div>
         </div>
-        <button class="delete-btn" @click.stop="handleDelete(file.path)" title="Delete">
-          <Trash2 :size="14" :stroke-width="2" />
+        <button
+          class="delete-btn"
+          title="Delete"
+          @click.stop="handleDelete(file.path)"
+        >
+          <Trash2
+            :size="14"
+            :stroke-width="2"
+          />
         </button>
       </div>
     </div>

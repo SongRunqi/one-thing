@@ -1,18 +1,49 @@
 <template>
   <div class="diff-view">
     <!-- Toolbar: only show when file header is disabled -->
-    <div v-if="hasContent && !loading && !error && showToolbar && !showFileHeader" class="diff-toolbar">
+    <div
+      v-if="hasContent && !loading && !error && showToolbar && !showFileHeader"
+      class="diff-toolbar"
+    >
       <div class="toolbar-left">
         <button
           v-if="allowStyleToggle"
           class="toolbar-btn"
-          @click="toggleDiffStyle"
           :title="currentDiffStyle === 'split' ? 'Switch to unified view' : 'Switch to split view'"
+          @click="toggleDiffStyle"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect v-if="currentDiffStyle === 'split'" x="3" y="3" width="7" height="18" rx="2"/>
-            <rect v-if="currentDiffStyle === 'split'" x="14" y="3" width="7" height="18" rx="2"/>
-            <rect v-if="currentDiffStyle === 'unified'" x="3" y="3" width="18" height="18" rx="2"/>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect
+              v-if="currentDiffStyle === 'split'"
+              x="3"
+              y="3"
+              width="7"
+              height="18"
+              rx="2"
+            />
+            <rect
+              v-if="currentDiffStyle === 'split'"
+              x="14"
+              y="3"
+              width="7"
+              height="18"
+              rx="2"
+            />
+            <rect
+              v-if="currentDiffStyle === 'unified'"
+              x="3"
+              y="3"
+              width="18"
+              height="18"
+              rx="2"
+            />
           </svg>
           <span>{{ currentDiffStyle === 'split' ? 'Split' : 'Unified' }}</span>
         </button>
@@ -21,33 +52,69 @@
         <button
           v-if="allowCopy"
           class="toolbar-btn"
-          @click="copyDiffContent"
           :title="copied ? 'Copied!' : 'Copy diff'"
+          @click="copyDiffContent"
         >
-          <svg v-if="!copied" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          <svg
+            v-if="!copied"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect
+              x="9"
+              y="9"
+              width="13"
+              height="13"
+              rx="2"
+              ry="2"
+            />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
-          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="20 6 9 17 4 12"/>
+          <svg
+            v-else
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <polyline points="20 6 9 17 4 12" />
           </svg>
           <span>{{ copied ? 'Copied' : 'Copy' }}</span>
         </button>
       </div>
     </div>
 
-    <div v-if="loading" class="diff-loading">
-      <span class="loading-spinner"></span>
+    <div
+      v-if="loading"
+      class="diff-loading"
+    >
+      <span class="loading-spinner" />
       Loading diff...
     </div>
-    <div v-else-if="error" class="diff-error">
+    <div
+      v-else-if="error"
+      class="diff-error"
+    >
       {{ error }}
     </div>
-    <div v-else-if="!hasContent" class="diff-empty">
+    <div
+      v-else-if="!hasContent"
+      class="diff-empty"
+    >
       No changes
     </div>
     <!-- @pierre/diffs will create its own diffs-container element inside this wrapper -->
-    <div v-show="hasContent && !loading && !error" ref="containerWrapperRef" class="diff-content"></div>
+    <div
+      v-show="hasContent && !loading && !error"
+      ref="containerWrapperRef"
+      class="diff-content"
+    />
   </div>
 </template>
 

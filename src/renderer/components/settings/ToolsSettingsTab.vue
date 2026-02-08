@@ -2,7 +2,9 @@
   <div class="tab-content">
     <!-- Enable Tool Calls -->
     <section class="settings-section">
-      <h3 class="section-title">Tool Settings</h3>
+      <h3 class="section-title">
+        Tool Settings
+      </h3>
 
       <div class="form-group">
         <div class="toggle-row">
@@ -12,17 +14,25 @@
               type="checkbox"
               :checked="settings.tools.enableToolCalls"
               @change="updateEnableToolCalls(($event.target as HTMLInputElement).checked)"
-            />
-            <span class="toggle-slider"></span>
+            >
+            <span class="toggle-slider" />
           </label>
         </div>
-        <p class="form-hint">Allow AI to use tools during conversations</p>
+        <p class="form-hint">
+          Allow AI to use tools during conversations
+        </p>
       </div>
 
       <!-- Tool Agent Configuration -->
-      <div class="form-group tool-agent-config" v-if="settings.tools.enableToolCalls">
+      <div
+        v-if="settings.tools.enableToolCalls"
+        class="form-group tool-agent-config"
+      >
         <label class="form-label">Tool Agent Configuration</label>
-        <p class="form-hint" style="margin-bottom: 12px;">
+        <p
+          class="form-hint"
+          style="margin-bottom: 12px;"
+        >
           Configure which provider and model the Tool Agent uses. Use a cheaper model for lower cost.
         </p>
         <div class="selector-row">
@@ -33,7 +43,9 @@
               :value="settings.tools.toolAgentSettings?.providerId || ''"
               @change="updateToolAgentProvider(($event.target as HTMLSelectElement).value)"
             >
-              <option value="">Same as main</option>
+              <option value="">
+                Same as main
+              </option>
               <option
                 v-for="providerId in availableProviders"
                 :key="providerId"
@@ -50,7 +62,9 @@
               :value="settings.tools.toolAgentSettings?.model || ''"
               @change="updateToolAgentModel(($event.target as HTMLSelectElement).value)"
             >
-              <option value="">{{ toolAgentModelPlaceholder }}</option>
+              <option value="">
+                {{ toolAgentModelPlaceholder }}
+              </option>
               <option
                 v-for="model in toolAgentAvailableModels"
                 :key="model"
@@ -65,14 +79,25 @@
     </section>
 
     <!-- Available Tools -->
-    <section class="settings-section" v-if="settings.tools.enableToolCalls">
-      <h3 class="section-title">Available Tools</h3>
+    <section
+      v-if="settings.tools.enableToolCalls"
+      class="settings-section"
+    >
+      <h3 class="section-title">
+        Available Tools
+      </h3>
 
-      <div v-if="displayTools.length === 0" class="empty-state">
+      <div
+        v-if="displayTools.length === 0"
+        class="empty-state"
+      >
         <p>No tools available</p>
       </div>
 
-      <div v-else class="tools-list">
+      <div
+        v-else
+        class="tools-list"
+      >
         <div
           v-for="tool in displayTools"
           :key="tool.id"
@@ -83,7 +108,9 @@
               <span class="tool-name">{{ tool.name }}</span>
               <span :class="['tool-category', tool.category]">{{ tool.category }}</span>
             </div>
-            <p class="tool-description">{{ tool.description }}</p>
+            <p class="tool-description">
+              {{ tool.description }}
+            </p>
           </div>
           <div class="tool-controls">
             <div class="toggle-row">
@@ -93,8 +120,8 @@
                   type="checkbox"
                   :checked="getToolEnabled(tool.id)"
                   @change="setToolEnabled(tool.id, ($event.target as HTMLInputElement).checked)"
-                />
-                <span class="toggle-slider"></span>
+                >
+                <span class="toggle-slider" />
               </label>
             </div>
             <div class="toggle-row">
@@ -103,10 +130,10 @@
                 <input
                   type="checkbox"
                   :checked="getToolAutoExecute(tool.id)"
-                  @change="setToolAutoExecute(tool.id, ($event.target as HTMLInputElement).checked)"
                   :disabled="!getToolEnabled(tool.id)"
-                />
-                <span class="toggle-slider"></span>
+                  @change="setToolAutoExecute(tool.id, ($event.target as HTMLInputElement).checked)"
+                >
+                <span class="toggle-slider" />
               </label>
             </div>
           </div>
@@ -115,8 +142,13 @@
     </section>
 
     <!-- Web Search Settings -->
-    <section class="settings-section" v-if="settings.tools.enableToolCalls && hasWebSearchTool">
-      <h3 class="section-title">Web Search</h3>
+    <section
+      v-if="settings.tools.enableToolCalls && hasWebSearchTool"
+      class="settings-section"
+    >
+      <h3 class="section-title">
+        Web Search
+      </h3>
       
       <div class="form-group">
         <label class="form-label">Brave Search API Key</label>
@@ -124,12 +156,16 @@
           type="password"
           class="form-input"
           :value="settings.tools.webSearch?.braveApiKey || ''"
-          @input="updateBraveApiKey(($event.target as HTMLInputElement).value)"
           placeholder="Enter your Brave Search API key"
-        />
+          @input="updateBraveApiKey(($event.target as HTMLInputElement).value)"
+        >
         <p class="form-hint">
           Get your free API key at 
-          <a href="https://brave.com/search/api/" target="_blank" class="link">brave.com/search/api</a>
+          <a
+            href="https://brave.com/search/api/"
+            target="_blank"
+            class="link"
+          >brave.com/search/api</a>
           (2,000 queries/month free)
         </p>
       </div>

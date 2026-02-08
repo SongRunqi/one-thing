@@ -22,7 +22,7 @@ import { app } from 'electron'
  */
 function wrapWithDevTools<T extends LanguageModel>(model: T): T {
   if (app.isPackaged) return model
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   return wrapLanguageModel({
     model: model as any,
     middleware: devToolsMiddleware(),
@@ -366,7 +366,7 @@ export async function* streamChatResponseWithReasoning(
   // For reasoning models, use fullStream to capture reasoning
   // For non-reasoning models, use textStream for simplicity
   if (isReasoning) {
-    let accumulatedReasoning: string[] = []
+    const accumulatedReasoning: string[] = []
     let chunkCount = 0
 
     for await (const chunk of stream.fullStream) {

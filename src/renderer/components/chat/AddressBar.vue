@@ -7,14 +7,23 @@
       :title="workingDirectory || 'Set working directory'"
       @click="$emit('openDirectoryPicker')"
     >
-      <Folder :size="12" :stroke-width="2" />
-      <span v-if="workingDirectory" class="prefix-name">
+      <Folder
+        :size="12"
+        :stroke-width="2"
+      />
+      <span
+        v-if="workingDirectory"
+        class="prefix-name"
+      >
         {{ workingDirName }}
       </span>
     </button>
 
     <!-- Separator -->
-    <span v-if="workingDirectory" class="address-bar-separator">/</span>
+    <span
+      v-if="workingDirectory"
+      class="address-bar-separator"
+    >/</span>
 
     <!-- Title (editable) -->
     <input
@@ -25,7 +34,7 @@
       @blur="saveTitle"
       @keydown.enter="saveTitle"
       @keydown.escape="cancelEdit"
-    />
+    >
     <span
       v-else
       class="address-bar-title"
@@ -38,11 +47,14 @@
     <button
       class="address-bar-agent"
       :class="{ 'has-agent': agent }"
-      @click="toggleAgentDropdown"
       title="Select agent"
+      @click="toggleAgentDropdown"
     >
       <template v-if="agent">
-        <span v-if="agent.avatar?.type === 'emoji'" class="agent-avatar-emoji">
+        <span
+          v-if="agent.avatar?.type === 'emoji'"
+          class="agent-avatar-emoji"
+        >
           {{ agent.avatar?.value }}
         </span>
         <img
@@ -50,10 +62,18 @@
           :src="'file://' + agent.avatar.value"
           class="agent-avatar-img"
           alt=""
-        />
+        >
       </template>
-      <MessageSquare v-else :size="14" :stroke-width="2" />
-      <ChevronDown class="agent-chevron" :size="10" :stroke-width="2.5" />
+      <MessageSquare
+        v-else
+        :size="14"
+        :stroke-width="2"
+      />
+      <ChevronDown
+        class="agent-chevron"
+        :size="10"
+        :stroke-width="2.5"
+      />
     </button>
   </div>
 </template>

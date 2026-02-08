@@ -9,27 +9,59 @@
     }"
   >
     <!-- Header -->
-    <div class="agent-header" @click="handleTogglePanel">
+    <div
+      class="agent-header"
+      @click="handleTogglePanel"
+    >
       <span class="agent-icon">{{ agentIcon }}</span>
       <span class="agent-name">{{ agentName }}</span>
-      <span class="agent-status" :class="step.status">
-        <span v-if="isRunning" class="status-spinner"></span>
+      <span
+        class="agent-status"
+        :class="step.status"
+      >
+        <span
+          v-if="isRunning"
+          class="status-spinner"
+        />
         {{ statusText }}
       </span>
       <span class="progress">{{ completedCount }}/{{ totalCount }}</span>
-      <span class="expand-icon" :class="{ rotated: isExpanded }">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-          <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <span
+        class="expand-icon"
+        :class="{ rotated: isExpanded }"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="currentColor"
+        >
+          <path
+            d="M3 4.5L6 7.5L9 4.5"
+            stroke="currentColor"
+            stroke-width="1.5"
+            fill="none"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
         </svg>
       </span>
     </div>
 
     <!-- Task Description -->
-    <div v-if="task" class="agent-task">{{ task }}</div>
+    <div
+      v-if="task"
+      class="agent-task"
+    >
+      {{ task }}
+    </div>
 
     <!-- Tool Calls List -->
     <Transition name="collapse">
-      <div v-show="isExpanded" class="tool-calls-container">
+      <div
+        v-show="isExpanded"
+        class="tool-calls-container"
+      >
         <div
           v-for="toolStep in childSteps"
           :key="toolStep.id"
@@ -37,36 +69,75 @@
           :class="toolStep.status"
         >
           <!-- Tool Call Row -->
-          <div class="tool-call-row" @click="handleToggleToolCall(toolStep)">
+          <div
+            class="tool-call-row"
+            @click="handleToggleToolCall(toolStep)"
+          >
             <span class="status-icon">{{ getStatusIcon(toolStep) }}</span>
             <span class="tool-name">{{ getToolDisplayName(toolStep) }}</span>
             <span class="tool-preview">{{ getPreview(toolStep) }}</span>
-            <span v-if="hasDetail(toolStep)" class="detail-toggle" :class="{ rotated: isToolExpanded(toolStep) }">
-              <svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor">
-                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <span
+              v-if="hasDetail(toolStep)"
+              class="detail-toggle"
+              :class="{ rotated: isToolExpanded(toolStep) }"
+            >
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 12 12"
+                fill="currentColor"
+              >
+                <path
+                  d="M3 4.5L6 7.5L9 4.5"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  fill="none"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </span>
           </div>
 
           <!-- Tool Detail (if expanded) -->
           <Transition name="slide">
-            <div v-if="isToolExpanded(toolStep) && hasDetail(toolStep)" class="tool-detail">
-              <pre v-if="toolStep.result" class="result">{{ formatResult(toolStep.result) }}</pre>
-              <pre v-if="toolStep.error" class="error">{{ toolStep.error }}</pre>
+            <div
+              v-if="isToolExpanded(toolStep) && hasDetail(toolStep)"
+              class="tool-detail"
+            >
+              <pre
+                v-if="toolStep.result"
+                class="result"
+              >{{ formatResult(toolStep.result) }}</pre>
+              <pre
+                v-if="toolStep.error"
+                class="error"
+              >{{ toolStep.error }}</pre>
             </div>
           </Transition>
 
           <!-- Permission Buttons -->
-          <div v-if="toolStep.status === 'awaiting-confirmation'" class="confirm-buttons" @click.stop>
+          <div
+            v-if="toolStep.status === 'awaiting-confirmation'"
+            class="confirm-buttons"
+            @click.stop
+          >
             <AllowSplitButton @confirm="(response) => handleConfirm(toolStep, response)" />
-            <button class="btn-reject" @click.stop="handleReject(toolStep)" title="Reject (D/Esc)">
+            <button
+              class="btn-reject"
+              title="Reject (D/Esc)"
+              @click.stop="handleReject(toolStep)"
+            >
               Reject
             </button>
           </div>
         </div>
 
         <!-- Empty state -->
-        <div v-if="childSteps.length === 0" class="empty-state">
+        <div
+          v-if="childSteps.length === 0"
+          class="empty-state"
+        >
           <span v-if="isRunning">Waiting for tool calls...</span>
           <span v-else>No tool calls</span>
         </div>
@@ -74,18 +145,45 @@
     </Transition>
 
     <!-- Agent Output Section (only when completed/failed) -->
-    <div v-if="agentOutput" class="agent-output-section">
-      <div class="output-header" @click="toggleOutput">
+    <div
+      v-if="agentOutput"
+      class="agent-output-section"
+    >
+      <div
+        class="output-header"
+        @click="toggleOutput"
+      >
         <span class="output-label">📤 Output to LLM</span>
-        <span class="expand-icon" :class="{ rotated: isOutputExpanded }">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-            <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <span
+          class="expand-icon"
+          :class="{ rotated: isOutputExpanded }"
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="currentColor"
+          >
+            <path
+              d="M3 4.5L6 7.5L9 4.5"
+              stroke="currentColor"
+              stroke-width="1.5"
+              fill="none"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
           </svg>
         </span>
       </div>
       <!-- Wrapper for animation, separate from scroll container -->
-      <div v-show="isOutputExpanded" class="output-wrapper">
-        <div class="agent-output-markdown" v-html="renderedOutput"></div>
+      <div
+        v-show="isOutputExpanded"
+        class="output-wrapper"
+      >
+        <div
+          class="agent-output-markdown"
+          v-html="renderedOutput"
+        />
       </div>
     </div>
   </div>

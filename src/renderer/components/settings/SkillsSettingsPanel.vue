@@ -4,21 +4,47 @@
     <section class="settings-section">
       <div class="section-header">
         <div>
-          <h3 class="section-title">Claude Code Skills</h3>
+          <h3 class="section-title">
+            Claude Code Skills
+          </h3>
           <p class="section-description">
             Skills are loaded from <code>~/.claude/skills/</code> (user) and <code>.claude/skills/</code> (project)
           </p>
         </div>
         <div class="header-actions">
-          <button class="action-btn" @click="refreshSkills" :disabled="isLoading" title="Refresh skills">
-            <svg :class="{ spinning: isLoading }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M23 4v6h-6M1 20v-6h6"/>
-              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+          <button
+            class="action-btn"
+            :disabled="isLoading"
+            title="Refresh skills"
+            @click="refreshSkills"
+          >
+            <svg
+              :class="{ spinning: isLoading }"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M23 4v6h-6M1 20v-6h6" />
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
             </svg>
           </button>
-          <button class="action-btn" @click="openSkillsDirectory" title="Open skills folder">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+          <button
+            class="action-btn"
+            title="Open skills folder"
+            @click="openSkillsDirectory"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
             </svg>
           </button>
         </div>
@@ -27,24 +53,42 @@
 
     <!-- Skills List -->
     <section class="settings-section">
-      <div v-if="isLoading" class="loading-state">
-        <div class="spinner"></div>
+      <div
+        v-if="isLoading"
+        class="loading-state"
+      >
+        <div class="spinner" />
         <p>Loading skills...</p>
       </div>
 
-      <div v-else-if="skills.length === 0" class="empty-state">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-          <path d="M2 17l10 5 10-5"/>
-          <path d="M2 12l10 5 10-5"/>
+      <div
+        v-else-if="skills.length === 0"
+        class="empty-state"
+      >
+        <svg
+          width="48"
+          height="48"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path d="M12 2L2 7l10 5 10-5-10-5z" />
+          <path d="M2 17l10 5 10-5" />
+          <path d="M2 12l10 5 10-5" />
         </svg>
         <p>No skills found</p>
-        <p class="hint">Add SKILL.md files to your skills directories</p>
+        <p class="hint">
+          Add SKILL.md files to your skills directories
+        </p>
       </div>
 
       <div v-else>
         <!-- User Skills -->
-        <div v-if="userSkills.length > 0" class="skill-group">
+        <div
+          v-if="userSkills.length > 0"
+          class="skill-group"
+        >
           <div class="group-header">
             <span class="group-title">User Skills</span>
             <span class="group-path">~/.claude/skills/</span>
@@ -66,7 +110,10 @@
         </div>
 
         <!-- Project Skills -->
-        <div v-if="projectSkills.length > 0" class="skill-group">
+        <div
+          v-if="projectSkills.length > 0"
+          class="skill-group"
+        >
           <div class="group-header">
             <span class="group-title">Project Skills</span>
             <span class="group-path">.claude/skills/</span>
@@ -88,7 +135,10 @@
         </div>
 
         <!-- Plugin Skills -->
-        <div v-if="pluginSkills.length > 0" class="skill-group">
+        <div
+          v-if="pluginSkills.length > 0"
+          class="skill-group"
+        >
           <div class="group-header">
             <span class="group-title">Plugin Skills</span>
             <span class="group-path">~/.claude/plugins/cache/claude-plugins-official/</span>
@@ -108,7 +158,10 @@
         </div>
 
         <!-- Builtin Skills -->
-        <div v-if="builtinSkills.length > 0" class="skill-group">
+        <div
+          v-if="builtinSkills.length > 0"
+          class="skill-group"
+        >
           <div class="group-header">
             <span class="group-title">Builtin Skills</span>
             <span class="group-path">App Resources</span>
@@ -131,18 +184,34 @@
 
     <!-- Delete Confirmation Dialog -->
     <Teleport to="body">
-      <div v-if="showDeleteDialog" class="dialog-overlay" @click.self="showDeleteDialog = false">
+      <div
+        v-if="showDeleteDialog"
+        class="dialog-overlay"
+        @click.self="showDeleteDialog = false"
+      >
         <div class="dialog small">
           <div class="dialog-header">
             <h3>Delete Skill</h3>
           </div>
           <div class="dialog-content">
             <p>Are you sure you want to delete <strong>{{ deletingSkill?.name }}</strong>?</p>
-            <p class="warning-text">This will delete the entire skill directory and cannot be undone.</p>
+            <p class="warning-text">
+              This will delete the entire skill directory and cannot be undone.
+            </p>
           </div>
           <div class="dialog-footer">
-            <button class="btn secondary" @click="showDeleteDialog = false">Cancel</button>
-            <button class="btn danger" @click="deleteSkill">Delete</button>
+            <button
+              class="btn secondary"
+              @click="showDeleteDialog = false"
+            >
+              Cancel
+            </button>
+            <button
+              class="btn danger"
+              @click="deleteSkill"
+            >
+              Delete
+            </button>
           </div>
         </div>
       </div>

@@ -1,5 +1,8 @@
 <template>
-  <div class="quick-command-bar" v-if="enabledCommands.length > 0">
+  <div
+    v-if="enabledCommands.length > 0"
+    class="quick-command-bar"
+  >
     <button
       v-for="cmd in enabledCommands"
       :key="cmd.id"

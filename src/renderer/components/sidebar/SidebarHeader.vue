@@ -1,23 +1,54 @@
 <template>
   <div class="sidebar-header">
     <div class="traffic-lights-row">
-      <div class="traffic-lights-space"></div>
+      <div class="traffic-lights-space" />
       <button
         class="sidebar-toggle-btn"
         title="Hide sidebar"
         @click="$emit('toggle-collapse')"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-          <line x1="9" y1="3" x2="9" y2="21"/>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <rect
+            x="3"
+            y="3"
+            width="18"
+            height="18"
+            rx="2"
+            ry="2"
+          />
+          <line
+            x1="9"
+            y1="3"
+            x2="9"
+            y2="21"
+          />
         </svg>
       </button>
     </div>
     <div class="sidebar-actions">
       <div class="search-wrapper">
-        <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"/>
-          <path d="m21 21-4.35-4.35"/>
+        <svg
+          class="search-icon"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <circle
+            cx="11"
+            cy="11"
+            r="8"
+          />
+          <path d="m21 21-4.35-4.35" />
         </svg>
         <input
           :value="searchQuery"
@@ -26,7 +57,7 @@
           placeholder="Search..."
           @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
           @keydown.escape="$emit('update:searchQuery', '')"
-        />
+        >
       </div>
     </div>
   </div>

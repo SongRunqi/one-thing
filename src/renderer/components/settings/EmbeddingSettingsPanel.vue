@@ -3,35 +3,55 @@
     <!-- Memory Hero Section -->
     <section class="hero-section">
       <div class="hero-content">
-        <div class="hero-icon" :class="{ active: isMemoryEnabled }">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.54"/>
-            <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.54"/>
+        <div
+          class="hero-icon"
+          :class="{ active: isMemoryEnabled }"
+        >
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.54" />
+            <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.54" />
           </svg>
         </div>
         <div class="hero-text">
-          <h2 class="hero-title">Memory</h2>
-          <p class="hero-desc">Let AI remember conversation context for more personalized responses</p>
+          <h2 class="hero-title">
+            Memory
+          </h2>
+          <p class="hero-desc">
+            Let AI remember conversation context for more personalized responses
+          </p>
         </div>
         <label class="memory-toggle">
           <input
             type="checkbox"
             :checked="isMemoryEnabled"
             @change="toggleMemory"
-          />
-          <span class="memory-toggle-track"></span>
+          >
+          <span class="memory-toggle-track" />
         </label>
       </div>
 
-      <div class="status-bar" :class="{ active: isMemoryEnabled }">
-        <span class="status-dot"></span>
+      <div
+        class="status-bar"
+        :class="{ active: isMemoryEnabled }"
+      >
+        <span class="status-dot" />
         <span class="status-text">{{ isMemoryEnabled ? 'Enabled' : 'Disabled' }}</span>
       </div>
     </section>
 
     <!-- Settings Content - Two Column Layout -->
     <Transition name="fade-slide">
-      <div v-if="isMemoryEnabled" class="settings-content">
+      <div
+        v-if="isMemoryEnabled"
+        class="settings-content"
+      >
         <div class="panel-content">
           <!-- Left: Provider list -->
           <div class="provider-list">
@@ -45,11 +65,23 @@
               }"
               @click="previewProviderModels(provider.id)"
             >
-              <ProviderIcon :provider="provider.aiProvider || provider.id" :size="16" />
+              <ProviderIcon
+                :provider="provider.aiProvider || provider.id"
+                :size="16"
+              />
               <span class="provider-name">{{ provider.name }}</span>
-              <span v-if="localSettings.provider === provider.id" class="selected-badge">✓</span>
-              <span v-else-if="provider.models.length > 0" class="model-count">{{ provider.models.length }}</span>
-              <span v-else-if="!provider.configured && provider.id !== 'local'" class="config-badge">Not configured</span>
+              <span
+                v-if="localSettings.provider === provider.id"
+                class="selected-badge"
+              >✓</span>
+              <span
+                v-else-if="provider.models.length > 0"
+                class="model-count"
+              >{{ provider.models.length }}</span>
+              <span
+                v-else-if="!provider.configured && provider.id !== 'local'"
+                class="config-badge"
+              >Not configured</span>
             </div>
           </div>
 
@@ -61,22 +93,36 @@
               <button
                 class="refresh-btn"
                 :disabled="loadingModels"
-                @click="refreshModelsForProvider(previewProviderId)"
                 title="Refresh model list"
+                @click="refreshModelsForProvider(previewProviderId)"
               >
-                <svg :class="{ spinning: loadingModels }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
-                  <path d="M21 3v5h-5"/>
+                <svg
+                  :class="{ spinning: loadingModels }"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                  <path d="M21 3v5h-5" />
                 </svg>
               </button>
             </div>
 
-            <div v-if="loadingModels" class="loading-state">
-              <span class="loading-spinner"></span>
+            <div
+              v-if="loadingModels"
+              class="loading-state"
+            >
+              <span class="loading-spinner" />
               <span>Loading models...</span>
             </div>
 
-            <div v-else-if="!previewProvider || previewProvider.models.length === 0" class="empty-state">
+            <div
+              v-else-if="!previewProvider || previewProvider.models.length === 0"
+              class="empty-state"
+            >
               <span v-if="!isProviderConfigured(previewProviderId)">Please configure {{ previewProvider?.name || '' }} API Key first</span>
               <span v-else>No embedding models found</span>
             </div>
@@ -93,7 +139,10 @@
               >
                 <div class="model-header">
                   <span class="model-name">{{ model.name }}</span>
-                  <span v-if="localSettings.provider === previewProviderId && currentModel === model.id" class="current-badge">Current</span>
+                  <span
+                    v-if="localSettings.provider === previewProviderId && currentModel === model.id"
+                    class="current-badge"
+                  >Current</span>
                 </div>
                 <!-- TODO: Dimension badge temporarily hidden -->
               </div>
@@ -102,11 +151,25 @@
             </template>
 
             <!-- Local model notice -->
-            <div v-if="localSettings.provider === 'local'" class="notice-card info">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 16v-4"/>
-                <path d="M12 8h.01"/>
+            <div
+              v-if="localSettings.provider === 'local'"
+              class="notice-card info"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="10"
+                />
+                <path d="M12 16v-4" />
+                <path d="M12 8h.01" />
               </svg>
               <span>Model file (~23MB) will be downloaded automatically on first use</span>
             </div>
@@ -119,14 +182,32 @@
 
     <!-- Disabled State -->
     <Transition name="fade">
-      <div v-if="!isMemoryEnabled" class="disabled-state">
+      <div
+        v-if="!isMemoryEnabled"
+        class="disabled-state"
+      >
         <div class="disabled-icon">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-            <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.54" opacity="0.3"/>
-            <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.54" opacity="0.3"/>
+          <svg
+            width="64"
+            height="64"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1"
+          >
+            <path
+              d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.54"
+              opacity="0.3"
+            />
+            <path
+              d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.54"
+              opacity="0.3"
+            />
           </svg>
         </div>
-        <p class="disabled-text">Enable Memory to configure embedding models</p>
+        <p class="disabled-text">
+          Enable Memory to configure embedding models
+        </p>
       </div>
     </Transition>
   </div>

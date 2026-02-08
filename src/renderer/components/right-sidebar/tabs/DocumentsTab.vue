@@ -7,43 +7,85 @@
     </div>
 
     <!-- Empty State -->
-    <div v-if="documents.length === 0" class="empty-state">
-      <FileCode :size="32" :stroke-width="1.5" />
-      <p class="empty-text">No diagrams found</p>
-      <p class="empty-hint">Mermaid, PlantUML, and chart diagrams from AI messages will appear here</p>
+    <div
+      v-if="documents.length === 0"
+      class="empty-state"
+    >
+      <FileCode
+        :size="32"
+        :stroke-width="1.5"
+      />
+      <p class="empty-text">
+        No diagrams found
+      </p>
+      <p class="empty-hint">
+        Mermaid, PlantUML, and chart diagrams from AI messages will appear here
+      </p>
     </div>
 
     <!-- Documents List -->
-    <div v-else class="documents-list">
+    <div
+      v-else
+      class="documents-list"
+    >
       <div
         v-for="doc in documents"
         :key="doc.id"
         class="document-item"
         :class="{ expanded: expandedId === doc.id }"
       >
-        <div class="doc-header" @click="toggleExpand(doc.id)">
+        <div
+          class="doc-header"
+          @click="toggleExpand(doc.id)"
+        >
           <div class="doc-info">
-            <component :is="getIcon(doc.type)" :size="16" :stroke-width="1.5" class="doc-icon" />
+            <component
+              :is="getIcon(doc.type)"
+              :size="16"
+              :stroke-width="1.5"
+              class="doc-icon"
+            />
             <span class="doc-type">{{ getTypeLabel(doc.type) }}</span>
           </div>
           <div class="doc-actions">
-            <button class="action-btn" @click.stop="copyCode(doc.code)" title="Copy code">
-              <Copy :size="14" :stroke-width="1.5" />
+            <button
+              class="action-btn"
+              title="Copy code"
+              @click.stop="copyCode(doc.code)"
+            >
+              <Copy
+                :size="14"
+                :stroke-width="1.5"
+              />
             </button>
-            <ChevronDown :size="14" :stroke-width="1.5" class="expand-icon" />
+            <ChevronDown
+              :size="14"
+              :stroke-width="1.5"
+              class="expand-icon"
+            />
           </div>
         </div>
 
         <!-- Expanded content -->
         <Transition name="expand">
-          <div v-if="expandedId === doc.id" class="doc-content">
+          <div
+            v-if="expandedId === doc.id"
+            class="doc-content"
+          >
             <!-- Mermaid Preview -->
-            <div v-if="doc.type === 'mermaid'" class="mermaid-preview" ref="mermaidContainer">
-              <div v-html="renderMermaid(doc.code)"></div>
+            <div
+              v-if="doc.type === 'mermaid'"
+              ref="mermaidContainer"
+              class="mermaid-preview"
+            >
+              <div v-html="renderMermaid(doc.code)" />
             </div>
 
             <!-- Code Preview for others -->
-            <div v-else class="code-preview">
+            <div
+              v-else
+              class="code-preview"
+            >
               <pre><code>{{ doc.code }}</code></pre>
             </div>
           </div>

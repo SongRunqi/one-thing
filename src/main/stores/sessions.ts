@@ -825,7 +825,7 @@ export function updateMessageAndTruncate(
 
   // Calculate token usage of messages that will be deleted
   const messagesToDelete = session.messages.slice(messageIndex + 1)
-  let tokensToSubtract = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+  const tokensToSubtract = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
   for (const msg of messagesToDelete) {
     if (msg.usage) {
       tokensToSubtract.inputTokens += msg.usage.inputTokens

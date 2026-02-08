@@ -7,7 +7,10 @@
       :style="panelStyle"
     >
       <!-- Resize Handle (left edge - adjusts total panel width) -->
-      <div class="panel-resize-handle" @mousedown="startPanelResize"></div>
+      <div
+        class="panel-resize-handle"
+        @mousedown="startPanelResize"
+      />
 
       <!-- Panel Header -->
       <div class="panel-header">
@@ -20,7 +23,11 @@
             :title="tab.label"
             @click="store.setActiveTab(tab.id)"
           >
-            <component :is="tab.icon" :size="14" :stroke-width="1.5" />
+            <component
+              :is="tab.icon"
+              :size="14"
+              :stroke-width="1.5"
+            />
             <span class="panel-tab-label">{{ tab.label }}</span>
           </button>
         </div>
@@ -32,21 +39,31 @@
             :disabled="isRefreshing"
             @click="handleRefresh"
           >
-            <RefreshCw :size="14" :stroke-width="1.5" :class="{ spinning: isRefreshing }" />
+            <RefreshCw
+              :size="14"
+              :stroke-width="1.5"
+              :class="{ spinning: isRefreshing }"
+            />
           </button>
           <button
             class="panel-action-btn close-btn"
             title="Close panel"
             @click="store.close()"
           >
-            <X :size="14" :stroke-width="1.5" />
+            <X
+              :size="14"
+              :stroke-width="1.5"
+            />
           </button>
         </div>
       </div>
 
       <div class="panel-body">
         <!-- Sidebar Section -->
-        <div class="sidebar-section" :style="sidebarStyle">
+        <div
+          class="sidebar-section"
+          :style="sidebarStyle"
+        >
           <RightSidebar
             ref="rightSidebarRef"
             :visible="true"
@@ -64,15 +81,24 @@
           class="divider"
           :class="{ active: isDividerResizing }"
           @mousedown="startDividerResize"
-        ></div>
+        />
 
         <!-- Preview Section -->
-        <div v-if="previewVisible" class="preview-section">
-          <div v-if="isPreviewLoading" class="preview-loading">
-            <div class="loading-spinner"></div>
+        <div
+          v-if="previewVisible"
+          class="preview-section"
+        >
+          <div
+            v-if="isPreviewLoading"
+            class="preview-loading"
+          >
+            <div class="loading-spinner" />
             <span>Loading diff...</span>
           </div>
-          <div v-else-if="previewError" class="preview-error">
+          <div
+            v-else-if="previewError"
+            class="preview-error"
+          >
             <span>{{ previewError }}</span>
           </div>
           <!-- Diff preview (only mode) -->
@@ -82,16 +108,16 @@
             </div>
             <DiffView
               :diff="previewDiff.diff"
-              :fileName="previewDiff.path"
-              :showFileName="false"
-              :allowStyleToggle="false"
-              :allowCopy="false"
-              :expandUnchanged="true"
-              :expansionLineCount="5"
-              :oldContent="previewDiff.oldContent"
-              :newContent="previewDiff.newContent"
-              maxHeight="100%"
-              diffStyle="unified"
+              :file-name="previewDiff.path"
+              :show-file-name="false"
+              :allow-style-toggle="false"
+              :allow-copy="false"
+              :expand-unchanged="true"
+              :expansion-line-count="5"
+              :old-content="previewDiff.oldContent"
+              :new-content="previewDiff.newContent"
+              max-height="100%"
+              diff-style="unified"
             />
           </template>
         </div>

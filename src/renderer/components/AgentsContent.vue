@@ -7,18 +7,51 @@
         type="text"
         class="search-input"
         placeholder="Search agents..."
-      />
-      <button class="create-btn" @click="$emit('create-agent')" title="Create Agent">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <line x1="5" y1="12" x2="19" y2="12"/>
+      >
+      <button
+        class="create-btn"
+        title="Create Agent"
+        @click="$emit('create-agent')"
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <line
+            x1="12"
+            y1="5"
+            x2="12"
+            y2="19"
+          />
+          <line
+            x1="5"
+            y1="12"
+            x2="19"
+            y2="12"
+          />
         </svg>
       </button>
-      <button class="refresh-btn" @click="refreshAgents" title="Refresh Agents">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ spinning: isRefreshing }">
-          <polyline points="23 4 23 10 17 10"/>
-          <polyline points="1 20 1 14 7 14"/>
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+      <button
+        class="refresh-btn"
+        title="Refresh Agents"
+        @click="refreshAgents"
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          :class="{ spinning: isRefreshing }"
+        >
+          <polyline points="23 4 23 10 17 10" />
+          <polyline points="1 20 1 14 7 14" />
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
         </svg>
       </button>
     </div>
@@ -26,22 +59,54 @@
     <!-- Agents List -->
     <div class="content-body">
       <!-- Loading State -->
-      <div v-if="customAgentsStore.isLoading" class="loading-state">
-        <div class="loading-spinner"></div>
+      <div
+        v-if="customAgentsStore.isLoading"
+        class="loading-state"
+      >
+        <div class="loading-spinner" />
         <p>Loading agents...</p>
       </div>
 
       <!-- Error State -->
-      <div v-else-if="customAgentsStore.error" class="error-state">
+      <div
+        v-else-if="customAgentsStore.error"
+        class="error-state"
+      >
         <div class="error-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+            />
+            <line
+              x1="12"
+              y1="8"
+              x2="12"
+              y2="12"
+            />
+            <line
+              x1="12"
+              y1="16"
+              x2="12.01"
+              y2="16"
+            />
           </svg>
         </div>
-        <p class="error-text">{{ customAgentsStore.error }}</p>
-        <button class="retry-btn" @click="refreshAgents">
+        <p class="error-text">
+          {{ customAgentsStore.error }}
+        </p>
+        <button
+          class="retry-btn"
+          @click="refreshAgents"
+        >
           Retry
         </button>
       </div>
@@ -49,11 +114,25 @@
       <!-- Agents Sections -->
       <template v-else-if="filteredAgents.length > 0">
         <!-- User Agents Section -->
-        <div v-if="filteredUserAgents.length > 0" class="agents-section">
+        <div
+          v-if="filteredUserAgents.length > 0"
+          class="agents-section"
+        >
           <h4 class="section-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-              <circle cx="12" cy="7" r="4"/>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle
+                cx="12"
+                cy="7"
+                r="4"
+              />
             </svg>
             User Agents
             <span class="section-count">{{ filteredUserAgents.length }}</span>
@@ -76,10 +155,20 @@
         </div>
 
         <!-- Project Agents Section -->
-        <div v-if="filteredProjectAgents.length > 0" class="agents-section">
+        <div
+          v-if="filteredProjectAgents.length > 0"
+          class="agents-section"
+        >
           <h4 class="section-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
             Project Agents
             <span class="section-count">{{ filteredProjectAgents.length }}</span>
@@ -103,29 +192,73 @@
       </template>
 
       <!-- Empty State -->
-      <div v-else class="empty-state">
+      <div
+        v-else
+        class="empty-state"
+      >
         <div class="empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
           </svg>
         </div>
-        <p class="empty-text">{{ searchQuery ? 'No agents found' : 'No agents yet' }}</p>
+        <p class="empty-text">
+          {{ searchQuery ? 'No agents found' : 'No agents yet' }}
+        </p>
         <p class="empty-hint">
           {{ searchQuery
             ? 'Try adjusting your search query'
             : 'Create your first custom agent with specialized tools'
           }}
         </p>
-        <button v-if="!searchQuery" class="empty-action" @click="$emit('create-agent')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
+        <button
+          v-if="!searchQuery"
+          class="empty-action"
+          @click="$emit('create-agent')"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line
+              x1="12"
+              y1="5"
+              x2="12"
+              y2="19"
+            />
+            <line
+              x1="5"
+              y1="12"
+              x2="19"
+              y2="12"
+            />
           </svg>
           Create Agent
         </button>
-        <button v-if="!searchQuery" class="open-folder-btn" @click="openAgentsFolder">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        <button
+          v-if="!searchQuery"
+          class="open-folder-btn"
+          @click="openAgentsFolder"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
           Open Agents Folder
         </button>

@@ -1,8 +1,12 @@
 <template>
   <div class="tab-content">
     <section class="settings-section">
-      <h3 class="section-title">Keyboard Shortcuts</h3>
-      <p class="section-desc">Click on a shortcut to record a new key combination</p>
+      <h3 class="section-title">
+        Keyboard Shortcuts
+      </h3>
+      <p class="section-desc">
+        Click on a shortcut to record a new key combination
+      </p>
 
       <div class="shortcuts-list">
         <div class="shortcut-row">

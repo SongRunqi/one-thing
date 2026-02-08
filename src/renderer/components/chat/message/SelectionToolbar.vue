@@ -4,28 +4,81 @@
     class="selection-toolbar"
     :style="{ top: position.top + 'px', left: position.left + 'px' }"
   >
-    <button class="toolbar-btn" @click="handleCopy" title="Copy selected text">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    <button
+      class="toolbar-btn"
+      title="Copy selected text"
+      @click="handleCopy"
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <rect
+          x="9"
+          y="9"
+          width="13"
+          height="13"
+          rx="2"
+          ry="2"
+        />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
       </svg>
       <span>{{ copied ? 'Copied!' : 'Copy' }}</span>
     </button>
-    <div class="toolbar-divider"></div>
-    <button class="toolbar-btn" @click="handleQuote" title="Quote in current chat">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/>
-        <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/>
+    <div class="toolbar-divider" />
+    <button
+      class="toolbar-btn"
+      title="Quote in current chat"
+      @click="handleQuote"
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z" />
+        <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z" />
       </svg>
       <span>Quote</span>
     </button>
-    <div class="toolbar-divider"></div>
-    <button class="toolbar-btn" @click="handleBranch" title="Create branch with this text">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <line x1="6" y1="3" x2="6" y2="15"/>
-        <circle cx="18" cy="6" r="3"/>
-        <circle cx="6" cy="18" r="3"/>
-        <path d="M18 9a9 9 0 0 1-9 9"/>
+    <div class="toolbar-divider" />
+    <button
+      class="toolbar-btn"
+      title="Create branch with this text"
+      @click="handleBranch"
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <line
+          x1="6"
+          y1="3"
+          x2="6"
+          y2="15"
+        />
+        <circle
+          cx="18"
+          cy="6"
+          r="3"
+        />
+        <circle
+          cx="6"
+          cy="18"
+          r="3"
+        />
+        <path d="M18 9a9 9 0 0 1-9 9" />
       </svg>
       <span>Branch</span>
     </button>

@@ -1,193 +1,338 @@
 <template>
-  <div class="settings-overlay" @click.self="handleClose">
+  <div
+    class="settings-overlay"
+    @click.self="handleClose"
+  >
     <div class="settings-panel floating-hub">
-    <header class="settings-header">
-      <div class="header-title">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
-        </svg>
-        <h2>Settings</h2>
+      <header class="settings-header">
+        <div class="header-title">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="3"
+            />
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+          </svg>
+          <h2>Settings</h2>
+        </div>
+        <button
+          class="close-btn"
+          title="Close settings"
+          @click="handleClose"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </header>
+
+      <!-- Unsaved Changes Dialog -->
+      <UnsavedChangesDialog
+        :visible="showUnsavedDialog"
+        @discard="discardAndClose"
+        @cancel="showUnsavedDialog = false"
+        @save="saveAndClose"
+      />
+
+      <!-- Add/Edit Custom Provider Dialog -->
+      <CustomProviderDialog
+        :visible="showCustomProviderDialog"
+        :is-editing="!!editingCustomProvider"
+        :initial-data="customProviderFormData"
+        :error="customProviderError"
+        @close="closeCustomProviderDialog"
+        @save="handleSaveCustomProvider"
+        @delete="confirmDeleteCustomProvider"
+      />
+
+      <!-- Delete Confirmation Dialog -->
+      <DeleteConfirmDialog
+        :visible="showDeleteConfirmDialog"
+        :provider-name="customProviderFormData.name"
+        @cancel="showDeleteConfirmDialog = false"
+        @confirm="deleteCustomProvider"
+      />
+
+      <!-- Tab Navigation -->
+      <div class="tabs-nav">
+        <button
+          :class="['tab-btn', { active: activeTab === 'general' }]"
+          @click="activeTab = 'general'"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="3"
+            />
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+          </svg>
+          General
+        </button>
+        <button
+          :class="['tab-btn', { active: activeTab === 'ai' }]"
+          @click="activeTab = 'ai'"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 2a2 2 0 012 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 017 7h1a1 1 0 011 1v3a1 1 0 01-1 1h-1v1a2 2 0 01-2 2H5a2 2 0 01-2-2v-1H2a1 1 0 01-1-1v-3a1 1 0 011-1h1a7 7 0 017-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 012-2z" />
+            <circle
+              cx="8"
+              cy="14"
+              r="1"
+            /><circle
+              cx="16"
+              cy="14"
+              r="1"
+            />
+          </svg>
+          AI Provider
+        </button>
+        <button
+          :class="['tab-btn', { active: activeTab === 'tools' }]"
+          @click="activeTab = 'tools'"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+          </svg>
+          Tools
+        </button>
+        <button
+          :class="['tab-btn', { active: activeTab === 'shortcuts' }]"
+          @click="activeTab = 'shortcuts'"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect
+              x="2"
+              y="4"
+              width="20"
+              height="16"
+              rx="2"
+            />
+            <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10" />
+          </svg>
+          Shortcuts
+        </button>
+        <button
+          :class="['tab-btn', { active: activeTab === 'mcp' }]"
+          @click="activeTab = 'mcp'"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect
+              x="2"
+              y="3"
+              width="20"
+              height="14"
+              rx="2"
+              ry="2"
+            />
+            <line
+              x1="8"
+              y1="21"
+              x2="16"
+              y2="21"
+            />
+            <line
+              x1="12"
+              y1="17"
+              x2="12"
+              y2="21"
+            />
+          </svg>
+          MCP
+        </button>
+        <button
+          :class="['tab-btn', { active: activeTab === 'skills' }]"
+          @click="activeTab = 'skills'"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+            <path d="M2 17l10 5 10-5" />
+            <path d="M2 12l10 5 10-5" />
+          </svg>
+          Skills
+        </button>
+        <button
+          :class="['tab-btn', { active: activeTab === 'embedding' }]"
+          @click="activeTab = 'embedding'"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="3"
+            />
+            <circle
+              cx="12"
+              cy="12"
+              r="8"
+            />
+            <line
+              x1="12"
+              y1="2"
+              x2="12"
+              y2="4"
+            />
+            <line
+              x1="12"
+              y1="20"
+              x2="12"
+              y2="22"
+            />
+            <line
+              x1="2"
+              y1="12"
+              x2="4"
+              y2="12"
+            />
+            <line
+              x1="20"
+              y1="12"
+              x2="22"
+              y2="12"
+            />
+          </svg>
+          Embedding
+        </button>
       </div>
-      <button class="close-btn" @click="handleClose" title="Close settings">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M18 6L6 18M6 6l12 12"/>
-        </svg>
-      </button>
-    </header>
 
-    <!-- Unsaved Changes Dialog -->
-    <UnsavedChangesDialog
-      :visible="showUnsavedDialog"
-      @discard="discardAndClose"
-      @cancel="showUnsavedDialog = false"
-      @save="saveAndClose"
-    />
-
-    <!-- Add/Edit Custom Provider Dialog -->
-    <CustomProviderDialog
-      :visible="showCustomProviderDialog"
-      :is-editing="!!editingCustomProvider"
-      :initial-data="customProviderFormData"
-      :error="customProviderError"
-      @close="closeCustomProviderDialog"
-      @save="handleSaveCustomProvider"
-      @delete="confirmDeleteCustomProvider"
-    />
-
-    <!-- Delete Confirmation Dialog -->
-    <DeleteConfirmDialog
-      :visible="showDeleteConfirmDialog"
-      :provider-name="customProviderFormData.name"
-      @cancel="showDeleteConfirmDialog = false"
-      @confirm="deleteCustomProvider"
-    />
-
-    <!-- Tab Navigation -->
-    <div class="tabs-nav">
-      <button
-        :class="['tab-btn', { active: activeTab === 'general' }]"
-        @click="activeTab = 'general'"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-        </svg>
-        General
-      </button>
-      <button
-        :class="['tab-btn', { active: activeTab === 'ai' }]"
-        @click="activeTab = 'ai'"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 2a2 2 0 012 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 017 7h1a1 1 0 011 1v3a1 1 0 01-1 1h-1v1a2 2 0 01-2 2H5a2 2 0 01-2-2v-1H2a1 1 0 01-1-1v-3a1 1 0 011-1h1a7 7 0 017-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 012-2z"/>
-          <circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/>
-        </svg>
-        AI Provider
-      </button>
-      <button
-        :class="['tab-btn', { active: activeTab === 'tools' }]"
-        @click="activeTab = 'tools'"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-        </svg>
-        Tools
-      </button>
-      <button
-        :class="['tab-btn', { active: activeTab === 'shortcuts' }]"
-        @click="activeTab = 'shortcuts'"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="4" width="20" height="16" rx="2"/>
-          <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>
-        </svg>
-        Shortcuts
-      </button>
-      <button
-        :class="['tab-btn', { active: activeTab === 'mcp' }]"
-        @click="activeTab = 'mcp'"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-          <line x1="8" y1="21" x2="16" y2="21"/>
-          <line x1="12" y1="17" x2="12" y2="21"/>
-        </svg>
-        MCP
-      </button>
-      <button
-        :class="['tab-btn', { active: activeTab === 'skills' }]"
-        @click="activeTab = 'skills'"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-          <path d="M2 17l10 5 10-5"/>
-          <path d="M2 12l10 5 10-5"/>
-        </svg>
-        Skills
-      </button>
-      <button
-        :class="['tab-btn', { active: activeTab === 'embedding' }]"
-        @click="activeTab = 'embedding'"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/>
-          <circle cx="12" cy="12" r="8"/>
-          <line x1="12" y1="2" x2="12" y2="4"/>
-          <line x1="12" y1="20" x2="12" y2="22"/>
-          <line x1="2" y1="12" x2="4" y2="12"/>
-          <line x1="20" y1="12" x2="22" y2="12"/>
-        </svg>
-        Embedding
-      </button>
-    </div>
-
-    <div class="settings-content">
-      <!-- General Tab -->
-      <GeneralSettingsTab
-        v-show="activeTab === 'general'"
-        :settings="localSettings"
-        @update:settings="updateSettings"
-      />
-
-      <!-- AI Provider Tab -->
-      <AIProviderTab
-        v-show="activeTab === 'ai'"
-        :settings="localSettings"
-        :providers="providers"
-        @update:settings="updateSettings"
-        @add-custom-provider="openAddCustomProvider"
-        @edit-custom-provider="openEditCustomProvider"
-      />
-
-      <!-- Tools Tab -->
-      <ToolsSettingsTab
-        v-show="activeTab === 'tools'"
-        :settings="localSettings"
-        :tools="availableTools"
-        @update:settings="updateSettings"
-      />
-
-      <!-- Shortcuts Tab -->
-      <ShortcutsSettingsTab
-        v-show="activeTab === 'shortcuts'"
-        :settings="localSettings"
-        @update:settings="updateSettings"
-      />
-
-      <!-- MCP Tab -->
-      <div v-show="activeTab === 'mcp'" class="tab-content">
-        <MCPSettingsPanel
-          :settings="localSettings.mcp || { enabled: true, servers: [] }"
-          @update:settings="handleMCPSettingsUpdate"
+      <div class="settings-content">
+        <!-- General Tab -->
+        <GeneralSettingsTab
+          v-show="activeTab === 'general'"
+          :settings="localSettings"
+          @update:settings="updateSettings"
         />
-      </div>
 
-      <!-- Skills Tab -->
-      <div v-show="activeTab === 'skills'" class="tab-content">
-        <SkillsSettingsPanel
-          :settings="localSettings.skills || { enableSkills: true, skills: {} }"
-          @update:settings="handleSkillsSettingsUpdate"
+        <!-- AI Provider Tab -->
+        <AIProviderTab
+          v-show="activeTab === 'ai'"
+          :settings="localSettings"
+          :providers="providers"
+          @update:settings="updateSettings"
+          @add-custom-provider="openAddCustomProvider"
+          @edit-custom-provider="openEditCustomProvider"
         />
-      </div>
 
-      <!-- Embedding Tab -->
-      <div v-show="activeTab === 'embedding'" class="tab-content">
-        <EmbeddingSettingsPanel
-          :settings="localSettings.embedding || { provider: 'openai', openai: { model: 'text-embedding-3-small', dimensions: 384 }, local: { model: 'all-MiniLM-L6-v2' } }"
-          @update:settings="handleEmbeddingSettingsUpdate"
+        <!-- Tools Tab -->
+        <ToolsSettingsTab
+          v-show="activeTab === 'tools'"
+          :settings="localSettings"
+          :tools="availableTools"
+          @update:settings="updateSettings"
         />
+
+        <!-- Shortcuts Tab -->
+        <ShortcutsSettingsTab
+          v-show="activeTab === 'shortcuts'"
+          :settings="localSettings"
+          @update:settings="updateSettings"
+        />
+
+        <!-- MCP Tab -->
+        <div
+          v-show="activeTab === 'mcp'"
+          class="tab-content"
+        >
+          <MCPSettingsPanel
+            :settings="localSettings.mcp || { enabled: true, servers: [] }"
+            @update:settings="handleMCPSettingsUpdate"
+          />
+        </div>
+
+        <!-- Skills Tab -->
+        <div
+          v-show="activeTab === 'skills'"
+          class="tab-content"
+        >
+          <SkillsSettingsPanel
+            :settings="localSettings.skills || { enableSkills: true, skills: {} }"
+            @update:settings="handleSkillsSettingsUpdate"
+          />
+        </div>
+
+        <!-- Embedding Tab -->
+        <div
+          v-show="activeTab === 'embedding'"
+          class="tab-content"
+        >
+          <EmbeddingSettingsPanel
+            :settings="localSettings.embedding || { provider: 'openai', openai: { model: 'text-embedding-3-small', dimensions: 384 }, local: { model: 'all-MiniLM-L6-v2' } }"
+            @update:settings="handleEmbeddingSettingsUpdate"
+          />
+        </div>
       </div>
 
-    </div>
-
-    <SettingsFooter
-      :has-unsaved-changes="hasUnsavedChanges"
-      :is-saving="isSaving"
-      :show-save-success="showSaveSuccess"
-      @save="saveSettings"
-      @cancel="handleClose"
-    />
+      <SettingsFooter
+        :has-unsaved-changes="hasUnsavedChanges"
+        :is-saving="isSaving"
+        :show-save-success="showSaveSuccess"
+        @save="saveSettings"
+        @cancel="handleClose"
+      />
     </div>
   </div>
 </template>

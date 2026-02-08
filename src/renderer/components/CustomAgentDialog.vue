@@ -1,11 +1,33 @@
 <template>
   <div class="custom-agent-dialog">
     <div class="dialog-header">
-      <h2 class="dialog-title">Edit Agent</h2>
-      <button class="close-btn" @click="$emit('close')">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
+      <h2 class="dialog-title">
+        Edit Agent
+      </h2>
+      <button
+        class="close-btn"
+        @click="$emit('close')"
+      >
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <line
+            x1="18"
+            y1="6"
+            x2="6"
+            y2="18"
+          />
+          <line
+            x1="6"
+            y1="6"
+            x2="18"
+            y2="18"
+          />
         </svg>
       </button>
     </div>
@@ -15,8 +37,14 @@
       <div class="form-group">
         <label class="form-label">Avatar</label>
         <div class="avatar-picker">
-          <div class="avatar-preview" @click="toggleAvatarPicker">
-            <span v-if="form.avatar.type === 'emoji'" class="preview-emoji">
+          <div
+            class="avatar-preview"
+            @click="toggleAvatarPicker"
+          >
+            <span
+              v-if="form.avatar.type === 'emoji'"
+              class="preview-emoji"
+            >
               {{ form.avatar.value || '?' }}
             </span>
             <img
@@ -24,11 +52,31 @@
               :src="getImageSrc(form.avatar.value)"
               class="preview-image"
               alt=""
-            />
-            <span v-else class="preview-placeholder">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
+            >
+            <span
+              v-else
+              class="preview-placeholder"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line
+                  x1="12"
+                  y1="5"
+                  x2="12"
+                  y2="19"
+                />
+                <line
+                  x1="5"
+                  y1="12"
+                  x2="19"
+                  y2="12"
+                />
               </svg>
             </span>
           </div>
@@ -50,7 +98,10 @@
         </div>
 
         <!-- Emoji Grid -->
-        <div v-if="showEmojiPicker && avatarPickerMode === 'emoji'" class="emoji-picker">
+        <div
+          v-if="showEmojiPicker && avatarPickerMode === 'emoji'"
+          class="emoji-picker"
+        >
           <div class="emoji-grid">
             <button
               v-for="emoji in commonEmojis"
@@ -74,7 +125,7 @@
           type="text"
           placeholder="Agent name"
           maxlength="50"
-        />
+        >
       </div>
 
       <!-- Description -->
@@ -86,7 +137,7 @@
           type="text"
           placeholder="What this agent does"
           maxlength="200"
-        />
+        >
       </div>
 
       <!-- System Prompt -->
@@ -104,20 +155,46 @@
       <div class="form-group tools-section">
         <div class="section-header">
           <label class="form-label">Custom Tools</label>
-          <button class="add-tool-btn" @click="addNewTool">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
+          <button
+            class="add-tool-btn"
+            @click="addNewTool"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <line
+                x1="12"
+                y1="5"
+                x2="12"
+                y2="19"
+              />
+              <line
+                x1="5"
+                y1="12"
+                x2="19"
+                y2="12"
+              />
             </svg>
             Add
           </button>
         </div>
 
-        <div v-if="form.customTools.length === 0" class="empty-tools">
+        <div
+          v-if="form.customTools.length === 0"
+          class="empty-tools"
+        >
           <span>No tools defined</span>
         </div>
 
-        <div v-else class="tools-list">
+        <div
+          v-else
+          class="tools-list"
+        >
           <div
             v-for="(tool, index) in form.customTools"
             :key="tool.id"
@@ -125,19 +202,54 @@
           >
             <div class="tool-info">
               <span class="tool-name">{{ tool.name }}</span>
-              <span class="tool-type" :class="tool.execution.type">{{ tool.execution.type }}</span>
+              <span
+                class="tool-type"
+                :class="tool.execution.type"
+              >{{ tool.execution.type }}</span>
             </div>
             <div class="tool-actions">
-              <button class="tool-btn" @click="editTool(index)" title="Edit">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              <button
+                class="tool-btn"
+                title="Edit"
+                @click="editTool(index)"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
                 </svg>
               </button>
-              <button class="tool-btn danger" @click="removeTool(index)" title="Remove">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
+              <button
+                class="tool-btn danger"
+                title="Remove"
+                @click="removeTool(index)"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line
+                    x1="18"
+                    y1="6"
+                    x2="6"
+                    y2="18"
+                  />
+                  <line
+                    x1="6"
+                    y1="6"
+                    x2="18"
+                    y2="18"
+                  />
                 </svg>
               </button>
             </div>
@@ -147,35 +259,63 @@
 
       <!-- Advanced Settings -->
       <div class="form-group">
-        <div class="advanced-toggle" @click="showAdvanced = !showAdvanced">
+        <div
+          class="advanced-toggle"
+          @click="showAdvanced = !showAdvanced"
+        >
           <span class="toggle-label">Advanced Settings</span>
           <svg
             class="toggle-icon"
             :class="{ expanded: showAdvanced }"
-            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
           >
-            <polyline points="6 9 12 15 18 9"/>
+            <polyline points="6 9 12 15 18 9" />
           </svg>
         </div>
 
-        <div v-if="showAdvanced" class="advanced-content">
+        <div
+          v-if="showAdvanced"
+          class="advanced-content"
+        >
           <div class="setting-row">
             <label>Max Tool Calls</label>
-            <input v-model.number="form.maxToolCalls" type="number" min="1" max="100" />
+            <input
+              v-model.number="form.maxToolCalls"
+              type="number"
+              min="1"
+              max="100"
+            >
           </div>
           <div class="setting-row">
             <label>Timeout (ms)</label>
-            <input v-model.number="form.timeoutMs" type="number" min="1000" max="600000" step="1000" />
+            <input
+              v-model.number="form.timeoutMs"
+              type="number"
+              min="1000"
+              max="600000"
+              step="1000"
+            >
           </div>
           <div class="setting-row checkbox">
             <label>
-              <input v-model="form.allowBuiltinTools" type="checkbox" />
+              <input
+                v-model="form.allowBuiltinTools"
+                type="checkbox"
+              >
               Allow Built-in Tools
             </label>
           </div>
 
           <!-- Built-in Tools Selector -->
-          <div v-if="form.allowBuiltinTools" class="builtin-tools-selector">
+          <div
+            v-if="form.allowBuiltinTools"
+            class="builtin-tools-selector"
+          >
             <label class="selector-label">Select Built-in Tools</label>
             <span class="selector-hint">Choose which built-in tools this agent can use.</span>
             <div class="tools-toggle-list">
@@ -201,9 +341,17 @@
     </div>
 
     <div class="dialog-footer">
-      <span class="source-badge" :class="agent.source">{{ agent.source }}</span>
+      <span
+        class="source-badge"
+        :class="agent.source"
+      >{{ agent.source }}</span>
       <div class="footer-actions">
-        <button class="btn secondary" @click="$emit('close')">Cancel</button>
+        <button
+          class="btn secondary"
+          @click="$emit('close')"
+        >
+          Cancel
+        </button>
         <button
           class="btn primary"
           :disabled="!isFormValid || isSaving"
@@ -216,7 +364,11 @@
 
     <!-- Tool Editor Dialog -->
     <Teleport to="body">
-      <div v-if="showToolEditor" class="tool-editor-overlay" @click.self="closeToolEditor">
+      <div
+        v-if="showToolEditor"
+        class="tool-editor-overlay"
+        @click.self="closeToolEditor"
+      >
         <div class="tool-editor-dialog">
           <CustomToolEditor
             :tool="editingTool"

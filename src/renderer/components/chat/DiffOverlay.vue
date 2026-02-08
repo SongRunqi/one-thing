@@ -1,36 +1,58 @@
 <template>
   <Transition name="diff-overlay">
-    <div v-if="visible" class="diff-overlay">
+    <div
+      v-if="visible"
+      class="diff-overlay"
+    >
       <div class="diff-overlay-header">
         <div class="diff-file-info">
           <span class="diff-file-path">{{ filePath }}</span>
-          <span v-if="isStaged" class="staged-badge">Staged</span>
+          <span
+            v-if="isStaged"
+            class="staged-badge"
+          >Staged</span>
         </div>
-        <button class="close-btn" @click="$emit('close')" title="Close (Esc)">
-          <X :size="18" :stroke-width="1.5" />
+        <button
+          class="close-btn"
+          title="Close (Esc)"
+          @click="$emit('close')"
+        >
+          <X
+            :size="18"
+            :stroke-width="1.5"
+          />
         </button>
       </div>
       <div class="diff-overlay-content">
-        <div v-if="loading" class="loading-state">
-          <div class="loading-spinner"></div>
+        <div
+          v-if="loading"
+          class="loading-state"
+        >
+          <div class="loading-spinner" />
           <span>Loading diff...</span>
         </div>
-        <div v-else-if="error" class="error-state">
+        <div
+          v-else-if="error"
+          class="error-state"
+        >
           <span>{{ error }}</span>
         </div>
         <DiffView
           v-else-if="diff"
           :diff="diff"
-          :fileName="filePath"
-          :showFileName="false"
-          :oldContent="oldContent"
-          :newContent="newContent"
-          :expandUnchanged="true"
-          :expansionLineCount="5"
-          diffStyle="unified"
-          maxHeight="100%"
+          :file-name="filePath"
+          :show-file-name="false"
+          :old-content="oldContent"
+          :new-content="newContent"
+          :expand-unchanged="true"
+          :expansion-line-count="5"
+          diff-style="unified"
+          max-height="100%"
         />
-        <div v-else class="empty-state">
+        <div
+          v-else
+          class="empty-state"
+        >
           <span>No changes to display</span>
         </div>
       </div>

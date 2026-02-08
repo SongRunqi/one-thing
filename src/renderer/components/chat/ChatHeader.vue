@@ -8,7 +8,10 @@
         title="Show sidebar"
         @click="$emit('toggleSidebar')"
       >
-        <PanelLeft :size="16" :stroke-width="2" />
+        <PanelLeft
+          :size="16"
+          :stroke-width="2"
+        />
       </button>
     </div>
 
@@ -40,7 +43,10 @@
         title="Back to parent chat"
         @click="$emit('goToParent')"
       >
-        <ArrowLeft :size="14" :stroke-width="2" />
+        <ArrowLeft
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
 
       <!-- Split button -->
@@ -50,7 +56,10 @@
         title="Split view"
         @click="$emit('split')"
       >
-        <Columns2 :size="14" :stroke-width="2" />
+        <Columns2
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
 
       <!-- Flow / Right sidebar toggle -->
@@ -60,7 +69,10 @@
         :title="isRightSidebarOpen ? 'Hide Files (⌘⇧E)' : 'Show Files (⌘⇧E)'"
         @click="$emit('toggleRightSidebar')"
       >
-        <PanelRight :size="14" :stroke-width="2" />
+        <PanelRight
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
 
       <!-- Equalize panels button -->
@@ -70,7 +82,10 @@
         title="Equalize panels"
         @click="$emit('equalize')"
       >
-        <Equal :size="14" :stroke-width="2" />
+        <Equal
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
 
       <!-- Close button (for multi-panel) -->
@@ -80,7 +95,10 @@
         title="Close panel"
         @click="$emit('close')"
       >
-        <X :size="14" :stroke-width="2" />
+        <X
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
     </div>
   </header>

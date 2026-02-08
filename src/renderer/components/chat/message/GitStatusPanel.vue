@@ -9,11 +9,32 @@
     <div class="panel-header">
       <div class="header-main">
         <div class="branch-info">
-          <svg class="branch-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="6" y1="3" x2="6" y2="15"/>
-            <circle cx="18" cy="6" r="3"/>
-            <circle cx="6" cy="18" r="3"/>
-            <path d="M18 9a9 9 0 0 1-9 9"/>
+          <svg
+            class="branch-icon"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line
+              x1="6"
+              y1="3"
+              x2="6"
+              y2="15"
+            />
+            <circle
+              cx="18"
+              cy="6"
+              r="3"
+            />
+            <circle
+              cx="6"
+              cy="18"
+              r="3"
+            />
+            <path d="M18 9a9 9 0 0 1-9 9" />
           </svg>
           <span class="branch-name">{{ data.branch?.current || 'unknown' }}</span>
         </div>
@@ -21,66 +42,149 @@
         <button
           class="refresh-btn"
           :class="{ spinning: isLoading }"
-          @click="handleRefresh"
           title="Refresh (R)"
           :disabled="isLoading"
+          @click="handleRefresh"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="23 4 23 10 17 10"/>
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
           </svg>
         </button>
         <button
           class="close-btn"
-          @click="handleClose"
           title="Close panel"
+          @click="handleClose"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line
+              x1="18"
+              y1="6"
+              x2="6"
+              y2="18"
+            />
+            <line
+              x1="6"
+              y1="6"
+              x2="18"
+              y2="18"
+            />
           </svg>
         </button>
       </div>
 
-      <div v-if="data.branch?.upstream" class="tracking-info">
+      <div
+        v-if="data.branch?.upstream"
+        class="tracking-info"
+      >
         <span class="tracking-arrow">↳</span>
         <span class="upstream-name">{{ data.branch.upstream }}</span>
-        <span v-if="data.branch?.ahead" class="sync-badge ahead">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-            <polyline points="18 15 12 9 6 15"/>
+        <span
+          v-if="data.branch?.ahead"
+          class="sync-badge ahead"
+        >
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+          >
+            <polyline points="18 15 12 9 6 15" />
           </svg>
           {{ data.branch.ahead }}
         </span>
-        <span v-if="data.branch?.behind" class="sync-badge behind">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-            <polyline points="6 9 12 15 18 9"/>
+        <span
+          v-if="data.branch?.behind"
+          class="sync-badge behind"
+        >
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+          >
+            <polyline points="6 9 12 15 18 9" />
           </svg>
           {{ data.branch.behind }}
         </span>
       </div>
 
       <div class="stats-row">
-        <span v-if="data.summary.totalChanges > 0" class="stat-badge total">
+        <span
+          v-if="data.summary.totalChanges > 0"
+          class="stat-badge total"
+        >
           {{ data.summary.totalChanges }} changes
         </span>
-        <span v-if="data.summary.stagedCount > 0" class="stat-badge staged">
+        <span
+          v-if="data.summary.stagedCount > 0"
+          class="stat-badge staged"
+        >
           {{ data.summary.stagedCount }} staged
         </span>
-        <span v-if="data.summary.unstagedCount > 0" class="stat-badge modified">
+        <span
+          v-if="data.summary.unstagedCount > 0"
+          class="stat-badge modified"
+        >
           {{ data.summary.unstagedCount }} modified
         </span>
-        <span v-if="data.summary.untrackedCount > 0" class="stat-badge untracked">
+        <span
+          v-if="data.summary.untrackedCount > 0"
+          class="stat-badge untracked"
+        >
           {{ data.summary.untrackedCount }} untracked
         </span>
       </div>
     </div>
 
     <!-- Error state -->
-    <div v-if="!data.isRepo" class="error-state">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"/>
-        <line x1="12" y1="8" x2="12" y2="12"/>
-        <line x1="12" y1="16" x2="12.01" y2="16"/>
+    <div
+      v-if="!data.isRepo"
+      class="error-state"
+    >
+      <svg
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+        />
+        <line
+          x1="12"
+          y1="8"
+          x2="12"
+          y2="12"
+        />
+        <line
+          x1="12"
+          y1="16"
+          x2="12.01"
+          y2="16"
+        />
       </svg>
       <div class="error-text">
         <span class="error-title">Not a git repository</span>
@@ -89,77 +193,149 @@
     </div>
 
     <!-- Quick actions (fixed, outside scrollable area) -->
-    <div v-if="data.isRepo" class="actions-bar">
+    <div
+      v-if="data.isRepo"
+      class="actions-bar"
+    >
       <button
         class="action-btn primary"
-        @click="emitAction('stage-all')"
         title="Stage all changes (git add -A)"
+        @click="emitAction('stage-all')"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="20 6 9 17 4 12"/>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <polyline points="20 6 9 17 4 12" />
         </svg>
         <span>Stage All</span>
       </button>
       <button
         class="action-btn"
-        @click="emitAction('commit')"
         title="Commit staged changes"
         :disabled="data.summary.stagedCount === 0"
+        @click="emitAction('commit')"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="4"/>
-          <line x1="1.05" y1="12" x2="7" y2="12"/>
-          <line x1="17.01" y1="12" x2="22.96" y2="12"/>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="4"
+          />
+          <line
+            x1="1.05"
+            y1="12"
+            x2="7"
+            y2="12"
+          />
+          <line
+            x1="17.01"
+            y1="12"
+            x2="22.96"
+            y2="12"
+          />
         </svg>
         <span>Commit</span>
       </button>
       <button
         class="action-btn"
-        @click="emitAction('push')"
         title="Push to remote"
+        @click="emitAction('push')"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="12" y1="19" x2="12" y2="5"/>
-          <polyline points="5 12 12 5 19 12"/>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <line
+            x1="12"
+            y1="19"
+            x2="12"
+            y2="5"
+          />
+          <polyline points="5 12 12 5 19 12" />
         </svg>
         <span>Push</span>
       </button>
       <button
         class="action-btn"
-        @click="emitAction('pull')"
         title="Pull from remote"
+        @click="emitAction('pull')"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <polyline points="19 12 12 19 5 12"/>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <line
+            x1="12"
+            y1="5"
+            x2="12"
+            y2="19"
+          />
+          <polyline points="19 12 12 19 5 12" />
         </svg>
         <span>Pull</span>
       </button>
     </div>
 
     <!-- Content sections (scrollable) -->
-    <div v-if="data.isRepo" class="panel-content">
+    <div
+      v-if="data.isRepo"
+      class="panel-content"
+    >
       <!-- Staged files -->
-      <div v-if="data.staged.length > 0" class="section">
-        <div class="section-header" @click="toggleSection('staged')">
+      <div
+        v-if="data.staged.length > 0"
+        class="section"
+      >
+        <div
+          class="section-header"
+          @click="toggleSection('staged')"
+        >
           <svg
             :class="['chevron', { collapsed: collapsedSections.staged }]"
-            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
           >
-            <polyline points="6 9 12 15 18 9"/>
+            <polyline points="6 9 12 15 18 9" />
           </svg>
           <span class="section-title">Staged</span>
           <span class="section-count">{{ data.staged.length }}</span>
           <button
             class="section-action"
-            @click.stop="emitAction('unstage-all')"
             title="Unstage all"
+            @click.stop="emitAction('unstage-all')"
           >
             Unstage All
           </button>
         </div>
         <Transition name="section">
-          <div v-show="!collapsedSections.staged" class="section-content">
+          <div
+            v-show="!collapsedSections.staged"
+            class="section-content"
+          >
             <div
               v-for="file in data.staged"
               :key="'staged-' + file.path"
@@ -173,31 +349,49 @@
                 <span :class="['status-icon', `status-${file.status}`]">
                   {{ getStatusIcon(file.status) }}
                 </span>
-                <span class="file-path" :title="file.path">
+                <span
+                  class="file-path"
+                  :title="file.path"
+                >
                   <span class="file-dir">{{ getFileDir(file.path) }}</span>
                   <span class="file-name">{{ getFileName(file.path) }}</span>
                 </span>
                 <div class="file-actions">
                   <button
                     class="file-action-btn"
-                    @click.stop="emitFileAction('unstage', file.path)"
                     title="Unstage file"
+                    @click.stop="emitFileAction('unstage', file.path)"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="5" y1="12" x2="19" y2="12"/>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <line
+                        x1="5"
+                        y1="12"
+                        x2="19"
+                        y2="12"
+                      />
                     </svg>
                   </button>
                 </div>
               </div>
               <!-- Expanded diff content -->
               <Transition name="diff">
-                <div v-if="getDiffState(file.path)" class="diff-container">
+                <div
+                  v-if="getDiffState(file.path)"
+                  class="diff-container"
+                >
                   <DiffView
                     :diff="getDiffState(file.path)?.content || ''"
                     :loading="getDiffState(file.path)?.loading"
                     :error="getDiffState(file.path)?.error"
-                    :fileName="file.path"
-                    :showFileName="false"
+                    :file-name="file.path"
+                    :show-file-name="false"
                   />
                 </div>
               </Transition>
@@ -207,26 +401,40 @@
       </div>
 
       <!-- Unstaged changes -->
-      <div v-if="data.unstaged.length > 0" class="section">
-        <div class="section-header" @click="toggleSection('unstaged')">
+      <div
+        v-if="data.unstaged.length > 0"
+        class="section"
+      >
+        <div
+          class="section-header"
+          @click="toggleSection('unstaged')"
+        >
           <svg
             :class="['chevron', { collapsed: collapsedSections.unstaged }]"
-            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
           >
-            <polyline points="6 9 12 15 18 9"/>
+            <polyline points="6 9 12 15 18 9" />
           </svg>
           <span class="section-title">Changes</span>
           <span class="section-count">{{ data.unstaged.length }}</span>
           <button
             class="section-action"
-            @click.stop="emitAction('stage-all-changes')"
             title="Stage all changes"
+            @click.stop="emitAction('stage-all-changes')"
           >
             Stage All
           </button>
         </div>
         <Transition name="section">
-          <div v-show="!collapsedSections.unstaged" class="section-content">
+          <div
+            v-show="!collapsedSections.unstaged"
+            class="section-content"
+          >
             <div
               v-for="file in data.unstaged"
               :key="'unstaged-' + file.path"
@@ -240,42 +448,72 @@
                 <span :class="['status-icon', `status-${file.status}`]">
                   {{ getStatusIcon(file.status) }}
                 </span>
-                <span class="file-path" :title="file.path">
+                <span
+                  class="file-path"
+                  :title="file.path"
+                >
                   <span class="file-dir">{{ getFileDir(file.path) }}</span>
                   <span class="file-name">{{ getFileName(file.path) }}</span>
                 </span>
                 <div class="file-actions">
                   <button
                     class="file-action-btn"
-                    @click.stop="emitFileAction('stage', file.path)"
                     title="Stage file"
+                    @click.stop="emitFileAction('stage', file.path)"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="12" y1="5" x2="12" y2="19"/>
-                      <line x1="5" y1="12" x2="19" y2="12"/>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <line
+                        x1="12"
+                        y1="5"
+                        x2="12"
+                        y2="19"
+                      />
+                      <line
+                        x1="5"
+                        y1="12"
+                        x2="19"
+                        y2="12"
+                      />
                     </svg>
                   </button>
                   <button
                     class="file-action-btn danger"
-                    @click.stop="emitFileAction('discard', file.path)"
                     title="Discard changes"
+                    @click.stop="emitFileAction('discard', file.path)"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="3 6 5 6 21 6"/>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                     </svg>
                   </button>
                 </div>
               </div>
               <!-- Expanded diff content -->
               <Transition name="diff">
-                <div v-if="getDiffState(file.path)" class="diff-container">
+                <div
+                  v-if="getDiffState(file.path)"
+                  class="diff-container"
+                >
                   <DiffView
                     :diff="getDiffState(file.path)?.content || ''"
                     :loading="getDiffState(file.path)?.loading"
                     :error="getDiffState(file.path)?.error"
-                    :fileName="file.path"
-                    :showFileName="false"
+                    :file-name="file.path"
+                    :show-file-name="false"
                   />
                 </div>
               </Transition>
@@ -285,45 +523,79 @@
       </div>
 
       <!-- Untracked files -->
-      <div v-if="data.untracked.length > 0" class="section">
-        <div class="section-header" @click="toggleSection('untracked')">
+      <div
+        v-if="data.untracked.length > 0"
+        class="section"
+      >
+        <div
+          class="section-header"
+          @click="toggleSection('untracked')"
+        >
           <svg
             :class="['chevron', { collapsed: collapsedSections.untracked }]"
-            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
           >
-            <polyline points="6 9 12 15 18 9"/>
+            <polyline points="6 9 12 15 18 9" />
           </svg>
           <span class="section-title">Untracked</span>
           <span class="section-count">{{ data.untracked.length }}</span>
           <button
             class="section-action"
-            @click.stop="emitAction('stage-all-untracked')"
             title="Stage all untracked"
+            @click.stop="emitAction('stage-all-untracked')"
           >
             Add All
           </button>
         </div>
         <Transition name="section">
-          <div v-show="!collapsedSections.untracked" class="section-content">
+          <div
+            v-show="!collapsedSections.untracked"
+            class="section-content"
+          >
             <div
               v-for="file in data.untracked"
               :key="'untracked-' + file.path"
               class="file-item"
             >
               <span class="status-icon status-untracked">?</span>
-              <span class="file-path" :title="file.path">
+              <span
+                class="file-path"
+                :title="file.path"
+              >
                 <span class="file-dir">{{ getFileDir(file.path) }}</span>
                 <span class="file-name">{{ getFileName(file.path) }}</span>
               </span>
               <div class="file-actions">
                 <button
                   class="file-action-btn"
-                  @click.stop="emitFileAction('stage', file.path)"
                   title="Add file"
+                  @click.stop="emitFileAction('stage', file.path)"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="5" x2="12" y2="19"/>
-                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <line
+                      x1="12"
+                      y1="5"
+                      x2="12"
+                      y2="19"
+                    />
+                    <line
+                      x1="5"
+                      y1="12"
+                      x2="19"
+                      y2="12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -333,10 +605,20 @@
       </div>
 
       <!-- No changes state -->
-      <div v-if="data.summary.totalChanges === 0" class="empty-state">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-          <polyline points="22 4 12 14.01 9 11.01"/>
+      <div
+        v-if="data.summary.totalChanges === 0"
+        class="empty-state"
+      >
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+          <polyline points="22 4 12 14.01 9 11.01" />
         </svg>
         <div class="empty-text">
           <span class="empty-title">Working tree clean</span>
@@ -345,19 +627,33 @@
       </div>
 
       <!-- Recent commits -->
-      <div v-if="data.recentCommits.length > 0" class="section commits-section">
-        <div class="section-header" @click="toggleSection('commits')">
+      <div
+        v-if="data.recentCommits.length > 0"
+        class="section commits-section"
+      >
+        <div
+          class="section-header"
+          @click="toggleSection('commits')"
+        >
           <svg
             :class="['chevron', { collapsed: collapsedSections.commits }]"
-            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
           >
-            <polyline points="6 9 12 15 18 9"/>
+            <polyline points="6 9 12 15 18 9" />
           </svg>
           <span class="section-title">Recent Commits</span>
           <span class="section-count">{{ data.recentCommits.length }}</span>
         </div>
         <Transition name="section">
-          <div v-show="!collapsedSections.commits" class="section-content commits-list">
+          <div
+            v-show="!collapsedSections.commits"
+            class="section-content commits-list"
+          >
             <div
               v-for="commit in data.recentCommits"
               :key="commit.hash"
@@ -366,18 +662,36 @@
               <div class="commit-header">
                 <button
                   class="commit-hash"
-                  @click="copyToClipboard(commit.shortHash)"
                   :title="`Copy ${commit.shortHash}`"
+                  @click="copyToClipboard(commit.shortHash)"
                 >
                   {{ commit.shortHash }}
-                  <svg class="copy-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  <svg
+                    class="copy-icon"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <rect
+                      x="9"
+                      y="9"
+                      width="13"
+                      height="13"
+                      rx="2"
+                      ry="2"
+                    />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                   </svg>
                 </button>
                 <span class="commit-date">{{ commit.relativeDate }}</span>
               </div>
-              <div class="commit-message" :title="commit.message">
+              <div
+                class="commit-message"
+                :title="commit.message"
+              >
                 {{ commit.message }}
               </div>
               <div class="commit-author">
@@ -390,14 +704,23 @@
           </div>
         </Transition>
       </div>
-
     </div>
 
     <!-- Toast notification -->
     <Transition name="toast">
-      <div v-if="toastMessage" class="toast">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="20 6 9 17 4 12"/>
+      <div
+        v-if="toastMessage"
+        class="toast"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <polyline points="20 6 9 17 4 12" />
         </svg>
         {{ toastMessage }}
       </div>

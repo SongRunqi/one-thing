@@ -1,18 +1,32 @@
 <template>
   <Teleport to="body">
     <Transition name="commit-dialog">
-      <div v-if="visible" class="commit-dialog-backdrop" @click.self="$emit('close')">
+      <div
+        v-if="visible"
+        class="commit-dialog-backdrop"
+        @click.self="$emit('close')"
+      >
         <div class="commit-dialog">
           <div class="dialog-header">
             <h3>Commit Changes</h3>
-            <button class="close-btn" @click="$emit('close')" title="Close (Esc)">
-              <X :size="16" :stroke-width="1.5" />
+            <button
+              class="close-btn"
+              title="Close (Esc)"
+              @click="$emit('close')"
+            >
+              <X
+                :size="16"
+                :stroke-width="1.5"
+              />
             </button>
           </div>
 
           <div class="dialog-body">
             <div class="staged-summary">
-              <GitCommitHorizontal :size="16" :stroke-width="1.5" />
+              <GitCommitHorizontal
+                :size="16"
+                :stroke-width="1.5"
+              />
               <span>{{ stagedCount }} file{{ stagedCount !== 1 ? 's' : '' }} staged for commit</span>
             </div>
 
@@ -32,13 +46,22 @@
           </div>
 
           <div class="dialog-footer">
-            <button class="btn secondary" @click="$emit('close')">Cancel</button>
+            <button
+              class="btn secondary"
+              @click="$emit('close')"
+            >
+              Cancel
+            </button>
             <button
               class="btn primary"
-              @click="handleCommit"
               :disabled="!commitMessage.trim() || isCommitting"
+              @click="handleCommit"
             >
-              <Loader2 v-if="isCommitting" :size="14" class="spinning" />
+              <Loader2
+                v-if="isCommitting"
+                :size="14"
+                class="spinning"
+              />
               <span>{{ isCommitting ? 'Committing...' : 'Commit' }}</span>
             </button>
           </div>

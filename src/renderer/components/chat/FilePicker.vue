@@ -1,15 +1,41 @@
 <template>
-  <div class="file-picker" v-if="visible && (files.length > 0 || isLoading)">
+  <div
+    v-if="visible && (files.length > 0 || isLoading)"
+    class="file-picker"
+  >
     <div class="file-picker-header">
       <span class="title">Files</span>
-      <span class="count" v-if="!isLoading">{{ files.length }}</span>
-      <span class="loading-indicator" v-else>
-        <svg class="spinner" width="14" height="14" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="32" stroke-linecap="round" />
+      <span
+        v-if="!isLoading"
+        class="count"
+      >{{ files.length }}</span>
+      <span
+        v-else
+        class="loading-indicator"
+      >
+        <svg
+          class="spinner"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-dasharray="32"
+            stroke-linecap="round"
+          />
         </svg>
       </span>
     </div>
-    <div class="file-list" v-if="files.length > 0">
+    <div
+      v-if="files.length > 0"
+      class="file-list"
+    >
       <div
         v-for="(file, index) in files"
         :key="file"
@@ -18,15 +44,27 @@
         @mouseenter="selectedIndex = index"
       >
         <div class="file-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
           </svg>
         </div>
-        <div class="file-path">{{ getRelativePath(file) }}</div>
+        <div class="file-path">
+          {{ getRelativePath(file) }}
+        </div>
       </div>
     </div>
-    <div class="file-list-empty" v-else-if="!isLoading && query">
+    <div
+      v-else-if="!isLoading && query"
+      class="file-list-empty"
+    >
       <span>No files found matching "{{ query }}"</span>
     </div>
     <div class="file-picker-hint">

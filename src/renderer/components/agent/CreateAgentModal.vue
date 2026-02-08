@@ -1,12 +1,27 @@
 <template>
   <Teleport to="body">
-    <div class="create-agent-overlay" @click.self="handleClose">
-      <div class="create-agent-modal" @keydown="handleKeydown">
+    <div
+      class="create-agent-overlay"
+      @click.self="handleClose"
+    >
+      <div
+        class="create-agent-modal"
+        @keydown="handleKeydown"
+      >
         <!-- Header -->
         <div class="modal-header">
-          <h2 class="modal-title">Create Custom Agent</h2>
-          <button class="close-btn" @click="handleClose" title="Close (Escape)">
-            <X :size="20" :stroke-width="2" />
+          <h2 class="modal-title">
+            Create Custom Agent
+          </h2>
+          <button
+            class="close-btn"
+            title="Close (Escape)"
+            @click="handleClose"
+          >
+            <X
+              :size="20"
+              :stroke-width="2"
+            />
           </button>
         </div>
 
@@ -19,7 +34,11 @@
             :class="{ active: activeTab === tab.id }"
             @click="activeTab = tab.id"
           >
-            <component :is="tab.icon" :size="16" :stroke-width="2" />
+            <component
+              :is="tab.icon"
+              :size="16"
+              :stroke-width="2"
+            />
             <span>{{ tab.label }}</span>
           </button>
         </div>
@@ -31,26 +50,26 @@
             v-model:name="form.name"
             v-model:description="form.description"
             v-model:avatar="form.avatar"
-            v-model:enableMemory="form.enableMemory"
+            v-model:enable-memory="form.enableMemory"
             v-model:source="form.source"
           />
 
           <PromptSection
             v-show="activeTab === 'prompt'"
-            v-model:systemPrompt="form.systemPrompt"
+            v-model:system-prompt="form.systemPrompt"
           />
 
           <ToolsSection
             v-show="activeTab === 'tools'"
-            v-model:customTools="form.customTools"
+            v-model:custom-tools="form.customTools"
           />
 
           <SettingsSection
             v-show="activeTab === 'settings'"
-            v-model:maxToolCalls="form.maxToolCalls"
-            v-model:timeoutMs="form.timeoutMs"
-            v-model:allowBuiltinTools="form.allowBuiltinTools"
-            v-model:allowedBuiltinTools="form.allowedBuiltinTools"
+            v-model:max-tool-calls="form.maxToolCalls"
+            v-model:timeout-ms="form.timeoutMs"
+            v-model:allow-builtin-tools="form.allowBuiltinTools"
+            v-model:allowed-builtin-tools="form.allowedBuiltinTools"
           />
         </div>
 
@@ -60,7 +79,10 @@
             <span class="shortcut">{{ isMac ? '⌘' : 'Ctrl' }}+Enter</span> to create
           </div>
           <div class="footer-actions">
-            <button class="btn secondary" @click="handleClose">
+            <button
+              class="btn secondary"
+              @click="handleClose"
+            >
               Cancel
             </button>
             <button
@@ -68,7 +90,10 @@
               :disabled="!isFormValid || isSubmitting"
               @click="handleCreate"
             >
-              <span v-if="isSubmitting" class="btn-spinner"></span>
+              <span
+                v-if="isSubmitting"
+                class="btn-spinner"
+              />
               {{ isSubmitting ? 'Creating...' : 'Create Agent' }}
             </button>
           </div>

@@ -7,18 +7,30 @@
         :style="panelStyle"
         @click.stop
       >
-        <button class="create-option" @click="handleCreateAgent">
+        <button
+          class="create-option"
+          @click="handleCreateAgent"
+        >
           <div class="option-icon agent-icon">
-            <Bot :size="20" :stroke-width="1.5" />
+            <Bot
+              :size="20"
+              :stroke-width="1.5"
+            />
           </div>
           <div class="option-text">
             <span class="option-title">Create Agent</span>
             <span class="option-desc">Customize AI assistant personality</span>
           </div>
         </button>
-        <button class="create-option" @click="handleCreateWorkspace">
+        <button
+          class="create-option"
+          @click="handleCreateWorkspace"
+        >
           <div class="option-icon workspace-icon">
-            <FolderOpen :size="20" :stroke-width="1.5" />
+            <FolderOpen
+              :size="20"
+              :stroke-width="1.5"
+            />
           </div>
           <div class="option-text">
             <span class="option-title">Create Workspace</span>
