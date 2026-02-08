@@ -20,7 +20,9 @@
     "release": "bash scripts/release.sh",
     "lint": "eslint . --fix",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e": "playwright test --config playwright.config.ts",
+    "e2e:debug": "playwright test --config playwright.config.ts --debug"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.1",
@@ -63,6 +65,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.58.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/diff": "^7.0.2",
     "@types/handlebars": "^4.0.40",

@@ -24,6 +24,11 @@ if (process.env.NODE_ENV === 'development') {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
 }
 
+// Allow overriding userData path for E2E test isolation
+if (process.env.ELECTRON_USER_DATA) {
+  app.setPath('userData', process.env.ELECTRON_USER_DATA)
+}
+
 let mainWindow: BrowserWindow | null = null
 
 app.on('ready', async () => {
