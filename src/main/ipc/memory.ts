@@ -7,6 +7,7 @@
 
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc/channels.js'
+import { classifyError } from '../../shared/errors.js'
 import {
   listMemoryFiles,
   getMemoryFile,
@@ -44,8 +45,9 @@ export function registerMemoryHandlers(): void {
       const files = await listMemoryFiles()
       return { success: true, files }
     } catch (error: any) {
-      console.error('[IPC] Failed to list memory files:', error)
-      return { success: false, error: error.message, files: [] }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to list memory files:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable, files: [] }
     }
   })
 
@@ -55,8 +57,9 @@ export function registerMemoryHandlers(): void {
       const file = await getMemoryFile(req.path)
       return { success: true, file }
     } catch (error: any) {
-      console.error('[IPC] Failed to get memory file:', error)
-      return { success: false, error: error.message, file: null }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to get memory file:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable, file: null }
     }
   })
 
@@ -66,8 +69,9 @@ export function registerMemoryHandlers(): void {
       await updateMemoryFile(req.path, req.content, req.metadata)
       return { success: true }
     } catch (error: any) {
-      console.error('[IPC] Failed to update memory file:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to update memory file:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -77,8 +81,9 @@ export function registerMemoryHandlers(): void {
       await deleteMemoryFile(req.path)
       return { success: true }
     } catch (error: any) {
-      console.error('[IPC] Failed to delete memory file:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to delete memory file:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -88,8 +93,9 @@ export function registerMemoryHandlers(): void {
       const result = await deleteMemoryFiles(req.paths)
       return { success: true, result }
     } catch (error: any) {
-      console.error('[IPC] Failed to delete memory files:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to delete memory files:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -99,8 +105,9 @@ export function registerMemoryHandlers(): void {
       const filePath = await exportMemory(req.options)
       return { success: true, filePath }
     } catch (error: any) {
-      console.error('[IPC] Failed to export memory:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to export memory:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -110,8 +117,9 @@ export function registerMemoryHandlers(): void {
       const filePath = await exportWithDialog(req.options)
       return { success: true, filePath }
     } catch (error: any) {
-      console.error('[IPC] Failed to export memory with dialog:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to export memory with dialog:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -121,8 +129,9 @@ export function registerMemoryHandlers(): void {
       const result = await importMemory(req.filePath)
       return { success: true, result }
     } catch (error: any) {
-      console.error('[IPC] Failed to import memory:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to import memory:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -132,8 +141,9 @@ export function registerMemoryHandlers(): void {
       const result = await importWithDialog()
       return { success: true, result }
     } catch (error: any) {
-      console.error('[IPC] Failed to import memory with dialog:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to import memory with dialog:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -143,8 +153,9 @@ export function registerMemoryHandlers(): void {
       const tags = await getAllTags()
       return { success: true, tags }
     } catch (error: any) {
-      console.error('[IPC] Failed to get tags:', error)
-      return { success: false, error: error.message, tags: [] }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to get tags:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable, tags: [] }
     }
   })
 
@@ -154,8 +165,9 @@ export function registerMemoryHandlers(): void {
       const affected = await renameTag(req.oldTag, req.newTag)
       return { success: true, affected }
     } catch (error: any) {
-      console.error('[IPC] Failed to rename tag:', error)
-      return { success: false, error: error.message, affected: 0 }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to rename tag:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable, affected: 0 }
     }
   })
 
@@ -165,8 +177,9 @@ export function registerMemoryHandlers(): void {
       const affected = await deleteTag(req.tag)
       return { success: true, affected }
     } catch (error: any) {
-      console.error('[IPC] Failed to delete tag:', error)
-      return { success: false, error: error.message, affected: 0 }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to delete tag:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable, affected: 0 }
     }
   })
 
@@ -176,8 +189,9 @@ export function registerMemoryHandlers(): void {
       const stats = await getMemoryStats()
       return { success: true, stats }
     } catch (error: any) {
-      console.error('[IPC] Failed to get memory stats:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to get memory stats:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -187,8 +201,9 @@ export function registerMemoryHandlers(): void {
       const stats = await rebuildIndex()
       return { success: true, stats }
     } catch (error: any) {
-      console.error('[IPC] Failed to rebuild memory index:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Memory][${appError.category}] Failed to rebuild memory index:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 

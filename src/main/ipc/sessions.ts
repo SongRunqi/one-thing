@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import fs from 'node:fs/promises'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 import type { TokenUsage, SessionTokenUsage } from '../../shared/ipc.js'
 import {
   getSessions,
@@ -80,8 +81,9 @@ export function registerSessionHandlers() {
       const sessions = getSessionsList()
       return { success: true, sessions }
     } catch (error: any) {
-      console.error('[Sessions] Failed to get sessions list:', error)
-      return { success: false, error: error.message || 'Failed to get sessions list' }
+      const appError = classifyError(error)
+      console.error(`[Sessions][${appError.category}] Failed to get sessions list:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -109,8 +111,9 @@ export function registerSessionHandlers() {
         messageCount: session.messageCount ?? 0,
       }
     } catch (error: any) {
-      console.error('[Sessions] Failed to activate session:', error)
-      return { success: false, error: error.message || 'Failed to activate session' }
+      const appError = classifyError(error)
+      console.error(`[Sessions][${appError.category}] Failed to activate session:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -123,8 +126,9 @@ export function registerSessionHandlers() {
       }
       return { success: true, messages }
     } catch (error: any) {
-      console.error('[Sessions] Failed to get session messages:', error)
-      return { success: false, error: error.message || 'Failed to get messages' }
+      const appError = classifyError(error)
+      console.error(`[Sessions][${appError.category}] Failed to get session messages:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -266,8 +270,9 @@ export function registerSessionHandlers() {
 
         return { success: true, session: branchSession }
       } catch (error: any) {
-        console.error('Error creating branch:', error)
-        return { success: false, error: error.message || 'Failed to create branch' }
+        const appError = classifyError(error)
+        console.error(`[Sessions][${appError.category}] Error creating branch:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     }
   )
@@ -303,8 +308,9 @@ export function registerSessionHandlers() {
       addMessage(sessionId, message)
       return { success: true }
     } catch (error: any) {
-      console.error('[Sessions] Failed to add system message:', error)
-      return { success: false, error: error.message || 'Failed to add message' }
+      const appError = classifyError(error)
+      console.error(`[Sessions][${appError.category}] Failed to add system message:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -328,8 +334,9 @@ export function registerSessionHandlers() {
 
       return { success: true, removedId: null }
     } catch (error: any) {
-      console.error('[Sessions] Failed to remove files-changed message:', error)
-      return { success: false, error: error.message || 'Failed to remove message' }
+      const appError = classifyError(error)
+      console.error(`[Sessions][${appError.category}] Failed to remove files-changed message:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -353,8 +360,9 @@ export function registerSessionHandlers() {
 
       return { success: true, removedId: null }
     } catch (error: any) {
-      console.error('[Sessions] Failed to remove git-status message:', error)
-      return { success: false, error: error.message || 'Failed to remove message' }
+      const appError = classifyError(error)
+      console.error(`[Sessions][${appError.category}] Failed to remove git-status message:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -364,8 +372,9 @@ export function registerSessionHandlers() {
       deleteMessage(sessionId, messageId)
       return { success: true }
     } catch (error: any) {
-      console.error('[Sessions] Failed to remove message:', error)
-      return { success: false, error: error.message || 'Failed to remove message' }
+      const appError = classifyError(error)
+      console.error(`[Sessions][${appError.category}] Failed to remove message:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 }

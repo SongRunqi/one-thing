@@ -6,6 +6,7 @@
  */
 
 import { ipcMain, shell } from 'electron'
+import { classifyError } from '../../shared/errors.js'
 import { pluginLoader } from '../plugins/loader/index.js'
 import { hookManager } from '../plugins/hooks/index.js'
 import type { LoadedPlugin } from '../plugins/types.js'
@@ -59,8 +60,9 @@ export function registerPluginHandlers(): void {
         plugins: plugins.map(toPluginInfo),
       }
     } catch (error: any) {
-      console.error('[PluginIPC] Failed to get plugins:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Plugin][${appError.category}] Failed to get plugins:`, error)
+      return { success: false, error: appError.message }
     }
   })
 
@@ -73,8 +75,9 @@ export function registerPluginHandlers(): void {
       }
       return { success: true, plugin: toPluginInfo(plugin) }
     } catch (error: any) {
-      console.error('[PluginIPC] Failed to get plugin:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Plugin][${appError.category}] Failed to get plugin:`, error)
+      return { success: false, error: appError.message }
     }
   })
 
@@ -84,8 +87,9 @@ export function registerPluginHandlers(): void {
       const result = await pluginLoader.installPlugin(request)
       return result
     } catch (error: any) {
-      console.error('[PluginIPC] Failed to install plugin:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Plugin][${appError.category}] Failed to install plugin:`, error)
+      return { success: false, error: appError.message }
     }
   })
 
@@ -95,8 +99,9 @@ export function registerPluginHandlers(): void {
       const result = await pluginLoader.uninstallPlugin(pluginId)
       return result
     } catch (error: any) {
-      console.error('[PluginIPC] Failed to uninstall plugin:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Plugin][${appError.category}] Failed to uninstall plugin:`, error)
+      return { success: false, error: appError.message }
     }
   })
 
@@ -106,8 +111,9 @@ export function registerPluginHandlers(): void {
       const result = await pluginLoader.enablePlugin(pluginId)
       return result
     } catch (error: any) {
-      console.error('[PluginIPC] Failed to enable plugin:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Plugin][${appError.category}] Failed to enable plugin:`, error)
+      return { success: false, error: appError.message }
     }
   })
 
@@ -117,8 +123,9 @@ export function registerPluginHandlers(): void {
       const result = await pluginLoader.disablePlugin(pluginId)
       return result
     } catch (error: any) {
-      console.error('[PluginIPC] Failed to disable plugin:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Plugin][${appError.category}] Failed to disable plugin:`, error)
+      return { success: false, error: appError.message }
     }
   })
 
@@ -128,8 +135,9 @@ export function registerPluginHandlers(): void {
       const result = await pluginLoader.reloadPlugin(pluginId)
       return result
     } catch (error: any) {
-      console.error('[PluginIPC] Failed to reload plugin:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Plugin][${appError.category}] Failed to reload plugin:`, error)
+      return { success: false, error: appError.message }
     }
   })
 
@@ -139,8 +147,9 @@ export function registerPluginHandlers(): void {
       const result = pluginLoader.updatePluginConfig(request.pluginId, request.config)
       return result
     } catch (error: any) {
-      console.error('[PluginIPC] Failed to update plugin config:', error)
-      return { success: false, error: error.message }
+      const appError = classifyError(error)
+      console.error(`[Plugin][${appError.category}] Failed to update plugin config:`, error)
+      return { success: false, error: appError.message }
     }
   })
 

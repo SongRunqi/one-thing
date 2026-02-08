@@ -18,7 +18,10 @@
       v-if="message.errorDetails"
       :content="message.content"
       :error-details="message.errorDetails"
+      :error-category="message.errorCategory"
+      :retryable="message.retryable"
       :timestamp="message.timestamp"
+      @retry="handleRetry"
     />
 
     <!-- System message (e.g., /files command output) -->
@@ -281,6 +284,11 @@ function closeImagePreview() {
 
 // Regenerate handler
 function handleRegenerate() {
+  emit('regenerate', props.message.id)
+}
+
+// Retry handler (for error messages)
+function handleRetry() {
   emit('regenerate', props.message.id)
 }
 

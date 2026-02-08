@@ -253,6 +253,10 @@ export interface UIMessageErrorChunk {
   error: string
   /** Detailed error info */
   errorDetails?: string
+  /** Error category (network, auth, quota, etc.) */
+  errorCategory?: string
+  /** Whether the error is retryable */
+  retryable?: boolean
 }
 
 /**

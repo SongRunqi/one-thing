@@ -87,6 +87,8 @@ export interface ChatMessage {
   isStreaming?: boolean
   isThinking?: boolean
   errorDetails?: string  // Additional error details for error messages
+  errorCategory?: string  // Error category (network, auth, quota, etc.)
+  retryable?: boolean  // Whether the error is retryable
   reasoning?: string  // Thinking/reasoning process for reasoning models (e.g., deepseek-reasoner)
   toolCalls?: ToolCall[]  // Tool calls made by the assistant (legacy, for backward compat)
   contentParts?: ContentPart[]  // Sequential content parts for inline tool call display

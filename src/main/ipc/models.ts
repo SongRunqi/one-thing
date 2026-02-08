@@ -10,6 +10,7 @@ import {
   ModelType,
   OpenRouterModel,
 } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 import { getCachedModels, setCachedModels } from '../stores/models-cache.js'
 import * as modelRegistry from '../services/ai/model-registry.js'
 import { oauthManager } from '../services/auth/oauth-manager.js'
@@ -398,6 +399,7 @@ async function handleFetchModels(
       fromCache: false,
     }
   } catch (error: any) {
+    const appError = classifyError(error)
     // If fetch fails, try to return cached data
     const cached = getCachedModels(provider)
     if (cached && cached.models.length > 0) {
@@ -405,7 +407,7 @@ async function handleFetchModels(
         success: true,
         models: cached.models,
         fromCache: true,
-        error: `Using cached data. Fetch failed: ${error.message}`,
+        error: `Using cached data. Fetch failed: ${appError.technicalDetail}`,
       }
     }
 
@@ -416,13 +418,13 @@ async function handleFetchModels(
         success: true,
         models: fallbackModels,
         fromCache: false,
-        error: `Using fallback models. Fetch failed: ${error.message}`,
+        error: `Using fallback models. Fetch failed: ${appError.technicalDetail}`,
       }
     }
 
     return {
       success: false,
-      error: error.message || 'Failed to fetch models',
+      error: appError.message,
     }
   }
 }
@@ -576,8 +578,9 @@ async function handleGetModelsWithCapabilities(
     const models = await modelRegistry.getModelsForProvider(request.providerId)
     return { success: true, models }
   } catch (error: any) {
-    console.error('[Models] Failed to get models with capabilities:', error)
-    return { success: false, error: error.message }
+    const appError = classifyError(error)
+    console.error(`[Models][${appError.category}] Failed to get models with capabilities:`, error)
+    return { success: false, error: appError.message }
   }
 }
 
@@ -588,8 +591,9 @@ async function handleGetAllModels(
     const models = await modelRegistry.getAllModels()
     return { success: true, models }
   } catch (error: any) {
-    console.error('[Models] Failed to get all models:', error)
-    return { success: false, error: error.message }
+    const appError = classifyError(error)
+    console.error(`[Models][${appError.category}] Failed to get all models:`, error)
+    return { success: false, error: appError.message }
   }
 }
 
@@ -601,8 +605,9 @@ async function handleSearchModels(
     const models = await modelRegistry.searchModels(request.query, request.providerId)
     return { success: true, models }
   } catch (error: any) {
-    console.error('[Models] Failed to search models:', error)
-    return { success: false, error: error.message }
+    const appError = classifyError(error)
+    console.error(`[Models][${appError.category}] Failed to search models:`, error)
+    return { success: false, error: appError.message }
   }
 }
 
@@ -613,8 +618,9 @@ async function handleRefreshModelRegistry(
     await modelRegistry.forceRefresh()
     return { success: true }
   } catch (error: any) {
-    console.error('[Models] Failed to refresh model registry:', error)
-    return { success: false, error: error.message }
+    const appError = classifyError(error)
+    console.error(`[Models][${appError.category}] Failed to refresh model registry:`, error)
+    return { success: false, error: appError.message }
   }
 }
 
@@ -625,8 +631,9 @@ async function handleGetModelNameAliases(
     const aliases = modelRegistry.getModelNameAliases()
     return { success: true, aliases }
   } catch (error: any) {
-    console.error('[Models] Failed to get model name aliases:', error)
-    return { success: false, error: error.message }
+    const appError = classifyError(error)
+    console.error(`[Models][${appError.category}] Failed to get model name aliases:`, error)
+    return { success: false, error: appError.message }
   }
 }
 
@@ -638,8 +645,9 @@ async function handleGetModelDisplayName(
     const displayName = modelRegistry.getModelDisplayName(request.modelId)
     return { success: true, displayName }
   } catch (error: any) {
-    console.error('[Models] Failed to get model display name:', error)
-    return { success: false, error: error.message }
+    const appError = classifyError(error)
+    console.error(`[Models][${appError.category}] Failed to get model display name:`, error)
+    return { success: false, error: appError.message }
   }
 }
 
@@ -708,8 +716,9 @@ async function handleGetEmbeddingModels(
     const models = await modelRegistry.getEmbeddingModelsForProvider(request.providerId)
     return { success: true, models }
   } catch (error: any) {
-    console.error('[Models] Failed to get embedding models:', error)
-    return { success: false, error: error.message }
+    const appError = classifyError(error)
+    console.error(`[Models][${appError.category}] Failed to get embedding models:`, error)
+    return { success: false, error: appError.message }
   }
 }
 
@@ -720,8 +729,9 @@ async function handleGetAllEmbeddingModels(
     const models = await modelRegistry.getAllEmbeddingModels()
     return { success: true, models }
   } catch (error: any) {
-    console.error('[Models] Failed to get all embedding models:', error)
-    return { success: false, error: error.message }
+    const appError = classifyError(error)
+    console.error(`[Models][${appError.category}] Failed to get all embedding models:`, error)
+    return { success: false, error: appError.message }
   }
 }
 
@@ -733,8 +743,9 @@ async function handleGetEmbeddingDimension(
     const dimension = await modelRegistry.getEmbeddingDimension(request.modelId)
     return { success: true, dimension }
   } catch (error: any) {
-    console.error('[Models] Failed to get embedding dimension:', error)
-    return { success: false, error: error.message }
+    const appError = classifyError(error)
+    console.error(`[Models][${appError.category}] Failed to get embedding dimension:`, error)
+    return { success: false, error: appError.message }
   }
 }
 

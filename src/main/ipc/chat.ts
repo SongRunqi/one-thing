@@ -68,12 +68,12 @@ import {
   filterHistoryForNonToolAPI,
 } from './chat/message-helpers.js'
 import {
-  extractErrorDetails,
   getProviderConfig,
   getApiKeyForProvider,
   getEffectiveProviderConfig,
   getProviderApiType,
 } from './chat/provider-helpers.js'
+import { classifyError } from '../../shared/errors.js'
 import {
   activeStreams,
   createStreamProcessor,
@@ -311,11 +311,14 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
       assistantMessage,
     }
   } catch (error: any) {
-    console.error('Error editing and resending message:', error)
+    const appError = classifyError(error)
+    console.error(`[Chat][${appError.category}] Error editing and resending message:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to edit and resend message',
-      errorDetails: extractErrorDetails(error),
+      error: appError.message,
+      errorDetails: appError.technicalDetail,
+      errorCategory: appError.category,
+      retryable: appError.retryable,
     }
   }
 }
@@ -409,11 +412,14 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
 
     return initialResponse
   } catch (error: any) {
-    console.error('Error in edit and resend stream:', error)
+    const appError = classifyError(error)
+    console.error(`[Chat][${appError.category}] Error in edit and resend stream:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to edit and resend message',
-      errorDetails: extractErrorDetails(error),
+      error: appError.message,
+      errorDetails: appError.technicalDetail,
+      errorCategory: appError.category,
+      retryable: appError.retryable,
     }
   }
 }
@@ -522,11 +528,14 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
       sessionName, // Include updated session name for UI update
     }
   } catch (error: any) {
-    console.error('Error sending message:', error)
+    const appError = classifyError(error)
+    console.error(`[Chat][${appError.category}] Error sending message:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to send message',
-      errorDetails: extractErrorDetails(error),
+      error: appError.message,
+      errorDetails: appError.technicalDetail,
+      errorCategory: appError.category,
+      retryable: appError.retryable,
     }
   }
 }
@@ -686,11 +695,14 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     return initialResponse
 
   } catch (error: any) {
-    console.error('Error starting stream:', error)
+    const appError = classifyError(error)
+    console.error(`[Chat][${appError.category}] Error starting stream:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to start streaming',
-      errorDetails: extractErrorDetails(error),
+      error: appError.message,
+      errorDetails: appError.technicalDetail,
+      errorCategory: appError.category,
+      retryable: appError.retryable,
     }
   }
 }
@@ -1016,7 +1028,8 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
           }
           sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, abortData)
         } else {
-          console.error('[Backend] Resume streaming error:', error)
+          const appError = classifyError(error)
+          console.error(`[Backend][${appError.category}] Resume streaming error:`, error)
 
           // Remove the failed assistant message from storage
           deleteMessage(sessionId, messageId)
@@ -1025,9 +1038,11 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
           const errorMessage: ChatMessage = {
             id: `error-${Date.now()}`,
             role: 'assistant',
-            content: error.message || 'Streaming error',
+            content: appError.message,
             timestamp: Date.now(),
-            errorDetails: extractErrorDetails(error),
+            errorDetails: appError.technicalDetail,
+            errorCategory: appError.category,
+            retryable: appError.retryable,
           }
           addMessage(sessionId, errorMessage)
 
@@ -1037,8 +1052,10 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
             chunk: {
               type: 'error',
               messageId,
-              error: error.message || 'Streaming error',
-              errorDetails: extractErrorDetails(error),
+              error: appError.message,
+              errorDetails: appError.technicalDetail,
+              errorCategory: appError.category,
+              retryable: appError.retryable,
             },
           }
           sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, errorStreamData)
@@ -1051,11 +1068,14 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     return { success: true }
 
   } catch (error: any) {
-    console.error('Error resuming after tool confirm:', error)
+    const appError = classifyError(error)
+    console.error(`[Chat][${appError.category}] Error resuming after tool confirm:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to resume streaming',
-      errorDetails: extractErrorDetails(error),
+      error: appError.message,
+      errorDetails: appError.technicalDetail,
+      errorCategory: appError.category,
+      retryable: appError.retryable,
     }
   }
 }
