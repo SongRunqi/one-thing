@@ -130,7 +130,7 @@ import { ref, computed } from 'vue'
 import { PanelLeft, PanelRight, ArrowLeft, Columns2, Equal, X } from 'lucide-vue-next'
 import AgentDropdown from './AgentDropdown.vue'
 import AddressBar from './AddressBar.vue'
-import type { Agent, ChatMessage } from '@/types'
+import type { Agent, UIMessage } from '@/types'
 import { formatTokenCount } from '@shared/token-pricing'
 
 const props = defineProps<{
@@ -143,7 +143,7 @@ const props = defineProps<{
   showSplitButton: boolean
   canClose: boolean
   isRightSidebarOpen?: boolean
-  messages?: ChatMessage[]  // For calculating total token usage
+  messages?: UIMessage[]  // For calculating total token usage
 }>()
 
 const emit = defineEmits<{
@@ -166,7 +166,7 @@ const agentDropdownStyle = ref<Record<string, string>>({})
 const totalTokens = computed(() => {
   if (!props.messages || props.messages.length === 0) return 0
   return props.messages.reduce((sum, msg) => {
-    return sum + (msg.usage?.totalTokens || 0)
+    return sum + (msg.metadata?.usage?.totalTokens || 0)
   }, 0)
 })
 

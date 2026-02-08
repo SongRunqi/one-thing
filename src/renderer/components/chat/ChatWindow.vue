@@ -127,7 +127,7 @@ const currentSession = computed(() => {
   return sessionsStore.sessions.find(s => s.id === sid) || null
 })
 
-// Messages for this panel (from composable)
+// Messages for this panel — UIMessage[] unified data source
 const panelMessages = computed(() => messages.value)
 
 // Get the agent for current session

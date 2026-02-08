@@ -214,31 +214,6 @@ export const useChatStore = defineStore('chat', () => {
   // ============ Helper Functions ============
 
   /**
-   * Rebuild contentParts for a message from content and/or toolCalls
-   * This is needed when loading historical messages from storage
-   */
-  function rebuildContentParts(message: ChatMessage): ChatMessage {
-    if (message.role !== 'assistant') return message
-    if (message.contentParts && message.contentParts.length > 0) return message
-
-    const parts: ChatMessage['contentParts'] = []
-
-    if (message.content) {
-      parts.push({ type: 'text', content: message.content })
-    }
-
-    if (message.toolCalls && message.toolCalls.length > 0) {
-      parts.push({ type: 'tool-call', toolCalls: [...message.toolCalls] })
-    }
-
-    if (parts.length > 0) {
-      return { ...message, contentParts: parts }
-    }
-
-    return message
-  }
-
-  /**
    * Update messages for a session and trigger reactivity
    */
   function setSessionMessages(sessionId: string, messages: ChatMessage[]) {
@@ -473,48 +448,6 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * Handle a UIMessage stream chunk (merged from UIMessagesStore)
    */
-  /**
-   * Sync text/reasoning from UIMessage stream to sessionMessages (ChatMessage format)
-   * This bridges the gap: stream writes to UIMessages, but UI currently reads from sessionMessages
-   */
-  function syncStreamToSessionMessages(sessionId: string, messageId: string, part: UIMessagePart) {
-    if (part.type !== 'text' && part.type !== 'reasoning') return
-    const messages = sessionMessages.value.get(sessionId)
-    if (!messages) return
-    const message = messages.find(m => m.id === messageId)
-    if (!message) return
-
-    if (part.type === 'text') {
-      const textPart = part as TextUIPart
-      // Accumulate text content
-      const uiMsgs = sessionUIMessages.value.get(sessionId)
-      const uiMsg = uiMsgs?.find(m => m.id === messageId)
-      if (uiMsg) {
-        // Get full text from all text parts
-        const fullText = uiMsg.parts
-          .filter(p => p.type === 'text')
-          .map(p => (p as TextUIPart).text)
-          .join('')
-        message.content = fullText
-      } else {
-        message.content += textPart.text
-      }
-    } else if (part.type === 'reasoning') {
-      const reasoningPart = part as ReasoningUIPart
-      const uiMsgs = sessionUIMessages.value.get(sessionId)
-      const uiMsg = uiMsgs?.find(m => m.id === messageId)
-      if (uiMsg) {
-        message.reasoning = uiMsg.parts
-          .filter(p => p.type === 'reasoning')
-          .map(p => (p as ReasoningUIPart).text)
-          .join('')
-      } else {
-        message.reasoning = (message.reasoning || '') + reasoningPart.text
-      }
-    }
-    triggerRef(sessionMessages)
-  }
-
   function handleUIMessageChunk(data: UIMessageStreamData) {
     const { sessionId, messageId, chunk } = data
 
@@ -530,9 +463,6 @@ export const useChatStore = defineStore('chat', () => {
       const partIndex = chunk.partIndex
       const msgs = getSessionUIMessagesRef(sessionId)
       const msg = msgs.find(m => m.id === messageId)
-
-      // Sync text/reasoning to sessionMessages so current UI can render
-      syncStreamToSessionMessages(sessionId, messageId, part)
 
       if (part.type === 'text') {
         if (partIndex !== undefined) {
@@ -605,7 +535,11 @@ export const useChatStore = defineStore('chat', () => {
           }
           return part
         })
-        updateUIMessage(sessionId, messageId, { parts: updatedParts })
+        // Store usage on UIMessage metadata
+        const updatedMetadata = chunk.usage
+          ? { timestamp: Date.now(), ...msg.metadata, usage: chunk.usage }
+          : msg.metadata
+        updateUIMessage(sessionId, messageId, { parts: updatedParts, metadata: updatedMetadata })
       }
     }
   }
@@ -781,7 +715,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const response = await window.electronAPI.getSession(sessionId)
       if (response.success && response.session) {
-        const messages = (response.session.messages || []).map(rebuildContentParts)
+        const messages = response.session.messages || []
 
         // If this session has an active stream, preserve the in-memory streaming message
         // This prevents losing isStreaming, content, reasoning, steps etc. during session switch
@@ -814,7 +748,7 @@ export const useChatStore = defineStore('chat', () => {
    * This avoids duplicate IPC calls
    */
   function setMessagesFromSession(sessionId: string, rawMessages: ChatMessage[]) {
-    const messages = (rawMessages || []).map(rebuildContentParts)
+    const messages = rawMessages || []
 
     // If this session has an active stream, preserve the in-memory streaming message
     // This prevents losing isStreaming, content, reasoning, steps etc. during session switch

@@ -5,7 +5,6 @@
  * Tests the full chain:
  * - handleStreamErrorFromUIMessage: error stream → errorMessage in sessionMessages
  * - sendMessage failure: IPC error → error message with errorDetails
- * - rebuildContentParts: legacy data loading
  * - chatMessageToUIMessage: legacy role:'error' → UIMessage conversion
  */
 
@@ -191,87 +190,7 @@ describe('sendMessage failure → error message format', () => {
 
 // ============================================================================
 
-describe('Legacy data loading: rebuildContentParts + chatMessageToUIMessage', () => {
-  describe('rebuildContentParts via setMessagesFromSession', () => {
-    let store: ReturnType<typeof useChatStore>
-    const sessionId = 'test-session-legacy'
-
-    beforeEach(() => {
-      setActivePinia(createPinia())
-      store = useChatStore()
-    })
-
-    it('assistant messages without contentParts get contentParts rebuilt', () => {
-      const rawMessages: ChatMessage[] = [
-        {
-          id: 'msg-1',
-          role: 'assistant',
-          content: 'Hello from assistant',
-          timestamp: 1000,
-          toolCalls: [
-            {
-              id: 'tc-1',
-              toolId: 'bash',
-              toolName: 'bash',
-              arguments: { command: 'ls' },
-              status: 'completed',
-              result: 'file1.txt',
-              timestamp: 1000,
-            },
-          ],
-        },
-      ]
-
-      store.setMessagesFromSession(sessionId, rawMessages)
-
-      const messages = store.sessionMessages.get(sessionId)!
-      expect(messages).toHaveLength(1)
-
-      const msg = messages[0]
-      // contentParts should be rebuilt
-      expect(msg.contentParts).toBeDefined()
-      expect(msg.contentParts!.length).toBe(2)
-      expect(msg.contentParts![0].type).toBe('text')
-      expect(msg.contentParts![0].content).toBe('Hello from assistant')
-      expect(msg.contentParts![1].type).toBe('tool-call')
-      expect(msg.contentParts![1].toolCalls).toHaveLength(1)
-    })
-
-    it('user messages are not modified by rebuildContentParts', () => {
-      const rawMessages: ChatMessage[] = [
-        {
-          id: 'msg-2',
-          role: 'user',
-          content: 'User message',
-          timestamp: 1000,
-        },
-      ]
-
-      store.setMessagesFromSession(sessionId, rawMessages)
-
-      const messages = store.sessionMessages.get(sessionId)!
-      expect(messages[0].contentParts).toBeUndefined()
-    })
-
-    it('assistant messages with existing contentParts are not modified', () => {
-      const existingParts = [{ type: 'text' as const, content: 'Already has parts' }]
-      const rawMessages: ChatMessage[] = [
-        {
-          id: 'msg-3',
-          role: 'assistant',
-          content: 'should be ignored',
-          timestamp: 1000,
-          contentParts: existingParts,
-        },
-      ]
-
-      store.setMessagesFromSession(sessionId, rawMessages)
-
-      const messages = store.sessionMessages.get(sessionId)!
-      expect(messages[0].contentParts).toEqual(existingParts)
-    })
-  })
-
+describe('Legacy data loading: chatMessageToUIMessage', () => {
   describe('chatMessageToUIMessage handles legacy role:error', () => {
     it('role:error → UIMessage with role:assistant, data-error part, isError metadata', () => {
       const legacyErrorMsg: ChatMessage = {
@@ -320,7 +239,7 @@ describe('Legacy data loading: rebuildContentParts + chatMessageToUIMessage', ()
     })
   })
 
-  describe('Full legacy data flow: load → rebuild → convert', () => {
+  describe('Full legacy data flow: load → convert', () => {
     let store: ReturnType<typeof useChatStore>
     const sessionId = 'test-session-full-legacy'
 
@@ -329,7 +248,7 @@ describe('Legacy data loading: rebuildContentParts + chatMessageToUIMessage', ()
       store = useChatStore()
     })
 
-    it('legacy role:error message loaded from backend → rebuildContentParts → chatMessageToUIMessage renders correctly', () => {
+    it('legacy role:error message loaded from backend → chatMessageToUIMessage renders correctly', () => {
       // Simulate loading legacy data with role:'error'
       const rawMessages: ChatMessage[] = [
         {
@@ -346,14 +265,13 @@ describe('Legacy data loading: rebuildContentParts + chatMessageToUIMessage', ()
         },
       ]
 
-      // Load through store (runs rebuildContentParts)
+      // Load through store
       store.setMessagesFromSession(sessionId, rawMessages)
 
       const messages = store.sessionMessages.get(sessionId)!
       expect(messages).toHaveLength(2)
 
       // The error message role is still 'error' in ChatMessage storage
-      // (rebuildContentParts only rebuilds contentParts for assistant messages)
       const errorMsg = messages[1]
 
       // Convert to UIMessage (this is what the frontend rendering uses)
