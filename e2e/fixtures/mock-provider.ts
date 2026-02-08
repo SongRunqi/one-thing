@@ -7,8 +7,18 @@ export interface MockProviderOptions {
 export function createMockProvider(options: MockProviderOptions = {}) {
   const port = options.port ?? 18321
   let server: http.Server
+  let errorCode: number | null = null
 
   function handleChatCompletions(req: http.IncomingMessage, res: http.ServerResponse) {
+    // Check for programmatic error injection
+    if (errorCode) {
+      res.writeHead(errorCode, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        error: { message: `Simulated error ${errorCode}`, type: 'api_error', code: errorCode },
+      }))
+      return
+    }
+
     // Check for error simulation
     const url = new URL(req.url ?? '/', `http://localhost:${port}`)
     const simulateError = url.searchParams.get('error') ?? req.headers['x-simulate-error']
@@ -64,6 +74,19 @@ export function createMockProvider(options: MockProviderOptions = {}) {
   }
 
   function handleResponses(req: http.IncomingMessage, res: http.ServerResponse) {
+    // Check for programmatic error injection (persistent until clearError)
+    if (errorCode) {
+      // Consume the request body before responding
+      req.on('data', () => {})
+      req.on('end', () => {
+        res.writeHead(errorCode!, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          error: { message: `Simulated error ${errorCode}`, type: 'api_error', code: errorCode },
+        }))
+      })
+      return
+    }
+
     const url = new URL(req.url ?? '/', `http://localhost:${port}`)
     const simulateError = url.searchParams.get('error') ?? req.headers['x-simulate-error']
 
@@ -226,5 +249,7 @@ export function createMockProvider(options: MockProviderOptions = {}) {
       }
     }),
     url: `http://localhost:${port}/v1`,
+    setError(code: number) { errorCode = code },
+    clearError() { errorCode = null },
   }
 }
