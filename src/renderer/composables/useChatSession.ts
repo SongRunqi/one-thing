@@ -13,6 +13,7 @@
 
 import { computed, watch, toValue, type MaybeRef } from 'vue'
 import type { ChatMessage, MessageAttachment, UIMessage } from '@/types'
+// Note: ChatMessage import kept for updateMessage() signature
 import { useChatStore } from '@/stores/chat'
 
 export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
@@ -33,9 +34,6 @@ export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
     if (!sid) return []
     return chatStore.getSessionUIMessages(sid).value
   })
-
-  // Legacy ChatMessage[] — kept for components not yet migrated
-  const legacyMessages = computed(() => state.value?.messages.value || [])
 
   const isLoading = computed(() => state.value?.isLoading.value || false)
   const isGenerating = computed(() => state.value?.isGenerating.value || false)
@@ -126,7 +124,6 @@ export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
   return {
     // State (from store)
     messages,
-    legacyMessages,
     isLoading,
     isGenerating,
     error,
