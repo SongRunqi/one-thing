@@ -19,7 +19,7 @@ import {
 import { getCurrentSessionId, setCurrentSessionId } from './app-state.js'
 import { getWorkspace } from './workspaces.js'
 import { getSettings } from './settings.js'
-import { expandPath } from '../tools/core/sandbox.js'
+import { expandPath } from '../utils/path-utils.js'
 import { LRUCache } from './lru-cache.js'
 
 // ============ Session 内存缓存 (LRU) ============

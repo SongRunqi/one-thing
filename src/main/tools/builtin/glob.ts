@@ -10,7 +10,7 @@ import * as path from 'path'
 import * as fs from 'fs/promises'
 import { Tool } from '../core/tool.js'
 import { Ripgrep } from '../../utils/ripgrep.js'
-import { expandPath } from '../core/sandbox.js'
+import { expandPath } from '../../utils/path-utils.js'
 
 // Maximum files to return
 const DEFAULT_LIMIT = 100
