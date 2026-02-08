@@ -1,6 +1,6 @@
 # ROADMAP.md - 0neThing 迭代路线图
 
-> PM: Qiqi | 更新: 2026-02-07
+> PM: Qiqi | 更新: 2026-02-08
 
 ## 🎯 目标
 
@@ -10,58 +10,49 @@
 
 ## 📅 迭代计划
 
-### Sprint 1: 稳固基础 (本周)
-**目标**: 巩固今天的重构成果，确保稳定性
+### Sprint 1: 稳固基础 ✅
+| 任务 | 状态 |
+|------|------|
+| Vitest 测试框架 | ✅ Done |
+| TypeScript 严格模式 | ✅ Done |
+| InputBox 组件拆分 | ✅ Done |
+| IPC Router 层 | ✅ Done |
+
+### Sprint 2: 功能增强 ✅
+| 任务 | 状态 |
+|------|------|
+| Memory 系统接入主流程 | ✅ Done |
+| Web 搜索工具 (Brave API) | ✅ Done |
+| Tool Reject 增强 (REQ-001) | ✅ Done |
+| CSP 修复 (生产环境) | ✅ Done |
+
+### Sprint 3: 代码健康 ✅
+| 任务 | 状态 |
+|------|------|
+| REQ-005 统一消息系统 (4 phases) | ✅ Done |
+| REQ-006 Store 循环依赖 | ✅ Done |
+| REQ-007 统一错误处理 (4 phases) | ✅ Done |
+| REQ-009 UI 迁移到 UIMessage (3 phases) | ✅ Done |
+| 测试覆盖: 134→256 tests | ✅ Done |
+
+### Sprint 4: 优化打磨 (当前)
+**目标**: 性能优化 + 用户体验 + 稳定性
 
 | 任务 | 优先级 | 状态 |
 |------|--------|------|
-| ✅ Vitest 测试框架 | P0 | Done |
-| ✅ TypeScript 严格模式 | P0 | Done |
-| ✅ InputBox 组件拆分 | P1 | Done |
-| ✅ IPC Router 层 | P1 | Done |
-| 📝 PROJECT_STATUS.md | P0 | In Progress |
-| 📝 核心流程单元测试 | P1 | Todo |
-| 📝 验证 Memory 系统使用情况 | P2 | Todo |
-
-### Sprint 2: 功能增强 (下周)
-**目标**: 添加用户期待的新功能 + 修复 Memory
-
-| 任务 | 优先级 | 状态 |
-|------|--------|------|
-| 🧠 Memory 系统接入主流程 | P0 | ✅ Done |
-| 🔍 Web 搜索工具 | P1 | ✅ Done |
-| 📊 Token 用量可视化 | P2 | Todo |
-| 🔧 设置导入/导出 | P2 | Todo |
-
-### Sprint 3: 代码健康 (后续)
-**目标**: 解决 ISSUES.md 中的技术债
-
-| 任务 | 优先级 | 状态 |
-|------|--------|------|
-| 统一消息系统 (UIMessage 迁移) | P0 | Todo |
-| 解决 Store 循环依赖 | P1 | Todo |
-| 统一错误处理 | P1 | Todo |
-| E2E 测试 (Playwright) | P2 | Todo |
-
-### Sprint 4: 优化打磨 (未来)
-**目标**: 性能和体验优化
-
-| 任务 | 优先级 | 状态 |
-|------|--------|------|
-| 启动速度优化 | P1 | Todo |
-| 大对话性能优化 | P1 | Todo |
-| 暗黑模式完善 | P2 | Todo |
+| E2E 测试 (Playwright) | P1 | Todo |
+| Token 用量可视化 | P1 | Todo |
+| Agent 双存储简化 | P2 | Todo |
+| Provider 缓存失效机制 | P2 | Todo |
+| 启动速度优化 | P2 | Todo |
+| 大对话性能优化 | P2 | Todo |
+| 设置导入/导出 | P3 | Todo |
 
 ---
 
 ## 📌 当前焦点
 
-**Sprint 1** - 稳固基础
-
-下一步行动:
-1. 完成 PROJECT_STATUS.md
-2. 为 chatStore.sendMessage 流程编写测试
-3. 验证 Memory 系统是否正常工作
+**Sprint 4** — 需求规划中
 
 ---
 
@@ -69,9 +60,12 @@
 
 | 日期 | 决策 | 原因 |
 |------|------|------|
-| 2026-02-07 | 采用 Vitest 而非 Jest | 更好的 ESM 支持，与 Vite 集成 |
-| 2026-02-07 | TypeScript strict mode | 提前发现类型错误 |
-| 2026-02-07 | IPC Router 抽象 | 统一 IPC 调用模式，便于测试 |
+| 02-07 | Vitest + strict TS | ESM 支持好，提前发现错误 |
+| 02-07 | IPC Router 抽象 | 统一调用模式，便于测试 |
+| 02-08 | prd/dev/feature 分支策略 | 清晰的发布流程 |
+| 02-08 | REQ-005→006→007 执行顺序 | 依赖关系决定 |
+| 02-08 | role:'error' → errorDetails | 保持类型系统一致 |
+| 02-08 | UIMessage 替代 ChatMessage (UI层) | 消除双系统，减少 bug |
 
 ---
 
