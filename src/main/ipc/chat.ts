@@ -20,7 +20,7 @@ import {
 } from '../stores/sessions.js'
 import { getSettings } from '../stores/settings.js'
 import { getWorkspace } from '../stores/workspaces.js'
-import type { ChatMessage, MessageAttachment } from '../../shared/ipc.js'
+import type { ChatMessage, MessageAttachment, UIMessageStreamData } from '../../shared/ipc.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
 import {
@@ -49,9 +49,7 @@ import { saveMediaImage } from './media.js'
 import * as modelRegistry from '../services/ai/model-registry.js'
 
 // Import from chat sub-modules
-import {
-  sendUIMessageFinish,
-} from './chat/stream-helpers.js'
+// stream-helpers.ts provides UIMessage streaming utilities (used by sub-modules)
 import {
   executeMessageStream,
 } from './chat/stream-executor.js'
@@ -179,13 +177,19 @@ export function registerChatHandlers() {
         }
       }
 
-      // Mark message as not streaming and send complete
+      // Mark message as not streaming and send complete via UIMessage stream
       updateMessageStreaming(sid, streamingMessage.id, false)
-      sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-        messageId: streamingMessage.id,
+      const abortStreamData: UIMessageStreamData = {
         sessionId: sid,
-        aborted: true,
-      })
+        messageId: streamingMessage.id,
+        chunk: {
+          type: 'finish',
+          messageId: streamingMessage.id,
+          finishReason: 'other',
+          aborted: true,
+        },
+      }
+      sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, abortStreamData)
     }
 
     if (sessionId) {
@@ -922,13 +926,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       })),
     })
 
-    // Send continuation chunk immediately to show waiting indicator
-    sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-      type: 'continuation',
-      content: '',
-      messageId,
-      sessionId,
-    })
+    // Note: continuation indicators are handled by UIMessage stream parts
 
     // Start streaming continuation in background
     process.nextTick(async () => {
@@ -981,11 +979,17 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
         // Only finalize and send complete if not paused for another confirmation
         if (!result.pausedForConfirmation) {
           processor.finalize()
-          sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-            messageId,
+          const completeData: UIMessageStreamData = {
             sessionId,
-            sessionName: session.name,
-          })
+            messageId,
+            chunk: {
+              type: 'finish',
+              messageId,
+              finishReason: 'stop',
+              sessionName: session.name,
+            },
+          }
+          sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, completeData)
           console.log('[Backend] Resume streaming complete')
           // Only remove controller if stream completed
           activeStreams.delete(sessionId)
@@ -999,12 +1003,18 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
         if (isAborted) {
           console.log('[Backend] Resume stream aborted by user')
           processor.finalize()
-          sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-            messageId,
+          const abortData: UIMessageStreamData = {
             sessionId,
-            sessionName: session.name,
-            aborted: true,
-          })
+            messageId,
+            chunk: {
+              type: 'finish',
+              messageId,
+              finishReason: 'other',
+              sessionName: session.name,
+              aborted: true,
+            },
+          }
+          sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, abortData)
         } else {
           console.error('[Backend] Resume streaming error:', error)
 
@@ -1021,12 +1031,17 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
           }
           addMessage(sessionId, errorMessage)
 
-          sender.send(IPC_CHANNELS.STREAM_ERROR, {
-            messageId,
+          const errorStreamData: UIMessageStreamData = {
             sessionId,
-            error: error.message || 'Streaming error',
-            errorDetails: extractErrorDetails(error),
-          })
+            messageId,
+            chunk: {
+              type: 'error',
+              messageId,
+              error: error.message || 'Streaming error',
+              errorDetails: extractErrorDetails(error),
+            },
+          }
+          sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, errorStreamData)
         }
         // On error/abort, always remove controller
         activeStreams.delete(sessionId)

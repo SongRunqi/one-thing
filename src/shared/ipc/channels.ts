@@ -14,11 +14,6 @@ export const IPC_CHANNELS = {
   EDIT_AND_RESEND_STREAM: 'chat:edit-and-resend-stream',
 
   // Streaming related
-  STREAM_CHUNK: 'chat:stream-chunk',
-  STREAM_REASONING_DELTA: 'chat:stream-reasoning-delta',
-  STREAM_TEXT_DELTA: 'chat:stream-text-delta',
-  STREAM_COMPLETE: 'chat:stream-complete',
-  STREAM_ERROR: 'chat:stream-error',
   ABORT_STREAM: 'chat:abort-stream',
   GET_ACTIVE_STREAMS: 'chat:get-active-streams',
 
@@ -100,8 +95,6 @@ export const IPC_CHANNELS = {
   CANCEL_TOOL: 'tools:cancel',
   UPDATE_TOOL_CALL: 'tools:update-tool-call',
   REFRESH_ASYNC_TOOLS: 'tools:refresh-async',
-  STREAM_TOOL_CALL: 'chat:stream-tool-call',
-  STREAM_TOOL_RESULT: 'chat:stream-tool-result',
   UPDATE_CONTENT_PARTS: 'chat:update-content-parts',
   UPDATE_MESSAGE_THINKING_TIME: 'chat:update-thinking-time',
   RESUME_AFTER_TOOL_CONFIRM: 'chat:resume-after-tool-confirm',

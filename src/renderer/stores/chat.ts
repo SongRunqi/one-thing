@@ -8,52 +8,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, triggerRef } from 'vue'
-import type { ChatMessage, MessageAttachment, Step, ContentPart } from '@/types'
-
-// Stream chunk type from IPC
-interface StreamChunk {
-  type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace'
-    | 'tool_input_start' | 'tool_input_delta' | 'content_part'
-  content: string
-  messageId: string
-  sessionId?: string
-  reasoning?: string
-  toolCall?: any
-  replace?: boolean
-  // For streaming tool input (AI SDK v6)
-  toolCallId?: string
-  toolName?: string
-  argsTextDelta?: string
-  // For content_part chunks (interleaved text and steps)
-  contentPart?: ContentPart
-}
-
-// Stream complete data from IPC
-interface StreamCompleteData {
-  messageId: string
-  text: string
-  reasoning?: string
-  sessionId?: string
-  sessionName?: string
-  usage?: {
-    inputTokens: number
-    outputTokens: number
-    totalTokens: number
-  }
-  // Last turn's usage for correct context size calculation (not accumulated)
-  lastTurnUsage?: {
-    inputTokens: number
-    outputTokens: number
-  }
-}
-
-// Stream error data from IPC
-interface StreamErrorData {
-  messageId?: string
-  sessionId?: string
-  error: string
-  errorDetails?: string
-}
+import type { ChatMessage, MessageAttachment, Step, UIMessageStreamData } from '@/types'
 
 // Step data from IPC
 interface StepData {
@@ -279,263 +234,17 @@ export const useChatStore = defineStore('chat', () => {
   // ============ Event Handlers (Called by IPC Hub) ============
 
   /**
-   * Handle stream chunk event
+   * Handle UIMessage stream finish event (replaces legacy handleStreamComplete)
    */
-  function handleStreamChunk(chunk: StreamChunk) {
-    // 诊断日志：显示所有 tool_input 相关的 chunk
-    if (chunk.type === 'tool_input_start' || chunk.type === 'tool_input_delta') {
-      console.log('[Chat Store] handleStreamChunk entry:', {
-        type: chunk.type,
-        sessionId: chunk.sessionId,
-        messageId: chunk.messageId,
-        toolCallId: chunk.toolCallId,
-        hasArgsTextDelta: !!(chunk as any).argsTextDelta
-      })
-    }
+  async function handleStreamFinish(data: UIMessageStreamData) {
+    if (data.chunk.type !== 'finish') return
+    const { sessionId, messageId, chunk } = data
+    const finishChunk = chunk
 
-    const sessionId = chunk.sessionId
-    if (!sessionId) {
-      console.warn('[Chat Store] Stream chunk missing sessionId')
-      return
-    }
-
-    const messages = getSessionMessagesRef(sessionId)
-    const messageIndex = messages.findIndex(m => m.id === chunk.messageId)
-    if (messageIndex === -1) {
-      console.warn('[Chat Store] Message not found for chunk:', chunk.messageId)
-      return
-    }
-
-    const message = messages[messageIndex]
-
-    // Initialize contentParts if not exists
-    if (!message.contentParts) {
-      message.contentParts = []
-    }
-
-    if (chunk.type === 'text') {
-      if (chunk.replace) {
-        // Replace entire content
-        message.content = chunk.content
-        message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
-      } else {
-        // Append text
-        message.content = (message.content || '') + chunk.content
-
-        const parts = message.contentParts!
-        let lastPart = parts[parts.length - 1]
-
-        // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
-          parts.pop()
-          lastPart = parts[parts.length - 1]
-        }
-
-        // Append to existing text part or create new one
-        if (lastPart && lastPart.type === 'text') {
-          lastPart.content += chunk.content
-        } else {
-          parts.push({ type: 'text', content: chunk.content })
-        }
-        message.contentParts = [...parts]
-      }
-    } else if (chunk.type === 'reasoning') {
-      message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
-    } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
-      if (chunk.toolCall) {
-        // Update toolCalls array
-        if (!message.toolCalls) {
-          message.toolCalls = []
-        }
-        const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
-        if (existingIndex >= 0) {
-          message.toolCalls[existingIndex] = chunk.toolCall
-        } else {
-          message.toolCalls.push(chunk.toolCall)
-        }
-
-        // Update contentParts
-        const parts = message.contentParts!
-        let lastPart = parts[parts.length - 1]
-
-        // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
-          parts.pop()
-          lastPart = parts[parts.length - 1]
-        }
-
-        if (lastPart && lastPart.type === 'tool-call') {
-          const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
-          if (existingTcIndex >= 0) {
-            lastPart.toolCalls[existingTcIndex] = chunk.toolCall
-          } else {
-            lastPart.toolCalls.push(chunk.toolCall)
-          }
-        } else {
-          parts.push({ type: 'tool-call', toolCalls: [chunk.toolCall] })
-        }
-        message.contentParts = [...parts]
-      }
-    } else if (chunk.type === 'continuation') {
-      // AI continuing after tool execution
-      const parts = message.contentParts!
-      parts.push({ type: 'waiting' })
-      message.contentParts = [...parts]
-    } else if (chunk.type === 'replace') {
-      // Replace entire message content
-      message.content = chunk.content
-      message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
-    } else if (chunk.type === 'tool_input_start') {
-      // Streaming tool input start - create a placeholder ToolCall with input-streaming status
-      console.log('[Chat Store] tool_input_start:', chunk.toolCallId, chunk.toolName, 'message:', message.id)
-      if (chunk.toolCallId && chunk.toolName) {
-        if (!message.toolCalls) {
-          message.toolCalls = []
-        }
-        // Check if we already have this tool call (shouldn't happen, but be safe)
-        const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
-        if (existingIndex === -1) {
-          // Create a new streaming tool call placeholder
-          message.toolCalls.push({
-            id: chunk.toolCallId,
-            toolId: chunk.toolName,
-            toolName: chunk.toolName,
-            arguments: {},
-            status: 'input-streaming',
-            timestamp: Date.now(),
-            streamingArgs: '',
-          })
-        }
-
-        // Update contentParts
-        const parts = message.contentParts!
-        let lastPart = parts[parts.length - 1]
-
-        // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
-          parts.pop()
-          lastPart = parts[parts.length - 1]
-        }
-
-        if (lastPart && lastPart.type === 'tool-call') {
-          // Add to existing tool-call part if not already there
-          const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
-          if (existingTcIndex === -1) {
-            // Create new toolCalls array and new part object to trigger Vue reactivity
-            const newToolCall = message.toolCalls[message.toolCalls.length - 1]
-            const updatedPart = {
-              ...lastPart,
-              toolCalls: [...lastPart.toolCalls, newToolCall]
-            }
-            parts[parts.length - 1] = updatedPart
-          }
-        } else {
-          parts.push({ type: 'tool-call', toolCalls: [message.toolCalls[message.toolCalls.length - 1]] })
-        }
-        message.contentParts = [...parts]
-      }
-    } else if (chunk.type === 'tool_input_delta') {
-      // Streaming tool input delta - accumulate args text
-      if (chunk.toolCallId && chunk.argsTextDelta && message.toolCalls) {
-        const toolCallIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
-        if (toolCallIndex >= 0) {
-          const toolCall = message.toolCalls[toolCallIndex]
-          if (toolCall.status === 'input-streaming') {
-            // Create new object to trigger Vue reactivity
-            const updatedToolCall = {
-              ...toolCall,
-              streamingArgs: (toolCall.streamingArgs || '') + chunk.argsTextDelta
-            }
-            message.toolCalls[toolCallIndex] = updatedToolCall
-
-            // Create new contentParts array to trigger deep reactivity
-            if (message.contentParts) {
-              message.contentParts = message.contentParts.map(part => {
-                if (part.type === 'tool-call' && part.toolCalls?.some(tc => tc.id === chunk.toolCallId)) {
-                  return {
-                    ...part,
-                    toolCalls: part.toolCalls.map(tc =>
-                      tc.id === chunk.toolCallId ? updatedToolCall : tc
-                    )
-                  }
-                }
-                return part
-              })
-            }
-
-            // Also update steps so StepsPanel can show streaming content
-            if (message.steps) {
-              message.steps = message.steps.map(step => {
-                if (step.toolCallId === chunk.toolCallId && step.toolCall) {
-                  return {
-                    ...step,
-                    toolCall: {
-                      ...step.toolCall,
-                      status: 'input-streaming',
-                      streamingArgs: updatedToolCall.streamingArgs
-                    }
-                  }
-                }
-                return step
-              })
-            }
-          }
-        }
-      }
-    } else if (chunk.type === 'content_part' && chunk.contentPart) {
-      // Handle content_part chunk from backend (for proper interleaving of text and steps)
-      const parts = message.contentParts!
-      const newPart = chunk.contentPart
-
-      // Remove loading-memory or waiting indicator if present
-      const lastPart = parts[parts.length - 1]
-      if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
-        parts.pop()
-      }
-
-      if (newPart.type === 'data-steps') {
-        // For data-steps, check if we already have a placeholder for this turn
-        const turnIndex = (newPart as any).turnIndex
-        const hasPlaceholder = parts.some(
-          p => p.type === 'data-steps' && (p as any).turnIndex === turnIndex
-        )
-        if (!hasPlaceholder) {
-          parts.push(newPart as any)
-        }
-      } else if (newPart.type === 'text') {
-        // For text content_part, this is a finalized text block for the turn
-        // We may already have streaming text, so we need to handle carefully
-        // The streaming text chunks have already built up the text, so we can skip
-        // adding duplicate text here - the content_part is mainly for data-steps ordering
-      }
-
-      message.contentParts = [...parts]
-    }
-
-    // Create new message object reference to trigger Vue reactivity
-    // This is necessary because Vue's computed may not detect changes
-    // to nested properties if the parent object reference stays the same
-    // Note: messageIndex is already declared at the beginning of this function
-    messages[messageIndex] = { ...message }
-
-    // Trigger reactivity
-    setSessionMessages(sessionId, [...messages])
-  }
-
-  /**
-   * Handle stream complete event
-   */
-  async function handleStreamComplete(data: StreamCompleteData) {
-    const sessionId = data.sessionId
-    if (!sessionId) {
-      console.warn('[Chat Store] Stream complete missing sessionId')
-      return
-    }
-
-    console.log('[Chat Store] Stream complete:', sessionId, 'usage:', data.usage)
+    console.log('[Chat Store] Stream finish:', sessionId, 'usage:', finishChunk.usage)
 
     // Update usage
-    if (data.usage) {
+    if (finishChunk.usage) {
       const currentUsage = sessionUsageMap.value.get(sessionId) || {
         totalInputTokens: 0,
         totalOutputTokens: 0,
@@ -544,22 +253,20 @@ export const useChatStore = defineStore('chat', () => {
         contextSize: 0,
       }
       // Use lastTurnUsage for context size (not accumulated)
-      const lastTurn = data.lastTurnUsage || data.usage
+      const lastTurn = finishChunk.lastTurnUsage || finishChunk.usage
       sessionUsageMap.value.set(sessionId, {
-        totalInputTokens: currentUsage.totalInputTokens + data.usage.inputTokens,
-        totalOutputTokens: currentUsage.totalOutputTokens + data.usage.outputTokens,
-        totalTokens: currentUsage.totalTokens + data.usage.totalTokens,
+        totalInputTokens: currentUsage.totalInputTokens + finishChunk.usage.inputTokens,
+        totalOutputTokens: currentUsage.totalOutputTokens + finishChunk.usage.outputTokens,
+        totalTokens: currentUsage.totalTokens + finishChunk.usage.totalTokens,
         lastInputTokens: lastTurn.inputTokens,
-        // Context size = input tokens only (context window limit applies to input)
         contextSize: lastTurn.inputTokens,
       })
       triggerRef(sessionUsageMap)
-      console.log('[Chat Store] Updated usage for', sessionId, ':', sessionUsageMap.value.get(sessionId))
     }
 
     // Update message
     const messages = getSessionMessagesRef(sessionId)
-    const messageIndex = messages.findIndex(m => m.id === data.messageId)
+    const messageIndex = messages.findIndex(m => m.id === messageId)
     if (messageIndex !== -1) {
       const message = messages[messageIndex]
 
@@ -573,14 +280,14 @@ export const useChatStore = defineStore('chat', () => {
         // Save contentParts to backend
         if (message.contentParts.length > 0) {
           const plainContentParts = JSON.parse(JSON.stringify(message.contentParts))
-          await window.electronAPI.updateContentParts(sessionId, data.messageId, plainContentParts)
+          await window.electronAPI.updateContentParts(sessionId, messageId, plainContentParts)
         }
       }
 
       // Mark message as not streaming and save usage
       message.isStreaming = false
-      if (data.usage) {
-        message.usage = data.usage
+      if (finishChunk.usage) {
+        message.usage = finishChunk.usage
       }
       setSessionMessages(sessionId, [...messages])
     }
@@ -594,13 +301,13 @@ export const useChatStore = defineStore('chat', () => {
     triggerRef(activeStreams)
 
     // Update session name if provided
-    if (data.sessionName) {
+    if (finishChunk.sessionName) {
       try {
         const { useSessionsStore } = await import('./sessions')
         const sessionsStore = useSessionsStore()
         const sessionInStore = sessionsStore.sessions.find(s => s.id === sessionId)
         if (sessionInStore) {
-          sessionInStore.name = data.sessionName
+          sessionInStore.name = finishChunk.sessionName
           sessionInStore.updatedAt = Date.now()
         }
       } catch (e) {
@@ -610,20 +317,18 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * Handle stream error event
+   * Handle UIMessage stream error event (replaces legacy handleStreamError)
    */
-  function handleStreamError(data: StreamErrorData) {
-    const sessionId = data.sessionId
-    if (!sessionId) {
-      console.warn('[Chat Store] Stream error missing sessionId')
-      return
-    }
+  function handleStreamErrorFromUIMessage(data: UIMessageStreamData) {
+    if (data.chunk.type !== 'error') return
+    const { sessionId, messageId, chunk } = data
+    const errorChunk = chunk
 
-    console.log('[Chat Store] Stream error:', sessionId, data.error)
+    console.log('[Chat Store] Stream error:', sessionId, errorChunk.error)
 
     // Set error state
-    sessionError.value.set(sessionId, data.error || 'Streaming error')
-    sessionErrorDetails.value.set(sessionId, data.errorDetails || null)
+    sessionError.value.set(sessionId, errorChunk.error || 'Streaming error')
+    sessionErrorDetails.value.set(sessionId, errorChunk.errorDetails || null)
     triggerRef(sessionError)
     triggerRef(sessionErrorDetails)
 
@@ -632,15 +337,15 @@ export const useChatStore = defineStore('chat', () => {
     const errorMessage: ChatMessage = {
       id: `error-${Date.now()}`,
       role: 'error',
-      content: data.error || 'Streaming error',
+      content: errorChunk.error || 'Streaming error',
       timestamp: Date.now(),
-      errorDetails: data.errorDetails,
+      errorDetails: errorChunk.errorDetails,
     }
     messages.push(errorMessage)
 
     // Remove the streaming assistant message if it exists
-    if (data.messageId) {
-      const streamingIndex = messages.findIndex(m => m.id === data.messageId)
+    if (messageId) {
+      const streamingIndex = messages.findIndex(m => m.id === messageId)
       if (streamingIndex !== -1) {
         messages.splice(streamingIndex, 1)
       }
@@ -656,6 +361,13 @@ export const useChatStore = defineStore('chat', () => {
     triggerRef(sessionLoading)
     triggerRef(activeStreams)
   }
+
+  // Legacy handler removed in Phase 2 (REQ-005)
+  // handleStreamChunk, handleStreamComplete, handleStreamError replaced by
+  // handleStreamFinish and handleStreamErrorFromUIMessage above
+
+  // Legacy handlers (handleStreamChunk, handleStreamComplete, handleStreamError)
+  // removed in Phase 2 (REQ-005). Replaced by handleStreamFinish and handleStreamErrorFromUIMessage above.
 
   /**
    * Find a step by ID in a nested step structure
@@ -1331,9 +1043,8 @@ export const useChatStore = defineStore('chat', () => {
     collapseAllToolCalls,
 
     // Event handlers (called by IPC Hub)
-    handleStreamChunk,
-    handleStreamComplete,
-    handleStreamError,
+    handleStreamFinish,
+    handleStreamErrorFromUIMessage,
     handleStepAdded,
     handleStepUpdated,
     handleSkillActivated,

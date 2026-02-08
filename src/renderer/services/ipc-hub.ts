@@ -5,9 +5,13 @@
  * 1. 监听器早于任何 IPC 调用注册（无竞态条件）
  * 2. 所有事件路由到中央 store（单一状态源）
  * 3. 不需要每次发送消息都设置/清理监听器
+ *
+ * Phase 2 (REQ-005): Legacy STREAM_CHUNK removed.
+ * All stream data flows through unified onUIMessageStream channel.
  */
 
 import { useChatStore } from '@/stores/chat'
+import { useUIMessagesStore } from '@/stores/ui-messages'
 
 let initialized = false
 
@@ -18,29 +22,25 @@ export function initializeIPCHub() {
   }
   initialized = true
 
-  // 流式响应块
-  // Note: We get the store dynamically inside the callback to ensure we always
-  // use the current store instance, avoiding potential stale reference issues
-  window.electronAPI.onStreamChunk((chunk) => {
-    // Debug: log tool_input chunks
-    if (chunk.type === 'tool_input_start' || chunk.type === 'tool_input_delta') {
-      console.log('[IPC Hub] Received streaming tool input:', chunk.type, chunk.toolCallId, chunk.toolName || chunk.argsTextDelta?.substring(0, 30))
+  // Unified UIMessage stream (handles text, reasoning, tool, finish, error)
+  window.electronAPI.onUIMessageStream((data) => {
+    const chatStore = useChatStore()
+    const uiMessagesStore = useUIMessagesStore()
+
+    if (data.chunk.type === 'part') {
+      // Forward part chunks to UIMessagesStore for rendering
+      uiMessagesStore.handleUIMessageChunk(data)
+    } else if (data.chunk.type === 'finish') {
+      // Handle stream completion (usage, state cleanup, session name)
+      uiMessagesStore.handleUIMessageChunk(data)
+      chatStore.handleStreamFinish(data)
+    } else if (data.chunk.type === 'error') {
+      // Handle stream error
+      chatStore.handleStreamErrorFromUIMessage(data)
     }
-    // Get fresh store reference for each chunk to avoid stale reference issues
-    useChatStore().handleStreamChunk(chunk)
   })
 
-  // 流完成（包含 usage 数据）
-  window.electronAPI.onStreamComplete((data) => {
-    useChatStore().handleStreamComplete(data)
-  })
-
-  // 流错误
-  window.electronAPI.onStreamError((data) => {
-    useChatStore().handleStreamError(data)
-  })
-
-  // Step 事件
+  // Step 事件 (still separate channels for rich step data)
   window.electronAPI.onStepAdded((data) => {
     useChatStore().handleStepAdded(data)
   })
