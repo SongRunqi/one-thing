@@ -70,6 +70,10 @@ export const IPC_CHANNELS = {
   SETTINGS_CHANGED: 'settings:changed',
   GET_SYSTEM_THEME: 'settings:get-system-theme',
   SYSTEM_THEME_CHANGED: 'settings:system-theme-changed',
+  SETTINGS_EXPORT: 'settings:export',
+  SETTINGS_EXPORT_WITH_DIALOG: 'settings:export-with-dialog',
+  SETTINGS_IMPORT: 'settings:import',
+  SETTINGS_IMPORT_WITH_DIALOG: 'settings:import-with-dialog',
 
   // Models related
   FETCH_MODELS: 'models:fetch',

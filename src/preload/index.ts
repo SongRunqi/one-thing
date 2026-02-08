@@ -243,6 +243,19 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.SYSTEM_THEME_CHANGED, listener)
   },
 
+  // Settings import/export methods
+  settingsExport: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_EXPORT),
+
+  settingsExportWithDialog: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_EXPORT_WITH_DIALOG),
+
+  settingsImport: (data: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_IMPORT, data),
+
+  settingsImportWithDialog: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_IMPORT_WITH_DIALOG),
+
   // Theme methods
   getThemes: () =>
     ipcRenderer.invoke(IPC_CHANNELS.THEME_GET_ALL),

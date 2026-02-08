@@ -66,6 +66,8 @@
           :is-editing="isEditing"
           :edit-content="editContent"
           :session-id="message.sessionId"
+          :model="message.model"
+          :usage="message.usage"
           @submit-edit="handleSubmitEdit"
           @cancel-edit="handleCancelEdit"
           @open-image="handleOpenImage"

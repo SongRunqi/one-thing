@@ -1,6 +1,7 @@
 import { registerChatHandlers } from './chat.js'
 import { registerSessionHandlers } from './sessions.js'
 import { registerSettingsHandlers } from './settings.js'
+import { registerSettingsIOHandlers } from './settings-io.js'
 import { registerModelsHandlers } from './models.js'
 import { registerProvidersHandlers } from './providers.js'
 import { registerToolHandlers } from './tools.js'
@@ -26,6 +27,7 @@ export function initializeIPC() {
   registerChatHandlers()
   registerSessionHandlers()
   registerSettingsHandlers()
+  registerSettingsIOHandlers()
   registerModelsHandlers()
   registerProvidersHandlers()
   registerToolHandlers()

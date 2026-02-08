@@ -33,7 +33,7 @@ interface UpdateStatus {
   lastChecked?: number
 }
 
-let updateStatus: UpdateStatus = {
+const updateStatus: UpdateStatus = {
   checking: false,
   available: false,
   currentVersion: app.getVersion(),

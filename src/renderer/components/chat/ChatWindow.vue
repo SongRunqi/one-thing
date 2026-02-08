@@ -11,6 +11,7 @@
       :show-split-button="canClose !== undefined"
       :can-close="!!canClose"
       :is-right-sidebar-open="rightSidebarStore.isOpen"
+      :messages="panelMessages"
       @toggle-sidebar="emit('toggleSidebar')"
       @toggle-right-sidebar="rightSidebarStore.toggle()"
       @open-directory-picker="openWorkingDirectoryPicker"

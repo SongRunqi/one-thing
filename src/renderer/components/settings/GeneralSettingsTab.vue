@@ -261,6 +261,44 @@
         </label>
       </div>
     </section>
+
+    <!-- Data Management -->
+    <section class="settings-section">
+      <h3 class="section-title">
+        数据管理
+      </h3>
+
+      <div class="data-management-info">
+        <p class="info-text">
+          导出设置可用于备份或迁移到其他设备。出于安全考虑，API Key 不会被导出。
+        </p>
+      </div>
+
+      <div class="data-actions">
+        <button
+          class="btn-export"
+          :disabled="exportingSettings"
+          @click="handleExportSettings"
+        >
+          {{ exportingSettings ? '导出中...' : '📤 导出设置' }}
+        </button>
+        <button
+          class="btn-import"
+          :disabled="importingSettings"
+          @click="handleImportSettings"
+        >
+          {{ importingSettings ? '导入中...' : '📥 导入设置' }}
+        </button>
+      </div>
+
+      <!-- Status messages -->
+      <div
+        v-if="importExportMessage"
+        :class="['status-message', importExportMessageType]"
+      >
+        {{ importExportMessage }}
+      </div>
+    </section>
   </div>
 </template>
 
@@ -286,7 +324,14 @@ const latestVersion = ref('')
 const updateError = ref('')
 const lastChecked = ref<number | null>(null)
 
+// Import/Export state
+const exportingSettings = ref(false)
+const importingSettings = ref(false)
+const importExportMessage = ref('')
+const importExportMessageType = ref<'success' | 'error'>('success')
+
 let unsubscribeStatus: (() => void) | null = null
+let messageTimeout: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
   // Get initial update status
@@ -311,6 +356,9 @@ onMounted(async () => {
 onUnmounted(() => {
   if (unsubscribeStatus) {
     unsubscribeStatus()
+  }
+  if (messageTimeout) {
+    clearTimeout(messageTimeout)
   }
 })
 
@@ -409,6 +457,79 @@ function updateAutoCheckUpdates(autoCheckUpdates: boolean) {
     ...props.settings,
     general: { ...props.settings.general, autoCheckUpdates }
   })
+}
+
+// Helper function to show status message
+function showMessage(message: string, type: 'success' | 'error', durationMs = 5000) {
+  importExportMessage.value = message
+  importExportMessageType.value = type
+  
+  if (messageTimeout) {
+    clearTimeout(messageTimeout)
+  }
+  
+  messageTimeout = setTimeout(() => {
+    importExportMessage.value = ''
+  }, durationMs)
+}
+
+// Export settings
+async function handleExportSettings() {
+  try {
+    exportingSettings.value = true
+    importExportMessage.value = ''
+    
+    const result = await window.electronAPI.settingsExportWithDialog()
+    
+    if (result.success) {
+      showMessage('✓ 设置已成功导出', 'success')
+    } else if (result.error && result.error !== '用户取消') {
+      showMessage(`✗ 导出失败: ${result.error}`, 'error')
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    showMessage(`✗ 导出失败: ${errorMessage}`, 'error')
+  } finally {
+    exportingSettings.value = false
+  }
+}
+
+// Import settings
+async function handleImportSettings() {
+  try {
+    // Confirm before importing
+    const confirmed = confirm(
+      '导入设置将覆盖当前配置（API Key 除外）。是否继续？'
+    )
+    
+    if (!confirmed) {
+      return
+    }
+    
+    importingSettings.value = true
+    importExportMessage.value = ''
+    
+    const result = await window.electronAPI.settingsImportWithDialog()
+    
+    if (result.success) {
+      showMessage('✓ 设置已成功导入，部分更改需要重启应用后生效', 'success', 8000)
+      
+      // Reload settings in UI after a short delay
+      setTimeout(async () => {
+        const settingsResult = await window.electronAPI.getSettings()
+        if (settingsResult.success && settingsResult.settings) {
+          emit('update:settings', settingsResult.settings)
+        }
+      }, 500)
+    } else if (result.error && result.error !== '用户取消') {
+      showMessage(`✗ 导入失败: ${result.error}`, 'error')
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    showMessage(`✗ 导入失败: ${errorMessage}`, 'error')
+  } finally {
+    importingSettings.value = false
+  }
 }
 </script>
 
@@ -904,6 +1025,95 @@ function updateAutoCheckUpdates(autoCheckUpdates: boolean) {
   cursor: pointer;
 }
 
+/* Data Management Section */
+.data-management-info {
+  margin-bottom: 16px;
+}
+
+.info-text {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.data-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.btn-export,
+.btn-import {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-export:hover:not(:disabled),
+.btn-import:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.btn-export:active:not(:disabled),
+.btn-import:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-export:disabled,
+.btn-import:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status-message {
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  animation: slideIn 0.2s ease;
+}
+
+.status-message.success {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+}
+
+.status-message.error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Responsive */
 @media (max-width: 480px) {
   .color-theme-grid {
@@ -917,6 +1127,15 @@ function updateAutoCheckUpdates(autoCheckUpdates: boolean) {
   .color-dot {
     width: 20px;
     height: 20px;
+  }
+
+  .data-actions {
+    flex-direction: column;
+  }
+
+  .btn-export,
+  .btn-import {
+    width: 100%;
   }
 }
 
