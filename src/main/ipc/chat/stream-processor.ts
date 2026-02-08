@@ -4,7 +4,12 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import * as store from '../../store.js'
+import {
+  updateMessageContent,
+  updateMessageReasoning,
+  updateMessageToolCalls,
+  updateMessageStreaming,
+} from '../../stores/sessions.js'
 import type { AppSettings, ProviderConfig, ToolSettings, Step, StepType } from '../../../shared/ipc.js'
 import type { ToolCall } from '../../../shared/ipc.js'
 import { createToolCall } from '../../tools/index.js'
@@ -136,14 +141,14 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
     handleTextChunk(text: string, turnContent?: { value: string }) {
       accumulatedContent += text
       if (turnContent) turnContent.value += text
-      store.updateMessageContent(ctx.sessionId, ctx.assistantMessageId, accumulatedContent)
+      updateMessageContent(ctx.sessionId, ctx.assistantMessageId, accumulatedContent)
       emitter.sendTextChunk(text)
     },
 
     handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }) {
       accumulatedReasoning += reasoning
       if (turnReasoning) turnReasoning.value += reasoning
-      store.updateMessageReasoning(ctx.sessionId, ctx.assistantMessageId, accumulatedReasoning)
+      updateMessageReasoning(ctx.sessionId, ctx.assistantMessageId, accumulatedReasoning)
       emitter.sendReasoningChunk(reasoning)
     },
 
@@ -179,7 +184,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
         toolCalls.push(toolCall)
       }
 
-      store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+      updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
       emitter.sendToolCall(toolCall)
 
       return toolCall
@@ -225,7 +230,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       toolInputBuffers.set(toolCallId, { toolName, argsText: '', stepId })
 
       // Add step to store and notify frontend (emitter handles both)
-      store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+      updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
       emitter.sendStepAdded(placeholderStep)
 
       // Send tool_input_start with placeholder toolCall
@@ -245,7 +250,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
         const toolCallIndex = toolCalls.findIndex(tc => tc.id === toolCallId)
         if (toolCallIndex >= 0) {
           toolCalls[toolCallIndex].streamingArgs = buffer.argsText
-          store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+          updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
         }
 
         // Update the Step's toolCall.streamingArgs
@@ -312,7 +317,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
     },
 
     finalize() {
-      store.updateMessageStreaming(ctx.sessionId, ctx.assistantMessageId, false)
+      updateMessageStreaming(ctx.sessionId, ctx.assistantMessageId, false)
     },
   }
 }

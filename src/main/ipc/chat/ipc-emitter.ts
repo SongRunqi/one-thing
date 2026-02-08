@@ -4,7 +4,11 @@
  * and provide a clean, type-safe interface for stream events
  */
 
-import * as store from '../../store.js'
+import {
+  addMessageStep,
+  updateMessageStep,
+  updateMessageSkill,
+} from '../../stores/sessions.js'
 import { IPC_CHANNELS } from '../../../shared/ipc.js'
 import type { Step, ToolCall, ContentPart } from '../../../shared/ipc.js'
 import type { StreamContext } from './stream-processor.js'
@@ -214,7 +218,7 @@ export function createIPCEmitter(ctx: StreamContext): IPCEmitter {
     // ========== Step Events ==========
 
     sendStepAdded(step: Step) {
-      store.addMessageStep(sessionId, assistantMessageId, step)
+      addMessageStep(sessionId, assistantMessageId, step)
       sender.send(IPC_CHANNELS.STEP_ADDED, {
         sessionId,
         messageId: assistantMessageId,
@@ -223,7 +227,7 @@ export function createIPCEmitter(ctx: StreamContext): IPCEmitter {
     },
 
     sendStepUpdated(stepId: string, updates: Partial<Step>) {
-      store.updateMessageStep(sessionId, assistantMessageId, stepId, updates)
+      updateMessageStep(sessionId, assistantMessageId, stepId, updates)
       sender.send(IPC_CHANNELS.STEP_UPDATED, {
         sessionId,
         messageId: assistantMessageId,
@@ -253,7 +257,7 @@ export function createIPCEmitter(ctx: StreamContext): IPCEmitter {
     // ========== Skill Events ==========
 
     sendSkillActivated(skillName: string) {
-      store.updateMessageSkill(sessionId, assistantMessageId, skillName)
+      updateMessageSkill(sessionId, assistantMessageId, skillName)
       sender.send(IPC_CHANNELS.SKILL_ACTIVATED, {
         sessionId,
         messageId: assistantMessageId,

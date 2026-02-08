@@ -21,7 +21,12 @@ import {
   initializeAsyncTools,
 } from '../tools/index.js'
 import type { ToolExecutionContext, ToolInfo, ToolInfoAsync, ToolInitResult } from '../tools/index.js'
-import * as store from '../store.js'
+import {
+  getSessions,
+  getSession,
+  updateMessageToolCalls,
+  updateMessageStep,
+} from '../stores/sessions.js'
 
 /**
  * Convert V2 tool to ToolDefinition for frontend
@@ -72,7 +77,7 @@ export function registerToolHandlers() {
     try {
       // Set init context for async tools (like SkillTool, CustomAgentTool)
       // Use the first session's working directory, or current directory if no sessions
-      const sessions = store.getSessions()
+      const sessions = getSessions()
       const workingDirectory = sessions.length > 0 ? sessions[0].workingDirectory : process.cwd()
 
       setInitContext({
@@ -107,7 +112,7 @@ export function registerToolHandlers() {
       const { toolId, arguments: args, messageId, sessionId } = request
 
       // Get session's workingDirectory for sandbox boundary
-      const session = store.getSession(sessionId)
+      const session = getSession(sessionId)
       const workingDirectory = session?.workingDirectory
 
       const context: ToolExecutionContext = {
@@ -166,7 +171,7 @@ export function registerToolHandlers() {
       const { sessionId, messageId, toolCallId, updates } = request
 
       // Get current session and find message
-      const session = store.getSession(sessionId)
+      const session = getSession(sessionId)
       if (!session) {
         return { success: false, error: 'Session not found' }
       }
@@ -185,7 +190,7 @@ export function registerToolHandlers() {
       })
 
       // Save tool calls to store
-      store.updateMessageToolCalls(sessionId, messageId, toolCalls)
+      updateMessageToolCalls(sessionId, messageId, toolCalls)
 
       // Also update the corresponding step if it exists
       if (message.steps) {
@@ -206,7 +211,7 @@ export function registerToolHandlers() {
           }
 
           // Update step
-          store.updateMessageStep(sessionId, messageId, step.id, {
+          updateMessageStep(sessionId, messageId, step.id, {
             status: stepStatus,
             result: typeof updates.result === 'string' ? updates.result : (updates.result ? JSON.stringify(updates.result) : undefined),
             error: updates.error,

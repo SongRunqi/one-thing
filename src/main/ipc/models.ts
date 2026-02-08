@@ -10,7 +10,7 @@ import {
   ModelType,
   OpenRouterModel,
 } from '../../shared/ipc.js'
-import { getCachedModels, setCachedModels } from '../store.js'
+import { getCachedModels, setCachedModels } from '../stores/models-cache.js'
 import * as modelRegistry from '../services/ai/model-registry.js'
 import { oauthManager } from '../services/auth/oauth-manager.js'
 import { fetchCopilotModels, detectModelCapabilities } from '../providers/builtin/github-copilot.js'
@@ -648,7 +648,7 @@ async function diagnoseEmbeddingModels() {
   console.log('\n=== [Embedding Models Diagnostic] ===')
 
   // Get settings to check configured providers
-  const { getSettings } = await import('../store.js')
+  const { getSettings } = await import('../stores/settings.js')
   const settings = getSettings()
 
   const providers = [

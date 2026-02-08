@@ -5,7 +5,10 @@
 
 import type { WebContents } from 'electron'
 import { IPC_CHANNELS } from '../../../shared/ipc.js'
-import * as store from '../../store.js'
+import {
+  updateMessageContent,
+  updateMessageStreaming,
+} from '../../stores/sessions.js'
 import { saveMediaImage } from '../media.js'
 import {
   normalizeImageModelId,
@@ -56,7 +59,7 @@ export async function processImageGenerationStream(
     messageId: assistantMessageId,
     sessionId,
   })
-  store.updateMessageContent(sessionId, assistantMessageId, '正在生成图片...\n\n')
+  updateMessageContent(sessionId, assistantMessageId, '正在生成图片...\n\n')
 
   let result: ImageGenerationResult
   let modelForDisplay: string
@@ -102,8 +105,8 @@ export async function processImageGenerationStream(
     responseContent += `![Generated Image|mediaId:${mediaItem.id}](${imageDataUrl})`
 
     // Update message
-    store.updateMessageContent(sessionId, assistantMessageId, responseContent)
-    store.updateMessageStreaming(sessionId, assistantMessageId, false)
+    updateMessageContent(sessionId, assistantMessageId, responseContent)
+    updateMessageStreaming(sessionId, assistantMessageId, false)
 
     // Send complete content to frontend
     sender.send(IPC_CHANNELS.STREAM_CHUNK, {
@@ -139,8 +142,8 @@ export async function processImageGenerationStream(
   } else {
     // Handle error
     const errorContent = `图片生成失败: ${result.error || '未知错误'}`
-    store.updateMessageContent(sessionId, assistantMessageId, errorContent)
-    store.updateMessageStreaming(sessionId, assistantMessageId, false)
+    updateMessageContent(sessionId, assistantMessageId, errorContent)
+    updateMessageStreaming(sessionId, assistantMessageId, false)
 
     sender.send(IPC_CHANNELS.STREAM_ERROR, {
       messageId: assistantMessageId,

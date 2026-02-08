@@ -5,7 +5,7 @@
 
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
-import * as store from '../store.js'
+import { getSettings, saveSettings } from '../stores/settings.js'
 import type { AppSettings } from '../../shared/ipc.js'
 import * as fs from 'fs/promises'
 import * as path from 'path'
@@ -63,7 +63,7 @@ function filterSensitiveFields(obj: any): any {
  * Export current settings to JSON (without sensitive data)
  */
 export async function exportSettings(): Promise<ExportedSettings> {
-  const currentSettings = store.getSettings()
+  const currentSettings = getSettings()
   const filteredSettings = filterSensitiveFields(currentSettings)
   
   const packageJson = await fs.readFile(
@@ -92,7 +92,7 @@ export async function importSettings(data: string): Promise<{ success: boolean; 
     }
     
     // Get current settings to preserve sensitive fields
-    const currentSettings = store.getSettings()
+    const currentSettings = getSettings()
     
     // Merge imported settings with current settings (preserving API keys)
     const mergedSettings: AppSettings = {
@@ -123,7 +123,7 @@ export async function importSettings(data: string): Promise<{ success: boolean; 
     }
     
     // Save merged settings
-    store.saveSettings(mergedSettings)
+    saveSettings(mergedSettings)
     
     return { success: true }
   } catch (error) {
@@ -213,7 +213,7 @@ export function registerSettingsIOHandlers() {
       }
       
       // Broadcast settings change to all windows
-      const newSettings = store.getSettings()
+      const newSettings = getSettings()
       BrowserWindow.getAllWindows().forEach(win => {
         win.webContents.send(IPC_CHANNELS.SETTINGS_CHANGED, newSettings)
       })

@@ -4,7 +4,10 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import * as store from '../../store.js'
+import {
+  getSession,
+  updateMessageToolCalls,
+} from '../../stores/sessions.js'
 import type { Step, StepType, SkillDefinition, ToolCall } from '../../../shared/ipc.js'
 import { executeTool } from '../../tools/index.js'
 import { isMCPTool, executeMCPTool } from '../../mcp/index.js'
@@ -195,7 +198,7 @@ export async function executeToolAndUpdate(
     toolCall.status = 'failed'
     toolCall.error = 'Execution cancelled by user'
     toolCall.endTime = Date.now()
-    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+    updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
     emitter.sendToolResult(toolCall)
     return
   }
@@ -209,7 +212,7 @@ export async function executeToolAndUpdate(
 
   // Check if a placeholder step already exists (from streaming input start)
   // Priority: use existingStepId from processor (most reliable), then fallback to store lookup
-  const session = store.getSession(ctx.sessionId)
+  const session = getSession(ctx.sessionId)
   const message = session?.messages?.find(m => m.id === ctx.assistantMessageId)
   let existingStep: Step | undefined
   
@@ -248,7 +251,7 @@ export async function executeToolAndUpdate(
   toolCall.status = 'executing'
   toolCall.startTime = Date.now()
 
-  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+  updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
   // Send executing status to frontend so UI shows "Calling..." with spinner
   emitter.sendToolCall(toolCall)
 
@@ -280,7 +283,7 @@ export async function executeToolAndUpdate(
       error: permCheck.reason,
     })
 
-    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+    updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
     emitter.sendToolResult(toolCall)
     return
   }
@@ -308,7 +311,7 @@ export async function executeToolAndUpdate(
         error: toolCall.error,
       })
 
-      store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+      updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
       emitter.sendToolResult(toolCall)
       return
     }
@@ -445,6 +448,6 @@ export async function executeToolAndUpdate(
     })
   }
 
-  store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+  updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
   emitter.sendToolResult(toolCall)
 }

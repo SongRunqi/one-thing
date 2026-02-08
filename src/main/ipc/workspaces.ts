@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import * as workspacesStore from '../stores/workspaces.js'
-import { getSessions, deleteSessionsByWorkspace } from '../store.js'
+import { getSessions, deleteSessionsByWorkspace } from '../stores/sessions.js'
 
 export function registerWorkspaceHandlers() {
   // Get all workspaces

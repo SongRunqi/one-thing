@@ -4,7 +4,22 @@
  */
 
 import { ipcMain } from 'electron'
-import * as store from '../store.js'
+import {
+  getSession,
+  addMessage,
+  deleteMessage,
+  renameSession,
+  updateMessageAndTruncate,
+  updateMessageContentParts,
+  updateMessageThinkingTime,
+  updateMessageStreaming,
+  updateMessageStep,
+  updateMessageContent,
+  updateMessageUsage,
+  updateMessageError,
+} from '../stores/sessions.js'
+import { getSettings } from '../stores/settings.js'
+import { getWorkspace } from '../stores/workspaces.js'
 import type { ChatMessage, MessageAttachment } from '../../shared/ipc.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
@@ -97,7 +112,7 @@ export function registerChatHandlers() {
 
   // 获取聊天历史
   ipcMain.handle(IPC_CHANNELS.GET_CHAT_HISTORY, async (_event, { sessionId }) => {
-    const session = store.getSession(sessionId)
+    const session = getSession(sessionId)
     if (!session) {
       return { success: false, error: 'Session not found' }
     }
@@ -121,13 +136,13 @@ export function registerChatHandlers() {
 
   // 更新消息的 contentParts
   ipcMain.handle(IPC_CHANNELS.UPDATE_CONTENT_PARTS, async (_event, { sessionId, messageId, contentParts }) => {
-    const updated = store.updateMessageContentParts(sessionId, messageId, contentParts)
+    const updated = updateMessageContentParts(sessionId, messageId, contentParts)
     return { success: updated }
   })
 
   // 更新消息的 thinkingTime（用于持久化thinking时长）
   ipcMain.handle(IPC_CHANNELS.UPDATE_MESSAGE_THINKING_TIME, async (_event, { sessionId, messageId, thinkingTime }) => {
-    const updated = store.updateMessageThinkingTime(sessionId, messageId, thinkingTime)
+    const updated = updateMessageThinkingTime(sessionId, messageId, thinkingTime)
     return { success: updated }
   })
 
@@ -137,7 +152,7 @@ export function registerChatHandlers() {
 
     // Helper to cancel pending/running steps for a session
     const cancelPendingSteps = (sid: string) => {
-      const session = store.getSession(sid)
+      const session = getSession(sid)
       if (!session) return
 
       // Find the latest streaming message
@@ -151,7 +166,7 @@ export function registerChatHandlers() {
           if (step.toolCall) {
             step.toolCall.status = 'cancelled'
           }
-          store.updateMessageStep(sid, streamingMessage.id, step.id, {
+          updateMessageStep(sid, streamingMessage.id, step.id, {
             status: 'cancelled',
             toolCall: step.toolCall,
           })
@@ -165,7 +180,7 @@ export function registerChatHandlers() {
       }
 
       // Mark message as not streaming and send complete
-      store.updateMessageStreaming(sid, streamingMessage.id, false)
+      updateMessageStreaming(sid, streamingMessage.id, false)
       sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
         messageId: streamingMessage.id,
         sessionId: sid,
@@ -228,13 +243,13 @@ export function registerChatHandlers() {
 async function handleEditAndResend(sessionId: string, messageId: string, newContent: string) {
   try {
     // Update the message and truncate messages after it
-    const updated = store.updateMessageAndTruncate(sessionId, messageId, newContent)
+    const updated = updateMessageAndTruncate(sessionId, messageId, newContent)
     if (!updated) {
       return { success: false, error: 'Message not found' }
     }
 
     // Get settings and call AI
-    const settings = store.getSettings()
+    const settings = getSettings()
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
@@ -258,7 +273,7 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
     }
 
     // Get the updated session with truncated messages to build history
-    const session = store.getSession(sessionId)
+    const session = getSession(sessionId)
     const historyMessages = buildHistoryMessages(session?.messages || [], session)
 
     // Use AI SDK to generate response (use OAuth token as apiKey)
@@ -285,7 +300,7 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
     }
 
     // Save assistant message
-    store.addMessage(sessionId, assistantMessage)
+    addMessage(sessionId, assistantMessage)
 
     return {
       success: true,
@@ -305,13 +320,13 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
 async function handleEditAndResendStream(sender: Electron.WebContents, sessionId: string, messageId: string, newContent: string) {
   try {
     // Update the message and truncate messages after it
-    const updated = store.updateMessageAndTruncate(sessionId, messageId, newContent)
+    const updated = updateMessageAndTruncate(sessionId, messageId, newContent)
     if (!updated) {
       return { success: false, error: 'Message not found' }
     }
 
     // Get settings and validate (use session-level model if available)
-    const settings = store.getSettings()
+    const settings = getSettings()
     const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
     // Get API key (handles OAuth providers)
@@ -353,10 +368,10 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
       thinkingStartTime: Date.now(),
       toolCalls: [],
     }
-    store.addMessage(sessionId, assistantMessage)
+    addMessage(sessionId, assistantMessage)
 
     // Get session and build history
-    const session = store.getSession(sessionId)
+    const session = getSession(sessionId)
     const historyMessages = buildHistoryMessages(session?.messages || [], session)
 
     const initialResponse = {
@@ -415,7 +430,7 @@ function generateTitleFromMessage(content: string, maxLength: number = 30): stri
 async function handleSendMessage(sessionId: string, messageContent: string) {
   try {
     // Get session to check if this is the first user message
-    const session = store.getSession(sessionId)
+    const session = getSession(sessionId)
     const isFirstUserMessage = session && session.messages.filter(m => m.role === 'user').length === 0
 
     // For branch sessions, check if this is the first NEW user message (after inherited messages)
@@ -431,16 +446,16 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     }
     console.log('[Backend] Created user message with id:', userMessage.id)
 
-    store.addMessage(sessionId, userMessage)
+    addMessage(sessionId, userMessage)
 
     // Auto-rename session based on first user message
     if (isFirstUserMessage || isBranchFirstMessage) {
       const newTitle = generateTitleFromMessage(messageContent)
-      store.renameSession(sessionId, newTitle)
+      renameSession(sessionId, newTitle)
     }
 
     // Get settings and call AI
-    const settings = store.getSettings()
+    const settings = getSettings()
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
@@ -490,10 +505,10 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     }
 
     // Save assistant message
-    store.addMessage(sessionId, assistantMessage)
+    addMessage(sessionId, assistantMessage)
 
     // Get updated session name if it was renamed
-    const updatedSession = store.getSession(sessionId)
+    const updatedSession = getSession(sessionId)
     const sessionName = updatedSession?.name
 
     return {
@@ -515,7 +530,7 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
 // Generate chat title using AI SDK
 async function handleGenerateTitle(userMessage: string) {
   try {
-    const settings = store.getSettings()
+    const settings = getSettings()
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
@@ -557,7 +572,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
   console.log(`[Backend] handleSendMessageStream called - BUILD_VERSION: 2025-01-05-v2`)
   try {
     // Get session to check if this is the first user message
-    const session = store.getSession(sessionId)
+    const session = getSession(sessionId)
     const isFirstUserMessage = session && session.messages.filter(m => m.role === 'user').length === 0
 
     // For branch sessions, check if this is the first NEW user message (after inherited messages)
@@ -573,16 +588,16 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       attachments: attachments, // Include file/image attachments
     }
     console.log('[Backend] Created user message with id:', userMessage.id, 'attachments:', attachments?.length || 0)
-    store.addMessage(sessionId, userMessage)
+    addMessage(sessionId, userMessage)
 
     // Auto-rename session based on first user message
     if (isFirstUserMessage || isBranchFirstMessage) {
       const newTitle = generateTitleFromMessage(messageContent)
-      store.renameSession(sessionId, newTitle)
+      renameSession(sessionId, newTitle)
     }
 
     // Get settings and validate (use session-level model if available)
-    const settings = store.getSettings()
+    const settings = getSettings()
     const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
     // Get API key (handles OAuth providers)
@@ -626,10 +641,10 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       thinkingStartTime: Date.now(),
       toolCalls: [],
     }
-    store.addMessage(sessionId, assistantMessage)
+    addMessage(sessionId, assistantMessage)
 
     // Get updated session name (may have been renamed above)
-    const updatedSessionForName = store.getSession(sessionId)
+    const updatedSessionForName = getSession(sessionId)
     const initialResponse = {
       success: true,
       userMessage,
@@ -643,7 +658,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
 
       try {
         // Build history from updated session (includes user message)
-        const sessionForHistory = store.getSession(sessionId)
+        const sessionForHistory = getSession(sessionId)
         const historyMessages = buildHistoryMessages(sessionForHistory?.messages || [], sessionForHistory)
 
         // Use unified stream executor (handles both image generation and text streaming)
@@ -682,7 +697,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     console.log(`[Backend] Resuming after tool confirm for session: ${sessionId}, message: ${messageId}`)
 
     // Get session
-    const session = store.getSession(sessionId)
+    const session = getSession(sessionId)
     if (!session) {
       return { success: false, error: 'Session not found' }
     }
@@ -708,7 +723,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     }
 
     // Get settings and validate (use session-level model if available)
-    const settings = store.getSettings()
+    const settings = getSettings()
     const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
     // Get API key (handles OAuth providers)
@@ -807,7 +822,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     const lastUserMsg = lastUserMsgContent ? getTextFromContent(lastUserMsgContent) : ''
 
     // Check if memory is enabled in settings
-    const memorySettings = store.getSettings()
+    const memorySettings = getSettings()
     const memoryEnabled = memorySettings.embedding?.memoryEnabled !== false
 
     // Retrieve relevant user facts based on conversation context (semantic search)
@@ -847,7 +862,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     // Get workspace/agent system prompt
     let characterSystemPrompt: string | undefined
     if (session.workspaceId) {
-      const workspace = store.getWorkspace(session.workspaceId)
+      const workspace = getWorkspace(session.workspaceId)
       characterSystemPrompt = workspace?.systemPrompt
     } else if (session.agentId) {
       const agent = getCustomAgentById(session.agentId, session.workingDirectory)
@@ -994,7 +1009,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
           console.error('[Backend] Resume streaming error:', error)
 
           // Remove the failed assistant message from storage
-          store.deleteMessage(sessionId, messageId)
+          deleteMessage(sessionId, messageId)
 
           // Add an error message to the session (persisted)
           const errorMessage: ChatMessage = {
@@ -1004,7 +1019,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
             timestamp: Date.now(),
             errorDetails: extractErrorDetails(error),
           }
-          store.addMessage(sessionId, errorMessage)
+          addMessage(sessionId, errorMessage)
 
           sender.send(IPC_CHANNELS.STREAM_ERROR, {
             messageId,
