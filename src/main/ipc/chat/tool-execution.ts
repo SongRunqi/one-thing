@@ -15,7 +15,27 @@ import type { ToolExecutionContext, ToolExecutionResult } from '../../tools/type
 import type { StreamContext } from './stream-processor.js'
 import { checkToolPermission } from '../../agents/builtin-agents.js'
 import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
+import { sendUIToolCall } from './stream-helpers.js'
+import type { ToolUIState } from '../../../shared/ipc.js'
 import { hookManager } from '../../plugins/hooks/index.js'
+
+/**
+ * Map ToolCall status to UIMessage ToolUIState and send via UIMessage stream
+ */
+function sendToolCallAsUIPart(ctx: StreamContext, toolCall: ToolCall) {
+  let state: ToolUIState = 'input-available'
+  if (toolCall.status === 'executing') state = 'input-available'
+  else if (toolCall.status === 'completed') state = 'output-available'
+  else if (toolCall.status === 'failed' || toolCall.status === 'cancelled') state = 'output-error'
+
+  sendUIToolCall(
+    ctx.sender, ctx.sessionId, ctx.assistantMessageId,
+    toolCall.id, toolCall.toolName, state,
+    toolCall.arguments,
+    toolCall.result,
+    toolCall.error,
+  )
+}
 
 /**
  * Detect if a bash command is reading a skill file and extract skill name
@@ -199,7 +219,7 @@ export async function executeToolAndUpdate(
     toolCall.error = 'Execution cancelled by user'
     toolCall.endTime = Date.now()
     updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-    emitter.sendToolResult(toolCall)
+    sendToolCallAsUIPart(ctx, toolCall)
     return
   }
 
@@ -253,7 +273,7 @@ export async function executeToolAndUpdate(
 
   updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
   // Send executing status to frontend so UI shows "Calling..." with spinner
-  emitter.sendToolCall(toolCall)
+  sendToolCallAsUIPart(ctx, toolCall)
 
   let result: {
     success: boolean
@@ -284,7 +304,7 @@ export async function executeToolAndUpdate(
     })
 
     updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-    emitter.sendToolResult(toolCall)
+    sendToolCallAsUIPart(ctx, toolCall)
     return
   }
 
@@ -312,7 +332,7 @@ export async function executeToolAndUpdate(
       })
 
       updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-      emitter.sendToolResult(toolCall)
+      sendToolCallAsUIPart(ctx, toolCall)
       return
     }
 
@@ -449,5 +469,5 @@ export async function executeToolAndUpdate(
   }
 
   updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-  emitter.sendToolResult(toolCall)
+  sendToolCallAsUIPart(ctx, toolCall)
 }

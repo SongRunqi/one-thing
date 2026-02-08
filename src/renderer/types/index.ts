@@ -335,25 +335,6 @@ export interface StreamSendMessageResponse {
 export interface ElectronAPI {
   sendMessage: (sessionId: string, message: string, attachments?: MessageAttachment[]) => Promise<SendMessageResponse>
   sendMessageStream: (sessionId: string, message: string, attachments?: MessageAttachment[]) => Promise<StreamSendMessageResponse>
-  onStreamChunk: (callback: (chunk: {
-    type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace' | 'tool_input_start' | 'tool_input_delta' | 'content_part'
-    content: string
-    messageId: string
-    sessionId?: string
-    reasoning?: string
-    toolCall?: ToolCall
-    replace?: boolean
-    // For streaming tool input (AI SDK v6)
-    toolCallId?: string
-    toolName?: string
-    argsTextDelta?: string
-    // For content_part chunks (interleaved text and steps)
-    contentPart?: ContentPart
-  }) => void) => () => void
-  onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
-  onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
-  onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string; sessionId?: string; sessionName?: string }) => void) => () => void
-  onStreamError: (callback: (data: { messageId?: string; sessionId?: string; error: string; errorDetails?: string }) => void) => () => void
   onSkillActivated: (callback: (data: { sessionId: string; messageId: string; skillName: string }) => void) => () => void
   onStepAdded: (callback: (data: { sessionId: string; messageId: string; step: any }) => void) => () => void
   onStepUpdated: (callback: (data: { sessionId: string; messageId: string; stepId: string; updates: any }) => void) => () => void

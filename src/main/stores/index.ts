@@ -41,6 +41,7 @@ export {
   getSessionsList,
   getSessionDetails,
   getSessionMessages,
+  getSessionUIMessages,
   getCachedProviderConfig,
   cacheSessionProviderConfig,
 } from './sessions.js'

@@ -37,7 +37,7 @@ import { shouldCompact, executeCompacting, type CompactingContext } from '../../
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
 import { createStreamProcessor } from './stream-processor.js'
 import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
-import { sendUIMessageFinish } from './stream-helpers.js'
+import { sendUITextDelta } from './stream-helpers.js'
 import { formatMessagesForLog, buildSystemPrompt, buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
 import {
   getTextFromContent,
@@ -96,10 +96,7 @@ function persistTurnContentParts(
       type: 'text',
       content: turnState.content.value,
     })
-    // Only send IPC if no tool calls (otherwise already sent before tool execution)
-    if (turnState.toolCalls.length === 0) {
-      emitter.sendContentPart({ type: 'text', content: turnState.content.value })
-    }
+    // Note: UIMessage stream handles text content delivery, no legacy IPC needed
   }
 
   if (turnState.toolCalls.length > 0) {
@@ -333,11 +330,7 @@ export async function runStream(
       }
     }
 
-    // Send continuation at the START of each turn (except first) to show waiting indicator
-    // This ensures waiting is displayed BEFORE the LLM call starts
-    if (currentTurn > 1) {
-      emitter.sendContinuation()
-    }
+    // Note: continuation indicators are handled by UIMessage stream parts
 
     // Get model's actual max output tokens and cap user setting
     // This prevents errors when switching between models with different output limits
@@ -445,16 +438,7 @@ export async function runStream(
 
           const toolCall = processor.handleToolCallChunk(chunk.toolCall)
 
-          // Send data-steps placeholder BEFORE executing the first tool of this turn
-          // This ensures proper ordering: text -> data-steps -> STEP_ADDED events
-          if (turn.toolCalls.length === 0) {
-            // First tool call of this turn - send text content_part first (if any)
-            if (turn.content.value) {
-              emitter.sendContentPart({ type: 'text', content: turn.content.value })
-            }
-            // Then send data-steps placeholder
-            emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
-          }
+          // Note: content ordering is handled by UIMessage stream parts and Step events
 
           turn.toolCalls.push(toolCall)
 
@@ -571,8 +555,8 @@ export async function runStream(
         // Update store with combined content
         updateMessageContent(ctx.sessionId, ctx.assistantMessageId, fullContent)
 
-        // Send the truncation message to UI (append, not replace)
-        emitter.sendTextChunk(truncationMessage)
+        // Send the truncation message to UI via UIMessage stream
+        sendUITextDelta(ctx.sender, ctx.sessionId, ctx.assistantMessageId, truncationMessage)
       }
 
       console.log(`[Backend] No tool calls in turn ${currentTurn}, finishReason: ${turn.finishReason}, ending loop`)
@@ -804,8 +788,6 @@ export async function executeStreamGeneration(
         usage: ctx.accumulatedUsage,
         lastTurnUsage: ctx.lastTurnUsage,  // For correct context size calculation
       })
-      // Also send UIMessage finish chunk with usage for new clients
-      sendUIMessageFinish(ctx.sender, ctx.sessionId, ctx.assistantMessageId, 'stop', ctx.accumulatedUsage)
       // Save usage to message for future token subtraction on edit/regenerate
       if (ctx.accumulatedUsage) {
         updateMessageUsage(ctx.sessionId, ctx.assistantMessageId, ctx.accumulatedUsage)

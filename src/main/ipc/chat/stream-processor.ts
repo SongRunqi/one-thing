@@ -15,6 +15,7 @@ import type { ToolCall } from '../../../shared/ipc.js'
 import { createToolCall } from '../../tools/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '../../mcp/index.js'
 import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
+import { sendUITextDelta, sendUIReasoningDelta, sendUIToolCall } from './stream-helpers.js'
 
 /**
  * Store active AbortControllers per session for stream cancellation
@@ -142,14 +143,14 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       accumulatedContent += text
       if (turnContent) turnContent.value += text
       updateMessageContent(ctx.sessionId, ctx.assistantMessageId, accumulatedContent)
-      emitter.sendTextChunk(text)
+      sendUITextDelta(ctx.sender, ctx.sessionId, ctx.assistantMessageId, text)
     },
 
     handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }) {
       accumulatedReasoning += reasoning
       if (turnReasoning) turnReasoning.value += reasoning
       updateMessageReasoning(ctx.sessionId, ctx.assistantMessageId, accumulatedReasoning)
-      emitter.sendReasoningChunk(reasoning)
+      sendUIReasoningDelta(ctx.sender, ctx.sessionId, ctx.assistantMessageId, reasoning)
     },
 
     handleToolCallChunk(toolCallData: {
@@ -185,7 +186,11 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       }
 
       updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
-      emitter.sendToolCall(toolCall)
+      sendUIToolCall(
+        ctx.sender, ctx.sessionId, ctx.assistantMessageId,
+        toolCall.id, resolved.displayName, 'input-available',
+        toolCallData.args
+      )
 
       return toolCall
     },
@@ -233,8 +238,11 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
       emitter.sendStepAdded(placeholderStep)
 
-      // Send tool_input_start with placeholder toolCall
-      emitter.sendToolInputStart(toolCallId, resolved.displayName, placeholderToolCall)
+      // Send tool input start via UIMessage stream
+      sendUIToolCall(
+        ctx.sender, ctx.sessionId, ctx.assistantMessageId,
+        toolCallId, resolved.displayName, 'input-streaming'
+      )
     },
 
     /**
@@ -269,8 +277,16 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
           emitter.sendStepUpdated(buffer.stepId, stepUpdates)
         }
 
-        // Send IPC delta to frontend for real-time display
-        emitter.sendToolInputDelta(toolCallId, argsTextDelta)
+        // Send tool input delta via UIMessage stream
+        sendUIToolCall(
+          ctx.sender, ctx.sessionId, ctx.assistantMessageId,
+          toolCallId,
+          toolCalls[toolCallIndex]?.toolName || buffer.toolName,
+          'input-streaming',
+          undefined, // input not yet available
+          undefined, // output
+          undefined, // errorText
+        )
       }
     },
 
