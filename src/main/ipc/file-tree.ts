@@ -9,6 +9,7 @@ import * as os from 'os'
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { FileTreeNode, FileTreeListRequest, FileTreeListResponse } from '../../shared/ipc/file-tree.js'
+import { classifyError } from '../../shared/errors.js'
 
 /**
  * Common directories and files to ignore
@@ -220,11 +221,12 @@ export function registerFileTreeHandlers() {
         })
 
         return { success: true, nodes }
-      } catch (error) {
-        console.error('[FileTree IPC] Failed to list directory:', error)
+      } catch (error: any) {
+        const appError = classifyError(error)
+        console.error(`[FileTree][${appError.category}] Failed to list directory:`, error)
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to list directory',
+          error: appError.message,
         }
       }
     }

@@ -3,7 +3,8 @@
  * Handles provider configuration and credential management
  */
 
-import * as store from '../../store.js'
+import { getSession } from '../../stores/sessions.js'
+import { getSettings } from '../../stores/settings.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '../../../shared/ipc.js'
 import { requiresOAuth } from '../../providers/index.js'
 import { oauthManager } from '../../services/auth/oauth-manager.js'
@@ -99,7 +100,7 @@ export function getEffectiveProviderConfig(
   settings: AppSettings,
   sessionId: string
 ): { providerId: string; providerConfig: ProviderConfig | undefined; model: string } {
-  const session = store.getSession(sessionId)
+  const session = getSession(sessionId)
 
   // If session has saved provider/model, use those
   if (session?.lastProvider && session?.lastModel) {
@@ -175,7 +176,7 @@ export interface ResolvedProviderConfig {
 export async function getProviderConfigForChat(
   sessionId: string
 ): Promise<ResolvedProviderConfig | null> {
-  const settings = store.getSettings()
+  const settings = getSettings()
 
   // 1. Try session cached config first (fastest path)
   const cached = getCachedProviderConfig(sessionId)
@@ -196,7 +197,7 @@ export async function getProviderConfigForChat(
   }
 
   // 2. Try session lastProvider/lastModel (backward compatibility)
-  const session = store.getSession(sessionId)
+  const session = getSession(sessionId)
   if (session?.lastProvider && session?.lastModel) {
     const providerConfig = settings.ai.providers[session.lastProvider]
     const apiKey = await getApiKeyForProvider(session.lastProvider, providerConfig)

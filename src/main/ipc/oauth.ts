@@ -19,6 +19,7 @@ import type {
   OAuthDevicePollRequest,
   OAuthDevicePollResponse,
 } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 import { oauthManager } from '../services/auth/oauth-manager.js'
 import { testOAuthDirect } from '../test-oauth-direct.js'
 
@@ -178,11 +179,12 @@ export function registerOAuthHandlers(): void {
             instructions: 'After authorizing, copy the entire code shown on the page (including any # and text after it) and paste it here.',
           }
         }
-      } catch (error) {
-        console.error('OAuth start failed:', error)
+      } catch (error: any) {
+        const appError = classifyError(error)
+        console.error(`[OAuth][${appError.category}] OAuth start failed:`, error)
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'OAuth start failed',
+          error: appError.message,
         }
       }
     }
@@ -197,11 +199,12 @@ export function registerOAuthHandlers(): void {
       try {
         await oauthManager.exchangeCodeForToken(providerId, code, state)
         return { success: true }
-      } catch (error) {
-        console.error('OAuth callback failed:', error)
+      } catch (error: any) {
+        const appError = classifyError(error)
+        console.error(`[OAuth][${appError.category}] OAuth callback failed:`, error)
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Callback failed',
+          error: appError.message,
         }
       }
     }
@@ -229,12 +232,13 @@ export function registerOAuthHandlers(): void {
           completed: result.completed,
           pollStatus: result.error,
         }
-      } catch (error) {
-        console.error('OAuth device poll failed:', error)
+      } catch (error: any) {
+        const appError = classifyError(error)
+        console.error(`[OAuth][${appError.category}] OAuth device poll failed:`, error)
         return {
           success: false,
           completed: false,
-          error: error instanceof Error ? error.message : 'Poll failed',
+          error: appError.message,
         }
       }
     }
@@ -249,11 +253,12 @@ export function registerOAuthHandlers(): void {
       try {
         await oauthManager.refreshToken(providerId)
         return { success: true }
-      } catch (error) {
-        console.error('OAuth refresh failed:', error)
+      } catch (error: any) {
+        const appError = classifyError(error)
+        console.error(`[OAuth][${appError.category}] OAuth refresh failed:`, error)
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Refresh failed',
+          error: appError.message,
         }
       }
     }
@@ -274,12 +279,13 @@ export function registerOAuthHandlers(): void {
           isLoggedIn,
           expiresAt: token?.expiresAt,
         }
-      } catch (error) {
-        console.error('OAuth status check failed:', error)
+      } catch (error: any) {
+        const appError = classifyError(error)
+        console.error(`[OAuth][${appError.category}] OAuth status check failed:`, error)
         return {
           success: false,
           isLoggedIn: false,
-          error: error instanceof Error ? error.message : 'Status check failed',
+          error: appError.message,
         }
       }
     }
@@ -302,11 +308,12 @@ export function registerOAuthHandlers(): void {
         }
 
         return { success: true }
-      } catch (error) {
-        console.error('OAuth logout failed:', error)
+      } catch (error: any) {
+        const appError = classifyError(error)
+        console.error(`[OAuth][${appError.category}] OAuth logout failed:`, error)
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Logout failed',
+          error: appError.message,
         }
       }
     }
@@ -328,11 +335,12 @@ export function registerOAuthHandlers(): void {
 
         const result = await testOAuthDirect(token.accessToken)
         return { ...result, token: token.accessToken }
-      } catch (error) {
-        console.error('OAuth direct test failed:', error)
+      } catch (error: any) {
+        const appError = classifyError(error)
+        console.error(`[OAuth][${appError.category}] OAuth direct test failed:`, error)
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Test failed',
+          error: appError.message,
         }
       }
     }

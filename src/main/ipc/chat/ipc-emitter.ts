@@ -2,11 +2,20 @@
  * IPC Event Emitter Module
  * Centralizes all IPC event sending logic to reduce code duplication
  * and provide a clean, type-safe interface for stream events
+ *
+ * Phase 2 (REQ-005): Legacy STREAM_CHUNK events removed.
+ * Stream data flows exclusively through UI_MESSAGE_STREAM channel.
+ * Stream completion and errors also flow through UI_MESSAGE_STREAM.
  */
 
-import * as store from '../../store.js'
+import {
+  addMessageStep,
+  updateMessageStep,
+  updateMessageSkill,
+} from '../../stores/sessions.js'
 import { IPC_CHANNELS } from '../../../shared/ipc.js'
-import type { Step, ToolCall, ContentPart } from '../../../shared/ipc.js'
+import type { Step } from '../../../shared/ipc.js'
+import type { UIMessageStreamData } from '../../../shared/ipc.js'
 import type { StreamContext } from './stream-processor.js'
 
 /**
@@ -26,6 +35,8 @@ export interface StreamCompleteData {
 export interface StreamErrorData {
   error: string
   errorDetails?: string
+  errorCategory?: string
+  retryable?: boolean
   preserved?: boolean
 }
 
@@ -34,32 +45,6 @@ export interface StreamErrorData {
  * Provides a unified API for sending all IPC events related to streaming
  */
 export interface IPCEmitter {
-  // ========== Stream Chunk Events ==========
-
-  /** Send a text chunk to the frontend */
-  sendTextChunk(text: string): void
-
-  /** Send a reasoning chunk to the frontend */
-  sendReasoningChunk(reasoning: string): void
-
-  /** Send a content part (text or data-steps) */
-  sendContentPart(part: ContentPart): void
-
-  /** Send a continuation indicator for multi-turn loops */
-  sendContinuation(): void
-
-  /** Send tool call status update */
-  sendToolCall(toolCall: ToolCall): void
-
-  /** Send tool result */
-  sendToolResult(toolCall: ToolCall): void
-
-  /** Send tool input start (streaming args) */
-  sendToolInputStart(toolCallId: string, toolName: string, toolCall: ToolCall): void
-
-  /** Send tool input delta (streaming args increment) */
-  sendToolInputDelta(toolCallId: string, argsTextDelta: string): void
-
   // ========== Context Events ==========
 
   /** Send context size update */
@@ -81,10 +66,10 @@ export interface IPCEmitter {
 
   // ========== Session Events ==========
 
-  /** Send stream complete event */
+  /** Send stream complete event via UI_MESSAGE_STREAM finish chunk */
   sendStreamComplete(data: StreamCompleteData): void
 
-  /** Send stream error event */
+  /** Send stream error event via UI_MESSAGE_STREAM error chunk */
   sendStreamError(data: StreamErrorData): void
 
   // ========== Skill Events ==========
@@ -106,89 +91,6 @@ export function createIPCEmitter(ctx: StreamContext): IPCEmitter {
   const { sender, sessionId, assistantMessageId } = ctx
 
   return {
-    // ========== Stream Chunk Events ==========
-
-    sendTextChunk(text: string) {
-      sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'text',
-        content: text,
-        messageId: assistantMessageId,
-        sessionId,
-      })
-    },
-
-    sendReasoningChunk(reasoning: string) {
-      sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'reasoning',
-        content: '',
-        messageId: assistantMessageId,
-        sessionId,
-        reasoning,
-      })
-    },
-
-    sendContentPart(part: ContentPart) {
-      sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'content_part',
-        content: '',
-        messageId: assistantMessageId,
-        sessionId,
-        contentPart: part,
-      })
-    },
-
-    sendContinuation() {
-      sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'continuation',
-        content: '',
-        messageId: assistantMessageId,
-        sessionId,
-      })
-    },
-
-    sendToolCall(toolCall: ToolCall) {
-      sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'tool_call',
-        content: '',
-        messageId: assistantMessageId,
-        sessionId,
-        toolCall,
-      })
-    },
-
-    sendToolResult(toolCall: ToolCall) {
-      sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'tool_result',
-        content: '',
-        messageId: assistantMessageId,
-        sessionId,
-        toolCall,
-      })
-    },
-
-    sendToolInputStart(toolCallId: string, toolName: string, toolCall: ToolCall) {
-      sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'tool_input_start',
-        content: '',
-        messageId: assistantMessageId,
-        sessionId,
-        toolCallId,
-        toolName,
-        toolCall,
-      })
-    },
-
-    sendToolInputDelta(toolCallId: string, argsTextDelta: string) {
-      sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'tool_input_delta',
-        content: '',
-        messageId: assistantMessageId,
-        sessionId,
-        toolCallId,
-        argsTextDelta,
-      })
-    },
-
     // ========== Context Events ==========
 
     sendContextSizeUpdate(contextSize: number) {
@@ -214,7 +116,7 @@ export function createIPCEmitter(ctx: StreamContext): IPCEmitter {
     // ========== Step Events ==========
 
     sendStepAdded(step: Step) {
-      store.addMessageStep(sessionId, assistantMessageId, step)
+      addMessageStep(sessionId, assistantMessageId, step)
       sender.send(IPC_CHANNELS.STEP_ADDED, {
         sessionId,
         messageId: assistantMessageId,
@@ -223,7 +125,7 @@ export function createIPCEmitter(ctx: StreamContext): IPCEmitter {
     },
 
     sendStepUpdated(stepId: string, updates: Partial<Step>) {
-      store.updateMessageStep(sessionId, assistantMessageId, stepId, updates)
+      updateMessageStep(sessionId, assistantMessageId, stepId, updates)
       sender.send(IPC_CHANNELS.STEP_UPDATED, {
         sessionId,
         messageId: assistantMessageId,
@@ -232,28 +134,45 @@ export function createIPCEmitter(ctx: StreamContext): IPCEmitter {
       })
     },
 
-    // ========== Session Events ==========
+    // ========== Session Events (via UI_MESSAGE_STREAM) ==========
 
     sendStreamComplete(data: StreamCompleteData) {
-      sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-        messageId: assistantMessageId,
+      const streamData: UIMessageStreamData = {
         sessionId,
-        ...data,
-      })
+        messageId: assistantMessageId,
+        chunk: {
+          type: 'finish',
+          messageId: assistantMessageId,
+          finishReason: data.aborted ? 'other' : (data.error ? 'error' : 'stop'),
+          usage: data.usage,
+          lastTurnUsage: data.lastTurnUsage,
+          sessionName: data.sessionName,
+          aborted: data.aborted,
+        },
+      }
+      sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, streamData)
     },
 
     sendStreamError(data: StreamErrorData) {
-      sender.send(IPC_CHANNELS.STREAM_ERROR, {
-        messageId: assistantMessageId,
+      const streamData: UIMessageStreamData = {
         sessionId,
-        ...data,
-      })
+        messageId: assistantMessageId,
+        chunk: {
+          type: 'error',
+          messageId: assistantMessageId,
+          error: data.error,
+          errorDetails: data.errorDetails,
+          errorCategory: data.errorCategory,
+          retryable: data.retryable,
+        },
+      }
+      sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, streamData)
     },
 
     // ========== Skill Events ==========
 
     sendSkillActivated(skillName: string) {
-      store.updateMessageSkill(sessionId, assistantMessageId, skillName)
+      updateMessageSkill(sessionId, assistantMessageId, skillName)
       sender.send(IPC_CHANNELS.SKILL_ACTIVATED, {
         sessionId,
         messageId: assistantMessageId,

@@ -11,7 +11,7 @@ import {
   deleteJsonFile,
 } from './paths.js'
 import { getCurrentWorkspaceId, setCurrentWorkspaceId } from './app-state.js'
-import { expandPath } from '../tools/core/sandbox.js'
+import { expandPath } from '../utils/path-utils.js'
 
 // Get workspaces index path
 function getWorkspacesIndexPath(): string {

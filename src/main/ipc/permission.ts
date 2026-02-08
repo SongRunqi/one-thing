@@ -7,6 +7,7 @@
 import { ipcMain } from 'electron'
 import { Permission } from '../permission/index.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 
 /**
  * Register all permission-related IPC handlers
@@ -23,10 +24,14 @@ export function registerPermissionHandlers(): void {
       const success = Permission.respond(request)
       return { success }
     } catch (error: any) {
-      console.error('[Permission IPC] Error responding to permission:', error)
+      const appError = classifyError(error)
+      console.error(`[Permission][${appError.category}] Error responding to permission:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to respond to permission',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })
@@ -37,10 +42,14 @@ export function registerPermissionHandlers(): void {
       const pending = Permission.getPending(sessionId)
       return { success: true, pending }
     } catch (error: any) {
-      console.error('[Permission IPC] Error getting pending permissions:', error)
+      const appError = classifyError(error)
+      console.error(`[Permission][${appError.category}] Error getting pending permissions:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to get pending permissions',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })
@@ -51,10 +60,14 @@ export function registerPermissionHandlers(): void {
       Permission.clearSession(sessionId)
       return { success: true }
     } catch (error: any) {
-      console.error('[Permission IPC] Error clearing session:', error)
+      const appError = classifyError(error)
+      console.error(`[Permission][${appError.category}] Error clearing session:`, error)
       return {
         success: false,
-        error: error.message || 'Failed to clear session',
+        error: appError.message,
+        errorDetails: appError.technicalDetail,
+        errorCategory: appError.category,
+        retryable: appError.retryable,
       }
     }
   })

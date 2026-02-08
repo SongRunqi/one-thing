@@ -382,6 +382,7 @@ export type {
   TokenUsage,
   SessionTokenUsage,
   UIMessageFinishChunk,
+  UIMessageErrorChunk,
   UIMessageStreamData,
 } from './ui-message.js'
 

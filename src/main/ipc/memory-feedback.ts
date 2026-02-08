@@ -8,6 +8,7 @@
 import { registerRouter } from './register-router.js'
 import { memoryFeedbackRouter } from '../../shared/ipc/memory-feedback.js'
 import { recordMemoryFeedback, getMemoryFeedbackStats } from '../services/memory-text/memory-feedback.js'
+import { classifyError } from '../../shared/errors.js'
 
 /**
  * Register memory feedback IPC handlers via router
@@ -19,8 +20,9 @@ export function registerMemoryFeedbackHandlers(): void {
         await recordMemoryFeedback(req.filePath, req.feedbackType)
         return { success: true }
       } catch (error: any) {
-        console.error('[IPC] Failed to record memory feedback:', error)
-        return { success: false, error: error.message }
+        const appError = classifyError(error)
+        console.error(`[MemoryFeedback][${appError.category}] Failed to record memory feedback:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     },
 
@@ -32,8 +34,9 @@ export function registerMemoryFeedbackHandlers(): void {
         }
         return { success: true, stats }
       } catch (error: any) {
-        console.error('[IPC] Failed to get memory feedback stats:', error)
-        return { success: false, error: error.message }
+        const appError = classifyError(error)
+        console.error(`[MemoryFeedback][${appError.category}] Failed to get memory feedback stats:`, error)
+        return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
       }
     },
   })

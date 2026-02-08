@@ -6,6 +6,7 @@
 import { experimental_generateImage as aiGenerateImage, generateText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { classifyError } from '../../../shared/errors.js'
 
 /**
  * Normalize model ID for API call (for OpenAI image models)
@@ -78,10 +79,11 @@ export async function generateImage(
       revisedPrompt: (result as any).providerMetadata?.openai?.revisedPrompt,
     }
   } catch (error: any) {
-    console.error('[Image Generation] Error:', error)
+    const appError = classifyError(error)
+    console.error(`[Image Generation][${appError.category}] Error:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to generate image',
+      error: appError.message,
     }
   }
 }
@@ -133,10 +135,11 @@ export async function generateGeminiImage(
       error: 'No image generated',
     }
   } catch (error: any) {
-    console.error('[Gemini Image] Error:', error)
+    const appError = classifyError(error)
+    console.error(`[Gemini Image][${appError.category}] Error:`, error)
     return {
       success: false,
-      error: error.message || 'Failed to generate image',
+      error: appError.message,
     }
   }
 }

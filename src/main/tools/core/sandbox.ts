@@ -6,19 +6,11 @@
  */
 
 import * as path from 'path'
-import * as os from 'os'
 import { Permission } from '../../permission/index.js'
 import { getSettings } from '../../stores/settings.js'
+import { expandPath } from '../../utils/path-utils.js'
 
-/**
- * Expand ~ to home directory
- */
-export function expandPath(dir: string): string {
-  if (dir.startsWith('~')) {
-    return dir.replace('~', os.homedir())
-  }
-  return dir
-}
+export { expandPath }
 
 /**
  * Check if a path is contained within a boundary directory

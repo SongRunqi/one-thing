@@ -1,8 +1,9 @@
 import { ipcMain } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { classifyError } from '../../shared/errors.js'
 import * as workspacesStore from '../stores/workspaces.js'
-import { getSessions, deleteSessionsByWorkspace } from '../store.js'
+import { getSessions, deleteSessionsByWorkspace } from '../stores/sessions.js'
 
 export function registerWorkspaceHandlers() {
   // Get all workspaces
@@ -19,8 +20,9 @@ export function registerWorkspaceHandlers() {
       const workspace = workspacesStore.createWorkspace(workspaceId, name, avatar, workingDirectory, systemPrompt)
       return { success: true, workspace }
     } catch (error: any) {
-      console.error('Error creating workspace:', error)
-      return { success: false, error: error.message || 'Failed to create workspace' }
+      const appError = classifyError(error)
+      console.error(`[Workspace][${appError.category}] Error creating workspace:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -33,8 +35,9 @@ export function registerWorkspaceHandlers() {
       }
       return { success: true, workspace }
     } catch (error: any) {
-      console.error('Error updating workspace:', error)
-      return { success: false, error: error.message || 'Failed to update workspace' }
+      const appError = classifyError(error)
+      console.error(`[Workspace][${appError.category}] Error updating workspace:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -52,8 +55,9 @@ export function registerWorkspaceHandlers() {
 
       return { success: true, deletedSessionCount }
     } catch (error: any) {
-      console.error('Error deleting workspace:', error)
-      return { success: false, error: error.message || 'Failed to delete workspace' }
+      const appError = classifyError(error)
+      console.error(`[Workspace][${appError.category}] Error deleting workspace:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -66,8 +70,9 @@ export function registerWorkspaceHandlers() {
       }
       return { success: true }
     } catch (error: any) {
-      console.error('Error switching workspace:', error)
-      return { success: false, error: error.message || 'Failed to switch workspace' }
+      const appError = classifyError(error)
+      console.error(`[Workspace][${appError.category}] Error switching workspace:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 
@@ -80,8 +85,9 @@ export function registerWorkspaceHandlers() {
       }
       return { success: true, avatarPath }
     } catch (error: any) {
-      console.error('Error uploading avatar:', error)
-      return { success: false, error: error.message || 'Failed to upload avatar' }
+      const appError = classifyError(error)
+      console.error(`[Workspace][${appError.category}] Error uploading avatar:`, error)
+      return { success: false, error: appError.message, errorDetails: appError.technicalDetail, errorCategory: appError.category, retryable: appError.retryable }
     }
   })
 }

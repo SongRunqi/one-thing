@@ -52,6 +52,7 @@ export {
   getSessionsList,
   getSessionDetails,
   getSessionMessages,
+  getSessionUIMessages,
   getCachedProviderConfig,
   cacheSessionProviderConfig,
 

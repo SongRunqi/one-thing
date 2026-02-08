@@ -38,6 +38,7 @@ import {
   type PermissionDecision,
 } from '../services/custom-agent/index.js'
 import { respondToPermissionRequest } from '../tools/builtin/custom-agent.js'
+import { classifyError } from '../../shared/errors.js'
 import {
   getAllCustomAgents,
   getCustomAgent,
@@ -109,10 +110,11 @@ export function registerCustomAgentHandlers(): void {
           pinnedAgentIds,
         }
       } catch (error: any) {
-        console.error('[CustomAgent] Error getting agents:', error)
+        const appError = classifyError(error)
+        console.error(`[CustomAgent][${appError.category}] Error getting agents:`, error)
         return {
           success: false,
-          error: error.message || 'Failed to get custom agents',
+          error: appError.message,
         }
       }
     }
@@ -131,10 +133,11 @@ export function registerCustomAgentHandlers(): void {
           agents,
         }
       } catch (error: any) {
-        console.error('[CustomAgent] Error refreshing agents:', error)
+        const appError = classifyError(error)
+        console.error(`[CustomAgent][${appError.category}] Error refreshing agents:`, error)
         return {
           success: false,
-          error: error.message || 'Failed to refresh custom agents',
+          error: appError.message,
         }
       }
     }
@@ -157,10 +160,11 @@ export function registerCustomAgentHandlers(): void {
           agent,
         }
       } catch (error: any) {
-        console.error('[CustomAgent] Error getting agent:', error)
+        const appError = classifyError(error)
+        console.error(`[CustomAgent][${appError.category}] Error getting agent:`, error)
         return {
           success: false,
-          error: error.message || 'Failed to get custom agent',
+          error: appError.message,
         }
       }
     }
@@ -181,10 +185,11 @@ export function registerCustomAgentHandlers(): void {
           agent,
         }
       } catch (error: any) {
-        console.error('[CustomAgent] Error creating agent:', error)
+        const appError = classifyError(error)
+        console.error(`[CustomAgent][${appError.category}] Error creating agent:`, error)
         return {
           success: false,
-          error: error.message || 'Failed to create custom agent',
+          error: appError.message,
         }
       }
     }
@@ -208,10 +213,11 @@ export function registerCustomAgentHandlers(): void {
           agent,
         }
       } catch (error: any) {
-        console.error('[CustomAgent] Error updating agent:', error)
+        const appError = classifyError(error)
+        console.error(`[CustomAgent][${appError.category}] Error updating agent:`, error)
         return {
           success: false,
-          error: error.message || 'Failed to update custom agent',
+          error: appError.message,
         }
       }
     }
@@ -241,10 +247,11 @@ export function registerCustomAgentHandlers(): void {
           success: true,
         }
       } catch (error: any) {
-        console.error('[CustomAgent] Error deleting agent:', error)
+        const appError = classifyError(error)
+        console.error(`[CustomAgent][${appError.category}] Error deleting agent:`, error)
         return {
           success: false,
-          error: error.message || 'Failed to delete custom agent',
+          error: appError.message,
         }
       }
     }
@@ -259,10 +266,11 @@ export function registerCustomAgentHandlers(): void {
         await shell.openPath(agentsDir)
         return { success: true }
       } catch (error: any) {
-        console.error('[CustomAgent] Error opening directory:', error)
+        const appError = classifyError(error)
+        console.error(`[CustomAgent][${appError.category}] Error opening directory:`, error)
         return {
           success: false,
-          error: error.message || 'Failed to open agents directory',
+          error: appError.message,
         }
       }
     }
@@ -310,10 +318,11 @@ export function registerCustomAgentHandlers(): void {
           pinnedAgentIds,
         }
       } catch (error: any) {
-        console.error('[CustomAgent] Error pinning agent:', error)
+        const appError = classifyError(error)
+        console.error(`[CustomAgent][${appError.category}] Error pinning agent:`, error)
         return {
           success: false,
-          error: error.message || 'Failed to pin agent',
+          error: appError.message,
         }
       }
     }
@@ -331,10 +340,11 @@ export function registerCustomAgentHandlers(): void {
           pinnedAgentIds,
         }
       } catch (error: any) {
-        console.error('[CustomAgent] Error unpinning agent:', error)
+        const appError = classifyError(error)
+        console.error(`[CustomAgent][${appError.category}] Error unpinning agent:`, error)
         return {
           success: false,
-          error: error.message || 'Failed to unpin agent',
+          error: appError.message,
         }
       }
     }

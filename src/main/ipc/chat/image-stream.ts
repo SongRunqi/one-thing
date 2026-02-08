@@ -5,7 +5,12 @@
 
 import type { WebContents } from 'electron'
 import { IPC_CHANNELS } from '../../../shared/ipc.js'
-import * as store from '../../store.js'
+import type { UIMessageStreamData } from '../../../shared/ipc.js'
+import {
+  updateMessageContent,
+  updateMessageStreaming,
+} from '../../stores/sessions.js'
+import { sendUITextDelta } from './stream-helpers.js'
 import { saveMediaImage } from '../media.js'
 import {
   normalizeImageModelId,
@@ -49,14 +54,9 @@ export async function processImageGenerationStream(
 
   console.log(`[ImageStream] Processing image generation for model: ${model}`)
 
-  // Send a "thinking" message to show progress
-  sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-    type: 'text',
-    content: '正在生成图片...\n\n',
-    messageId: assistantMessageId,
-    sessionId,
-  })
-  store.updateMessageContent(sessionId, assistantMessageId, '正在生成图片...\n\n')
+  // Send a "thinking" message to show progress via UIMessage stream
+  sendUITextDelta(sender, sessionId, assistantMessageId, '正在生成图片...\n\n')
+  updateMessageContent(sessionId, assistantMessageId, '正在生成图片...\n\n')
 
   let result: ImageGenerationResult
   let modelForDisplay: string
@@ -102,17 +102,11 @@ export async function processImageGenerationStream(
     responseContent += `![Generated Image|mediaId:${mediaItem.id}](${imageDataUrl})`
 
     // Update message
-    store.updateMessageContent(sessionId, assistantMessageId, responseContent)
-    store.updateMessageStreaming(sessionId, assistantMessageId, false)
+    updateMessageContent(sessionId, assistantMessageId, responseContent)
+    updateMessageStreaming(sessionId, assistantMessageId, false)
 
-    // Send complete content to frontend
-    sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-      type: 'text',
-      content: responseContent,
-      messageId: assistantMessageId,
-      sessionId,
-      replace: true,
-    })
+    // Send complete content to frontend via UIMessage stream
+    sendUITextDelta(sender, sessionId, assistantMessageId, responseContent, undefined, 'done')
 
     // Notify frontend about the generated image
     sender.send(IPC_CHANNELS.IMAGE_GENERATED, {
@@ -127,26 +121,37 @@ export async function processImageGenerationStream(
       createdAt: mediaItem.createdAt,
     })
 
-    // Send stream complete
-    sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-      messageId: assistantMessageId,
+    // Send stream complete via UIMessage stream
+    const completeData: UIMessageStreamData = {
       sessionId,
-      sessionName,
-    })
+      messageId: assistantMessageId,
+      chunk: {
+        type: 'finish',
+        messageId: assistantMessageId,
+        finishReason: 'stop',
+        sessionName,
+      },
+    }
+    sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, completeData)
 
     console.log('[ImageStream] Image generation complete')
     return true
   } else {
     // Handle error
     const errorContent = `图片生成失败: ${result.error || '未知错误'}`
-    store.updateMessageContent(sessionId, assistantMessageId, errorContent)
-    store.updateMessageStreaming(sessionId, assistantMessageId, false)
+    updateMessageContent(sessionId, assistantMessageId, errorContent)
+    updateMessageStreaming(sessionId, assistantMessageId, false)
 
-    sender.send(IPC_CHANNELS.STREAM_ERROR, {
-      messageId: assistantMessageId,
+    const errorData: UIMessageStreamData = {
       sessionId,
-      error: result.error || 'Image generation failed',
-    })
+      messageId: assistantMessageId,
+      chunk: {
+        type: 'error',
+        messageId: assistantMessageId,
+        error: result.error || 'Image generation failed',
+      },
+    }
+    sender.send(IPC_CHANNELS.UI_MESSAGE_STREAM, errorData)
 
     return true // Still handled (as error)
   }

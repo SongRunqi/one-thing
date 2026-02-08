@@ -184,6 +184,7 @@ export interface UIMessage<METADATA = MessageMetadata> {
 export type UIMessageChunk =
   | UIMessagePartChunk
   | UIMessageFinishChunk
+  | UIMessageErrorChunk
 
 /**
  * Part update chunk
@@ -231,8 +232,31 @@ export interface UIMessageFinishChunk {
   messageId: string
   /** Finish reason */
   finishReason: 'stop' | 'length' | 'tool-calls' | 'content-filter' | 'error' | 'other'
-  /** Token usage data */
+  /** Token usage data (accumulated across all turns) */
   usage?: TokenUsage
+  /** Last turn's usage for context size calculation (not accumulated) */
+  lastTurnUsage?: { inputTokens: number; outputTokens: number }
+  /** Session name (may have been auto-generated) */
+  sessionName?: string
+  /** Whether the stream was aborted by the user */
+  aborted?: boolean
+}
+
+/**
+ * Stream error chunk
+ */
+export interface UIMessageErrorChunk {
+  type: 'error'
+  /** Message ID */
+  messageId: string
+  /** Error message */
+  error: string
+  /** Detailed error info */
+  errorDetails?: string
+  /** Error category (network, auth, quota, etc.) */
+  errorCategory?: string
+  /** Whether the error is retryable */
+  retryable?: boolean
 }
 
 /**

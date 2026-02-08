@@ -13,47 +13,6 @@ const electronAPI = {
   sendMessageStream: (sessionId: string, message: string, attachments?: MessageAttachment[]) =>
     ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE_STREAM, { sessionId, message, attachments }),
 
-  // Stream event listeners
-  onStreamChunk: (callback: (chunk: {
-    type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace' | 'tool_input_start' | 'tool_input_delta';
-    content: string;
-    messageId: string;
-    sessionId?: string;
-    reasoning?: string;
-    toolCall?: any;
-    toolCallId?: string;
-    toolName?: string;
-    argsTextDelta?: string;
-  }) => void) => {
-    const listener = (_event: any, chunk: any) => callback(chunk)
-    ipcRenderer.on(IPC_CHANNELS.STREAM_CHUNK, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_CHUNK, listener)
-  },
-
-  onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => {
-    const listener = (_event: any, data: any) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.STREAM_REASONING_DELTA, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_REASONING_DELTA, listener)
-  },
-
-  onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => {
-    const listener = (_event: any, data: any) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.STREAM_TEXT_DELTA, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_TEXT_DELTA, listener)
-  },
-
-  onStreamComplete: (callback: (data: { messageId: string; text: string; reasoning?: string; sessionId?: string; sessionName?: string; usage?: { inputTokens: number; outputTokens: number; totalTokens: number } }) => void) => {
-    const listener = (_event: any, data: any) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.STREAM_COMPLETE, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_COMPLETE, listener)
-  },
-
-  onStreamError: (callback: (data: { messageId?: string; sessionId?: string; error: string; errorDetails?: string }) => void) => {
-    const listener = (_event: any, data: any) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.STREAM_ERROR, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_ERROR, listener)
-  },
-
   onSkillActivated: (callback: (data: { sessionId: string; messageId: string; skillName: string }) => void) => {
     const listener = (_event: any, data: any) => callback(data)
     ipcRenderer.on(IPC_CHANNELS.SKILL_ACTIVATED, listener)
