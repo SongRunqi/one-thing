@@ -41,6 +41,7 @@ app.on('ready', async () => {
     return net.fetch(pathToFileURL(filePath).toString())
   })
 
+  // ========== Phase 1: Serial initialization (required before window) ==========
   // Initialize stores and migrate data if needed
   initializeStores()
 
@@ -63,29 +64,29 @@ app.on('ready', async () => {
   // Clean up interrupted sessions from previous app instance
   sanitizeAllSessionsOnStartup()
 
-  // Initialize text-based memory system
-  await initializeTextMemory()
-
-  // Initialize PromptManager for template-based prompts
-  await initializePromptManager()
-
-  // Start template watcher in development mode (hot reload)
-  startTemplateWatcher()
-
-  // Initialize tool registry
-  await initializeToolRegistry()
-
-  // Initialize IPC handlers
+  // Initialize IPC handlers (required for window communication)
   initializeIPC()
 
+  // ========== Phase 2: Create window ASAP ==========
+  mainWindow = createWindow()
+  console.log(`[Startup] Window visible: ${(performance.now() - t0).toFixed(0)}ms`)
+
+  // ========== Phase 3: Parallel initialization (after window) ==========
+  await Promise.all([
+    initializeTextMemory(),
+    initializePromptManager().then(() => {
+      // Start template watcher in development mode (hot reload)
+      startTemplateWatcher()
+    }),
+    initializeToolRegistry(),
+  ])
+  console.log(`[Startup] Core systems: ${(performance.now() - t0).toFixed(0)}ms`)
+
+  // ========== Phase 4: Fire-and-forget (low priority) ==========
   // Initialize plugin system (loads plugins and executes app:init hooks)
   initializePlugins().catch(err => {
     console.error('[Plugins] Initialization failed (non-blocking):', err)
   })
-
-  // Create window first for fast startup
-  mainWindow = createWindow()
-  console.log(`[Startup] Window visible: ${(performance.now() - t0).toFixed(0)}ms`)
 
   // Initialize MCP system asynchronously (don't block startup)
   initializeMCP().catch(err => {
