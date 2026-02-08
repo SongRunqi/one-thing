@@ -7,6 +7,9 @@
 
   <!-- Main App Mode -->
   <ErrorBoundary v-else>
+    <!-- Update Notification (top of window) -->
+    <UpdateNotification />
+    
     <div class="app-shell">
       <!-- Main Content - No Header -->
       <div class="app-content">
@@ -187,6 +190,7 @@ import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
 import CommitDialog from '@/components/git/CommitDialog.vue'
+import UpdateNotification from '@/components/UpdateNotification.vue'
 import type { Workspace, CustomAgent } from '@/types'
 
 // Type for diff overlay data

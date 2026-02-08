@@ -812,6 +812,28 @@ const electronAPI = {
 
   openPluginDirectory: (dirType: 'plugins' | 'npm' | 'local') =>
     ipcRenderer.invoke(PLUGIN_CHANNELS.OPEN_DIRECTORY, dirType),
+
+  // Updater methods (Method B: Check update + manual download)
+  updaterCheck: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATER_CHECK),
+
+  updaterGetStatus: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATER_STATUS),
+
+  updaterOpenRelease: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATER_OPEN_RELEASE),
+
+  onUpdaterNewVersion: (callback: (info: { version: string; releaseUrl: string; releaseNotes: string; publishedAt: string }) => void) => {
+    const listener = (_event: any, info: any) => callback(info)
+    ipcRenderer.on(IPC_CHANNELS.UPDATER_NEW_VERSION, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATER_NEW_VERSION, listener)
+  },
+
+  onUpdaterStatusChange: (callback: (status: any) => void) => {
+    const listener = (_event: any, status: any) => callback(status)
+    ipcRenderer.on(IPC_CHANNELS.UPDATER_STATUS, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATER_STATUS, listener)
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

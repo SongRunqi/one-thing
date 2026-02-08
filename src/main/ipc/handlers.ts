@@ -20,6 +20,7 @@ import { registerThemeHandlers, initializeThemeSystem } from './themes.js'
 import { registerFilesHandlers } from './files.js'
 import { registerFileTreeHandlers } from './file-tree.js'
 import { registerPluginHandlers } from './plugins.js'
+import { registerUpdaterHandlers } from './updater.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -44,6 +45,7 @@ export function initializeIPC() {
   registerFilesHandlers()
   registerFileTreeHandlers()
   registerPluginHandlers()
+  registerUpdaterHandlers()
 }
 
 export { initializeMCP, shutdownMCP, initializeSkills, initializeCustomAgents, cleanupOAuth, initializeThemeSystem }

@@ -187,11 +187,85 @@
         </div>
       </div>
     </section>
+
+    <!-- Updates -->
+    <section class="settings-section">
+      <h3 class="section-title">
+        Updates
+      </h3>
+
+      <div class="update-info">
+        <div class="update-version">
+          <span class="version-label">当前版本</span>
+          <span class="version-value">v{{ currentVersion }}</span>
+        </div>
+        <div class="update-status">
+          <span
+            v-if="checkingUpdate"
+            class="status-text checking"
+          >
+            正在检查更新...
+          </span>
+          <span
+            v-else-if="updateError"
+            class="status-text error"
+          >
+            检查失败: {{ updateError }}
+          </span>
+          <span
+            v-else-if="updateAvailable"
+            class="status-text available"
+          >
+            🎉 发现新版本 {{ latestVersion }}
+          </span>
+          <span
+            v-else-if="lastChecked"
+            class="status-text up-to-date"
+          >
+            ✓ 已是最新版本 (上次检查: {{ formatLastChecked() }})
+          </span>
+          <span
+            v-else
+            class="status-text"
+          >
+            点击检查更新
+          </span>
+        </div>
+      </div>
+
+      <div class="update-actions">
+        <button
+          class="btn-check-update"
+          :disabled="checkingUpdate"
+          @click="handleCheckUpdate"
+        >
+          {{ checkingUpdate ? '检查中...' : '检查更新' }}
+        </button>
+        <button
+          v-if="updateAvailable"
+          class="btn-view-release"
+          @click="handleViewRelease"
+        >
+          查看更新
+        </button>
+      </div>
+
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input
+            :checked="settings.general?.autoCheckUpdates ?? true"
+            type="checkbox"
+            @change="updateAutoCheckUpdates(($event.target as HTMLInputElement).checked)"
+          >
+          <span>启动时自动检查更新</span>
+        </label>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import type { AppSettings, ColorTheme } from '@/types'
 import type { MessageListDensity } from '../../../shared/ipc'
 import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
@@ -203,6 +277,64 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:settings': [settings: AppSettings]
 }>()
+
+// Update state
+const currentVersion = ref('')
+const checkingUpdate = ref(false)
+const updateAvailable = ref(false)
+const latestVersion = ref('')
+const updateError = ref('')
+const lastChecked = ref<number | null>(null)
+
+let unsubscribeStatus: (() => void) | null = null
+
+onMounted(async () => {
+  // Get initial update status
+  const status = await window.electronAPI.updaterGetStatus()
+  currentVersion.value = status.currentVersion
+  updateAvailable.value = status.available
+  latestVersion.value = status.latestVersion || ''
+  updateError.value = status.error || ''
+  lastChecked.value = status.lastChecked || null
+  checkingUpdate.value = status.checking
+
+  // Listen for status changes
+  unsubscribeStatus = window.electronAPI.onUpdaterStatusChange((status) => {
+    checkingUpdate.value = status.checking
+    updateAvailable.value = status.available
+    latestVersion.value = status.latestVersion || ''
+    updateError.value = status.error || ''
+    lastChecked.value = status.lastChecked || null
+  })
+})
+
+onUnmounted(() => {
+  if (unsubscribeStatus) {
+    unsubscribeStatus()
+  }
+})
+
+async function handleCheckUpdate() {
+  await window.electronAPI.updaterCheck()
+}
+
+function handleViewRelease() {
+  window.electronAPI.updaterOpenRelease()
+}
+
+function formatLastChecked(): string {
+  if (!lastChecked.value) return ''
+  const now = Date.now()
+  const diff = now - lastChecked.value
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+  
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes} 分钟前`
+  if (hours < 24) return `${hours} 小时前`
+  return `${days} 天前`
+}
 
 // Color theme definitions with Flexoki 300 (main) and 100 (sub) shades
 const colorThemes = [
@@ -269,6 +401,13 @@ function updateLineHeight(lineHeight: number) {
   emit('update:settings', {
     ...props.settings,
     general: { ...props.settings.general, messageLineHeight: lineHeight }
+  })
+}
+
+function updateAutoCheckUpdates(autoCheckUpdates: boolean) {
+  emit('update:settings', {
+    ...props.settings,
+    general: { ...props.settings.general, autoCheckUpdates }
   })
 }
 </script>
@@ -651,6 +790,118 @@ function updateLineHeight(lineHeight: number) {
 .radio-desc {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* Update Section */
+.update-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.update-version {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.version-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.version-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.update-status {
+  display: flex;
+  align-items: center;
+}
+
+.status-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.status-text.checking {
+  color: var(--accent);
+}
+
+.status-text.error {
+  color: #ef4444;
+}
+
+.status-text.available {
+  color: #10b981;
+  font-weight: 500;
+}
+
+.status-text.up-to-date {
+  color: var(--text-muted);
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.btn-check-update,
+.btn-view-release {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-check-update:hover:not(:disabled),
+.btn-view-release:hover {
+  background: var(--hover);
+  border-color: var(--accent);
+}
+
+.btn-check-update:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-view-release {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.btn-view-release:hover {
+  opacity: 0.9;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 /* Responsive */

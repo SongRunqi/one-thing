@@ -53,6 +53,7 @@ export interface GeneralSettings {
   messageListDensity?: MessageListDensity  // Message list display density, default 'comfortable'
   messageLineHeight?: number  // Message line height, 1.2-2.2, default 1.6
   quickCommands?: QuickCommandConfig[]  // Quick command buttons shown above InputBox
+  autoCheckUpdates?: boolean  // Auto check for updates on startup, default true
   // User profile for lightweight context injection
   userProfile?: UserProfileSettings
 }

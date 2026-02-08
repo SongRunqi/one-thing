@@ -248,4 +248,10 @@ export const IPC_CHANNELS = {
   PLUGINS_UPDATE_CONFIG: 'plugins:update-config',
   PLUGINS_GET_DIRECTORIES: 'plugins:get-directories',
   PLUGINS_OPEN_DIRECTORY: 'plugins:open-directory',
+
+  // Updater related (method B: check update + open release page)
+  UPDATER_CHECK: 'updater:check',
+  UPDATER_STATUS: 'updater:status',
+  UPDATER_OPEN_RELEASE: 'updater:open-release',
+  UPDATER_NEW_VERSION: 'updater:new-version',
 } as const

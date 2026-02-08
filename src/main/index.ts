@@ -12,6 +12,7 @@ import { getMediaImagesDir } from './stores/paths.js'
 import { runMigration as runAgentMigration } from './services/migration/agent-migration.js'
 import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './services/prompt/index.js'
 import { initializePlugins, shutdownPlugins } from './plugins/index.js'
+import { initializeUpdater, shutdownUpdater } from './updater.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -90,6 +91,9 @@ app.on('ready', async () => {
   initializeCustomAgents().catch(err => {
     console.error('[CustomAgent] Initialization failed (non-blocking):', err)
   })
+
+  // Initialize updater (check for updates from GitHub)
+  initializeUpdater(mainWindow)
 })
 
 app.on('window-all-closed', () => {
@@ -114,6 +118,9 @@ app.on('before-quit', async () => {
 
   // Shutdown MCP
   await shutdownMCP()
+
+  // Shutdown updater
+  shutdownUpdater()
 })
 
 export { mainWindow }

@@ -636,6 +636,40 @@ export interface ElectronAPI {
   updatePluginConfig: (request: { pluginId: string; config: Record<string, unknown> }) => Promise<{ success: boolean; error?: string }>
   getPluginDirectories: () => Promise<{ success: boolean; directories?: { plugins: string; npm: string; local: string }; error?: string }>
   openPluginDirectory: (dirType: 'plugins' | 'npm' | 'local') => Promise<{ success: boolean; error?: string }>
+
+  // Updater methods (Method B: Check update + manual download)
+  updaterCheck: () => Promise<{
+    checking: boolean
+    available: boolean
+    currentVersion: string
+    latestVersion?: string
+    releaseUrl?: string
+    releaseNotes?: string
+    error?: string
+    lastChecked?: number
+  }>
+  updaterGetStatus: () => Promise<{
+    checking: boolean
+    available: boolean
+    currentVersion: string
+    latestVersion?: string
+    releaseUrl?: string
+    releaseNotes?: string
+    error?: string
+    lastChecked?: number
+  }>
+  updaterOpenRelease: () => Promise<{ success: boolean }>
+  onUpdaterNewVersion: (callback: (info: { version: string; releaseUrl: string; releaseNotes: string; publishedAt: string }) => void) => () => void
+  onUpdaterStatusChange: (callback: (status: {
+    checking: boolean
+    available: boolean
+    currentVersion: string
+    latestVersion?: string
+    releaseUrl?: string
+    releaseNotes?: string
+    error?: string
+    lastChecked?: number
+  }) => void) => () => void
 }
 
 declare global {
