@@ -44,6 +44,7 @@ import {
   textRecordAgentInteraction,
 } from './memory-helpers.js'
 import { getProviderApiType } from './provider-helpers.js'
+import { classifyError } from '../../../shared/errors.js'
 import { executeToolAndUpdate } from './tool-execution.js'
 import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages } from './chat-logger.js'
 
@@ -865,24 +866,21 @@ export async function executeStreamGeneration(
         aborted: true,
       })
     } else {
-      console.error('[Backend] Streaming error:', error)
-
-      // Import extractErrorDetails for error handling
-      const { extractErrorDetails } = await import('./provider-helpers.js')
+      const appError = classifyError(error)
+      console.error(`[Backend][${appError.category}] Streaming error:`, error)
 
       // Keep the assistant message with any content already generated
       // Just mark it with error details instead of deleting
       processor.finalize()
 
-      const errorDetailsStr = extractErrorDetails(error) ?? ''
-      const errorContent = error.message || 'Streaming error'
+      const errorDetailsStr = appError.technicalDetail ?? ''
 
       // Update the assistant message with error details
       updateMessageError(ctx.sessionId, ctx.assistantMessageId, errorDetailsStr)
 
       // Send error event to frontend (message is preserved, error is added)
       emitter.sendStreamError({
-        error: errorContent,
+        error: appError.message,
         errorDetails: errorDetailsStr,
         preserved: true,  // Flag to indicate message content is preserved
       })
@@ -890,7 +888,7 @@ export async function executeStreamGeneration(
       // Also send stream complete to properly finalize the UI state
       emitter.sendStreamComplete({
         sessionName: getSession(ctx.sessionId)?.name,
-        error: errorContent,
+        error: appError.message,
       })
     }
 

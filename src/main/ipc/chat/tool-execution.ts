@@ -18,6 +18,7 @@ import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
 import { sendUIToolCall } from './stream-helpers.js'
 import type { ToolUIState } from '../../../shared/ipc.js'
 import { hookManager } from '../../plugins/hooks/index.js'
+import { classifyError } from '../../../shared/errors.js'
 
 /**
  * Map ToolCall status to UIMessage ToolUIState and send via UIMessage stream
@@ -165,14 +166,15 @@ export async function executeToolDirectly(
     const result = await executeTool(toolName, args, execContext)
     return result
   } catch (error: any) {
-    console.error(`[DirectExec] Tool execution error:`, error)
-    // Check if error is due to abort signal
+    // Check if error is due to abort signal (before classifying)
     const isAborted = context.abortSignal?.aborted ||
       error.message?.includes('cancelled') ||
       error.message?.includes('aborted')
+    const appError = classifyError(error)
+    console.error(`[DirectExec][${appError.category}] Tool execution error:`, error)
     return {
       success: false,
-      error: error.message || 'Unknown error during tool execution',
+      error: appError.message,
       aborted: isAborted,
     }
   }
