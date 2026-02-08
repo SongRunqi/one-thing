@@ -471,6 +471,48 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * Handle a UIMessage stream chunk (merged from UIMessagesStore)
    */
+  /**
+   * Sync text/reasoning from UIMessage stream to sessionMessages (ChatMessage format)
+   * This bridges the gap: stream writes to UIMessages, but UI currently reads from sessionMessages
+   */
+  function syncStreamToSessionMessages(sessionId: string, messageId: string, part: UIMessagePart) {
+    if (part.type !== 'text' && part.type !== 'reasoning') return
+    const messages = sessionMessages.value.get(sessionId)
+    if (!messages) return
+    const message = messages.find(m => m.id === messageId)
+    if (!message) return
+
+    if (part.type === 'text') {
+      const textPart = part as TextUIPart
+      // Accumulate text content
+      const uiMsgs = sessionUIMessages.value.get(sessionId)
+      const uiMsg = uiMsgs?.find(m => m.id === messageId)
+      if (uiMsg) {
+        // Get full text from all text parts
+        const fullText = uiMsg.parts
+          .filter(p => p.type === 'text')
+          .map(p => (p as TextUIPart).text)
+          .join('')
+        message.content = fullText
+      } else {
+        message.content += textPart.text
+      }
+    } else if (part.type === 'reasoning') {
+      const reasoningPart = part as ReasoningUIPart
+      const uiMsgs = sessionUIMessages.value.get(sessionId)
+      const uiMsg = uiMsgs?.find(m => m.id === messageId)
+      if (uiMsg) {
+        message.reasoning = uiMsg.parts
+          .filter(p => p.type === 'reasoning')
+          .map(p => (p as ReasoningUIPart).text)
+          .join('')
+      } else {
+        message.reasoning = (message.reasoning || '') + reasoningPart.text
+      }
+    }
+    triggerRef(sessionMessages)
+  }
+
   function handleUIMessageChunk(data: UIMessageStreamData) {
     const { sessionId, messageId, chunk } = data
 
@@ -486,6 +528,9 @@ export const useChatStore = defineStore('chat', () => {
       const partIndex = chunk.partIndex
       const msgs = getSessionUIMessagesRef(sessionId)
       const msg = msgs.find(m => m.id === messageId)
+
+      // Sync text/reasoning to sessionMessages so current UI can render
+      syncStreamToSessionMessages(sessionId, messageId, part)
 
       if (part.type === 'text') {
         if (partIndex !== undefined) {
