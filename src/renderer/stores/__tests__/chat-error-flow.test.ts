@@ -232,9 +232,9 @@ describe('Legacy data loading: rebuildContentParts + chatMessageToUIMessage', ()
       expect(msg.contentParts).toBeDefined()
       expect(msg.contentParts!.length).toBe(2)
       expect(msg.contentParts![0].type).toBe('text')
-      expect(msg.contentParts![0].content).toBe('Hello from assistant')
+      expect((msg.contentParts![0] as any).content).toBe('Hello from assistant')
       expect(msg.contentParts![1].type).toBe('tool-call')
-      expect(msg.contentParts![1].toolCalls).toHaveLength(1)
+      expect((msg.contentParts![1] as any).toolCalls).toHaveLength(1)
     })
 
     it('user messages are not modified by rebuildContentParts', () => {

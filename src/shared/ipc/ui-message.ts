@@ -158,6 +158,12 @@ export interface MessageMetadata {
   isError?: boolean
   /** Error details */
   errorDetails?: string
+  /** Error category */
+  errorCategory?: string
+  /** Whether error is retryable */
+  retryable?: boolean
+  /** Token usage for this message */
+  usage?: TokenUsage
 }
 
 /**

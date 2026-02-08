@@ -605,7 +605,11 @@ export const useChatStore = defineStore('chat', () => {
           }
           return part
         })
-        updateUIMessage(sessionId, messageId, { parts: updatedParts })
+        // Store usage on UIMessage metadata
+        const updatedMetadata = chunk.usage
+          ? { timestamp: Date.now(), ...msg.metadata, usage: chunk.usage }
+          : msg.metadata
+        updateUIMessage(sessionId, messageId, { parts: updatedParts, metadata: updatedMetadata })
       }
     }
   }
