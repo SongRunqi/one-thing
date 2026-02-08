@@ -403,6 +403,11 @@ export interface ElectronAPI {
   onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void
   getSystemTheme: () => Promise<{ success: boolean; theme?: 'light' | 'dark' }>
   onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void
+  // Settings import/export methods
+  settingsExport: () => Promise<{ success: boolean; data?: any; error?: string }>
+  settingsExportWithDialog: () => Promise<{ success: boolean; path?: string; error?: string }>
+  settingsImport: (data: string) => Promise<{ success: boolean; error?: string }>
+  settingsImportWithDialog: () => Promise<{ success: boolean; error?: string }>
   // Theme methods
   getThemes: () => Promise<GetThemesResponse>
   getTheme: (themeId: string) => Promise<GetThemeResponse>
