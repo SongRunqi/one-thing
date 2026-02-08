@@ -25,6 +25,7 @@ import {
   getMessageText,
   getMessageReasoning,
   getToolParts,
+  chatMessageToUIMessage,
 } from '../../shared/message-converters.js'
 
 // Step data from IPC
@@ -864,10 +865,13 @@ export const useChatStore = defineStore('chat', () => {
       attachments,
     }
 
-    // Add to session messages
+    // Add to session messages (legacy)
     const messages = getSessionMessagesRef(sessionId)
     messages.push(userMessage)
     setSessionMessages(sessionId, [...messages])
+
+    // Add to UIMessages (the actual data source for UI components)
+    addUIMessage(sessionId, chatMessageToUIMessage(userMessage))
 
     // Set states
     sessionLoading.value.set(sessionId, true)
@@ -912,6 +916,8 @@ export const useChatStore = defineStore('chat', () => {
         if (tempIndex !== -1) {
           messages[tempIndex] = response.userMessage
         }
+        // Also update in UIMessages
+        updateUIMessage(sessionId, userMessage.id, chatMessageToUIMessage(response.userMessage))
       }
 
       // Update session name immediately if it was renamed
@@ -941,6 +947,14 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.push(assistantMessage)
       setSessionMessages(sessionId, [...messages])
+
+      // Also create UIMessage for the assistant (so streaming chunks can update it)
+      addUIMessage(sessionId, {
+        id: messageId,
+        role: 'assistant',
+        parts: [],
+        metadata: { timestamp: Date.now() },
+      })
 
       // Record active stream
       activeStreams.value.set(sessionId, messageId)
