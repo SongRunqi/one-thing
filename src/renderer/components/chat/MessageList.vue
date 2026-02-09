@@ -9,26 +9,47 @@
         v-if="messages.length === 0 && !isLoading"
         @suggestion="handleSuggestion"
       />
-      <TransitionGroup name="msg-list">
-        <MessageItem
-          v-for="message in messages"
-          :key="message.id"
-          :message="message"
-          :branches="getBranchesForMessage(message.id)"
-          :can-branch="canCreateBranch"
-          :is-highlighted="message.id === highlightedMessageId"
-          :voice-config="currentAgentVoiceConfig"
-          @edit="handleEdit"
-          @branch="handleBranch"
-          @go-to-branch="handleGoToBranch"
-          @quote="handleQuote"
-          @regenerate="handleRegenerate"
-          @execute-tool="handleExecuteTool"
-          @confirm-tool="handleConfirmTool"
-          @reject-tool="handleRejectTool"
-          @update-thinking-time="handleUpdateThinkingTime"
-        />
-      </TransitionGroup>
+      <div
+        v-else
+        :style="{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: '100%',
+          position: 'relative',
+        }"
+      >
+        <div
+          v-for="virtualItem in virtualItems"
+          :key="virtualItem.key"
+          :data-index="virtualItem.index"
+          :ref="(el) => virtualizer.measureElement(el as HTMLElement)"
+          class="virtual-message-item"
+          :style="{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            transform: `translateY(${virtualItem.start}px)`,
+          }"
+        >
+          <MessageItem
+            :data-message-id="messages[virtualItem.index].id"
+            :message="messages[virtualItem.index]"
+            :branches="getBranchesForMessage(messages[virtualItem.index].id)"
+            :can-branch="canCreateBranch"
+            :is-highlighted="messages[virtualItem.index].id === highlightedMessageId"
+            :voice-config="currentAgentVoiceConfig"
+            @edit="handleEdit"
+            @branch="handleBranch"
+            @go-to-branch="handleGoToBranch"
+            @quote="handleQuote"
+            @regenerate="handleRegenerate"
+            @execute-tool="handleExecuteTool"
+            @confirm-tool="handleConfirmTool"
+            @reject-tool="handleRejectTool"
+            @update-thinking-time="handleUpdateThinkingTime"
+          />
+        </div>
+      </div>
     </div>
 
     <!-- User message navigation rail (timeline) -->
@@ -140,6 +161,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw } from 'vue'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import type { UIMessage, AgentVoice, ToolCall, ToolUIPart, TextUIPart } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
@@ -187,6 +209,20 @@ const settingsStore = useSettingsStore()
 const messageListRef = ref<HTMLElement | null>(null)
 const navRailTrackRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
+
+// Virtual scrolling setup
+const virtualizer = useVirtualizer({
+  count: computed(() => props.messages.length),
+  getScrollElement: () => messageListRef.value,
+  estimateSize: () => 164, // Estimated message height (150px) + margin (14px)
+  overscan: 5, // Render 5 extra items above/below viewport
+  measureElement: (el) => {
+    // Measure actual element height for dynamic sizing (includes margin)
+    return el?.getBoundingClientRect().height ?? 164
+  },
+})
+
+const virtualItems = computed(() => virtualizer.value.getVirtualItems())
 
 // Reject reason dialog state
 const showRejectDialog = ref(false)
@@ -378,23 +414,24 @@ function scrollToUserMessage(navIndex: number) {
   if (messageIndex === undefined) return
 
   const message = props.messages[messageIndex]
-  if (!message || !messageListRef.value) return
+  if (!message) return
 
-  const messageEl = messageListRef.value.querySelector(`[data-message-id="${message.id}"]`)
-  if (messageEl) {
-    // Prevent scroll handler from overriding the navigation index
-    isActivelyNavigating = true
-    if (navigationCooldownTimer) {
-      clearTimeout(navigationCooldownTimer)
-    }
-
-    messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
-
-    // Reset flag after highlight animation completes (2.5s) to prevent index override
-    navigationCooldownTimer = setTimeout(() => {
-      isActivelyNavigating = false
-    }, 2600)
+  // Prevent scroll handler from overriding the navigation index
+  isActivelyNavigating = true
+  if (navigationCooldownTimer) {
+    clearTimeout(navigationCooldownTimer)
   }
+
+  // Use virtualizer to scroll to message
+  virtualizer.value.scrollToIndex(messageIndex, {
+    align: 'center',
+    behavior: 'smooth',
+  })
+
+  // Reset flag after highlight animation completes (2.5s) to prevent index override
+  navigationCooldownTimer = setTimeout(() => {
+    isActivelyNavigating = false
+  }, 2600)
 }
 
 function formatNavTime(timestamp: number): string {
@@ -414,14 +451,13 @@ function buildNavMarkerLabel(message: UIMessage, navIndex: number): string {
 }
 
 function updateNavMarkers() {
-  const listEl = messageListRef.value
-  if (!listEl || userMessageIndices.value.length === 0) {
+  if (userMessageIndices.value.length === 0) {
     navMarkers.value = []
     return
   }
 
-  // Use scrollHeight for total content height (includes scrolled-out content)
-  const totalHeight = listEl.scrollHeight || 1
+  // Get total virtual size for calculating positions
+  const totalHeight = virtualizer.value.getTotalSize() || 1
   const markers: NavMarker[] = []
   const total = userMessageIndices.value.length
 
@@ -430,24 +466,24 @@ function updateNavMarkers() {
     const message = props.messages[messageIndex]
     if (!message) continue
 
-    const messageEl = listEl.querySelector(`[data-message-id="${message.id}"]`) as HTMLElement | null
+    // Calculate position based on virtual scroll position
+    // Use the virtualizer's internal measurement system
     const fallbackPosition = total > 1 ? navIndex / (total - 1) : 0.5
     let position = Math.min(0.98, Math.max(0.02, fallbackPosition))
 
-    if (messageEl) {
-      // Use getBoundingClientRect for reliable position calculation
-      // Account for current scroll position to get absolute position within scrollable content
-      const listRect = listEl.getBoundingClientRect()
-      const messageRect = messageEl.getBoundingClientRect()
+    // Try to get more accurate position from virtualizer
+    try {
+      const virtualItems = virtualizer.value.getVirtualItems()
+      const virtualItem = virtualItems.find(item => item.index === messageIndex)
 
-      // Calculate center position relative to scroll container
-      const scrollTop = listEl.scrollTop
-      const messageCenterInViewport = messageRect.top + messageRect.height / 2
-      const listTopInViewport = listRect.top
-      const messageCenterRelativeToList = messageCenterInViewport - listTopInViewport + scrollTop
-
-      const ratio = messageCenterRelativeToList / totalHeight
-      position = Math.min(0.98, Math.max(0.02, ratio))
+      if (virtualItem) {
+        // Use virtual item's start position + half its size for center
+        const messageCenter = virtualItem.start + (virtualItem.size / 2)
+        const ratio = messageCenter / totalHeight
+        position = Math.min(0.98, Math.max(0.02, ratio))
+      }
+    } catch (e) {
+      // Fallback to estimated position
     }
 
     markers.push({
@@ -531,28 +567,42 @@ function updateVisibleUserMessageIndex() {
   if (!messageListRef.value || userMessageIndices.value.length === 0) return
 
   const container = messageListRef.value
-  const containerRect = container.getBoundingClientRect()
-  const containerCenter = containerRect.top + containerRect.height / 2
+  const scrollTop = container.scrollTop
+  const containerHeight = container.clientHeight
+  const viewportCenter = scrollTop + containerHeight / 2
 
   let closestIndex = 0
   let closestDistance = Infinity
 
-  // Find the user message closest to viewport center
+  // Find the user message closest to viewport center using virtual positions
   for (let i = 0; i < userMessageIndices.value.length; i++) {
     const messageIndex = userMessageIndices.value[i]
     const message = props.messages[messageIndex]
     if (!message) continue
 
-    const messageEl = container.querySelector(`[data-message-id="${message.id}"]`)
-    if (!messageEl) continue
+    try {
+      const virtualItems = virtualizer.value.getVirtualItems()
+      const virtualItem = virtualItems.find(item => item.index === messageIndex)
 
-    const rect = messageEl.getBoundingClientRect()
-    const messageCenter = rect.top + rect.height / 2
-    const distance = Math.abs(messageCenter - containerCenter)
+      if (virtualItem) {
+        const messageCenter = virtualItem.start + (virtualItem.size / 2)
+        const distance = Math.abs(messageCenter - viewportCenter)
 
-    if (distance < closestDistance) {
-      closestDistance = distance
-      closestIndex = i
+        if (distance < closestDistance) {
+          closestDistance = distance
+          closestIndex = i
+        }
+      }
+    } catch (e) {
+      // Fallback: estimate based on index
+      const totalMessages = props.messages.length
+      const estimatedPosition = (messageIndex / totalMessages) * virtualizer.value.getTotalSize()
+      const distance = Math.abs(estimatedPosition - viewportCenter)
+
+      if (distance < closestDistance) {
+        closestDistance = distance
+        closestIndex = i
+      }
     }
   }
 
@@ -946,8 +996,12 @@ watch(
   [() => props.messages, () => props.isLoading],
   async () => {
     await nextTick()
-    if (messageListRef.value && !userScrolledAway.value) {
-      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
+    if (!userScrolledAway.value && props.messages.length > 0) {
+      // Use virtualizer to scroll to last message
+      virtualizer.value.scrollToIndex(props.messages.length - 1, {
+        align: 'end',
+        behavior: 'auto',
+      })
     }
     scheduleNavMarkerUpdate()
   },
@@ -1486,6 +1540,19 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   border-bottom-right-radius: var(--radius-lg);
   /* Required for correct offsetTop calculation in nav markers */
   position: relative;
+}
+
+/* Virtual message item wrapper */
+.virtual-message-item {
+  margin-bottom: 14px;
+}
+
+.message-list.density-compact .virtual-message-item {
+  margin-bottom: 6px;
+}
+
+.message-list.density-spacious .virtual-message-item {
+  margin-bottom: 24px;
 }
 
 /* Message list density modes */
