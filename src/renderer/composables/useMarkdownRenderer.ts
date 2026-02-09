@@ -14,7 +14,7 @@ const md = new MarkdownIt({
 // Supports $...$ for inline math and $$...$$ for block math
 md.use(mathjax3)
 
-// Custom fence (code block) renderer
+// Custom fence (code block) renderer with lazy highlighting
 md.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx]
   const code = token.content
@@ -50,28 +50,70 @@ md.renderer.rules.fence = (tokens, idx) => {
     }
   }
 
-  let highlighted: string
+  // 延迟高亮：初始渲染为纯文本，使用 requestIdleCallback 或 IntersectionObserver 延迟高亮
+  const escapedCode = md.utils.escapeHtml(code)
+  const encodedCode = encodeURIComponent(code)
+  
+  // 如果语言支持高亮，标记为待高亮
   if (lang && hljs.getLanguage(lang)) {
-    try {
-      highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
-    } catch (e) {
-      console.error('Highlight error:', e)
-      highlighted = md.utils.escapeHtml(code)
-    }
-  } else {
-    highlighted = md.utils.escapeHtml(code)
-  }
-
-  return `<div class="code-block-container">
+    return `<div class="code-block-container" data-lazy-highlight="true" data-lang="${lang}" data-code="${encodedCode}">
     <div class="code-block-header">
       <div class="code-block-lang">${lang}</div>
-      <button class="code-block-copy" onclick="navigator.clipboard.writeText(decodeURIComponent(this.getAttribute('data-code'))); this.querySelector('span').textContent='Copied!'; setTimeout(() => this.querySelector('span').textContent='Copy', 2000)" data-code="${encodeURIComponent(code)}">
+      <button class="code-block-copy" onclick="navigator.clipboard.writeText(decodeURIComponent(this.getAttribute('data-code'))); this.querySelector('span').textContent='Copied!'; setTimeout(() => this.querySelector('span').textContent='Copy', 2000)" data-code="${encodedCode}">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         <span>Copy</span>
       </button>
     </div>
-    <pre><code class="hljs language-${lang}">${highlighted}</code></pre>
+    <pre><code class="hljs language-${lang}">${escapedCode}</code></pre>
   </div>`
+  }
+
+  // 不支持高亮的语言，直接返回
+  return `<div class="code-block-container">
+    <div class="code-block-header">
+      <div class="code-block-lang">${lang}</div>
+      <button class="code-block-copy" onclick="navigator.clipboard.writeText(decodeURIComponent(this.getAttribute('data-code'))); this.querySelector('span').textContent='Copied!'; setTimeout(() => this.querySelector('span').textContent='Copy', 2000)" data-code="${encodedCode}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span>Copy</span>
+      </button>
+    </div>
+    <pre><code class="hljs language-${lang}">${escapedCode}</code></pre>
+  </div>`
+}
+
+// 延迟高亮函数（由 MessageBubble 调用）
+export function applyLazyHighlight(container: HTMLElement) {
+  const blocks = container.querySelectorAll('[data-lazy-highlight="true"]')
+  
+  blocks.forEach((block) => {
+    const lang = block.getAttribute('data-lang')
+    const encodedCode = block.getAttribute('data-code')
+    
+    if (!lang || !encodedCode) return
+    
+    const codeElement = block.querySelector('code')
+    if (!codeElement) return
+    
+    // 使用 requestIdleCallback 延迟高亮
+    const applyHighlight = () => {
+      try {
+        const code = decodeURIComponent(encodedCode)
+        const highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+        codeElement.innerHTML = highlighted
+        block.removeAttribute('data-lazy-highlight')
+      } catch (e) {
+        console.error('Lazy highlight error:', e)
+        // 失败时保持原始转义文本
+      }
+    }
+    
+    // 优先使用 requestIdleCallback，降级为 setTimeout
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(applyHighlight, { timeout: 2000 })
+    } else {
+      setTimeout(applyHighlight, 0)
+    }
+  })
 }
 
 // Custom inline code renderer

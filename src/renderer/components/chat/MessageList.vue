@@ -20,8 +20,14 @@
         <div
           v-for="virtualItem in virtualItems"
           :key="virtualItem.key"
-          :data-index="virtualItem.index"
           :ref="(el) => virtualizer.measureElement(el as HTMLElement)"
+          v-memo="[
+            messages[virtualItem.index].id,
+            messages[virtualItem.index].parts?.length,
+            messages[virtualItem.index].parts?.some(p => p.type === 'text' && p.state === 'streaming'),
+            messages[virtualItem.index].id === highlightedMessageId
+          ]"
+          :data-index="virtualItem.index"
           class="virtual-message-item"
           :style="{
             position: 'absolute',

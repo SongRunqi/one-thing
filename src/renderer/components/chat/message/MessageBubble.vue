@@ -264,7 +264,7 @@ import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
 import InfographicBlock from '../InfographicBlock.vue'
 import RetrievedMemoriesPanel from './RetrievedMemoriesPanel.vue'
-import { renderMarkdown } from '@/composables/useMarkdownRenderer'
+import { renderMarkdown, applyLazyHighlight } from '@/composables/useMarkdownRenderer'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
 import type { InfographicConfig } from '@shared/ipc/infographics'
 import { calculateCost, formatTokenCount, formatCost } from '@shared/token-pricing'
@@ -486,12 +486,28 @@ const tokenTooltip = computed(() => {
   return lines.join(' / ')
 })
 
+// Markdown 渲染缓存 - WeakMap 用于自动垃圾回收
+const markdownCache = new WeakMap<object, string>()
+const contentCacheKey = computed(() => ({ content: props.content, isStreaming: props.isStreaming }))
+
 const renderedContent = computed(() => {
   const content = isTyping.value ? displayedContent.value : props.content
   return renderContentMarkdown(content)
 })
 
 function renderContentMarkdown(content: string): string {
+  // 已完成的消息使用缓存，流式消息实时渲染
+  if (!props.isStreaming && !isTyping.value) {
+    const cacheKey = contentCacheKey.value
+    const cached = markdownCache.get(cacheKey)
+    if (cached !== undefined) {
+      return cached
+    }
+    const rendered = renderMarkdown(content, props.role === 'user')
+    markdownCache.set(cacheKey, rendered)
+    return rendered
+  }
+  // 流式消息不缓存，实时渲染
   return renderMarkdown(content, props.role === 'user')
 }
 
@@ -582,6 +598,12 @@ watch(
       stopTypewriter()
       // 流式结束后挂载 Infographic
       nextTick(() => mountInfographics())
+      // 流式结束后应用延迟高亮
+      nextTick(() => {
+        if (bubbleRef.value) {
+          applyLazyHighlight(bubbleRef.value)
+        }
+      })
       // 流式结束后检测溢出并默认折叠
       nextTick(() => {
         checkOverflow()
@@ -643,6 +665,12 @@ onMounted(() => {
     displayedContent.value = props.content
     // 延迟挂载 Infographic，确保 DOM 已渲染
     nextTick(() => mountInfographics())
+    // 应用延迟高亮
+    nextTick(() => {
+      if (bubbleRef.value) {
+        applyLazyHighlight(bubbleRef.value)
+      }
+    })
   }
 
   // 设置内容溢出检测
