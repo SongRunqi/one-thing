@@ -564,12 +564,18 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * Get UIMessages for a session (returns array, reactive via Map)
-   * IMPORTANT: Returns the array directly, not a computed ref.
-   * Reactivity is maintained through triggerRef(sessionUIMessages) calls.
+   * Get UIMessages for a session (reactive computed, cached per sessionId)
+   * Returns the SAME computed ref for each sessionId, so Vue can properly
+   * track reactivity through nested computed chains.
    */
-  function getSessionUIMessages(sessionId: string): UIMessage[] {
-    return sessionUIMessages.value.get(sessionId) || []
+  const _uiMessagesComputedCache = new Map<string, ReturnType<typeof computed<UIMessage[]>>>()
+  function getSessionUIMessages(sessionId: string) {
+    let c = _uiMessagesComputedCache.get(sessionId)
+    if (!c) {
+      c = computed(() => sessionUIMessages.value.get(sessionId) || [])
+      _uiMessagesComputedCache.set(sessionId, c)
+    }
+    return c
   }
 
   /**

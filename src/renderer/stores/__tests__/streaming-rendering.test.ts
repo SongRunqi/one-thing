@@ -68,7 +68,7 @@ describe('Streaming Rendering Pipeline', () => {
       sendChunk({ type: 'part', part: { type: 'text', text: ' world', state: 'streaming' } })
       sendChunk({ type: 'part', part: { type: 'text', text: '!', state: 'complete' } })
 
-      const msgs = store.getSessionUIMessages(sessionId)
+      const msgs = store.getSessionUIMessages(sessionId).value
       expect(msgs).toHaveLength(1)
 
       const textPart = msgs[0].parts.find(p => p.type === 'text') as TextUIPart
@@ -80,7 +80,7 @@ describe('Streaming Rendering Pipeline', () => {
     it('creates text part on first chunk', () => {
       sendChunk({ type: 'part', part: { type: 'text', text: 'First', state: 'streaming' } })
 
-      const msgs = store.getSessionUIMessages(sessionId)
+      const msgs = store.getSessionUIMessages(sessionId).value
       const textPart = msgs[0].parts[0] as TextUIPart
       expect(textPart.type).toBe('text')
       expect(textPart.text).toBe('First')
@@ -93,7 +93,7 @@ describe('Streaming Rendering Pipeline', () => {
         partIndex: 0,
       })
 
-      const msgs = store.getSessionUIMessages(sessionId)
+      const msgs = store.getSessionUIMessages(sessionId).value
       expect(msgs[0].parts[0]).toEqual({
         type: 'text',
         text: 'Indexed text',
@@ -109,7 +109,7 @@ describe('Streaming Rendering Pipeline', () => {
       sendChunk({ type: 'part', part: { type: 'reasoning', text: 'Let me think', state: 'streaming' } })
       sendChunk({ type: 'part', part: { type: 'reasoning', text: '...', state: 'complete' } })
 
-      const msgs = store.getSessionUIMessages(sessionId)
+      const msgs = store.getSessionUIMessages(sessionId).value
       const reasoningPart = msgs[0].parts.find(p => p.type === 'reasoning') as ReasoningUIPart
       expect(reasoningPart).toBeDefined()
       expect(reasoningPart.text).toBe('Let me think...')
@@ -129,7 +129,7 @@ describe('Streaming Rendering Pipeline', () => {
       }
       sendChunk({ type: 'part', part: toolPart })
 
-      const msgs = store.getSessionUIMessages(sessionId)
+      const msgs = store.getSessionUIMessages(sessionId).value
       const found = msgs[0].parts.find(
         p => p.type === 'tool-call' && (p as ToolUIPart).toolCallId === 'tc-1'
       ) as ToolUIPart
@@ -157,7 +157,7 @@ describe('Streaming Rendering Pipeline', () => {
       }
       sendChunk({ type: 'part', part: resultPart })
 
-      const msgs = store.getSessionUIMessages(sessionId)
+      const msgs = store.getSessionUIMessages(sessionId).value
       const toolParts = msgs[0].parts.filter(p =>
         p.type.startsWith('tool-') && (p as ToolUIPart).toolCallId === 'tc-2'
       )
@@ -184,7 +184,7 @@ describe('Streaming Rendering Pipeline', () => {
         },
       })
 
-      const msgs = store.getSessionUIMessages(sessionId)
+      const msgs = store.getSessionUIMessages(sessionId).value
       expect(msgs[0].parts).toHaveLength(3)
       expect(msgs[0].parts[0].type).toBe('reasoning')
       expect(msgs[0].parts[1].type).toBe('text')
@@ -203,7 +203,7 @@ describe('Streaming Rendering Pipeline', () => {
         usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
       })
 
-      const msgs = store.getSessionUIMessages(sessionId)
+      const msgs = store.getSessionUIMessages(sessionId).value
       expect(msgs[0].metadata?.usage).toEqual({
         promptTokens: 100,
         completionTokens: 50,
@@ -224,7 +224,7 @@ describe('Streaming Rendering Pipeline', () => {
       })
 
       // After error, the message should still exist with partial content
-      const msgs = store.getSessionUIMessages(sessionId)
+      const msgs = store.getSessionUIMessages(sessionId).value
       expect(msgs).toHaveLength(1)
     })
   })
@@ -233,22 +233,19 @@ describe('Streaming Rendering Pipeline', () => {
 
   describe('Reactive getSessionUIMessages', () => {
     it('returns empty array for unknown session', () => {
-      const msgs = store.getSessionUIMessages('nonexistent')
+      const msgs = store.getSessionUIMessages('nonexistent').value
       expect(msgs).toEqual([])
     })
 
-    it('reflects updates after chunks (via triggerRef)', () => {
-      // getSessionUIMessages now returns array directly (not computed)
-      // Reactivity works via triggerRef in store's setSessionUIMessages
-      let msgs = store.getSessionUIMessages(sessionId)
-      expect(msgs).toHaveLength(1)
-      expect(msgs[0].parts).toHaveLength(0)
+    it('reflects updates after chunks', () => {
+      const computed = store.getSessionUIMessages(sessionId)
+      expect(computed.value).toHaveLength(1)
+      expect(computed.value[0].parts).toHaveLength(0)
 
       sendChunk({ type: 'part', part: { type: 'text', text: 'Updated', state: 'complete' } })
 
-      // After triggerRef, components re-read and see updates
-      msgs = store.getSessionUIMessages(sessionId)
-      const textPart = msgs[0].parts[0] as TextUIPart
+      // Computed should reflect the update
+      const textPart = computed.value[0].parts[0] as TextUIPart
       expect(textPart.text).toBe('Updated')
     })
   })
