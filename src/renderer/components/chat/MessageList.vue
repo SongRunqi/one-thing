@@ -220,16 +220,18 @@ const navRailTrackRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
 
 // Virtual scrolling setup
-const virtualizer = useVirtualizer({
-  count: computed(() => props.messages.length),
+// NOTE: Options MUST be wrapped in computed() for @tanstack/vue-virtual to react to changes.
+// A plain object with individual computed properties inside won't trigger re-evaluation.
+const virtualizer = useVirtualizer(computed(() => ({
+  count: props.messages.length,
   getScrollElement: () => messageListRef.value,
   estimateSize: () => 164, // Estimated message height (150px) + margin (14px)
   overscan: 5, // Render 5 extra items above/below viewport
-  measureElement: (el) => {
+  measureElement: (el: Element | null) => {
     // Measure actual element height for dynamic sizing (includes margin)
     return el?.getBoundingClientRect().height ?? 164
   },
-})
+})))
 
 const virtualItems = computed(() => {
   const items = virtualizer.value.getVirtualItems()
