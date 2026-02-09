@@ -564,10 +564,12 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * Get UIMessages for a session (reactive computed)
+   * Get UIMessages for a session (returns array, reactive via Map)
+   * IMPORTANT: Returns the array directly, not a computed ref.
+   * Reactivity is maintained through triggerRef(sessionUIMessages) calls.
    */
-  function getSessionUIMessages(sessionId: string) {
-    return computed(() => sessionUIMessages.value.get(sessionId) || [])
+  function getSessionUIMessages(sessionId: string): UIMessage[] {
+    return sessionUIMessages.value.get(sessionId) || []
   }
 
   /**

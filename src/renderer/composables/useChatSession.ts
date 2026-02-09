@@ -32,7 +32,7 @@ export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
   const messages = computed<UIMessage[]>(() => {
     const sid = sessionId.value
     if (!sid) return []
-    return chatStore.getSessionUIMessages(sid).value
+    return chatStore.getSessionUIMessages(sid)
   })
 
   const isLoading = computed(() => state.value?.isLoading.value || false)
