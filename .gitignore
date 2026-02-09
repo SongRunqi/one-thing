@@ -36,3 +36,6 @@ release/
 # Store data
 userData/
 .devtools
+
+# E2E test results
+e2e/test-results/

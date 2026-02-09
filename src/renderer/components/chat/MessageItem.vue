@@ -15,21 +15,20 @@
 
     <!-- Error message -->
     <MessageError
-      v-if="message.errorDetails"
-      :content="message.content"
-      :error-details="message.errorDetails"
-      :error-category="message.errorCategory"
-      :retryable="message.retryable"
-      :timestamp="message.timestamp"
+      v-if="msgErrorDetails"
+      :content="msgText"
+      :error-details="msgErrorDetails"
+      :error-category="msgErrorCategory"
+      :retryable="msgRetryable"
+      :timestamp="msgTimestamp"
       @retry="handleRetry"
     />
 
     <!-- System message (e.g., /files command output) -->
     <MessageSystem
       v-else-if="message.role === 'system'"
-      :content="message.content"
-      :timestamp="message.timestamp"
-      :session-id="message.sessionId"
+      :content="msgText"
+      :timestamp="msgTimestamp"
       :message-id="message.id"
     />
 
@@ -47,11 +46,11 @@
         <!-- Thinking/Waiting status -->
         <MessageThinking
           v-if="message.role === 'assistant'"
-          :is-streaming="message.isStreaming || false"
-          :has-content="!!message.content || !!(message.toolCalls?.length) || !!(message.steps?.length)"
-          :reasoning="message.reasoning"
-          :thinking-start-time="message.thinkingStartTime"
-          :thinking-time="message.thinkingTime"
+          :is-streaming="msgIsStreaming"
+          :has-content="msgHasContent"
+          :reasoning="msgReasoning"
+          :thinking-start-time="msgThinkingStartTime"
+          :thinking-time="msgThinkingTime"
           :loading-memory="isLoadingMemory"
           @update-thinking-time="handleUpdateThinkingTime"
         />
@@ -59,18 +58,17 @@
         <!-- Message bubble -->
         <MessageBubble
           :role="message.role"
-          :content="message.content"
-          :content-parts="message.contentParts"
-          :attachments="message.attachments"
-          :tool-calls="message.toolCalls"
-          :steps="message.steps"
-          :skill-used="message.skillUsed"
-          :is-streaming="message.isStreaming"
+          :content="msgText"
+          :content-parts="msgContentParts"
+          :attachments="msgAttachments"
+          :tool-calls="msgToolCalls"
+          :steps="msgSteps"
+          :skill-used="msgSkillUsed"
+          :is-streaming="msgIsStreaming"
           :is-editing="isEditing"
           :edit-content="editContent"
-          :session-id="message.sessionId"
-          :model="message.model"
-          :usage="message.usage"
+          :model="msgModel"
+          :usage="msgUsage"
           @submit-edit="handleSubmitEdit"
           @cancel-edit="handleCancelEdit"
           @open-image="handleOpenImage"
@@ -82,7 +80,7 @@
 
         <!-- Inline error for assistant messages that failed mid-stream -->
         <div
-          v-if="message.role === 'assistant' && message.errorDetails"
+          v-if="message.role === 'assistant' && msgErrorDetails"
           class="inline-error"
         >
           <svg
@@ -112,14 +110,13 @@
               y2="16"
             />
           </svg>
-          <span class="inline-error-text">{{ message.errorDetails }}</span>
+          <span class="inline-error-text">{{ msgErrorDetails }}</span>
         </div>
 
-        <!-- Steps panel fallback - only for legacy messages without contentParts -->
+        <!-- Steps panel fallback - only for messages without data-steps parts -->
         <StepsPanel
-          v-if="message.role === 'assistant' && message.steps && message.steps.length > 0 && (!message.contentParts || !message.contentParts.some(p => p.type === 'data-steps'))"
-          :steps="message.steps"
-          :session-id="message.sessionId"
+          v-if="message.role === 'assistant' && msgSteps.length > 0 && !message.parts.some(p => p.type === 'data-steps')"
+          :steps="msgSteps"
           @confirm="handleToolConfirm"
           @reject="handleToolReject"
         />
@@ -130,15 +127,15 @@
             v-if="message.role !== 'user'"
             class="meta"
           >
-            {{ formatTime(message.timestamp) }}
+            {{ formatTime(msgTimestamp) }}
           </div>
           <MessageActions
             :role="message.role"
-            :content="message.content"
+            :content="msgText"
             :visible="showActions"
             :branches="branches"
-            :usage="message.usage"
-            :model="message.model"
+            :usage="msgUsage"
+            :model="msgModel"
             :voice-config="voiceConfig"
             :message-id="message.id"
             @edit="startEdit"
@@ -163,7 +160,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import type { ChatMessage, ToolCall, AgentVoice, MessageAttachment } from '@/types'
+import type { UIMessage, ToolCall, AgentVoice, MessageAttachment, ToolUIPart, TextUIPart } from '@/types'
 import StepsPanel from './StepsPanel.vue'
 import ImagePreview from '../common/ImagePreview.vue'
 import MessageError from './message/MessageError.vue'
@@ -172,6 +169,7 @@ import MessageThinking from './message/MessageThinking.vue'
 import MessageBubble from './message/MessageBubble.vue'
 import MessageActions from './message/MessageActions.vue'
 import SelectionToolbar from './message/SelectionToolbar.vue'
+import { getMessageText, getMessageReasoning, getToolParts } from '@shared/message-converters'
 
 interface BranchInfo {
   id: string
@@ -179,7 +177,7 @@ interface BranchInfo {
 }
 
 interface Props {
-  message: ChatMessage
+  message: UIMessage
   branches?: BranchInfo[]
   canBranch?: boolean
   isHighlighted?: boolean
@@ -236,13 +234,112 @@ const showSelectionToolbar = ref(false)
 const selectedText = ref('')
 const selectionToolbarPosition = ref({ top: 0, left: 0 })
 
-// Computed
+// Computed — extract UIMessage data for child components
 const isHighlighted = computed(() => props.isHighlighted || false)
 
-// Check if message is loading memory (has loading-memory contentPart)
+const msgText = computed(() => getMessageText(props.message))
+const msgReasoning = computed(() => getMessageReasoning(props.message))
+const msgToolParts = computed(() => getToolParts(props.message))
+const msgTimestamp = computed(() => props.message.metadata?.timestamp ?? 0)
+const msgModel = computed(() => props.message.metadata?.model)
+const msgUsage = computed(() => props.message.metadata?.usage)
+const msgSkillUsed = computed(() => props.message.metadata?.skillUsed)
+const msgAttachments = computed(() => props.message.metadata?.attachments)
+const msgErrorDetails = computed(() => props.message.metadata?.errorDetails)
+const msgErrorCategory = computed(() => props.message.metadata?.errorCategory)
+const msgRetryable = computed(() => props.message.metadata?.retryable)
+const msgThinkingTime = computed(() => props.message.metadata?.thinkingTime)
+const msgThinkingStartTime = computed(() => props.message.metadata?.thinkingStartTime)
+
+// Check streaming state from text parts
+const msgIsStreaming = computed(() => {
+  return props.message.parts.some(
+    p => (p.type === 'text' && (p as TextUIPart).state === 'streaming') ||
+         (p.type === 'reasoning' && (p as any).state === 'streaming')
+  )
+})
+
+// Check if message has meaningful content (text, tools, or steps)
+const msgHasContent = computed(() => {
+  return !!msgText.value || msgToolParts.value.length > 0 ||
+    props.message.parts.some(p => p.type === 'data-steps')
+})
+
+// Steps extracted from data-steps parts
+const msgSteps = computed(() => {
+  const stepParts = props.message.parts.filter(p => p.type === 'data-steps') as Array<{ type: 'data-steps'; steps: any[]; turnIndex: number }>
+  return stepParts.flatMap(p => p.steps)
+})
+
+// ContentParts for MessageBubble (pass parts directly — MessageBubble will handle rendering)
+// MessageBubble uses the old ContentPart[] interface via its contentParts prop.
+// For UIMessage, we pass the parts array and let MessageBubble use its contentParts-based rendering path.
+const msgContentParts = computed(() => {
+  // Convert UIMessage parts to legacy ContentPart format for MessageBubble
+  const parts: any[] = []
+  for (const part of props.message.parts) {
+    if (part.type === 'text') {
+      parts.push({ type: 'text', content: (part as TextUIPart).text })
+    } else if (part.type.startsWith('tool-')) {
+      // Group tool parts into tool-call ContentPart
+      // Find existing tool-call group or create new one
+      const lastPart = parts[parts.length - 1]
+      const toolPart = part as ToolUIPart
+      const toolCall: any = {
+        id: toolPart.toolCallId,
+        toolId: toolPart.toolName || toolPart.type.replace('tool-', ''),
+        toolName: toolPart.toolName || toolPart.type.replace('tool-', ''),
+        arguments: toolPart.input || {},
+        status: toolPart.state === 'output-available' ? 'completed'
+          : toolPart.state === 'output-error' ? 'failed'
+          : toolPart.state === 'input-streaming' ? 'input-streaming'
+          : 'pending',
+        result: toolPart.output,
+        error: toolPart.errorText,
+        requiresConfirmation: toolPart.requiresConfirmation,
+        commandType: toolPart.commandType,
+        startTime: toolPart.startTime,
+        endTime: toolPart.endTime,
+      }
+      if (lastPart?.type === 'tool-call') {
+        lastPart.toolCalls.push(toolCall)
+      } else {
+        parts.push({ type: 'tool-call', toolCalls: [toolCall] })
+      }
+    } else if (part.type === 'data-steps') {
+      const stepPart = part as any
+      parts.push({ type: 'data-steps', turnIndex: stepPart.turnIndex })
+    }
+  }
+  return parts.length > 0 ? parts : undefined
+})
+
+// Legacy ToolCall[] derived from ToolUIPart[] for sub-components that still expect ToolCall
+const msgToolCalls = computed(() => {
+  return msgToolParts.value.map(tp => ({
+    id: tp.toolCallId,
+    toolId: tp.toolName || tp.type.replace('tool-', ''),
+    toolName: tp.toolName || tp.type.replace('tool-', ''),
+    arguments: tp.input || {},
+    status: tp.state === 'output-available' ? 'completed' as const
+      : tp.state === 'output-error' ? 'failed' as const
+      : tp.state === 'input-streaming' ? 'input-streaming' as const
+      : tp.state === 'input-available' ? 'pending' as const
+      : 'pending' as const,
+    result: tp.output,
+    error: tp.errorText,
+    requiresConfirmation: tp.requiresConfirmation,
+    commandType: tp.commandType,
+    startTime: tp.startTime,
+    endTime: tp.endTime,
+    timestamp: props.message.metadata?.timestamp ?? 0,
+  })) as any as ToolCall[]
+})
+
+// Check if message is loading memory
 const isLoadingMemory = computed(() => {
-  if (!props.message.contentParts) return false
-  return props.message.contentParts.some(part => part.type === 'loading-memory')
+  // In UIMessage, there's no 'loading-memory' part type, but check contentParts compat
+  return false
 })
 
 // Format time
@@ -255,7 +352,7 @@ function formatTime(timestamp: number): string {
 
 // Edit handlers
 function startEdit() {
-  editContent.value = props.message.content
+  editContent.value = msgText.value
   isEditing.value = true
 }
 

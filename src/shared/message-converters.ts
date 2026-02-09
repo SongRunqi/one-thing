@@ -151,6 +151,13 @@ export function chatMessageToUIMessage(msg: ChatMessage): UIMessage {
       attachments: msg.attachments,
       isError: isLegacyError,
       errorDetails: msg.errorDetails,
+      errorCategory: msg.errorCategory,
+      retryable: msg.retryable,
+      usage: msg.usage ? {
+        inputTokens: msg.usage.inputTokens,
+        outputTokens: msg.usage.outputTokens,
+        totalTokens: msg.usage.totalTokens,
+      } : undefined,
     },
   }
 }

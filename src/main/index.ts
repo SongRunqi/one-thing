@@ -24,9 +24,16 @@ if (process.env.NODE_ENV === 'development') {
   process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
 }
 
+// Allow overriding userData path for E2E test isolation
+if (process.env.ELECTRON_USER_DATA) {
+  app.setPath('userData', process.env.ELECTRON_USER_DATA)
+}
+
 let mainWindow: BrowserWindow | null = null
 
 app.on('ready', async () => {
+  const t0 = performance.now()
+
   // Register custom protocol for media files
   protocol.handle('media', (request) => {
     const filename = decodeURIComponent(request.url.slice('media://'.length))
@@ -34,11 +41,13 @@ app.on('ready', async () => {
     return net.fetch(pathToFileURL(filePath).toString())
   })
 
+  // ========== Phase 1: Serial initialization (required before window) ==========
   // Initialize stores and migrate data if needed
   initializeStores()
 
   // Initialize settings asynchronously (before any settings access)
   await initializeSettings()
+  console.log(`[Startup] Settings: ${(performance.now() - t0).toFixed(0)}ms`)
 
   // Run agent migration (from old Built-in Agent to CustomAgent format)
   // This must run after stores init but before custom agents are loaded
@@ -50,32 +59,34 @@ app.on('ready', async () => {
   } catch (error) {
     console.error('[Startup] Agent migration failed:', error)
   }
+  console.log(`[Startup] Migration: ${(performance.now() - t0).toFixed(0)}ms`)
 
   // Clean up interrupted sessions from previous app instance
   sanitizeAllSessionsOnStartup()
 
-  // Initialize text-based memory system
-  await initializeTextMemory()
-
-  // Initialize PromptManager for template-based prompts
-  await initializePromptManager()
-
-  // Start template watcher in development mode (hot reload)
-  startTemplateWatcher()
-
-  // Initialize tool registry
-  await initializeToolRegistry()
-
-  // Initialize IPC handlers
+  // Initialize IPC handlers (required for window communication)
   initializeIPC()
 
+  // ========== Phase 2: Create window ASAP ==========
+  mainWindow = createWindow()
+  console.log(`[Startup] Window visible: ${(performance.now() - t0).toFixed(0)}ms`)
+
+  // ========== Phase 3: Parallel initialization (after window) ==========
+  await Promise.all([
+    initializeTextMemory(),
+    initializePromptManager().then(() => {
+      // Start template watcher in development mode (hot reload)
+      startTemplateWatcher()
+    }),
+    initializeToolRegistry(),
+  ])
+  console.log(`[Startup] Core systems: ${(performance.now() - t0).toFixed(0)}ms`)
+
+  // ========== Phase 4: Fire-and-forget (low priority) ==========
   // Initialize plugin system (loads plugins and executes app:init hooks)
   initializePlugins().catch(err => {
     console.error('[Plugins] Initialization failed (non-blocking):', err)
   })
-
-  // Create window first for fast startup
-  mainWindow = createWindow()
 
   // Initialize MCP system asynchronously (don't block startup)
   initializeMCP().catch(err => {
@@ -94,6 +105,7 @@ app.on('ready', async () => {
 
   // Initialize updater (check for updates from GitHub)
   initializeUpdater(mainWindow)
+  console.log(`[Startup] Fully ready: ${(performance.now() - t0).toFixed(0)}ms`)
 })
 
 app.on('window-all-closed', () => {

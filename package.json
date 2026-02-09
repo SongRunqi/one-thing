@@ -20,7 +20,9 @@
     "release": "bash scripts/release.sh",
     "lint": "eslint . --fix",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e": "playwright test --config playwright.config.ts",
+    "e2e:debug": "playwright test --config playwright.config.ts --debug"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.1",
@@ -34,6 +36,7 @@
     "@nut-tree-fork/nut-js": "^4.2.6",
     "@openrouter/sdk": "^0.3.10",
     "@pierre/diffs": "^1.0.4",
+    "@tanstack/vue-virtual": "^3.13.18",
     "@types/markdown-it": "^14.1.2",
     "@xenova/transformers": "^2.17.2",
     "@zip.js/zip.js": "^2.8.11",
@@ -63,6 +66,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.58.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/diff": "^7.0.2",
     "@types/handlebars": "^4.0.40",

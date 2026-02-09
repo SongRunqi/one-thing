@@ -9,26 +9,53 @@
         v-if="messages.length === 0 && !isLoading"
         @suggestion="handleSuggestion"
       />
-      <TransitionGroup name="msg-list">
-        <MessageItem
-          v-for="message in messages"
-          :key="message.id"
-          :message="message"
-          :branches="getBranchesForMessage(message.id)"
-          :can-branch="canCreateBranch"
-          :is-highlighted="message.id === highlightedMessageId"
-          :voice-config="currentAgentVoiceConfig"
-          @edit="handleEdit"
-          @branch="handleBranch"
-          @go-to-branch="handleGoToBranch"
-          @quote="handleQuote"
-          @regenerate="handleRegenerate"
-          @execute-tool="handleExecuteTool"
-          @confirm-tool="handleConfirmTool"
-          @reject-tool="handleRejectTool"
-          @update-thinking-time="handleUpdateThinkingTime"
-        />
-      </TransitionGroup>
+      <div
+        v-else
+        :style="{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: '100%',
+          position: 'relative',
+        }"
+      >
+        <div
+          v-for="virtualItem in virtualItems"
+          :key="virtualItem.key"
+          :ref="(el) => virtualizer.measureElement(el as HTMLElement)"
+          v-memo="[
+            messages[virtualItem.index].id,
+            messages[virtualItem.index].parts?.length,
+            messages[virtualItem.index].parts?.some(p => p.type === 'text' && p.state === 'streaming'),
+            messages[virtualItem.index].id === highlightedMessageId
+          ]"
+          :data-index="virtualItem.index"
+          class="virtual-message-item"
+          :style="{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            transform: `translateY(${virtualItem.start}px)`,
+          }"
+        >
+          <MessageItem
+            :data-message-id="messages[virtualItem.index].id"
+            :message="messages[virtualItem.index]"
+            :branches="getBranchesForMessage(messages[virtualItem.index].id)"
+            :can-branch="canCreateBranch"
+            :is-highlighted="messages[virtualItem.index].id === highlightedMessageId"
+            :voice-config="currentAgentVoiceConfig"
+            @edit="handleEdit"
+            @branch="handleBranch"
+            @go-to-branch="handleGoToBranch"
+            @quote="handleQuote"
+            @regenerate="handleRegenerate"
+            @execute-tool="handleExecuteTool"
+            @confirm-tool="handleConfirmTool"
+            @reject-tool="handleRejectTool"
+            @update-thinking-time="handleUpdateThinkingTime"
+          />
+        </div>
+      </div>
     </div>
 
     <!-- User message navigation rail (timeline) -->
@@ -140,7 +167,8 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw } from 'vue'
-import type { ChatMessage, AgentVoice, ToolCall } from '@/types'
+import { useVirtualizer } from '@tanstack/vue-virtual'
+import type { UIMessage, AgentVoice, ToolCall, ToolUIPart, TextUIPart } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
 import { useChatStore } from '@/stores/chat'
@@ -148,6 +176,7 @@ import { useSessionsStore } from '@/stores/sessions'
 import { useCustomAgentsStore } from '@/stores/custom-agents'
 import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
+import { getMessageText, getToolParts } from '@shared/message-converters'
 
 interface BranchInfo {
   id: string
@@ -162,7 +191,7 @@ interface NavMarker {
 }
 
 interface Props {
-  messages: ChatMessage[]
+  messages: UIMessage[]
   isLoading?: boolean
   sessionId?: string
 }
@@ -186,6 +215,20 @@ const settingsStore = useSettingsStore()
 const messageListRef = ref<HTMLElement | null>(null)
 const navRailTrackRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
+
+// Virtual scrolling setup
+const virtualizer = useVirtualizer({
+  count: computed(() => props.messages.length),
+  getScrollElement: () => messageListRef.value,
+  estimateSize: () => 164, // Estimated message height (150px) + margin (14px)
+  overscan: 5, // Render 5 extra items above/below viewport
+  measureElement: (el) => {
+    // Measure actual element height for dynamic sizing (includes margin)
+    return el?.getBoundingClientRect().height ?? 164
+  },
+})
+
+const virtualItems = computed(() => virtualizer.value.getVirtualItems())
 
 // Reject reason dialog state
 const showRejectDialog = ref(false)
@@ -377,23 +420,24 @@ function scrollToUserMessage(navIndex: number) {
   if (messageIndex === undefined) return
 
   const message = props.messages[messageIndex]
-  if (!message || !messageListRef.value) return
+  if (!message) return
 
-  const messageEl = messageListRef.value.querySelector(`[data-message-id="${message.id}"]`)
-  if (messageEl) {
-    // Prevent scroll handler from overriding the navigation index
-    isActivelyNavigating = true
-    if (navigationCooldownTimer) {
-      clearTimeout(navigationCooldownTimer)
-    }
-
-    messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
-
-    // Reset flag after highlight animation completes (2.5s) to prevent index override
-    navigationCooldownTimer = setTimeout(() => {
-      isActivelyNavigating = false
-    }, 2600)
+  // Prevent scroll handler from overriding the navigation index
+  isActivelyNavigating = true
+  if (navigationCooldownTimer) {
+    clearTimeout(navigationCooldownTimer)
   }
+
+  // Use virtualizer to scroll to message
+  virtualizer.value.scrollToIndex(messageIndex, {
+    align: 'center',
+    behavior: 'smooth',
+  })
+
+  // Reset flag after highlight animation completes (2.5s) to prevent index override
+  navigationCooldownTimer = setTimeout(() => {
+    isActivelyNavigating = false
+  }, 2600)
 }
 
 function formatNavTime(timestamp: number): string {
@@ -403,23 +447,23 @@ function formatNavTime(timestamp: number): string {
   return `${hours}:${minutes}`
 }
 
-function buildNavMarkerLabel(message: ChatMessage, navIndex: number): string {
+function buildNavMarkerLabel(message: UIMessage, navIndex: number): string {
   const total = userMessageIndices.value.length
-  const rawContent = typeof message.content === 'string' ? message.content : ''
+  const rawContent = getMessageText(message)
   const compact = rawContent.replace(/\s+/g, ' ').trim()
   const snippet = compact ? compact.slice(0, 48) : 'No text'
-  return `${navIndex + 1}/${total} ${formatNavTime(message.timestamp)} - ${snippet}`
+  const timestamp = message.metadata?.timestamp ?? 0
+  return `${navIndex + 1}/${total} ${formatNavTime(timestamp)} - ${snippet}`
 }
 
 function updateNavMarkers() {
-  const listEl = messageListRef.value
-  if (!listEl || userMessageIndices.value.length === 0) {
+  if (userMessageIndices.value.length === 0) {
     navMarkers.value = []
     return
   }
 
-  // Use scrollHeight for total content height (includes scrolled-out content)
-  const totalHeight = listEl.scrollHeight || 1
+  // Get total virtual size for calculating positions
+  const totalHeight = virtualizer.value.getTotalSize() || 1
   const markers: NavMarker[] = []
   const total = userMessageIndices.value.length
 
@@ -428,24 +472,24 @@ function updateNavMarkers() {
     const message = props.messages[messageIndex]
     if (!message) continue
 
-    const messageEl = listEl.querySelector(`[data-message-id="${message.id}"]`) as HTMLElement | null
+    // Calculate position based on virtual scroll position
+    // Use the virtualizer's internal measurement system
     const fallbackPosition = total > 1 ? navIndex / (total - 1) : 0.5
     let position = Math.min(0.98, Math.max(0.02, fallbackPosition))
 
-    if (messageEl) {
-      // Use getBoundingClientRect for reliable position calculation
-      // Account for current scroll position to get absolute position within scrollable content
-      const listRect = listEl.getBoundingClientRect()
-      const messageRect = messageEl.getBoundingClientRect()
+    // Try to get more accurate position from virtualizer
+    try {
+      const virtualItems = virtualizer.value.getVirtualItems()
+      const virtualItem = virtualItems.find(item => item.index === messageIndex)
 
-      // Calculate center position relative to scroll container
-      const scrollTop = listEl.scrollTop
-      const messageCenterInViewport = messageRect.top + messageRect.height / 2
-      const listTopInViewport = listRect.top
-      const messageCenterRelativeToList = messageCenterInViewport - listTopInViewport + scrollTop
-
-      const ratio = messageCenterRelativeToList / totalHeight
-      position = Math.min(0.98, Math.max(0.02, ratio))
+      if (virtualItem) {
+        // Use virtual item's start position + half its size for center
+        const messageCenter = virtualItem.start + (virtualItem.size / 2)
+        const ratio = messageCenter / totalHeight
+        position = Math.min(0.98, Math.max(0.02, ratio))
+      }
+    } catch (e) {
+      // Fallback to estimated position
     }
 
     markers.push({
@@ -482,7 +526,9 @@ const canCreateBranch = computed(() => {
 
 // Check if there's already a streaming message (to avoid double loading indicator)
 const hasStreamingMessage = computed(() => {
-  return props.messages.some(m => m.isStreaming)
+  return props.messages.some(m =>
+    m.parts.some(p => p.type === 'text' && (p as TextUIPart).state === 'streaming')
+  )
 })
 
 // Compute branches for each message
@@ -527,28 +573,42 @@ function updateVisibleUserMessageIndex() {
   if (!messageListRef.value || userMessageIndices.value.length === 0) return
 
   const container = messageListRef.value
-  const containerRect = container.getBoundingClientRect()
-  const containerCenter = containerRect.top + containerRect.height / 2
+  const scrollTop = container.scrollTop
+  const containerHeight = container.clientHeight
+  const viewportCenter = scrollTop + containerHeight / 2
 
   let closestIndex = 0
   let closestDistance = Infinity
 
-  // Find the user message closest to viewport center
+  // Find the user message closest to viewport center using virtual positions
   for (let i = 0; i < userMessageIndices.value.length; i++) {
     const messageIndex = userMessageIndices.value[i]
     const message = props.messages[messageIndex]
     if (!message) continue
 
-    const messageEl = container.querySelector(`[data-message-id="${message.id}"]`)
-    if (!messageEl) continue
+    try {
+      const virtualItems = virtualizer.value.getVirtualItems()
+      const virtualItem = virtualItems.find(item => item.index === messageIndex)
 
-    const rect = messageEl.getBoundingClientRect()
-    const messageCenter = rect.top + rect.height / 2
-    const distance = Math.abs(messageCenter - containerCenter)
+      if (virtualItem) {
+        const messageCenter = virtualItem.start + (virtualItem.size / 2)
+        const distance = Math.abs(messageCenter - viewportCenter)
 
-    if (distance < closestDistance) {
-      closestDistance = distance
-      closestIndex = i
+        if (distance < closestDistance) {
+          closestDistance = distance
+          closestIndex = i
+        }
+      }
+    } catch (e) {
+      // Fallback: estimate based on index
+      const totalMessages = props.messages.length
+      const estimatedPosition = (messageIndex / totalMessages) * virtualizer.value.getTotalSize()
+      const distance = Math.abs(estimatedPosition - viewportCenter)
+
+      if (distance < closestDistance) {
+        closestDistance = distance
+        closestIndex = i
+      }
     }
   }
 
@@ -598,40 +658,45 @@ let cleanupPermissionListener: (() => void) | null = null
 let cleanupCustomAgentPermissionListener: (() => void) | null = null
 
 // Get the first pending permission request (tool call requiring confirmation)
-// Searches both top-level toolCalls AND nested childSteps (for CustomAgent sub-tool calls)
-const currentPendingPermission = computed<{ message: ChatMessage; toolCall: ToolCall } | null>(() => {
+// Searches ToolUIPart in message.parts AND nested childSteps in data-steps parts
+const currentPendingPermission = computed<{ message: UIMessage; toolCall: ToolCall } | null>(() => {
   for (const message of props.messages) {
-    // 1. Check top-level toolCalls (normal tool calls)
-    const pendingToolCall = message.toolCalls?.find(tc => tc.requiresConfirmation)
-    if (pendingToolCall) {
-      return { message, toolCall: pendingToolCall }
+    // 1. Check ToolUIParts in parts (normal tool calls)
+    const toolParts = getToolParts(message)
+    const pendingToolPart = toolParts.find(tp => tp.requiresConfirmation)
+    if (pendingToolPart) {
+      // Convert ToolUIPart to ToolCall-like for permission system compatibility
+      const toolCall = toolUIPartToToolCall(pendingToolPart) as any
+      // Preserve permissionId if set
+      if ((pendingToolPart as any).permissionId) {
+        toolCall.permissionId = (pendingToolPart as any).permissionId
+      }
+      return { message, toolCall }
     }
 
-    // 2. Check nested childSteps (CustomAgent sub-tool calls)
-    // CustomAgent steps are stored as childSteps of the parent custom-agent step
-    for (const step of message.steps || []) {
-      if (step.childSteps?.length) {
-        for (const childStep of step.childSteps) {
-          // Check if this child step has a toolCall that requires confirmation
-          if (childStep.toolCall?.requiresConfirmation) {
-            return { message, toolCall: childStep.toolCall }
-          }
-          // Also check for customAgentPermissionId (set by handleCustomAgentPermissionRequest)
-          if ((childStep as any).customAgentPermissionId && childStep.status === 'awaiting-confirmation') {
-            // Construct a toolCall-like object from the step if toolCall is missing
-            // Use type assertion since customAgentPermissionId is a custom extension
-            const existingToolCall = childStep.toolCall as ToolCall | undefined
-            const toolCallFromStep: ToolCall & { customAgentPermissionId?: string } = existingToolCall ?? {
-              id: childStep.id,
-              toolId: childStep.type === 'command' ? 'bash' : childStep.type,
-              toolName: childStep.title?.split(':')[0] || 'unknown',
-              arguments: {},
-              status: 'pending' as const,
-              timestamp: childStep.timestamp,
-              requiresConfirmation: true,
+    // 2. Check nested childSteps (CustomAgent sub-tool calls) in data-steps parts
+    const stepParts = message.parts.filter(p => p.type === 'data-steps') as Array<{ type: 'data-steps'; steps: any[]; turnIndex: number }>
+    for (const stepPart of stepParts) {
+      for (const step of stepPart.steps || []) {
+        if (step.childSteps?.length) {
+          for (const childStep of step.childSteps) {
+            if (childStep.toolCall?.requiresConfirmation) {
+              return { message, toolCall: childStep.toolCall }
             }
-            toolCallFromStep.customAgentPermissionId = (childStep as any).customAgentPermissionId
-            return { message, toolCall: toolCallFromStep as ToolCall }
+            if ((childStep as any).customAgentPermissionId && childStep.status === 'awaiting-confirmation') {
+              const existingToolCall = childStep.toolCall as ToolCall | undefined
+              const toolCallFromStep: ToolCall & { customAgentPermissionId?: string } = existingToolCall ?? {
+                id: childStep.id,
+                toolId: childStep.type === 'command' ? 'bash' : childStep.type,
+                toolName: childStep.title?.split(':')[0] || 'unknown',
+                arguments: {},
+                status: 'pending' as const,
+                timestamp: childStep.timestamp,
+                requiresConfirmation: true,
+              }
+              toolCallFromStep.customAgentPermissionId = (childStep as any).customAgentPermissionId
+              return { message, toolCall: toolCallFromStep as ToolCall }
+            }
           }
         }
       }
@@ -639,6 +704,27 @@ const currentPendingPermission = computed<{ message: ChatMessage; toolCall: Tool
   }
   return null
 })
+
+/** Convert ToolUIPart to legacy ToolCall for permission system compatibility */
+function toolUIPartToToolCall(tp: ToolUIPart): ToolCall {
+  return {
+    id: tp.toolCallId,
+    toolId: tp.toolName || tp.type.replace('tool-', ''),
+    toolName: tp.toolName || tp.type.replace('tool-', ''),
+    arguments: tp.input || {},
+    status: tp.state === 'output-available' ? 'completed' as const
+      : tp.state === 'output-error' ? 'failed' as const
+      : tp.state === 'input-streaming' ? 'input-streaming' as const
+      : 'pending' as const,
+    result: tp.output as any,
+    error: tp.errorText,
+    requiresConfirmation: tp.requiresConfirmation,
+    commandType: tp.commandType,
+    startTime: tp.startTime,
+    endTime: tp.endTime,
+    timestamp: 0,
+  } as ToolCall
+}
 
 // Setup keyboard shortcuts for permission confirmation
 // Enter = once (本次), S = session (本会话), W = workspace (本工作区), D/Escape = reject
@@ -694,8 +780,7 @@ function handlePermissionRequest(info: {
     return
   }
 
-  // Find the message and tool call that needs confirmation
-  // Use props.messages (from useChatSession composable) instead of chatStore.messages
+  // Find the message that needs confirmation
   const message = props.messages.find(m => m.id === info.messageId)
   if (!message) {
     console.log('[Frontend] Message not found for permission request, messageId:', info.messageId)
@@ -703,44 +788,42 @@ function handlePermissionRequest(info: {
     return
   }
 
-  // Find the tool call by callId or by matching command in metadata
-  let toolCall = message.toolCalls?.find(tc => tc.id === info.callId)
-  if (!toolCall && info.metadata.command) {
-    // Try to find by command match
-    toolCall = message.toolCalls?.find(tc =>
-      tc.arguments?.command === info.metadata.command
-    )
+  // Find the ToolUIPart by callId or by matching command in metadata
+  const toolParts = getToolParts(message)
+  let toolPart = toolParts.find(tp => tp.toolCallId === info.callId)
+  if (!toolPart && info.metadata.command) {
+    toolPart = toolParts.find(tp => tp.input?.command === info.metadata.command)
   }
 
-  if (toolCall) {
-    // Store permission ID on tool call for later response
-    (toolCall as any).permissionId = info.id
-    toolCall.requiresConfirmation = true
-    toolCall.status = 'pending'
+  if (toolPart) {
+    // Store permission ID on tool part for later response
+    ;(toolPart as any).permissionId = info.id
+    toolPart.requiresConfirmation = true
+    toolPart.state = 'input-available'
 
-    // Update corresponding step
-    const step = message.steps?.find(s => s.toolCallId === toolCall!.id)
-    if (step) {
-      step.status = 'awaiting-confirmation'
-      // Store metadata from permission request (contains diff for edit tool)
-      // This ensures diff is available even if STEP_UPDATED hasn't propagated yet
-      if (info.metadata && (info.metadata.diff || info.metadata.filePath)) {
-        step.result = JSON.stringify(info.metadata)
-      }
-      if (step.toolCall) {
-        (step.toolCall as any).permissionId = info.id
-        step.toolCall.requiresConfirmation = true
-        step.toolCall.status = 'pending'
-      }
-      // Force reactivity
-      if (message.steps) {
-        message.steps = [...message.steps]
+    // Update corresponding step in data-steps parts
+    const stepParts = message.parts.filter(p => p.type === 'data-steps') as Array<{ type: 'data-steps'; steps: any[]; turnIndex: number }>
+    for (const stepPart of stepParts) {
+      const step = stepPart.steps?.find((s: any) => s.toolCallId === toolPart!.toolCallId)
+      if (step) {
+        step.status = 'awaiting-confirmation'
+        if (info.metadata && (info.metadata.diff || info.metadata.filePath)) {
+          step.result = JSON.stringify(info.metadata)
+        }
+        if (step.toolCall) {
+          ;(step.toolCall as any).permissionId = info.id
+          step.toolCall.requiresConfirmation = true
+          step.toolCall.status = 'pending'
+        }
+        break
       }
     }
+    // Force reactivity by replacing parts array
+    message.parts = [...message.parts]
 
-    console.log('[Frontend] Updated tool call with permission request:', toolCall.id)
+    console.log('[Frontend] Updated tool part with permission request:', toolPart.toolCallId)
   } else {
-    console.log('[Frontend] No matching tool call found for permission request')
+    console.log('[Frontend] No matching tool part found for permission request')
   }
 }
 
@@ -775,35 +858,35 @@ function handleCustomAgentPermissionRequest(info: {
     return
   }
 
-  // Find the nested step that needs permission
-  // The stepId from CustomAgent is like "toolName-toolCallId"
-  // We need to search in childSteps of parent steps
+  // Find the nested step that needs permission in data-steps parts
   let foundStep: any = null
   let parentStep: any = null
+  let stepPartRef: any = null
 
-  for (const step of message.steps || []) {
-    // Check if this step has childSteps that contain our target
-    if (step.childSteps?.length) {
-      for (const childStep of step.childSteps) {
-        // Match by toolCallId or by the tool call info
-        if (childStep.toolCallId === info.toolCall.id ||
-            (childStep.toolCall?.toolName === info.toolCall.toolName &&
-             JSON.stringify(childStep.toolCall?.arguments) === JSON.stringify(info.toolCall.arguments))) {
-          foundStep = childStep
-          parentStep = step
-          break
+  const stepParts = message.parts.filter(p => p.type === 'data-steps') as Array<{ type: 'data-steps'; steps: any[]; turnIndex: number }>
+  for (const sp of stepParts) {
+    for (const step of sp.steps || []) {
+      if (step.childSteps?.length) {
+        for (const childStep of step.childSteps) {
+          if (childStep.toolCallId === info.toolCall.id ||
+              (childStep.toolCall?.toolName === info.toolCall.toolName &&
+               JSON.stringify(childStep.toolCall?.arguments) === JSON.stringify(info.toolCall.arguments))) {
+            foundStep = childStep
+            parentStep = step
+            stepPartRef = sp
+            break
+          }
         }
       }
+      if (foundStep) break
     }
     if (foundStep) break
   }
 
   if (foundStep && parentStep) {
-    // Store the CustomAgent permission request ID on the step
     (foundStep as any).customAgentPermissionId = info.requestId
     foundStep.status = 'awaiting-confirmation'
 
-    // Also set on toolCall if present
     if (foundStep.toolCall) {
       (foundStep.toolCall as any).customAgentPermissionId = info.requestId
       foundStep.toolCall.requiresConfirmation = true
@@ -811,18 +894,18 @@ function handleCustomAgentPermissionRequest(info: {
       foundStep.toolCall.commandType = info.toolCall.commandType
     }
 
-    // Force Vue reactivity by replacing the parent step
-    const parentIndex = message.steps!.findIndex(s => s.id === parentStep.id)
+    // Force Vue reactivity
+    const parentIndex = stepPartRef.steps.findIndex((s: any) => s.id === parentStep.id)
     if (parentIndex >= 0) {
       const newChildSteps = parentStep.childSteps!.map((c: any) =>
         c === foundStep ? { ...foundStep } : c
       )
-      message.steps![parentIndex] = {
+      stepPartRef.steps[parentIndex] = {
         ...parentStep,
         childSteps: newChildSteps,
       }
-      message.steps = [...message.steps!]
     }
+    message.parts = [...message.parts]
 
     console.log('[Frontend] Updated child step with CustomAgent permission request:', foundStep.id || info.stepId)
   } else {
@@ -919,8 +1002,12 @@ watch(
   [() => props.messages, () => props.isLoading],
   async () => {
     await nextTick()
-    if (messageListRef.value && !userScrolledAway.value) {
-      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
+    if (!userScrolledAway.value && props.messages.length > 0) {
+      // Use virtualizer to scroll to last message
+      virtualizer.value.scrollToIndex(props.messages.length - 1, {
+        align: 'end',
+        behavior: 'auto',
+      })
     }
     scheduleNavMarkerUpdate()
   },
@@ -1000,17 +1087,19 @@ async function handleExecuteTool(toolCall: any) {
   const currentSession = panelSession.value
   if (!currentSession) return
 
-  // Find the message containing this tool call
-  const message = props.messages.find(m =>
-    m.toolCalls?.some(tc => tc.id === toolCall.id)
-  )
-  const tc = message?.toolCalls?.find(t => t.id === toolCall.id)
+  // Find the message containing this tool call via ToolUIPart
+  const message = props.messages.find(m => {
+    const parts = getToolParts(m)
+    return parts.some(tp => tp.toolCallId === toolCall.id)
+  })
+  const toolPart = message ? getToolParts(message).find(tp => tp.toolCallId === toolCall.id) : undefined
 
   // Record start time
   const startTime = Date.now()
-  if (tc) {
-    tc.status = 'executing'
-    tc.startTime = startTime
+  if (toolPart) {
+    toolPart.state = 'input-available'
+    toolPart.startTime = startTime
+    message!.parts = [...message!.parts]
   }
 
   try {
@@ -1025,11 +1114,12 @@ async function handleExecuteTool(toolCall: any) {
 
     // Record end time and update status
     const endTime = Date.now()
-    if (tc) {
-      tc.endTime = endTime
-      tc.status = result.success ? 'completed' : 'failed'
-      tc.result = result.result
-      tc.error = result.error
+    if (toolPart) {
+      toolPart.endTime = endTime
+      toolPart.state = result.success ? 'output-available' : 'output-error'
+      toolPart.output = result.result
+      toolPart.errorText = result.error
+      message!.parts = [...message!.parts]
     }
 
     // Persist to backend
@@ -1045,10 +1135,11 @@ async function handleExecuteTool(toolCall: any) {
   } catch (error) {
     console.error('Failed to execute tool:', error)
     const endTime = Date.now()
-    if (tc) {
-      tc.endTime = endTime
-      tc.status = 'failed'
-      tc.error = String(error)
+    if (toolPart) {
+      toolPart.endTime = endTime
+      toolPart.state = 'output-error'
+      toolPart.errorText = String(error)
+      message!.parts = [...message!.parts]
     }
 
     // Persist to backend
@@ -1079,32 +1170,35 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
       const decision = response === 'once' ? 'allow' : 'always'
       await window.electronAPI.respondToCustomAgentPermission(customAgentPermissionId, decision)
 
-      // Update UI state - find the step in nested childSteps
+      // Update UI state - find the step in nested childSteps within data-steps parts
       for (const message of props.messages) {
-        for (const parentStep of message.steps || []) {
-          if (parentStep.childSteps?.length) {
-            const childIndex = parentStep.childSteps.findIndex(
-              (c: any) => c.customAgentPermissionId === customAgentPermissionId ||
-                          c.toolCall?.customAgentPermissionId === customAgentPermissionId
-            )
-            if (childIndex >= 0) {
-              const childStep = parentStep.childSteps[childIndex]
-              childStep.status = 'running'
-              delete (childStep as any).customAgentPermissionId
-              if (childStep.toolCall) {
-                childStep.toolCall.status = 'executing'
-                childStep.toolCall.requiresConfirmation = false
-                delete (childStep.toolCall as any).customAgentPermissionId
+        const stepParts = message.parts.filter(p => p.type === 'data-steps') as Array<{ type: 'data-steps'; steps: any[]; turnIndex: number }>
+        for (const sp of stepParts) {
+          for (const parentStep of sp.steps || []) {
+            if (parentStep.childSteps?.length) {
+              const childIndex = parentStep.childSteps.findIndex(
+                (c: any) => c.customAgentPermissionId === customAgentPermissionId ||
+                            c.toolCall?.customAgentPermissionId === customAgentPermissionId
+              )
+              if (childIndex >= 0) {
+                const childStep = parentStep.childSteps[childIndex]
+                childStep.status = 'running'
+                delete (childStep as any).customAgentPermissionId
+                if (childStep.toolCall) {
+                  childStep.toolCall.status = 'executing'
+                  childStep.toolCall.requiresConfirmation = false
+                  delete (childStep.toolCall as any).customAgentPermissionId
+                }
+                // Force Vue reactivity
+                const parentIndex = sp.steps.findIndex((s: any) => s.id === parentStep.id)
+                if (parentIndex >= 0) {
+                  const newChildSteps = [...parentStep.childSteps]
+                  newChildSteps[childIndex] = { ...childStep }
+                  sp.steps[parentIndex] = { ...parentStep, childSteps: newChildSteps }
+                }
+                message.parts = [...message.parts]
+                break
               }
-              // Force Vue reactivity
-              const parentIndex = message.steps!.findIndex(s => s.id === parentStep.id)
-              if (parentIndex >= 0) {
-                const newChildSteps = [...parentStep.childSteps]
-                newChildSteps[childIndex] = { ...childStep }
-                message.steps![parentIndex] = { ...parentStep, childSteps: newChildSteps }
-                message.steps = [...message.steps!]
-              }
-              break
             }
           }
         }
@@ -1115,14 +1209,22 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
     }
   }
 
-  // Find the message containing this tool call
-  const message = props.messages.find(m =>
-    m.toolCalls?.some(tc => tc.id === toolCall.id)
-  )
-  const tc = message?.toolCalls?.find(t => t.id === toolCall.id)
+  // Find the message containing this tool call via ToolUIPart
+  const message = props.messages.find(m => {
+    const parts = getToolParts(m)
+    return parts.some(tp => tp.toolCallId === toolCall.id)
+  })
+  const toolPart = message ? getToolParts(message).find(tp => tp.toolCallId === toolCall.id) : undefined
 
-  // Find and update the corresponding step
-  const step = message?.steps?.find(s => s.toolCallId === toolCall.id)
+  // Find and update the corresponding step in data-steps parts
+  let step: any = undefined
+  if (message) {
+    const stepParts = message.parts.filter(p => p.type === 'data-steps') as Array<{ type: 'data-steps'; steps: any[]; turnIndex: number }>
+    for (const sp of stepParts) {
+      step = sp.steps?.find((s: any) => s.toolCallId === toolCall.id)
+      if (step) break
+    }
+  }
 
   // Check if there's a pending permission request for this tool call
   const permissionId = (toolCall as any).permissionId
@@ -1136,9 +1238,9 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
         response,
       })
       // The backend will handle execution and resume - just update UI state
-      if (tc) {
-        tc.status = 'executing'
-        tc.requiresConfirmation = false
+      if (toolPart) {
+        toolPart.state = 'input-available'
+        toolPart.requiresConfirmation = false
       }
       if (step) {
         step.status = 'running'
@@ -1146,9 +1248,9 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
           step.toolCall.status = 'executing'
           step.toolCall.requiresConfirmation = false
         }
-        if (message?.steps) {
-          message.steps = [...message.steps]
-        }
+      }
+      if (message) {
+        message.parts = [...message.parts]
       }
       return
     } catch (error) {
@@ -1159,10 +1261,10 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
   // Fallback: Legacy flow - re-execute tool directly with confirmed: true
   // Record start time
   const startTime = Date.now()
-  if (tc) {
-    tc.status = 'executing'
-    tc.startTime = startTime
-    tc.requiresConfirmation = false
+  if (toolPart) {
+    toolPart.state = 'input-available'
+    toolPart.startTime = startTime
+    toolPart.requiresConfirmation = false
   }
 
   // Update step to running
@@ -1172,10 +1274,9 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
       step.toolCall.status = 'executing'
       step.toolCall.requiresConfirmation = false
     }
-    // Force reactivity
-    if (message?.steps) {
-      message.steps = [...message.steps]
-    }
+  }
+  if (message) {
+    message.parts = [...message.parts]
   }
 
   try {
@@ -1189,11 +1290,11 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
 
     // Record end time and update status
     const endTime = Date.now()
-    if (tc) {
-      tc.endTime = endTime
-      tc.status = result.success ? 'completed' : 'failed'
-      tc.result = result.result
-      tc.error = result.error
+    if (toolPart) {
+      toolPart.endTime = endTime
+      toolPart.state = result.success ? 'output-available' : 'output-error'
+      toolPart.output = result.result
+      toolPart.errorText = result.error
     }
 
     // Update step status
@@ -1206,10 +1307,9 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
         step.toolCall.result = result.result
         step.toolCall.error = result.error
       }
-      // Force reactivity
-      if (message?.steps) {
-        message.steps = [...message.steps]
-      }
+    }
+    if (message) {
+      message.parts = [...message.parts]
     }
 
     // Persist to backend
@@ -1230,10 +1330,10 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
   } catch (error) {
     console.error('Failed to confirm tool:', error)
     const endTime = Date.now()
-    if (tc) {
-      tc.endTime = endTime
-      tc.status = 'failed'
-      tc.error = String(error)
+    if (toolPart) {
+      toolPart.endTime = endTime
+      toolPart.state = 'output-error'
+      toolPart.errorText = String(error)
     }
 
     // Update step status on error
@@ -1244,10 +1344,9 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
         step.toolCall.status = 'failed'
         step.toolCall.error = String(error)
       }
-      // Force reactivity
-      if (message?.steps) {
-        message.steps = [...message.steps]
-      }
+    }
+    if (message) {
+      message.parts = [...message.parts]
     }
 
     // Persist to backend
@@ -1307,34 +1406,37 @@ async function handleRejectTool(toolCall: any, rejectReasonArg?: string, rejectM
     try {
       await window.electronAPI.respondToCustomAgentPermission(customAgentPermissionId, 'reject')
 
-      // Update UI state - find the step in nested childSteps
+      // Update UI state - find the step in nested childSteps within data-steps parts
       for (const message of props.messages) {
-        for (const parentStep of message.steps || []) {
-          if (parentStep.childSteps?.length) {
-            const childIndex = parentStep.childSteps.findIndex(
-              (c: any) => c.customAgentPermissionId === customAgentPermissionId ||
-                          c.toolCall?.customAgentPermissionId === customAgentPermissionId
-            )
-            if (childIndex >= 0) {
-              const childStep = parentStep.childSteps[childIndex]
-              childStep.status = 'failed'
-              childStep.error = 'Command rejected by user'
-              delete (childStep as any).customAgentPermissionId
-              if (childStep.toolCall) {
-                childStep.toolCall.status = 'cancelled'
-                childStep.toolCall.error = 'Command rejected by user'
-                childStep.toolCall.requiresConfirmation = false
-                delete (childStep.toolCall as any).customAgentPermissionId
+        const stepParts = message.parts.filter(p => p.type === 'data-steps') as Array<{ type: 'data-steps'; steps: any[]; turnIndex: number }>
+        for (const sp of stepParts) {
+          for (const parentStep of sp.steps || []) {
+            if (parentStep.childSteps?.length) {
+              const childIndex = parentStep.childSteps.findIndex(
+                (c: any) => c.customAgentPermissionId === customAgentPermissionId ||
+                            c.toolCall?.customAgentPermissionId === customAgentPermissionId
+              )
+              if (childIndex >= 0) {
+                const childStep = parentStep.childSteps[childIndex]
+                childStep.status = 'failed'
+                childStep.error = 'Command rejected by user'
+                delete (childStep as any).customAgentPermissionId
+                if (childStep.toolCall) {
+                  childStep.toolCall.status = 'cancelled'
+                  childStep.toolCall.error = 'Command rejected by user'
+                  childStep.toolCall.requiresConfirmation = false
+                  delete (childStep.toolCall as any).customAgentPermissionId
+                }
+                // Force Vue reactivity
+                const parentIndex = sp.steps.findIndex((s: any) => s.id === parentStep.id)
+                if (parentIndex >= 0) {
+                  const newChildSteps = [...parentStep.childSteps]
+                  newChildSteps[childIndex] = { ...childStep }
+                  sp.steps[parentIndex] = { ...parentStep, childSteps: newChildSteps }
+                }
+                message.parts = [...message.parts]
+                break
               }
-              // Force Vue reactivity
-              const parentIndex = message.steps!.findIndex(s => s.id === parentStep.id)
-              if (parentIndex >= 0) {
-                const newChildSteps = [...parentStep.childSteps]
-                newChildSteps[childIndex] = { ...childStep }
-                message.steps![parentIndex] = { ...parentStep, childSteps: newChildSteps }
-                message.steps = [...message.steps!]
-              }
-              break
             }
           }
         }
@@ -1345,10 +1447,11 @@ async function handleRejectTool(toolCall: any, rejectReasonArg?: string, rejectM
     }
   }
 
-  // Find the message containing this tool call and update its status
-  const message = props.messages.find(m =>
-    m.toolCalls?.some(tc => tc.id === toolCall.id)
-  )
+  // Find the message containing this tool call via ToolUIPart
+  const message = props.messages.find(m => {
+    const parts = getToolParts(m)
+    return parts.some(tp => tp.toolCallId === toolCall.id)
+  })
 
   // Check if there's a pending permission request for this tool call
   const permissionId = (toolCall as any).permissionId
@@ -1369,28 +1472,30 @@ async function handleRejectTool(toolCall: any, rejectReasonArg?: string, rejectM
   }
 
   if (message) {
-    const tc = message.toolCalls?.find(t => t.id === toolCall.id)
-    if (tc) {
-      tc.status = 'cancelled'
-      tc.error = 'Command rejected by user'
-      tc.requiresConfirmation = false
+    const toolPart = getToolParts(message).find(tp => tp.toolCallId === toolCall.id)
+    if (toolPart) {
+      toolPart.state = 'output-error'
+      toolPart.errorText = 'Command rejected by user'
+      toolPart.requiresConfirmation = false
     }
 
-    // Update the corresponding step
-    const step = message.steps?.find(s => s.toolCallId === toolCall.id)
-    if (step) {
-      step.status = 'failed'
-      step.error = 'Command execution cancelled by user'
-      if (step.toolCall) {
-        step.toolCall.status = 'cancelled'
-        step.toolCall.error = 'Command rejected by user'
-        step.toolCall.requiresConfirmation = false
-      }
-      // Force reactivity
-      if (message.steps) {
-        message.steps = [...message.steps]
+    // Update the corresponding step in data-steps parts
+    const stepParts = message.parts.filter(p => p.type === 'data-steps') as Array<{ type: 'data-steps'; steps: any[]; turnIndex: number }>
+    for (const sp of stepParts) {
+      const step = sp.steps?.find((s: any) => s.toolCallId === toolCall.id)
+      if (step) {
+        step.status = 'failed'
+        step.error = 'Command execution cancelled by user'
+        if (step.toolCall) {
+          step.toolCall.status = 'cancelled'
+          step.toolCall.error = 'Command rejected by user'
+          step.toolCall.requiresConfirmation = false
+        }
+        break
       }
     }
+    // Force reactivity
+    message.parts = [...message.parts]
   }
 }
 
@@ -1400,10 +1505,10 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   if (!currentSession) return
 
   try {
-    // Update local message
+    // Update local message metadata
     const message = props.messages.find(m => m.id === messageId)
     if (message) {
-      message.thinkingTime = thinkingTime
+      message.metadata = { timestamp: Date.now(), ...message.metadata, thinkingTime }
     }
 
     // Persist to backend
@@ -1441,6 +1546,19 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   border-bottom-right-radius: var(--radius-lg);
   /* Required for correct offsetTop calculation in nav markers */
   position: relative;
+}
+
+/* Virtual message item wrapper */
+.virtual-message-item {
+  margin-bottom: 14px;
+}
+
+.message-list.density-compact .virtual-message-item {
+  margin-bottom: 6px;
+}
+
+.message-list.density-spacious .virtual-message-item {
+  margin-bottom: 24px;
 }
 
 /* Message list density modes */

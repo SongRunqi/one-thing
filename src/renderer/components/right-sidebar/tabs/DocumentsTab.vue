@@ -98,9 +98,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { FileCode, GitGraph, Box, Copy, ChevronDown, Workflow } from 'lucide-vue-next'
-import type { ExtractedDocument } from '@/types'
+import type { ExtractedDocument, UIMessage } from '@/types'
 import { useChatStore } from '@/stores/chat'
 import { useRightSidebarStore } from '@/stores/right-sidebar'
+import { getMessageText } from '@shared/message-converters.js'
 
 const props = defineProps<{
   sessionId?: string
@@ -114,9 +115,9 @@ const expandedId = ref<string | null>(null)
 // Get documents from store
 const documents = computed(() => rightSidebarStore.currentDocuments)
 
-// Extract diagrams from messages when they change
+// Extract diagrams from UIMessages when they change
 watch(
-  () => props.sessionId ? chatStore.sessionMessages.get(props.sessionId) : null,
+  () => props.sessionId ? chatStore.sessionUIMessages.get(props.sessionId) : null,
   (messages) => {
     if (!props.sessionId || !messages) return
     const extracted = extractDocumentsFromMessages(messages)
@@ -128,7 +129,7 @@ watch(
 // Also extract on mount
 onMounted(() => {
   if (props.sessionId) {
-    const messages = chatStore.sessionMessages.get(props.sessionId)
+    const messages = chatStore.sessionUIMessages.get(props.sessionId)
     if (messages) {
       const extracted = extractDocumentsFromMessages(messages)
       rightSidebarStore.setExtractedDocuments(props.sessionId, extracted)
@@ -136,25 +137,15 @@ onMounted(() => {
   }
 })
 
-// Extract diagrams from messages
-function extractDocumentsFromMessages(messages: any[]): ExtractedDocument[] {
+// Extract diagrams from UIMessages
+function extractDocumentsFromMessages(messages: UIMessage[]): ExtractedDocument[] {
   const docs: ExtractedDocument[] = []
 
   for (const msg of messages) {
     if (msg.role !== 'assistant') continue
 
-    // Get text content
-    let textContent = ''
-    if (msg.content) {
-      textContent = msg.content
-    }
-    if (msg.contentParts) {
-      for (const part of msg.contentParts) {
-        if (part.type === 'text' && part.content) {
-          textContent += '\n' + part.content
-        }
-      }
-    }
+    // Get text content from UIMessage parts
+    const textContent = getMessageText(msg)
 
     // Extract Mermaid diagrams
     const mermaidRegex = /```mermaid\n([\s\S]*?)```/g
@@ -165,7 +156,7 @@ function extractDocumentsFromMessages(messages: any[]): ExtractedDocument[] {
         type: 'mermaid',
         code: match[1].trim(),
         messageId: msg.id,
-        timestamp: msg.timestamp || Date.now(),
+        timestamp: msg.metadata?.timestamp || Date.now(),
       })
     }
 
@@ -177,7 +168,7 @@ function extractDocumentsFromMessages(messages: any[]): ExtractedDocument[] {
         type: 'plantuml',
         code: match[1].trim(),
         messageId: msg.id,
-        timestamp: msg.timestamp || Date.now(),
+        timestamp: msg.metadata?.timestamp || Date.now(),
       })
     }
 
@@ -189,7 +180,7 @@ function extractDocumentsFromMessages(messages: any[]): ExtractedDocument[] {
         type: 'chart',
         code: match[1].trim(),
         messageId: msg.id,
-        timestamp: msg.timestamp || Date.now(),
+        timestamp: msg.metadata?.timestamp || Date.now(),
       })
     }
 
@@ -201,7 +192,7 @@ function extractDocumentsFromMessages(messages: any[]): ExtractedDocument[] {
         type: 'latex',
         code: match[1].trim(),
         messageId: msg.id,
-        timestamp: msg.timestamp || Date.now(),
+        timestamp: msg.metadata?.timestamp || Date.now(),
       })
     }
   }

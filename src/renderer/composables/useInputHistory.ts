@@ -1,6 +1,7 @@
 import { ref, computed, type Ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { nextTick } from 'vue'
+import { getMessageText } from '@shared/message-converters.js'
 
 export function useInputHistory(
   effectiveSessionId: Ref<string | undefined>,
@@ -17,10 +18,10 @@ export function useInputHistory(
   const userMessageHistory = computed(() => {
     const sessionId = effectiveSessionId.value
     if (!sessionId) return []
-    const messages = chatStore.sessionMessages.get(sessionId) || []
+    const messages = chatStore.sessionUIMessages.get(sessionId) || []
     return messages
-      .filter(m => m.role === 'user' && m.content.trim())
-      .map(m => m.content)
+      .filter(m => m.role === 'user' && getMessageText(m).trim())
+      .map(m => getMessageText(m))
       .reverse()
   })
 

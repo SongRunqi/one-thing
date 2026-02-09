@@ -4,15 +4,13 @@
 
 ## 🔴 高优先级
 
-### 1. 双消息系统并存
-**位置**: `stores/chat.ts` vs `stores/ui-messages.ts`
-**问题**: 两套消息格式（ChatMessage vs UIMessage）同时存在，增加维护成本
-**建议**: 完成迁移到 AI SDK 5.x UIMessage 格式，移除旧系统
+### ~~1. 双消息系统并存~~ ✅ 已修复
+**修复**: REQ-005 统一消息系统 + REQ-009 UI 迁移到 UIMessage
+**状态**: ✅ 2026-02-08 已完成
 
-### 2. Store 循环依赖
-**位置**: `chat ↔ sessions`, `settings ↔ themes`
-**问题**: 虽然用动态 import 解决了，但增加了代码复杂度
-**建议**: 重构依赖关系，考虑事件总线或依赖注入
+### ~~2. Store 循环依赖~~ ✅ 已修复
+**修复**: REQ-006 extractPath 提取 + facade 拆分
+**状态**: ✅ 2026-02-08 已完成
 
 ### 3. Agent 双存储合并逻辑复杂
 **位置**: `services/custom-agent/loader.ts`
@@ -47,10 +45,9 @@
 **问题**: 只有单元测试框架，无 E2E 测试
 **建议**: 添加 Playwright 进行关键流程测试
 
-### 9. 错误处理不统一
-**位置**: 各 IPC handler
-**问题**: 错误格式和处理方式不一致
-**建议**: 统一错误类型和处理模式
+### ~~9. 错误处理不统一~~ ✅ 已修复
+**修复**: REQ-007 统一错误处理 (classifyError + error-wrapper + ErrorMessage.vue)
+**状态**: ✅ 2026-02-08 已完成
 
 ---
 
