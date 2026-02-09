@@ -426,6 +426,16 @@ export type {
   FileReadResponse,
 } from './file-tree.js'
 
+// Updater types
+export type {
+  UpdateStatus,
+  CheckUpdateRequest,
+  CheckUpdateResponse,
+  GetUpdateStatusResponse,
+  OpenReleasePageRequest,
+  OpenReleasePageResponse,
+} from './updater.js'
+
 export { PLUGIN_CHANNELS } from './plugins.js'
 
 // Re-export tool state mapping utilities
