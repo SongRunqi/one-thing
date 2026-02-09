@@ -236,7 +236,7 @@ const virtualizer = useVirtualizer(computed(() => ({
   // Use static fallback values - ResizeObserver will update with real dimensions
   initialRect: {
     width: 1,
-    height: typeof window !== 'undefined' ? window.innerHeight : 800,
+    height: 800,
   },
 })))
 
