@@ -220,20 +220,16 @@ const navRailTrackRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
 
 // Virtual scrolling setup
-// Callbacks extracted to stable references to avoid infinite re-renders
-// when computed() creates new option objects.
-const getScrollElement = () => messageListRef.value
-const estimateSize = () => 164
-const measureElement = (el: Element | null) => el?.getBoundingClientRect().height ?? 164
-
-const virtualizerOptions = computed(() => ({
-  count: props.messages.length,
-  getScrollElement,
-  estimateSize,
+const messageCount = computed(() => props.messages?.length ?? 0)
+const virtualizer = useVirtualizer({
+  count: messageCount,
+  getScrollElement: () => messageListRef.value,
+  estimateSize: () => 164,
   overscan: 5,
-  measureElement,
-}))
-const virtualizer = useVirtualizer(virtualizerOptions)
+  measureElement: (el) => {
+    return el?.getBoundingClientRect().height ?? 164
+  },
+})
 
 const virtualItems = computed(() => {
   const items = virtualizer.value.getVirtualItems()
