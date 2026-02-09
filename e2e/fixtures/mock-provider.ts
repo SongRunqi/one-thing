@@ -23,10 +23,14 @@ export function createMockProvider(options: MockProviderOptions = {}) {
   function handleChatCompletions(req: http.IncomingMessage, res: http.ServerResponse) {
     // Check for programmatic error injection
     if (errorCode) {
-      res.writeHead(errorCode, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({
-        error: { message: `Simulated error ${errorCode}`, type: 'api_error', code: errorCode },
-      }))
+      // Consume the request body before responding
+      req.on('data', () => {})
+      req.on('end', () => {
+        res.writeHead(errorCode!, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          error: { message: `Simulated error ${errorCode}`, type: 'api_error', code: errorCode },
+        }))
+      })
       return
     }
 
@@ -43,45 +47,186 @@ export function createMockProvider(options: MockProviderOptions = {}) {
       return
     }
 
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    })
+    // Parse request body to check for tools
+    let body = ''
+    req.on('data', (chunk) => { body += chunk })
+    req.on('end', () => {
+      let parsed: any = {}
+      try { parsed = JSON.parse(body) } catch {}
 
-    const chunks = ['Hello', ' from', ' mock', ' AI!']
-    let index = 0
+      console.log(`[MockProvider] handleChatCompletions - Request has tools:`, !!parsed.tools, parsed.tools ? `(${Object.keys(parsed.tools).length} tools)` : '')
+      console.log(`[MockProvider] handleChatCompletions - pendingToolCalls:`, pendingToolCalls.length)
+      console.log(`[MockProvider] handleChatCompletions - pendingToolCalls:`, JSON.stringify(pendingToolCalls))
 
-    const interval = setInterval(() => {
-      if (index < chunks.length) {
-        const chunk = {
-          id: `chatcmpl-${index}`,
-          object: 'chat.completion.chunk',
+      const stream = parsed.stream !== false
+      const responseId = 'chatcmpl_mock_001'
+      const model = parsed.model ?? 'mock-model'
+      const createdAt = Math.floor(Date.now() / 1000)
+
+      if (!stream) {
+        // Non-streaming response
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          id: responseId,
+          object: 'chat.completion',
+          created: createdAt,
+          model,
           choices: [{
             index: 0,
-            delta: { content: chunks[index] },
+            message: { role: 'assistant', content: 'Hello from mock AI!' },
+            finish_reason: 'stop',
+          }],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        }))
+        return
+      }
+
+      // SSE streaming response
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      })
+
+      // Handle tool calls if any
+      if (pendingToolCalls.length > 0) {
+        console.log('[MockProvider] Sending tool calls:', JSON.stringify(pendingToolCalls))
+        
+        // First, send role
+        res.write(`data: ${JSON.stringify({
+          id: responseId,
+          object: 'chat.completion.chunk',
+          created: createdAt,
+          model,
+          choices: [{
+            index: 0,
+            delta: { role: 'assistant' },
             finish_reason: null,
           }],
+        })}\n\n`)
+        
+        for (const toolCall of pendingToolCalls) {
+          // Send tool call chunk (OpenAI format)
+          // First chunk: tool call ID and type
+          res.write(`data: ${JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created: createdAt,
+            model,
+            choices: [{
+              index: 0,
+              delta: {
+                tool_calls: [{
+                  index: 0,
+                  id: toolCall.id,
+                  type: 'function',
+                  function: { name: '', arguments: '' },
+                }],
+              },
+              finish_reason: null,
+            }],
+          })}\n\n`)
+          
+          // Second chunk: function name
+          res.write(`data: ${JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created: createdAt,
+            model,
+            choices: [{
+              index: 0,
+              delta: {
+                tool_calls: [{
+                  index: 0,
+                  function: { name: toolCall.name, arguments: '' },
+                }],
+              },
+              finish_reason: null,
+            }],
+          })}\n\n`)
+          
+          // Third chunk: arguments
+          res.write(`data: ${JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created: createdAt,
+            model,
+            choices: [{
+              index: 0,
+              delta: {
+                tool_calls: [{
+                  index: 0,
+                  function: { arguments: JSON.stringify(toolCall.arguments) },
+                }],
+              },
+              finish_reason: null,
+            }],
+          })}\n\n`)
         }
-        res.write(`data: ${JSON.stringify(chunk)}\n\n`)
-        index++
-      } else {
-        // Send final chunk with finish_reason
-        const finalChunk = {
-          id: `chatcmpl-final`,
+
+        // Send finish chunk with tool_calls finish_reason
+        res.write(`data: ${JSON.stringify({
+          id: responseId,
           object: 'chat.completion.chunk',
+          created: createdAt,
+          model,
           choices: [{
             index: 0,
             delta: {},
-            finish_reason: 'stop',
+            finish_reason: 'tool_calls',
           }],
-        }
-        res.write(`data: ${JSON.stringify(finalChunk)}\n\n`)
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        })}\n\n`)
+
         res.write('data: [DONE]\n\n')
         res.end()
-        clearInterval(interval)
+        // Clear tool calls after sending
+        pendingToolCalls = []
+        return
       }
-    }, chunkDelay)
+
+      // Send text deltas (if no tool calls)
+      const chunks = toolCallResponses.length > 0 ? toolCallResponses : ['Hello', ' from', ' mock', ' AI!']
+      let index = 0
+
+      const interval = setInterval(() => {
+        if (index < chunks.length) {
+          res.write(`data: ${JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created: createdAt,
+            model,
+            choices: [{
+              index: 0,
+              delta: { content: chunks[index] },
+              finish_reason: null,
+            }],
+          })}\n\n`)
+          index++
+        } else {
+          clearInterval(interval)
+
+          // Send final chunk with finish_reason
+          res.write(`data: ${JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created: createdAt,
+            model,
+            choices: [{
+              index: 0,
+              delta: {},
+              finish_reason: 'stop',
+            }],
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+          })}\n\n`)
+
+          res.write('data: [DONE]\n\n')
+          res.end()
+          // Clear response chunks
+          toolCallResponses = []
+        }
+      }, chunkDelay)
+    })
   }
 
   function handleResponses(req: http.IncomingMessage, res: http.ServerResponse) {

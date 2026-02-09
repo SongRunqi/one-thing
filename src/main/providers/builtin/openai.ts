@@ -26,7 +26,8 @@ const openaiProvider: ProviderDefinition = {
       baseURL: baseUrl || 'https://api.openai.com/v1',
     })
     return {
-      createModel: (modelId: string) => provider(modelId),
+      // Use provider.chat() for OpenAI-compatible APIs (chat/completions endpoint)
+      createModel: (modelId: string) => provider.chat(modelId),
     }
   },
 }
