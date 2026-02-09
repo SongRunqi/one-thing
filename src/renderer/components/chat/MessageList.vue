@@ -1011,11 +1011,21 @@ watch(
   { immediate: true, flush: 'post' }
 )
 
+// Recovery safety net: if messages exist but virtualizer still empty after mount,
+// retry once. Use a flag to prevent infinite recursion.
+let recoveryAttempted = false
 watch(
-  [() => props.messages.length, virtualItems],
-  ([count, items]) => {
-    if (count > 0 && items.length === 0) {
-      scheduleVirtualizerRecovery()
+  () => props.messages.length,
+  (count) => {
+    if (count > 0) {
+      // Reset flag when message count changes so recovery can re-trigger
+      recoveryAttempted = false
+      nextTick(() => {
+        if (!recoveryAttempted && virtualItems.value.length === 0) {
+          recoveryAttempted = true
+          scheduleVirtualizerRecovery()
+        }
+      })
     }
   },
   { flush: 'post' }
