@@ -233,16 +233,34 @@ const virtualizer = useVirtualizer(computed(() => ({
   estimateSize: _estimateSize,
   overscan: 5,
   measureElement: _measureEl,
+  // Avoid a zero-sized first range calculation before ResizeObserver reports.
+  initialRect: {
+    width: messageListRef.value?.clientWidth ?? 1,
+    height: messageListRef.value?.clientHeight ?? (typeof window !== 'undefined' ? window.innerHeight : 800),
+  },
 })))
 
 const virtualItems = computed(() => {
-  const items = virtualizer.value.getVirtualItems()
-  const count = props.messages?.length ?? 0
-  const totalSize = virtualizer.value.getTotalSize()
-  const scrollEl = messageListRef.value
-  console.warn(`[DEBUG-VirtualScroll] messages=${count}, virtualItems=${items.length}, totalSize=${totalSize}, scrollEl=${!!scrollEl}, scrollElHeight=${scrollEl?.clientHeight ?? 'null'}`)
-  return items
+  return virtualizer.value.getVirtualItems()
 })
+
+let virtualizerRecoveryFrame: number | null = null
+
+function scheduleVirtualizerRecovery() {
+  if (virtualizerRecoveryFrame !== null) {
+    cancelAnimationFrame(virtualizerRecoveryFrame)
+  }
+
+  virtualizerRecoveryFrame = requestAnimationFrame(() => {
+    virtualizerRecoveryFrame = null
+
+    if (!messageListRef.value) return
+    if ((props.messages?.length ?? 0) === 0) return
+
+    virtualizer.value._willUpdate()
+    virtualizer.value.measure()
+  })
+}
 
 // Reject reason dialog state
 const showRejectDialog = ref(false)
@@ -939,6 +957,7 @@ onMounted(() => {
       navResizeObserver.observe(messageListRef.value)
     }
   }
+  scheduleVirtualizerRecovery()
   nextTick(() => scheduleNavMarkerUpdate())
 
   // Listen for permission requests from backend
@@ -963,6 +982,10 @@ onUnmounted(() => {
     cancelAnimationFrame(navMarkerUpdateFrame)
     navMarkerUpdateFrame = null
   }
+  if (virtualizerRecoveryFrame !== null) {
+    cancelAnimationFrame(virtualizerRecoveryFrame)
+    virtualizerRecoveryFrame = null
+  }
   if (navResizeObserver) {
     navResizeObserver.disconnect()
     navResizeObserver = null
@@ -978,6 +1001,25 @@ onUnmounted(() => {
     cleanupCustomAgentPermissionListener = null
   }
 })
+
+watch(
+  [messageListRef, () => props.messages.length],
+  ([el, count]) => {
+    if (!el || count === 0) return
+    nextTick(() => scheduleVirtualizerRecovery())
+  },
+  { immediate: true, flush: 'post' }
+)
+
+watch(
+  [() => props.messages.length, virtualItems],
+  ([count, items]) => {
+    if (count > 0 && items.length === 0) {
+      scheduleVirtualizerRecovery()
+    }
+  },
+  { flush: 'post' }
+)
 
 // When session changes, reload any pending permission requests
 // This fixes the issue where permission requests are "lost" after switching sessions
