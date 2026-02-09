@@ -1007,13 +1007,16 @@ watch(
   [() => props.messages, () => props.isLoading],
   async () => {
     await nextTick()
-    if (!userScrolledAway.value && props.messages.length > 0 && messageListRef.value) {
+    const msgCount = props.messages?.length ?? 0
+    if (!userScrolledAway.value && msgCount > 0 && messageListRef.value) {
       // Use virtualizer to scroll to last message (only if scroll element is ready)
-      const lastIndex = props.messages.length - 1
-      virtualizer.value.scrollToIndex(lastIndex, {
-        align: 'end',
-        behavior: 'auto',
-      })
+      const lastIndex = msgCount - 1
+      if (Number.isFinite(lastIndex) && lastIndex >= 0) {
+        virtualizer.value.scrollToIndex(lastIndex, {
+          align: 'end',
+          behavior: 'auto',
+        })
+      }
     }
     scheduleNavMarkerUpdate()
   },
