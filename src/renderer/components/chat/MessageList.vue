@@ -9,37 +9,6 @@
         v-if="messages.length === 0 && !isLoading"
         @suggestion="handleSuggestion"
       />
-      <!-- Fallback: render messages directly when virtualizer fails to produce items -->
-      <div
-        v-else-if="!useVirtual"
-        class="plain-scroll-container"
-      >
-        <div
-          v-for="(msg, index) in messages"
-          :key="msg.id"
-          :data-index="index"
-          class="plain-message-item"
-        >
-          <MessageItem
-            :data-message-id="msg.id"
-            :message="msg"
-            :branches="getBranchesForMessage(msg.id)"
-            :can-branch="canCreateBranch"
-            :is-highlighted="msg.id === highlightedMessageId"
-            :voice-config="currentAgentVoiceConfig"
-            @edit="handleEdit"
-            @branch="handleBranch"
-            @go-to-branch="handleGoToBranch"
-            @quote="handleQuote"
-            @regenerate="handleRegenerate"
-            @execute-tool="handleExecuteTool"
-            @confirm-tool="handleConfirmTool"
-            @reject-tool="handleRejectTool"
-            @update-thinking-time="handleUpdateThinkingTime"
-          />
-        </div>
-      </div>
-      <!-- Virtual scroll for large message lists -->
       <div
         v-else
         class="virtual-scroll-container"
@@ -267,18 +236,12 @@ const virtualizer = useVirtualizer(computed(() => ({
 })))
 
 const virtualItems = computed(() => {
-  return virtualizer.value.getVirtualItems()
-})
-
-// Use virtual scroll only when the virtualizer is actually producing items
-// This handles the race condition where @tanstack/vue-virtual's internal memo
-// doesn't sync with Vue's reactivity (scrollRect/measurements not ready)
-const useVirtual = computed(() => {
-  const msgCount = props.messages?.length ?? 0
-  if (msgCount === 0) return false
-  const items = virtualItems.value
+  const items = virtualizer.value.getVirtualItems()
+  const count = props.messages?.length ?? 0
   const totalSize = virtualizer.value.getTotalSize()
-  return items.length > 0 && totalSize > 0
+  const scrollEl = messageListRef.value
+  console.warn(`[DEBUG-VirtualScroll] messages=${count}, virtualItems=${items.length}, totalSize=${totalSize}, scrollEl=${!!scrollEl}, scrollElHeight=${scrollEl?.clientHeight ?? 'null'}`)
+  return items
 })
 
 // Reject reason dialog state
@@ -479,18 +442,12 @@ function scrollToUserMessage(navIndex: number) {
     clearTimeout(navigationCooldownTimer)
   }
 
-  // Scroll to message
+  // Use virtualizer to scroll to message (only if scroll element is ready)
   if (messageListRef.value) {
-    if (useVirtual.value) {
-      virtualizer.value.scrollToIndex(messageIndex, {
-        align: 'center',
-        behavior: 'smooth',
-      })
-    } else {
-      // Plain scroll: find the element by data-index
-      const el = messageListRef.value.querySelector(`[data-index="${messageIndex}"]`)
-      el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    }
+    virtualizer.value.scrollToIndex(messageIndex, {
+      align: 'center',
+      behavior: 'smooth',
+    })
   }
 
   // Reset flag after highlight animation completes (2.5s) to prevent index override
@@ -1063,18 +1020,13 @@ watch(
     await nextTick()
     const msgCount = props.messages?.length ?? 0
     if (!userScrolledAway.value && msgCount > 0 && messageListRef.value) {
-      if (useVirtual.value) {
-        // Use virtualizer to scroll to last message
-        const lastIndex = msgCount - 1
-        if (Number.isFinite(lastIndex) && lastIndex >= 0) {
-          virtualizer.value.scrollToIndex(lastIndex, {
-            align: 'end',
-            behavior: 'auto',
-          })
-        }
-      } else {
-        // Plain scroll mode: scroll container to bottom
-        messageListRef.value.scrollTop = messageListRef.value.scrollHeight
+      // Use virtualizer to scroll to last message (only if scroll element is ready)
+      const lastIndex = msgCount - 1
+      if (Number.isFinite(lastIndex) && lastIndex >= 0) {
+        virtualizer.value.scrollToIndex(lastIndex, {
+          align: 'end',
+          behavior: 'auto',
+        })
       }
     }
     scheduleNavMarkerUpdate()
