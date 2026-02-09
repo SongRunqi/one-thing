@@ -43,7 +43,7 @@
             {{ agent.avatar.value }}
           </span>
           <img
-            v-else-if="agent.avatar?.type === 'image'"
+            v-else-if="agent.avatar?.type === 'image' && agent.avatar?.value"
             :src="'file://' + agent.avatar.value"
             class="agent-dropdown-img"
             alt=""

@@ -431,11 +431,13 @@ function scrollToUserMessage(navIndex: number) {
     clearTimeout(navigationCooldownTimer)
   }
 
-  // Use virtualizer to scroll to message
-  virtualizer.value.scrollToIndex(messageIndex, {
-    align: 'center',
-    behavior: 'smooth',
-  })
+  // Use virtualizer to scroll to message (only if scroll element is ready)
+  if (messageListRef.value) {
+    virtualizer.value.scrollToIndex(messageIndex, {
+      align: 'center',
+      behavior: 'smooth',
+    })
+  }
 
   // Reset flag after highlight animation completes (2.5s) to prevent index override
   navigationCooldownTimer = setTimeout(() => {
@@ -1005,15 +1007,13 @@ watch(
   [() => props.messages, () => props.isLoading],
   async () => {
     await nextTick()
-    if (!userScrolledAway.value && props.messages.length > 0) {
-      // Use virtualizer to scroll to last message
+    if (!userScrolledAway.value && props.messages.length > 0 && messageListRef.value) {
+      // Use virtualizer to scroll to last message (only if scroll element is ready)
       const lastIndex = props.messages.length - 1
-      if (lastIndex >= 0) {
-        virtualizer.value.scrollToIndex(lastIndex, {
-          align: 'end',
-          behavior: 'auto',
-        })
-      }
+      virtualizer.value.scrollToIndex(lastIndex, {
+        align: 'end',
+        behavior: 'auto',
+      })
     }
     scheduleNavMarkerUpdate()
   },

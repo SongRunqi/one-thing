@@ -54,7 +54,7 @@
             {{ workspace.avatar.value }}
           </span>
           <img
-            v-else
+            v-else-if="workspace.avatar?.value"
             :src="'file://' + workspace.avatar.value"
             class="workspace-image"
             :style="{
