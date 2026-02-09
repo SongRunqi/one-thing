@@ -233,26 +233,6 @@
         </svg>
         <span>{{ isCollapsed ? 'Show more' : 'Show less' }}</span>
       </button>
-
-      <!-- Token usage display (only for assistant messages) -->
-      <div
-        v-if="showTokenUsage && usage"
-        class="token-usage"
-        :title="tokenTooltip"
-      >
-        <svg
-          class="token-icon"
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-        </svg>
-        <span class="token-count">{{ formatTokenCount(usage.totalTokens) }} tokens</span>
-      </div>
     </div>
   </div>
 </template>
@@ -267,7 +247,6 @@ import RetrievedMemoriesPanel from './RetrievedMemoriesPanel.vue'
 import { renderMarkdown, applyLazyHighlight } from '@/composables/useMarkdownRenderer'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
 import type { InfographicConfig } from '@shared/ipc/infographics'
-import { calculateCost, formatTokenCount, formatCost } from '@shared/token-pricing'
 
 interface Props {
   role: 'user' | 'assistant'
@@ -281,12 +260,6 @@ interface Props {
   isEditing?: boolean
   editContent?: string
   sessionId?: string  // Session ID for AgentExecutionPanel state management
-  model?: string  // Model name for cost calculation
-  usage?: {  // Token usage data
-    inputTokens: number
-    outputTokens: number
-    totalTokens: number
-  }
 }
 
 const props = defineProps<Props>()
@@ -462,28 +435,6 @@ const hasVisibleContent = computed(() => {
   return props.content ||
     (props.contentParts && props.contentParts.length > 0) ||
     !props.isStreaming
-})
-
-// Token usage display
-const showTokenUsage = computed(() => {
-  return props.role === 'assistant' && props.usage && props.usage.totalTokens > 0
-})
-
-const tokenCost = computed(() => {
-  if (!props.usage) return null
-  return calculateCost(props.model, props.usage.inputTokens, props.usage.outputTokens)
-})
-
-const tokenTooltip = computed(() => {
-  if (!props.usage) return ''
-  const lines = [
-    `Input: ${formatTokenCount(props.usage.inputTokens)}`,
-    `Output: ${formatTokenCount(props.usage.outputTokens)}`,
-  ]
-  if (tokenCost.value !== null) {
-    lines.push(`Cost: ${formatCost(tokenCost.value)}`)
-  }
-  return lines.join(' / ')
 })
 
 // Markdown 渲染缓存 - WeakMap 用于自动垃圾回收
@@ -950,44 +901,6 @@ html[data-theme='light'] .attachment-file {
 
 .collapse-icon.rotated {
   transform: rotate(180deg);
-}
-
-/* Token usage display */
-.token-usage {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-  padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 8px;
-  font-size: 11px;
-  color: var(--muted);
-  cursor: help;
-  transition: all 0.2s ease;
-}
-
-.token-usage:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--accent);
-}
-
-.token-icon {
-  flex-shrink: 0;
-  opacity: 0.7;
-}
-
-.token-count {
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
-
-html[data-theme='light'] .token-usage {
-  background: rgba(0, 0, 0, 0.03);
-}
-
-html[data-theme='light'] .token-usage:hover {
-  background: rgba(0, 0, 0, 0.06);
 }
 
 .content {

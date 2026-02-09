@@ -67,8 +67,6 @@
           :is-streaming="msgIsStreaming"
           :is-editing="isEditing"
           :edit-content="editContent"
-          :model="msgModel"
-          :usage="msgUsage"
           @submit-edit="handleSubmitEdit"
           @cancel-edit="handleCancelEdit"
           @open-image="handleOpenImage"

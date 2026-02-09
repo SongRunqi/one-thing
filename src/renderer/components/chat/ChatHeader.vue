@@ -36,27 +36,6 @@
     />
 
     <div class="chat-header-right">
-      <!-- Token usage display -->
-      <div
-        v-if="showTokenUsage"
-        class="token-usage-badge"
-        title="Total tokens used in this session"
-      >
-        <svg
-          class="token-icon"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M3 2h18v20H3z" />
-          <path d="M7 6h10M7 10h10M7 14h10M7 18h10" />
-        </svg>
-        <span class="token-count">{{ formatTokenCount(totalTokens) }}</span>
-      </div>
-
       <!-- Back to parent (for branch sessions) -->
       <button
         v-if="isBranchSession"
@@ -126,12 +105,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { PanelLeft, PanelRight, ArrowLeft, Columns2, Equal, X } from 'lucide-vue-next'
 import AgentDropdown from './AgentDropdown.vue'
 import AddressBar from './AddressBar.vue'
-import type { Agent, UIMessage } from '@/types'
-import { formatTokenCount } from '@shared/token-pricing'
+import type { Agent } from '@/types'
 
 const props = defineProps<{
   sessionName: string
@@ -143,7 +121,6 @@ const props = defineProps<{
   showSplitButton: boolean
   canClose: boolean
   isRightSidebarOpen?: boolean
-  messages?: UIMessage[]  // For calculating total token usage
 }>()
 
 const emit = defineEmits<{
@@ -161,16 +138,6 @@ const emit = defineEmits<{
 // Agent dropdown state
 const showAgentDropdown = ref(false)
 const agentDropdownStyle = ref<Record<string, string>>({})
-
-// Token usage calculation
-const totalTokens = computed(() => {
-  if (!props.messages || props.messages.length === 0) return 0
-  return props.messages.reduce((sum, msg) => {
-    return sum + (msg.metadata?.usage?.totalTokens || 0)
-  }, 0)
-})
-
-const showTokenUsage = computed(() => totalTokens.value > 0)
 
 function toggleAgentDropdown(event: MouseEvent) {
   showAgentDropdown.value = !showAgentDropdown.value
@@ -265,41 +232,4 @@ html[data-theme='light'] .chat-header {
   color: var(--accent);
 }
 
-/* Token usage badge */
-.token-usage-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 8px;
-  font-size: 12px;
-  color: var(--muted);
-  cursor: help;
-  transition: all 0.2s ease;
-  -webkit-app-region: no-drag;
-}
-
-.token-usage-badge:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--accent);
-}
-
-.token-usage-badge .token-icon {
-  flex-shrink: 0;
-  opacity: 0.7;
-}
-
-.token-usage-badge .token-count {
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-html[data-theme='light'] .token-usage-badge {
-  background: rgba(0, 0, 0, 0.04);
-}
-
-html[data-theme='light'] .token-usage-badge:hover {
-  background: rgba(0, 0, 0, 0.08);
-}
 </style>
