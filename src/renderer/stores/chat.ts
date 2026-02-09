@@ -220,6 +220,10 @@ export const useChatStore = defineStore('chat', () => {
   function setSessionMessages(sessionId: string, messages: ChatMessage[]) {
     sessionMessages.value.set(sessionId, messages)
     triggerRef(sessionMessages)
+    // Sync to UIMessages for UI rendering
+    const uiMessages = messages.map(chatMessageToUIMessage)
+    sessionUIMessages.value.set(sessionId, uiMessages)
+    triggerRef(sessionUIMessages)
   }
 
   /**
