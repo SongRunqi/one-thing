@@ -233,34 +233,16 @@ const virtualizer = useVirtualizer(computed(() => ({
   estimateSize: _estimateSize,
   overscan: 5,
   measureElement: _measureEl,
-  // Avoid a zero-sized first range calculation before ResizeObserver reports.
+  // Use static fallback values - ResizeObserver will update with real dimensions
   initialRect: {
-    width: messageListRef.value?.clientWidth ?? 1,
-    height: messageListRef.value?.clientHeight ?? (typeof window !== 'undefined' ? window.innerHeight : 800),
+    width: 1,
+    height: typeof window !== 'undefined' ? window.innerHeight : 800,
   },
 })))
 
 const virtualItems = computed(() => {
   return virtualizer.value.getVirtualItems()
 })
-
-let virtualizerRecoveryFrame: number | null = null
-
-function scheduleVirtualizerRecovery() {
-  if (virtualizerRecoveryFrame !== null) {
-    cancelAnimationFrame(virtualizerRecoveryFrame)
-  }
-
-  virtualizerRecoveryFrame = requestAnimationFrame(() => {
-    virtualizerRecoveryFrame = null
-
-    if (!messageListRef.value) return
-    if ((props.messages?.length ?? 0) === 0) return
-
-    virtualizer.value._willUpdate()
-    virtualizer.value.measure()
-  })
-}
 
 // Reject reason dialog state
 const showRejectDialog = ref(false)
@@ -957,8 +939,11 @@ onMounted(() => {
       navResizeObserver.observe(messageListRef.value)
     }
   }
-  scheduleVirtualizerRecovery()
-  nextTick(() => scheduleNavMarkerUpdate())
+  nextTick(() => {
+    scheduleNavMarkerUpdate()
+    // Single measure call after mount - ResizeObserver handles subsequent updates
+    virtualizer.value.measure()
+  })
 
   // Listen for permission requests from backend
   cleanupPermissionListener = window.electronAPI.onPermissionRequest(handlePermissionRequest)
@@ -982,10 +967,6 @@ onUnmounted(() => {
     cancelAnimationFrame(navMarkerUpdateFrame)
     navMarkerUpdateFrame = null
   }
-  if (virtualizerRecoveryFrame !== null) {
-    cancelAnimationFrame(virtualizerRecoveryFrame)
-    virtualizerRecoveryFrame = null
-  }
   if (navResizeObserver) {
     navResizeObserver.disconnect()
     navResizeObserver = null
@@ -1001,35 +982,6 @@ onUnmounted(() => {
     cleanupCustomAgentPermissionListener = null
   }
 })
-
-watch(
-  [messageListRef, () => props.messages.length],
-  ([el, count]) => {
-    if (!el || count === 0) return
-    nextTick(() => scheduleVirtualizerRecovery())
-  },
-  { immediate: true, flush: 'post' }
-)
-
-// Recovery safety net: if messages exist but virtualizer still empty after mount,
-// retry once. Use a flag to prevent infinite recursion.
-let recoveryAttempted = false
-watch(
-  () => props.messages.length,
-  (count) => {
-    if (count > 0) {
-      // Reset flag when message count changes so recovery can re-trigger
-      recoveryAttempted = false
-      nextTick(() => {
-        if (!recoveryAttempted && virtualItems.value.length === 0) {
-          recoveryAttempted = true
-          scheduleVirtualizerRecovery()
-        }
-      })
-    }
-  },
-  { flush: 'post' }
-)
 
 // When session changes, reload any pending permission requests
 // This fixes the issue where permission requests are "lost" after switching sessions
