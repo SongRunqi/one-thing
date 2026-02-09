@@ -231,7 +231,14 @@ const virtualizer = useVirtualizer({
   },
 })
 
-const virtualItems = computed(() => virtualizer.value.getVirtualItems())
+const virtualItems = computed(() => {
+  const items = virtualizer.value.getVirtualItems()
+  const count = props.messages?.length ?? 0
+  const totalSize = virtualizer.value.getTotalSize()
+  const scrollEl = messageListRef.value
+  console.warn(`[DEBUG-VirtualScroll] messages=${count}, virtualItems=${items.length}, totalSize=${totalSize}, scrollEl=${!!scrollEl}, scrollElHeight=${scrollEl?.clientHeight ?? 'null'}`)
+  return items
+})
 
 // Reject reason dialog state
 const showRejectDialog = ref(false)
