@@ -22,7 +22,7 @@
         >
           <div
             v-if="messages[virtualItem.index]"
-            :ref="(el) => virtualizer.measureElement(el as HTMLElement)"
+            :ref="deferMeasureElement"
             v-memo="[
               messages[virtualItem.index]?.id,
               messages[virtualItem.index]?.parts?.length,
@@ -169,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, type ComponentPublicInstance } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import type { UIMessage, AgentVoice, ToolCall, ToolUIPart, TextUIPart } from '@/types'
 import MessageItem from './MessageItem.vue'
@@ -239,6 +239,17 @@ const virtualizer = useVirtualizer(computed(() => ({
     height: 800,
   },
 })))
+
+function deferMeasureElement(refEl: Element | ComponentPublicInstance | null) {
+  const el = refEl instanceof Element
+    ? refEl
+    : refEl?.$el instanceof Element
+      ? refEl.$el
+      : null
+
+  if (!el) return
+  queueMicrotask(() => virtualizer.value.measureElement(el))
+}
 
 const virtualItems = computed(() => {
   return virtualizer.value.getVirtualItems()
