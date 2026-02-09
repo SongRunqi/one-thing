@@ -320,6 +320,7 @@ let scrollCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let isActivelyNavigating = false
 let navigationCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let navMarkerUpdateFrame: number | null = null
+let scrollRAF: number | null = null
 let navResizeObserver: ResizeObserver | null = null
 
 // Get indices of user messages
@@ -978,6 +979,10 @@ onUnmounted(() => {
     cancelAnimationFrame(navMarkerUpdateFrame)
     navMarkerUpdateFrame = null
   }
+  if (scrollRAF !== null) {
+    cancelAnimationFrame(scrollRAF)
+    scrollRAF = null
+  }
   if (navResizeObserver) {
     navResizeObserver.disconnect()
     navResizeObserver = null
@@ -1030,23 +1035,25 @@ watch(
 // Auto-scroll to bottom when messages change or loading state changes
 // Only scroll if user hasn't scrolled away manually
 watch(
-  [() => props.messages, () => props.isLoading],
+  [() => props.messages.length, () => props.isLoading],
   async () => {
     await nextTick()
     const msgCount = props.messages?.length ?? 0
     if (!userScrolledAway.value && msgCount > 0 && messageListRef.value) {
-      // Use virtualizer to scroll to last message (only if scroll element is ready)
-      const lastIndex = msgCount - 1
-      if (Number.isFinite(lastIndex) && lastIndex >= 0) {
-        virtualizer.value.scrollToIndex(lastIndex, {
-          align: 'end',
-          behavior: 'auto',
-        })
-      }
+      if (scrollRAF !== null) cancelAnimationFrame(scrollRAF)
+      scrollRAF = requestAnimationFrame(() => {
+        scrollRAF = null
+        const lastIndex = msgCount - 1
+        if (Number.isFinite(lastIndex) && lastIndex >= 0) {
+          virtualizer.value.scrollToIndex(lastIndex, {
+            align: 'end',
+            behavior: 'auto',
+          })
+        }
+      })
     }
     scheduleNavMarkerUpdate()
-  },
-  { deep: true }
+  }
 )
 
 // Reset userScrolledAway when streaming ends
