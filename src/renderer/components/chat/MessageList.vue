@@ -11,10 +11,9 @@
       />
       <div
         v-else
+        class="virtual-scroll-container"
         :style="{
           height: `${virtualizer.getTotalSize()}px`,
-          width: '100%',
-          position: 'relative',
         }"
       >
         <template
@@ -1555,9 +1554,19 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   position: relative;
 }
 
+/* Virtual scroll container - needs to break out of flex alignment */
+.virtual-scroll-container {
+  width: 100%;
+  position: relative;
+  /* Override flex item centering from parent */
+  align-self: stretch;
+}
+
 /* Virtual message item wrapper */
 .virtual-message-item {
-  margin-bottom: 14px;
+  /* Centering logic moved here since parent is no longer flex-centered */
+  display: flex;
+  justify-content: center;
 }
 
 .message-list.density-compact .virtual-message-item {
