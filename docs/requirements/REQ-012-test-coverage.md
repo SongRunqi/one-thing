@@ -1,178 +1,130 @@
-# REQ-012: 测试覆盖率提升计划
+# REQ-012: E2E 优先测试计划
 
-> Sprint 5 | 优先级: P1 | PM: Qiqi
+> Sprint 5 | 优先级: P0 | PM: Qiqi
 
-## 1. 现状分析
+## 1. 核心理念
 
-### 当前测试统计
-| 类型 | 文件数 | 测试数 |
-|------|--------|--------|
-| 单元测试 | 13 | 256 |
-| E2E 测试 | 8 | ~16 |
+**聚焦真实用户体验，而非代码覆盖率**
 
-### 已覆盖模块
-- ✅ `src/shared/` — 消息转换、错误处理、IPC Router
-- ✅ `src/main/tools/` — 沙箱、替换器、注册表
-- ✅ `src/main/permission/` — 权限系统
-- ✅ `src/renderer/stores/chat.ts` — 部分（流式、错误）
-- ✅ E2E — 启动、会话、聊天流、设置
+- ❌ 不要：Mock 太多的单元测试（容易通过但漏 bug）
+- ✅ 要：E2E 测试真实 Electron + 真实数据流
+- ✅ 要：每个 bug 修复附带回归 E2E 测试
 
-### 未覆盖/覆盖不足的关键模块
-| 模块 | 行数 | 风险 | 优先级 |
-|------|------|------|--------|
-| `stores/chat.ts` (session 切换、UIMessage 同步) | 1300+ | **高** | P0 |
-| `stores/sessions.ts` | 400+ | 高 | P1 |
-| `main/ipc/sessions.ts` | 380 | 高 | P1 |
-| `main/ipc/chat.ts` | 500+ | 高 | P1 |
-| `main/services/` | 2000+ | 中 | P2 |
-| `composables/useChatSession.ts` | 150 | 中 | P2 |
-| 虚拟滚动渲染 | - | **高** | P0 |
+## 2. 现状
 
-## 2. 目标
-
-| 指标 | 当前 | 目标 |
+| 类型 | 数量 | 问题 |
 |------|------|------|
-| 单元测试数 | 256 | 400+ |
-| 关键路径覆盖 | ~40% | 80%+ |
-| 回归测试 | 无 | 每个 bug 修复附带 |
-| E2E 场景 | 16 | 30+ |
+| 单元测试 | 256 | Mock 太多，漏掉了 session 切换、UIMessage 同步等真实 bug |
+| E2E 测试 | 16 | 覆盖基础场景，但不够深 |
 
 ## 3. 分阶段计划
 
-### Phase 1: 回归测试 + 关键路径 (P0)
-**目标**: 覆盖刚修复的 bug，防止回归
+### Phase 1: 回归 E2E (P0) — 立即
+**目标**: 覆盖刚修复的 bug，确保不再复发
 
-1. **Session/UIMessage 同步测试**
-   ```typescript
-   // stores/__tests__/chat-session-sync.test.ts
-   - setSessionMessages 应同步到 sessionUIMessages
-   - loadMessages 后 getSessionUIMessages 返回正确数据
-   - session 切换后消息正确加载
-   ```
+| 场景 | 测试内容 |
+|------|---------|
+| Session 切换 | 创建 session → 发消息 → 切换 → 返回 → 消息仍在 |
+| 空 Session | 新建 session → 显示 EmptyState → 发消息 → 显示消息 |
+| 长对话滚动 | 50+ 条消息 → 滚动流畅 → 新消息自动滚到底 |
+| 流式响应 | 发消息 → 看到流式输出 → 完成后消息完整 |
 
-2. **虚拟滚动集成测试**
-   ```typescript
-   // components/__tests__/MessageList-virtual.test.ts
-   - virtualItems 索引不越界
-   - messages 变化时 virtualizer 正确更新
-   - 空消息列表显示 EmptyState
-   ```
-
-3. **E2E: Session 切换**
-   ```typescript
-   // e2e/tests/session-switch.spec.ts
-   - 创建多个 session
-   - 切换 session 后消息正确显示
-   - 返回原 session 消息仍在
-   ```
-
-### Phase 2: Store 核心逻辑 (P1)
-**目标**: 覆盖 Pinia stores 的核心业务逻辑
-
-1. **chat.ts 完整测试**
-   - `sendMessage` 流程
-   - `editAndResend` 流程
-   - `handleStreamChunk` 各类型
-   - `handleStreamFinish` 状态清理
-   - 分支 (branch) 逻辑
-
-2. **sessions.ts 测试**
-   - CRUD 操作
-   - 排序、置顶、归档
-   - currentSessionId 切换
-
-3. **settings.ts 测试**
-   - 加载/保存
-   - Provider 配置
-   - 主题切换
-
-### Phase 3: IPC Handlers (P1)
-**目标**: 覆盖主进程 IPC 处理
-
-1. **sessions.ts**
-   - createSession / deleteSession
-   - switchSession
-   - updateSession
-
-2. **chat.ts**
-   - sendMessageStream
-   - 消息持久化
-   - 流中断处理
-
-3. **models.ts**
-   - Provider 注册
-   - 模型列表获取
-   - 能力查询
-
-### Phase 4: Services 层 (P2)
-**目标**: 覆盖业务服务
-
-1. **memory-service.ts**
-   - 向量搜索
-   - 记忆提取
-   - 用户画像
-
-2. **custom-agent-service.ts**
-   - Agent CRUD
-   - Agent 调用
-
-3. **prompt-service.ts**
-   - 模板加载
-   - 变量替换
-
-### Phase 5: E2E 扩展 (P2)
-**目标**: 覆盖更多用户场景
-
-1. **多 Provider 切换**
-2. **工具调用流程**
-3. **Memory 交互**
-4. **自定义 Agent**
-5. **MCP 连接**
-
-## 4. 实施规范
-
-### 测试文件命名
-```
-src/renderer/stores/__tests__/chat.test.ts          # 单元测试
-src/renderer/stores/__tests__/chat-*.test.ts        # 按功能拆分
-src/renderer/components/__tests__/Component.test.ts # 组件测试
-e2e/tests/feature.spec.ts                           # E2E 测试
+```typescript
+// e2e/tests/session-real-flow.spec.ts
+test('session switch preserves messages', async () => {
+  // 创建 session A，发送消息
+  // 创建 session B
+  // 切换回 session A
+  // 验证消息仍然显示
+})
 ```
 
-### 每个 Bug 修复必须附带
-1. 复现 bug 的测试用例（先写，确保失败）
-2. 修复代码
-3. 测试通过
+### Phase 2: 核心用户流程 (P0)
+**目标**: 覆盖用户每天都会用的功能
 
-### Mock 原则
-- 单元测试：Mock 外部依赖（IPC、API）
-- 集成测试：Mock 最外层（API）
-- E2E 测试：Mock Provider，真实 Electron
+| 流程 | 测试内容 |
+|------|---------|
+| 首次使用 | 启动 → 配置 Provider → 发第一条消息 |
+| 日常对话 | 发消息 → 收回复 → 编辑 → 重发 |
+| 多轮对话 | 连续多轮 → 上下文保持 → 压缩触发 |
+| 中断恢复 | 流式中 → 点停止 → 状态正确 |
 
-## 5. 工作量估算
+### Phase 3: Provider 集成 (P1)
+**目标**: 测试真实 Provider 行为（用 Mock Server 模拟）
 
-| Phase | 测试数 | 工时 |
+| 场景 | 测试内容 |
+|------|---------|
+| Provider 切换 | OpenAI → Claude → DeepSeek |
+| 认证失败 | 无效 API Key → 显示错误 → 可重试 |
+| 网络断开 | 请求中断网 → 优雅降级 |
+| Rate Limit | 429 响应 → 显示提示 → 自动重试 |
+
+### Phase 4: 工具系统 (P1)
+**目标**: 测试 AI 工具调用真实流程
+
+| 场景 | 测试内容 |
+|------|---------|
+| 读文件 | AI 请求读 → 用户确认 → 返回内容 |
+| 执行命令 | AI 请求执行 → 用户拒绝 → 换方案 |
+| 连续工具 | 多个工具调用 → 依次执行 → 最终回复 |
+
+### Phase 5: 边界场景 (P2)
+**目标**: 测试异常和边界情况
+
+| 场景 | 测试内容 |
+|------|---------|
+| 大消息 | 100KB 消息 → 正常渲染 |
+| 特殊字符 | Emoji / 代码块 / LaTeX → 正确显示 |
+| 快速操作 | 快速切换 session → 不崩溃 |
+| 内存压力 | 100+ session → 性能可接受 |
+
+## 4. 实施原则
+
+### E2E 测试规范
+```typescript
+// e2e/tests/xxx.spec.ts
+import { test, expect } from '../fixtures/app'
+import { createMockProvider } from '../fixtures/mock-provider'
+
+test.describe('Feature Name', () => {
+  test('user can do X', async ({ page }) => {
+    // 1. Setup - 模拟真实状态
+    // 2. Action - 执行用户操作
+    // 3. Assert - 验证 UI 结果
+  })
+})
+```
+
+### Bug 修复流程
+1. **复现**: 写一个会失败的 E2E 测试
+2. **修复**: 改代码
+3. **验证**: 测试通过
+4. **提交**: 测试和修复一起
+
+### Mock 策略
+- **Mock Provider API** — 用本地 HTTP server
+- **不 Mock Electron** — 用真实 Electron
+- **不 Mock IPC** — 走真实 IPC 通道
+- **不 Mock Store** — 用真实 Pinia store
+
+## 5. 工作量
+
+| Phase | E2E 数 | 工时 |
 |-------|--------|------|
-| Phase 1 | ~30 | 2h |
-| Phase 2 | ~60 | 4h |
-| Phase 3 | ~40 | 3h |
-| Phase 4 | ~30 | 3h |
-| Phase 5 | ~15 | 2h |
-| **总计** | **~175** | **14h** |
+| Phase 1 回归 | 6 | 1h |
+| Phase 2 核心流程 | 10 | 2h |
+| Phase 3 Provider | 8 | 2h |
+| Phase 4 工具 | 6 | 2h |
+| Phase 5 边界 | 5 | 1h |
+| **总计** | **35** | **8h** |
 
 ## 6. 成功标准
 
-- [ ] 所有修复的 bug 有对应回归测试
-- [ ] chat store 核心路径覆盖 > 80%
-- [ ] sessions store 覆盖 > 70%
-- [ ] E2E 覆盖主要用户流程
-- [ ] CI 运行时间 < 3 分钟
-
-## 7. 依赖
-
-- 安装 `@vitest/coverage-v8` 生成覆盖率报告
-- REQ-010 E2E 框架已就绪 ✅
+- [ ] 今日修复的 bug 都有 E2E 覆盖
+- [ ] 核心用户流程 100% E2E 覆盖
+- [ ] E2E 运行时间 < 2 分钟
+- [ ] CI 每次 PR 都跑 E2E
 
 ---
 
-*Created: 2026-02-09 by Qiqi*
+*Updated: 2026-02-09 by Qiqi — 聚焦 E2E，删除无效单元测试目标*
