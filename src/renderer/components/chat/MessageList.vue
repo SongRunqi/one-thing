@@ -17,44 +17,48 @@
           position: 'relative',
         }"
       >
-        <div
+        <template
           v-for="virtualItem in virtualItems"
           :key="virtualItem.key"
-          :ref="(el) => virtualizer.measureElement(el as HTMLElement)"
-          v-memo="[
-            messages[virtualItem.index].id,
-            messages[virtualItem.index].parts?.length,
-            messages[virtualItem.index].parts?.some(p => p.type === 'text' && p.state === 'streaming'),
-            messages[virtualItem.index].id === highlightedMessageId
-          ]"
-          :data-index="virtualItem.index"
-          class="virtual-message-item"
-          :style="{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            transform: `translateY(${virtualItem.start}px)`,
-          }"
         >
-          <MessageItem
-            :data-message-id="messages[virtualItem.index].id"
-            :message="messages[virtualItem.index]"
-            :branches="getBranchesForMessage(messages[virtualItem.index].id)"
-            :can-branch="canCreateBranch"
-            :is-highlighted="messages[virtualItem.index].id === highlightedMessageId"
-            :voice-config="currentAgentVoiceConfig"
-            @edit="handleEdit"
-            @branch="handleBranch"
-            @go-to-branch="handleGoToBranch"
-            @quote="handleQuote"
-            @regenerate="handleRegenerate"
-            @execute-tool="handleExecuteTool"
-            @confirm-tool="handleConfirmTool"
-            @reject-tool="handleRejectTool"
-            @update-thinking-time="handleUpdateThinkingTime"
-          />
-        </div>
+          <div
+            v-if="messages[virtualItem.index]"
+            :ref="(el) => virtualizer.measureElement(el as HTMLElement)"
+            v-memo="[
+              messages[virtualItem.index]?.id,
+              messages[virtualItem.index]?.parts?.length,
+              messages[virtualItem.index]?.parts?.some(p => p.type === 'text' && p.state === 'streaming'),
+              messages[virtualItem.index]?.id === highlightedMessageId
+            ]"
+            :data-index="virtualItem.index"
+            class="virtual-message-item"
+            :style="{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              transform: `translateY(${virtualItem.start}px)`,
+            }"
+          >
+            <MessageItem
+              :data-message-id="messages[virtualItem.index].id"
+              :message="messages[virtualItem.index]"
+              :branches="getBranchesForMessage(messages[virtualItem.index].id)"
+              :can-branch="canCreateBranch"
+              :is-highlighted="messages[virtualItem.index].id === highlightedMessageId"
+              :voice-config="currentAgentVoiceConfig"
+              @edit="handleEdit"
+              @branch="handleBranch"
+              @go-to-branch="handleGoToBranch"
+              @quote="handleQuote"
+              @regenerate="handleRegenerate"
+              @execute-tool="handleExecuteTool"
+              @confirm-tool="handleConfirmTool"
+              @reject-tool="handleRejectTool"
+              @update-thinking-time="handleUpdateThinkingTime"
+            />
+          </div>
+        </template>
       </div>
     </div>
 
@@ -1004,10 +1008,13 @@ watch(
     await nextTick()
     if (!userScrolledAway.value && props.messages.length > 0) {
       // Use virtualizer to scroll to last message
-      virtualizer.value.scrollToIndex(props.messages.length - 1, {
-        align: 'end',
-        behavior: 'auto',
-      })
+      const lastIndex = props.messages.length - 1
+      if (lastIndex >= 0) {
+        virtualizer.value.scrollToIndex(lastIndex, {
+          align: 'end',
+          behavior: 'auto',
+        })
+      }
     }
     scheduleNavMarkerUpdate()
   },
