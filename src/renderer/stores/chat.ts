@@ -215,15 +215,30 @@ export const useChatStore = defineStore('chat', () => {
   // ============ Helper Functions ============
 
   /**
-   * Update messages for a session and trigger reactivity
+   * Update ChatMessages only (no UI sync) - use for streaming updates
    */
-  function setSessionMessages(sessionId: string, messages: ChatMessage[]) {
+  function setChatMessages(sessionId: string, messages: ChatMessage[]) {
     sessionMessages.value.set(sessionId, messages)
     triggerRef(sessionMessages)
-    // Sync to UIMessages for UI rendering
+  }
+
+  /**
+   * Sync ChatMessages to UIMessages - use when loading/switching sessions
+   */
+  function syncUIMessagesFromChat(sessionId: string) {
+    const messages = sessionMessages.value.get(sessionId) || []
     const uiMessages = messages.map(chatMessageToUIMessage)
     sessionUIMessages.value.set(sessionId, uiMessages)
     triggerRef(sessionUIMessages)
+  }
+
+  /**
+   * Update messages for a session and sync to UI
+   * Use for operations that need both updated (add/delete/edit messages)
+   */
+  function setSessionMessages(sessionId: string, messages: ChatMessage[]) {
+    setChatMessages(sessionId, messages)
+    syncUIMessagesFromChat(sessionId)
   }
 
   /**
@@ -296,7 +311,8 @@ export const useChatStore = defineStore('chat', () => {
       if (finishChunk.usage) {
         message.usage = finishChunk.usage
       }
-      setSessionMessages(sessionId, [...messages])
+      // Only update ChatMessages, don't overwrite UIMessages (streaming parts are there)
+      setChatMessages(sessionId, [...messages])
     }
 
     // Clear generating state
@@ -360,7 +376,8 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
 
-    setSessionMessages(sessionId, [...messages])
+    // Only update ChatMessages - UIMessages handled separately below
+    setChatMessages(sessionId, [...messages])
 
     // Also update UIMessages: remove streaming assistant and add error UIMessage
     if (messageId) {
