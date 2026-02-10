@@ -22,7 +22,7 @@
         >
           <div
             v-if="messages[virtualItem.index]"
-            :ref="deferMeasureElement"
+            :ref="(el) => el && virtualizer.measureElement(el as Element)"
             v-memo="[
               messages[virtualItem.index]?.id,
               messages[virtualItem.index]?.parts?.length,
@@ -169,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, type ComponentPublicInstance } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, markRaw } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import type { UIMessage, AgentVoice, ToolCall, ToolUIPart, TextUIPart } from '@/types'
 import MessageItem from './MessageItem.vue'
@@ -220,46 +220,36 @@ const navRailTrackRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
 
 // Virtual scrolling setup
-// @tanstack/vue-virtual requires options as a Ref so its internal watch
-// detects changes. We track messageListRef availability to force re-initialization.
-const _estimateSize = () => 164
-const _measureEl = (el: Element | null) => el?.getBoundingClientRect().height ?? 164
+// Create stable function references to avoid reactivity issues
+const getScrollElement = () => messageListRef.value
+const estimateSize = () => 164
+const measureElement = (el: Element | null) => el?.getBoundingClientRect().height ?? 164
 
-const virtualizer = useVirtualizer(computed(() => {
-  // Access messageListRef.value here to track it as a dependency of the computed
-  // This ensures the computed ref changes when messageListRef changes from null to element
-  const currentScrollElement = messageListRef.value
-
-  return {
-    count: props.messages?.length ?? 0,
-    // Return a function that closes over the currentScrollElement
-    // When computed re-evaluates (due to messageListRef changing), this creates a new function
-    getScrollElement: () => currentScrollElement,
-    estimateSize: _estimateSize,
-    overscan: 5,
-    measureElement: _measureEl,
-    // Use static fallback values - ResizeObserver will update with real dimensions
-    initialRect: {
-      width: 1,
-      height: 800,
-    },
-  }
-}))
-
-function deferMeasureElement(refEl: Element | ComponentPublicInstance | null) {
-  const el = refEl instanceof Element
-    ? refEl
-    : refEl?.$el instanceof Element
-      ? refEl.$el
-      : null
-
-  if (!el) return
-  queueMicrotask(() => virtualizer.value.measureElement(el))
-}
-
-const virtualItems = computed(() => {
-  return virtualizer.value.getVirtualItems()
+// Use the library's expected pattern: pass options directly
+// The library will handle reactivity via its internal watches
+const virtualizer = useVirtualizer({
+  count: 0, // Initial count, will be updated by watch
+  getScrollElement,
+  estimateSize,
+  overscan: 5,
+  measureElement,
 })
+
+// Watch for message count changes and update virtualizer options
+watch(
+  () => props.messages?.length ?? 0,
+  (count) => {
+    // Update only the count, preserving other options
+    const currentOptions = virtualizer.value.options
+    virtualizer.value.setOptions({
+      ...currentOptions,
+      count,
+    })
+  },
+  { immediate: true }
+)
+
+const virtualItems = computed(() => virtualizer.value.getVirtualItems())
 
 // Reject reason dialog state
 const showRejectDialog = ref(false)
