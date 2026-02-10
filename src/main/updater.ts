@@ -202,6 +202,12 @@ export function initializeUpdater(window: BrowserWindow) {
   mainWindow = window
   console.log('[Updater] Initialized')
 
+  // Skip update checks in test environment
+  if (process.env.NODE_ENV === 'test') {
+    console.log('[Updater] Skipping update checks in test environment')
+    return
+  }
+
   // Auto-check is enabled by default
   // Settings store will be loaded asynchronously, so we start checks
   // The setting can disable future checks via the settings UI

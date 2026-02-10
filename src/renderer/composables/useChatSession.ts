@@ -29,11 +29,12 @@ export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
 
   // Exposed state (computed from store)
   // UIMessage[] — the unified data source for all UI components
-  // Read sessionUIMessages ref directly to avoid nested computed reactivity issues
+  // Use store's cached computed that properly tracks Map changes via sessionUIMessages.value
   const messages = computed<UIMessage[]>(() => {
     const sid = sessionId.value
     if (!sid) return []
-    return chatStore.sessionUIMessages.get(sid) || []
+    // getSessionUIMessages returns a ComputedRef, access its value
+    return chatStore.getSessionUIMessages(sid).value
   })
 
   const isLoading = computed(() => state.value?.isLoading.value || false)
