@@ -11,7 +11,8 @@ import { isMCPTool, executeMCPTool } from '../../mcp/index.js'
 import type { ToolExecutionContext, ToolExecutionResult } from '../../tools/types.js'
 import type { StreamContext } from './stream-processor.js'
 import { checkToolPermission } from '../../agents/builtin-agents.js'
-import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
+import { type IPCEmitter } from './ipc-emitter.js'
+import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import { hookManager } from '../../plugins/hooks/index.js'
 
 /**
@@ -187,7 +188,7 @@ export async function executeToolAndUpdate(
   turnIndex?: number,
   existingStepId?: string
 ): Promise<void> {
-  const emitter = createIPCEmitter(ctx)
+  const emitter = createEventOnlyEmitter(ctx)
 
   // Check if aborted before starting
   if (ctx.abortSignal?.aborted) {

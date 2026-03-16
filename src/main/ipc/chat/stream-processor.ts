@@ -9,27 +9,8 @@ import type { AppSettings, ProviderConfig, ToolSettings, Step, StepType } from '
 import type { ToolCall } from '../../../shared/ipc.js'
 import { createToolCall } from '../../tools/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '../../mcp/index.js'
-import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
-
-/**
- * Store active AbortControllers per session for stream cancellation
- * Key: sessionId, Value: AbortController
- */
-export const activeStreams = new Map<string, AbortController>()
-
-/**
- * Abort and clean up all active streams.
- * Called when the BrowserWindow closes to prevent background resource leaks.
- */
-export function cleanupActiveStreams(): void {
-  if (activeStreams.size > 0) {
-    console.log(`[StreamProcessor] Cleaning up ${activeStreams.size} active stream(s)`)
-    for (const [sessionId, controller] of activeStreams) {
-      controller.abort()
-    }
-    activeStreams.clear()
-  }
-}
+import { type IPCEmitter } from './ipc-emitter.js'
+import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 
 // ============================================================
 // MCP Tool Identity Resolution
@@ -136,7 +117,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
   let accumulatedContent = initialContent?.content || ''
   let accumulatedReasoning = initialContent?.reasoning || ''
   const toolCalls: ToolCall[] = []
-  const emitter = createIPCEmitter(ctx)
+  const emitter = createEventOnlyEmitter(ctx)
 
   // Buffer for streaming tool input (AI SDK v6 tool-call-streaming-start/delta)
   // Maps toolCallId -> { toolName, argsText (accumulated JSON string), stepId }

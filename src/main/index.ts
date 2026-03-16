@@ -7,11 +7,13 @@ import { initializeStores } from './store.js'
 import { initializeSettings } from './stores/settings.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
-import { cleanupActiveStreams } from './ipc/chat/stream-processor.js'
+import { initializeStreamEngine, shutdownStreamEngine, getStreamEngine } from './engine/index.js'
 import { initializeTextMemory } from './services/memory-text/index.js'
 import { getMediaImagesDir } from './stores/paths.js'
 import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './services/prompt/index.js'
 import { initializePlugins, shutdownPlugins } from './plugins/index.js'
+import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge } from './events/index.js'
+import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -39,6 +41,11 @@ app.on('ready', async () => {
   // Initialize settings asynchronously (before any settings access)
   await initializeSettings()
 
+  // Initialize event system (EventBus + StreamChannel + SessionManager + StreamEngine)
+  initializeEventSystem()
+  initializeSessionLayer()
+  initializeStreamEngine()
+
   // Clean up interrupted sessions from previous app instance
   sanitizeAllSessionsOnStartup()
 
@@ -65,9 +72,13 @@ app.on('ready', async () => {
   // Create window first for fast startup
   mainWindow = createWindow()
 
+  // Initialize IPCBridge — the single exit point for all renderer IPC
+  initializeIPCBridge(mainWindow.webContents)
+
   // Abort all active streams when the window closes to prevent background resource leaks
   mainWindow.on('closed', () => {
-    cleanupActiveStreams()
+    shutdownIPCBridge()
+    getStreamEngine().abortAll()
     mainWindow = null
   })
 
@@ -96,6 +107,12 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (mainWindow === null) {
     mainWindow = createWindow()
+    initializeIPCBridge(mainWindow.webContents)
+    mainWindow.on('closed', () => {
+      shutdownIPCBridge()
+      getStreamEngine().abortAll()
+      mainWindow = null
+    })
   }
 })
 
@@ -109,6 +126,11 @@ app.on('before-quit', async () => {
 
   // Shutdown MCP
   await shutdownMCP()
+
+  // Shutdown engine, session layer, and event system (reverse init order)
+  shutdownStreamEngine()
+  shutdownSessionLayer()
+  shutdownEventSystem()
 })
 
 export { mainWindow }

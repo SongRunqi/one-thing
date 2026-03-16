@@ -2,6 +2,8 @@
  * Stream Executor Module
  * Unified entry point for message streaming
  * Automatically detects image generation vs text streaming
+ *
+ * Uses StreamEngine for AbortController lifecycle management.
  */
 
 import type { WebContents } from 'electron'
@@ -9,11 +11,11 @@ import type { AppSettings, ProviderConfig, ToolSettings } from '../../../shared/
 import * as modelRegistry from '../../services/ai/model-registry.js'
 import { processImageGenerationStream } from './image-stream.js'
 import { executeStreamGeneration, type StreamGenerationResult } from './tool-loop.js'
-import { activeStreams, type StreamContext } from './stream-processor.js'
+import { type StreamContext } from './stream-processor.js'
+import { getStreamEngine } from '../../engine/index.js'
 import type { HistoryMessage } from './message-helpers.js'
 
 // Re-export for convenience
-export { activeStreams }
 export type { HistoryMessage }
 
 /**
@@ -73,17 +75,12 @@ export async function executeMessageStream(
     sessionName,
   } = params
 
-  // Abort any existing stream for this session before starting a new one
-  const existingController = activeStreams.get(sessionId)
-  if (existingController) {
-    console.log(`[StreamExecutor] Aborting previous stream for session: ${sessionId}`)
-    existingController.abort()
-    activeStreams.delete(sessionId)
-  }
+  const engine = getStreamEngine()
 
   // Create abort controller if not provided
   const controller = abortController || new AbortController()
-  activeStreams.set(sessionId, controller)
+  // registerController aborts any existing stream for this session first
+  engine.registerController(sessionId, controller)
 
   try {
     // Check if this is an image generation model
@@ -109,7 +106,7 @@ export async function executeMessageStream(
       })
 
       // Image generation always completes (no pause for confirmation)
-      activeStreams.delete(sessionId)
+      engine.removeController(sessionId)
 
       return {
         handled,
@@ -139,7 +136,7 @@ export async function executeMessageStream(
 
       // Only remove controller if stream completed (not paused for confirmation)
       if (!result.pausedForConfirmation) {
-        activeStreams.delete(sessionId)
+        engine.removeController(sessionId)
       }
 
       return {
@@ -151,7 +148,7 @@ export async function executeMessageStream(
   } catch (error: any) {
     // On error, always remove controller
     console.error('[StreamExecutor] Error:', error)
-    activeStreams.delete(sessionId)
+    engine.removeController(sessionId)
     throw error
   }
 }

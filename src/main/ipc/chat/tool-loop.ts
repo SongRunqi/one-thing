@@ -4,7 +4,6 @@
  */
 
 import * as store from '../../store.js'
-import { IPC_CHANNELS } from '../../../shared/ipc.js'
 import type { SkillDefinition, ToolCall, ChatMessage } from '../../../shared/ipc.js'
 import { hookManager } from '../../plugins/hooks/index.js'
 import type { AIMessageContent, ToolChatMessage } from '../../providers/index.js'
@@ -28,7 +27,9 @@ import { shouldCompact, executeCompacting, type CompactingContext } from '../../
 
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
 import { createStreamProcessor } from './stream-processor.js'
-import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
+import { type IPCEmitter } from './ipc-emitter.js'
+import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
+import { getEventBus } from '../../events/index.js'
 import { sendUIMessageFinish } from './stream-helpers.js'
 import { formatMessagesForLog, buildSystemPrompt, buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
 import {
@@ -293,7 +294,7 @@ export async function runStream(
   const MAX_TOOL_TURNS = 100
   let currentTurn = 0
   const apiType = getProviderApiType(ctx.settings, ctx.providerId)
-  const emitter = createIPCEmitter(ctx)
+  const emitter = createEventOnlyEmitter(ctx)
 
   // Get model context length for compacting check
   let modelContextLength = 128000  // Default fallback
@@ -507,15 +508,19 @@ export async function runStream(
         turnUsage
       )
       // Notify frontend about the usage updates for each step
-      // Note: store already updated by updateStepsUsageByTurn, we use direct IPC send
-      // because sendStepUpdated would double-update the store
-      for (const stepId of updatedStepIds) {
-        ctx.sender.send(IPC_CHANNELS.STEP_UPDATED, {
-          sessionId: ctx.sessionId,
-          messageId: ctx.assistantMessageId,
-          stepId,
-          updates: { usage: turnUsage },
-        })
+      // Note: store already updated by updateStepsUsageByTurn, we emit directly
+      // to EventBus because sendStepUpdated would double-update the store
+      try {
+        const eventBus = getEventBus()
+        for (const stepId of updatedStepIds) {
+          eventBus.emit(ctx.sessionId, {
+            type: 'step:updated',
+            stepId,
+            updates: { usage: turnUsage },
+          }).catch(err => console.error('[ToolLoop] step:updated emit error:', err))
+        }
+      } catch {
+        // Event system not initialized — ignore
       }
       console.log(`[Backend] Updated ${updatedStepIds.length} steps with turn ${currentTurn} usage`)
     }
@@ -605,10 +610,21 @@ export async function executeStreamGeneration(
   sessionName?: string
 ): Promise<StreamGenerationResult> {
   const processor = createStreamProcessor(ctx)
-  const emitter = createIPCEmitter(ctx)
+  const emitter = createEventOnlyEmitter(ctx)
 
   try {
     console.log('[Backend] Starting streaming for message:', ctx.assistantMessageId)
+
+    // Emit stream:start event to EventBus (triggers Session auto-vivification)
+    try {
+      const eventBus = getEventBus()
+      eventBus.emit(ctx.sessionId, {
+        type: 'stream:start',
+        assistantMessageId: ctx.assistantMessageId,
+      }).catch(err => console.error('[ToolLoop] stream:start emit error:', err))
+    } catch {
+      // Event system not initialized — ignore
+    }
 
     // Get session and agent info first (needed for tool init context)
     const session = store.getSession(ctx.sessionId)
@@ -796,7 +812,7 @@ export async function executeStreamGeneration(
         usage: ctx.accumulatedUsage,
         lastTurnUsage: ctx.lastTurnUsage,  // For correct context size calculation
       })
-      // Also send UIMessage finish chunk with usage for new clients
+      // TODO(Phase 3): Migrate UI_MESSAGE_STREAM to event system — separate protocol for AI SDK 6.x clients
       sendUIMessageFinish(ctx.sender, ctx.sessionId, ctx.assistantMessageId, 'stop', ctx.accumulatedUsage)
       // Save usage to message for future token subtraction on edit/regenerate
       if (ctx.accumulatedUsage) {
