@@ -1,13 +1,17 @@
 /**
  * Global IPC Event Hub
  *
- * 在应用启动时注册所有 IPC 监听器，确保:
- * 1. 监听器早于任何 IPC 调用注册（无竞态条件）
- * 2. 所有事件路由到中央 store（单一状态源）
- * 3. 不需要每次发送消息都设置/清理监听器
+ * Registers IPC listeners at app startup to ensure:
+ * 1. Listeners are registered before any IPC calls (no race conditions)
+ * 2. All events route to central store (single source of truth)
+ * 3. No per-message listener setup/teardown needed
+ *
+ * Phase 4b: Steps, skills, context events use unified session:event channel.
+ * Stream chunks, complete, error still use legacy individual channels.
  */
 
 import { useChatStore } from '@/stores/chat'
+import type { SessionEventEnvelope } from '../../shared/events/index.js'
 
 let initialized = false
 
@@ -18,55 +22,60 @@ export function initializeIPCHub() {
   }
   initialized = true
 
-  // 流式响应块
-  // Note: We get the store dynamically inside the callback to ensure we always
-  // use the current store instance, avoiding potential stale reference issues
+  // ── Unified event channel (Phase 4b) ──────────
+  // Handles: step:added, step:updated, skill:activated, context:*, compact:*
+  window.electronAPI.onSessionEvent((envelope: SessionEventEnvelope) => {
+    const store = useChatStore()
+    const { sessionId, event } = envelope
+
+    switch (event.type) {
+      case 'step:added':
+        store.handleStepAdded({ sessionId, messageId: '', step: event.step })
+        break
+
+      case 'step:updated':
+        store.handleStepUpdated({ sessionId, messageId: '', stepId: event.stepId, updates: event.updates })
+        break
+
+      case 'skill:activated':
+        store.handleSkillActivated({ sessionId, messageId: '', skillName: event.skillName })
+        break
+
+      case 'context:size-updated':
+        store.handleContextSizeUpdated({ sessionId, contextSize: event.contextSize })
+        break
+
+      case 'compact:started':
+        store.handleContextCompactStarted({ sessionId })
+        break
+
+      case 'compact:completed':
+        store.handleContextCompactCompleted({ sessionId, ...event.data })
+        break
+
+      // Other events (stream:start/complete/error, tool:*, content:*):
+      // Handled by legacy channels below until Phase 4c
+    }
+  })
+
+  // ── Legacy channels (stream data) ─────────────
+  // These remain because they carry messageId in payload,
+  // which the store handlers depend on for message lookup.
+
   window.electronAPI.onStreamChunk((chunk) => {
-    // Debug: log tool_input chunks
     if (chunk.type === 'tool_input_start' || chunk.type === 'tool_input_delta') {
       console.log('[IPC Hub] Received streaming tool input:', chunk.type, chunk.toolCallId, chunk.toolName || chunk.argsTextDelta?.substring(0, 30))
     }
-    // Get fresh store reference for each chunk to avoid stale reference issues
     useChatStore().handleStreamChunk(chunk)
   })
 
-  // 流完成（包含 usage 数据）
   window.electronAPI.onStreamComplete((data) => {
     useChatStore().handleStreamComplete(data)
   })
 
-  // 流错误
   window.electronAPI.onStreamError((data) => {
     useChatStore().handleStreamError(data)
   })
 
-  // Step 事件
-  window.electronAPI.onStepAdded((data) => {
-    useChatStore().handleStepAdded(data)
-  })
-
-  window.electronAPI.onStepUpdated((data) => {
-    useChatStore().handleStepUpdated(data)
-  })
-
-  // Skill 激活
-  window.electronAPI.onSkillActivated((data) => {
-    useChatStore().handleSkillActivated(data)
-  })
-
-  // Context size 实时更新
-  window.electronAPI.onContextSizeUpdated((data) => {
-    useChatStore().handleContextSizeUpdated(data)
-  })
-
-  // Context compacting events
-  window.electronAPI.onContextCompactStarted((data) => {
-    useChatStore().handleContextCompactStarted(data)
-  })
-
-  window.electronAPI.onContextCompactCompleted((data) => {
-    useChatStore().handleContextCompactCompleted(data)
-  })
-
-  console.log('[IPC Hub] All listeners registered')
+  console.log('[IPC Hub] All listeners registered (unified + legacy)')
 }

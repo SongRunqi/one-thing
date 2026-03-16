@@ -179,49 +179,15 @@ export class IPCBridge {
         })
         break
 
+      // step:added, step:updated, context:size-updated, compact:started,
+      // compact:completed, skill:activated — handled via unified session:event channel.
+      // No legacy individual sends needed (migrated in Phase 4b).
       case 'step:added':
-        this.safeSend(IPC_CHANNELS.STEP_ADDED, {
-          sessionId,
-          messageId: this.getMessageId(sessionId),
-          step: event.step,
-        })
-        break
-
       case 'step:updated':
-        this.safeSend(IPC_CHANNELS.STEP_UPDATED, {
-          sessionId,
-          messageId: this.getMessageId(sessionId),
-          stepId: event.stepId,
-          updates: event.updates,
-        })
-        break
-
       case 'context:size-updated':
-        this.safeSend(IPC_CHANNELS.CONTEXT_SIZE_UPDATED, {
-          sessionId,
-          contextSize: event.contextSize,
-        })
-        break
-
       case 'compact:started':
-        this.safeSend(IPC_CHANNELS.CONTEXT_COMPACT_STARTED, {
-          sessionId,
-        })
-        break
-
       case 'compact:completed':
-        this.safeSend(IPC_CHANNELS.CONTEXT_COMPACT_COMPLETED, {
-          sessionId,
-          ...event.data,
-        })
-        break
-
       case 'skill:activated':
-        this.safeSend(IPC_CHANNELS.SKILL_ACTIVATED, {
-          sessionId,
-          messageId: this.getMessageId(sessionId),
-          skillName: event.skillName,
-        })
         break
 
       // message:user-created and message:assistant-created are handled by Session,
