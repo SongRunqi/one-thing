@@ -22,7 +22,7 @@ export const IPC_CHANNELS = {
   ABORT_STREAM: 'chat:abort-stream',
   GET_ACTIVE_STREAMS: 'chat:get-active-streams',
 
-  // UIMessage streaming (AI SDK 5.x compatible)
+  // UIMessage streaming (AI SDK 6.x compatible)
   UI_MESSAGE_STREAM: 'chat:ui-message-stream',
 
   // Skill usage notification

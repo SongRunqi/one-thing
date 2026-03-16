@@ -7,9 +7,9 @@ import { initializeStores } from './store.js'
 import { initializeSettings } from './stores/settings.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
+import { cleanupActiveStreams } from './ipc/chat/stream-processor.js'
 import { initializeTextMemory } from './services/memory-text/index.js'
 import { getMediaImagesDir } from './stores/paths.js'
-import { runMigration as runAgentMigration } from './services/migration/agent-migration.js'
 import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './services/prompt/index.js'
 import { initializePlugins, shutdownPlugins } from './plugins/index.js'
 
@@ -39,17 +39,6 @@ app.on('ready', async () => {
   // Initialize settings asynchronously (before any settings access)
   await initializeSettings()
 
-  // Run agent migration (from old Built-in Agent to CustomAgent format)
-  // This must run after stores init but before custom agents are loaded
-  try {
-    const migratedCount = runAgentMigration()
-    if (migratedCount >= 0) {
-      console.log(`[Startup] Agent migration: ${migratedCount} agents migrated`)
-    }
-  } catch (error) {
-    console.error('[Startup] Agent migration failed:', error)
-  }
-
   // Clean up interrupted sessions from previous app instance
   sanitizeAllSessionsOnStartup()
 
@@ -75,6 +64,12 @@ app.on('ready', async () => {
 
   // Create window first for fast startup
   mainWindow = createWindow()
+
+  // Abort all active streams when the window closes to prevent background resource leaks
+  mainWindow.on('closed', () => {
+    cleanupActiveStreams()
+    mainWindow = null
+  })
 
   // Initialize MCP system asynchronously (don't block startup)
   initializeMCP().catch(err => {

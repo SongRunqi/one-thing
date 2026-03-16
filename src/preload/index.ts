@@ -78,7 +78,7 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.IMAGE_GENERATED, listener)
   },
 
-  // UIMessage stream (AI SDK 5.x compatible)
+  // UIMessage stream (AI SDK 6.x compatible)
   onUIMessageStream: (callback: (data: UIMessageStreamData) => void) => {
     const listener = (_event: any, data: UIMessageStreamData) => callback(data)
     ipcRenderer.on(IPC_CHANNELS.UI_MESSAGE_STREAM, listener)

@@ -2,6 +2,7 @@ import { ipcMain, dialog, BrowserWindow, nativeTheme } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import * as store from '../store.js'
 import { openSettingsWindow } from '../window.js'
+import { invalidateProviderCache } from '../providers/registry.js'
 
 export function registerSettingsHandlers() {
   // Open settings window
@@ -36,6 +37,9 @@ export function registerSettingsHandlers() {
   // 保存设置
   ipcMain.handle(IPC_CHANNELS.SAVE_SETTINGS, async (event, settings) => {
     store.saveSettings(settings)
+
+    // Invalidate provider cache so new API keys / base URLs take effect immediately
+    invalidateProviderCache()
 
     // Get the sender's webContents ID to exclude from broadcast
     const senderWebContentsId = event.sender.id

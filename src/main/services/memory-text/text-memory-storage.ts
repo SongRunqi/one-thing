@@ -83,10 +83,39 @@ export function generateMemoryFile(metadata: MemoryFileMetadata, content: string
 
 export class TextMemoryStorage {
   private baseDir: string
+  /**
+   * Per-file write locks to prevent concurrent read-modify-write races.
+   * Key: relative file path, Value: Promise chain for serialized access.
+   */
+  private fileLocks = new Map<string, Promise<void>>()
 
   constructor(baseDir?: string) {
     // Default to ~/.0nething/memory/ (cross-platform via app.getPath('home'))
     this.baseDir = baseDir || path.join(app.getPath('home'), '.0nething', 'memory')
+  }
+
+  /**
+   * Acquire a per-file lock to serialize write operations.
+   * Callers await the returned promise, which resolves after `fn` completes.
+   */
+  private async withFileLock<T>(relativePath: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.fileLocks.get(relativePath) ?? Promise.resolve()
+    let releaseLock: () => void
+    const next = new Promise<void>((resolve) => { releaseLock = resolve })
+    this.fileLocks.set(relativePath, next)
+
+    // Wait for previous operation on this file to finish
+    await prev
+
+    try {
+      return await fn()
+    } finally {
+      releaseLock!()
+      // Clean up if no more waiters
+      if (this.fileLocks.get(relativePath) === next) {
+        this.fileLocks.delete(relativePath)
+      }
+    }
   }
 
   /**
@@ -345,6 +374,60 @@ export class TextMemoryStorage {
     content: string,
     options?: WriteMemoryOptions
   ): Promise<void> {
+    return this.withFileLock(relativePath, async () => {
+      const fullPath = path.join(this.baseDir, relativePath)
+      const dir = path.dirname(fullPath)
+      await fs.mkdir(dir, { recursive: true })
+
+      const now = new Date().toISOString()
+      let metadata: MemoryFileMetadata
+
+      // Try to read existing file's metadata
+      try {
+        const existing = await fs.readFile(fullPath, 'utf-8')
+        const parsed = parseMemoryFile(existing)
+        metadata = {
+          ...parsed.metadata,
+          updated: now,
+          version: (parsed.metadata.version || 0) + 1,
+        }
+        // Merge in new options (don't override with undefined)
+        if (options?.source) metadata.source = options.source
+        if (options?.sourceId) metadata.sourceId = options.sourceId
+        if (options?.tags) metadata.tags = options.tags
+        if (options?.author) metadata.author = options.author
+        if (options?.importance) metadata.importance = options.importance
+      } catch {
+        // New file
+        metadata = {
+          created: now,
+          updated: now,
+          version: 1,
+          source: options?.source || 'manual',
+          sourceId: options?.sourceId,
+          tags: options?.tags,
+          author: options?.author,
+          importance: options?.importance,
+        }
+      }
+
+      const fileContent = generateMemoryFile(metadata, content)
+      await fs.writeFile(fullPath, fileContent, 'utf-8')
+
+      // Update index after writing
+      const indexManager = getMemoryIndexManager(this.baseDir)
+      await indexManager.updateFileIndex(relativePath)
+    })
+  }
+
+  /**
+   * Inner write logic (no lock). Called by methods that already hold the file lock.
+   */
+  private async _writeMemoryFileInner(
+    relativePath: string,
+    content: string,
+    options?: WriteMemoryOptions
+  ): Promise<void> {
     const fullPath = path.join(this.baseDir, relativePath)
     const dir = path.dirname(fullPath)
     await fs.mkdir(dir, { recursive: true })
@@ -352,7 +435,6 @@ export class TextMemoryStorage {
     const now = new Date().toISOString()
     let metadata: MemoryFileMetadata
 
-    // Try to read existing file's metadata
     try {
       const existing = await fs.readFile(fullPath, 'utf-8')
       const parsed = parseMemoryFile(existing)
@@ -361,14 +443,12 @@ export class TextMemoryStorage {
         updated: now,
         version: (parsed.metadata.version || 0) + 1,
       }
-      // Merge in new options (don't override with undefined)
       if (options?.source) metadata.source = options.source
       if (options?.sourceId) metadata.sourceId = options.sourceId
       if (options?.tags) metadata.tags = options.tags
       if (options?.author) metadata.author = options.author
       if (options?.importance) metadata.importance = options.importance
     } catch {
-      // New file
       metadata = {
         created: now,
         updated: now,
@@ -384,7 +464,6 @@ export class TextMemoryStorage {
     const fileContent = generateMemoryFile(metadata, content)
     await fs.writeFile(fullPath, fileContent, 'utf-8')
 
-    // Update index after writing
     const indexManager = getMemoryIndexManager(this.baseDir)
     await indexManager.updateFileIndex(relativePath)
   }
@@ -397,14 +476,16 @@ export class TextMemoryStorage {
     relativePath: string,
     content: string
   ): Promise<void> {
-    const fullPath = path.join(this.baseDir, relativePath)
-    const dir = path.dirname(fullPath)
-    await fs.mkdir(dir, { recursive: true })
-    await fs.writeFile(fullPath, content, 'utf-8')
+    return this.withFileLock(relativePath, async () => {
+      const fullPath = path.join(this.baseDir, relativePath)
+      const dir = path.dirname(fullPath)
+      await fs.mkdir(dir, { recursive: true })
+      await fs.writeFile(fullPath, content, 'utf-8')
 
-    // Update index after writing
-    const indexManager = getMemoryIndexManager(this.baseDir)
-    await indexManager.updateFileIndex(relativePath)
+      // Update index after writing
+      const indexManager = getMemoryIndexManager(this.baseDir)
+      await indexManager.updateFileIndex(relativePath)
+    })
   }
 
   /**
@@ -465,55 +546,55 @@ export class TextMemoryStorage {
     newContent: string,
     options?: WriteMemoryOptions
   ): Promise<void> {
-    const fullPath = path.join(this.baseDir, relativePath)
+    return this.withFileLock(relativePath, async () => {
+      const fullPath = path.join(this.baseDir, relativePath)
 
-    let existingContent = ''
-    try {
-      existingContent = await fs.readFile(fullPath, 'utf-8')
-    } catch {
-      // File doesn't exist, create with section
-      const newFile = `# ${path.basename(relativePath, '.md')}\n\n## ${sectionHeading}\n${newContent}\n`
-      await this.writeMemoryFile(relativePath, newFile, options)
-      return
-    }
+      let existingContent = ''
+      try {
+        existingContent = await fs.readFile(fullPath, 'utf-8')
+      } catch {
+        // File doesn't exist, create with section
+        const newFile = `# ${path.basename(relativePath, '.md')}\n\n## ${sectionHeading}\n${newContent}\n`
+        // Call writeMemoryFile's inner logic directly since we already hold the lock
+        await this._writeMemoryFileInner(relativePath, newFile, options)
+        return
+      }
 
-    // Parse existing file to preserve metadata
-    const parsed = parseMemoryFile(existingContent)
-    const lines = parsed.content.split('\n')
-    const result: string[] = []
-    let foundSection = false
-    let inTargetSection = false
-    let skipUntilNextSection = false
+      // Parse existing file to preserve metadata
+      const parsed = parseMemoryFile(existingContent)
+      const lines = parsed.content.split('\n')
+      const result: string[] = []
+      let foundSection = false
+      let skipUntilNextSection = false
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
 
-      if (line.startsWith('## ')) {
-        if (line.substring(3).trim() === sectionHeading) {
-          foundSection = true
-          inTargetSection = true
-          skipUntilNextSection = true
-          result.push(line)
-          // Add new content right after section heading
-          result.push(newContent)
-        } else {
-          inTargetSection = false
-          skipUntilNextSection = false
+        if (line.startsWith('## ')) {
+          if (line.substring(3).trim() === sectionHeading) {
+            foundSection = true
+            skipUntilNextSection = true
+            result.push(line)
+            // Add new content right after section heading
+            result.push(newContent)
+          } else {
+            skipUntilNextSection = false
+            result.push(line)
+          }
+        } else if (!skipUntilNextSection) {
           result.push(line)
         }
-      } else if (!skipUntilNextSection) {
-        result.push(line)
       }
-    }
 
-    // If section not found, append new section
-    if (!foundSection) {
-      result.push('')
-      result.push(`## ${sectionHeading}`)
-      result.push(newContent)
-    }
+      // If section not found, append new section
+      if (!foundSection) {
+        result.push('')
+        result.push(`## ${sectionHeading}`)
+        result.push(newContent)
+      }
 
-    await this.writeMemoryFile(relativePath, result.join('\n'), options)
+      await this._writeMemoryFileInner(relativePath, result.join('\n'), options)
+    })
   }
 
   /**
@@ -526,80 +607,82 @@ export class TextMemoryStorage {
     newContent: string,
     options?: WriteMemoryOptions
   ): Promise<void> {
-    const fullPath = path.join(this.baseDir, relativePath)
+    return this.withFileLock(relativePath, async () => {
+      const fullPath = path.join(this.baseDir, relativePath)
 
-    let existingContent = ''
-    try {
-      existingContent = await fs.readFile(fullPath, 'utf-8')
-    } catch {
-      // File doesn't exist, create with section
-      const newFile = `# ${path.basename(relativePath, '.md')}\n\n## ${sectionHeading}\n${newContent}\n`
-      await this.writeMemoryFile(relativePath, newFile, options)
-      return
-    }
+      let existingContent = ''
+      try {
+        existingContent = await fs.readFile(fullPath, 'utf-8')
+      } catch {
+        // File doesn't exist, create with section
+        const newFile = `# ${path.basename(relativePath, '.md')}\n\n## ${sectionHeading}\n${newContent}\n`
+        await this._writeMemoryFileInner(relativePath, newFile, options)
+        return
+      }
 
-    // Parse existing file to preserve metadata
-    const parsed = parseMemoryFile(existingContent)
-    const lines = parsed.content.split('\n')
-    const result: string[] = []
-    let foundSection = false
-    let inTargetSection = false
-    let sectionContent: string[] = []
+      // Parse existing file to preserve metadata
+      const parsed = parseMemoryFile(existingContent)
+      const lines = parsed.content.split('\n')
+      const result: string[] = []
+      let foundSection = false
+      let inTargetSection = false
+      let sectionContent: string[] = []
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
 
-      if (line.startsWith('## ')) {
-        if (line.substring(3).trim() === sectionHeading) {
-          foundSection = true
-          inTargetSection = true
-          sectionContent = []
-          result.push(line)
-        } else {
-          if (inTargetSection) {
-            // Check for duplicate before appending
-            const normalizedNew = this.normalizeContent(newContent)
-            const isDuplicate = sectionContent.some(
-              existingLine => this.normalizeContent(existingLine) === normalizedNew
-            )
-            if (!isDuplicate) {
-              result.push(newContent)
-            } else {
-              console.log(`[TextMemory] Skipping duplicate content in ${relativePath}/${sectionHeading}`)
+        if (line.startsWith('## ')) {
+          if (line.substring(3).trim() === sectionHeading) {
+            foundSection = true
+            inTargetSection = true
+            sectionContent = []
+            result.push(line)
+          } else {
+            if (inTargetSection) {
+              // Check for duplicate before appending
+              const normalizedNew = this.normalizeContent(newContent)
+              const isDuplicate = sectionContent.some(
+                existingLine => this.normalizeContent(existingLine) === normalizedNew
+              )
+              if (!isDuplicate) {
+                result.push(newContent)
+              } else {
+                console.log(`[TextMemory] Skipping duplicate content in ${relativePath}/${sectionHeading}`)
+              }
+              inTargetSection = false
             }
-            inTargetSection = false
+            result.push(line)
+          }
+        } else {
+          if (inTargetSection && line.trim()) {
+            sectionContent.push(line)
           }
           result.push(line)
         }
-      } else {
-        if (inTargetSection && line.trim()) {
-          sectionContent.push(line)
+      }
+
+      // If still in target section at end of file
+      if (inTargetSection) {
+        const normalizedNew = this.normalizeContent(newContent)
+        const isDuplicate = sectionContent.some(
+          existingLine => this.normalizeContent(existingLine) === normalizedNew
+        )
+        if (!isDuplicate) {
+          result.push(newContent)
+        } else {
+          console.log(`[TextMemory] Skipping duplicate content in ${relativePath}/${sectionHeading}`)
         }
-        result.push(line)
       }
-    }
 
-    // If still in target section at end of file
-    if (inTargetSection) {
-      const normalizedNew = this.normalizeContent(newContent)
-      const isDuplicate = sectionContent.some(
-        existingLine => this.normalizeContent(existingLine) === normalizedNew
-      )
-      if (!isDuplicate) {
+      // If section not found, append new section
+      if (!foundSection) {
+        result.push('')
+        result.push(`## ${sectionHeading}`)
         result.push(newContent)
-      } else {
-        console.log(`[TextMemory] Skipping duplicate content in ${relativePath}/${sectionHeading}`)
       }
-    }
 
-    // If section not found, append new section
-    if (!foundSection) {
-      result.push('')
-      result.push(`## ${sectionHeading}`)
-      result.push(newContent)
-    }
-
-    await this.writeMemoryFile(relativePath, result.join('\n'), options)
+      await this._writeMemoryFileInner(relativePath, result.join('\n'), options)
+    })
   }
 
   /**

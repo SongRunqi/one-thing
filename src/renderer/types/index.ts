@@ -60,7 +60,7 @@ import type {
   ImportResult,
   ExportOptions,
   ParsedMemoryFile,
-  // UIMessage types (AI SDK 5.x compatible)
+  // UIMessage types (AI SDK 6.x compatible)
   UIMessage,
   UIMessagePart,
   TextUIPart,
@@ -224,7 +224,7 @@ export type {
   ContentPart,
   Step,
   StepType,
-  // UIMessage types (AI SDK 5.x compatible)
+  // UIMessage types (AI SDK 6.x compatible)
   UIMessage,
   UIMessagePart,
   TextUIPart,
@@ -358,7 +358,7 @@ export interface ElectronAPI {
   onStepAdded: (callback: (data: { sessionId: string; messageId: string; step: any }) => void) => () => void
   onStepUpdated: (callback: (data: { sessionId: string; messageId: string; stepId: string; updates: any }) => void) => () => void
   onImageGenerated: (callback: (data: { id: string; url?: string; base64?: string; prompt: string; revisedPrompt?: string; model: string; sessionId: string; messageId: string; createdAt: number }) => void) => () => void
-  // UIMessage stream (AI SDK 5.x compatible)
+  // UIMessage stream (AI SDK 6.x compatible)
   onUIMessageStream: (callback: (data: UIMessageStreamData) => void) => () => void
   getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
   generateTitle: (message: string) => Promise<GenerateTitleResponse>

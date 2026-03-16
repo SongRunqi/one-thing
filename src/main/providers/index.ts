@@ -10,24 +10,9 @@
  * That's it! The provider will be automatically registered and available.
  */
 
-import { generateText, streamText, convertToModelMessages, wrapLanguageModel, type LanguageModel } from 'ai'
+import { generateText, streamText, convertToModelMessages, type LanguageModel } from 'ai'
 import type { UIMessage as AISDKUIMessage } from 'ai'
-import { devToolsMiddleware } from '@ai-sdk/devtools'
 import { z } from 'zod'
-import { app } from 'electron'
-
-/**
- * Wrap model with DevTools middleware in development mode
- * This enables inspection at http://localhost:4983 via `npx @ai-sdk/devtools`
- */
-function wrapWithDevTools<T extends LanguageModel>(model: T): T {
-  if (app.isPackaged) return model
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return wrapLanguageModel({
-    model: model as any,
-    middleware: devToolsMiddleware(),
-  }) as any
-}
 import {
   initializeRegistry,
   getAvailableProviders as getProvidersFromRegistry,
@@ -43,11 +28,11 @@ import { modelSupportsReasoningSync } from '../services/ai/model-registry.js'
 import type { ProviderInfo, ProviderConfig } from './types.js'
 import { oauthManager } from '../services/auth/oauth-manager.js'
 
-// Multimodal content type for AI messages (Vercel AI SDK 5.x format)
+// Multimodal content type for AI messages (Vercel AI SDK 6.x format)
 export type AIMessageContent = string | Array<
   | { type: 'text'; text: string }
-  | { type: 'image'; image: string; mediaType?: string }  // AI SDK 5.x uses 'mediaType'
-  | { type: 'file'; data: string; mediaType: string }      // AI SDK 5.x uses 'mediaType'
+  | { type: 'image'; image: string; mediaType?: string }  // AI SDK 6.x uses 'mediaType'
+  | { type: 'file'; data: string; mediaType: string }      // AI SDK 6.x uses 'mediaType'
 >
 
 // Format messages for logging without full base64 data
@@ -285,7 +270,7 @@ export async function* streamChatResponse(
   options: { temperature?: number; maxTokens?: number } = {}
 ): AsyncGenerator<{ text: string; reasoning?: string }, void, unknown> {
   const provider = createProvider(providerId, config)
-  const model = wrapWithDevTools(provider.createModel(config.model))
+  const model = provider.createModel(config.model)
 
   const isReasoning = isReasoningModel(config.model, providerId)
 
@@ -325,7 +310,7 @@ export async function* streamChatResponseWithReasoning(
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
 ): AsyncGenerator<ReasoningStreamChunk, void, unknown> {
   const provider = createProvider(providerId, config)
-  const model = wrapWithDevTools(provider.createModel(config.model))
+  const model = provider.createModel(config.model)
 
   const isReasoning = isReasoningModel(config.model, providerId)
 
@@ -474,7 +459,7 @@ export async function generateChatResponseWithReasoning(
   options: { temperature?: number; maxTokens?: number } = {}
 ): Promise<ChatResponseResult> {
   const provider = createProvider(providerId, config)
-  const model = wrapWithDevTools(provider.createModel(config.model))
+  const model = provider.createModel(config.model)
 
   const isReasoning = isReasoningModel(config.model, providerId)
 
@@ -636,7 +621,7 @@ export async function* streamChatResponseWithTools(
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
 ): AsyncGenerator<StreamChunkWithTools, void, unknown> {
   const provider = createProvider(providerId, config)
-  const model = wrapWithDevTools(provider.createModel(config.model))
+  const model = provider.createModel(config.model)
 
   const isReasoning = isReasoningModel(config.model, providerId)
 
@@ -661,7 +646,7 @@ export async function* streamChatResponseWithTools(
   // in the content array, not as a separate reasoning_content field
   let convertedMessages: any[] = messages.map(msg => {
     if (msg.role === 'system') {
-      // AI SDK 5.x requires system content to be a string
+      // AI SDK 6.x requires system content to be a string
       const content = typeof msg.content === 'string'
         ? msg.content
         : Array.isArray(msg.content)
@@ -717,7 +702,7 @@ export async function* streamChatResponseWithTools(
             type: 'tool-call',
             toolCallId: tc.toolCallId,
             toolName: tc.toolName,
-            input: sanitizedInput,  // AI SDK 5.x requires 'input', not 'args'
+            input: sanitizedInput,  // AI SDK 6.x requires 'input', not 'args'
           })
         }
       }
@@ -730,8 +715,8 @@ export async function* streamChatResponseWithTools(
       return { role: 'assistant', content }
     }
     if (msg.role === 'tool') {
-      // Tool result message - convert to AI SDK 5.x format
-      // AI SDK 5.x requires 'output' with { type: 'json', value: ... } structure
+      // Tool result message - convert to AI SDK 6.x format
+      // AI SDK 6.x requires 'output' with { type: 'json', value: ... } structure
       // IMPORTANT: Must sanitize the result to remove undefined values (not valid JSON)
       return {
         role: 'tool',
@@ -950,11 +935,11 @@ export function convertToolDefinitionsForAI(
 }
 
 // ============================================================================
-// UIMessage-based streaming (AI SDK 5.x native format)
+// UIMessage-based streaming (AI SDK 6.x native format)
 // ============================================================================
 
 /**
- * UIMessage 格式的消息（兼容 AI SDK 5.x）
+ * UIMessage 格式的消息（兼容 AI SDK 6.x）
  * 我们的 UIMessage 类型需要转换为 AI SDK 期望的格式
  */
 import type { UIMessage } from '../../shared/ipc.js'
@@ -1020,7 +1005,7 @@ export async function* streamChatWithUIMessages(
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
 ): AsyncGenerator<StreamChunkWithTools, void, unknown> {
   const provider = createProvider(providerId, config)
-  const model = wrapWithDevTools(provider.createModel(config.model))
+  const model = provider.createModel(config.model)
 
   const isReasoning = isReasoningModel(config.model, providerId)
 

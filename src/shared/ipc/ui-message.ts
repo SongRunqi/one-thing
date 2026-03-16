@@ -1,8 +1,8 @@
 /**
  * UIMessage Module
- * UIMessage types (AI SDK 5.x compatible) for IPC communication
+ * UIMessage types (AI SDK 6.x compatible) for IPC communication
  *
- * These types follow the AI SDK 5.x UIMessage structure but are defined
+ * These types follow the AI SDK 6.x UIMessage structure but are defined
  * locally to allow custom extensions (Steps, Error parts) that aren't
  * part of the standard SDK types.
  *
@@ -13,7 +13,7 @@
 import type { Step, MessageAttachment } from './chat.js'
 
 /**
- * Tool Part state machine (matches AI SDK 5.x)
+ * Tool Part state machine (matches AI SDK 6.x)
  */
 export type ToolUIState =
   | 'input-streaming'    // Input is being streamed
@@ -22,7 +22,7 @@ export type ToolUIState =
   | 'output-error'       // Execution failed with error
 
 /**
- * Text Part (matches AI SDK 5.x TextUIPart)
+ * Text Part (matches AI SDK 6.x TextUIPart)
  */
 export interface TextUIPart {
   type: 'text'
@@ -33,7 +33,7 @@ export interface TextUIPart {
 }
 
 /**
- * Reasoning Part (matches AI SDK 5.x ReasoningUIPart)
+ * Reasoning Part (matches AI SDK 6.x ReasoningUIPart)
  */
 export interface ReasoningUIPart {
   type: 'reasoning'
@@ -46,7 +46,7 @@ export interface ReasoningUIPart {
 }
 
 /**
- * File Part (matches AI SDK 5.x FileUIPart)
+ * File Part (matches AI SDK 6.x FileUIPart)
  */
 export interface FileUIPart {
   type: 'file'
@@ -59,7 +59,7 @@ export interface FileUIPart {
 }
 
 /**
- * Tool Part (extends AI SDK 5.x ToolUIPart with custom fields)
+ * Tool Part (extends AI SDK 6.x ToolUIPart with custom fields)
  */
 export interface ToolUIPart {
   /** Type format: 'tool-{toolName}' */
@@ -89,7 +89,7 @@ export interface ToolUIPart {
 }
 
 /**
- * Step Start Part (matches AI SDK 5.x StepStartUIPart)
+ * Step Start Part (matches AI SDK 6.x StepStartUIPart)
  * Used to mark boundaries between multi-step tool calls
  */
 export interface StepStartUIPart {
@@ -121,7 +121,7 @@ export interface ErrorDataUIPart {
 }
 
 /**
- * All Part types union (compatible with AI SDK 5.x)
+ * All Part types union (compatible with AI SDK 6.x)
  */
 export type UIMessagePart =
   | TextUIPart
@@ -161,7 +161,7 @@ export interface MessageMetadata {
 }
 
 /**
- * UIMessage - unified message format (AI SDK 5.x compatible structure)
+ * UIMessage - unified message format (AI SDK 6.x compatible structure)
  */
 export interface UIMessage<METADATA = MessageMetadata> {
   /** Unique message ID */

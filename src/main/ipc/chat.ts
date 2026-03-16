@@ -28,7 +28,6 @@ import { getCustomAgentById } from '../services/custom-agent/index.js'
 import { triggerManager } from '../services/triggers/index.js'
 import { textMemoryUpdateTrigger } from '../services/triggers/text-memory-update.js'
 // Note: contextCompactingTrigger removed - compacting now happens in real-time during tool loop
-// Note: memoryExtractionTrigger replaced with textMemoryUpdateTrigger for text-based memory system
 import { Permission } from '../permission/index.js'
 import { saveMediaImage } from './media.js'
 import * as modelRegistry from '../services/ai/model-registry.js'

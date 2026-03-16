@@ -43,6 +43,12 @@ interface PendingPermissionRequest {
 const pendingPermissionRequests = new Map<string, PendingPermissionRequest>()
 
 /**
+ * Timeout for permission requests (5 minutes)
+ * After this, the request is auto-rejected and cleaned up
+ */
+const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000
+
+/**
  * Respond to a pending permission request
  * Called by IPC handler when user makes a decision
  */
@@ -353,12 +359,27 @@ export const CustomAgentTool = Tool.define(
 
               console.log(`[CustomAgent] Permission required for ${toolCall.toolName}, request ID: ${requestId}`)
 
-              // Create a Promise that will be resolved when user responds
+              // Create a Promise that will be resolved when user responds (with timeout)
               const decision = await new Promise<PermissionDecision>((resolve, reject) => {
+                // Auto-reject after timeout to prevent memory leak
+                const timeoutId = setTimeout(() => {
+                  if (pendingPermissionRequests.has(requestId)) {
+                    pendingPermissionRequests.delete(requestId)
+                    console.warn(`[CustomAgent] Permission request ${requestId} timed out, auto-rejecting`)
+                    resolve('reject')
+                  }
+                }, PERMISSION_TIMEOUT_MS)
+
                 // Store the pending request
                 pendingPermissionRequests.set(requestId, {
-                  resolve,
-                  reject,
+                  resolve: (decision) => {
+                    clearTimeout(timeoutId)
+                    resolve(decision)
+                  },
+                  reject: (error) => {
+                    clearTimeout(timeoutId)
+                    reject(error)
+                  },
                   sessionId: toolCtx.sessionId,
                   messageId: toolCtx.messageId,
                   toolCall,

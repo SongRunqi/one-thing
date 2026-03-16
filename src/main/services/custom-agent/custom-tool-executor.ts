@@ -27,18 +27,20 @@ const DEFAULT_TIMEOUT = 30000
  */
 export function interpolateTemplate(
   template: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  options?: { shellEscape?: boolean }
 ): string {
   return template.replace(/\{\{(\w+)\}\}/g, (match, paramName) => {
     const value = args[paramName]
     if (value === undefined || value === null) {
       return ''
     }
-    // Escape shell special characters for bash commands
-    if (typeof value === 'string') {
-      return value
+    const strValue = typeof value === 'string' ? value : String(value)
+    // Escape shell special characters when interpolating into bash commands
+    if (options?.shellEscape) {
+      return escapeShellArg(strValue)
     }
-    return String(value)
+    return strValue
   })
 }
 
@@ -63,8 +65,8 @@ async function executeBashTool(
 ): Promise<CustomToolResult> {
   const startTime = Date.now()
 
-  // Interpolate command template with args
-  const command = interpolateTemplate(execution.command, args)
+  // Interpolate command template with args (shell-escaped to prevent injection)
+  const command = interpolateTemplate(execution.command, args, { shellEscape: true })
 
   const timeout = execution.timeout ?? DEFAULT_TIMEOUT
 

@@ -2,7 +2,7 @@
  * UIMessage Store
  *
  * Manages UIMessage state for the frontend.
- * This store is compatible with AI SDK 5.x UIMessage format
+ * This store is compatible with AI SDK 6.x UIMessage format
  * and provides a migration path from the old ChatMessage format.
  */
 

@@ -327,7 +327,7 @@ function createZhipuModel(modelId: string, apiKey: string, baseUrl: string): Lan
 
                 if (!delta) continue
 
-                // Handle reasoning content (thinking) - use proper AI SDK v5 types
+                // Handle reasoning content (thinking)
                 if (delta.reasoning_content) {
                   // Emit reasoning-start on first reasoning chunk
                   if (!reasoningStarted) {
@@ -567,10 +567,9 @@ function convertToZhipuMessages(prompt: any[]): ZhipuMessage[] {
             type: 'function' as const,
             function: {
               name: part.toolName,
-              // AI SDK v5 uses 'input' instead of 'args'
-              arguments: typeof (part.input ?? part.args) === 'string'
-                ? (part.input ?? part.args)
-                : JSON.stringify(part.input ?? part.args ?? {}),
+              arguments: typeof part.input === 'string'
+                ? part.input
+                : JSON.stringify(part.input ?? {}),
             },
           }))
         }
@@ -582,12 +581,7 @@ function convertToZhipuMessages(prompt: any[]): ZhipuMessage[] {
       if (Array.isArray(msg.content)) {
         for (const part of msg.content) {
           if (part.type === 'tool-result') {
-            // AI SDK v5 uses 'output' instead of 'result', and wraps it in {type, value}
-            let resultContent = part.output ?? part.result
-            // Extract value from AI SDK wrapper format
-            if (resultContent && typeof resultContent === 'object' && 'value' in resultContent) {
-              resultContent = resultContent.value
-            }
+            const resultContent = part.output
             messages.push({
               role: 'tool',
               content: typeof resultContent === 'string' ? resultContent : JSON.stringify(resultContent),

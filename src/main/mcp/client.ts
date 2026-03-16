@@ -208,7 +208,7 @@ export class MCPClient {
   /**
    * Call a tool
    */
-  async callTool(toolName: string, args: Record<string, any>): Promise<MCPToolCallResult> {
+  async callTool(toolName: string, args: Record<string, any>, options?: { timeoutMs?: number }): Promise<MCPToolCallResult> {
     if (!this.client) {
       return {
         success: false,
@@ -216,13 +216,20 @@ export class MCPClient {
       }
     }
 
+    const timeoutMs = options?.timeoutMs ?? 60000 // Default 60s timeout
+
     try {
       console.log(`[MCP:${this.id}] Calling tool: ${toolName}`, args)
 
-      const result = await this.client.callTool({
+      const callPromise = this.client.callTool({
         name: toolName,
         arguments: args,
       })
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`MCP tool call "${toolName}" timed out after ${timeoutMs / 1000}s`)), timeoutMs)
+      })
+
+      const result = await Promise.race([callPromise, timeoutPromise])
 
       console.log(`[MCP:${this.id}] Tool result:`, result)
 

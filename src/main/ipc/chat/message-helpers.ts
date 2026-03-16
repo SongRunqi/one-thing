@@ -70,7 +70,7 @@ export function buildMessageContent(message: ChatMessage): AIMessageContent {
       contentParts.push({
         type: 'file',
         data: attachment.base64Data,
-        mediaType: attachment.mimeType,  // AI SDK 5.x uses 'mediaType'
+        mediaType: attachment.mimeType,  // AI SDK 6.x uses 'mediaType'
       })
     }
   }

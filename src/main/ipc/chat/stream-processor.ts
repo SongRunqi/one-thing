@@ -17,6 +17,20 @@ import { createIPCEmitter, type IPCEmitter } from './ipc-emitter.js'
  */
 export const activeStreams = new Map<string, AbortController>()
 
+/**
+ * Abort and clean up all active streams.
+ * Called when the BrowserWindow closes to prevent background resource leaks.
+ */
+export function cleanupActiveStreams(): void {
+  if (activeStreams.size > 0) {
+    console.log(`[StreamProcessor] Cleaning up ${activeStreams.size} active stream(s)`)
+    for (const [sessionId, controller] of activeStreams) {
+      controller.abort()
+    }
+    activeStreams.clear()
+  }
+}
+
 // ============================================================
 // MCP Tool Identity Resolution
 // ============================================================
@@ -289,8 +303,9 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
         }
       } catch (e) {
         console.error(`[StreamProcessor] Failed to parse tool args JSON:`, e, buffer.argsText)
-        // Return null to skip this malformed tool call
-        // The full 'tool-call' chunk will handle it with complete args
+        // Skip this malformed tool call — the full 'tool-call' chunk will handle it with complete args
+        toolInputBuffers.delete(toolCallId)
+        return null
       }
 
       // Clean up buffer

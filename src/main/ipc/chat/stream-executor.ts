@@ -73,6 +73,14 @@ export async function executeMessageStream(
     sessionName,
   } = params
 
+  // Abort any existing stream for this session before starting a new one
+  const existingController = activeStreams.get(sessionId)
+  if (existingController) {
+    console.log(`[StreamExecutor] Aborting previous stream for session: ${sessionId}`)
+    existingController.abort()
+    activeStreams.delete(sessionId)
+  }
+
   // Create abort controller if not provided
   const controller = abortController || new AbortController()
   activeStreams.set(sessionId, controller)
