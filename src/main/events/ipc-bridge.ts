@@ -1,37 +1,30 @@
 /**
  * IPC Bridge
  *
- * Subscribes to EventBus and StreamChannel, translating events back to
- * existing IPC channel formats for the renderer. This is the **single exit
- * point** for all renderer IPC — no other code should call sender.send()
- * for streaming events.
+ * Subscribes to EventBus and StreamChannel, translating events to
+ * unified IPC channels for the renderer:
+ * - `session:event` — all SessionEvent envelopes
+ * - `session:stream` — all StreamChunk data
  *
  * Key behaviors:
  * - `safeSend()` guards against window-close (sender.isDestroyed())
- * - Text/reasoning deltas are coalesced in a 16ms buffer before sending
- * - Tool-input-delta is sent immediately (infrequent)
- * - Flush-before-complete: all pending buffers are flushed before
- *   sending stream:complete or stream:error to the renderer
+ * - Text/reasoning deltas are coalesced in a 16ms buffer in StreamChannel,
+ *   but sent as raw chunks via session:stream (renderer handles display)
+ * - Flush-before-complete: all pending stream buffers are flushed before
+ *   the session:event for stream:complete is sent
  */
 
 import type { WebContents } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { SessionEventEnvelope, StreamChunk } from '../../shared/events/index.js'
 import type { Unsubscribe } from './types.js'
-import type { EventBus } from './event-bus.js'
-import type { StreamChannel } from './stream-channel.js'
 import { getEventBus, getStreamChannel } from './index.js'
-
-const COALESCE_MS = 16
 
 /**
  * Per-session state tracked by the IPCBridge while a stream is active.
  */
 interface BridgeSessionState {
   messageId: string
-  textBuffer: string
-  reasoningBuffer: string
-  flushTimer: ReturnType<typeof setTimeout> | null
   unsubStream: Unsubscribe
 }
 
@@ -66,15 +59,12 @@ export class IPCBridge {
   }
 
   /**
-   * Dispose all subscriptions and flush all pending buffers.
+   * Dispose all subscriptions and clean up session state.
    */
   unbind(): void {
-    // Flush all active session buffers
-    for (const [sessionId, state] of this.sessions) {
-      this.flushBuffers(sessionId, state)
-      if (state.unsubStream) {
-        state.unsubStream()
-      }
+    // Clean up all active sessions
+    for (const [, state] of this.sessions) {
+      state.unsubStream()
     }
     this.sessions.clear()
 
@@ -90,10 +80,6 @@ export class IPCBridge {
 
   // ── Safe IPC send ──────────────────────────────
 
-  /**
-   * Send an IPC message, guarding against destroyed WebContents.
-   * This is the single point where sender.send() is called.
-   */
   private safeSend(channel: string, payload: any): void {
     if (!this.sender || this.sender.isDestroyed()) {
       return
@@ -101,7 +87,6 @@ export class IPCBridge {
     try {
       this.sender.send(channel, payload)
     } catch (err) {
-      // WebContents may have been destroyed between check and send
       console.warn('[IPCBridge] Send failed (window likely closed):', err)
     }
   }
@@ -111,93 +96,20 @@ export class IPCBridge {
   private handleSessionEvent(envelope: SessionEventEnvelope): void {
     const { sessionId, event } = envelope
 
+    // Session lifecycle management
     switch (event.type) {
       case 'stream:start':
         this.handleStreamStart(sessionId, event.assistantMessageId)
         break
 
       case 'stream:complete':
-        this.handleStreamComplete(sessionId, event.data)
-        break
-
       case 'stream:error':
-        this.handleStreamError(sessionId, event.data)
-        break
-
       case 'stream:aborted':
-        this.handleStreamAborted(sessionId, event.reason)
-        break
-
-      case 'tool:call':
-        this.safeSend(IPC_CHANNELS.STREAM_CHUNK, {
-          type: 'tool_call',
-          content: '',
-          messageId: this.getMessageId(sessionId),
-          sessionId,
-          toolCall: event.toolCall,
-        })
-        break
-
-      case 'tool:result':
-        this.safeSend(IPC_CHANNELS.STREAM_CHUNK, {
-          type: 'tool_result',
-          content: '',
-          messageId: this.getMessageId(sessionId),
-          sessionId,
-          toolCall: event.toolCall,
-        })
-        break
-
-      case 'tool:input-start':
-        this.safeSend(IPC_CHANNELS.STREAM_CHUNK, {
-          type: 'tool_input_start',
-          content: '',
-          messageId: this.getMessageId(sessionId),
-          sessionId,
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          toolCall: event.toolCall,
-        })
-        break
-
-      case 'content:part':
-        this.safeSend(IPC_CHANNELS.STREAM_CHUNK, {
-          type: 'content_part',
-          content: '',
-          messageId: this.getMessageId(sessionId),
-          sessionId,
-          contentPart: event.part,
-        })
-        break
-
-      case 'content:continuation':
-        this.safeSend(IPC_CHANNELS.STREAM_CHUNK, {
-          type: 'continuation',
-          content: '',
-          messageId: this.getMessageId(sessionId),
-          sessionId,
-        })
-        break
-
-      // step:added, step:updated, context:size-updated, compact:started,
-      // compact:completed, skill:activated — handled via unified session:event channel.
-      // No legacy individual sends needed (migrated in Phase 4b).
-      case 'step:added':
-      case 'step:updated':
-      case 'context:size-updated':
-      case 'compact:started':
-      case 'compact:completed':
-      case 'skill:activated':
-        break
-
-      // message:user-created and message:assistant-created are handled by Session,
-      // not translated to IPC (the renderer tracks these via its own stores)
-      case 'message:user-created':
-      case 'message:assistant-created':
+        this.handleStreamEnd(sessionId)
         break
     }
 
-    // Unified channel: send raw envelope for all events
+    // Send raw envelope via unified channel
     this.safeSend(IPC_CHANNELS.SESSION_EVENT, envelope)
   }
 
@@ -212,139 +124,22 @@ export class IPCBridge {
 
     this.sessions.set(sessionId, {
       messageId,
-      textBuffer: '',
-      reasoningBuffer: '',
-      flushTimer: null,
       unsubStream,
     })
   }
 
-  private handleStreamComplete(sessionId: string, data: any): void {
+  private handleStreamEnd(sessionId: string): void {
     const state = this.sessions.get(sessionId)
     if (state) {
-      // Flush-before-complete: send any pending text/reasoning
-      this.flushBuffers(sessionId, state)
       state.unsubStream()
     }
-
-    this.safeSend(IPC_CHANNELS.STREAM_COMPLETE, {
-      messageId: this.getMessageId(sessionId),
-      sessionId,
-      ...data,
-    })
-
-    this.sessions.delete(sessionId)
-  }
-
-  private handleStreamAborted(sessionId: string, reason?: string): void {
-    const state = this.sessions.get(sessionId)
-    if (state) {
-      this.flushBuffers(sessionId, state)
-      state.unsubStream()
-    }
-
-    // Renderer still expects STREAM_COMPLETE with aborted flag
-    this.safeSend(IPC_CHANNELS.STREAM_COMPLETE, {
-      messageId: this.getMessageId(sessionId),
-      sessionId,
-      aborted: true,
-      ...(reason && { reason }),
-    })
-
-    this.sessions.delete(sessionId)
-  }
-
-  private handleStreamError(sessionId: string, data: any): void {
-    const state = this.sessions.get(sessionId)
-    if (state) {
-      // Flush-before-error: send any pending text/reasoning
-      this.flushBuffers(sessionId, state)
-      state.unsubStream()
-    }
-
-    this.safeSend(IPC_CHANNELS.STREAM_ERROR, {
-      messageId: this.getMessageId(sessionId),
-      sessionId,
-      ...data,
-    })
-
     this.sessions.delete(sessionId)
   }
 
   // ── StreamChannel chunk handling ───────────────
 
   private handleStreamChunk(sessionId: string, chunk: StreamChunk): void {
-    const state = this.sessions.get(sessionId)
-    if (!state) return
-
-    // Unified channel: send raw chunk for all types
+    // Send raw chunk via unified channel
     this.safeSend(IPC_CHANNELS.SESSION_STREAM, { sessionId, chunk })
-
-    switch (chunk.type) {
-      case 'text-delta':
-        state.textBuffer += chunk.text
-        this.scheduleFlush(sessionId, state)
-        break
-
-      case 'reasoning-delta':
-        state.reasoningBuffer += chunk.reasoning
-        this.scheduleFlush(sessionId, state)
-        break
-
-      case 'tool-input-delta':
-        // Send immediately — tool input deltas are infrequent
-        this.safeSend(IPC_CHANNELS.STREAM_CHUNK, {
-          type: 'tool_input_delta',
-          content: '',
-          messageId: state.messageId,
-          sessionId,
-          toolCallId: chunk.toolCallId,
-          argsTextDelta: chunk.argsTextDelta,
-        })
-        break
-    }
-  }
-
-  // ── Coalescing ─────────────────────────────────
-
-  private scheduleFlush(sessionId: string, state: BridgeSessionState): void {
-    if (state.flushTimer !== null) return
-    state.flushTimer = setTimeout(() => {
-      this.flushBuffers(sessionId, state)
-    }, COALESCE_MS)
-  }
-
-  private flushBuffers(sessionId: string, state: BridgeSessionState): void {
-    if (state.flushTimer !== null) {
-      clearTimeout(state.flushTimer)
-      state.flushTimer = null
-    }
-
-    if (state.textBuffer) {
-      this.safeSend(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'text',
-        content: state.textBuffer,
-        messageId: state.messageId,
-        sessionId,
-      })
-      state.textBuffer = ''
-    }
-
-    if (state.reasoningBuffer) {
-      this.safeSend(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'reasoning',
-        content: '',
-        messageId: state.messageId,
-        sessionId,
-        reasoning: state.reasoningBuffer,
-      })
-      state.reasoningBuffer = ''
-    }
-  }
-
-  // ── Helpers ────────────────────────────────────
-
-  private getMessageId(sessionId: string): string {
-    return this.sessions.get(sessionId)?.messageId ?? ''
   }
 }

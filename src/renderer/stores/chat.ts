@@ -30,11 +30,12 @@ interface StreamChunk {
 
 // Stream complete data from IPC
 interface StreamCompleteData {
-  messageId: string
-  text: string
+  messageId?: string
+  text?: string
   reasoning?: string
   sessionId?: string
   sessionName?: string
+  aborted?: boolean
   usage?: {
     inputTokens: number
     outputTokens: number
@@ -105,6 +106,11 @@ export const useChatStore = defineStore('chat', () => {
 
   // Active streams (sessionId -> messageId)
   const activeStreams = ref<Map<string, string>>(new Map())
+
+  /** Resolve messageId: use provided value or fallback to activeStreams lookup */
+  function resolveMessageId(sessionId: string, messageId?: string): string {
+    return (messageId && messageId !== '') ? messageId : (activeStreams.value.get(sessionId) || '')
+  }
 
   // Context compacting state per session
   const sessionCompacting = ref<Map<string, boolean>>(new Map())
@@ -300,9 +306,10 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     const messages = getSessionMessagesRef(sessionId)
-    const messageIndex = messages.findIndex(m => m.id === chunk.messageId)
+    const resolvedMsgId = resolveMessageId(sessionId, chunk.messageId)
+    const messageIndex = messages.findIndex(m => m.id === resolvedMsgId)
     if (messageIndex === -1) {
-      console.warn('[Chat Store] Message not found for chunk:', chunk.messageId)
+      console.warn('[Chat Store] Message not found for chunk:', resolvedMsgId)
       return
     }
 
@@ -559,7 +566,8 @@ export const useChatStore = defineStore('chat', () => {
 
     // Update message
     const messages = getSessionMessagesRef(sessionId)
-    const messageIndex = messages.findIndex(m => m.id === data.messageId)
+    const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
+    const messageIndex = messages.findIndex(m => m.id === resolvedMsgId)
     if (messageIndex !== -1) {
       const message = messages[messageIndex]
 
@@ -573,7 +581,7 @@ export const useChatStore = defineStore('chat', () => {
         // Save contentParts to backend
         if (message.contentParts.length > 0) {
           const plainContentParts = JSON.parse(JSON.stringify(message.contentParts))
-          await window.electronAPI.updateContentParts(sessionId, data.messageId, plainContentParts)
+          await window.electronAPI.updateContentParts(sessionId, resolvedMsgId, plainContentParts)
         }
       }
 
@@ -639,8 +647,9 @@ export const useChatStore = defineStore('chat', () => {
     messages.push(errorMessage)
 
     // Remove the streaming assistant message if it exists
-    if (data.messageId) {
-      const streamingIndex = messages.findIndex(m => m.id === data.messageId)
+    const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
+    if (resolvedMsgId) {
+      const streamingIndex = messages.findIndex(m => m.id === resolvedMsgId)
       if (streamingIndex !== -1) {
         messages.splice(streamingIndex, 1)
       }
