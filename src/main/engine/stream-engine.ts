@@ -285,7 +285,7 @@ export class StreamEngine {
       })
 
       // 9. Emit continuation event
-      this.eventBus?.emit(sessionId, { type: 'content:continuation' })
+      this.eventBus?.emit(sessionId, { type: 'content:continuation', turnIndex: 1 })
         .catch(err => console.error('[StreamEngine] continuation emit error:', err))
 
       // 10. Create AbortController and StreamContext
@@ -335,9 +335,9 @@ export class StreamEngine {
           console.log('[StreamEngine] Resume stream aborted by user')
           processor.finalize()
           this.eventBus?.emit(sessionId, {
-            type: 'stream:complete',
-            data: { sessionName: session.name, aborted: true },
-          }).catch(err => console.error('[StreamEngine] stream:complete emit error:', err))
+            type: 'stream:aborted',
+            reason: 'User cancelled',
+          }).catch(err => console.error('[StreamEngine] stream:aborted emit error:', err))
         } else {
           console.error('[StreamEngine] Resume streaming error:', error)
           store.deleteMessage(sessionId, messageId)

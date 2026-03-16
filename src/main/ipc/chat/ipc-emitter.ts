@@ -49,7 +49,7 @@ export interface IPCEmitter {
   sendContentPart(part: ContentPart): void
 
   /** Send a continuation indicator for multi-turn loops */
-  sendContinuation(): void
+  sendContinuation(turnIndex?: number): void
 
   /** Send tool call status update */
   sendToolCall(toolCall: ToolCall): void
@@ -89,6 +89,9 @@ export interface IPCEmitter {
 
   /** Send stream error event */
   sendStreamError(data: StreamErrorData): void
+
+  /** Send stream aborted event */
+  sendStreamAborted(reason?: string): void
 
   // ========== Skill Events ==========
 

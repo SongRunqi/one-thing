@@ -63,6 +63,7 @@ export async function processImageGenerationStream(
   eventBus?.emit(sessionId, {
     type: 'stream:start',
     assistantMessageId,
+    model,
   }).catch(err => console.error('[ImageStream] stream:start emit error:', err))
 
   // Send a "thinking" message to show progress via StreamChannel

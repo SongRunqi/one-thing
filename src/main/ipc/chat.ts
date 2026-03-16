@@ -127,12 +127,12 @@ export function registerChatHandlers() {
         }
       }
 
-      // Mark message as not streaming and send complete via EventBus
+      // Mark message as not streaming and send aborted via EventBus
       store.updateMessageStreaming(sid, streamingMessage.id, false)
       eventBus?.emit(sid, {
-        type: 'stream:complete',
-        data: { aborted: true },
-      }).catch(err => console.error('[Chat] stream:complete emit error:', err))
+        type: 'stream:aborted',
+        reason: 'User cancelled',
+      }).catch(err => console.error('[Chat] stream:aborted emit error:', err))
     }
 
     const engine = getStreamEngine()

@@ -329,7 +329,7 @@ export async function runStream(
     // Send continuation at the START of each turn (except first) to show waiting indicator
     // This ensures waiting is displayed BEFORE the LLM call starts
     if (currentTurn > 1) {
-      emitter.sendContinuation()
+      emitter.sendContinuation(currentTurn)
     }
 
     // Get model's actual max output tokens and cap user setting
@@ -621,6 +621,7 @@ export async function executeStreamGeneration(
       eventBus.emit(ctx.sessionId, {
         type: 'stream:start',
         assistantMessageId: ctx.assistantMessageId,
+        model: ctx.providerConfig.model,
       }).catch(err => console.error('[ToolLoop] stream:start emit error:', err))
     } catch {
       // Event system not initialized — ignore
@@ -886,10 +887,7 @@ export async function executeStreamGeneration(
     if (isAborted) {
       console.log('[Backend] Stream aborted by user')
       processor.finalize()
-      emitter.sendStreamComplete({
-        sessionName: store.getSession(ctx.sessionId)?.name,
-        aborted: true,
-      })
+      emitter.sendStreamAborted('User cancelled')
     } else {
       console.error('[Backend] Streaming error:', error)
 

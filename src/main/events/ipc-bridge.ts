@@ -124,6 +124,10 @@ export class IPCBridge {
         this.handleStreamError(sessionId, event.data)
         break
 
+      case 'stream:aborted':
+        this.handleStreamAborted(sessionId, event.reason)
+        break
+
       case 'tool:call':
         this.safeSend(IPC_CHANNELS.STREAM_CHUNK, {
           type: 'tool_call',
@@ -258,6 +262,24 @@ export class IPCBridge {
       messageId: this.getMessageId(sessionId),
       sessionId,
       ...data,
+    })
+
+    this.sessions.delete(sessionId)
+  }
+
+  private handleStreamAborted(sessionId: string, reason?: string): void {
+    const state = this.sessions.get(sessionId)
+    if (state) {
+      this.flushBuffers(sessionId, state)
+      state.unsubStream()
+    }
+
+    // Renderer still expects STREAM_COMPLETE with aborted flag
+    this.safeSend(IPC_CHANNELS.STREAM_COMPLETE, {
+      messageId: this.getMessageId(sessionId),
+      sessionId,
+      aborted: true,
+      ...(reason && { reason }),
     })
 
     this.sessions.delete(sessionId)

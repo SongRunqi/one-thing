@@ -16,6 +16,7 @@ import type { StreamCompleteData, StreamErrorData } from '../../main/ipc/chat/ip
 export interface StreamStartEvent {
   type: 'stream:start'
   assistantMessageId: string
+  model?: string
 }
 
 export interface StreamCompleteEvent {
@@ -26,6 +27,11 @@ export interface StreamCompleteEvent {
 export interface StreamErrorEvent {
   type: 'stream:error'
   data: StreamErrorData
+}
+
+export interface StreamAbortedEvent {
+  type: 'stream:aborted'
+  reason?: string
 }
 
 // ── Tool lifecycle ──────────────────────────────
@@ -69,6 +75,7 @@ export interface ContentPartEvent {
 
 export interface ContentContinuationEvent {
   type: 'content:continuation'
+  turnIndex?: number
 }
 
 // ── Context events ──────────────────────────────
@@ -113,6 +120,7 @@ export type SessionEvent =
   | StreamStartEvent
   | StreamCompleteEvent
   | StreamErrorEvent
+  | StreamAbortedEvent
   | ToolCallEvent
   | ToolResultEvent
   | ToolInputStartEvent

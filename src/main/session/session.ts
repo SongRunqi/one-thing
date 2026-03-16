@@ -89,6 +89,10 @@ export class Session {
         this._state.isStreaming = false
         break
 
+      case 'stream:aborted':
+        this._state.isStreaming = false
+        break
+
       case 'message:user-created':
         // Phase 1: just track event count, no state mutation needed
         break
@@ -105,6 +109,9 @@ export class Session {
       case 'content:part':
       case 'content:continuation':
       case 'context:size-updated':
+      case 'compact:started':
+      case 'compact:completed':
+      case 'skill:activated':
         // Phase 1: these events are tracked for replay but don't
         // update the validation-relevant state fields
         break

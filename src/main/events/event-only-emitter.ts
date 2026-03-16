@@ -106,8 +106,8 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
       emitSafe({ type: 'content:part', part })
     },
 
-    sendContinuation() {
-      emitSafe({ type: 'content:continuation' })
+    sendContinuation(turnIndex?) {
+      emitSafe({ type: 'content:continuation', turnIndex })
     },
 
     // ── Step → Store + EventBus ─────────────────
@@ -131,6 +131,10 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
 
     sendStreamError(data) {
       emitSafe({ type: 'stream:error', data })
+    },
+
+    sendStreamAborted(reason) {
+      emitSafe({ type: 'stream:aborted', reason })
     },
 
     // ── Context → EventBus ──────────────────────
