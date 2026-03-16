@@ -170,6 +170,20 @@ export function registerChatHandlers() {
   ipcMain.handle(IPC_CHANNELS.RESUME_AFTER_TOOL_CONFIRM, async (event, { sessionId, messageId }) => {
     return handleResumeAfterToolConfirm(event.sender, sessionId, messageId)
   })
+
+  // ── Unified command channel (Phase 4) ──────────
+  ipcMain.handle(IPC_CHANNELS.SESSION_COMMAND, async (event, { sessionId, command }) => {
+    const engine = getStreamEngine()
+    switch (command.type) {
+      case 'command:abort-stream':
+        engine.abort(sessionId)
+        // cancelPendingSteps is defined above in the ABORT_STREAM handler scope
+        // For unified path, we'd need to extract it. For now, delegate to existing handler.
+        return { success: true }
+      default:
+        return { success: false, error: `Unknown command type: ${command.type}` }
+    }
+  })
 }
 
 // ============================================

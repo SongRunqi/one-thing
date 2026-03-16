@@ -230,6 +230,9 @@ export class IPCBridge {
       case 'message:assistant-created':
         break
     }
+
+    // Unified channel: send raw envelope for all events
+    this.safeSend(IPC_CHANNELS.SESSION_EVENT, envelope)
   }
 
   // ── Stream lifecycle ───────────────────────────
@@ -307,6 +310,9 @@ export class IPCBridge {
   private handleStreamChunk(sessionId: string, chunk: StreamChunk): void {
     const state = this.sessions.get(sessionId)
     if (!state) return
+
+    // Unified channel: send raw chunk for all types
+    this.safeSend(IPC_CHANNELS.SESSION_STREAM, { sessionId, chunk })
 
     switch (chunk.type) {
       case 'text-delta':

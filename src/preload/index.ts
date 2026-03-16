@@ -85,6 +85,23 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.UI_MESSAGE_STREAM, listener)
   },
 
+  // ── Unified event-driven channels (Phase 4) ──────
+  onSessionEvent: (callback: (envelope: any) => void) => {
+    const listener = (_event: any, envelope: any) => callback(envelope)
+    ipcRenderer.on(IPC_CHANNELS.SESSION_EVENT, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SESSION_EVENT, listener)
+  },
+
+  onSessionStream: (callback: (data: { sessionId: string; chunk: any }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.SESSION_STREAM, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SESSION_STREAM, listener)
+  },
+
+  emitCommand: (sessionId: string, command: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_COMMAND, { sessionId, command }),
+
+  // ── Legacy streaming methods ────────────────────
   abortStream: (sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.ABORT_STREAM, { sessionId }),
 

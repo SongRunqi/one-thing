@@ -434,6 +434,12 @@ export interface ElectronAPI {
   cancelTool: (toolCallId: string) => Promise<{ success: boolean }>
   updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolCall>) => Promise<{ success: boolean }>
   updateContentParts: (sessionId: string, messageId: string, contentParts: ContentPart[]) => Promise<{ success: boolean }>
+  // Unified event-driven channels (Phase 4)
+  onSessionEvent: (callback: (envelope: any) => void) => () => void
+  onSessionStream: (callback: (data: { sessionId: string; chunk: any }) => void) => () => void
+  emitCommand: (sessionId: string, command: any) => Promise<{ success: boolean; error?: string }>
+
+  // Legacy streaming control
   abortStream: (sessionId?: string) => Promise<{ success: boolean }>
   getActiveStreams: () => Promise<{ success: boolean; streams?: string[] }>
   resumeAfterToolConfirm: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>

@@ -248,4 +248,9 @@ export const IPC_CHANNELS = {
   PLUGINS_UPDATE_CONFIG: 'plugins:update-config',
   PLUGINS_GET_DIRECTORIES: 'plugins:get-directories',
   PLUGINS_OPEN_DIRECTORY: 'plugins:open-directory',
+
+  // Unified event-driven channels (Phase 4)
+  SESSION_EVENT: 'session:event',
+  SESSION_STREAM: 'session:stream',
+  SESSION_COMMAND: 'session:command',
 } as const
