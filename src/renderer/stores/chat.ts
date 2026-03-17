@@ -688,7 +688,8 @@ export const useChatStore = defineStore('chat', () => {
     const { sessionId, messageId, step } = data
 
     const messages = getSessionMessagesRef(sessionId)
-    const message = messages.find(m => m.id === messageId)
+    const resolvedMsgId = resolveMessageId(sessionId, messageId)
+    const message = messages.find(m => m.id === resolvedMsgId)
     if (!message) return
 
     // Initialize steps array if needed
@@ -769,7 +770,8 @@ export const useChatStore = defineStore('chat', () => {
     const { sessionId, messageId, stepId, updates } = data
 
     const messages = getSessionMessagesRef(sessionId)
-    const message = messages.find(m => m.id === messageId)
+    const resolvedMsgId = resolveMessageId(sessionId, messageId)
+    const message = messages.find(m => m.id === resolvedMsgId)
     if (!message?.steps) return
 
     // First try top-level steps
@@ -812,7 +814,8 @@ export const useChatStore = defineStore('chat', () => {
     const { sessionId, messageId, skillName } = data
 
     const messages = getSessionMessagesRef(sessionId)
-    const message = messages.find(m => m.id === messageId)
+    const resolvedMsgId = resolveMessageId(sessionId, messageId)
+    const message = messages.find(m => m.id === resolvedMsgId)
     if (message) {
       message.skillUsed = skillName
       setSessionMessages(sessionId, [...messages])
