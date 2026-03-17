@@ -308,7 +308,7 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
           newContent,
           assistantMessageId,
           sessionName,
-        } as any).catch(err => console.error('[Chat] command:edit-and-resend emit error:', err))
+        }).catch(err => console.error('[Chat] command:edit-and-resend emit error:', err))
       } catch { /* EventBus not initialized */ }
     })
 
@@ -560,7 +560,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
           attachments,
           assistantMessageId,
           sessionName,
-        } as any).catch(err => console.error('[Chat] command:send-message emit error:', err))
+        }).catch(err => console.error('[Chat] command:send-message emit error:', err))
       } catch { /* EventBus not initialized */ }
     })
 
@@ -611,7 +611,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
         getEventBus().emit(sessionId, {
           type: 'command:resume-after-confirm',
           messageId,
-        } as any).catch(err => console.error('[Chat] command:resume-after-confirm emit error:', err))
+        }).catch(err => console.error('[Chat] command:resume-after-confirm emit error:', err))
       } catch { /* EventBus not initialized */ }
     })
 

@@ -12,7 +12,7 @@
 
 import type { WebContents } from 'electron'
 import type { ChatMessage } from '../../shared/ipc.js'
-import type { SendMessageCommand, EditAndResendCommand, ResumeAfterConfirmCommand } from '../../shared/events/session-commands.js'
+import type { SendMessageCommand, EditAndResendCommand, ResumeAfterConfirmCommand, SessionCommand } from '../../shared/events/session-commands.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { ToolChatMessage } from '../providers/index.js'
 import { Permission } from '../permission/index.js'
@@ -65,22 +65,19 @@ export class StreamEngine {
   private subscribeToCommands(eventBus: EventBus): void {
     // Subscribe to command events across all sessions
     this.unsubs.push(
-      eventBus.onAnySession('command:send-message' as any, (envelope) => {
+      eventBus.onAnySession('command:send-message', (envelope) => {
         if (!this.sender) return
-        const { sessionId } = envelope
-        this.handleSendMessage(sessionId, envelope.event as any, this.sender)
+        this.handleSendMessage(envelope.sessionId, envelope.event as SendMessageCommand, this.sender)
           .catch(err => console.error('[StreamEngine] command:send-message error:', err))
       }),
-      eventBus.onAnySession('command:edit-and-resend' as any, (envelope) => {
+      eventBus.onAnySession('command:edit-and-resend', (envelope) => {
         if (!this.sender) return
-        const { sessionId } = envelope
-        this.handleEditAndResend(sessionId, envelope.event as any, this.sender)
+        this.handleEditAndResend(envelope.sessionId, envelope.event as EditAndResendCommand, this.sender)
           .catch(err => console.error('[StreamEngine] command:edit-and-resend error:', err))
       }),
-      eventBus.onAnySession('command:resume-after-confirm' as any, (envelope) => {
+      eventBus.onAnySession('command:resume-after-confirm', (envelope) => {
         if (!this.sender) return
-        const { sessionId } = envelope
-        this.handleResumeAfterConfirm(sessionId, envelope.event as any, this.sender)
+        this.handleResumeAfterConfirm(envelope.sessionId, envelope.event as ResumeAfterConfirmCommand, this.sender)
           .catch(err => console.error('[StreamEngine] command:resume-after-confirm error:', err))
       }),
     )

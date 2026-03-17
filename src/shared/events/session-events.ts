@@ -10,6 +10,7 @@
 
 import type { Step, ToolCall, ContentPart } from '../ipc.js'
 import type { StreamCompleteData, StreamErrorData } from '../../main/ipc/chat/ipc-emitter.js'
+import type { SessionCommand } from './session-commands.js'
 
 // ── Stream lifecycle ────────────────────────────
 
@@ -199,3 +200,4 @@ export type SessionEvent =
   | MessageUserCreatedEvent
   | MessageAssistantCreatedEvent
   | MessageUpdatedEvent
+  | SessionCommand
