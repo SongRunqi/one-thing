@@ -627,6 +627,7 @@ export async function executeStreamGeneration(
       const eventBus = getEventBus()
       eventBus.emit(ctx.sessionId, {
         type: 'stream:start',
+        messageId: ctx.assistantMessageId,
         assistantMessageId: ctx.assistantMessageId,
         model: ctx.providerConfig.model,
       }).catch(err => console.error('[ToolLoop] stream:start emit error:', err))

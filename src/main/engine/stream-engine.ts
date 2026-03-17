@@ -45,10 +45,45 @@ export class StreamEngine {
   /** Active AbortControllers keyed by sessionId */
   private activeStreams = new Map<string, AbortController>()
   private eventBus: EventBus | null = null
+  private sender: WebContents | null = null
+  private unsubs: Array<() => void> = []
 
-  /** Set the EventBus reference (called during initialization) */
+  /** Set the EventBus reference and subscribe to command events */
   setEventBus(eventBus: EventBus): void {
     this.eventBus = eventBus
+    this.subscribeToCommands(eventBus)
+  }
+
+  /** Bind to a BrowserWindow's WebContents (called after window creation) */
+  bind(sender: WebContents): void {
+    this.sender = sender
+    sender.on('destroyed', () => {
+      this.sender = null
+    })
+  }
+
+  private subscribeToCommands(eventBus: EventBus): void {
+    // Subscribe to command events across all sessions
+    this.unsubs.push(
+      eventBus.onAnySession('command:send-message' as any, (envelope) => {
+        if (!this.sender) return
+        const { sessionId } = envelope
+        this.handleSendMessage(sessionId, envelope.event as any, this.sender)
+          .catch(err => console.error('[StreamEngine] command:send-message error:', err))
+      }),
+      eventBus.onAnySession('command:edit-and-resend' as any, (envelope) => {
+        if (!this.sender) return
+        const { sessionId } = envelope
+        this.handleEditAndResend(sessionId, envelope.event as any, this.sender)
+          .catch(err => console.error('[StreamEngine] command:edit-and-resend error:', err))
+      }),
+      eventBus.onAnySession('command:resume-after-confirm' as any, (envelope) => {
+        if (!this.sender) return
+        const { sessionId } = envelope
+        this.handleResumeAfterConfirm(sessionId, envelope.event as any, this.sender)
+          .catch(err => console.error('[StreamEngine] command:resume-after-confirm error:', err))
+      }),
+    )
   }
 
   // ── Command Handlers ───────────────────────────
@@ -426,6 +461,9 @@ export class StreamEngine {
   /** Shut down the engine */
   shutdown(): void {
     this.abortAll()
+    for (const unsub of this.unsubs) unsub()
+    this.unsubs = []
+    this.sender = null
     console.log('[StreamEngine] Shut down')
   }
 

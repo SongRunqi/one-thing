@@ -13,7 +13,7 @@
 import type { WebContents } from 'electron'
 import { EventBus } from './event-bus.js'
 import { StreamChannel } from './stream-channel.js'
-import { IPCBridge } from './ipc-bridge.js'
+import { IPCBridge } from '../bridges/ipc-bridge.js'
 
 let eventBus: EventBus | null = null
 let streamChannel: StreamChannel | null = null
@@ -108,4 +108,4 @@ export function shutdownEventSystem(): void {
 export { EventBus } from './event-bus.js'
 export { StreamChannel } from './stream-channel.js'
 export { RingBuffer } from './ring-buffer.js'
-export { IPCBridge } from './ipc-bridge.js'
+export { IPCBridge } from '../bridges/ipc-bridge.js'

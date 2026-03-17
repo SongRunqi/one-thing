@@ -299,18 +299,17 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
       sessionName,
     }
 
-    // Start streaming via StreamEngine (fire-and-forget)
-    const engine = getStreamEngine()
+    // Emit command to EventBus — StreamEngine subscribes and drives streaming
     process.nextTick(() => {
-      engine.handleEditAndResend(sessionId, {
-        type: 'command:edit-and-resend',
-        messageId,
-        newContent,
-        assistantMessageId,
-        sessionName,
-      }, sender).catch(err => {
-        console.error('[Chat] StreamEngine.handleEditAndResend error:', err)
-      })
+      try {
+        getEventBus().emit(sessionId, {
+          type: 'command:edit-and-resend',
+          messageId,
+          newContent,
+          assistantMessageId,
+          sessionName,
+        } as any).catch(err => console.error('[Chat] command:edit-and-resend emit error:', err))
+      } catch { /* EventBus not initialized */ }
     })
 
     return initialResponse
@@ -552,19 +551,17 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       sessionName,
     }
 
-    // Start streaming via StreamEngine (fire-and-forget, async)
-    // Provider resolution, history building, and streaming all happen inside StreamEngine
-    const engine = getStreamEngine()
+    // Emit command to EventBus — StreamEngine subscribes and drives streaming
     process.nextTick(() => {
-      engine.handleSendMessage(sessionId, {
-        type: 'command:send-message',
-        content: messageContent,
-        attachments,
-        assistantMessageId,
-        sessionName,
-      }, sender).catch(err => {
-        console.error('[Chat] StreamEngine.handleSendMessage error:', err)
-      })
+      try {
+        getEventBus().emit(sessionId, {
+          type: 'command:send-message',
+          content: messageContent,
+          attachments,
+          assistantMessageId,
+          sessionName,
+        } as any).catch(err => console.error('[Chat] command:send-message emit error:', err))
+      } catch { /* EventBus not initialized */ }
     })
 
     return initialResponse
@@ -608,14 +605,14 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     }
 
     // Delegate to StreamEngine (fire-and-forget)
-    const engine = getStreamEngine()
+    // Emit command to EventBus — StreamEngine subscribes and drives streaming
     process.nextTick(() => {
-      engine.handleResumeAfterConfirm(sessionId, {
-        type: 'command:resume-after-confirm',
-        messageId,
-      }, sender).catch(err => {
-        console.error('[Chat] StreamEngine.handleResumeAfterConfirm error:', err)
-      })
+      try {
+        getEventBus().emit(sessionId, {
+          type: 'command:resume-after-confirm',
+          messageId,
+        } as any).catch(err => console.error('[Chat] command:resume-after-confirm emit error:', err))
+      } catch { /* EventBus not initialized */ }
     })
 
     return { success: true }

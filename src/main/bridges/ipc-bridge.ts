@@ -17,8 +17,8 @@
 import type { WebContents } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { SessionEventEnvelope, StreamChunk } from '../../shared/events/index.js'
-import type { Unsubscribe } from './types.js'
-import { getEventBus, getStreamChannel } from './index.js'
+import type { Unsubscribe } from '../events/types.js'
+import { getEventBus, getStreamChannel } from '../events/index.js'
 
 /**
  * Per-session state tracked by the IPCBridge while a stream is active.

@@ -113,8 +113,14 @@ export class Session {
       case 'compact:completed':
       case 'stream:params-resolving':
       case 'skill:activated':
-        // Phase 1: these events are tracked for replay but don't
-        // update the validation-relevant state fields
+      case 'permission:request':
+      case 'permission:timeout':
+      case 'tool:executing':
+      case 'tool:metadata':
+      case 'session:renamed':
+      case 'message:updated':
+        // These events are tracked for replay but don't
+        // update the validation-relevant state fields yet
         break
     }
   }

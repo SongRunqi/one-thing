@@ -15,7 +15,8 @@ import type { StreamCompleteData, StreamErrorData } from '../../main/ipc/chat/ip
 
 export interface StreamStartEvent {
   type: 'stream:start'
-  assistantMessageId: string
+  messageId: string
+  assistantMessageId: string  // alias for messageId (backward compat)
   model?: string
 }
 
@@ -115,6 +116,43 @@ export interface SkillActivatedEvent {
   skillName: string
 }
 
+// ── Permission events ───────────────────────────
+
+export interface PermissionRequestEvent {
+  type: 'permission:request'
+  requestId: string
+  toolCallId: string
+  permissionType: string
+  metadata: Record<string, unknown>
+  timeoutMs?: number
+}
+
+export interface PermissionTimeoutEvent {
+  type: 'permission:timeout'
+  requestId: string
+}
+
+// ── Tool lifecycle (fine-grained) ───────────────
+
+export interface ToolExecutingEvent {
+  type: 'tool:executing'
+  toolCallId: string
+  title: string
+}
+
+export interface ToolMetadataEvent {
+  type: 'tool:metadata'
+  toolCallId: string
+  metadata: Record<string, unknown>
+}
+
+// ── Session events ──────────────────────────────
+
+export interface SessionRenamedEvent {
+  type: 'session:renamed'
+  name: string
+}
+
 // ── Message events ──────────────────────────────
 
 export interface MessageUserCreatedEvent {
@@ -126,6 +164,12 @@ export interface MessageUserCreatedEvent {
 export interface MessageAssistantCreatedEvent {
   type: 'message:assistant-created'
   messageId: string
+}
+
+export interface MessageUpdatedEvent {
+  type: 'message:updated'
+  messageId: string
+  updates: Record<string, unknown>
 }
 
 // ── Union ───────────────────────────────────────
@@ -147,5 +191,11 @@ export type SessionEvent =
   | CompactCompletedEvent
   | StreamParamsResolvingEvent
   | SkillActivatedEvent
+  | PermissionRequestEvent
+  | PermissionTimeoutEvent
+  | ToolExecutingEvent
+  | ToolMetadataEvent
+  | SessionRenamedEvent
   | MessageUserCreatedEvent
   | MessageAssistantCreatedEvent
+  | MessageUpdatedEvent

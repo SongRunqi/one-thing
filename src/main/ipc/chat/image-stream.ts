@@ -62,6 +62,7 @@ export async function processImageGenerationStream(
   // Emit stream:start so IPCBridge can track this session's messageId
   eventBus?.emit(sessionId, {
     type: 'stream:start',
+    messageId: assistantMessageId,
     assistantMessageId,
     model,
   }).catch(err => console.error('[ImageStream] stream:start emit error:', err))

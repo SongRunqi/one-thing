@@ -74,6 +74,8 @@ app.on('ready', async () => {
 
   // Initialize IPCBridge — the single exit point for all renderer IPC
   initializeIPCBridge(mainWindow.webContents)
+  // Bind StreamEngine to the window's WebContents for command handling
+  getStreamEngine().bind(mainWindow.webContents)
 
   // Abort all active streams when the window closes to prevent background resource leaks
   mainWindow.on('closed', () => {
@@ -108,6 +110,7 @@ app.on('activate', () => {
   if (mainWindow === null) {
     mainWindow = createWindow()
     initializeIPCBridge(mainWindow.webContents)
+    getStreamEngine().bind(mainWindow.webContents)
     mainWindow.on('closed', () => {
       shutdownIPCBridge()
       getStreamEngine().abortAll()

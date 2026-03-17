@@ -27,8 +27,9 @@ export interface EditAndResendCommand {
   sessionName?: string
 }
 
-export interface AbortStreamCommand {
-  type: 'command:abort-stream'
+export interface AbortCommand {
+  type: 'command:abort'
+  reason?: string
 }
 
 export interface ConfirmToolCommand {
@@ -56,7 +57,7 @@ export interface RetryMessageCommand {
 export type SessionCommand =
   | SendMessageCommand
   | EditAndResendCommand
-  | AbortStreamCommand
+  | AbortCommand
   | ConfirmToolCommand
   | ResumeAfterConfirmCommand
   | PermissionRespondCommand
