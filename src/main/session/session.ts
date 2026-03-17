@@ -111,6 +111,7 @@ export class Session {
       case 'context:size-updated':
       case 'compact:started':
       case 'compact:completed':
+      case 'stream:params-resolving':
       case 'skill:activated':
         // Phase 1: these events are tracked for replay but don't
         // update the validation-relevant state fields

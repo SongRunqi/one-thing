@@ -391,19 +391,34 @@ export interface PluginMetadata {
 }
 
 /**
- * Plugin function signature
+ * Plugin function signature (V1 — legacy hook-based)
  * Plugin is a function that receives input and returns hooks
  */
 export type PluginFunction = (input: PluginInput) => Promise<Hooks>
 
 /**
+ * Cleanup function returned by V2 plugin init
+ */
+export type PluginCleanup = () => Promise<void>
+
+/**
+ * V2 Plugin function signature (EventBus-based)
+ * Plugin receives input + PluginEventAPI, returns a cleanup function
+ */
+export type PluginFunctionV2 = (input: PluginInput, events: import('../events/plugin-api.js').PluginEventAPI) => Promise<PluginCleanup>
+
+/**
  * Complete plugin definition
+ * Supports both V1 (hook-based) and V2 (EventBus-based) formats.
+ * V2 plugins have an `initV2` function; V1 plugins have `init`.
  */
 export interface PluginDefinition {
   /** Plugin metadata */
   meta: PluginMetadata
-  /** Plugin initialization function */
+  /** V1 initialization function (returns hooks) */
   init: PluginFunction
+  /** V2 initialization function (uses PluginEventAPI) */
+  initV2?: PluginFunctionV2
 }
 
 /**
@@ -439,7 +454,7 @@ export interface LoadedPlugin {
   definition: PluginDefinition
   /** Plugin configuration */
   config: PluginConfig
-  /** Registered hooks */
+  /** Registered hooks (V1 plugins) */
   hooks: Hooks
   /** Load status */
   status: 'loaded' | 'error' | 'disabled'
@@ -447,6 +462,10 @@ export interface LoadedPlugin {
   error?: string
   /** Load timestamp */
   loadedAt?: number
+  /** V2 cleanup function (if initV2 was used) */
+  cleanup?: PluginCleanup
+  /** V2 PluginEventAPI instance (for dispose on unload) */
+  eventAPI?: import('../events/plugin-api.js').PluginEventAPIImpl
 }
 
 // ============================================

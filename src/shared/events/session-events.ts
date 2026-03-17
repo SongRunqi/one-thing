@@ -94,6 +94,20 @@ export interface CompactCompletedEvent {
   data: { success: boolean; error?: string; summary?: string }
 }
 
+// ── Params events ───────────────────────────────
+
+export interface StreamParamsResolvingEvent {
+  type: 'stream:params-resolving'
+  messageId: string
+  params: {
+    providerId: string
+    model: string
+    temperature: number
+    maxTokens: number
+    topP?: number
+  }
+}
+
 // ── Skill events ────────────────────────────────
 
 export interface SkillActivatedEvent {
@@ -131,6 +145,7 @@ export type SessionEvent =
   | ContextSizeUpdatedEvent
   | CompactStartedEvent
   | CompactCompletedEvent
+  | StreamParamsResolvingEvent
   | SkillActivatedEvent
   | MessageUserCreatedEvent
   | MessageAssistantCreatedEvent

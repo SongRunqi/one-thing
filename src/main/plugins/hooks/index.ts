@@ -1,7 +1,8 @@
 /**
- * Hook Manager
+ * @deprecated Use PluginEventAPI (EventBus-based) for new plugins.
+ * Kept for V1 plugin backward compatibility.
  *
- * Central hub for registering and executing plugin hooks.
+ * Hook Manager — Central hub for registering and executing plugin hooks.
  * Implements sequential execution with input/output chaining for modifier hooks,
  * and parallel execution for event hooks.
  */

@@ -13,7 +13,6 @@ import type { StreamContext } from './stream-processor.js'
 import { checkToolPermission } from '../../agents/builtin-agents.js'
 import { type IPCEmitter } from './ipc-emitter.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
-import { hookManager } from '../../plugins/hooks/index.js'
 
 /**
  * Detect if a bash command is reading a skill file and extract skill name
@@ -286,22 +285,21 @@ export async function executeToolAndUpdate(
     return
   }
 
-  // Execute tool:pre hooks (can modify args or abort)
+  // Emit tool:call for plugin interception (can modify args or suppress)
   let finalArgs = { ...toolCallData.args }
-  if (hookManager.hasHooks('tool:pre')) {
-    const preResult = await hookManager.executeChain('tool:pre', {
-      toolId: toolCall.id,
-      toolName: toolCallData.toolName,
-      args: toolCallData.args,
-      sessionId: ctx.sessionId,
-      messageId: ctx.assistantMessageId,
+  try {
+    const { getEventBus } = await import('../../events/index.js')
+    const eventBus = getEventBus()
+    const emitResult = await eventBus.emit(ctx.sessionId, {
+      type: 'tool:call',
+      toolCall: { ...toolCall, arguments: finalArgs },
     })
-
-    if (preResult.abort) {
-      console.log(`[Backend] Tool aborted by plugin: ${preResult.abortReason}`)
+    if (!emitResult.envelope) {
+      // Interceptor suppressed — treat as plugin abort
+      console.log('[Backend] Tool suppressed by plugin interceptor')
       toolCall.endTime = Date.now()
       toolCall.status = 'failed'
-      toolCall.error = preResult.abortReason || 'Aborted by plugin'
+      toolCall.error = 'Blocked by plugin'
 
       emitter.sendStepUpdated(step.id, {
         status: 'failed',
@@ -313,9 +311,13 @@ export async function executeToolAndUpdate(
       emitter.sendToolResult(toolCall)
       return
     }
-
-    const preResultValue = preResult.value as { args: Record<string, unknown> }
-    finalArgs = preResultValue.args
+    // Interceptors may have modified the tool call args
+    const interceptedEvent = emitResult.envelope.event as any
+    if (interceptedEvent.toolCall?.arguments) {
+      finalArgs = interceptedEvent.toolCall.arguments
+    }
+  } catch {
+    // Event system not initialized — use original args
   }
 
   // Execute tool directly (no LLM overhead)
@@ -386,29 +388,7 @@ export async function executeToolAndUpdate(
 
   toolCall.endTime = Date.now()
 
-  // Execute tool:post hooks (can modify result)
-  if (hookManager.hasHooks('tool:post') && !result.requiresConfirmation) {
-    const postResult = await hookManager.executeChain('tool:post', {
-      toolId: toolCall.id,
-      toolName: toolCallData.toolName,
-      args: finalArgs,
-      result: {
-        success: result.success,
-        data: result.data,
-        error: result.error,
-      },
-      sessionId: ctx.sessionId,
-      messageId: ctx.assistantMessageId,
-    })
-
-    // Apply modifications from plugin
-    const postResultValue = postResult.value as { result?: { success: boolean; data?: unknown; error?: string } }
-    if (postResultValue.result) {
-      result.success = postResultValue.result.success
-      result.data = postResultValue.result.data
-      result.error = postResultValue.result.error
-    }
-  }
+  // tool:result is emitted below via emitter.sendToolResult() — plugins observe via EventBus
 
   if (result.requiresConfirmation) {
     toolCall.status = 'pending'

@@ -1,8 +1,7 @@
 /**
- * Global Event Types (Stub — Phase 2+)
+ * Global Event Types
  *
- * Events not scoped to any session. Phase 1 defines only
- * `app:initialized` as a proof-of-concept.
+ * Events not scoped to any session.
  */
 
 export interface AppInitializedEvent {
@@ -10,5 +9,11 @@ export interface AppInitializedEvent {
   timestamp: number
 }
 
+export interface AppQuittingEvent {
+  type: 'app:quitting'
+  timestamp: number
+}
+
 export type GlobalEvent =
   | AppInitializedEvent
+  | AppQuittingEvent

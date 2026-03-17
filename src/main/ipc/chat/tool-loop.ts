@@ -5,7 +5,6 @@
 
 import * as store from '../../store.js'
 import type { SkillDefinition, ToolCall, ChatMessage } from '../../../shared/ipc.js'
-import { hookManager } from '../../plugins/hooks/index.js'
 import type { AIMessageContent, ToolChatMessage } from '../../providers/index.js'
 import {
   streamChatResponseWithTools,
@@ -342,23 +341,31 @@ export async function runStream(
     let temperature = ctx.settings.ai.temperature
     let model = ctx.providerConfig.model
 
-    // Execute params:pre hooks (can modify model, temperature, maxTokens)
-    if (hookManager.hasHooks('params:pre')) {
-      const paramsResult = await hookManager.executeChain('params:pre', {
-        providerId: ctx.providerId,
-        model,
-        temperature,
-        maxTokens: effectiveMaxTokens,
-        topP: (ctx.settings.ai as unknown as Record<string, unknown>).topP as number | undefined,
+    // Emit stream:params-resolving (plugins can intercept to modify params)
+    try {
+      const eventBus = getEventBus()
+      const paramsResult = await eventBus.emit(ctx.sessionId, {
+        type: 'stream:params-resolving',
+        messageId: ctx.assistantMessageId,
+        params: {
+          providerId: ctx.providerId,
+          model,
+          temperature,
+          maxTokens: effectiveMaxTokens,
+          topP: (ctx.settings.ai as unknown as Record<string, unknown>).topP as number | undefined,
+        },
       })
-
-      // Apply modifications from plugin
-      const paramsValue = paramsResult.value as { model?: string; temperature?: number; maxTokens?: number }
-      if (paramsValue) {
-        model = paramsValue.model ?? model
-        temperature = paramsValue.temperature ?? temperature
-        effectiveMaxTokens = paramsValue.maxTokens ?? effectiveMaxTokens
+      // Apply modifications from interceptors
+      if (paramsResult.envelope) {
+        const finalParams = (paramsResult.envelope.event as any).params
+        if (finalParams) {
+          model = finalParams.model ?? model
+          temperature = finalParams.temperature ?? temperature
+          effectiveMaxTokens = finalParams.maxTokens ?? effectiveMaxTokens
+        }
       }
+    } catch {
+      // Event system not initialized — use original params
     }
 
     // ============================================================
@@ -843,19 +850,7 @@ export async function executeStreamGeneration(
       if (lastUserMessageObj && processor.accumulatedContent) {
         const lastUserMessageText = getTextFromContent(lastUserMessageObj.content)
 
-        // Execute message:post hooks (event type, fire-and-forget)
-        if (hookManager.hasHooks('message:post')) {
-          hookManager.executeAll('message:post', {
-            sessionId: ctx.sessionId,
-            userMessage: lastUserMessageText,
-            assistantMessage: processor.accumulatedContent,
-            usage: ctx.accumulatedUsage ? {
-              inputTokens: ctx.accumulatedUsage.inputTokens,
-              outputTokens: ctx.accumulatedUsage.outputTokens,
-              totalTokens: ctx.accumulatedUsage.totalTokens,
-            } : undefined,
-          }).catch(err => console.error('[Backend] message:post hook failed:', err))
-        }
+        // message:post hook removed — plugins observe stream:complete via EventBus
 
         const updatedSessionForTriggers = store.getSession(ctx.sessionId)
         if (updatedSessionForTriggers) {

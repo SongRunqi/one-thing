@@ -18,6 +18,8 @@ import type {
 } from '../types.js'
 import { hookManager } from '../hooks/index.js'
 import { createPluginInput } from '../context/index.js'
+import { getEventBus, getStreamChannel } from '../../events/index.js'
+import { PluginEventAPIImpl } from '../../events/plugin-api.js'
 import { loadNpmPlugin, uninstallNpmPlugin } from './npm-loader.js'
 import { loadLocalPlugin, discoverLocalPlugins } from './local-loader.js'
 import { validatePlugin, validateHooks, PluginValidationError } from './validation.js'
@@ -140,8 +142,10 @@ export class PluginLoader {
 
     this.initialized = true
 
-    // Execute app:init hooks
-    await hookManager.executeAll('app:init', undefined)
+    // Emit app:initialized global event (replaces old app:init hook)
+    try {
+      getEventBus().emitGlobal({ type: 'app:initialized', timestamp: Date.now() })
+    } catch { /* EventBus not initialized */ }
 
     console.log(`[PluginLoader] Initialized with ${this.loadedPlugins.size} plugins`)
   }
@@ -225,22 +229,28 @@ export class PluginLoader {
       // Create plugin input
       const input = createPluginInput(config)
 
-      // Initialize plugin to get hooks
-      const hooks = await definition.init(input)
+      let loadedPlugin: LoadedPlugin
 
-      // Validate hooks
-      validateHooks(hooks, definition.meta.id)
-
-      const loadedPlugin: LoadedPlugin = {
-        definition,
-        config,
-        hooks,
-        status: 'loaded',
-        loadedAt: Date.now(),
+      if (definition.initV2) {
+        // V2 plugin: EventBus-based
+        const eventAPI = new PluginEventAPIImpl(getEventBus(), getStreamChannel(), config.id)
+        const cleanup = await definition.initV2(input, eventAPI)
+        loadedPlugin = {
+          definition, config, hooks: {},
+          status: 'loaded', loadedAt: Date.now(),
+          cleanup, eventAPI,
+        }
+        console.log(`[PluginLoader] V2 plugin initialized: ${config.id}`)
+      } else {
+        // V1 plugin: legacy hook-based
+        const hooks = await definition.init(input)
+        validateHooks(hooks, definition.meta.id)
+        loadedPlugin = {
+          definition, config, hooks,
+          status: 'loaded', loadedAt: Date.now(),
+        }
+        hookManager.registerPlugin(loadedPlugin)
       }
-
-      // Register hooks with the hook manager
-      hookManager.registerPlugin(loadedPlugin)
 
       this.loadedPlugins.set(config.id, loadedPlugin)
       console.log(`[PluginLoader] Plugin loaded successfully: ${config.id}`)
@@ -331,8 +341,13 @@ export class PluginLoader {
     }
 
     try {
-      // Unregister hooks
-      hookManager.unregisterPlugin(pluginId)
+      // Unregister: V2 (dispose eventAPI + cleanup) or V1 (hookManager)
+      if (plugin.eventAPI) {
+        plugin.eventAPI.dispose()
+        if (plugin.cleanup) await plugin.cleanup()
+      } else {
+        hookManager.unregisterPlugin(pluginId)
+      }
 
       // Remove from NPM cache if needed
       if (plugin.config.source === 'npm' && plugin.config.packageName) {
@@ -385,13 +400,20 @@ export class PluginLoader {
       return { success: false, error: `Plugin ${pluginId} not found` }
     }
 
-    // Unregister hooks
-    hookManager.unregisterPlugin(pluginId)
+    // Unregister: V2 or V1
+    if (plugin.eventAPI) {
+      plugin.eventAPI.dispose()
+      if (plugin.cleanup) await plugin.cleanup()
+    } else {
+      hookManager.unregisterPlugin(pluginId)
+    }
 
     // Update status
     plugin.config.enabled = false
     plugin.status = 'disabled'
     plugin.hooks = {}
+    plugin.cleanup = undefined
+    plugin.eventAPI = undefined
     savePluginConfig(plugin.config)
 
     console.log(`[PluginLoader] Plugin disabled: ${pluginId}`)
@@ -407,8 +429,13 @@ export class PluginLoader {
       return { success: false, error: `Plugin ${pluginId} not found` }
     }
 
-    // Unregister existing hooks
-    hookManager.unregisterPlugin(pluginId)
+    // Unregister existing: V2 or V1
+    if (plugin.eventAPI) {
+      plugin.eventAPI.dispose()
+      if (plugin.cleanup) await plugin.cleanup()
+    } else {
+      hookManager.unregisterPlugin(pluginId)
+    }
 
     // Remove and reload
     this.loadedPlugins.delete(pluginId)
@@ -465,12 +492,23 @@ export class PluginLoader {
    * Shutdown all plugins
    */
   async shutdown(): Promise<void> {
-    // Execute app:quit hooks
-    await hookManager.executeAll('app:quit', undefined)
+    // Emit app:quitting global event (replaces old app:quit hook)
+    try {
+      getEventBus().emitGlobal({ type: 'app:quitting', timestamp: Date.now() })
+    } catch { /* EventBus not initialized */ }
 
-    // Unregister all hooks
-    for (const pluginId of this.loadedPlugins.keys()) {
-      hookManager.unregisterPlugin(pluginId)
+    // Unregister all plugins: V2 (dispose) or V1 (hookManager)
+    for (const [pluginId, plugin] of this.loadedPlugins) {
+      if (plugin.eventAPI) {
+        plugin.eventAPI.dispose()
+        if (plugin.cleanup) {
+          try { await plugin.cleanup() } catch (err) {
+            console.error(`[PluginLoader] Cleanup error for plugin ${pluginId}:`, err)
+          }
+        }
+      } else {
+        hookManager.unregisterPlugin(pluginId)
+      }
     }
 
     this.loadedPlugins.clear()
