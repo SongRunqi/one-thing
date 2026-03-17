@@ -69,5 +69,5 @@ export function setupValidation(
         `(${state.eventCount} events, ${state.chunkCount} chunks, ${eventContent.length} chars)`
       )
     }
-  })
+  }, 'Validation')
 }

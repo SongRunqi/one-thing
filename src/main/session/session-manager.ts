@@ -31,8 +31,12 @@ export class SessionManager {
         const session = new Session(sessionId)
         session.attach(eventBus, streamChannel)
         this.sessions.set(sessionId, session)
+        // Manually apply the stream:start event that triggered auto-vivification,
+        // since the Session's per-session onAny subscription was registered AFTER
+        // per-session handlers already ran in the current fanOut cycle.
+        session.applyEvent(envelope)
       }
-    })
+    }, 'SessionManager')
     this.unsubscribers.push(unsub)
   }
 

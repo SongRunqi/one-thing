@@ -81,13 +81,13 @@ export class PluginEventAPIImpl implements PluginEventAPI {
     eventType: T,
     handler: TypedObserveHandler<T>
   ): Unsubscribe {
-    const unsub = this.eventBus.onAnySession(eventType, handler)
+    const unsub = this.eventBus.onAnySession(eventType, handler, `Plugin:${this.pluginId}`)
     this.unsubs.push(unsub)
     return unsub
   }
 
   onAny(handler: ObserveHandler): Unsubscribe {
-    const unsub = this.eventBus.onAnySessionAny(handler)
+    const unsub = this.eventBus.onAnySessionAny(handler, `Plugin:${this.pluginId}`)
     this.unsubs.push(unsub)
     return unsub
   }

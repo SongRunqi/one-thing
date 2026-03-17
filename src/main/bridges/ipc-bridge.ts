@@ -48,7 +48,7 @@ export class IPCBridge {
     // Subscribe to all session events across all sessions
     this.unsubEventBus = eventBus.onAnySessionAny((envelope) => {
       this.handleSessionEvent(envelope)
-    })
+    }, 'IPCBridge')
 
     // Auto-cleanup when the BrowserWindow is destroyed
     sender.on('destroyed', () => {

@@ -41,7 +41,7 @@ export class Session {
     // Subscribe to all events for this session
     const unsubEvents = eventBus.onAny(sessionId, (envelope) => {
       this.applyEvent(envelope)
-    })
+    }, 'Session')
     this.unsubscribers.push(unsubEvents)
 
     // Subscribe to stream chunks for this session

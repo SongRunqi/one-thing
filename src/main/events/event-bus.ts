@@ -65,6 +65,17 @@ export class EventBus {
   /** Default ring buffer capacity per session */
   private readonly bufferCapacity: number
 
+  /** Handler → label mapping for logging */
+  private handlerLabels = new WeakMap<Function, string>()
+
+  /** High-frequency event types — skip detailed fan-out logging */
+  private static HIGH_FREQ_TYPES = new Set([
+    'content:part',
+    'content:continuation',
+    'step:updated',
+    'tool:metadata',
+  ])
+
   constructor(bufferCapacity = 1000) {
     this.bufferCapacity = bufferCapacity
   }
@@ -110,6 +121,11 @@ export class EventBus {
     }
     buffer.push(envelope)
 
+    // Logging: event produced
+    if (!EventBus.HIGH_FREQ_TYPES.has(finalEvent.type)) {
+      console.log(`[EventBus] emit session=${sessionId.slice(0, 8)} seq=${seq} type=${finalEvent.type}`)
+    }
+
     // Phase 3: Fan-out
     this.fanOut(sessionId, envelope)
 
@@ -120,12 +136,16 @@ export class EventBus {
 
   /**
    * Subscribe to a specific event type for a specific session.
+   * @param label Optional human-readable name for logging (e.g. 'StreamEngine')
    */
   on<T extends SessionEvent['type']>(
     sessionId: string,
     eventType: T,
-    handler: TypedObserveHandler<T>
+    handler: TypedObserveHandler<T>,
+    label?: string
   ): Unsubscribe {
+    if (label) this.handlerLabels.set(handler, label)
+
     let sessionMap = this.typedHandlers.get(sessionId)
     if (!sessionMap) {
       sessionMap = new Map()
@@ -138,7 +158,10 @@ export class EventBus {
     }
     handlers.add(handler as ObserveHandler)
 
+    console.log(`[EventBus] subscribe label=${label || 'anonymous'} type=${eventType} session=${sessionId.slice(0, 8)}`)
+
     return () => {
+      console.log(`[EventBus] unsubscribe label=${label || 'anonymous'} type=${eventType} session=${sessionId.slice(0, 8)}`)
       handlers!.delete(handler as ObserveHandler)
       if (handlers!.size === 0) sessionMap!.delete(eventType)
       if (sessionMap!.size === 0) this.typedHandlers.delete(sessionId)
@@ -149,8 +172,11 @@ export class EventBus {
 
   /**
    * Subscribe to all event types for a specific session.
+   * @param label Optional human-readable name for logging
    */
-  onAny(sessionId: string, handler: ObserveHandler): Unsubscribe {
+  onAny(sessionId: string, handler: ObserveHandler, label?: string): Unsubscribe {
+    if (label) this.handlerLabels.set(handler, label)
+
     let handlers = this.wildcardHandlers.get(sessionId)
     if (!handlers) {
       handlers = new Set()
@@ -158,7 +184,10 @@ export class EventBus {
     }
     handlers.add(handler)
 
+    console.log(`[EventBus] subscribe label=${label || 'anonymous'} scope=sessionAny session=${sessionId.slice(0, 8)}`)
+
     return () => {
+      console.log(`[EventBus] unsubscribe label=${label || 'anonymous'} scope=sessionAny session=${sessionId.slice(0, 8)}`)
       handlers!.delete(handler)
       if (handlers!.size === 0) this.wildcardHandlers.delete(sessionId)
     }
@@ -169,11 +198,15 @@ export class EventBus {
   /**
    * Subscribe to a specific event type across ALL sessions.
    * Used by SessionManager to auto-vivify sessions on stream:start.
+   * @param label Optional human-readable name for logging
    */
   onAnySession<T extends SessionEvent['type']>(
     eventType: T,
-    handler: TypedObserveHandler<T>
+    handler: TypedObserveHandler<T>,
+    label?: string
   ): Unsubscribe {
+    if (label) this.handlerLabels.set(handler, label)
+
     let handlers = this.anySessionTypedHandlers.get(eventType)
     if (!handlers) {
       handlers = new Set()
@@ -181,7 +214,10 @@ export class EventBus {
     }
     handlers.add(handler as ObserveHandler)
 
+    console.log(`[EventBus] subscribe label=${label || 'anonymous'} type=${eventType} scope=anySession`)
+
     return () => {
+      console.log(`[EventBus] unsubscribe label=${label || 'anonymous'} type=${eventType} scope=anySession`)
       handlers!.delete(handler as ObserveHandler)
       if (handlers!.size === 0) this.anySessionTypedHandlers.delete(eventType)
     }
@@ -191,10 +227,17 @@ export class EventBus {
 
   /**
    * Subscribe to ALL events across ALL sessions. Use sparingly.
+   * @param label Optional human-readable name for logging
    */
-  onAnySessionAny(handler: ObserveHandler): Unsubscribe {
+  onAnySessionAny(handler: ObserveHandler, label?: string): Unsubscribe {
+    if (label) this.handlerLabels.set(handler, label)
+
     this.anySessionWildcardHandlers.add(handler)
+
+    console.log(`[EventBus] subscribe label=${label || 'anonymous'} scope=anySessionAny`)
+
     return () => {
+      console.log(`[EventBus] unsubscribe label=${label || 'anonymous'} scope=anySessionAny`)
       this.anySessionWildcardHandlers.delete(handler)
     }
   }
@@ -248,6 +291,8 @@ export class EventBus {
       timestamp: Date.now(),
       event,
     }
+
+    console.log(`[EventBus] emitGlobal seq=${this.globalSequence} type=${event.type}`)
 
     const handlers = this.globalHandlers.get(event.type)
     if (handlers) {
@@ -303,6 +348,7 @@ export class EventBus {
 
   private fanOut(sessionId: string, envelope: SessionEventEnvelope): void {
     const eventType = envelope.event.type
+    const isHighFreq = EventBus.HIGH_FREQ_TYPES.has(eventType)
 
     // 1. Per-session typed handlers
     const sessionMap = this.typedHandlers.get(sessionId)
@@ -310,6 +356,10 @@ export class EventBus {
       const handlers = sessionMap.get(eventType)
       if (handlers) {
         for (const handler of handlers) {
+          if (!isHighFreq) {
+            const label = this.handlerLabels.get(handler) || 'anonymous'
+            console.log(`[EventBus]   → ${label} (on)`)
+          }
           try { handler(envelope) } catch (err) {
             console.error('[EventBus] Handler error:', err)
           }
@@ -321,6 +371,10 @@ export class EventBus {
     const wildcards = this.wildcardHandlers.get(sessionId)
     if (wildcards) {
       for (const handler of wildcards) {
+        if (!isHighFreq) {
+          const label = this.handlerLabels.get(handler) || 'anonymous'
+          console.log(`[EventBus]   → ${label} (onAny)`)
+        }
         try { handler(envelope) } catch (err) {
           console.error('[EventBus] Wildcard handler error:', err)
         }
@@ -331,6 +385,10 @@ export class EventBus {
     const anyTyped = this.anySessionTypedHandlers.get(eventType)
     if (anyTyped) {
       for (const handler of anyTyped) {
+        if (!isHighFreq) {
+          const label = this.handlerLabels.get(handler) || 'anonymous'
+          console.log(`[EventBus]   → ${label} (onAnySession)`)
+        }
         try { handler(envelope) } catch (err) {
           console.error('[EventBus] AnySession handler error:', err)
         }
@@ -339,6 +397,10 @@ export class EventBus {
 
     // 4. Global session-wildcard handlers (onAnySessionAny)
     for (const handler of this.anySessionWildcardHandlers) {
+      if (!isHighFreq) {
+        const label = this.handlerLabels.get(handler) || 'anonymous'
+        console.log(`[EventBus]   → ${label} (onAnySessionAny)`)
+      }
       try { handler(envelope) } catch (err) {
         console.error('[EventBus] AnySessionAny handler error:', err)
       }
