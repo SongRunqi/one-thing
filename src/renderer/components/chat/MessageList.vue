@@ -545,7 +545,6 @@ function handleScroll() {
 }
 
 // Track permission request cleanup function
-let cleanupPermissionListener: (() => void) | null = null
 let cleanupCustomAgentPermissionListener: (() => void) | null = null
 
 // Get the first pending permission request (tool call requiring confirmation)
@@ -623,77 +622,8 @@ usePermissionShortcuts(
   }
 )
 
-// Handle incoming permission requests from backend
-function handlePermissionRequest(info: {
-  id: string
-  type: string
-  pattern?: string | string[]
-  sessionId: string
-  messageId: string
-  callId?: string
-  title: string
-  metadata: Record<string, unknown>
-  createdAt: number
-}) {
-  console.log('[Frontend] Received permission request:', info)
-
-  // Use effectiveSessionId (from props or global) instead of just global currentSession
-  // This ensures each panel only handles its own session's permission requests
-  const panelSessionId = effectiveSessionId.value
-  if (!panelSessionId || panelSessionId !== info.sessionId) {
-    console.log('[Frontend] Permission request for different session, ignoring. Expected:', panelSessionId, 'Got:', info.sessionId)
-    return
-  }
-
-  // Find the message and tool call that needs confirmation
-  // Use props.messages (from useChatSession composable) instead of chatStore.messages
-  const message = props.messages.find(m => m.id === info.messageId)
-  if (!message) {
-    console.log('[Frontend] Message not found for permission request, messageId:', info.messageId)
-    console.log('[Frontend] Available messages:', props.messages.map(m => m.id))
-    return
-  }
-
-  // Find the tool call by callId or by matching command in metadata
-  let toolCall = message.toolCalls?.find(tc => tc.id === info.callId)
-  if (!toolCall && info.metadata.command) {
-    // Try to find by command match
-    toolCall = message.toolCalls?.find(tc =>
-      tc.arguments?.command === info.metadata.command
-    )
-  }
-
-  if (toolCall) {
-    // Store permission ID on tool call for later response
-    (toolCall as any).permissionId = info.id
-    toolCall.requiresConfirmation = true
-    toolCall.status = 'pending'
-
-    // Update corresponding step
-    const step = message.steps?.find(s => s.toolCallId === toolCall!.id)
-    if (step) {
-      step.status = 'awaiting-confirmation'
-      // Store metadata from permission request (contains diff for edit tool)
-      // This ensures diff is available even if STEP_UPDATED hasn't propagated yet
-      if (info.metadata && (info.metadata.diff || info.metadata.filePath)) {
-        step.result = JSON.stringify(info.metadata)
-      }
-      if (step.toolCall) {
-        (step.toolCall as any).permissionId = info.id
-        step.toolCall.requiresConfirmation = true
-        step.toolCall.status = 'pending'
-      }
-      // Force reactivity
-      if (message.steps) {
-        message.steps = [...message.steps]
-      }
-    }
-
-    console.log('[Frontend] Updated tool call with permission request:', toolCall.id)
-  } else {
-    console.log('[Frontend] No matching tool call found for permission request')
-  }
-}
+// handlePermissionRequest is now in the chat store (called by IPC Hub)
+// The store's handlePermissionRequest() updates messages reactively.
 
 // Handle incoming CustomAgent permission requests from backend
 // CustomAgent has nested steps that need permission (e.g., bash commands within a CustomAgent)
@@ -793,8 +723,8 @@ onMounted(() => {
   }
   nextTick(() => scheduleNavMarkerUpdate())
 
-  // Listen for permission requests from backend
-  cleanupPermissionListener = window.electronAPI.onPermissionRequest(handlePermissionRequest)
+  // Permission requests now arrive via EventBus → IPC Hub → chat store
+  // (no need for a separate listener here)
 
   // Listen for CustomAgent permission requests from backend
   cleanupCustomAgentPermissionListener = window.electronAPI.onCustomAgentPermissionRequest(handleCustomAgentPermissionRequest)
@@ -818,11 +748,6 @@ onUnmounted(() => {
   if (navResizeObserver) {
     navResizeObserver.disconnect()
     navResizeObserver = null
-  }
-  // Cleanup permission listener
-  if (cleanupPermissionListener) {
-    cleanupPermissionListener()
-    cleanupPermissionListener = null
   }
   // Cleanup CustomAgent permission listener
   if (cleanupCustomAgentPermissionListener) {
@@ -852,9 +777,19 @@ watch(
       const response = await window.electronAPI.getPendingPermissions(newSessionId)
       if (response.success && response.pending && response.pending.length > 0) {
         console.log('[Frontend] Loading pending permissions for session:', newSessionId, response.pending.length)
-        // Apply each pending permission to the UI
+        // Apply each pending permission to the UI via the store
         for (const info of response.pending) {
-          handlePermissionRequest(info)
+          chatStore.handlePermissionRequest({
+            sessionId: info.sessionId,
+            requestId: info.id,
+            messageId: info.messageId,
+            callId: info.callId,
+            permissionType: info.type,
+            title: info.title,
+            pattern: info.pattern,
+            metadata: info.metadata,
+            canRespond: (info.targetChannel || 'ipc') === 'ipc',
+          })
         }
       }
     } catch (error) {
@@ -1078,13 +1013,13 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
   // Check if there's a pending permission request for this tool call
   const permissionId = (toolCall as any).permissionId
   if (permissionId) {
-    // Use Permission system to respond
+    // Use unified command channel to respond (EventBus → Permission validates channel)
     console.log(`[Frontend] Responding to permission ${permissionId} with ${response}`)
     try {
-      await window.electronAPI.respondToPermission({
-        sessionId: currentSession.id,
-        permissionId,
-        response,
+      await window.electronAPI.emitCommand(currentSession.id, {
+        type: 'command:permission-respond',
+        requestId: permissionId,
+        decision: response,
       })
       // The backend will handle execution and resume - just update UI state
       if (tc) {
@@ -1299,13 +1234,13 @@ async function handleRejectTool(toolCall: any, rejectReasonArg?: string) {
   // Check if there's a pending permission request for this tool call
   const permissionId = (toolCall as any).permissionId
   if (permissionId) {
-    // Use Permission system to respond with reject
+    // Use unified command channel to reject (EventBus → Permission validates channel)
     console.log(`[Frontend] Rejecting permission ${permissionId}`, rejectReasonArg ? `Reason: ${rejectReasonArg}` : '')
     try {
-      await window.electronAPI.respondToPermission({
-        sessionId: currentSession.id,
-        permissionId,
-        response: 'reject',
+      await window.electronAPI.emitCommand(currentSession.id, {
+        type: 'command:permission-respond',
+        requestId: permissionId,
+        decision: 'reject',
         rejectReason: rejectReasonArg,
       })
     } catch (error) {

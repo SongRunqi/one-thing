@@ -2,6 +2,10 @@
  * Permission IPC Handlers
  *
  * Handles IPC communication for permission-related operations.
+ *
+ * Note: Permission responses now flow through the unified command channel
+ * (SESSION_COMMAND → EventBus → Permission subscription) with channel
+ * affinity validation. The PERMISSION_RESPOND handler is removed.
  */
 
 import { ipcMain } from 'electron'
@@ -12,7 +16,13 @@ import { IPC_CHANNELS } from '../../shared/ipc.js'
  * Register all permission-related IPC handlers
  */
 export function registerPermissionHandlers(): void {
-  // Respond to a permission request
+  // Note: PERMISSION_RESPOND removed — responses now go through
+  // SESSION_COMMAND → EventBus → Permission.initialize() subscription
+  // which validates channel affinity before accepting.
+
+  // Legacy fallback: keep PERMISSION_RESPOND for backward compatibility
+  // during migration. Routes through Permission.respond() directly
+  // (bypasses channel validation).
   ipcMain.handle(IPC_CHANNELS.PERMISSION_RESPOND, async (_event, request: {
     sessionId: string
     permissionId: string
@@ -31,7 +41,7 @@ export function registerPermissionHandlers(): void {
     }
   })
 
-  // Get pending permissions for a session
+  // Get pending permissions for a session (used for session switch recovery)
   ipcMain.handle(IPC_CHANNELS.PERMISSION_GET_PENDING, async (_event, sessionId: string) => {
     try {
       const pending = Permission.getPending(sessionId)

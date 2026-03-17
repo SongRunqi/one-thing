@@ -12,8 +12,9 @@ import { initializeTextMemory } from './services/memory-text/index.js'
 import { getMediaImagesDir } from './stores/paths.js'
 import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './services/prompt/index.js'
 import { initializePlugins, shutdownPlugins } from './plugins/index.js'
-import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge } from './events/index.js'
+import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge, getEventBus } from './events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
+import { Permission } from './permission/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -45,6 +46,12 @@ app.on('ready', async () => {
   initializeEventSystem()
   initializeSessionLayer()
   initializeStreamEngine()
+
+  // Initialize Permission system with EventBus and channel resolver
+  Permission.initialize(
+    getEventBus(),
+    (sessionId) => getStreamEngine().getChannel(sessionId),
+  )
 
   // Clean up interrupted sessions from previous app instance
   sanitizeAllSessionsOnStartup()
@@ -130,8 +137,9 @@ app.on('before-quit', async () => {
   // Shutdown MCP
   await shutdownMCP()
 
-  // Shutdown engine, session layer, and event system (reverse init order)
+  // Shutdown engine, permission, session layer, and event system (reverse init order)
   shutdownStreamEngine()
+  Permission.shutdown()
   shutdownSessionLayer()
   shutdownEventSystem()
 })

@@ -1316,6 +1316,75 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /**
+   * Handle a permission:request event from EventBus (via IPC Hub).
+   *
+   * Updates the matching tool call and step in the session's messages
+   * to show the permission confirmation UI.
+   */
+  function handlePermissionRequest(data: {
+    sessionId: string
+    requestId: string
+    messageId: string
+    callId?: string
+    permissionType: string
+    title: string
+    pattern?: string | string[]
+    metadata: Record<string, unknown>
+    /** Whether this channel can respond (true for targetChannel match) */
+    canRespond: boolean
+  }) {
+    const messages = getSessionMessagesRef(data.sessionId)
+    const message = messages.find(m => m.id === data.messageId)
+    if (!message) {
+      console.log('[Chat Store] Message not found for permission request, messageId:', data.messageId)
+      return
+    }
+
+    // Find the tool call by callId or by matching command in metadata
+    let toolCall = message.toolCalls?.find(tc => tc.id === data.callId)
+    if (!toolCall && data.metadata.command) {
+      toolCall = message.toolCalls?.find(tc =>
+        tc.arguments?.command === data.metadata.command
+      )
+    }
+
+    if (toolCall) {
+      // Store permission ID and canRespond flag on tool call
+      ;(toolCall as any).permissionId = data.requestId
+      ;(toolCall as any).canRespond = data.canRespond
+      toolCall.requiresConfirmation = true
+      toolCall.status = 'pending'
+
+      // Update corresponding step
+      const step = message.steps?.find(s => s.toolCallId === toolCall!.id)
+      if (step) {
+        step.status = 'awaiting-confirmation'
+        // Store metadata from permission request (contains diff for edit tool)
+        if (data.metadata && (data.metadata.diff || data.metadata.filePath)) {
+          step.result = JSON.stringify(data.metadata)
+        }
+        if (step.toolCall) {
+          ;(step.toolCall as any).permissionId = data.requestId
+          ;(step.toolCall as any).canRespond = data.canRespond
+          step.toolCall.requiresConfirmation = true
+          step.toolCall.status = 'pending'
+        }
+        // Force reactivity
+        if (message.steps) {
+          message.steps = [...message.steps]
+        }
+      }
+
+      // Trigger reactivity for the session messages
+      triggerRef(sessionMessages)
+
+      console.log('[Chat Store] Updated tool call with permission request:', toolCall.id, 'canRespond:', data.canRespond)
+    } else {
+      console.log('[Chat Store] No matching tool call found for permission request')
+    }
+  }
+
   return {
     // Per-session state maps
     sessionMessages,
@@ -1352,6 +1421,7 @@ export const useChatStore = defineStore('chat', () => {
     handleContextSizeUpdated,
     handleContextCompactStarted,
     handleContextCompactCompleted,
+    handlePermissionRequest,
 
     // Actions
     loadMessages,

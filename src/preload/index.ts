@@ -698,10 +698,16 @@ const electronAPI = {
   },
 
   // Permission methods
+  // Note: respondToPermission removed — responses now go through emitCommand()
+  // with type: 'command:permission-respond' (EventBus channel affinity validation)
+  // Note: onPermissionRequest removed — permission requests now arrive via
+  // session:event channel as 'permission:request' events
+
+  /** @deprecated Use emitCommand with command:permission-respond instead */
   respondToPermission: (request: {
     sessionId: string
     permissionId: string
-    response: 'once' | 'session' | 'workspace' | 'reject' | 'always'  // 'always' for legacy compatibility
+    response: 'once' | 'session' | 'workspace' | 'reject' | 'always'
     rejectReason?: string
   }) => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_RESPOND, request),
 
@@ -710,24 +716,6 @@ const electronAPI = {
 
   clearSessionPermissions: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_CLEAR_SESSION, sessionId),
-
-  onPermissionRequest: (callback: (info: {
-    id: string
-    type: string
-    pattern?: string | string[]
-    sessionId: string
-    messageId: string
-    callId?: string
-    title: string
-    metadata: Record<string, unknown>
-    createdAt: number
-    /** Working directory for workspace-level permissions */
-    workingDirectory?: string
-  }) => void) => {
-    const listener = (_event: any, info: any) => callback(info)
-    ipcRenderer.on(IPC_CHANNELS.PERMISSION_REQUEST, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.PERMISSION_REQUEST, listener)
-  },
 
   // OAuth methods
   oauthStart: (providerId: string) =>

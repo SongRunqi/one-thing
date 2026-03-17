@@ -180,6 +180,14 @@ export function registerChatHandlers() {
         // cancelPendingSteps is defined above in the ABORT_STREAM handler scope
         // For unified path, we'd need to extract it. For now, delegate to existing handler.
         return { success: true }
+
+      case 'command:permission-respond':
+        // Emit to EventBus with channel='ipc' — Permission subscription validates & processes
+        try {
+          getEventBus().emit(sessionId, { ...command, channel: 'ipc' })
+        } catch { /* EventBus not initialized */ }
+        return { success: true }
+
       default:
         return { success: false, error: `Unknown command type: ${command.type}` }
     }
@@ -304,6 +312,7 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
       try {
         getEventBus().emit(sessionId, {
           type: 'command:edit-and-resend',
+          channel: 'ipc',
           messageId,
           newContent,
           assistantMessageId,
@@ -556,6 +565,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       try {
         getEventBus().emit(sessionId, {
           type: 'command:send-message',
+          channel: 'ipc',
           content: messageContent,
           attachments,
           assistantMessageId,

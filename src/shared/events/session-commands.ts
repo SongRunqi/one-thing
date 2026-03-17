@@ -11,6 +11,8 @@
 
 export interface SendMessageCommand {
   type: 'command:send-message'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
   content: string
   attachments?: unknown[]
   /** Pre-resolved by IPC handler (sync phase) */
@@ -20,6 +22,8 @@ export interface SendMessageCommand {
 
 export interface EditAndResendCommand {
   type: 'command:edit-and-resend'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
   messageId: string
   newContent: string
   /** Pre-resolved by IPC handler (sync phase) */
@@ -45,8 +49,12 @@ export interface ResumeAfterConfirmCommand {
 
 export interface PermissionRespondCommand {
   type: 'command:permission-respond'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
   requestId: string
-  decision: 'once' | 'session' | 'always' | 'reject'
+  decision: 'once' | 'session' | 'workspace' | 'always' | 'reject'
+  /** Optional reason for rejection */
+  rejectReason?: string
 }
 
 export interface RetryMessageCommand {

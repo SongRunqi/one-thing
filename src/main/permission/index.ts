@@ -7,7 +7,7 @@
  * Flow:
  * 1. Tool calls Permission.ask() before dangerous operations
  * 2. System checks if pattern is already approved (workspace → session)
- * 3. If not, emits event and waits for user response
+ * 3. If not, emits event via EventBus and waits for user response
  * 4. User can respond with: once, session, workspace, reject
  *
  * Permission Levels:
@@ -15,12 +15,20 @@
  * - session: Allow for the duration of this session (本会话)
  * - workspace: Permanently allow in this workspace (本工作区)
  * - reject: Deny the operation with optional reason
+ *
+ * Channel Affinity:
+ * - Each permission request is bound to a targetChannel (the channel
+ *   that initiated the current stream for this session)
+ * - Only responses from the matching channel are accepted
+ * - Other channels can observe but not respond
  */
 
-import { BrowserWindow } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
-import { IPC_CHANNELS } from '../../shared/ipc.js'
 import * as WorkspacePermissions from './workspace-permissions.js'
+
+// Lazy imports to avoid circular dependencies
+type EventBus = import('../events/event-bus.js').EventBus
+type PermissionRespondCommand = import('../../shared/events/session-commands.js').PermissionRespondCommand
 
 export namespace Permission {
   /**
@@ -38,6 +46,8 @@ export namespace Permission {
     createdAt: number
     /** Working directory for workspace-level permissions */
     workingDirectory?: string
+    /** The channel this permission request targets */
+    targetChannel?: string
   }
 
   /**
@@ -66,6 +76,15 @@ export namespace Permission {
 
   // Session permission state
   const sessions = new Map<string, SessionState>()
+
+  // EventBus reference (set via initialize())
+  let eventBus: EventBus | null = null
+
+  // Channel resolver: given a sessionId, returns the current channel
+  let channelResolver: ((sessionId: string) => string) | null = null
+
+  // Subscription cleanup
+  let unsubPermissionRespond: (() => void) | null = null
 
   function getSession(sessionId: string): SessionState {
     let session = sessions.get(sessionId)
@@ -112,6 +131,73 @@ export namespace Permission {
   }
 
   /**
+   * Initialize the Permission system with EventBus.
+   *
+   * - Subscribes to `command:permission-respond` events
+   * - Validates channel affinity before accepting responses
+   *
+   * @param bus - The EventBus instance
+   * @param resolver - Function that returns the current channel for a session
+   */
+  export function initialize(
+    bus: EventBus,
+    resolver: (sessionId: string) => string,
+  ): void {
+    eventBus = bus
+    channelResolver = resolver
+
+    // Subscribe to permission-respond commands from all sessions
+    unsubPermissionRespond = bus.onAnySession(
+      'command:permission-respond',
+      (envelope) => {
+        const cmd = envelope.event as PermissionRespondCommand
+        const sessionId = envelope.sessionId
+        const responseChannel = cmd.channel || 'ipc'
+
+        // Validate channel affinity
+        const session = getSession(sessionId)
+        const pending = session.pending.get(cmd.requestId)
+        if (!pending) {
+          console.warn('[Permission] No pending request for respond:', cmd.requestId)
+          return
+        }
+
+        const expectedChannel = pending.info.targetChannel || 'ipc'
+        if (expectedChannel !== responseChannel) {
+          console.warn(
+            `[Permission] Response from wrong channel: expected '${expectedChannel}', got '${responseChannel}'. Ignoring.`,
+          )
+          return
+        }
+
+        // Channel matches — process the response
+        respond({
+          sessionId,
+          permissionId: cmd.requestId,
+          response: cmd.decision,
+          rejectReason: cmd.rejectReason,
+        })
+      },
+      'Permission',
+    )
+
+    console.log('[Permission] Initialized with EventBus')
+  }
+
+  /**
+   * Shut down the Permission system (unsubscribe from EventBus).
+   */
+  export function shutdown(): void {
+    if (unsubPermissionRespond) {
+      unsubPermissionRespond()
+      unsubPermissionRespond = null
+    }
+    eventBus = null
+    channelResolver = null
+    console.log('[Permission] Shut down')
+  }
+
+  /**
    * Get all pending permission requests for a session
    */
   export function getPending(sessionId: string): Info[] {
@@ -152,6 +238,11 @@ export namespace Permission {
       return
     }
 
+    // Resolve the target channel for this session
+    const targetChannel = channelResolver
+      ? channelResolver(input.sessionId)
+      : 'ipc'
+
     // Create permission request
     const info: Info = {
       id: uuidv4(),
@@ -164,24 +255,40 @@ export namespace Permission {
       metadata: input.metadata,
       createdAt: Date.now(),
       workingDirectory: input.workingDirectory,
+      targetChannel,
     }
 
-    console.log('[Permission] Asking permission:', info.id, info.type, info.pattern)
+    console.log('[Permission] Asking permission:', info.id, info.type, info.pattern, 'targetChannel:', targetChannel)
 
-    // Emit to frontend and wait for response
+    // Emit to EventBus and wait for response
     return new Promise<void>((resolve, reject) => {
       session.pending.set(info.id, { info, resolve, reject })
 
-      // Notify frontend
-      const windows = BrowserWindow.getAllWindows()
-      for (const win of windows) {
-        win.webContents.send(IPC_CHANNELS.PERMISSION_REQUEST, info)
+      // Emit permission:request event via EventBus
+      if (eventBus) {
+        eventBus.emit(input.sessionId, {
+          type: 'permission:request',
+          requestId: info.id,
+          targetChannel,
+          toolCallId: info.callId || '',
+          messageId: info.messageId,
+          permissionType: info.type,
+          title: info.title,
+          pattern: info.pattern,
+          metadata: info.metadata,
+        }).catch(err => console.error('[Permission] EventBus emit error:', err))
+      } else {
+        console.warn('[Permission] EventBus not initialized, permission request will hang')
       }
     })
   }
 
   /**
    * Respond to a permission request
+   *
+   * Note: In the new channel-affinity model, this is primarily called
+   * internally by the EventBus subscription (which validates channel first).
+   * Direct calls bypass channel validation.
    */
   export function respond(input: {
     sessionId: string

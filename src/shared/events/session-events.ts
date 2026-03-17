@@ -122,8 +122,13 @@ export interface SkillActivatedEvent {
 export interface PermissionRequestEvent {
   type: 'permission:request'
   requestId: string
+  /** The channel that should handle this permission request */
+  targetChannel: string
   toolCallId: string
+  messageId: string
   permissionType: string
+  title: string
+  pattern?: string | string[]
   metadata: Record<string, unknown>
   timeoutMs?: number
 }

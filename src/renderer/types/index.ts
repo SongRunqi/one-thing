@@ -445,10 +445,10 @@ export interface ElectronAPI {
   resumeAfterToolConfirm: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>
 
   // Permission methods
+  /** @deprecated Use emitCommand with command:permission-respond instead */
   respondToPermission: (request: { sessionId: string; permissionId: string; response: 'once' | 'session' | 'workspace' | 'reject' | 'always'; rejectReason?: string }) => Promise<{ success: boolean; error?: string }>
   clearSessionPermissions: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   getPendingPermissions: (sessionId: string) => Promise<{ success: boolean; pending?: PermissionInfo[]; error?: string }>
-  onPermissionRequest: (callback: (info: PermissionInfo) => void) => () => void
 
   // CustomAgent permission methods
   respondToCustomAgentPermission: (requestId: string, decision: 'allow' | 'always' | 'reject') => Promise<{ success: boolean }>

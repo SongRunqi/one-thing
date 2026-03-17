@@ -94,6 +94,21 @@ export function initializeIPCHub() {
         store.handleContextCompactCompleted({ sessionId, ...event.data })
         break
 
+      // Permission events
+      case 'permission:request':
+        store.handlePermissionRequest({
+          sessionId,
+          requestId: event.requestId,
+          messageId: event.messageId,
+          callId: event.toolCallId,
+          permissionType: event.permissionType,
+          title: event.title,
+          pattern: event.pattern,
+          metadata: event.metadata,
+          canRespond: event.targetChannel === 'ipc',
+        })
+        break
+
       // stream:start, message:* — no store action needed
       // (store creates messages via sendMessage action, not via events)
     }

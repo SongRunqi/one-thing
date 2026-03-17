@@ -44,9 +44,16 @@ import { getStorage } from '../storage/index.js'
 export class StreamEngine {
   /** Active AbortControllers keyed by sessionId */
   private activeStreams = new Map<string, AbortController>()
+  /** Current bound channel per session (set when a command arrives) */
+  private sessionChannels = new Map<string, string>()
   private eventBus: EventBus | null = null
   private sender: WebContents | null = null
   private unsubs: Array<() => void> = []
+
+  /** Get the channel currently bound to a session (defaults to 'ipc') */
+  getChannel(sessionId: string): string {
+    return this.sessionChannels.get(sessionId) || 'ipc'
+  }
 
   /** Set the EventBus reference and subscribe to command events */
   setEventBus(eventBus: EventBus): void {
@@ -69,17 +76,17 @@ export class StreamEngine {
         if (!this.sender) return
         this.handleSendMessage(envelope.sessionId, envelope.event as SendMessageCommand, this.sender)
           .catch(err => console.error('[StreamEngine] command:send-message error:', err))
-      }),
+      }, 'StreamEngine'),
       eventBus.onAnySession('command:edit-and-resend', (envelope) => {
         if (!this.sender) return
         this.handleEditAndResend(envelope.sessionId, envelope.event as EditAndResendCommand, this.sender)
           .catch(err => console.error('[StreamEngine] command:edit-and-resend error:', err))
-      }),
+      }, 'StreamEngine'),
       eventBus.onAnySession('command:resume-after-confirm', (envelope) => {
         if (!this.sender) return
         this.handleResumeAfterConfirm(envelope.sessionId, envelope.event as ResumeAfterConfirmCommand, this.sender)
           .catch(err => console.error('[StreamEngine] command:resume-after-confirm error:', err))
-      }),
+      }, 'StreamEngine'),
     )
   }
 
@@ -94,6 +101,9 @@ export class StreamEngine {
     cmd: SendMessageCommand,
     sender: WebContents
   ): Promise<void> {
+    // Track which channel initiated this session's stream
+    this.sessionChannels.set(sessionId, cmd.channel || 'ipc')
+
     const { content: messageContent, attachments, assistantMessageId, sessionName } = cmd
 
     try {
@@ -127,6 +137,9 @@ export class StreamEngine {
     cmd: EditAndResendCommand,
     sender: WebContents
   ): Promise<void> {
+    // Track which channel initiated this session's stream
+    this.sessionChannels.set(sessionId, cmd.channel || 'ipc')
+
     const { newContent, assistantMessageId, sessionName } = cmd
 
     try {
@@ -427,6 +440,7 @@ export class StreamEngine {
   /** Remove controller after stream completes or is paused */
   removeController(sessionId: string): void {
     this.activeStreams.delete(sessionId)
+    this.sessionChannels.delete(sessionId)
   }
 
   /**
@@ -439,6 +453,7 @@ export class StreamEngine {
       controller.abort()
       this.activeStreams.delete(sessionId)
     }
+    this.sessionChannels.delete(sessionId)
     Permission.clearSession(sessionId)
     return !!controller
   }
@@ -452,6 +467,7 @@ export class StreamEngine {
         Permission.clearSession(sid)
       }
       this.activeStreams.clear()
+      this.sessionChannels.clear()
     }
   }
 

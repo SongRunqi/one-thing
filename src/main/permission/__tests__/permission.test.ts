@@ -1,12 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Mock electron
-vi.mock('electron', () => ({
-  BrowserWindow: {
-    getAllWindows: vi.fn(() => []),
-  },
-}))
-
 // Mock uuid - returns incrementing IDs
 let uuidCounter = 0
 vi.mock('uuid', () => ({
@@ -19,35 +12,8 @@ vi.mock('../workspace-permissions.js', () => ({
   approveInWorkspace: vi.fn(),
 }))
 
-// Mock IPC channels
-vi.mock('../../../shared/ipc.js', () => ({
-  IPC_CHANNELS: {
-    PERMISSION_REQUEST: 'permission:request',
-    PERMISSION_RESPOND: 'permission:respond',
-  },
-}))
-
 import { Permission } from '../index'
-import { BrowserWindow } from 'electron'
 import * as WorkspacePermissions from '../workspace-permissions.js'
-
-// Helper to safely clean up a session (suppresses rejections from pending promises)
-function safeCleanSession(sessionId: string): Promise<void> {
-  const pending = Permission.getPending(sessionId)
-  if (pending.length === 0) {
-    Permission.clearSession(sessionId)
-    return Promise.resolve()
-  }
-  // Collect the pending promises before clearing so we can catch rejections
-  const promises: Promise<void>[] = []
-  for (const p of pending) {
-    // We don't have access to the actual promises, so just clear and swallow globally
-    // by adding a handler before clearSession triggers reject
-  }
-  Permission.clearSession(sessionId)
-  // Give microtasks a chance to settle
-  return new Promise(resolve => setTimeout(resolve, 0))
-}
 
 describe('Permission', () => {
   beforeEach(async () => {
@@ -140,33 +106,75 @@ describe('Permission', () => {
       expect(Permission.getPending('session-auto')).toHaveLength(0)
     })
 
-    it('should send IPC event to all windows', async () => {
-      const mockSend = vi.fn()
-      vi.mocked(BrowserWindow.getAllWindows).mockReturnValueOnce([
-        { webContents: { send: mockSend } } as any,
-      ])
+    it('should emit permission:request event via EventBus when initialized', async () => {
+      // Create a mock EventBus
+      const mockEmit = vi.fn().mockResolvedValue(undefined)
+      const mockOnAnySession = vi.fn().mockReturnValue(() => {})
+      const mockBus = {
+        emit: mockEmit,
+        onAnySession: mockOnAnySession,
+        onAnySessionAny: vi.fn(),
+        shutdown: vi.fn(),
+      } as any
+
+      Permission.initialize(mockBus, () => 'ipc')
 
       const askPromise = Permission.ask({
         type: 'bash',
         title: 'Run command',
-        sessionId: 'ipc-session',
+        sessionId: 'eventbus-session',
         messageId: 'msg-1',
         metadata: {},
       })
 
-      expect(mockSend).toHaveBeenCalledWith('permission:request', expect.objectContaining({
-        type: 'bash',
+      expect(mockEmit).toHaveBeenCalledWith('eventbus-session', expect.objectContaining({
+        type: 'permission:request',
+        permissionType: 'bash',
         title: 'Run command',
+        targetChannel: 'ipc',
       }))
 
       // Clean up
-      const pending = Permission.getPending('ipc-session')
+      const pending = Permission.getPending('eventbus-session')
       Permission.respond({
-        sessionId: 'ipc-session',
+        sessionId: 'eventbus-session',
         permissionId: pending[0].id,
         response: 'once',
       })
       await askPromise
+      Permission.shutdown()
+    })
+
+    it('should set targetChannel from channelResolver', async () => {
+      const mockEmit = vi.fn().mockResolvedValue(undefined)
+      const mockBus = {
+        emit: mockEmit,
+        onAnySession: vi.fn().mockReturnValue(() => {}),
+      } as any
+
+      Permission.initialize(mockBus, () => 'telegram')
+
+      const askPromise = Permission.ask({
+        type: 'bash',
+        title: 'Run command',
+        sessionId: 'channel-test-session',
+        messageId: 'msg-1',
+        metadata: {},
+      })
+
+      expect(mockEmit).toHaveBeenCalledWith('channel-test-session', expect.objectContaining({
+        targetChannel: 'telegram',
+      }))
+
+      // Clean up
+      const pending = Permission.getPending('channel-test-session')
+      Permission.respond({
+        sessionId: 'channel-test-session',
+        permissionId: pending[0].id,
+        response: 'once',
+      })
+      await askPromise
+      Permission.shutdown()
     })
 
     it('should create info with correct fields', async () => {
@@ -369,6 +377,123 @@ describe('Permission', () => {
         messageId: 'msg-2',
         metadata: {},
       })
+    })
+  })
+
+  // ─── Channel Affinity ─────────────────────────────────────────────
+
+  describe('channel affinity', () => {
+    it('should store targetChannel on permission info', async () => {
+      const mockBus = {
+        emit: vi.fn().mockResolvedValue(undefined),
+        onAnySession: vi.fn().mockReturnValue(() => {}),
+      } as any
+
+      Permission.initialize(mockBus, () => 'telegram')
+
+      const askPromise = Permission.ask({
+        type: 'bash',
+        title: 'Run command',
+        sessionId: 'affinity-session',
+        messageId: 'msg-1',
+        metadata: {},
+      })
+
+      const pending = Permission.getPending('affinity-session')
+      expect(pending[0].targetChannel).toBe('telegram')
+
+      // Clean up
+      Permission.respond({
+        sessionId: 'affinity-session',
+        permissionId: pending[0].id,
+        response: 'once',
+      })
+      await askPromise
+      Permission.shutdown()
+    })
+
+    it('should reject permission response from wrong channel via EventBus subscription', async () => {
+      // Capture the onAnySession callback so we can simulate EventBus events
+      let capturedHandler: ((envelope: any) => void) | null = null
+      const mockBus = {
+        emit: vi.fn().mockResolvedValue(undefined),
+        onAnySession: vi.fn((eventType: string, handler: any) => {
+          if (eventType === 'command:permission-respond') {
+            capturedHandler = handler
+          }
+          return () => {}
+        }),
+      } as any
+
+      // Session is bound to 'telegram' channel
+      Permission.initialize(mockBus, () => 'telegram')
+
+      const askPromise = Permission.ask({
+        type: 'bash',
+        title: 'Run command',
+        sessionId: 'wrong-channel-session',
+        messageId: 'msg-1',
+        metadata: {},
+      })
+
+      const pending = Permission.getPending('wrong-channel-session')
+      expect(pending).toHaveLength(1)
+
+      // Simulate a response from 'ipc' channel (wrong — should be 'telegram')
+      expect(capturedHandler).not.toBeNull()
+      capturedHandler!({
+        sessionId: 'wrong-channel-session',
+        event: {
+          type: 'command:permission-respond',
+          channel: 'ipc',
+          requestId: pending[0].id,
+          decision: 'once',
+        },
+      })
+
+      // The request should still be pending (response from wrong channel was rejected)
+      expect(Permission.getPending('wrong-channel-session')).toHaveLength(1)
+
+      // Now respond from the correct channel
+      capturedHandler!({
+        sessionId: 'wrong-channel-session',
+        event: {
+          type: 'command:permission-respond',
+          channel: 'telegram',
+          requestId: pending[0].id,
+          decision: 'once',
+        },
+      })
+
+      // Now it should be resolved
+      await askPromise
+      expect(Permission.getPending('wrong-channel-session')).toHaveLength(0)
+
+      Permission.shutdown()
+    })
+
+    it('should default targetChannel to "ipc" when no resolver', async () => {
+      // Ensure no initialize has been called (shutdown first)
+      Permission.shutdown()
+
+      const askPromise = Permission.ask({
+        type: 'bash',
+        title: 'Run command',
+        sessionId: 'default-channel-session',
+        messageId: 'msg-1',
+        metadata: {},
+      })
+
+      const pending = Permission.getPending('default-channel-session')
+      expect(pending[0].targetChannel).toBe('ipc')
+
+      // Clean up
+      Permission.respond({
+        sessionId: 'default-channel-session',
+        permissionId: pending[0].id,
+        response: 'once',
+      })
+      await askPromise
     })
   })
 
