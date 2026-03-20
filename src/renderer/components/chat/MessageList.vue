@@ -90,7 +90,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted, onDeactivated, toRaw } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, onActivated, onDeactivated, toRaw } from 'vue'
 import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
@@ -195,6 +195,16 @@ let navigationCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let navMarkerUpdateFrame: number | null = null
 let navResizeObserver: ResizeObserver | null = null
 
+// KeepAlive reactivation guard — skip scroll/navigation watchers on reactivation
+// to preserve DOM scroll position that KeepAlive restored.
+const isReactivating = ref(false)
+onActivated(() => {
+  isReactivating.value = true
+  nextTick(() => {
+    isReactivating.value = false
+  })
+})
+
 // Get indices of user messages
 const userMessageIndices = computed(() => {
   return props.messages
@@ -248,6 +258,9 @@ const highlightedMessageId = computed(() => {
 watch(
   () => props.messages.length,
   () => {
+    // Skip on KeepAlive reactivation — preserve cached navigation state
+    if (isReactivating.value) return
+
     // Reset navigation highlight (don't highlight on new message arrival)
     hasNavigated.value = false
 
@@ -680,6 +693,9 @@ watch(
 watch(
   [() => chatStore.getScrollVersion(effectiveSessionId.value), () => props.messages.length, () => props.isLoading],
   async () => {
+    // Skip on KeepAlive reactivation — preserve DOM scroll position
+    if (isReactivating.value) return
+
     await nextTick()
     if (messageListRef.value && !userScrolledAway.value) {
       messageListRef.value.scrollTop = messageListRef.value.scrollHeight
