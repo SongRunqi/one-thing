@@ -81,19 +81,6 @@ export function initializeIPCHub() {
         store.handleSkillActivated({ sessionId, messageId: '', skillName: event.skillName })
         break
 
-      // Context events
-      case 'context:size-updated':
-        store.handleContextSizeUpdated({ sessionId, contextSize: event.contextSize })
-        break
-
-      case 'compact:started':
-        store.handleContextCompactStarted({ sessionId })
-        break
-
-      case 'compact:completed':
-        store.handleContextCompactCompleted({ sessionId, ...event.data })
-        break
-
       // Permission events
       case 'permission:request':
         store.handlePermissionRequest({
@@ -116,6 +103,7 @@ export function initializeIPCHub() {
 
   // ── Unified stream channel ────────────────────
   // High-frequency chunks: text-delta, reasoning-delta, tool-input-delta
+  // Already batched by IPCBridge (16ms coalescing), so route directly to store.
   window.electronAPI.onSessionStream(({ sessionId, chunk }: { sessionId: string; chunk: any }) => {
     const store = useChatStore()
 
@@ -129,10 +117,7 @@ export function initializeIPCHub() {
         break
 
       case 'tool-input-delta':
-        store.handleStreamChunk({
-          type: 'tool_input_delta', sessionId, messageId: '', content: '',
-          toolCallId: chunk.toolCallId, argsTextDelta: chunk.argsTextDelta,
-        })
+        store.handleStreamChunk({ type: 'tool_input_delta', sessionId, messageId: '', content: '', toolCallId: chunk.toolCallId, argsTextDelta: chunk.argsTextDelta })
         break
     }
   })

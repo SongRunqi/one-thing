@@ -95,15 +95,6 @@ export const useChatStore = defineStore('chat', () => {
   // Error details per session
   const sessionErrorDetails = ref<Map<string, string | null>>(new Map())
 
-  // Token usage per session
-  const sessionUsageMap = ref<Map<string, {
-    totalInputTokens: number
-    totalOutputTokens: number
-    totalTokens: number
-    lastInputTokens: number
-    contextSize: number  // Current context window size (input + output)
-  }>>(new Map())
-
   // Active streams (sessionId -> messageId)
   const activeStreams = ref<Map<string, string>>(new Map())
 
@@ -112,8 +103,9 @@ export const useChatStore = defineStore('chat', () => {
     return (messageId && messageId !== '') ? messageId : (activeStreams.value.get(sessionId) || '')
   }
 
-  // Context compacting state per session
-  const sessionCompacting = ref<Map<string, boolean>>(new Map())
+  // Scroll trigger — incremented on every handleStreamChunk call so MessageList
+  // can watch a cheap O(1) counter instead of deep-watching all messages.
+  const scrollVersion = ref(0)
 
   // ============ UI State (Persisted across re-renders) ============
 
@@ -136,15 +128,7 @@ export const useChatStore = defineStore('chat', () => {
       isGenerating: computed(() => sessionGenerating.value.get(sessionId) || false),
       error: computed(() => sessionError.value.get(sessionId) || null),
       errorDetails: computed(() => sessionErrorDetails.value.get(sessionId) || null),
-      usage: computed(() => sessionUsageMap.value.get(sessionId) || null),
     }
-  }
-
-  /**
-   * Get usage for a specific session
-   */
-  function getSessionUsage(sessionId: string) {
-    return sessionUsageMap.value.get(sessionId) || null
   }
 
   /**
@@ -152,21 +136,6 @@ export const useChatStore = defineStore('chat', () => {
    */
   function isSessionGenerating(sessionId: string): boolean {
     return sessionGenerating.value.get(sessionId) || activeStreams.value.has(sessionId)
-  }
-
-  /**
-   * Check if a specific session is compacting context
-   */
-  function isSessionCompacting(sessionId: string): boolean {
-    return sessionCompacting.value.get(sessionId) || false
-  }
-
-  /**
-   * Set compacting state for a session
-   */
-  function setSessionCompacting(sessionId: string, isCompacting: boolean): void {
-    sessionCompacting.value.set(sessionId, isCompacting)
-    triggerRef(sessionCompacting)
   }
 
   // ============ UI State Functions ============
@@ -340,11 +309,13 @@ export const useChatStore = defineStore('chat', () => {
 
         // Append to existing text part or create new one
         if (lastPart && lastPart.type === 'text') {
+          // Mutate in-place — Vue Proxy detects .content change and updates only
+          // the v-html binding for this part, without invalidating otherParts computed.
           lastPart.content += chunk.content
         } else {
+          // push() on a reactive array is intercepted by Vue and triggers reactivity.
           parts.push({ type: 'text', content: chunk.content })
         }
-        message.contentParts = [...parts]
       }
     } else if (chunk.type === 'reasoning') {
       message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
@@ -448,43 +419,17 @@ export const useChatStore = defineStore('chat', () => {
         if (toolCallIndex >= 0) {
           const toolCall = message.toolCalls[toolCallIndex]
           if (toolCall.status === 'input-streaming') {
-            // Create new object to trigger Vue reactivity
-            const updatedToolCall = {
-              ...toolCall,
-              streamingArgs: (toolCall.streamingArgs || '') + chunk.argsTextDelta
-            }
-            message.toolCalls[toolCallIndex] = updatedToolCall
+            // Mutate in-place — the toolCall object is a reactive proxy shared by
+            // message.toolCalls, contentParts toolCalls, and steps. A single field
+            // assignment triggers only the bindings that read streamingArgs.
+            toolCall.streamingArgs = (toolCall.streamingArgs || '') + chunk.argsTextDelta
 
-            // Create new contentParts array to trigger deep reactivity
-            if (message.contentParts) {
-              message.contentParts = message.contentParts.map(part => {
-                if (part.type === 'tool-call' && part.toolCalls?.some(tc => tc.id === chunk.toolCallId)) {
-                  return {
-                    ...part,
-                    toolCalls: part.toolCalls.map(tc =>
-                      tc.id === chunk.toolCallId ? updatedToolCall : tc
-                    )
-                  }
-                }
-                return part
-              })
-            }
-
-            // Also update steps so StepsPanel can show streaming content
+            // Update the matching step's toolCall.streamingArgs if present
             if (message.steps) {
-              message.steps = message.steps.map(step => {
-                if (step.toolCallId === chunk.toolCallId && step.toolCall) {
-                  return {
-                    ...step,
-                    toolCall: {
-                      ...step.toolCall,
-                      status: 'input-streaming',
-                      streamingArgs: updatedToolCall.streamingArgs
-                    }
-                  }
-                }
-                return step
-              })
+              const step = message.steps.find(s => s.toolCallId === chunk.toolCallId)
+              if (step?.toolCall) {
+                step.toolCall.streamingArgs = toolCall.streamingArgs
+              }
             }
           }
         }
@@ -519,14 +464,10 @@ export const useChatStore = defineStore('chat', () => {
       message.contentParts = [...parts]
     }
 
-    // Create new message object reference to trigger Vue reactivity
-    // This is necessary because Vue's computed may not detect changes
-    // to nested properties if the parent object reference stays the same
-    // Note: messageIndex is already declared at the beginning of this function
-    messages[messageIndex] = { ...message }
-
-    // Trigger reactivity
-    setSessionMessages(sessionId, [...messages])
+    // Increment scroll trigger — lets MessageList scroll without a deep watcher.
+    // No need to spread messages or call triggerRef: sessionMessages is ref() (not
+    // shallowRef), so every mutation via the reactive proxy is tracked surgically.
+    scrollVersion.value++
   }
 
   /**
@@ -539,30 +480,7 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    console.log('[Chat Store] Stream complete:', sessionId, 'usage:', data.usage)
-
-    // Update usage
-    if (data.usage) {
-      const currentUsage = sessionUsageMap.value.get(sessionId) || {
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        totalTokens: 0,
-        lastInputTokens: 0,
-        contextSize: 0,
-      }
-      // Use lastTurnUsage for context size (not accumulated)
-      const lastTurn = data.lastTurnUsage || data.usage
-      sessionUsageMap.value.set(sessionId, {
-        totalInputTokens: currentUsage.totalInputTokens + data.usage.inputTokens,
-        totalOutputTokens: currentUsage.totalOutputTokens + data.usage.outputTokens,
-        totalTokens: currentUsage.totalTokens + data.usage.totalTokens,
-        lastInputTokens: lastTurn.inputTokens,
-        // Context size = input tokens only (context window limit applies to input)
-        contextSize: lastTurn.inputTokens,
-      })
-      triggerRef(sessionUsageMap)
-      console.log('[Chat Store] Updated usage for', sessionId, ':', sessionUsageMap.value.get(sessionId))
-    }
+    console.log('[Chat Store] Stream complete:', sessionId)
 
     // Update message
     const messages = getSessionMessagesRef(sessionId)
@@ -780,6 +698,7 @@ export const useChatStore = defineStore('chat', () => {
       message.steps[stepIndex] = { ...message.steps[stepIndex], ...updates }
       message.steps = [...message.steps]
       setSessionMessages(sessionId, [...messages])
+      scrollVersion.value++
       return
     }
 
@@ -887,80 +806,6 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     setSessionMessages(sessionId, messages)
-  }
-
-  /**
-   * Load session usage from backend
-   */
-  async function loadSessionUsage(sessionId: string) {
-    try {
-      const response = await window.electronAPI.getSessionTokenUsage(sessionId)
-      if (response.success && response.usage) {
-        sessionUsageMap.value.set(sessionId, {
-          totalInputTokens: response.usage.totalInputTokens,
-          totalOutputTokens: response.usage.totalOutputTokens,
-          totalTokens: response.usage.totalTokens,
-          lastInputTokens: response.usage.lastInputTokens || 0,
-          contextSize: response.usage.contextSize || 0,
-        })
-        triggerRef(sessionUsageMap)
-      }
-    } catch (error) {
-      console.error('[Chat Store] Failed to load session usage:', error)
-    }
-  }
-
-  /**
-   * Handle context size update from backend (real-time during tool loops)
-   */
-  function handleContextSizeUpdated(data: { sessionId: string; contextSize: number }) {
-    const { sessionId, contextSize } = data
-    const currentUsage = sessionUsageMap.value.get(sessionId)
-    if (currentUsage) {
-      // Update existing usage entry
-      sessionUsageMap.value.set(sessionId, {
-        ...currentUsage,
-        contextSize,
-      })
-    } else {
-      // Initialize usage entry if it doesn't exist yet
-      // This handles the case where the IPC event arrives before loadSessionUsage completes
-      sessionUsageMap.value.set(sessionId, {
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        totalTokens: 0,
-        lastInputTokens: 0,
-        contextSize,
-      })
-    }
-    triggerRef(sessionUsageMap)
-  }
-
-  /**
-   * Handle context compact started from backend
-   */
-  function handleContextCompactStarted(data: { sessionId: string }) {
-    const { sessionId } = data
-    console.log(`[ChatStore] Context compacting started for session: ${sessionId}`)
-    setSessionCompacting(sessionId, true)
-  }
-
-  /**
-   * Handle context compact completed from backend
-   */
-  async function handleContextCompactCompleted(data: { sessionId: string; success: boolean; error?: string; summary?: string }) {
-    const { sessionId, success, error } = data
-    console.log(`[ChatStore] Context compacting completed for session: ${sessionId}, success: ${success}`)
-    setSessionCompacting(sessionId, false)
-
-    if (success) {
-      // Reload messages to get the persisted compact system message
-      // This ensures UI shows the message at the correct position
-      await loadMessages(sessionId)
-      console.log(`[ChatStore] Reloaded messages after compacting for session: ${sessionId}`)
-    } else if (error) {
-      console.warn(`[ChatStore] Context compacting failed: ${error}`)
-    }
   }
 
   /**
@@ -1109,9 +954,6 @@ export const useChatStore = defineStore('chat', () => {
       messages.splice(messageIndex + 1)
       setSessionMessages(sessionId, [...messages])
     }
-
-    // Reload session usage after truncation (backend subtracts deleted messages' tokens)
-    await loadSessionUsage(sessionId)
 
     // Set states
     sessionLoading.value.set(sessionId, true)
@@ -1392,14 +1234,11 @@ export const useChatStore = defineStore('chat', () => {
     sessionGenerating,
     sessionError,
     sessionErrorDetails,
-    sessionUsageMap,
     activeStreams,
 
     // Getters
     getSessionState,
-    getSessionUsage,
     isSessionGenerating,
-    isSessionCompacting,
 
     // UI State (for AgentExecutionPanel)
     expandedAgentPanels,
@@ -1411,6 +1250,9 @@ export const useChatStore = defineStore('chat', () => {
     toggleToolCall,
     collapseAllToolCalls,
 
+    // Scroll trigger (incremented every handleStreamChunk for O(1) auto-scroll watcher)
+    scrollVersion,
+
     // Event handlers (called by IPC Hub)
     handleStreamChunk,
     handleStreamComplete,
@@ -1418,15 +1260,11 @@ export const useChatStore = defineStore('chat', () => {
     handleStepAdded,
     handleStepUpdated,
     handleSkillActivated,
-    handleContextSizeUpdated,
-    handleContextCompactStarted,
-    handleContextCompactCompleted,
     handlePermissionRequest,
 
     // Actions
     loadMessages,
     setMessagesFromSession,
-    loadSessionUsage,
     sendMessage,
     editAndResend,
     regenerate,

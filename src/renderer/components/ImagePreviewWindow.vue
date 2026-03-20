@@ -483,7 +483,7 @@ onUnmounted(() => {
   right: 0;
   height: 38px;
   -webkit-app-region: drag;
-  z-index: 10;
+  z-index: var(--z-sticky);
 }
 
 /* Gallery sidebar */

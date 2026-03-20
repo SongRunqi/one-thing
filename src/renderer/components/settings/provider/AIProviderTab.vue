@@ -26,25 +26,22 @@
 
       <!-- Right: Provider Detail -->
       <main class="provider-detail">
-        <!-- Header -->
+        <!-- Provider Header -->
         <div class="detail-header">
           <h2 class="detail-title">{{ providerSettings.currentProviderName.value }}</h2>
-          <div class="header-actions">
-            <label class="enable-toggle" :title="providerSettings.isProviderEnabled(providerSettings.viewingProvider.value) ? 'Enabled in chat' : 'Disabled in chat'">
-              <input
-                type="checkbox"
-                :checked="providerSettings.isProviderEnabled(providerSettings.viewingProvider.value)"
-                @change="providerSettings.toggleProviderEnabled(providerSettings.viewingProvider.value)"
-              />
-              <span class="toggle-switch"></span>
-              <span class="toggle-text">{{ providerSettings.isProviderEnabled(providerSettings.viewingProvider.value) ? 'Enabled' : 'Disabled' }}</span>
-            </label>
-          </div>
+          <label class="enable-toggle">
+            <input
+              type="checkbox"
+              :checked="providerSettings.isProviderEnabled(providerSettings.viewingProvider.value)"
+              @change="providerSettings.toggleProviderEnabled(providerSettings.viewingProvider.value)"
+            />
+            <span class="toggle-switch"></span>
+          </label>
         </div>
 
         <!-- API Configuration -->
         <section class="detail-section">
-          <h3 class="section-title">API Configuration</h3>
+          <h3 class="section-label">API Configuration</h3>
 
           <!-- OAuth Provider Login -->
           <ProviderOAuth
@@ -65,41 +62,40 @@
           />
 
           <!-- Traditional API Key Input -->
-          <template v-else>
-            <div class="form-group">
-              <label class="form-label">API Key</label>
-              <div class="input-wrapper">
+          <div v-else class="settings-group">
+            <div class="settings-row">
+              <span class="row-label">API Key</span>
+              <div class="row-input-wrap">
                 <input
                   :value="settings.ai.providers[providerSettings.viewingProvider.value]?.apiKey"
                   @input="providerSettings.updateProviderApiKey(($event.target as HTMLInputElement).value)"
                   :type="showApiKey ? 'text' : 'password'"
-                  class="form-input"
-                  :placeholder="`Enter your ${providerSettings.currentProviderName.value} API key...`"
+                  class="row-input"
+                  :placeholder="`Enter ${providerSettings.currentProviderName.value} key...`"
                 />
-                <button class="input-action" @click="showApiKey = !showApiKey" type="button">
-                  <svg v-if="showApiKey" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <button class="input-toggle" @click="showApiKey = !showApiKey" type="button">
+                  <svg v-if="showApiKey" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/>
                     <line x1="1" y1="1" x2="23" y2="23"/>
                   </svg>
-                  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                     <circle cx="12" cy="12" r="3"/>
                   </svg>
                 </button>
               </div>
             </div>
-
-            <div class="form-group">
-              <label class="form-label">Base URL <span class="label-hint">(Optional)</span></label>
+            <div class="settings-row">
+              <span class="row-label">Base URL</span>
               <input
                 :value="settings.ai.providers[providerSettings.viewingProvider.value]?.baseUrl"
                 @input="providerSettings.updateProviderBaseUrl(($event.target as HTMLInputElement).value)"
                 type="text"
-                class="form-input"
+                class="row-input"
                 :placeholder="providerSettings.getDefaultBaseUrl()"
               />
             </div>
-          </template>
+          </div>
         </section>
 
         <!-- Models Section -->
@@ -107,6 +103,7 @@
           :models="providerSettings.availableModels.value"
           :filtered-models="providerSettings.filteredModels.value"
           :selected-count="providerSettings.currentSelectedModels.value.length"
+          :selected-models-list="providerSettings.currentSelectedModels.value"
           :search-query="providerSettings.modelSearchQuery.value"
           :new-model-input="providerSettings.newModelInput.value"
           :is-loading="providerSettings.isLoadingModels.value"
@@ -126,22 +123,26 @@
 
         <!-- Temperature Section -->
         <section class="detail-section">
-          <h3 class="section-title">
+          <h3 class="section-label">
             Temperature
-            <span class="temp-value">{{ settings.ai.temperature.toFixed(1) }}</span>
+            <span class="section-value">{{ settings.ai.temperature.toFixed(1) }}</span>
           </h3>
-          <input
-            :value="settings.ai.temperature"
-            @input="providerSettings.updateTemperature(($event.target as HTMLInputElement).valueAsNumber)"
-            type="range"
-            min="0"
-            max="2"
-            step="0.1"
-            class="form-slider"
-          />
-          <div class="slider-labels">
-            <span>Precise</span>
-            <span>Creative</span>
+          <div class="settings-group">
+            <div class="slider-row">
+              <input
+                :value="settings.ai.temperature"
+                @input="providerSettings.updateTemperature(($event.target as HTMLInputElement).valueAsNumber)"
+                type="range"
+                min="0"
+                max="2"
+                step="0.1"
+                class="form-slider"
+              />
+              <div class="slider-labels">
+                <span>Precise</span>
+                <span>Creative</span>
+              </div>
+            </div>
           </div>
         </section>
       </main>
@@ -169,10 +170,8 @@ const emit = defineEmits<{
   'edit-custom-provider': [providerId: string]
 }>()
 
-// Local state
 const showApiKey = ref(false)
 
-// Use provider settings composable
 const providerSettings = useProviderSettings(props, (event, value) => emit(event, value))
 
 onMounted(() => {
@@ -185,70 +184,51 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Wrapper for the entire tab */
 .provider-tab-wrapper {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  gap: 12px;
-  overflow: hidden;
+  gap: 20px;
 }
 
-/* Main Content */
 .provider-tab {
   display: flex;
-  gap: 16px;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
+  gap: 0;
 }
 
-/* Right: Provider Detail */
+/* ── Detail Panel ── */
 .provider-detail {
   flex: 1;
-  background: var(--bg);
-  padding: 16px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  padding: 0 4px;
 }
 
 .detail-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 20px;
 }
 
 .detail-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
   margin: 0;
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
+/* ── Toggle ── */
 .enable-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
   cursor: pointer;
 }
 
-.enable-toggle input {
-  display: none;
-}
+.enable-toggle input { display: none; }
 
 .toggle-switch {
-  width: 32px;
-  height: 18px;
+  width: 36px;
+  height: 20px;
   background: var(--border);
-  border-radius: 9px;
+  border-radius: 10px;
   position: relative;
   transition: background 0.2s ease;
 }
@@ -256,13 +236,14 @@ onUnmounted(() => {
 .toggle-switch::after {
   content: '';
   position: absolute;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   background: white;
   border-radius: 50%;
   top: 2px;
   left: 2px;
   transition: transform 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 
 .enable-toggle input:checked + .toggle-switch {
@@ -270,120 +251,114 @@ onUnmounted(() => {
 }
 
 .enable-toggle input:checked + .toggle-switch::after {
-  transform: translateX(14px);
+  transform: translateX(16px);
 }
 
-.toggle-text {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-/* Detail Sections */
+/* ── Sections ── */
 .detail-section {
   margin-bottom: 20px;
 }
 
-.detail-section:last-child {
-  margin-bottom: 0;
-}
-
-.section-title {
+.section-label {
   font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
+  font-weight: 500;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin: 0 0 8px 0;
+  margin: 0 0 8px 2px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.temp-value {
+.section-value {
   margin-left: auto;
   color: var(--accent);
   font-weight: 600;
 }
 
-/* Form Elements */
-.form-group {
-  margin-bottom: 12px;
+/* ── Settings Group (macOS 分组容器) ── */
+.settings-group {
+  background: rgba(128, 128, 128, 0.06);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-.form-label {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-
-.label-hint {
-  font-weight: 400;
-  opacity: 0.7;
-}
-
-.form-input {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--hover);
-  color: var(--text-primary);
-  font-size: 13px;
-  transition: all 0.15s ease;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.form-input::placeholder {
-  color: var(--text-muted);
-}
-
-.input-wrapper {
-  position: relative;
+.settings-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 6px 14px;
+  gap: 12px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.1);
 }
 
-.input-wrapper .form-input {
-  padding-right: 40px;
+.settings-row:last-child {
+  border-bottom: none;
 }
 
-.input-action {
-  position: absolute;
-  right: 8px;
-  width: 28px;
-  height: 28px;
+.row-label {
+  font-size: 13px;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.row-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.row-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: right;
+}
+
+.row-input:focus {
+  outline: none;
+  background: rgba(128, 128, 128, 0.08);
+}
+
+.row-input::placeholder {
+  color: var(--muted);
+}
+
+.input-toggle {
+  width: 24px;
+  height: 24px;
   border: none;
   background: transparent;
   border-radius: 4px;
-  color: var(--text-muted);
+  color: var(--muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
-.input-action:hover {
-  background: var(--hover);
-  color: var(--text-primary);
+.input-toggle:hover {
+  color: var(--text);
 }
 
-/* Slider */
+/* ── Slider ── */
+.slider-row {
+  padding: 12px 14px;
+}
+
 .form-slider {
   width: 100%;
-  height: 6px;
-  border-radius: 3px;
+  height: 4px;
+  border-radius: 2px;
   background: var(--border);
   cursor: pointer;
   -webkit-appearance: none;
@@ -396,7 +371,7 @@ onUnmounted(() => {
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .slider-labels {
@@ -404,6 +379,6 @@ onUnmounted(() => {
   justify-content: space-between;
   margin-top: 6px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 </style>

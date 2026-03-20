@@ -66,17 +66,7 @@
       >
         <!-- New contentParts-based rendering -->
         <template v-if="contentParts && contentParts.length > 0">
-          <!-- Text 内容 - Waiting 状态由 MessageThinking 组件处理 -->
-          <Transition name="text-fade">
-            <div
-              v-if="firstTextPart"
-              class="content"
-              :class="{ typing: isTyping }"
-              v-html="renderContentMarkdown(firstTextPart.content)"
-            ></div>
-          </Transition>
-
-          <!-- Other parts: tool-call, steps, additional text (with TransitionGroup) -->
+          <!-- All parts: text, tool-call, steps (rendered in document order with TransitionGroup) -->
           <TransitionGroup
             v-if="otherParts && otherParts.length > 0"
             name="other-parts"
@@ -88,40 +78,23 @@
               <div v-if="part.type === 'waiting'" class="tool-loop-waiting">
                 <span class="thinking-text flowing">Waiting</span>
               </div>
-              <!-- Additional text parts (after the first one) -->
+              <!-- Text parts (rendered in document order) -->
               <div
                 v-else-if="part.type === 'text'"
                 class="content"
+                :class="{ typing: isTyping && isLastTextPart(part) }"
                 v-html="renderContentMarkdown(part.content)"
               ></div>
-              <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
+              <!-- Tool call part — compact inline items -->
               <template v-else-if="part.type === 'tool-call' && (!hasSteps || hasInputStreamingToolCalls(part.toolCalls))">
-                <template v-if="!hasSteps">
-                  <!-- No steps at all, show all tool calls -->
-                  <ToolCallGroup
-                    :toolCalls="part.toolCalls"
-                    @execute="(tc) => emit('executeTool', tc)"
-                  />
-                  <ToolCallItem
-                    v-for="tc in part.toolCalls"
-                    :key="tc.id"
-                    :toolCall="tc"
-                    @execute="(tc) => emit('executeTool', tc)"
-                    @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                    @reject="(tc) => emit('rejectTool', tc)"
-                  />
-                </template>
-                <template v-else>
-                  <!-- Has steps, only show streaming tool calls without corresponding step -->
-                  <ToolCallItem
-                    v-for="tc in getToolCallsWithoutSteps(part.toolCalls)"
-                    :key="tc.id"
-                    :toolCall="tc"
-                    @execute="(tc) => emit('executeTool', tc)"
-                    @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                    @reject="(tc) => emit('rejectTool', tc)"
-                  />
-                </template>
+                <ToolCallItem
+                  v-for="tc in (hasSteps ? getToolCallsWithoutSteps(part.toolCalls) : part.toolCalls)"
+                  :key="tc.id"
+                  :toolCall="tc"
+                  @execute="(tc) => emit('executeTool', tc)"
+                  @confirm="(tc, r) => emit('confirmTool', tc, r)"
+                  @reject="(tc) => emit('rejectTool', tc)"
+                />
               </template>
               <!-- Steps panel - rendered inline -->
               <StepsPanel
@@ -131,43 +104,22 @@
                 @confirm="(tc, r) => emit('confirmTool', tc, r)"
                 @reject="(tc) => emit('rejectTool', tc)"
               />
-              <!-- Retrieved memories with feedback UI -->
-              <RetrievedMemoriesPanel
-                v-else-if="part.type === 'retrieved-memories' && part.memories.length > 0"
-                :memories="part.memories"
-              />
             </template>
           </TransitionGroup>
         </template>
 
         <!-- Fallback: legacy content display (no contentParts) -->
         <template v-else>
-          <!-- Tool calls if no steps OR if streaming input without step -->
+          <!-- Tool calls — compact inline items -->
           <template v-if="toolCalls && toolCalls.length > 0 && (!hasSteps || hasInputStreamingToolCalls(toolCalls))">
-            <template v-if="!hasSteps">
-              <ToolCallGroup
-                :toolCalls="toolCalls"
-                @execute="(tc) => emit('executeTool', tc)"
-              />
-              <ToolCallItem
-                v-for="tc in toolCalls"
-                :key="tc.id"
-                :toolCall="tc"
-                @execute="(tc) => emit('executeTool', tc)"
-                @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                @reject="(tc) => emit('rejectTool', tc)"
-              />
-            </template>
-            <template v-else>
-              <ToolCallItem
-                v-for="tc in getToolCallsWithoutSteps(toolCalls)"
-                :key="tc.id"
-                :toolCall="tc"
-                @execute="(tc) => emit('executeTool', tc)"
-                @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                @reject="(tc) => emit('rejectTool', tc)"
-              />
-            </template>
+            <ToolCallItem
+              v-for="tc in (hasSteps ? getToolCallsWithoutSteps(toolCalls) : toolCalls)"
+              :key="tc.id"
+              :toolCall="tc"
+              @execute="(tc) => emit('executeTool', tc)"
+              @confirm="(tc, r) => emit('confirmTool', tc, r)"
+              @reject="(tc) => emit('rejectTool', tc)"
+            />
           </template>
           <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
         </template>
@@ -199,15 +151,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted, createApp, h, type App } from 'vue'
-import ToolCallGroup from '../ToolCallGroup.vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
-import InfographicBlock from '../InfographicBlock.vue'
-import RetrievedMemoriesPanel from './RetrievedMemoriesPanel.vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
-import type { InfographicConfig } from '@shared/ipc/infographics'
 
 interface Props {
   role: 'user' | 'assistant'
@@ -255,16 +203,23 @@ let typewriterInterval: ReturnType<typeof setInterval> | null = null
 
 // ============ New overlay-based transition system ============
 
-// Extract the first text part (rendered separately for smooth transition)
+// Check if any text part exists (for potential future use)
 const firstTextPart = computed(() => {
   return props.contentParts?.find(p => p.type === 'text') || null
 })
 
-// Other parts (excluding first text, but keeping tool loop waiting) for TransitionGroup
+// Check if a text part is the last text part (for typing animation)
+function isLastTextPart(part: ContentPart): boolean {
+  if (!props.contentParts) return false
+  const textParts = props.contentParts.filter(p => p.type === 'text')
+  return textParts.length > 0 && textParts[textParts.length - 1] === part
+}
+
+// All parts (keeping document order) for TransitionGroup
 const otherParts = computed(() => {
   if (!props.contentParts) return []
-  let foundFirstText = false
   let foundFirstWaiting = false
+  let foundFirstText = false
 
   return props.contentParts.filter(p => {
     // 跳过 loading-memory（由 MessageThinking 处理）
@@ -282,91 +237,22 @@ const otherParts = computed(() => {
       return true // 后续 waiting（tool loop）保留
     }
 
-    if (p.type === 'text' && !foundFirstText) {
+    if (p.type === 'text') {
       foundFirstText = true
-      return false // first text is rendered separately
     }
+
     return true
   })
 })
 
 // Generate stable keys for other parts TransitionGroup
 function getOtherPartKey(part: ContentPart, index: number): string {
-  if (part.type === 'text') return `text-other-${index}`
+  if (part.type === 'text') return `text-${index}`
   if (part.type === 'tool-call') return `tool-call-${index}`
   if (part.type === 'data-steps') return `steps-${part.turnIndex ?? index}`
   if (part.type === 'waiting') return `waiting-${index}`
   if (part.type === 'retrieved-memories') return `retrieved-memories-${index}`
   return `part-${index}`
-}
-
-// Infographic 实例管理
-const infographicApps: App[] = []
-
-// 挂载 Infographic 组件到占位符
-function mountInfographics() {
-  if (!bubbleRef.value || props.isStreaming) return
-
-  // 清理旧实例
-  unmountInfographics()
-
-  // 查找所有 infographic 占位符
-  const placeholders = bubbleRef.value.querySelectorAll('.infographic-block:not(.mounted)')
-
-  placeholders.forEach((placeholder) => {
-    const configStr = placeholder.getAttribute('data-config')
-    const syntaxType = placeholder.getAttribute('data-syntax') || 'json'
-    if (!configStr) return
-
-    try {
-      const decodedConfig = decodeURIComponent(configStr)
-
-      // 创建挂载容器
-      const mountPoint = document.createElement('div')
-      mountPoint.className = 'infographic-mount-point'
-      placeholder.innerHTML = ''
-      placeholder.appendChild(mountPoint)
-      placeholder.classList.add('mounted')
-
-      // 根据语法类型选择传递的属性
-      const componentProps: Record<string, any> = {
-        isStreaming: props.isStreaming,
-        syntaxType
-      }
-
-      if (syntaxType === 'dsl') {
-        // DSL 语法：直接传递原始字符串
-        componentProps.syntax = decodedConfig
-      } else {
-        // JSON 格式：解析为对象
-        componentProps.config = JSON.parse(decodedConfig) as InfographicConfig
-      }
-
-      // 创建 Vue App 实例
-      const app = createApp({
-        render() {
-          return h(InfographicBlock, componentProps)
-        }
-      })
-
-      app.mount(mountPoint)
-      infographicApps.push(app)
-    } catch (e) {
-      console.error('Failed to mount infographic:', e)
-    }
-  })
-}
-
-// 卸载所有 Infographic 实例
-function unmountInfographics() {
-  infographicApps.forEach(app => {
-    try {
-      app.unmount()
-    } catch (e) {
-      // 忽略卸载错误
-    }
-  })
-  infographicApps.length = 0
 }
 
 // Computed
@@ -492,8 +378,6 @@ watch(
       startTypewriter()
     } else if (!newVal && oldVal) {
       stopTypewriter()
-      // 流式结束后挂载 Infographic
-      nextTick(() => mountInfographics())
       // 流式结束后检测溢出并默认折叠
       nextTick(() => {
         checkOverflow()
@@ -553,8 +437,6 @@ onMounted(() => {
     startTypewriter()
   } else {
     displayedContent.value = props.content
-    // 延迟挂载 Infographic，确保 DOM 已渲染
-    nextTick(() => mountInfographics())
   }
 
   // 设置内容溢出检测
@@ -563,7 +445,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopTypewriter()
-  unmountInfographics()
   cleanupResizeObserver()
 })
 
@@ -650,6 +531,7 @@ function handleContentClick(event: MouseEvent) {
 
 /* User message bubble */
 .bubble.user {
+  width: fit-content;
   background: var(--user-bubble);
   border-radius: 18px 18px 4px 18px;
   border: 1px solid var(--user-bubble-border);
@@ -785,7 +667,6 @@ html[data-theme='light'] .attachment-file {
 .content-wrapper {
   position: relative;
   overflow: hidden;
-  transition: max-height 0.3s ease;
 }
 
 .content-wrapper.collapsed {
@@ -1151,49 +1032,4 @@ html[data-theme='light'] .content :deep(mjx-container svg) {
   color: #1a1a1a;
 }
 
-/* Infographic 占位符样式 */
-.content :deep(.infographic-block) {
-  margin: 16px 0;
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-}
-
-.content :deep(.infographic-placeholder) {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px;
-  gap: 12px;
-  color: var(--muted);
-}
-
-.content :deep(.infographic-placeholder .placeholder-icon) {
-  opacity: 0.5;
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 0.8; }
-}
-
-.content :deep(.infographic-parse-error) {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px;
-  color: var(--error, #ef4444);
-  font-size: 13px;
-}
-
-.content :deep(.infographic-parse-error .error-icon) {
-  opacity: 0.7;
-}
-
-.content :deep(.infographic-mount-point) {
-  width: 100%;
-}
 </style>

@@ -56,26 +56,26 @@ defineEmits<Emits>()
 <style scoped>
 /* Left: Provider List */
 .provider-list {
-  width: 200px;
-  min-width: 200px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
+  width: 160px;
+  min-width: 160px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  overflow-y: auto;
+  gap: 1px;
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
 }
 
 .provider-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-primary);
   transition: all 0.15s ease;
   position: relative;

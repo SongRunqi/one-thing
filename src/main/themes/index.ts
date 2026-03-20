@@ -63,8 +63,6 @@ function getProjectThemeDir(projectPath?: string): string | null {
  * Initialize built-in themes
  */
 export function initializeThemes(): void {
-  console.log('[ThemeManager] Initializing built-in themes...')
-
   const builtinThemes: Theme[] = [
     flexokiTheme as Theme,
     draculaTheme as Theme,
@@ -87,10 +85,10 @@ export function initializeThemes(): void {
   for (const theme of builtinThemes) {
     theme.source = 'builtin'
     builtinThemeMap.set(theme.id, theme)
-    console.log(`[ThemeManager] Loaded built-in theme: ${theme.id}`)
   }
 
-  console.log(`[ThemeManager] Initialized ${builtinThemeMap.size} built-in themes`)
+  const ids = builtinThemes.map(t => t.id)
+  console.log(`[ThemeManager] Initialized ${builtinThemeMap.size} built-in themes [${ids.join(', ')}]`)
 }
 
 /**
@@ -144,7 +142,6 @@ function loadThemeFile(filePath: string, source: 'user' | 'project'): Theme | nu
  * Load custom themes from filesystem
  */
 export function loadCustomThemes(projectPath?: string): void {
-  console.log('[ThemeManager] Loading custom themes...')
   customThemeMap.clear()
 
   const dirs = [
@@ -157,7 +154,6 @@ export function loadCustomThemes(projectPath?: string): void {
       // Create directory if it doesn't exist (for user convenience)
       try {
         fs.mkdirSync(dir, { recursive: true })
-        console.log(`[ThemeManager] Created themes directory: ${dir}`)
       } catch {
         continue
       }
@@ -176,7 +172,6 @@ export function loadCustomThemes(projectPath?: string): void {
 
         if (theme) {
           customThemeMap.set(theme.id, theme)
-          console.log(`[ThemeManager] Loaded custom theme: ${theme.id} from ${file}`)
         }
       }
     } catch (err) {
@@ -184,7 +179,10 @@ export function loadCustomThemes(projectPath?: string): void {
     }
   }
 
-  console.log(`[ThemeManager] Loaded ${customThemeMap.size} custom themes`)
+  if (customThemeMap.size > 0) {
+    const ids = Array.from(customThemeMap.keys())
+    console.log(`[ThemeManager] Loaded ${customThemeMap.size} custom themes [${ids.join(', ')}]`)
+  }
 }
 
 /**
@@ -284,7 +282,7 @@ export function getThemeBackgroundColor(
   const theme = getTheme(themeId) || getTheme(DEFAULT_THEME_ID)
   if (!theme) {
     // Ultimate fallback - Flexoki colors
-    return mode === 'light' ? '#FFFCF0' : '#282726'
+    return mode === 'light' ? '#FFFCF0' : '#262524'
   }
 
   // Resolve the background color
@@ -293,10 +291,35 @@ export function getThemeBackgroundColor(
 
   // If still no color, use Flexoki defaults
   if (!bgColor) {
-    return mode === 'light' ? '#FFFCF0' : '#282726'
+    return mode === 'light' ? '#FFFCF0' : '#262524'
   }
 
-  return bgColor
+  // Darken to match CSS bg-sunken: color-mix(in srgb, var(--bg) 95%, black)
+  // This ensures the native window background matches the darkest CSS layer,
+  // preventing a visible lighter line at the hiddenInset title bar boundary.
+  return darkenToSunken(bgColor)
+}
+
+/**
+ * Apply the same darkening as CSS `color-mix(in srgb, color 95%, black)`
+ * to match the bg-sunken layer used by sidebar and chat container.
+ */
+function darkenToSunken(hex: string): string {
+  // Parse hex color (supports #RGB and #RRGGBB)
+  const clean = hex.replace('#', '')
+  const fullHex = clean.length === 3
+    ? clean.split('').map(c => c + c).join('')
+    : clean
+  const r = parseInt(fullHex.slice(0, 2), 16)
+  const g = parseInt(fullHex.slice(2, 4), 16)
+  const b = parseInt(fullHex.slice(4, 6), 16)
+
+  // Mix 95% with black (same as CSS color-mix)
+  const dr = Math.round(r * 0.95)
+  const dg = Math.round(g * 0.95)
+  const db = Math.round(b * 0.95)
+
+  return `#${dr.toString(16).padStart(2, '0')}${dg.toString(16).padStart(2, '0')}${db.toString(16).padStart(2, '0')}`
 }
 
 /**
@@ -326,15 +349,11 @@ function applyThemeInternal(
   theme: Theme,
   mode: 'dark' | 'light'
 ): Record<string, string> {
-  console.log(`[ThemeManager] Applying theme: ${theme.id} (${mode} mode)`)
-
   // Resolve all color references
   const resolvedColors = resolveTheme(theme, mode)
 
   // Map to CSS variables
   const cssVariables = generateCSSVariables(resolvedColors)
-
-  console.log(`[ThemeManager] Generated ${Object.keys(cssVariables).length} CSS variables`)
 
   return cssVariables
 }

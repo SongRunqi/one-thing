@@ -4,14 +4,10 @@
  */
 
 import type { CommandDefinition } from '@/types/commands'
-import { cdCommand } from './cd'
-import { filesCommand } from './files'
-import { gitCommand } from './git'
-
 /**
  * All registered commands
  */
-const commands: CommandDefinition[] = [cdCommand, filesCommand, gitCommand]
+const commands: CommandDefinition[] = []
 
 /**
  * Get all available commands

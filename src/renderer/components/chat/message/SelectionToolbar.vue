@@ -80,7 +80,7 @@ function handleBranch() {
 <style scoped>
 .selection-toolbar {
   position: fixed;
-  z-index: 9999;
+  z-index: var(--z-max);
   background: var(--bg-floating);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);

@@ -439,8 +439,6 @@ async function handleReadConfigFile(request: MCPReadConfigFileRequest): Promise<
  * Register all MCP IPC handlers
  */
 export function registerMCPHandlers(): void {
-  console.log('[MCP IPC] Registering handlers...')
-
   ipcMain.handle(IPC_CHANNELS.MCP_GET_SERVERS, handleGetServers)
   ipcMain.handle(IPC_CHANNELS.MCP_ADD_SERVER, (_event, request: MCPAddServerRequest) => handleAddServer(request))
   ipcMain.handle(IPC_CHANNELS.MCP_UPDATE_SERVER, (_event, request: MCPUpdateServerRequest) => handleUpdateServer(request))
@@ -456,30 +454,25 @@ export function registerMCPHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.MCP_GET_PROMPT, (_event, request: MCPGetPromptRequest) => handleGetPrompt(request))
   ipcMain.handle(IPC_CHANNELS.MCP_READ_CONFIG_FILE, (_event, request: MCPReadConfigFileRequest) => handleReadConfigFile(request))
 
-  console.log('[MCP IPC] Handlers registered')
 }
 
 /**
  * Initialize MCP system
  */
 export async function initializeMCP(): Promise<void> {
-  console.log('[MCP] Initializing...')
-
   const mcpSettings = getMCPSettings()
-
   await MCPManager.initialize(mcpSettings)
-
-  // Register MCP tools with the tool registry
   await registerMCPTools()
 
-  console.log('[MCP] Initialization complete')
+  const serverCount = mcpSettings?.servers?.length || 0
+  if (serverCount > 0) {
+    console.log(`[MCP] Initialized with ${serverCount} servers`)
+  }
 }
 
 /**
  * Shutdown MCP system
  */
 export async function shutdownMCP(): Promise<void> {
-  console.log('[MCP] Shutting down...')
   await MCPManager.shutdown()
-  console.log('[MCP] Shutdown complete')
 }

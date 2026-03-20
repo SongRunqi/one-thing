@@ -208,7 +208,7 @@ export function useProviderSettings(
     codeEntryInfo.value = null
     manualCode.value = ''
     codeEntryError.value = ''
-    await loadCachedModels()
+    // Don't auto-fetch models — user clicks Fetch button to load
     await checkOAuthStatus()
   }
 
@@ -478,7 +478,7 @@ export function useProviderSettings(
 
   // Lifecycle
   async function initialize() {
-    await loadCachedModels()
+    // Don't auto-fetch models — user clicks Fetch button to load
     await checkOAuthStatus()
 
     oauthTokenRefreshedCleanup = window.electronAPI.onOAuthTokenRefreshed((data) => {

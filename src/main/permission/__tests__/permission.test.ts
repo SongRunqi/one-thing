@@ -7,13 +7,13 @@ vi.mock('uuid', () => ({
 }))
 
 // Mock workspace permissions
-vi.mock('../workspace-permissions.js', () => ({
+vi.mock('../directory-permissions.js', () => ({
   areAllApprovedInWorkspace: vi.fn(() => false),
   approveInWorkspace: vi.fn(),
 }))
 
 import { Permission } from '../index'
-import * as WorkspacePermissions from '../workspace-permissions.js'
+import * as DirectoryPermissions from '../directory-permissions.js'
 
 describe('Permission', () => {
   beforeEach(async () => {
@@ -60,7 +60,7 @@ describe('Permission', () => {
 
   describe('ask()', () => {
     it('should auto-approve when workspace-level permission exists', async () => {
-      vi.mocked(WorkspacePermissions.areAllApprovedInWorkspace).mockReturnValueOnce(true)
+      vi.mocked(DirectoryPermissions.areAllApprovedInWorkspace).mockReturnValueOnce(true)
 
       await Permission.ask({
         type: 'bash',
@@ -323,7 +323,7 @@ describe('Permission', () => {
     })
 
     it('should handle workspace-level permission and auto-approve matching', async () => {
-      vi.mocked(WorkspacePermissions.areAllApprovedInWorkspace).mockReturnValue(true)
+      vi.mocked(DirectoryPermissions.areAllApprovedInWorkspace).mockReturnValue(true)
 
       const ask1 = Permission.ask({
         type: 'bash',

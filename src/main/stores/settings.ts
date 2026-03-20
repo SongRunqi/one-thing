@@ -157,12 +157,6 @@ function migrateSettings(settings: any): AppSettings {
     needsSave = true
   }
 
-  // Ensure embedding settings exist
-  if (!settings.embedding) {
-    settings.embedding = defaultSettings.embedding
-    needsSave = true
-  }
-
   if (needsSave) {
     saveSettings(settings)
   }

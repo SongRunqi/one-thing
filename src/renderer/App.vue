@@ -8,15 +8,52 @@
   <!-- Main App Mode -->
   <ErrorBoundary v-else>
     <div class="app-shell">
+    <!-- Floating window action buttons (Alma-style, teleported to body to escape drag regions) -->
+    <Teleport to="body">
+      <div
+        v-if="!showMediaPanel"
+        class="window-action-buttons"
+        :style="{ left: windowActionsLeft + 'px' }"
+      >
+        <button
+          class="window-action-btn"
+          :title="sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'"
+          @click="handleSidebarToggle"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="9" y1="3" x2="9" y2="21"/>
+          </svg>
+        </button>
+        <button
+          class="window-action-btn"
+          title="Search"
+          @click="openSearch"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.35-4.35"/>
+          </svg>
+        </button>
+        <button
+          class="window-action-btn"
+          title="New chat"
+          @click="createNewChat"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>
+          </svg>
+        </button>
+      </div>
+    </Teleport>
+
     <!-- Main Content - No Header -->
     <div class="app-content">
       <!-- Media Panel (left side) -->
       <MediaPanel
         :visible="showMediaPanel"
         @close="closeMediaPanel"
-        @create-agent="openAgentDialog()"
-        @edit-agent="openAgentDialog"
-        @open-memory-file="openMemoryFile"
       />
 
       <!-- Floating sidebar overlay backdrop -->
@@ -33,70 +70,29 @@
         :no-transition="sidebarNoTransition"
         :width="sidebarWidth"
         :media-panel-open="showMediaPanel"
-        @open-settings="showSettings = true"
+        @open-settings="openSettings"
         @toggle-collapse="handleSidebarToggle"
         @open-search="openSearch"
         @create-new-chat="createNewChat"
         @toggle-media-panel="toggleMediaPanel"
-        @open-workspace-dialog="openWorkspaceDialog()"
-        @edit-workspace="openWorkspaceDialog"
-        @open-agent-dialog="openAgentDialog()"
-        @edit-agent="openAgentDialog"
         @resize="handleSidebarResize"
         @mouseleave="handleSidebarMouseLeave"
       />
       <ChatContainer
         ref="chatContainerRef"
         :show-settings="showSettings"
-        :show-agent-settings="showAgentSettings"
         :sidebar-collapsed="sidebarCollapsed"
         :sidebar-floating="sidebarFloating"
         :show-hover-trigger="sidebarCollapsed && !sidebarFloating && !showMediaPanel"
         :media-panel-open="showMediaPanel"
-        :show-agent-create="showAgentCreate"
-        :editing-agent="editingAgent"
-        :selected-memory-file-path="selectedMemoryFilePath"
-        :show-diff-overlay="showDiffOverlay"
-        :diff-overlay-data="diffOverlayData"
         @close-settings="showSettings = false"
         @open-settings="showSettings = true"
-        @close-agent-settings="showAgentSettings = false"
-        @open-agent-settings="showAgentSettings = true"
         @toggle-sidebar="handleSidebarToggle"
         @show-floating-sidebar="handleTriggerEnter"
         @hide-floating-sidebar="handleTriggerLeave"
-        @close-agent-create="closeAgentCreate"
-        @agent-created="handleAgentCreated"
-        @agent-saved="handleAgentSaved"
-        @close-memory-file="closeMemoryFile"
-        @close-diff-overlay="closeDiffOverlay"
-      />
-
-      <!-- Right Panel (Sidebar + Preview) -->
-      <RightPanel
-        :session-id="sessionsStore.currentSessionId"
-        :working-directory="sessionsStore.currentSession?.workingDirectory"
-        @open-diff="openDiffOverlay"
-        @open-commit-dialog="openCommitDialog"
-      />
-
-      <!-- Commit Dialog -->
-      <CommitDialog
-        :visible="showCommitDialog"
-        :staged-count="stagedFilesCount"
-        :working-directory="sessionsStore.currentSession?.workingDirectory || ''"
-        :session-id="sessionsStore.currentSessionId || ''"
-        @close="closeCommitDialog"
-        @committed="handleCommitted"
       />
     </div>
 
-    <!-- Workspace Dialog -->
-    <WorkspaceDialog
-      :visible="showWorkspaceDialog"
-      :workspace="editingWorkspace"
-      @close="closeWorkspaceDialog"
-    />
 
     <!-- Search Overlay (teleported to body) -->
     <Teleport to="body">
@@ -146,30 +142,15 @@ import { onMounted, onUnmounted, ref, computed, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
-import { useWorkspacesStore } from '@/stores/workspaces'
-import { useCustomAgentsStore } from '@/stores/custom-agents'
 import { useThemeStore } from '@/stores/themes'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { Sidebar } from '@/components/sidebar'
-import { RightPanel } from '@/components/right-panel'
-import { useRightSidebarStore } from '@/stores/right-sidebar'
 import ChatContainer from '@/components/ChatContainer.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
-import WorkspaceDialog from '@/components/WorkspaceDialog.vue'
-// CustomAgentDialog removed - now using full-page CreateAgentPage for both create and edit
 import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
-import CommitDialog from '@/components/git/CommitDialog.vue'
-import type { Workspace, CustomAgent } from '@/types'
 
-// Type for diff overlay data
-interface DiffOverlayData {
-  filePath: string
-  workingDirectory: string
-  sessionId: string
-  isStaged: boolean
-}
 
 // Detect if this is the settings window or image preview window
 const isSettingsWindow = window.location.hash.startsWith('#/settings')
@@ -178,10 +159,7 @@ const isImagePreviewWindow = window.location.hash.startsWith('#/image-preview')
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
-const workspacesStore = useWorkspacesStore()
-const customAgentsStore = useCustomAgentsStore()
 const themeStore = useThemeStore()
-const rightSidebarStore = useRightSidebarStore()
 
 const showSettings = ref(false)
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
@@ -193,98 +171,25 @@ function handleSidebarResize(width: number) {
   localStorage.setItem('sidebarWidth', String(width))
 }
 
-// Workspace and Media Panel state
-const showWorkspaceDialog = ref(false)
-const editingWorkspace = ref<Workspace | null>(null)
+// Floating window action buttons position (Alma-style sliding)
+// Sidebar open → buttons at sidebar's right edge; Sidebar closed → buttons next to traffic lights
+const BUTTON_GROUP_WIDTH = 100 // 3 buttons × 28px + gaps
+const TRAFFIC_LIGHTS_RIGHT = 78 // 70px traffic lights + 8px gap
+const windowActionsLeft = computed(() => {
+  if (sidebarCollapsed.value && !sidebarFloating.value) {
+    // Collapsed: right after traffic lights
+    return TRAFFIC_LIGHTS_RIGHT
+  }
+  // Expanded: right edge of sidebar
+  return sidebarWidth.value - BUTTON_GROUP_WIDTH - 12 // 12px sidebar padding
+})
+
 const showMediaPanel = ref(false)
 
-// Agent state
-const editingAgent = ref<CustomAgent | null>(null)
-const showAgentSettings = ref(false)
-const showAgentCreate = ref(false)
 
-// Memory state
-const selectedMemoryFilePath = ref<string | null>(null)
 
-// Diff overlay state
-const showDiffOverlay = ref(false)
-const diffOverlayData = ref<DiffOverlayData | null>(null)
-
-// Commit dialog state
-const showCommitDialog = ref(false)
-const stagedFilesCount = ref(0)
-
-function openWorkspaceDialog(workspace?: Workspace) {
-  editingWorkspace.value = workspace || null
-  showWorkspaceDialog.value = true
-}
-
-function closeWorkspaceDialog() {
-  showWorkspaceDialog.value = false
-  editingWorkspace.value = null
-}
-
-function openAgentDialog(agent?: CustomAgent) {
-  if (agent) {
-    // Editing existing CustomAgent - use full-page editor
-    editingAgent.value = agent
-    showAgentCreate.value = false
-  } else {
-    // Creating new agent - use full-page editor
-    editingAgent.value = null
-    showAgentCreate.value = true
-  }
-}
-
-function closeAgentCreate() {
-  showAgentCreate.value = false
-  editingAgent.value = null
-}
-
-function handleAgentCreated(_agent: CustomAgent) {
-  showAgentCreate.value = false
-  editingAgent.value = null
-  // Agent is already created and pinned in the store by CreateAgentPage
-}
-
-function handleAgentSaved(_agent: CustomAgent) {
-  editingAgent.value = null
-  showAgentCreate.value = false
-  // Agent is already updated in the store by CreateAgentPage
-}
-
-function openMemoryFile(filePath: string) {
-  selectedMemoryFilePath.value = filePath
-}
-
-function closeMemoryFile() {
-  selectedMemoryFilePath.value = null
-}
-
-// Diff overlay functions
-function openDiffOverlay(data: DiffOverlayData) {
-  diffOverlayData.value = data
-  showDiffOverlay.value = true
-}
-
-function closeDiffOverlay() {
-  showDiffOverlay.value = false
-  diffOverlayData.value = null
-}
-
-// Commit dialog functions
-function openCommitDialog() {
-  showCommitDialog.value = true
-}
-
-function closeCommitDialog() {
-  showCommitDialog.value = false
-}
-
-function handleCommitted() {
-  // Refresh git status after commit
-  // The GitTab will handle this via its own refresh mechanism
-  closeCommitDialog()
+function openSettings() {
+  window.electronAPI.openSettingsWindow()
 }
 
 function toggleMediaPanel() {
@@ -302,6 +207,7 @@ function toggleMediaPanel() {
 
 function closeMediaPanel() {
   showMediaPanel.value = false
+  sidebarCollapsed.value = false
   floatingCooldown.value = true
   setTimeout(() => {
     floatingCooldown.value = false
@@ -309,10 +215,6 @@ function closeMediaPanel() {
 }
 
 
-// Toggle right sidebar
-function toggleRightSidebar() {
-  rightSidebarStore.toggle()
-}
 
 // Setup global keyboard shortcuts
 useShortcuts({
@@ -326,13 +228,6 @@ useShortcuts({
   },
 })
 
-// Additional keyboard shortcut for right sidebar (Cmd+Shift+E)
-function handleRightSidebarShortcut(event: KeyboardEvent) {
-  if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'e') {
-    event.preventDefault()
-    toggleRightSidebar()
-  }
-}
 
 // Persist sidebar collapsed state and control traffic lights visibility
 const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
@@ -426,17 +321,10 @@ watch(sidebarCollapsed, (collapsed) => {
   }
 })
 
-// Update traffic lights when sidebar state changes (main window only)
-watch([sidebarCollapsed, sidebarFloating, showMediaPanel], ([collapsed, floating, mediaOpen]) => {
+// Persist sidebar collapsed state
+watch(sidebarCollapsed, (collapsed) => {
   localStorage.setItem('sidebarCollapsed', String(collapsed))
-  // Skip traffic light control for settings/preview windows - always show there
-  if (isSettingsWindow || isImagePreviewWindow) return
-  // Show traffic lights when sidebar is visible (expanded or floating) or media panel is open
-  const showTrafficLights = !collapsed || floating || mediaOpen
-  window.electronAPI?.setWindowButtonVisibility?.(showTrafficLights).catch(() => {
-    // Handler may not be registered yet during initial load
-  })
-}, { immediate: true })
+})
 
 
 // Search overlay state
@@ -487,39 +375,26 @@ watch(() => settingsStore.effectiveTheme, () => {
   themeStore.reapplyTheme()
 })
 
-// Create new chat (respects selected agent)
-// If there's already an empty "New Chat", reuse it and update agent if needed
+// Create new chat
+// If there's already an empty "New Chat", reuse it
 async function createNewChat() {
-  const agentId = customAgentsStore.selectedAgentId || null
-
   // Check if there's an existing empty session in current workspace
   const existingEmptySession = sessionsStore.filteredSessions.find(
     s => (s.name === 'New Chat' || s.name === '') && (!s.messages || s.messages.length === 0)
   )
 
   if (existingEmptySession) {
-    // Switch to existing empty session
     await sessionsStore.switchSession(existingEmptySession.id)
-    // Update agent if different
-    if (existingEmptySession.agentId !== agentId) {
-      await window.electronAPI.updateSessionAgent(existingEmptySession.id, agentId)
-      existingEmptySession.agentId = agentId || undefined
-    }
   } else {
-    // Create a new session with the selected agent
-    await sessionsStore.createSession('New Chat', agentId || undefined)
+    await sessionsStore.createSession('New Chat')
   }
-  // Keep agent selected for future chats
 }
 
 let unsubscribeSettingsChanged: (() => void) | null = null
 let unsubscribeMenuNewChat: (() => void) | null = null
-let unsubscribeMenuCloseChat: (() => void) | null = null
 
 onMounted(async () => {
   // Load initial data
-  await workspacesStore.loadWorkspaces()
-  await customAgentsStore.loadCustomAgents()
   await sessionsStore.loadSessions()
   await settingsStore.loadSettings()
 
@@ -558,15 +433,6 @@ onMounted(async () => {
     createNewChat()
   })
 
-  unsubscribeMenuCloseChat = window.electronAPI.onMenuCloseChat(async () => {
-    const currentId = sessionsStore.currentSessionId
-    if (currentId) {
-      await sessionsStore.deleteSession(currentId)
-    }
-  })
-
-  // Right sidebar keyboard shortcut (Cmd+Shift+E)
-  window.addEventListener('keydown', handleRightSidebarShortcut)
 })
 
 onUnmounted(() => {
@@ -576,11 +442,6 @@ onUnmounted(() => {
   if (unsubscribeMenuNewChat) {
     unsubscribeMenuNewChat()
   }
-  if (unsubscribeMenuCloseChat) {
-    unsubscribeMenuCloseChat()
-  }
-  // Clean up right sidebar shortcut
-  window.removeEventListener('keydown', handleRightSidebarShortcut)
 })
 
 // Theme is managed by settingsStore.applyTheme() which correctly resolves 'system' to 'light'/'dark'
@@ -594,6 +455,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: row;
   background: var(--bg);
+  position: relative;
 }
 
 /* Main Content - Full height, horizontal layout */
@@ -613,7 +475,7 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.3);
-  z-index: 499; /* Just below floating sidebar (500) */
+  z-index: calc(var(--z-overlay) - 1); /* Just below floating sidebar (500) */
   animation: fadeIn 0.2s ease forwards;
   /* Optimize rendering */
   contain: strict;
@@ -646,7 +508,7 @@ html[data-theme='light'] .sidebar-floating-backdrop {
   display: flex;
   justify-content: center;
   padding-top: 100px;
-  z-index: 1000;
+  z-index: var(--z-modal);
   animation: fadeIn 0.15s ease;
 }
 
@@ -788,7 +650,7 @@ html[data-theme='light'] .search-overlay {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: var(--z-modal);
   padding: 20px;
 }
 
@@ -800,5 +662,45 @@ html[data-theme='light'] .search-overlay {
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+</style>
+
+<!-- Non-scoped styles for teleported window action buttons -->
+<style>
+.window-action-buttons {
+  position: fixed;
+  top: 6px;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: left 0.3s cubic-bezier(0, 0, 0.2, 1);
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.window-action-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.window-action-btn:hover {
+  background: var(--hover, rgba(255, 255, 255, 0.08));
+  color: var(--text);
+}
+
+html[data-theme='light'] .window-action-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
 }
 </style>

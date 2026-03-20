@@ -504,62 +504,6 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   /**
-   * Get embedding models for a provider (filtered from full list)
-   * Uses provider's own API (not Models.dev) since embedding models are often not in Models.dev
-   * Returns ModelInfo[] with type='embedding' field
-   */
-  async function getEmbeddingModels(providerId: string): Promise<ModelInfo[]> {
-    // Get provider config
-    const providerConfig = settings.value.ai.providers[providerId]
-    console.log(`[SettingsStore] getEmbeddingModels: providerId=${providerId}, hasConfig=${!!providerConfig}, hasApiKey=${!!providerConfig?.apiKey}, hasOAuth=${!!providerConfig?.oauthToken}`)
-
-    if (!providerConfig?.apiKey && !providerConfig?.oauthToken) {
-      console.log(`[SettingsStore] No credentials for ${providerId}, returning empty`)
-      return []
-    }
-
-    try {
-      // Directly call provider's API to get models (bypasses Models.dev cache)
-      // Force refresh to get fresh data with type field
-      console.log(`[SettingsStore] Calling fetchModels for ${providerId} (forceRefresh=true)...`)
-      const response = await window.electronAPI.fetchModels(
-        providerId as AIProvider,
-        providerConfig.apiKey || '',
-        providerConfig.baseUrl,
-        true  // forceRefresh - bypass cache to get fresh data with type field
-      )
-
-      console.log(`[SettingsStore] fetchModels response for ${providerId}:`, response.success, response.models?.length, response.error)
-
-      if (!response.success || !response.models) {
-        console.log(`[SettingsStore] fetchModels failed for ${providerId}:`, response.error)
-        return []
-      }
-
-      // Log all models before filtering
-      console.log(`[SettingsStore] All models for ${providerId}:`, response.models.map(m => ({ id: m.id, type: m.type })))
-
-      // Filter for embedding models
-      // ModelInfo has 'type' field set by fetchOpenAIModels, fetchGeminiModels, fetchZhipuModels
-      const embeddingModels = response.models.filter(m => {
-        // Check type field (set by our fetch*Models functions)
-        if (m.type === 'embedding') {
-          return true
-        }
-        // Fallback: check model ID for known embedding patterns
-        const embeddingPatterns = ['embedding', 'text-embedding', 'ada-002']
-        return embeddingPatterns.some(p => m.id.toLowerCase().includes(p))
-      })
-
-      console.log(`[SettingsStore] Filtered embedding models for ${providerId}:`, embeddingModels.length)
-      return embeddingModels
-    } catch (error) {
-      console.error(`[SettingsStore] Failed to fetch embedding models for ${providerId}:`, error)
-      return []
-    }
-  }
-
-  /**
    * Get chat models for a provider (filtered from full list)
    * Excludes embedding and image-only models
    */
@@ -686,7 +630,6 @@ export const useSettingsStore = defineStore('settings', () => {
     hasModelsCache,
     fetchModelsForProvider,
     refreshModelsForProvider,
-    getEmbeddingModels,
     getChatModels,
     getSelectedModels,
     clearModelsCache,

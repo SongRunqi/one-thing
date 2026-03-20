@@ -4,7 +4,7 @@
       <h3 class="section-title">Keyboard Shortcuts</h3>
       <p class="section-desc">Click on a shortcut to record a new key combination</p>
 
-      <div class="shortcuts-list">
+      <div class="settings-card shortcuts-list">
         <div class="shortcut-row">
           <div class="shortcut-info">
             <span class="shortcut-name">Send Message</span>
@@ -135,20 +135,27 @@ function updateShortcut(key: keyof ShortcutSettings, shortcut: KeyboardShortcut 
   margin-bottom: 16px;
 }
 
+.settings-card {
+  background: rgba(128, 128, 128, 0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
 .shortcuts-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 
 .shortcut-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.08);
+}
+
+.shortcut-row:last-child {
+  border-bottom: none;
 }
 
 .shortcut-info {
@@ -170,7 +177,6 @@ function updateShortcut(key: keyof ShortcutSettings, shortcut: KeyboardShortcut 
 
 /* Light theme */
 html[data-theme='light'] .shortcut-row {
-  background: rgba(0, 0, 0, 0.02);
-  border-color: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
 }
 </style>

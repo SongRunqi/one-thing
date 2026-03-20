@@ -34,45 +34,21 @@
       {{ title || 'New chat' }}
     </span>
 
-    <!-- Agent Selector (at end of address bar) -->
-    <button
-      class="address-bar-agent"
-      :class="{ 'has-agent': agent }"
-      @click="toggleAgentDropdown"
-      title="Select agent"
-    >
-      <template v-if="agent">
-        <span v-if="agent.avatar?.type === 'emoji'" class="agent-avatar-emoji">
-          {{ agent.avatar?.value }}
-        </span>
-        <img
-          v-else-if="agent.avatar"
-          :src="'file://' + agent.avatar.value"
-          class="agent-avatar-img"
-          alt=""
-        />
-      </template>
-      <MessageSquare v-else :size="14" :stroke-width="2" />
-      <ChevronDown class="agent-chevron" :size="10" :stroke-width="2.5" />
-    </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
-import { Folder, MessageSquare, ChevronDown } from 'lucide-vue-next'
-import type { Agent } from '@/types'
+import { Folder } from 'lucide-vue-next'
 
 const props = defineProps<{
   title: string
   workingDirectory: string | null
-  agent: Agent | null
 }>()
 
 const emit = defineEmits<{
   openDirectoryPicker: []
   updateTitle: [title: string]
-  toggleAgentDropdown: [event: MouseEvent]
 }>()
 
 // Get working directory name (last folder in path)
@@ -109,10 +85,6 @@ function saveTitle() {
 function cancelEdit() {
   isEditing.value = false
   editingValue.value = ''
-}
-
-function toggleAgentDropdown(event: MouseEvent) {
-  emit('toggleAgentDropdown', event)
 }
 </script>
 
@@ -218,50 +190,4 @@ html[data-theme='light'] .address-bar-title:hover {
   outline: none;
 }
 
-/* Agent Button in Address Bar */
-.address-bar-agent {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px 6px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-  margin-left: 4px;
-}
-
-.address-bar-agent:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text);
-}
-
-.address-bar-agent.has-agent {
-  color: var(--text);
-}
-
-html[data-theme='light'] .address-bar-agent:hover {
-  background: rgba(0, 0, 0, 0.06);
-}
-
-.agent-avatar-emoji {
-  font-size: 14px;
-  line-height: 1;
-}
-
-.agent-avatar-img {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  object-fit: cover;
-}
-
-.agent-chevron {
-  opacity: 0.4;
-  flex-shrink: 0;
-  margin-left: -1px;
-}
 </style>

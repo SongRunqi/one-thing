@@ -106,20 +106,6 @@
         </svg>
         Skills
       </button>
-      <button
-        :class="['tab-btn', { active: activeTab === 'embedding' }]"
-        @click="activeTab = 'embedding'"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/>
-          <circle cx="12" cy="12" r="8"/>
-          <line x1="12" y1="2" x2="12" y2="4"/>
-          <line x1="12" y1="20" x2="12" y2="22"/>
-          <line x1="2" y1="12" x2="4" y2="12"/>
-          <line x1="20" y1="12" x2="22" y2="12"/>
-        </svg>
-        Embedding
-      </button>
     </div>
 
     <div class="settings-content">
@@ -171,14 +157,6 @@
         />
       </div>
 
-      <!-- Embedding Tab -->
-      <div v-show="activeTab === 'embedding'" class="tab-content">
-        <EmbeddingSettingsPanel
-          :settings="localSettings.embedding || { provider: 'openai', openai: { model: 'text-embedding-3-small', dimensions: 384 }, local: { model: 'all-MiniLM-L6-v2' } }"
-          @update:settings="handleEmbeddingSettingsUpdate"
-        />
-      </div>
-
     </div>
 
     <SettingsFooter
@@ -195,7 +173,7 @@
 <script setup lang="ts">
 import { ref, toRaw, onMounted, computed } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import type { AppSettings, AIProvider, ProviderInfo, CustomProviderConfig, ToolDefinition, EmbeddingSettings } from '@/types'
+import type { AppSettings, AIProvider, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -205,7 +183,6 @@ import UnsavedChangesDialog from './settings/UnsavedChangesDialog.vue'
 import DeleteConfirmDialog from './settings/DeleteConfirmDialog.vue'
 import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
-import EmbeddingSettingsPanel from './settings/EmbeddingSettingsPanel.vue'
 import GeneralSettingsTab from './settings/GeneralSettingsTab.vue'
 import { AIProviderTab } from './settings/provider'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
@@ -219,7 +196,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 
 // Active tab
-const activeTab = ref<'general' | 'ai' | 'tools' | 'shortcuts' | 'mcp' | 'skills' | 'embedding'>('general')
+const activeTab = ref<'general' | 'ai' | 'tools' | 'shortcuts' | 'mcp' | 'skills'>('general')
 
 // Deep clone settings, ensuring providers object exists
 const localSettings = ref<AppSettings>(
@@ -307,19 +284,6 @@ function initializeSettings() {
     }
   }
 
-  // Ensure Embedding settings exist
-  if (!localSettings.value.embedding) {
-    localSettings.value.embedding = {
-      provider: 'openai',
-      openai: {
-        model: 'text-embedding-3-small',
-        dimensions: 384,
-      },
-      local: {
-        model: 'all-MiniLM-L6-v2',
-      },
-    }
-  }
 }
 
 // State
@@ -387,10 +351,6 @@ function handleSkillsSettingsUpdate(skillsSettings: { enableSkills: boolean; ski
   originalSettings.value = JSON.stringify(localSettings.value)
 }
 
-// Handle Embedding settings update
-function handleEmbeddingSettingsUpdate(embeddingSettings: EmbeddingSettings) {
-  localSettings.value.embedding = embeddingSettings
-}
 
 // Load available tools
 async function loadAvailableTools() {
@@ -586,7 +546,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: var(--z-toast);
   backdrop-filter: blur(8px);
   padding: 20px;
 }

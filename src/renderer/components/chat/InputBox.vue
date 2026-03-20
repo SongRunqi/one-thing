@@ -1,18 +1,5 @@
 <template>
   <div class="composer-wrapper" ref="composerWrapperRef">
-    <!-- Hidden file input -->
-    <input
-      ref="fileInputRef"
-      type="file"
-      multiple
-      accept="image/*,.pdf,.doc,.docx,.txt,.md,.json,.csv"
-      style="display: none"
-      @change="handleFileSelect"
-    />
-
-    <!-- Attachment previews -->
-    <AttachmentPreview :files="attachedFiles" @remove="removeAttachment" />
-
     <!-- Quoted text context -->
     <QuotedContext :text="quotedText" @clear="clearQuotedText" />
 
@@ -59,15 +46,6 @@
       @close="handlePathPickerClose"
     />
 
-    <!-- Quick Command Bar -->
-    <QuickCommandBar
-      :session-id="effectiveSessionId"
-      @executed="handleQuickCommandExecuted"
-    />
-
-    <!-- Plan Panel -->
-    <PlanPanel :session-id="effectiveSessionId" />
-
     <div class="composer" :class="{ focused: isFocused }" @click="focusTextarea">
       <!-- Input area -->
       <div class="input-area">
@@ -80,7 +58,6 @@
           @focus="isFocused = true"
           @blur="isFocused = false"
           @input="adjustHeight"
-          @paste="handlePaste"
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
           rows="1"
@@ -90,17 +67,7 @@
       <!-- Bottom toolbar -->
       <div class="composer-toolbar">
         <div class="toolbar-left">
-          <button class="toolbar-btn" title="Attach file" @click="handleAttach">
-            <Paperclip :size="18" :stroke-width="2" />
-          </button>
-          <ToolsMenu
-            @tools-enabled-change="(enabled: boolean) => emit('toolsEnabledChange', enabled)"
-            @open-settings="() => emit('openToolSettings')"
-          />
-          <SkillsMenu @open-settings="() => emit('openToolSettings')" />
           <ModelSelector :session-id="props.sessionId" />
-          <ContextIndicator :session-id="props.sessionId" />
-          <ModeToggle ref="modeToggleRef" :session-id="effectiveSessionId" />
         </div>
 
         <div class="toolbar-right" @click.stop>
@@ -131,27 +98,17 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
-import type { MessageAttachment } from '@/types'
-
 // Sub-components
-import AttachmentPreview from './AttachmentPreview.vue'
 import QuotedContext from './QuotedContext.vue'
 import SkillPicker from './SkillPicker.vue'
 import CommandPicker from './CommandPicker.vue'
 import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
-import QuickCommandBar from './QuickCommandBar.vue'
 import ModelSelector from './ModelSelector.vue'
-import ContextIndicator from './ContextIndicator.vue'
-import ToolsMenu from './ToolsMenu.vue'
-import SkillsMenu from './SkillsMenu.vue'
-import ModeToggle from './ModeToggle.vue'
-import PlanPanel from './PlanPanel.vue'
-import { X, Paperclip, Square, Send, Check } from 'lucide-vue-next'
+import { X, Square, Send, Check } from 'lucide-vue-next'
 import { findCommand } from '@/services/commands'
 
 // Composables
-import { useAttachments } from '@/composables/useAttachments'
 import { useInputHistory } from '@/composables/useInputHistory'
 import { usePickerOrchestration } from '@/composables/usePickerOrchestration'
 import { useCommandFeedback } from '@/composables/useCommandFeedback'
@@ -163,10 +120,8 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'sendMessage', message: string, attachments?: MessageAttachment[]): void
+  (e: 'sendMessage', message: string): void
   (e: 'stopGeneration'): void
-  (e: 'toolsEnabledChange', enabled: boolean): void
-  (e: 'openToolSettings'): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -186,10 +141,6 @@ const isSending = ref(false)
 const isComposing = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const composerWrapperRef = ref<HTMLElement | null>(null)
-const modeToggleRef = ref<InstanceType<typeof ModeToggle> | null>(null)
-
-// Session input cache
-const sessionInputCache = new Map<string, string>()
 
 // Get the effective session ID
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
@@ -203,17 +154,6 @@ const workingDirectory = computed(() => {
 })
 
 // --- Composables ---
-
-const {
-  attachedFiles,
-  fileInputRef,
-  handleAttach,
-  handleFileSelect,
-  handlePaste,
-  removeAttachment,
-  clearAttachments,
-  toMessageAttachments,
-} = useAttachments()
 
 function adjustHeight() {
   const textarea = textareaRef.value
@@ -257,7 +197,7 @@ const { commandFeedback, showCommandFeedback } = useCommandFeedback()
 // --- Computed ---
 
 const canSend = computed(() => {
-  const hasContent = messageInput.value.trim().length > 0 || attachedFiles.value.length > 0
+  const hasContent = messageInput.value.trim().length > 0
   return hasContent && !props.isLoading
 })
 
@@ -270,25 +210,8 @@ watch(() => props.isLoading, (loading) => {
   }
 })
 
-// Cache input text when switching sessions
-watch(effectiveSessionId, (newSessionId, oldSessionId) => {
-  if (oldSessionId && messageInput.value) {
-    sessionInputCache.set(oldSessionId, messageInput.value)
-  }
-  if (oldSessionId) {
-    messageInput.value = ''
-  }
-  if (newSessionId) {
-    const cachedInput = sessionInputCache.get(newSessionId)
-    if (cachedInput) {
-      messageInput.value = cachedInput
-      nextTick(() => {
-        adjustHeight()
-      })
-    }
-  }
-  resetHistoryNavigation()
-}, { immediate: true })
+// Note: Session input caching is now handled naturally by KeepAlive —
+// each session has its own InputBox instance with preserved state.
 
 // --- ResizeObserver ---
 
@@ -437,16 +360,10 @@ async function sendMessage() {
     fullMessage = `${quotedLines}\n\n${messageInput.value}`
   }
 
-  const attachments = toMessageAttachments()
-
-  emit('sendMessage', fullMessage, attachments)
+  emit('sendMessage', fullMessage)
   messageInput.value = ''
   resetHistoryNavigation()
   quotedText.value = ''
-  clearAttachments()
-  if (effectiveSessionId.value) {
-    sessionInputCache.delete(effectiveSessionId.value)
-  }
   nextTick(() => {
     adjustHeight()
     if (textareaRef.value) {
@@ -462,23 +379,6 @@ function stopGeneration() {
 
 function focusTextarea() {
   textareaRef.value?.focus()
-}
-
-// --- Quick Command Bar handler ---
-
-function handleQuickCommandExecuted(result: {
-  commandId: string
-  success: boolean
-  message?: string
-  error?: string
-}) {
-  if (result.success) {
-    if (result.message) {
-      showCommandFeedback('success', result.message)
-    }
-  } else {
-    showCommandFeedback('error', result.error || 'Command failed')
-  }
 }
 
 // --- Exposed methods ---
@@ -512,7 +412,7 @@ defineExpose({
 
 <style scoped>
 .composer-wrapper {
-  width: 85%;
+  width: 92%;
   margin: 0 auto;
   position: relative;
 }
@@ -530,7 +430,7 @@ defineExpose({
   border-radius: 8px;
   font-size: 12px;
   white-space: nowrap;
-  z-index: 100;
+  z-index: var(--z-dropdown);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -591,7 +491,7 @@ defineExpose({
   font-size: 15px;
   line-height: 1.6;
   resize: none;
-  min-height: 28px;
+  min-height: 40px;
   max-height: 200px;
   overflow-y: auto;
   caret-color: var(--accent);

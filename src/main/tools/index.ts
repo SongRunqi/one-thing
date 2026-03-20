@@ -2,24 +2,22 @@
  * Tool System Entry Point
  *
  * Provides a unified interface for the tool system.
- * Supports both legacy tools and V2 tools (Tool.define() pattern).
+ * All tools use the Tool.define() pattern.
  */
 
-// Re-export legacy types
+// Re-export types
 export type {
   ToolDefinition,
   ToolCall,
   ToolParameter,
   ToolExecutionContext,
   ToolExecutionResult,
-  ToolHandler,
-  RegisteredTool,
   AIToolSchema,
 } from './types.js'
 
 export { toAIToolSchema } from './types.js'
 
-// Re-export V2 types and utilities
+// Re-export core types and utilities
 export { Tool, zodToJsonSchema, isAsyncTool } from './core/tool.js'
 export type {
   ToolMetadata,
@@ -45,20 +43,18 @@ export type { Replacer } from './core/replacers.js'
 // Re-export registry functions
 export {
   registerTool,
-  registerToolV2,
   unregisterTool,
   getTool,
-  getToolV2,
-  getToolV2Async,
+  getAsyncTool,
   hasTool,
   getAllTools,
   getAllToolsAsync,
-  getAllToolsV2,
-  getAllToolsV2Async,
+  getAllToolInfos,
+  getAllAsyncToolInfos,
   getEnabledTools,
   getEnabledToolsAsync,
-  getEnabledToolsV2,
-  getEnabledToolsV2Async,
+  getEnabledToolInfos,
+  getEnabledAsyncToolInfos,
   getToolsForAI,
   executeTool,
   createToolCall,

@@ -173,7 +173,6 @@ export function registerPluginHandlers(): void {
     await shell.openPath(dirPath)
   })
 
-  console.log('[PluginIPC] Plugin handlers registered')
 }
 
 /**
@@ -183,5 +182,4 @@ export function unregisterPluginHandlers(): void {
   for (const channel of Object.values(PLUGIN_CHANNELS)) {
     ipcMain.removeHandler(channel)
   }
-  console.log('[PluginIPC] Plugin handlers unregistered')
 }

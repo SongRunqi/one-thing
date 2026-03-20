@@ -162,7 +162,7 @@ onUnmounted(() => {
 
 .tooltip {
   position: fixed;
-  z-index: 10000;
+  z-index: var(--z-tooltip);
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 500;

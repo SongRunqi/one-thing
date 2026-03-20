@@ -137,12 +137,6 @@ function setupApplicationMenu(mainWindow: BrowserWindow) {
             mainWindow.webContents.send('menu:new-chat')
           },
         },
-        {
-          label: 'Close Chat',
-          click: () => {
-            mainWindow.webContents.send('menu:close-chat')
-          },
-        },
         { type: 'separator' },
         isMac ? { role: 'close' as const } : { role: 'quit' as const },
       ],
@@ -266,7 +260,8 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
     minWidth: 700,
     minHeight: 500,
     show: false,
-    backgroundColor,
+    transparent: isMac,
+    backgroundColor: isMac ? undefined : backgroundColor,
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
     parent: parentWindow,
@@ -338,13 +333,16 @@ export function createWindow() {
     y: windowState.y,
     minWidth: 600,
     minHeight: 600,
-    // Prevent flash: don't show until ready, use theme-aware background
+    // Prevent flash: don't show until ready
     show: false,
-    backgroundColor,
+    // Transparent window removes native title bar rendering artifacts (1px line)
+    // CSS backgrounds cover the full window, so visual appearance is unchanged
+    transparent: isMac,
+    backgroundColor: isMac ? undefined : backgroundColor,
     // Use hidden title bar on macOS to keep traffic lights
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
-    // Position traffic lights - in sidebar header area
-    trafficLightPosition: isMac ? { x: 16, y: 17 } : undefined,
+    // Position traffic lights - native-like position
+    trafficLightPosition: isMac ? { x: 13, y: 13 } : undefined,
     webPreferences: {
       // Preload is bundled with esbuild to dist/preload/index.js
       preload: path.join(__dirname, '../preload/index.js'),
@@ -464,7 +462,8 @@ export function openImagePreviewWindow(data: ImagePreviewData) {
     minWidth: data.mode === 'gallery' ? 700 : 500,
     minHeight: 400,
     show: false, // Show after ready to ensure proper initialization
-    backgroundColor,
+    transparent: isMac,
+    backgroundColor: isMac ? undefined : backgroundColor,
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
     webPreferences: {

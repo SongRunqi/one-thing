@@ -133,7 +133,7 @@ defineEmits<{
   font-size: 13px;
   font-weight: 500;
   box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
-  z-index: 100;
+  z-index: var(--z-dropdown);
 }
 
 .save-toast svg {

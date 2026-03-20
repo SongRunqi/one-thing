@@ -29,14 +29,9 @@ export {
   updateStepsUsageByTurn,
   updateSessionPin,
   updateSessionArchived,
-  updateSessionAgent,
   updateSessionModel,
   updateSessionWorkingDirectory,
   inheritSessionWorkingDirectory,
-  updateSessionBuiltinMode,
-  updateSessionTokenUsage,
-  getSessionTokenUsage,
-  deleteSessionsByWorkspace,
   // Optimized session loading (Phase 4: Metadata Separation)
   getSessionsList,
   getSessionDetails,
@@ -44,19 +39,6 @@ export {
   getCachedProviderConfig,
   cacheSessionProviderConfig,
 } from './sessions.js'
-
-// Workspace exports
-export {
-  getWorkspaces,
-  getWorkspace,
-  createWorkspace,
-  updateWorkspace,
-  deleteWorkspace,
-  switchWorkspace,
-  uploadWorkspaceAvatar,
-  getCurrentWorkspaceId,
-  setCurrentWorkspaceId,
-} from './workspaces.js'
 
 // Migration function
 import { app } from 'electron'

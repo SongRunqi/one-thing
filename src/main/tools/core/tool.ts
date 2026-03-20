@@ -48,11 +48,11 @@ export interface InitContext {
     instructions: string
     files?: Array<{ name: string; path: string; type: string }>
   }>
-  /** Session's working directory (for CustomAgentTool) */
+  /** Session's working directory */
   workingDirectory?: string
-  /** Provider ID (for CustomAgentTool) */
+  /** Provider ID */
   providerId?: string
-  /** Provider configuration (for CustomAgentTool) */
+  /** Provider configuration */
   providerConfig?: {
     apiKey: string
     baseUrl?: string
@@ -82,7 +82,7 @@ export interface ToolContext<M extends ToolMetadata = ToolMetadata> {
    */
   metadata(input: { title?: string; metadata?: Partial<M> }): void
   /**
-   * Step event callbacks for tools that delegate to sub-agents (like CustomAgent)
+   * Step event callbacks for tools that delegate to sub-agents
    * These allow the tool to forward internal steps to the UI
    */
   onStepStart?: (step: Step) => void

@@ -165,7 +165,7 @@ function confettiStyle(i: number) {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 1;
+  z-index: var(--z-base);
 }
 
 .star {
@@ -185,7 +185,7 @@ function confettiStyle(i: number) {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 1;
+  z-index: var(--z-base);
 }
 
 .confetti-piece {
@@ -216,7 +216,7 @@ function confettiStyle(i: number) {
 /* ========== 主内容 ========== */
 .hero-section {
   position: relative;
-  z-index: 10;
+  z-index: var(--z-sticky);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -319,7 +319,7 @@ function confettiStyle(i: number) {
 /* ========== 建议卡片 ========== */
 .suggestion-grid {
   position: relative;
-  z-index: 10;
+  z-index: var(--z-sticky);
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;

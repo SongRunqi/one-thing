@@ -4,64 +4,25 @@
     <section class="settings-section">
       <h3 class="section-title">Tool Settings</h3>
 
-      <div class="form-group">
-        <div class="toggle-row">
-          <label class="form-label">Enable Tool Calls</label>
-          <label class="toggle">
-            <input
-              type="checkbox"
-              :checked="settings.tools.enableToolCalls"
-              @change="updateEnableToolCalls(($event.target as HTMLInputElement).checked)"
-            />
-            <span class="toggle-slider"></span>
-          </label>
+      <div class="settings-card">
+        <div class="card-row">
+          <div class="toggle-row">
+            <div>
+              <label class="form-label">Enable Tool Calls</label>
+              <p class="form-hint">Allow AI to use tools during conversations</p>
+            </div>
+            <label class="toggle">
+              <input
+                type="checkbox"
+                :checked="settings.tools.enableToolCalls"
+                @change="updateEnableToolCalls(($event.target as HTMLInputElement).checked)"
+              />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
         </div>
-        <p class="form-hint">Allow AI to use tools during conversations</p>
       </div>
 
-      <!-- Tool Agent Configuration -->
-      <div class="form-group tool-agent-config" v-if="settings.tools.enableToolCalls">
-        <label class="form-label">Tool Agent Configuration</label>
-        <p class="form-hint" style="margin-bottom: 12px;">
-          Configure which provider and model the Tool Agent uses. Use a cheaper model for lower cost.
-        </p>
-        <div class="selector-row">
-          <div class="selector-item">
-            <label class="selector-label">Provider</label>
-            <select
-              class="form-select"
-              :value="settings.tools.toolAgentSettings?.providerId || ''"
-              @change="updateToolAgentProvider(($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">Same as main</option>
-              <option
-                v-for="providerId in availableProviders"
-                :key="providerId"
-                :value="providerId"
-              >
-                {{ getProviderDisplayName(providerId) }}
-              </option>
-            </select>
-          </div>
-          <div class="selector-item">
-            <label class="selector-label">Model</label>
-            <select
-              class="form-select"
-              :value="settings.tools.toolAgentSettings?.model || ''"
-              @change="updateToolAgentModel(($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">{{ toolAgentModelPlaceholder }}</option>
-              <option
-                v-for="model in toolAgentAvailableModels"
-                :key="model"
-                :value="model"
-              >
-                {{ model }}
-              </option>
-            </select>
-          </div>
-        </div>
-      </div>
     </section>
 
     <!-- Available Tools -->
@@ -72,43 +33,25 @@
         <p>No tools available</p>
       </div>
 
-      <div v-else class="tools-list">
+      <div v-else class="settings-card tools-list">
         <div
           v-for="tool in displayTools"
           :key="tool.id"
-          class="tool-item"
+          class="card-row tool-item"
         >
           <div class="tool-info">
-            <div class="tool-header">
-              <span class="tool-name">{{ tool.name }}</span>
-              <span :class="['tool-category', tool.category]">{{ tool.category }}</span>
-            </div>
-            <p class="tool-description">{{ tool.description }}</p>
+            <span class="tool-name">{{ tool.name }}</span>
+            <span :class="['tool-category', tool.category]">{{ tool.category }}</span>
           </div>
           <div class="tool-controls">
-            <div class="toggle-row">
-              <span class="control-label">Enabled</span>
-              <label class="toggle small">
-                <input
-                  type="checkbox"
-                  :checked="getToolEnabled(tool.id)"
-                  @change="setToolEnabled(tool.id, ($event.target as HTMLInputElement).checked)"
-                />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="toggle-row">
-              <span class="control-label">Auto Execute</span>
-              <label class="toggle small">
-                <input
-                  type="checkbox"
-                  :checked="getToolAutoExecute(tool.id)"
-                  @change="setToolAutoExecute(tool.id, ($event.target as HTMLInputElement).checked)"
-                  :disabled="!getToolEnabled(tool.id)"
-                />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
+            <label class="toggle small" :title="getToolEnabled(tool.id) ? 'Enabled' : 'Disabled'">
+              <input
+                type="checkbox"
+                :checked="getToolEnabled(tool.id)"
+                @change="setToolEnabled(tool.id, ($event.target as HTMLInputElement).checked)"
+              />
+              <span class="toggle-slider"></span>
+            </label>
           </div>
         </div>
       </div>
@@ -158,9 +101,8 @@ const emit = defineEmits<{
   'update:settings': [settings: AppSettings]
 }>()
 
-// Filter out internal tools (like delegate) from display
 const displayTools = computed(() => {
-  return props.tools.filter(tool => tool.id !== 'delegate')
+  return props.tools
 })
 
 // Check if bash tool is available
@@ -173,71 +115,10 @@ const hasWebSearchTool = computed(() => {
   return props.tools.some(tool => tool.id === 'web_search')
 })
 
-// Available providers for Tool Agent
-const availableProviders = computed(() => {
-  return Object.keys(props.settings.ai.providers).filter(id => {
-    const config = props.settings.ai.providers[id]
-    return config && config.apiKey // Only show configured providers
-  })
-})
-
-// Provider display names
-const providerDisplayNames: Record<string, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  deepseek: 'DeepSeek',
-  zhipu: 'Zhipu AI',
-  openrouter: 'OpenRouter',
-  ollama: 'Ollama',
-}
-
-function getProviderDisplayName(providerId: string): string {
-  return providerDisplayNames[providerId] || providerId
-}
-
-// Available models for Tool Agent based on selected provider
-const toolAgentAvailableModels = computed(() => {
-  const providerId = props.settings.tools.toolAgentSettings?.providerId || props.settings.ai.provider
-  const config = props.settings.ai.providers[providerId]
-  return config?.selectedModels || []
-})
-
-// Model placeholder based on selected provider
-const toolAgentModelPlaceholder = computed(() => {
-  const providerId = props.settings.tools.toolAgentSettings?.providerId
-  if (providerId) {
-    const config = props.settings.ai.providers[providerId]
-    return config?.model ? `Default: ${config.model}` : 'Select model'
-  }
-  return 'Same as main conversation'
-})
-
 function updateEnableToolCalls(enabled: boolean) {
   emit('update:settings', {
     ...props.settings,
     tools: { ...props.settings.tools, enableToolCalls: enabled }
-  })
-}
-
-function updateToolAgentProvider(providerId: string) {
-  const toolAgentSettings = {
-    ...props.settings.tools.toolAgentSettings,
-    providerId: providerId || undefined
-  }
-  emit('update:settings', {
-    ...props.settings,
-    tools: { ...props.settings.tools, toolAgentSettings }
-  })
-}
-
-function updateToolAgentModel(model: string) {
-  const toolAgentSettings = {
-    ...props.settings.tools.toolAgentSettings,
-    model: model.trim() || undefined
-  }
-  emit('update:settings', {
-    ...props.settings,
-    tools: { ...props.settings.tools, toolAgentSettings }
   })
 }
 
@@ -290,11 +171,26 @@ function updateBraveApiKey(apiKey: string) {
 }
 
 .settings-section {
-  margin-bottom: 32px;
+  margin-bottom: 28px;
 }
 
 .settings-section:last-child {
   margin-bottom: 0;
+}
+
+.settings-card {
+  background: rgba(128, 128, 128, 0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.card-row {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.08);
+}
+
+.card-row:last-child {
+  border-bottom: none;
 }
 
 .section-title {
@@ -328,75 +224,6 @@ function updateBraveApiKey(apiKey: string) {
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
-}
-
-/* Tool Agent Config */
-.tool-agent-config {
-  background: var(--hover);
-  border-radius: 10px;
-  padding: 16px;
-  border: 1px solid var(--border);
-}
-
-.selector-row {
-  display: flex;
-  gap: 12px;
-}
-
-.selector-item {
-  flex: 1;
-  min-width: 0;
-}
-
-.selector-label {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 6px;
-}
-
-.form-select {
-  width: 100%;
-  padding: 10px 32px 10px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-  background-color: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-}
-
-.form-select:hover {
-  border-color: var(--accent);
-  background-color: var(--panel-2);
-}
-
-.form-select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-}
-
-.form-select option {
-  padding: 8px;
-  background: var(--panel);
-  color: var(--text-primary);
-}
-
-@media (max-width: 480px) {
-  .selector-row {
-    flex-direction: column;
-    gap: 16px;
-  }
 }
 
 /* Toggle */
@@ -479,8 +306,6 @@ function updateBraveApiKey(apiKey: string) {
   padding: 24px;
   text-align: center;
   color: var(--text-muted);
-  background: var(--hover);
-  border-radius: 8px;
 }
 
 /* Tools List */
@@ -492,60 +317,38 @@ function updateBraveApiKey(apiKey: string) {
 
 .tool-item {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px;
-  background: var(--hover);
-  border-radius: 8px;
-  border: 1px solid var(--border);
+  gap: 12px;
 }
 
 .tool-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: 1;
   min-width: 0;
 }
 
-.tool-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
 .tool-name {
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
 }
 
 .tool-category {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(59, 130, 246, 0.15);
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(59, 130, 246, 0.12);
   color: var(--accent);
-}
-
-.tool-category.custom {
-  background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
-}
-
-.tool-description {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin: 0;
-  line-height: 1.4;
 }
 
 .tool-controls {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
   flex-shrink: 0;
-}
-
-.tool-controls .toggle-row {
-  gap: 8px;
 }
 
 .control-label {
@@ -597,7 +400,6 @@ function updateBraveApiKey(apiKey: string) {
 @media (max-width: 480px) {
   .tool-item {
     padding: 12px;
-    border-radius: 10px;
   }
 }
 </style>

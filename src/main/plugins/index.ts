@@ -78,15 +78,8 @@ import pluginStore from '../stores/plugins.js'
  * but before the main window is created.
  */
 export async function initializePlugins(): Promise<void> {
-  console.log('[Plugins] Initializing plugin system...')
-
-  // Connect plugin store to loader
   setPluginStore(pluginStore)
-
-  // Initialize and load all plugins
   await pluginLoader.initialize()
-
-  console.log('[Plugins] Plugin system initialized')
 }
 
 /**
@@ -95,9 +88,7 @@ export async function initializePlugins(): Promise<void> {
  * This should be called during app quit.
  */
 export async function shutdownPlugins(): Promise<void> {
-  console.log('[Plugins] Shutting down plugin system...')
   await pluginLoader.shutdown()
-  console.log('[Plugins] Plugin system shutdown complete')
 }
 
 /**

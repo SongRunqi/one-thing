@@ -4,7 +4,6 @@
  * Defines the core types for the tool system, including:
  * - Tool definition and registration
  * - Tool execution context and results
- * - Tool handlers
  */
 
 import type { ToolDefinition, ToolCall, ToolParameter, ProviderConfig, ToolSettings, Step, SkillDefinition } from '../../shared/ipc.js'
@@ -13,7 +12,7 @@ import type { ToolDefinition, ToolCall, ToolParameter, ProviderConfig, ToolSetti
 export type { ToolDefinition, ToolCall, ToolParameter }
 
 /**
- * Metadata update payload from V2 tools
+ * Metadata update payload from tools
  */
 export interface ToolMetadataUpdate {
   title?: string
@@ -35,10 +34,10 @@ export interface ToolExecutionContext {
   toolSettings?: ToolSettings
   abortSignal?: AbortSignal
   skills?: SkillDefinition[]  // Skills available for delegation
-  // Step event callbacks for delegate tool (Tool Agent forwards its steps)
+  // Step event callbacks for tool execution progress
   onStepStart?: (step: Step) => void
   onStepComplete?: (step: Step) => void
-  // V2 tool metadata streaming callback
+  // Tool metadata streaming callback
   onMetadata?: (update: ToolMetadataUpdate) => void
 }
 
@@ -49,27 +48,8 @@ export interface ToolExecutionResult {
   success: boolean
   data?: any
   error?: string
-  // For dangerous commands that need user confirmation
-  requiresConfirmation?: boolean
-  commandType?: 'read-only' | 'dangerous' | 'forbidden'
   // For abort/cancel - set when user cancels the operation
   aborted?: boolean
-}
-
-/**
- * Tool handler function type
- */
-export type ToolHandler = (
-  args: Record<string, any>,
-  context: ToolExecutionContext
-) => Promise<ToolExecutionResult>
-
-/**
- * Internal tool registration with handler
- */
-export interface RegisteredTool {
-  definition: ToolDefinition
-  handler: ToolHandler
 }
 
 /**

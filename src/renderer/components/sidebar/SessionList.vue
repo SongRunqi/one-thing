@@ -9,17 +9,6 @@
       role="list"
       @scroll="checkOverflow"
     >
-      <!-- New Chat item - always at top -->
-      <div
-        class="session-item new-chat-item"
-        @click="$emit('create-new-chat')"
-      >
-        <svg class="new-chat-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 5v14M5 12h14"/>
-        </svg>
-        <span class="session-name">New Chat</span>
-      </div>
-
       <!-- Session list -->
       <SessionItem
         v-for="session in sessions"
@@ -63,7 +52,6 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'create-new-chat'): void
   (e: 'session-click', event: MouseEvent, session: SessionWithBranches): void
   (e: 'context-menu', event: MouseEvent, session: SessionWithBranches): void
   (e: 'toggle-collapse', sessionId: string): void

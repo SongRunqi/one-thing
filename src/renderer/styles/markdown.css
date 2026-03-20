@@ -1,6 +1,6 @@
 /**
  * Shared Markdown Rendering Styles
- * Used by MessageBubble.vue and MemoryEditor.vue
+ * Used by MessageBubble.vue
  *
  * Usage: Apply class="content" to the container element that uses v-html
  */

@@ -1,16 +1,11 @@
 <template>
-  <div class="global-default-section">
-    <div class="global-default-header">
-      <svg class="default-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-      </svg>
-      <span class="default-label">Default Model</span>
-    </div>
-    <div class="global-default-selectors">
-      <div class="selector-group">
-        <label class="selector-label">Provider</label>
+  <div class="default-model-section">
+    <h3 class="section-label">Default Model</h3>
+    <div class="settings-group">
+      <div class="settings-row">
+        <span class="row-label">Provider</span>
         <select
-          class="global-select"
+          class="row-select"
           :value="currentProvider"
           @change="$emit('update:provider', ($event.target as HTMLSelectElement).value)"
         >
@@ -23,10 +18,10 @@
           </option>
         </select>
       </div>
-      <div class="selector-group">
-        <label class="selector-label">Model</label>
+      <div class="settings-row">
+        <span class="row-label">Model</span>
         <select
-          class="global-select"
+          class="row-select"
           :value="currentModel"
           @change="$emit('update:model', ($event.target as HTMLSelectElement).value)"
         >
@@ -64,110 +59,69 @@ defineEmits<Emits>()
 </script>
 
 <style scoped>
-/* Global Default Section */
-.global-default-section {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 12px 16px;
-  background: linear-gradient(135deg,
-    rgba(var(--accent-rgb), 0.08) 0%,
-    rgba(var(--accent-rgb), 0.02) 100%
-  );
-  border: 1px solid rgba(var(--accent-rgb), 0.15);
-  border-radius: 10px;
+.default-model-section {
   flex-shrink: 0;
 }
 
-.global-default-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.default-icon {
-  color: var(--accent);
-}
-
-.default-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.global-default-selectors {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.selector-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.selector-group:last-child {
-  flex: 1;
-  min-width: 0;
-}
-
-.selector-group .selector-label {
-  font-size: 11px;
+.section-label {
+  font-size: 12px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  margin: 0 0 8px 2px;
 }
 
-.global-select {
-  padding: 6px 28px 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text-primary);
+.settings-group {
+  background: rgba(128, 128, 128, 0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+}
+
+.row-label {
   font-size: 13px;
-  font-weight: 500;
+  color: var(--text);
+}
+
+.row-select {
+  padding: 5px 24px 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 8px center;
-  transition: all 0.15s ease;
-  min-width: 0;
-  max-width: 100%;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  white-space: nowrap;
+  background-position: right 4px center;
+  text-align: right;
 }
 
-.selector-group:first-child .global-select {
-  min-width: 120px;
+.row-select:hover {
+  color: var(--text);
 }
 
-.selector-group:last-child .global-select {
-  flex: 1;
-  min-width: 0;
-}
-
-.global-select:hover {
-  border-color: var(--accent);
-}
-
-.global-select:focus {
+.row-select:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
 }
 
-.global-select option {
-  padding: 8px;
+.row-select option {
   background: var(--bg);
-  color: var(--text-primary);
+  color: var(--text);
+  text-align: left;
 }
 </style>

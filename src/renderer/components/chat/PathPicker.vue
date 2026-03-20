@@ -1,4 +1,5 @@
 <template>
+  <Transition name="picker-slide">
   <div class="path-picker" v-if="visible && (dirs.length > 0 || isLoading)">
     <div class="path-picker-header">
       <span class="title">Directories</span>
@@ -34,6 +35,7 @@
       <span><kbd>Esc</kbd> close</span>
     </div>
   </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
@@ -176,19 +178,7 @@ onUnmounted(() => {
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   overflow: hidden;
-  z-index: 100;
-  animation: slideUp 0.15s ease;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  z-index: var(--z-dropdown);
 }
 
 .path-picker-header {
@@ -307,5 +297,18 @@ onUnmounted(() => {
   font-family: 'SF Mono', 'Monaco', monospace;
   font-size: 10px;
   margin: 0 2px;
+}
+
+/* Enter/leave transitions */
+.picker-slide-enter-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.picker-slide-leave-active {
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+.picker-slide-enter-from,
+.picker-slide-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 </style>

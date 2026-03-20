@@ -10,8 +10,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS, type ToolDefinition, type ToolCall } from '../../shared/ipc.js'
 import {
-  getAllToolsV2,
-  getAllToolsV2Async,
   getAllToolsAsync,
   executeTool,
   initializeToolRegistry,
@@ -20,11 +18,11 @@ import {
   setInitContext,
   initializeAsyncTools,
 } from '../tools/index.js'
-import type { ToolExecutionContext, ToolInfo, ToolInfoAsync, ToolInitResult } from '../tools/index.js'
+import type { ToolExecutionContext, ToolInfo } from '../tools/index.js'
 import * as store from '../store.js'
 
 /**
- * Convert V2 tool to ToolDefinition for frontend
+ * Convert ToolInfo to ToolDefinition for frontend
  */
 function toolInfoToDefinition(tool: ToolInfo): ToolDefinition {
   const jsonSchema = zodToJsonSchema(tool.parameters)
@@ -70,7 +68,7 @@ export function registerToolHandlers() {
   // Uses async version to include tools with dynamic descriptions
   ipcMain.handle(IPC_CHANNELS.GET_TOOLS, async () => {
     try {
-      // Set init context for async tools (like SkillTool, CustomAgentTool)
+      // Set init context for async tools (like SkillTool)
       // Use the first session's working directory, or current directory if no sessions
       const sessions = store.getSessions()
       const workingDirectory = sessions.length > 0 ? sessions[0].workingDirectory : process.cwd()
@@ -79,7 +77,7 @@ export function registerToolHandlers() {
         workingDirectory,
       } as any)
 
-      // Get all tools (legacy + V2 static + V2 async) and filter out MCP tools
+      // Get all tools (static + async) and filter out MCP tools
       const allTools = await getAllToolsAsync()
       const builtinTools: ToolDefinition[] = allTools
         .filter(t => !t.id.startsWith('mcp:'))
@@ -142,7 +140,7 @@ export function registerToolHandlers() {
   })
 
   // Refresh async tools (re-initialize with new context)
-  // Used when CustomAgents are created/modified/deleted to update the tool list
+  // Used to update the tool list when context changes
   ipcMain.handle(IPC_CHANNELS.REFRESH_ASYNC_TOOLS, async (_event, { workingDirectory }) => {
     try {
       console.log('[Tools IPC] Refreshing async tools, workingDirectory:', workingDirectory)

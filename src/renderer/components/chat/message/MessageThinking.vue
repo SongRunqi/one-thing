@@ -1,54 +1,46 @@
 <template>
-  <!-- 只在有内容显示时渲染容器 -->
-  <Transition name="container-fade">
-    <div v-if="shouldShowContainer" class="thinking-container">
-      <!-- Loading memory status -->
+  <!-- Status overlay: position absolute, never affects document flow -->
+  <Transition name="status-fade">
+    <div v-if="shouldShowStatus" class="thinking-status-overlay">
       <Transition name="thinking-fade" mode="out-in">
-        <div v-if="loadingMemory && isStreaming && !hasContent && !reasoning" key="loading-memory" class="thinking-status">
-          <div class="thinking-status-row">
-            <span class="thinking-text flowing">Extracting memory</span>
-            <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
-          </div>
+        <!-- Loading memory -->
+        <div v-if="loadingMemory && isStreaming && !hasContent && !reasoning" key="loading-memory" class="thinking-status-row">
+          <span class="thinking-text flowing">Extracting memory</span>
+          <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
         </div>
 
-        <!-- Waiting status (streaming, no content yet, no reasoning) -->
-        <div v-else-if="isStreaming && !hasContent && !reasoning" key="waiting" class="thinking-status">
-          <div class="thinking-status-row">
-            <span class="thinking-text flowing">Waiting</span>
-            <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
-          </div>
+        <!-- Waiting -->
+        <div v-else-if="isStreaming && !hasContent && !reasoning" key="waiting" class="thinking-status-row">
+          <span class="thinking-text flowing">Waiting</span>
+          <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
         </div>
 
-        <!-- Thinking/Thought status (has reasoning) -->
-        <div v-else-if="reasoning" key="reasoning" class="thinking-status">
-          <div class="thinking-with-content">
-            <div class="thinking-status-row" @click="toggleExpand">
-              <!-- Still thinking: animated with transition -->
-              <Transition name="status-text-fade" mode="out-in">
-                <span v-if="isStreaming && !hasContent" key="thinking" class="thinking-text flowing">Thinking</span>
-                <!-- Done thinking: static "Thought for X seconds" -->
-                <span v-else key="thought" class="thinking-text thought">Thought for {{ formatThinkingTime(displayTime) }}</span>
-              </Transition>
-              <!-- Show time separately only when still thinking -->
-              <Transition name="time-fade">
-                <span v-if="isStreaming && !hasContent" class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
-              </Transition>
-              <button class="thinking-toggle-btn" :class="{ expanded: isExpanded }">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M6 9l6 6 6-6"/>
-                </svg>
-              </button>
-            </div>
-            <Transition name="expand">
-              <div v-if="isExpanded" class="thinking-content-wrapper">
-                <div class="thinking-content" v-html="renderedReasoning"></div>
-              </div>
-            </Transition>
-          </div>
+        <!-- Reasoning status: Thinking / Thought for Xs -->
+        <div v-else-if="reasoning" key="reasoning-status" class="thinking-status-row clickable" @click="toggleExpand">
+          <Transition name="status-text-fade" mode="out-in">
+            <span v-if="isStreaming && !hasContent" key="thinking" class="thinking-text flowing">Thinking</span>
+            <span v-else key="thought" class="thinking-text thought">Thought for {{ formatThinkingTime(displayTime) }}</span>
+          </Transition>
+          <Transition name="time-fade">
+            <span v-if="isStreaming && !hasContent" class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+          </Transition>
+          <button class="thinking-toggle-btn" :class="{ expanded: isExpanded }">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
         </div>
       </Transition>
     </div>
   </Transition>
+
+  <!-- Reasoning expand: in document flow, smooth grid-rows animation -->
+  <!-- User-triggered expand, so pushing content down is expected -->
+  <div v-if="reasoning" class="thinking-reasoning-wrapper" :class="{ expanded: isExpanded }">
+    <div class="thinking-reasoning-inner">
+      <div class="thinking-content" v-html="renderedReasoning"></div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -91,8 +83,8 @@ const renderedReasoning = computed(() => {
   return renderMarkdown(cleanedContent, false)
 })
 
-// 是否应该显示容器（有 Loading Memory、Waiting 或有 Reasoning 时才显示）
-const shouldShowContainer = computed(() => {
+// Whether the status overlay should be shown
+const shouldShowStatus = computed(() => {
   const showLoadingMemory = props.loadingMemory && props.isStreaming && !props.hasContent && !props.reasoning
   const showWaiting = props.isStreaming && !props.hasContent && !props.reasoning
   const showReasoning = !!props.reasoning
@@ -188,37 +180,28 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.thinking-container {
-  position: relative;
-  /* 不设置 min-height，让容器高度由内容决定 */
-}
-
-/* 容器淡入淡出 - 使用 absolute 避免影响下方布局 */
-.container-fade-enter-active {
-  transition: opacity 0.2s ease;
-}
-
-.container-fade-leave-active {
+/* Status overlay: absolute, positioned in the padding-top area of the parent */
+.thinking-status-overlay {
   position: absolute;
-  width: 100%;
-  transition: opacity 0.25s ease;
-}
-
-.container-fade-enter-from,
-.container-fade-leave-to {
-  opacity: 0;
-}
-
-.thinking-status {
-  margin-bottom: 8px;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  z-index: 1;
 }
 
 .thinking-status-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
+  width: 100%;
   padding: 4px 0;
+}
+
+.thinking-status-row.clickable {
+  cursor: pointer;
 }
 
 .thinking-text {
@@ -261,7 +244,21 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* Transition: Waiting <-> Thinking/Thought container */
+/* Status overlay fade: opacity only, no translateY to prevent any positional shift */
+.status-fade-enter-active {
+  transition: opacity 0.2s ease;
+}
+
+.status-fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.status-fade-enter-from,
+.status-fade-leave-to {
+  opacity: 0;
+}
+
+/* Transition: Waiting <-> Thinking/Thought row */
 .thinking-fade-enter-active {
   animation: thinkingFadeIn 0.25s ease;
 }
@@ -273,22 +270,18 @@ onUnmounted(() => {
 @keyframes thinkingFadeIn {
   from {
     opacity: 0;
-    transform: translateY(-4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
 @keyframes thinkingFadeOut {
   from {
     opacity: 1;
-    transform: translateY(0);
   }
   to {
     opacity: 0;
-    transform: translateY(4px);
   }
 }
 
@@ -330,24 +323,22 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-/* Transition: Content expand */
-.expand-enter-active {
-  animation: expandIn 0.2s ease-out;
+/* Reasoning expand: smooth grid-template-rows animation */
+.thinking-reasoning-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease, margin-bottom 0.2s ease;
+  margin-bottom: 0;
 }
 
-.expand-leave-active {
-  animation: expandOut 0.15s ease-in forwards;
+.thinking-reasoning-wrapper.expanded {
+  grid-template-rows: 1fr;
+  margin-bottom: 8px;
 }
 
-@keyframes expandOut {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
+.thinking-reasoning-inner {
+  overflow: hidden;
+  min-height: 0;
 }
 
 .thinking-toggle-btn {
@@ -377,32 +368,11 @@ onUnmounted(() => {
   transform: rotate(180deg);
 }
 
-.thinking-with-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.thinking-content-wrapper {
-  margin-top: 8px;
+.thinking-content {
   padding: 12px;
   background: rgba(var(--accent-rgb), 0.05);
   border-radius: 8px;
   border-left: 3px solid var(--accent);
-  animation: expandIn 0.2s ease-out;
-}
-
-@keyframes expandIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.thinking-content {
   font-size: 13px;
   line-height: 1.6;
   color: var(--muted);

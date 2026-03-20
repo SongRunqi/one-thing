@@ -19,14 +19,13 @@ import type { Router, DomainRoutes, RouteHandlers } from '../../shared/ipc/route
  *
  * @example
  * ```ts
- * registerRouter(memoryFeedbackRouter, {
- *   record: async (req) => {
- *     await recordMemoryFeedback(req.filePath, req.feedbackType)
- *     return { success: true }
+ * registerRouter(settingsRouter, {
+ *   get: async () => {
+ *     return { success: true, settings: getSettings() }
  *   },
- *   getStats: async (req) => {
- *     const stats = await getMemoryFeedbackStats(req.filePath)
- *     return { success: true, stats }
+ *   save: async (req) => {
+ *     await saveSettings(req)
+ *     return { success: true }
  *   },
  * })
  * ```

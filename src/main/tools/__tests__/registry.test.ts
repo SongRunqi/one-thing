@@ -9,16 +9,13 @@ vi.mock('uuid', () => ({
 // Mock the builtin tools import (used by initializeToolRegistry)
 vi.mock('../builtin/index.js', () => ({
   registerBuiltinTools: vi.fn(),
-  registerBuiltinToolsV2: vi.fn(),
 }))
 
 import {
   registerTool,
-  registerToolV2,
   unregisterTool,
   getTool,
-  getToolV2,
-  getToolV2Async,
+  getAsyncTool,
   hasTool,
   getAllTools,
   getEnabledTools,
@@ -30,29 +27,10 @@ import {
 } from '../registry'
 
 import { Tool } from '../core/tool'
-import type { ToolDefinition, ToolHandler, ToolExecutionContext } from '../types'
+import type { ToolExecutionContext } from '../types'
 
-// Helper to create a minimal legacy tool definition
-function createLegacyToolDef(overrides: Partial<ToolDefinition> = {}): ToolDefinition {
-  return {
-    id: 'test-tool',
-    name: 'Test Tool',
-    description: 'A test tool',
-    parameters: [],
-    enabled: true,
-    autoExecute: false,
-    category: 'builtin',
-    ...overrides,
-  }
-}
-
-// Helper to create a minimal legacy tool handler
-function createHandler(result?: any): ToolHandler {
-  return vi.fn(async () => result ?? { success: true, data: { output: 'ok' } })
-}
-
-// Helper to create a V2 static tool
-function createV2Tool(id: string, overrides: Partial<any> = {}) {
+// Helper to create a static tool
+function createTestTool(id: string, overrides: Partial<any> = {}) {
   return Tool.define(id, {
     name: overrides.name || `Tool ${id}`,
     description: overrides.description || `Description for ${id}`,
@@ -75,57 +53,29 @@ function createV2Tool(id: string, overrides: Partial<any> = {}) {
 
 describe('Tool Registry', () => {
   beforeEach(() => {
-    // We need to clean the registry between tests.
-    // Unregister all tools we might have created
-    for (const id of ['test-tool', 'tool-a', 'tool-b', 'tool-c', 'v2-tool', 'v2-async-tool', 'disabled-tool', 'auto-tool', 'non-existent']) {
+    // Clean the registry between tests
+    for (const id of ['test-tool', 'tool-a', 'tool-b', 'tool-c', 'my-tool', 'async-tool', 'disabled-tool', 'auto-tool', 'non-existent']) {
       unregisterTool(id)
     }
     vi.clearAllMocks()
   })
 
-  // ─── registerTool / getTool / hasTool ─────────────────────────────
+  // ─── registerTool ────────────────────────────────────────────────
 
-  describe('Legacy tool registration', () => {
-    it('should register and retrieve a legacy tool', () => {
-      const def = createLegacyToolDef()
-      const handler = createHandler()
+  describe('Tool registration', () => {
+    it('should register and retrieve a static tool', () => {
+      const tool = createTestTool('my-tool')
 
-      registerTool(def, handler)
+      registerTool(tool)
 
-      expect(hasTool('test-tool')).toBe(true)
-      const tool = getTool('test-tool')
-      expect(tool).toBeDefined()
-      expect(tool!.definition).toEqual(def)
+      expect(hasTool('my-tool')).toBe(true)
+      expect(getTool('my-tool')).toBeDefined()
+      expect(getTool('my-tool')!.id).toBe('my-tool')
     })
 
-    it('should overwrite existing tool with same id', () => {
-      const def1 = createLegacyToolDef({ description: 'First' })
-      const def2 = createLegacyToolDef({ description: 'Second' })
-
-      registerTool(def1, createHandler())
-      registerTool(def2, createHandler())
-
-      const tool = getTool('test-tool')
-      expect(tool!.definition.description).toBe('Second')
-    })
-  })
-
-  // ─── registerToolV2 ──────────────────────────────────────────────
-
-  describe('V2 tool registration', () => {
-    it('should register and retrieve a V2 static tool', () => {
-      const v2Tool = createV2Tool('v2-tool')
-
-      registerToolV2(v2Tool)
-
-      expect(hasTool('v2-tool')).toBe(true)
-      expect(getToolV2('v2-tool')).toBeDefined()
-      expect(getToolV2('v2-tool')!.id).toBe('v2-tool')
-    })
-
-    it('should register a V2 async tool', () => {
+    it('should register an async tool', () => {
       const asyncTool = Tool.define(
-        'v2-async-tool',
+        'async-tool',
         { name: 'Async Tool', category: 'builtin' },
         async () => ({
           description: 'Dynamic description',
@@ -136,33 +86,24 @@ describe('Tool Registry', () => {
         })
       )
 
-      registerToolV2(asyncTool)
+      registerTool(asyncTool)
 
-      expect(hasTool('v2-async-tool')).toBe(true)
-      expect(getToolV2Async('v2-async-tool')).toBeDefined()
+      expect(hasTool('async-tool')).toBe(true)
+      expect(getAsyncTool('async-tool')).toBeDefined()
       // Should NOT be in static registry
-      expect(getToolV2('v2-async-tool')).toBeUndefined()
+      expect(getTool('async-tool')).toBeUndefined()
     })
   })
 
   // ─── unregisterTool ──────────────────────────────────────────────
 
   describe('unregisterTool()', () => {
-    it('should unregister a legacy tool', () => {
-      registerTool(createLegacyToolDef(), createHandler())
-      expect(hasTool('test-tool')).toBe(true)
+    it('should unregister a tool', () => {
+      registerTool(createTestTool('my-tool'))
 
-      const removed = unregisterTool('test-tool')
+      const removed = unregisterTool('my-tool')
       expect(removed).toBe(true)
-      expect(hasTool('test-tool')).toBe(false)
-    })
-
-    it('should unregister a V2 tool', () => {
-      registerToolV2(createV2Tool('v2-tool'))
-
-      const removed = unregisterTool('v2-tool')
-      expect(removed).toBe(true)
-      expect(hasTool('v2-tool')).toBe(false)
+      expect(hasTool('my-tool')).toBe(false)
     })
 
     it('should return false for non-existent tool', () => {
@@ -174,9 +115,9 @@ describe('Tool Registry', () => {
   // ─── getAllTools ──────────────────────────────────────────────────
 
   describe('getAllTools()', () => {
-    it('should return all legacy and V2 static tools', () => {
-      registerTool(createLegacyToolDef({ id: 'tool-a' }), createHandler())
-      registerToolV2(createV2Tool('tool-b'))
+    it('should return all static tools', () => {
+      registerTool(createTestTool('tool-a'))
+      registerTool(createTestTool('tool-b'))
 
       const all = getAllTools()
       const ids = all.map(t => t.id)
@@ -186,7 +127,7 @@ describe('Tool Registry', () => {
 
     it('should not include async tools', () => {
       const asyncTool = Tool.define(
-        'v2-async-tool',
+        'async-tool',
         { name: 'Async', category: 'builtin' },
         async () => ({
           description: 'desc',
@@ -196,11 +137,11 @@ describe('Tool Registry', () => {
           },
         })
       )
-      registerToolV2(asyncTool)
+      registerTool(asyncTool)
 
       const all = getAllTools()
       const ids = all.map(t => t.id)
-      expect(ids).not.toContain('v2-async-tool')
+      expect(ids).not.toContain('async-tool')
     })
   })
 
@@ -208,8 +149,8 @@ describe('Tool Registry', () => {
 
   describe('getEnabledTools()', () => {
     it('should only return enabled tools', () => {
-      registerTool(createLegacyToolDef({ id: 'tool-a', enabled: true }), createHandler())
-      registerTool(createLegacyToolDef({ id: 'disabled-tool', enabled: false }), createHandler())
+      registerTool(createTestTool('tool-a', { enabled: true }))
+      registerTool(createTestTool('disabled-tool', { enabled: false }))
 
       const enabled = getEnabledTools()
       const ids = enabled.map(t => t.id)
@@ -227,45 +168,22 @@ describe('Tool Registry', () => {
       toolCallId: 'call-1',
     }
 
-    it('should execute a legacy tool successfully', async () => {
-      const handler = createHandler({ success: true, data: { output: 'hello' } })
-      registerTool(createLegacyToolDef(), handler)
+    it('should execute a static tool successfully', async () => {
+      registerTool(createTestTool('my-tool'))
 
-      const result = await executeTool('test-tool', { input: 'test' }, mockContext)
-
-      expect(result.success).toBe(true)
-      expect(result.data).toEqual({ output: 'hello' })
-      expect(handler).toHaveBeenCalledWith({ input: 'test' }, mockContext)
-    })
-
-    it('should handle legacy tool execution error', async () => {
-      const handler = vi.fn(async () => {
-        throw new Error('Tool crashed')
-      })
-      registerTool(createLegacyToolDef(), handler)
-
-      const result = await executeTool('test-tool', {}, mockContext)
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Tool crashed')
-    })
-
-    it('should execute a V2 static tool successfully', async () => {
-      registerToolV2(createV2Tool('v2-tool'))
-
-      const result = await executeTool('v2-tool', { input: 'test-value' }, mockContext)
+      const result = await executeTool('my-tool', { input: 'test-value' }, mockContext)
 
       expect(result.success).toBe(true)
       expect(result.data).toMatchObject({
-        title: 'Executed v2-tool',
+        title: 'Executed my-tool',
         output: 'test-value',
       })
     })
 
-    it('should return validation error for invalid V2 tool args', async () => {
-      registerToolV2(createV2Tool('v2-tool'))
+    it('should return validation error for invalid tool args', async () => {
+      registerTool(createTestTool('my-tool'))
 
-      const result = await executeTool('v2-tool', { wrong_param: 'test' }, mockContext)
+      const result = await executeTool('my-tool', { wrong_param: 'test' }, mockContext)
 
       expect(result.success).toBe(false)
       expect(result.error).toBeDefined()
@@ -297,38 +215,26 @@ describe('Tool Registry', () => {
   // ─── canAutoExecute ──────────────────────────────────────────────
 
   describe('canAutoExecute()', () => {
-    it('should return tool default for legacy tool without settings', () => {
-      registerTool(createLegacyToolDef({ id: 'auto-tool', autoExecute: true }), createHandler())
+    it('should return false for tool without autoExecute', () => {
+      registerTool(createTestTool('my-tool'))
 
-      expect(canAutoExecute('auto-tool')).toBe(true)
-    })
-
-    it('should return false for legacy tool with autoExecute=false', () => {
-      registerTool(createLegacyToolDef({ autoExecute: false }), createHandler())
-
-      expect(canAutoExecute('test-tool')).toBe(false)
+      expect(canAutoExecute('my-tool')).toBe(false)
     })
 
     it('should respect user settings over tool defaults', () => {
-      registerTool(createLegacyToolDef({ autoExecute: false }), createHandler())
+      registerTool(createTestTool('my-tool', { autoExecute: false }))
 
-      const settings = { 'test-tool': { enabled: true, autoExecute: true } }
-      expect(canAutoExecute('test-tool', settings)).toBe(true)
-    })
-
-    it('should return false for V2 tool without autoExecute', () => {
-      registerToolV2(createV2Tool('v2-tool'))
-
-      expect(canAutoExecute('v2-tool')).toBe(false)
+      const settings = { 'my-tool': { enabled: true, autoExecute: true } }
+      expect(canAutoExecute('my-tool', settings)).toBe(true)
     })
 
     it('should return false for non-existent tool', () => {
       expect(canAutoExecute('non-existent')).toBe(false)
     })
 
-    it('should check V2 async tools', () => {
+    it('should check async tools', () => {
       const asyncTool = Tool.define(
-        'v2-async-tool',
+        'async-tool',
         { name: 'Async', category: 'builtin', autoExecute: true },
         async () => ({
           description: 'desc',
@@ -338,24 +244,24 @@ describe('Tool Registry', () => {
           },
         })
       )
-      registerToolV2(asyncTool)
+      registerTool(asyncTool)
 
-      expect(canAutoExecute('v2-async-tool')).toBe(true)
+      expect(canAutoExecute('async-tool')).toBe(true)
     })
   })
 
-  // ─── V2 tool conversion to legacy format ─────────────────────────
+  // ─── ToolInfo to ToolDefinition conversion ────────────────────
 
-  describe('V2 to legacy ToolDefinition conversion', () => {
-    it('should convert V2 tool parameters to legacy format in getAllTools', () => {
-      registerToolV2(createV2Tool('v2-tool'))
+  describe('ToolInfo to ToolDefinition conversion', () => {
+    it('should convert tool parameters to ToolDefinition format in getAllTools', () => {
+      registerTool(createTestTool('my-tool'))
 
       const all = getAllTools()
-      const tool = all.find(t => t.id === 'v2-tool')!
+      const tool = all.find(t => t.id === 'my-tool')!
 
       expect(tool).toBeDefined()
-      expect(tool.name).toBe('Tool v2-tool')
-      expect(tool.description).toBe('Description for v2-tool')
+      expect(tool.name).toBe('Tool my-tool')
+      expect(tool.description).toBe('Description for my-tool')
       expect(tool.enabled).toBe(true)
       expect(tool.autoExecute).toBe(false)
       expect(tool.parameters.length).toBeGreaterThan(0)

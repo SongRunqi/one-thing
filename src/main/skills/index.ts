@@ -26,6 +26,21 @@ export {
   formatSkillsList,
 } from './prompt-builder.js'
 
+// Skills manager (state, caching, session-aware loading)
+export {
+  initializeSkills,
+  getLoadedSkills,
+  getSkillsForSession,
+  invalidateSkillsCache,
+  getSkillsCache,
+  refreshSkills,
+  addSkillToCache,
+  removeSkillFromCache,
+  toggleSkillEnabled,
+  findSkillById,
+  ensureInitialized,
+} from './skills-manager.js'
+
 // Re-export types from shared
 export type {
   SkillDefinition,

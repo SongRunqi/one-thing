@@ -1,11 +1,12 @@
 <template>
   <Teleport to="body">
-    <div
-      v-if="show"
-      class="context-menu"
-      :style="{ top: y + 'px', left: x + 'px' }"
-      @click.stop
-    >
+    <Transition name="ctx-menu">
+      <div
+        v-if="show"
+        class="context-menu"
+        :style="{ top: y + 'px', left: x + 'px' }"
+        @click.stop
+      >
       <button class="context-item" @click="handleRename">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
@@ -26,6 +27,7 @@
         Close
       </button>
     </div>
+    </Transition>
     <div v-if="show" class="context-overlay" @click="$emit('close')"></div>
   </Teleport>
 </template>
@@ -70,7 +72,7 @@ function handleDelete() {
 /* Context Menu */
 .context-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-modal);
   min-width: 160px;
   padding: 6px;
   background: var(--panel);
@@ -116,6 +118,19 @@ function handleDelete() {
 .context-overlay {
   position: fixed;
   inset: 0;
-  z-index: 999;
+  z-index: calc(var(--z-modal) - 1);
+}
+
+/* Enter/leave transitions */
+.ctx-menu-enter-active {
+  transition: opacity 0.12s ease, transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.ctx-menu-leave-active {
+  transition: opacity 0.08s ease, transform 0.08s ease;
+}
+.ctx-menu-enter-from,
+.ctx-menu-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
 }
 </style>

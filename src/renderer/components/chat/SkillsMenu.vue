@@ -11,12 +11,13 @@
     </button>
 
     <Teleport to="body">
-      <div
-        v-if="showPanel"
-        class="skills-menu"
-        :style="panelPosition"
-        @click.stop
-      >
+      <Transition name="skills-menu">
+        <div
+          v-if="showPanel"
+          class="skills-menu"
+          :style="panelPosition"
+          @click.stop
+        >
         <!-- Master toggle -->
         <div class="skills-menu-header">
           <div class="skills-menu-title">
@@ -74,6 +75,7 @@
           <span>Advanced Settings</span>
         </button>
       </div>
+      </Transition>
     </Teleport>
   </div>
 </template>
@@ -282,14 +284,8 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: var(--shadow);
-  z-index: 9999;
+  z-index: var(--z-max);
   overflow: hidden;
-  animation: menuSlideUp 0.2s ease-out;
-}
-
-@keyframes menuSlideUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .skills-menu-header {
@@ -533,5 +529,18 @@ onUnmounted(() => {
 
 .skills-menu-settings:hover {
   background: rgba(59, 130, 246, 0.08);
+}
+
+/* Enter/leave transitions */
+.skills-menu-enter-active {
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+}
+.skills-menu-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.skills-menu-enter-from,
+.skills-menu-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 </style>

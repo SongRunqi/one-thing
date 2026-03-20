@@ -5,18 +5,7 @@
   >
     <div v-show="showContent" class="sidebar-content" :class="{ 'content-hidden': collapsed && !floating }">
       <!-- Sidebar Header: Traffic lights space + Search + New Chat -->
-      <SidebarHeader
-        :search-query="localSearchQuery"
-        @toggle-collapse="$emit('toggleCollapse')"
-        @update:search-query="localSearchQuery = $event"
-      />
-
-      <!-- Agent Grid at top (shows pinned Custom Agents) -->
-      <AgentGrid
-        v-if="customAgentsStore.pinnedAgents.length > 0"
-        @edit-agent="(agent) => $emit('edit-agent', agent)"
-        @open-create-dialog="$emit('open-agent-dialog')"
-      />
+      <SidebarHeader />
 
       <!-- Session List -->
       <SessionList
@@ -27,7 +16,6 @@
         :editing-name="editingName"
         :pending-delete-id="pendingDeleteId"
         :format-session-time="sessionOrganizer.formatSessionTime"
-        @create-new-chat="$emit('create-new-chat')"
         @session-click="handleSessionClick"
         @context-menu="openContextMenu"
         @toggle-collapse="sessionOrganizer.toggleCollapse"
@@ -50,15 +38,32 @@
         @delete="handleContextDelete"
       />
 
-      <!-- Workspace Switcher -->
-      <WorkspaceSwitcher
-        :media-panel-open="mediaPanelOpen"
-        :show-separator="hasContentBelow"
-        @toggle-media-panel="$emit('toggle-media-panel')"
-        @open-create-dialog="$emit('open-workspace-dialog')"
-        @open-agent-dialog="$emit('open-agent-dialog')"
-        @edit-workspace="(workspace) => $emit('edit-workspace', workspace)"
-      />
+      <!-- Bottom bar -->
+      <div class="sidebar-bottom">
+        <button
+          class="sidebar-bottom-btn"
+          :class="{ active: mediaPanelOpen }"
+          title="Media & Archives"
+          @click="$emit('toggle-media-panel')"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+        </button>
+        <div class="sidebar-bottom-spacer"></div>
+        <button
+          class="sidebar-bottom-btn"
+          title="Settings"
+          @click="$emit('open-settings')"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <!-- Resize Handle -->
@@ -75,15 +80,12 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
-import { useCustomAgentsStore } from '@/stores/custom-agents'
-import WorkspaceSwitcher from '@/components/WorkspaceSwitcher.vue'
-import AgentGrid from '@/components/AgentGrid.vue'
 import SidebarHeader from './SidebarHeader.vue'
 import SessionList from './SessionList.vue'
 import SessionContextMenu from './SessionContextMenu.vue'
 import SidebarResizeHandle from './SidebarResizeHandle.vue'
 import { useSessionOrganizer, type SessionWithBranches } from './useSessionOrganizer'
-import type { ChatSession, Workspace, Agent, CustomAgent } from '@/types'
+import type { ChatSession } from '@/types'
 
 interface Props {
   collapsed?: boolean
@@ -105,19 +107,13 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   toggleCollapse: []
   'toggle-media-panel': []
-  'open-workspace-dialog': []
-  'edit-workspace': [workspace: Workspace]
-  'open-agent-dialog': []
-  'edit-agent': [agent: Agent | CustomAgent]
-  'create-new-chat': []
-  'open-search': []
+  'open-settings': []
   'resize': [width: number]
 }>()
 
 // Stores
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
-const customAgentsStore = useCustomAgentsStore()
 
 // Composable
 const sessionOrganizer = useSessionOrganizer()
@@ -314,9 +310,9 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   transition:
-    width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.2s ease;
+    width var(--duration-slow, 0.3s) var(--ease-out, cubic-bezier(0, 0, 0.2, 1)),
+    max-width var(--duration-slow, 0.3s) var(--ease-out, cubic-bezier(0, 0, 0.2, 1)),
+    opacity var(--duration-normal, 0.2s) ease;
   overflow: hidden;
   /* Match container's darker base for consistent "surface" */
   background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
@@ -337,7 +333,7 @@ onUnmounted(() => {
   width: 300px !important;
   max-width: 300px !important;
   height: 100%;
-  z-index: 500;
+  z-index: var(--z-overlay);
   background: transparent;
   animation: slideInLeft 0.2s cubic-bezier(0.32, 0.72, 0, 1) forwards;
   overflow: visible;
@@ -416,11 +412,46 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
+/* Bottom bar */
+.sidebar-bottom {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-bottom-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sidebar-bottom-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.sidebar-bottom-btn.active {
+  color: var(--accent);
+}
+
+.sidebar-bottom-spacer {
+  flex: 1;
+}
+
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
     height: 100%;
-    z-index: 1000;
+    z-index: var(--z-modal);
   }
 }
 </style>

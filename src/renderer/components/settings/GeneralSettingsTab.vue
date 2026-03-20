@@ -4,7 +4,7 @@
     <section class="settings-section">
       <h3 class="section-title">Mode</h3>
 
-      <div class="theme-cards">
+      <div class="settings-card theme-cards">
         <div
           :class="['theme-card', { active: settings.theme === 'system' }]"
           @click="updateTheme('system')"
@@ -60,122 +60,13 @@
       <ThemeSelectorPanel @themeChange="handleThemeChange" />
     </section>
 
-    <!-- Accent Color -->
-    <section class="settings-section">
-      <h3 class="section-title">Accent Color</h3>
-
-      <div class="color-theme-grid">
-        <button
-          v-for="color in colorThemes"
-          :key="color.id"
-          :class="['color-theme-btn', { active: currentColorTheme === color.id }]"
-          :style="{ '--theme-main': color.main, '--theme-sub': color.sub }"
-          @click="updateColorTheme(color.id)"
-          :title="color.name"
-        >
-          <div class="color-dots">
-            <span class="color-dot main" title="Main (300)"></span>
-            <span class="color-dot sub" title="Sub (100)"></span>
-          </div>
-          <span class="color-name">{{ color.name }}</span>
-        </button>
-      </div>
-    </section>
-
-    <!-- Message Display Density -->
-    <section class="settings-section">
-      <h3 class="section-title">Message Display</h3>
-
-      <div class="density-cards">
-        <div
-          :class="['density-card', { active: currentDensity === 'compact' }]"
-          @click="updateDensity('compact')"
-        >
-          <div class="density-preview compact">
-            <div class="density-line"></div>
-            <div class="density-line short"></div>
-            <div class="density-line"></div>
-            <div class="density-line short"></div>
-          </div>
-          <span>Compact</span>
-        </div>
-        <div
-          :class="['density-card', { active: currentDensity === 'comfortable' }]"
-          @click="updateDensity('comfortable')"
-        >
-          <div class="density-preview comfortable">
-            <div class="density-line"></div>
-            <div class="density-line short"></div>
-            <div class="density-line"></div>
-          </div>
-          <span>Comfortable</span>
-        </div>
-        <div
-          :class="['density-card', { active: currentDensity === 'spacious' }]"
-          @click="updateDensity('spacious')"
-        >
-          <div class="density-preview spacious">
-            <div class="density-line"></div>
-            <div class="density-line short"></div>
-          </div>
-          <span>Spacious</span>
-        </div>
-      </div>
-
-      <!-- Line Height Slider -->
-      <div class="form-group" style="margin-top: 16px;">
-        <label class="form-label">
-          Line Height
-          <span class="label-value">{{ currentLineHeight.toFixed(1) }}</span>
-        </label>
-        <input
-          :value="currentLineHeight"
-          @input="updateLineHeight(($event.target as HTMLInputElement).valueAsNumber)"
-          type="range"
-          min="1.2"
-          max="2.2"
-          step="0.1"
-          class="form-slider"
-        />
-        <div class="slider-labels">
-          <span>Compact</span>
-          <span>Spacious</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- Animation -->
-    <section class="settings-section">
-      <h3 class="section-title">Animation</h3>
-
-      <div class="form-group">
-        <label class="form-label">
-          Expand/Collapse Speed
-          <span class="label-value">{{ settings.general.animationSpeed.toFixed(2) }}s</span>
-        </label>
-        <input
-          :value="settings.general.animationSpeed"
-          @input="updateAnimationSpeed(($event.target as HTMLInputElement).valueAsNumber)"
-          type="range"
-          min="0.05"
-          max="0.5"
-          step="0.05"
-          class="form-slider"
-        />
-        <div class="slider-labels">
-          <span>Fast</span>
-          <span>Slow</span>
-        </div>
-      </div>
-    </section>
 
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AppSettings, ColorTheme } from '@/types'
-import type { MessageListDensity } from '../../../shared/ipc'
+import type { AppSettings } from '@/types'
 import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
 
 const props = defineProps<{
@@ -186,28 +77,6 @@ const emit = defineEmits<{
   'update:settings': [settings: AppSettings]
 }>()
 
-// Color theme definitions with Flexoki 300 (main) and 100 (sub) shades
-const colorThemes = [
-  { id: 'blue' as ColorTheme, name: 'Blue', main: '#4385BE', sub: '#C1D9EC' },
-  { id: 'purple' as ColorTheme, name: 'Purple', main: '#8B7EC8', sub: '#DCD3EC' },
-  { id: 'green' as ColorTheme, name: 'Green', main: '#879A39', sub: '#DDE6C1' },
-  { id: 'orange' as ColorTheme, name: 'Orange', main: '#EF9351', sub: '#FADBC5' },
-  { id: 'pink' as ColorTheme, name: 'Pink', main: '#CE5D97', sub: '#F2D0E1' },
-  { id: 'cyan' as ColorTheme, name: 'Cyan', main: '#3AA99F', sub: '#C1E5E3' },
-  { id: 'red' as ColorTheme, name: 'Red', main: '#E67F75', sub: '#F7D6D1' },
-]
-
-const currentColorTheme = computed(() => {
-  return props.settings.general?.colorTheme || 'blue'
-})
-
-const currentDensity = computed(() => {
-  return props.settings.general?.messageListDensity || 'comfortable'
-})
-
-const currentLineHeight = computed(() => {
-  return props.settings.general?.messageLineHeight ?? 1.6
-})
 
 function updateTheme(theme: 'light' | 'dark' | 'system') {
   emit('update:settings', { ...props.settings, theme })
@@ -226,33 +95,6 @@ function handleThemeChange(darkThemeId: string, lightThemeId: string) {
   })
 }
 
-function updateColorTheme(colorTheme: ColorTheme) {
-  emit('update:settings', {
-    ...props.settings,
-    general: { ...props.settings.general, colorTheme }
-  })
-}
-
-function updateAnimationSpeed(speed: number) {
-  emit('update:settings', {
-    ...props.settings,
-    general: { ...props.settings.general, animationSpeed: speed }
-  })
-}
-
-function updateDensity(density: MessageListDensity) {
-  emit('update:settings', {
-    ...props.settings,
-    general: { ...props.settings.general, messageListDensity: density }
-  })
-}
-
-function updateLineHeight(lineHeight: number) {
-  emit('update:settings', {
-    ...props.settings,
-    general: { ...props.settings.general, messageLineHeight: lineHeight }
-  })
-}
 </script>
 
 <style scoped>
@@ -266,7 +108,23 @@ function updateLineHeight(lineHeight: number) {
 }
 
 .settings-section {
-  margin-bottom: 32px;
+  margin-bottom: 28px;
+}
+
+/* macOS-style card group */
+.settings-card {
+  background: rgba(128, 128, 128, 0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.card-row {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.08);
+}
+
+.card-row:last-child {
+  border-bottom: none;
 }
 
 .settings-section:last-child {
@@ -319,20 +177,17 @@ function updateLineHeight(lineHeight: number) {
 .theme-card {
   flex: 1;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: center;
 }
 
 .theme-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--hover);
 }
 
 .theme-card.active {
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 .theme-card span {
@@ -520,20 +375,17 @@ function updateLineHeight(lineHeight: number) {
 .density-card {
   flex: 1;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: center;
 }
 
 .density-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--hover);
 }
 
 .density-card.active {
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 .density-card span {
@@ -549,8 +401,6 @@ function updateLineHeight(lineHeight: number) {
   flex-direction: column;
   justify-content: center;
   padding: 6px 10px;
-  background: var(--panel);
-  border: 1px solid var(--border);
 }
 
 .density-preview.compact {
@@ -600,22 +450,22 @@ function updateLineHeight(lineHeight: number) {
   display: flex;
   flex-direction: column;
   padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
-  background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid var(--border);
+}
+
+.radio-item:last-child {
+  border-bottom: none;
 }
 
 .radio-item:hover {
   background: var(--hover);
-  border-color: rgba(59, 130, 246, 0.3);
 }
 
 .radio-item.active {
-  background: rgba(59, 130, 246, 0.05);
-  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.05);
 }
 
 .radio-item input {

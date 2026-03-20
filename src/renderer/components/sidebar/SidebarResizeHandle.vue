@@ -82,11 +82,17 @@ onUnmounted(() => {
   height: 100%;
   cursor: col-resize;
   background: transparent;
-  transition: background 0.15s ease;
-  z-index: 10;
+  transition: background var(--duration-fast, 0.15s) ease, width var(--duration-fast, 0.15s) ease;
+  z-index: var(--z-sticky);
 }
 
 .resize-handle:hover {
+  background: rgba(var(--accent-rgb), 0.4);
+  width: 6px;
+}
+
+.resize-handle:active {
   background: var(--accent);
+  width: 6px;
 }
 </style>

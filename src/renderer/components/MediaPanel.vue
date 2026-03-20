@@ -32,18 +32,8 @@
 
       <!-- Content Area -->
       <div class="media-content">
-        <!-- Memory Content -->
-        <MemoryContent v-if="activeNav === 'memory'" @open-file="handleOpenMemoryFile" />
-
-        <!-- Agents Content -->
-        <AgentsContent
-          v-else-if="activeNav === 'agents'"
-          @create-agent="$emit('create-agent')"
-          @edit-agent="(agent) => $emit('edit-agent', agent)"
-        />
-
         <!-- Media Content -->
-        <template v-else-if="activeNav === 'media'">
+        <template v-if="activeNav === 'media'">
           <div class="content-header">
             <input
               v-model="searchQuery"
@@ -101,33 +91,6 @@
         <!-- Archived Chats Content -->
         <ArchivedChatsContent v-else-if="activeNav === 'archive'" />
 
-        <!-- Infographics Editor -->
-        <InfographicEditor v-else-if="activeNav === 'infographics'" />
-
-        <!-- Other content (Downloads, etc.) -->
-        <template v-else>
-          <div class="content-header">
-            <input
-              type="text"
-              class="search-input"
-              placeholder="Search..."
-            />
-          </div>
-
-          <div class="content-body">
-            <div class="empty-state">
-              <div class="empty-icon">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                  <circle cx="8.5" cy="8.5" r="1.5"/>
-                  <polyline points="21 15 16 10 5 21"/>
-                </svg>
-              </div>
-              <p class="empty-text">Coming soon</p>
-              <p class="empty-hint">This feature is under development</p>
-            </div>
-          </div>
-        </template>
       </div>
     </div>
   </Transition>
@@ -135,22 +98,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import MemoryContent from './MemoryContent.vue'
-import AgentsContent from './AgentsContent.vue'
 import ArchivedChatsContent from './ArchivedChatsContent.vue'
-import InfographicEditor from './infographic/InfographicEditor.vue'
 import { useMediaStore, type GeneratedMedia } from '@/stores/media'
-import type { CustomAgent } from '@/types'
 import {
-  Sparkles,
-  Bot,
   Images,
-  Download,
-  PanelTop,
-  LayoutGrid,
-  Zap,
   Archive,
-  BarChart2
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -160,16 +112,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  'create-agent': []
-  'edit-agent': [agent: CustomAgent]
-  'open-memory-file': [filePath: string]
 }>()
 
 const mediaStore = useMediaStore()
 const searchQuery = ref('')
 
-// Default to 'memory' tab, or use initialTab if provided
-const activeNav = ref(props.initialTab || 'memory')
+// Default to 'media' tab, or use initialTab if provided
+const activeNav = ref(props.initialTab || 'media')
 
 // Filter images by search query
 const filteredImages = computed(() => {
@@ -218,21 +167,10 @@ onUnmounted(() => {
 
 // Navigation items with lucide-vue-next icons
 const navItems = [
-  { id: 'memory', label: 'Memory', icon: Sparkles },
-  { id: 'agents', label: 'Agents', icon: Bot },
   { id: 'media', label: 'Media', icon: Images },
-  { id: 'infographics', label: '图表', icon: BarChart2 },
-  { id: 'downloads', label: 'Downloads', icon: Download },
-  { id: 'easels', label: 'Easels', icon: PanelTop },
-  { id: 'spaces', label: 'Spaces', icon: LayoutGrid },
-  { id: 'boosts', label: 'Boosts', icon: Zap },
   { id: 'archive', label: 'Archived Chats', icon: Archive },
 ]
 
-// Handle opening memory file in chat area
-function handleOpenMemoryFile(filePath: string) {
-  emit('open-memory-file', filePath)
-}
 </script>
 
 <style scoped>
@@ -254,7 +192,7 @@ function handleOpenMemoryFile(filePath: string) {
   box-shadow:
     2px 0 8px rgba(0, 0, 0, 0.1),
     4px 0 16px rgba(0, 0, 0, 0.05);
-  z-index: 1;
+  z-index: var(--z-base);
 }
 
 html[data-theme='light'] .media-nav {
@@ -508,15 +446,32 @@ html[data-theme='light'] .media-nav {
   text-transform: uppercase;
 }
 
-/* Transition - width-based for proper flexbox layout */
-.media-panel-enter-active,
-.media-panel-leave-active {
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+/* Transition - slide from left with layout push */
+.media-panel-enter-active {
+  transition:
+    width var(--duration-slow, 0.3s) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    opacity var(--duration-slow, 0.3s) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform var(--duration-slow, 0.3s) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
   overflow: hidden;
 }
 
-.media-panel-enter-from,
+.media-panel-leave-active {
+  transition:
+    width var(--duration-normal, 0.2s) var(--ease-default, cubic-bezier(0.4, 0, 0.2, 1)),
+    opacity var(--duration-normal, 0.2s) var(--ease-default, cubic-bezier(0.4, 0, 0.2, 1)),
+    transform var(--duration-normal, 0.2s) var(--ease-default, cubic-bezier(0.4, 0, 0.2, 1));
+  overflow: hidden;
+}
+
+.media-panel-enter-from {
+  width: 0;
+  opacity: 0;
+  transform: translateX(-100%);
+}
+
 .media-panel-leave-to {
   width: 0;
+  opacity: 0;
+  transform: translateX(-100%);
 }
 </style>

@@ -1,5 +1,13 @@
 import { ref, shallowRef, onMounted, onUnmounted } from 'vue'
-import type { AgentVoice } from '@/types'
+
+/** Voice configuration for text-to-speech */
+interface AgentVoice {
+  enabled: boolean
+  voiceURI?: string
+  rate?: number
+  pitch?: number
+  volume?: number
+}
 
 export interface VoiceOption {
   voiceURI: string

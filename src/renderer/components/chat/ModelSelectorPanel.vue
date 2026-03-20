@@ -371,7 +371,7 @@ onUnmounted(() => {
 .model-selector-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9998;
+  z-index: var(--z-max);
 }
 
 .model-selector-panel {
@@ -382,7 +382,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: var(--radius-md, 12px);
   box-shadow: var(--shadow-elevated, 0 8px 32px rgba(0, 0, 0, 0.4));
-  z-index: 9999;
+  z-index: var(--z-max);
   overflow: hidden;
   display: flex;
   flex-direction: column;

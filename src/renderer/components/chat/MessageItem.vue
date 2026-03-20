@@ -104,8 +104,6 @@
             :content="message.content"
             :visible="showActions"
             :branches="branches"
-            :usage="message.usage"
-            :model="message.model"
             :voiceConfig="voiceConfig"
             :messageId="message.id"
             @edit="startEdit"
@@ -396,6 +394,7 @@ onUnmounted(() => {
   gap: 8px;
   max-width: 100%;
   margin: 0;
+  position: relative;
 }
 
 /* Message footer */

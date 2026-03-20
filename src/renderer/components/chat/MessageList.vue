@@ -9,7 +9,7 @@
       v-if="messages.length === 0 && !isLoading"
       @suggestion="handleSuggestion"
     />
-    <TransitionGroup name="msg-list">
+    <TransitionGroup name="">
       <MessageItem
         v-for="message in messages"
         :key="message.id"
@@ -17,7 +17,6 @@
         :branches="getBranchesForMessage(message.id)"
         :can-branch="canCreateBranch"
         :is-highlighted="message.id === highlightedMessageId"
-        :voice-config="currentAgentVoiceConfig"
         @edit="handleEdit"
         @branch="handleBranch"
         @go-to-branch="handleGoToBranch"
@@ -92,12 +91,11 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw } from 'vue'
-import type { ChatMessage, AgentVoice, ToolCall } from '@/types'
+import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
-import { useCustomAgentsStore } from '@/stores/custom-agents'
 import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
 
@@ -133,7 +131,6 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
-const customAgentsStore = useCustomAgentsStore()
 const settingsStore = useSettingsStore()
 const messageListRef = ref<HTMLElement | null>(null)
 const navRailTrackRef = ref<HTMLElement | null>(null)
@@ -151,14 +148,6 @@ const panelSession = computed(() => {
   const sid = effectiveSessionId.value
   if (!sid) return null
   return sessionsStore.sessions.find(s => s.id === sid) || null
-})
-
-// Get current agent's voice config (if session is associated with an agent)
-// Note: CustomAgents don't have voice configuration - this feature was part of the old Agent system
-// Returning undefined disables agent-specific voice for now
-const currentAgentVoiceConfig = computed<AgentVoice | undefined>(() => {
-  // CustomAgents don't support voice configuration yet
-  return undefined
 })
 
 // Get current message list density setting
@@ -193,6 +182,7 @@ const currentUserMessageNavIndex = ref(-1)
 
 // Track if user has actually navigated (to avoid showing highlight on session switch)
 const hasNavigated = ref(false)
+
 
 // Track if user has scrolled away from bottom (to allow manual scrolling during streaming)
 const userScrolledAway = ref(false)
@@ -253,18 +243,15 @@ const highlightedMessageId = computed(() => {
 })
 
 // Initialize navigation index when messages change
+// Note: Session switching is handled by KeepAlive (each session has its own MessageList instance).
+// This watcher only needs to handle message count changes within the same session.
 watch(
-  [effectiveSessionId, () => props.messages.length],
-  ([newSessionId], [oldSessionId]) => {
-    // Reset navigation state when messages or sessions change
+  () => props.messages.length,
+  () => {
+    // Reset navigation highlight (don't highlight on new message arrival)
     hasNavigated.value = false
 
-    // Clear cached markers when session changes to avoid stale position data
-    if (newSessionId !== oldSessionId) {
-      navMarkers.value = []
-    }
-
-    // Reset to last user message when messages change
+    // Reset to last user message
     if (userMessageIndices.value.length > 0) {
       currentUserMessageNavIndex.value = userMessageIndices.value.length - 1
     } else {
@@ -272,7 +259,6 @@ watch(
     }
 
     // Schedule marker update after DOM renders
-    // Use double nextTick to ensure TransitionGroup animations have started
     nextTick(() => {
       nextTick(() => scheduleNavMarkerUpdate())
     })
@@ -545,46 +531,13 @@ function handleScroll() {
 }
 
 // Track permission request cleanup function
-let cleanupCustomAgentPermissionListener: (() => void) | null = null
 
 // Get the first pending permission request (tool call requiring confirmation)
-// Searches both top-level toolCalls AND nested childSteps (for CustomAgent sub-tool calls)
 const currentPendingPermission = computed<{ message: ChatMessage; toolCall: ToolCall } | null>(() => {
   for (const message of props.messages) {
-    // 1. Check top-level toolCalls (normal tool calls)
     const pendingToolCall = message.toolCalls?.find(tc => tc.requiresConfirmation)
     if (pendingToolCall) {
       return { message, toolCall: pendingToolCall }
-    }
-
-    // 2. Check nested childSteps (CustomAgent sub-tool calls)
-    // CustomAgent steps are stored as childSteps of the parent custom-agent step
-    for (const step of message.steps || []) {
-      if (step.childSteps?.length) {
-        for (const childStep of step.childSteps) {
-          // Check if this child step has a toolCall that requires confirmation
-          if (childStep.toolCall?.requiresConfirmation) {
-            return { message, toolCall: childStep.toolCall }
-          }
-          // Also check for customAgentPermissionId (set by handleCustomAgentPermissionRequest)
-          if ((childStep as any).customAgentPermissionId && childStep.status === 'awaiting-confirmation') {
-            // Construct a toolCall-like object from the step if toolCall is missing
-            // Use type assertion since customAgentPermissionId is a custom extension
-            const existingToolCall = childStep.toolCall as ToolCall | undefined
-            const toolCallFromStep: ToolCall & { customAgentPermissionId?: string } = existingToolCall ?? {
-              id: childStep.id,
-              toolId: childStep.type === 'command' ? 'bash' : childStep.type,
-              toolName: childStep.title?.split(':')[0] || 'unknown',
-              arguments: {},
-              status: 'pending' as const,
-              timestamp: childStep.timestamp,
-              requiresConfirmation: true,
-            }
-            toolCallFromStep.customAgentPermissionId = (childStep as any).customAgentPermissionId
-            return { message, toolCall: toolCallFromStep as ToolCall }
-          }
-        }
-      }
     }
   }
   return null
@@ -625,92 +578,6 @@ usePermissionShortcuts(
 // handlePermissionRequest is now in the chat store (called by IPC Hub)
 // The store's handlePermissionRequest() updates messages reactively.
 
-// Handle incoming CustomAgent permission requests from backend
-// CustomAgent has nested steps that need permission (e.g., bash commands within a CustomAgent)
-function handleCustomAgentPermissionRequest(info: {
-  requestId: string
-  sessionId: string
-  messageId: string
-  stepId: string
-  toolCall: {
-    id: string
-    toolName: string
-    arguments: Record<string, unknown>
-    commandType?: 'read-only' | 'dangerous' | 'forbidden'
-    error?: string
-  }
-}) {
-  console.log('[Frontend] Received CustomAgent permission request:', info)
-
-  // Use effectiveSessionId (from props or global) instead of just global currentSession
-  const panelSessionId = effectiveSessionId.value
-  if (!panelSessionId || panelSessionId !== info.sessionId) {
-    console.log('[Frontend] CustomAgent permission request for different session, ignoring')
-    return
-  }
-
-  // Find the message
-  const message = props.messages.find(m => m.id === info.messageId)
-  if (!message) {
-    console.log('[Frontend] Message not found for CustomAgent permission request:', info.messageId)
-    return
-  }
-
-  // Find the nested step that needs permission
-  // The stepId from CustomAgent is like "toolName-toolCallId"
-  // We need to search in childSteps of parent steps
-  let foundStep: any = null
-  let parentStep: any = null
-
-  for (const step of message.steps || []) {
-    // Check if this step has childSteps that contain our target
-    if (step.childSteps?.length) {
-      for (const childStep of step.childSteps) {
-        // Match by toolCallId or by the tool call info
-        if (childStep.toolCallId === info.toolCall.id ||
-            (childStep.toolCall?.toolName === info.toolCall.toolName &&
-             JSON.stringify(childStep.toolCall?.arguments) === JSON.stringify(info.toolCall.arguments))) {
-          foundStep = childStep
-          parentStep = step
-          break
-        }
-      }
-    }
-    if (foundStep) break
-  }
-
-  if (foundStep && parentStep) {
-    // Store the CustomAgent permission request ID on the step
-    (foundStep as any).customAgentPermissionId = info.requestId
-    foundStep.status = 'awaiting-confirmation'
-
-    // Also set on toolCall if present
-    if (foundStep.toolCall) {
-      (foundStep.toolCall as any).customAgentPermissionId = info.requestId
-      foundStep.toolCall.requiresConfirmation = true
-      foundStep.toolCall.status = 'pending'
-      foundStep.toolCall.commandType = info.toolCall.commandType
-    }
-
-    // Force Vue reactivity by replacing the parent step
-    const parentIndex = message.steps!.findIndex(s => s.id === parentStep.id)
-    if (parentIndex >= 0) {
-      const newChildSteps = parentStep.childSteps!.map((c: any) =>
-        c === foundStep ? { ...foundStep } : c
-      )
-      message.steps![parentIndex] = {
-        ...parentStep,
-        childSteps: newChildSteps,
-      }
-      message.steps = [...message.steps!]
-    }
-
-    console.log('[Frontend] Updated child step with CustomAgent permission request:', foundStep.id || info.stepId)
-  } else {
-    console.log('[Frontend] No matching child step found for CustomAgent permission request')
-  }
-}
-
 // Setup event listeners
 onMounted(() => {
   if (messageListRef.value) {
@@ -725,9 +592,6 @@ onMounted(() => {
 
   // Permission requests now arrive via EventBus → IPC Hub → chat store
   // (no need for a separate listener here)
-
-  // Listen for CustomAgent permission requests from backend
-  cleanupCustomAgentPermissionListener = window.electronAPI.onCustomAgentPermissionRequest(handleCustomAgentPermissionRequest)
 })
 
 onUnmounted(() => {
@@ -748,11 +612,6 @@ onUnmounted(() => {
   if (navResizeObserver) {
     navResizeObserver.disconnect()
     navResizeObserver = null
-  }
-  // Cleanup CustomAgent permission listener
-  if (cleanupCustomAgentPermissionListener) {
-    cleanupCustomAgentPermissionListener()
-    cleanupCustomAgentPermissionListener = null
   }
 })
 
@@ -799,18 +658,18 @@ watch(
   { immediate: true }
 )
 
-// Auto-scroll to bottom when messages change or loading state changes
-// Only scroll if user hasn't scrolled away manually
+// Auto-scroll to bottom when messages change or streaming content grows.
+// scrollVersion is an O(1) counter incremented by the store on every chunk —
+// replacing the previous { deep: true } watcher that traversed all messages.
 watch(
-  [() => props.messages, () => props.isLoading],
+  [() => chatStore.scrollVersion, () => props.messages.length, () => props.isLoading],
   async () => {
     await nextTick()
     if (messageListRef.value && !userScrolledAway.value) {
       messageListRef.value.scrollTop = messageListRef.value.scrollHeight
     }
     scheduleNavMarkerUpdate()
-  },
-  { deep: true }
+  }
 )
 
 // Reset userScrolledAway when streaming ends
@@ -830,6 +689,7 @@ watch(
     nextTick(() => scheduleNavMarkerUpdate())
   }
 )
+
 
 // Handle edit message event - emit to parent for immediate stop button response
 function handleEdit(messageId: string, newContent: string) {
@@ -955,51 +815,6 @@ async function handleExecuteTool(toolCall: any) {
 async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | 'workspace' | 'always' = 'once') {
   const currentSession = panelSession.value
   if (!currentSession) return
-
-  // Check if this is a CustomAgent permission request
-  const customAgentPermissionId = (toolCall as any).customAgentPermissionId
-  if (customAgentPermissionId) {
-    console.log(`[Frontend] Responding to CustomAgent permission ${customAgentPermissionId} with ${response}`)
-    try {
-      // Map 'once'/'always' to the decision format expected by CustomAgent
-      const decision = response === 'once' ? 'allow' : 'always'
-      await window.electronAPI.respondToCustomAgentPermission(customAgentPermissionId, decision)
-
-      // Update UI state - find the step in nested childSteps
-      for (const message of props.messages) {
-        for (const parentStep of message.steps || []) {
-          if (parentStep.childSteps?.length) {
-            const childIndex = parentStep.childSteps.findIndex(
-              (c: any) => c.customAgentPermissionId === customAgentPermissionId ||
-                          c.toolCall?.customAgentPermissionId === customAgentPermissionId
-            )
-            if (childIndex >= 0) {
-              const childStep = parentStep.childSteps[childIndex]
-              childStep.status = 'running'
-              delete (childStep as any).customAgentPermissionId
-              if (childStep.toolCall) {
-                childStep.toolCall.status = 'executing'
-                childStep.toolCall.requiresConfirmation = false
-                delete (childStep.toolCall as any).customAgentPermissionId
-              }
-              // Force Vue reactivity
-              const parentIndex = message.steps!.findIndex(s => s.id === parentStep.id)
-              if (parentIndex >= 0) {
-                const newChildSteps = [...parentStep.childSteps]
-                newChildSteps[childIndex] = { ...childStep }
-                message.steps![parentIndex] = { ...parentStep, childSteps: newChildSteps }
-                message.steps = [...message.steps!]
-              }
-              break
-            }
-          }
-        }
-      }
-      return
-    } catch (error) {
-      console.error('Failed to respond to CustomAgent permission:', error)
-    }
-  }
 
   // Find the message containing this tool call
   const message = props.messages.find(m =>
@@ -1181,51 +996,6 @@ async function handleRejectTool(toolCall: any, rejectReasonArg?: string) {
   const currentSession = panelSession.value
   if (!currentSession) return
 
-  // Check if this is a CustomAgent permission request
-  const customAgentPermissionId = (toolCall as any).customAgentPermissionId
-  if (customAgentPermissionId) {
-    console.log(`[Frontend] Rejecting CustomAgent permission ${customAgentPermissionId}`, rejectReasonArg ? `Reason: ${rejectReasonArg}` : '')
-    try {
-      await window.electronAPI.respondToCustomAgentPermission(customAgentPermissionId, 'reject')
-
-      // Update UI state - find the step in nested childSteps
-      for (const message of props.messages) {
-        for (const parentStep of message.steps || []) {
-          if (parentStep.childSteps?.length) {
-            const childIndex = parentStep.childSteps.findIndex(
-              (c: any) => c.customAgentPermissionId === customAgentPermissionId ||
-                          c.toolCall?.customAgentPermissionId === customAgentPermissionId
-            )
-            if (childIndex >= 0) {
-              const childStep = parentStep.childSteps[childIndex]
-              childStep.status = 'failed'
-              childStep.error = 'Command rejected by user'
-              delete (childStep as any).customAgentPermissionId
-              if (childStep.toolCall) {
-                childStep.toolCall.status = 'cancelled'
-                childStep.toolCall.error = 'Command rejected by user'
-                childStep.toolCall.requiresConfirmation = false
-                delete (childStep.toolCall as any).customAgentPermissionId
-              }
-              // Force Vue reactivity
-              const parentIndex = message.steps!.findIndex(s => s.id === parentStep.id)
-              if (parentIndex >= 0) {
-                const newChildSteps = [...parentStep.childSteps]
-                newChildSteps[childIndex] = { ...childStep }
-                message.steps![parentIndex] = { ...parentStep, childSteps: newChildSteps }
-                message.steps = [...message.steps!]
-              }
-              break
-            }
-          }
-        }
-      }
-      return
-    } catch (error) {
-      console.error('Failed to respond to CustomAgent permission:', error)
-    }
-  }
-
   // Find the message containing this tool call and update its status
   const message = props.messages.find(m =>
     m.toolCalls?.some(tc => tc.id === toolCall.id)
@@ -1357,15 +1127,7 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   padding: 24px 24px var(--composer-height, 140px);
 }
 
-/* List Transitions */
-.msg-list-enter-active {
-  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
 
-.msg-list-enter-from {
-  opacity: 0;
-  transform: translateY(20px) scale(0.95);
-}
 
 /* User message navigation rail */
 .nav-rail {
@@ -1378,7 +1140,7 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  z-index: 100;
+  z-index: var(--z-dropdown);
   user-select: none;
 }
 
@@ -1410,7 +1172,7 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   border: 1px solid color-mix(in srgb, var(--text) 35%, var(--border));
   background: color-mix(in srgb, var(--text) 65%, transparent);
   opacity: 0.75;
-  z-index: 1;
+  z-index: var(--z-base);
   transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
 
@@ -1527,7 +1289,7 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: var(--z-max);
 }
 
 .reject-dialog {

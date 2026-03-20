@@ -1,19 +1,8 @@
 <template>
   <div class="steps-panel" v-if="steps && steps.length > 0" :data-depth="depth">
     <template v-for="step in steps" :key="step.id">
-      <!-- Agent Step: Use AgentExecutionPanel for steps with childSteps -->
-      <AgentExecutionPanel
-        v-if="isAgentStep(step)"
-        :step="step"
-        :child-steps="step.childSteps || []"
-        :session-id="sessionId"
-        @confirm="handleAgentConfirm"
-        @reject="handleAgentReject"
-      />
-
       <!-- Regular Step: Standard step rendering -->
       <div
-        v-else
         :class="['step-inline', stepClass(step), { expanded: expandedSteps.has(step.id) }]"
         :style="{ '--depth': depth }"
       >
@@ -29,11 +18,17 @@
             <span v-else>○</span>
           </span>
 
-          <!-- Tool name -->
+          <!-- Tool name (cmd) -->
           <span class="tool-name">{{ step.toolCall?.toolName || 'tool' }}</span>
 
-          <!-- Step title (brief description) -->
-          <span class="step-title">{{ truncateTitle(step.title, 40) }}</span>
+          <!-- Param (simplified arguments) -->
+          <span class="step-param">{{ getSimplePreview(step) }}</span>
+
+          <!-- Spacer -->
+          <span class="spacer"></span>
+
+          <!-- Result preview (right-aligned) -->
+          <span v-if="inlineResult(step)" class="step-result">{{ inlineResult(step) }}</span>
 
           <!-- Right side: error OR buttons OR expand icon -->
           <span v-if="step.status === 'failed' && step.error" class="error-tag">
@@ -50,30 +45,31 @@
           <svg
             v-else-if="hasExpandableContent(step)"
             :class="['expand-icon', { rotated: expandedSteps.has(step.id) }]"
-            width="14" height="14" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="2"
+            width="12" height="12" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2.5"
           >
-            <polyline points="6 9 12 15 18 9"/>
+            <polyline points="9 6 15 12 9 18"/>
           </svg>
         </div>
 
         <!-- Expanded Content -->
         <Transition name="slide">
           <div v-if="shouldShowContent(step)" class="step-details">
-            <!-- Streaming diff preview (during input-streaming for edit/write tools) -->
+            <!-- Streaming content preview (during input-streaming for edit/write tools) -->
             <Transition name="streaming-fade" mode="out-in">
-              <div v-if="getStreamingContent(step)" key="streaming" class="detail-section streaming-diff">
-                <div class="streaming-header">
-                  <span class="streaming-path">{{ getStreamingContent(step)?.filePath || 'Parsing...' }}</span>
-                  <span class="streaming-indicator flowing-text">Writing...</span>
+              <div v-if="getStreamingContent(step)" key="streaming" class="detail-section diff-preview">
+                <div class="diff-content" :ref="(el) => { if (el) scrollToBottom(el as HTMLElement) }">
+                  <div v-for="(line, idx) in getStreamingLines(step)" :key="idx" class="diff-line diff-add">
+                    <span class="line-number new">{{ idx + 1 }}</span>
+                    <span class="line-prefix">+</span>
+                    <span class="line-content">{{ line }}</span>
+                  </div>
                 </div>
-                <pre v-if="getStreamingContent(step)?.content" class="streaming-code"><code>{{ getStreamingContent(step)?.content }}</code></pre>
               </div>
             </Transition>
 
-            <!-- Diff preview for edit tool (awaiting-confirmation or completed) -->
-            <div v-if="(step.status === 'awaiting-confirmation' || step.status === 'completed') && getDiffFromStep(step)" class="detail-section diff-preview">
-              <div class="detail-label">Changes</div>
+            <!-- Diff preview for edit/write tool -->
+            <div v-if="step.status !== 'running' && getDiffFromStep(step)" class="detail-section diff-preview">
               <div class="diff-content">
                 <!-- File header inside code block (IDE style) -->
                 <div class="diff-header">
@@ -84,13 +80,15 @@
                   </span>
                   <span v-if="step.status === 'completed'" class="diff-status-badge">Applied</span>
                 </div>
-                <!-- Diff lines -->
-                <div v-for="(line, idx) in getVisibleDiffLines(step)" :key="idx" :class="['diff-line', line.class]">
-                  <span class="line-number old">{{ line.oldNum || '' }}</span>
-                  <span class="line-number new">{{ line.newNum || '' }}</span>
-                  <span class="line-prefix">{{ line.prefix }}</span>
-                  <span class="line-content" :class="{ 'line-deleted-text': line.class === 'diff-del' }">{{ line.content }}</span>
-                </div>
+                <!-- Diff lines (skip leading hunk separator) -->
+                <template v-for="(line, idx) in getVisibleDiffLines(step)" :key="idx">
+                  <div v-if="!(line.class === 'diff-hunk' && idx === 0)" :class="['diff-line', line.class]">
+                    <span v-if="getDiffFromStep(step)?.deletions" class="line-number old">{{ line.oldNum || '' }}</span>
+                    <span class="line-number new">{{ line.newNum || '' }}</span>
+                    <span class="line-prefix">{{ line.prefix }}</span>
+                    <span class="line-content" :class="{ 'line-deleted-text': line.class === 'diff-del' }">{{ line.content }}</span>
+                  </div>
+                </template>
               </div>
             </div>
 
@@ -105,27 +103,15 @@
               <pre class="thinking">{{ step.thinking }}</pre>
             </div>
 
-            <!-- Tool Agent Result -->
-            <div v-if="step.toolAgentResult && expandedSteps.has(step.id)" class="detail-section">
-              <div class="agent-header">
-                <span :class="['agent-badge', step.toolAgentResult.success ? 'success' : 'failed']">
-                  {{ step.toolAgentResult.success ? 'Success' : 'Failed' }}
-                </span>
-                <span class="agent-stats">{{ step.toolAgentResult.toolCallCount }} calls</span>
-              </div>
-              <pre>{{ step.toolAgentResult.summary }}</pre>
+            <!-- Command (for bash) or Arguments (for other tools, excluding read/write/edit) -->
+            <div v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step) && !['edit', 'read', 'write'].includes(step.toolCall?.toolName || '')" class="detail-section">
+              <div class="detail-label">{{ step.toolCall?.toolName === 'bash' ? 'Command' : 'Arguments' }}</div>
+              <pre class="code-block">{{ step.toolCall?.toolName === 'bash' ? (step.toolCall.arguments as any).command || '' : formatArgsJson(step.toolCall.arguments) }}</pre>
             </div>
 
-            <!-- Arguments - JSON beautified format (hidden for edit tool which shows diff instead) -->
-            <div v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step) && step.toolCall?.toolName !== 'edit'" class="detail-section args-section">
-              <div class="detail-label">Arguments</div>
-              <pre class="args-json">{{ formatArgsJson(step.toolCall.arguments) }}</pre>
-            </div>
-
-            <!-- Result -->
-            <div v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running'" class="detail-section">
-              <div class="detail-label">Result</div>
-              <pre>{{ formatResult(step.result) }}</pre>
+            <!-- Result (hidden when diff preview is already showing) -->
+            <div v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running' && !getDiffFromStep(step)" class="detail-section">
+              <pre class="code-block">{{ formatResult(step.result) }}</pre>
             </div>
 
             <!-- Summary -->
@@ -142,9 +128,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import type { Step, ToolCall } from '@/types'
-import AgentExecutionPanel from './AgentExecutionPanel.vue'
 import AllowSplitButton from '../common/AllowSplitButton.vue'
 
 const props = withDefaults(defineProps<{
@@ -163,8 +148,13 @@ const emit = defineEmits<{
   reject: [toolCall: ToolCall]
 }>()
 
+// ── Expansion Policy (single source of truth) ──────────────
+const EXPAND_POLICY = {
+  autoExpandTools: new Set(['write', 'read', 'edit']),
+  temporaryShowStates: new Set(['awaiting-confirmation']),
+}
+
 const expandedSteps = ref<Set<string>>(new Set())
-// Track steps that user has manually collapsed - don't auto-expand these
 const userCollapsedSteps = ref<Set<string>>(new Set())
 
 // Diff line type for VS Code-style display
@@ -176,41 +166,50 @@ interface DiffLine {
   newNum?: number | string
 }
 
-// Auto-expand failed and awaiting-confirmation steps (unless user manually collapsed)
-watch(() => props.steps, (steps) => {
-  for (const step of steps) {
-    if ((step.status === 'failed' && step.error) || step.status === 'awaiting-confirmation') {
-      // Only auto-expand if user hasn't manually collapsed it
-      if (!expandedSteps.value.has(step.id) && !userCollapsedSteps.value.has(step.id)) {
+// ── Auto-expand watch (only triggers on step status changes, not streamingArgs) ──
+watch(
+  () => props.steps.map(s => `${s.id}:${s.status}:${s.toolCall?.status || ''}`).join(','),
+  () => {
+    let changed = false
+    for (const step of props.steps) {
+      const toolName = step.toolCall?.toolName?.toLowerCase() || ''
+      if (!EXPAND_POLICY.autoExpandTools.has(toolName)) continue
+      if (expandedSteps.value.has(step.id)) continue
+      if (userCollapsedSteps.value.has(step.id)) continue
+
+      const shouldExpand =
+        (step.status === 'running' && step.toolCall?.status === 'input-streaming') ||
+        step.status === 'completed'
+
+      if (shouldExpand) {
         expandedSteps.value.add(step.id)
-        expandedSteps.value = new Set(expandedSteps.value)
+        changed = true
       }
     }
-  }
-}, { deep: true, immediate: true })
+    if (changed) {
+      expandedSteps.value = new Set(expandedSteps.value)
+    }
+  },
+  { immediate: true }
+)
 
-// Collapse propagation: when parent step is collapsed, reset all expanded states in this panel
+// Collapse propagation: when parent step is collapsed, reset all expanded states
 watch(() => props.parentCollapsed, (collapsed) => {
   if (collapsed) {
-    // Clear all expanded steps when parent collapses
     expandedSteps.value = new Set()
-    // Don't clear userCollapsedSteps - keep user preferences for when parent re-expands
   }
 })
 
 function toggleExpand(stepId: string) {
   if (expandedSteps.value.has(stepId)) {
     expandedSteps.value.delete(stepId)
-    // Mark as user-collapsed to prevent auto-expand from overriding
     userCollapsedSteps.value.add(stepId)
-    userCollapsedSteps.value = new Set(userCollapsedSteps.value)
   } else {
     expandedSteps.value.add(stepId)
-    // Remove from user-collapsed since user is expanding it
     userCollapsedSteps.value.delete(stepId)
-    userCollapsedSteps.value = new Set(userCollapsedSteps.value)
   }
   expandedSteps.value = new Set(expandedSteps.value)
+  userCollapsedSteps.value = new Set(userCollapsedSteps.value)
 }
 
 function stepClass(step: Step): Record<string, boolean> {
@@ -223,94 +222,19 @@ function stepClass(step: Step): Record<string, boolean> {
   }
 }
 
-/**
- * Check if a step is an agent step (CustomAgent execution)
- * These steps should be rendered using AgentExecutionPanel instead of default rendering
- *
- * Detection methods:
- * 1. Has childSteps (agent already started executing sub-tools)
- * 2. Tool name is 'custom-agent' (agent just started, no childSteps yet)
- * 3. Step type is 'tool-agent'
- */
-function isAgentStep(step: Step): boolean {
-  // Method 1: Has childSteps (existing logic)
-  if (step.childSteps && step.childSteps.length > 0) return true
-
-  // Method 2: Identify by toolName early (before childSteps appear)
-  const toolName = step.toolCall?.toolName?.toLowerCase()
-  if (toolName === 'custom-agent' || toolName === 'customagent') return true
-
-  // Method 3: Identify by step type
-  if (step.type === 'tool-agent') return true
-
-  return false
-}
-
-/**
- * Handle confirm from AgentExecutionPanel
- */
-function handleAgentConfirm(step: Step, type: 'once' | 'session' | 'workspace' | 'always') {
-  const existingToolCall = step.toolCall as ToolCall | undefined
-  const baseToolCall: ToolCall = existingToolCall ?? {
-    id: step.id,
-    toolId: step.title?.split(':')[0] || 'unknown',
-    toolName: step.title?.split(':')[0] || 'unknown',
-    arguments: {},
-    status: 'pending' as const,
-    timestamp: step.timestamp,
-    requiresConfirmation: true,
-  }
-  // Add customAgentPermissionId if present on step
-  const toolCall = baseToolCall as ToolCall & { customAgentPermissionId?: string }
-  if ((step as any).customAgentPermissionId) {
-    toolCall.customAgentPermissionId = (step as any).customAgentPermissionId
-  }
-  emit('confirm', toolCall as ToolCall, type)
-}
-
-/**
- * Handle reject from AgentExecutionPanel
- */
-function handleAgentReject(step: Step) {
-  const existingToolCall = step.toolCall as ToolCall | undefined
-  const baseToolCall: ToolCall = existingToolCall ?? {
-    id: step.id,
-    toolId: step.title?.split(':')[0] || 'unknown',
-    toolName: step.title?.split(':')[0] || 'unknown',
-    arguments: {},
-    status: 'pending' as const,
-    timestamp: step.timestamp,
-    requiresConfirmation: true,
-  }
-  // Add customAgentPermissionId if present on step
-  const toolCall = baseToolCall as ToolCall & { customAgentPermissionId?: string }
-  if ((step as any).customAgentPermissionId) {
-    toolCall.customAgentPermissionId = (step as any).customAgentPermissionId
-  }
-  emit('reject', toolCall as ToolCall)
-}
-
 function hasExpandableContent(step: Step): boolean {
   return !!(
     step.thinking ||
     (step.toolCall?.arguments && Object.keys(step.toolCall.arguments).length > 0) ||
     step.result ||
     step.summary ||
-    step.error ||
-    step.toolAgentResult
+    step.error
   )
 }
 
+// Pure function — no side effects. Expansion state managed by watch + toggleExpand.
 function shouldShowContent(step: Step): boolean {
-  // If user manually collapsed, respect that
-  if (userCollapsedSteps.value.has(step.id)) return false
-
-  if (step.status === 'failed' && step.error) return true
-  if (step.status === 'running' && step.result) return true
-  // Always show content for awaiting-confirmation (e.g., edit diff preview)
-  if (step.status === 'awaiting-confirmation') return true
-  // Show streaming content for edit/write tools during input-streaming
-  if (step.status === 'running' && step.toolCall?.status === 'input-streaming') return true
+  if (EXPAND_POLICY.temporaryShowStates.has(step.status)) return true
   return expandedSteps.value.has(step.id)
 }
 
@@ -320,6 +244,29 @@ function getStatusText(step: Step): string {
   if (step.status === 'completed') return '✓'
   if (step.status === 'cancelled') return 'Cancelled'
   return ''
+}
+
+/**
+ * Return short result string for inline display, or null if result is too long.
+ * Short results (single line, ≤80 chars) are shown directly on the step row.
+ */
+function inlineResult(step: Step): string | null {
+  if (step.status !== 'completed' && step.status !== 'failed') return null
+  const raw = step.result
+  if (!raw || typeof raw !== 'string') return null
+
+  // Extract the actual output (result is often JSON with .output field)
+  let text = raw
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed.output !== undefined) text = String(parsed.output)
+    else if (parsed.data?.output !== undefined) text = String(parsed.data.output)
+  } catch { /* not JSON, use raw */ }
+
+  if (!text) return null
+  const firstLine = text.split('\n')[0].trim()
+  if (!firstLine || firstLine.length > 80) return null
+  return firstLine
 }
 
 /**
@@ -556,7 +503,6 @@ function hasArgs(step: Step): boolean {
 
 function handleConfirm(step: Step, response: 'once' | 'session' | 'workspace' | 'always') {
   // Use toolCall if available, otherwise construct a fallback from step info
-  // This handles CustomAgent nested steps where toolCall may be constructed differently
   const toolCall = step.toolCall || {
     id: step.id,
     toolId: step.title?.split(':')[0] || 'unknown',
@@ -565,8 +511,6 @@ function handleConfirm(step: Step, response: 'once' | 'session' | 'workspace' | 
     status: 'pending' as const,
     timestamp: step.timestamp,
     requiresConfirmation: true,
-    // Preserve CustomAgent permission ID if present
-    customAgentPermissionId: (step as any).customAgentPermissionId,
   }
   emit('confirm', toolCall, response)
 }
@@ -581,8 +525,6 @@ function handleReject(step: Step) {
     status: 'pending' as const,
     timestamp: step.timestamp,
     requiresConfirmation: true,
-    // Preserve CustomAgent permission ID if present
-    customAgentPermissionId: (step as any).customAgentPermissionId,
   }
   emit('reject', toolCall)
 }
@@ -635,6 +577,18 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   const lines = output.split('\n')
   if (lines.length <= maxLines) return output
   return '...\n' + lines.slice(-maxLines).join('\n')
+}
+
+// Auto-scroll streaming diff to bottom
+function scrollToBottom(el: HTMLElement) {
+  nextTick(() => { el.scrollTop = el.scrollHeight })
+}
+
+// Split streaming content into lines for diff-style rendering
+function getStreamingLines(step: Step): string[] {
+  const info = getStreamingContent(step)
+  if (!info?.content) return []
+  return info.content.split('\n')
 }
 
 // Get streaming content for edit/write tools during input-streaming
@@ -749,6 +703,10 @@ function parseHunkHeader(line: string): { oldStart: number; newStart: number } |
 // Parse diff into lines with line numbers
 function parseDiffWithLineNumbers(diff: string): DiffLine[] {
   const rawLines = diff.split('\n')
+  // Remove trailing empty line from split
+  if (rawLines.length > 0 && rawLines[rawLines.length - 1] === '') {
+    rawLines.pop()
+  }
   const result: DiffLine[] = []
   let oldLineNum = 0
   let newLineNum = 0
@@ -780,6 +738,9 @@ function parseDiffWithLineNumbers(diff: string): DiffLine[] {
     }
 
     if (!inHunk) continue
+
+    // Skip "\ No newline at end of file" marker
+    if (line.startsWith('\\ ')) continue
 
     const lineClass = getDiffLineClass(line)
     const prefix = line.charAt(0) || ' '
@@ -834,32 +795,9 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
 .steps-panel {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
-/* Fixed height with scrollbar for root-level panel only */
-.steps-panel[data-depth="0"] {
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-/* Custom scrollbar for root-level panel */
-.steps-panel[data-depth="0"]::-webkit-scrollbar {
-  width: 6px;
-}
-
-.steps-panel[data-depth="0"]::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.steps-panel[data-depth="0"]::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-
-.steps-panel[data-depth="0"]::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
 
 /* Inline step row */
 .step-inline {
@@ -870,29 +808,21 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
   transition: background 0.15s ease;
 }
 
-.step-inline:hover {
-  background: var(--bg-hover);
-}
 
 .step-inline.needs-confirm {
-  background: rgba(var(--color-warning-rgb), 0.06);
-  border: 1px solid rgba(var(--color-warning-rgb), 0.15);
-  border-radius: var(--radius-sm, 8px);
+  background: transparent;
 }
 
-.step-inline.needs-confirm:hover {
-  background: rgba(var(--color-warning-rgb), 0.1);
-  border-color: rgba(var(--color-warning-rgb), 0.25);
-}
 
-/* Main row - simplified layout */
+/* Main row - compact layout */
 .step-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 6px 10px;
   cursor: pointer;
-  min-height: 36px;
+  height: 32px;
+  overflow: hidden;
   user-select: none;
 }
 
@@ -938,15 +868,35 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
 }
 
-/* Step title - brief description */
-.step-title {
-  flex: 1;
+/* Step param - simplified argument preview */
+.step-param {
   min-width: 0;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 1;
+  opacity: 0.8;
+}
+
+/* Spacer */
+.step-row .spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+/* Result preview (right-aligned, muted) */
+.step-result {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+  flex-shrink: 1;
+  opacity: 0.5;
 }
 
 /* Error tag - inline error indicator */
@@ -988,15 +938,21 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
   background: rgba(var(--color-danger-rgb), 0.08);
 }
 
-/* Expand icon */
+/* Expand icon — hidden by default, visible on hover */
 .expand-icon {
   color: var(--text-muted);
   flex-shrink: 0;
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease, opacity 0.15s ease;
+  opacity: 0;
+}
+
+.step-inline:hover .expand-icon,
+.step-inline.expanded .expand-icon {
+  opacity: 1;
 }
 
 .expand-icon.rotated {
-  transform: rotate(180deg);
+  transform: rotate(90deg);
 }
 
 /* Expanded details */
@@ -1026,11 +982,12 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
 
 .detail-section pre {
   margin: 0;
-  padding: 8px 10px;
-  border-radius: 4px;
-  background: var(--bg-code-block);
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--text-primary);
   white-space: pre-wrap;
@@ -1060,18 +1017,16 @@ pre.summary {
 
 /* Diff preview for edit tool confirmation */
 .diff-preview {
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .diff-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border-subtle);
-  border-radius: 8px 8px 0 0;
-  margin: -4px 0 0 0;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .diff-stats {
@@ -1113,10 +1068,12 @@ pre.summary {
 }
 
 .diff-content {
-  background: var(--bg-code-block);
-  border-radius: 0 0 8px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
   padding: 0;
-  max-height: 400px;
+  max-height: 240px;
+  overflow: hidden;
   overflow-y: auto;
   font-size: 13px;
   line-height: 1.5;
@@ -1132,13 +1089,9 @@ pre.summary {
   transition: background 0.1s ease;
 }
 
-.diff-line:hover {
-  background: var(--bg-hover);
-}
 
 .line-number {
   width: 44px;
-  min-width: 44px;
   text-align: right;
   padding-right: 12px;
   color: var(--text-faint);
@@ -1246,9 +1199,7 @@ pre.summary {
 
 /* Streaming diff preview */
 .streaming-diff {
-  margin-top: 8px;
-  border-left: 2px solid var(--accent);
-  padding-left: 10px;
+  margin-top: 4px;
 }
 
 .streaming-header {
@@ -1307,18 +1258,18 @@ pre.summary {
 }
 
 .streaming-code {
-  background: rgba(var(--accent-rgb), 0.08);
-  border: 1px solid rgba(var(--accent-rgb), 0.15);
-  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
   padding: 10px 12px;
   margin: 0;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 300px;
+  max-height: 400px;
   overflow-y: auto;
 }
 

@@ -177,7 +177,7 @@ onUnmounted(() => {
   background: var(--bg);
   border-left: 1px solid var(--border-subtle);
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.15);
-  z-index: 100;
+  z-index: var(--z-dropdown);
 }
 
 html[data-theme='light'] .diff-overlay {

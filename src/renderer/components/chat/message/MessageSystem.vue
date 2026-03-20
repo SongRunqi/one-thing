@@ -1,27 +1,7 @@
 <template>
-  <!-- Special rendering for git-status message -->
-  <GitStatusPanel
-    v-if="gitStatusData"
-    :data="gitStatusData"
-    :isRefreshing="isRefreshing"
-    :workingDirectory="currentWorkingDirectory"
-    :sessionId="currentSessionId"
-    @action="handleGitAction"
-    @file-action="handleGitFileAction"
-    @refresh="handleGitRefresh"
-    @close="handleClose"
-  />
-
-  <!-- Special rendering for files-changed message -->
-  <FilesChangedPanel
-    v-else-if="filesChangedData"
-    :data="filesChangedData"
-    @close="handleClose"
-  />
-
   <!-- Special rendering for context-compact message -->
   <ContextCompactPanel
-    v-else-if="contextCompactData"
+    v-if="contextCompactData"
     :summary="contextCompactData.summary"
   />
 
@@ -46,17 +26,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import ContextCompactPanel from './ContextCompactPanel.vue'
-import FilesChangedPanel from './FilesChangedPanel.vue'
-import GitStatusPanel from './GitStatusPanel.vue'
-import type { FilesChangedMessage } from '@/services/commands/files'
-import type { GitStatusData } from '@/services/commands/git'
-import { collectGitInfo } from '@/services/commands/git'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
-import { useWorkspacesStore } from '@/stores/workspaces'
 
 interface Props {
   content: string
@@ -68,30 +42,12 @@ interface Props {
 const props = defineProps<Props>()
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
-const workspacesStore = useWorkspacesStore()
-
-// Local git data for in-place refresh
-const localGitData = ref<GitStatusData | null>(null)
-const isRefreshing = ref(false)
 
 const formattedTime = computed(() => {
   const date = new Date(props.timestamp)
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
   return `${hours}:${minutes}`
-})
-
-// Try to parse content as files-changed message
-const filesChangedData = computed<FilesChangedMessage | null>(() => {
-  try {
-    const parsed = JSON.parse(props.content)
-    if (parsed && parsed.type === 'files-changed') {
-      return parsed as FilesChangedMessage
-    }
-  } catch {
-    // Not JSON, render as markdown
-  }
-  return null
 })
 
 // Try to parse content as context-compact message
@@ -107,133 +63,14 @@ const contextCompactData = computed<{ type: 'context-compact'; summary: string }
   return null
 })
 
-// Try to parse content as git-status message
-const parsedGitData = computed<GitStatusData | null>(() => {
-  try {
-    const parsed = JSON.parse(props.content)
-    if (parsed && parsed.type === 'git-status') {
-      return parsed as GitStatusData
-    }
-  } catch {
-    // Not JSON
-  }
-  return null
-})
-
-// Use local data if available (for refresh), otherwise use parsed data
-const gitStatusData = computed<GitStatusData | null>(() => {
-  return localGitData.value || parsedGitData.value
-})
-
-// Initialize localGitData when parsedGitData changes
-watch(parsedGitData, (newData) => {
-  if (newData && !localGitData.value) {
-    localGitData.value = newData
-  }
-}, { immediate: true })
-
 const renderedContent = computed(() => {
   return renderMarkdown(props.content, false)
-})
-
-// Computed session ID
-const currentSessionId = computed(() => {
-  return props.sessionId || sessionsStore.currentSession?.id
-})
-
-// Computed working directory for git operations
-const currentWorkingDirectory = computed(() => {
-  const sessionId = currentSessionId.value
-  if (!sessionId) return undefined
-
-  const session = sessionsStore.sessions.find((s) => s.id === sessionId)
-  const workspace = session?.workspaceId
-    ? workspacesStore.workspaces.find((w) => w.id === session.workspaceId)
-    : null
-  return session?.workingDirectory || workspace?.workingDirectory
 })
 
 // Get current session ID
 function getSessionId(): string | null {
   if (props.sessionId) return props.sessionId
   return sessionsStore.currentSession?.id || null
-}
-
-// Handle git panel actions (stage-all, commit, push, pull, etc.)
-async function handleGitAction(action: string) {
-  const sessionId = getSessionId()
-  if (!sessionId) return
-
-  // Map actions to chat messages that will be sent
-  const actionMessages: Record<string, string> = {
-    'stage-all': 'git add -A',
-    'stage-all-changes': 'git add -u',
-    'stage-all-untracked': 'git add .',
-    'unstage-all': 'git reset HEAD',
-    'commit': 'Please help me create a commit with an appropriate message based on the staged changes',
-    'push': 'git push',
-    'pull': 'git pull',
-  }
-
-  const message = actionMessages[action]
-  if (message) {
-    // Send as user message to trigger AI execution
-    await chatStore.sendMessage(sessionId, message)
-  }
-}
-
-// Handle git file-specific actions (stage, unstage, diff, discard)
-async function handleGitFileAction(action: string, filePath: string) {
-  const sessionId = getSessionId()
-  if (!sessionId) return
-
-  // For discard action, first show diff then ask AI to discard
-  if (action === 'discard') {
-    // Send a message asking AI to show diff first then discard if confirmed
-    const message = `Please show me the changes in "${filePath}" using git diff, and then help me discard these changes if I confirm. This is a destructive operation.`
-    await chatStore.sendMessage(sessionId, message)
-    return
-  }
-
-  // Map file actions to git commands
-  const actionCommands: Record<string, string> = {
-    'stage': `git add "${filePath}"`,
-    'unstage': `git reset HEAD "${filePath}"`,
-    'diff': `git diff "${filePath}"`,
-    'diff-staged': `git diff --staged "${filePath}"`,
-  }
-
-  const command = actionCommands[action]
-  if (command) {
-    await chatStore.sendMessage(sessionId, command)
-  }
-}
-
-// Handle git refresh - in-place update without recreating message
-async function handleGitRefresh() {
-  const sessionId = getSessionId()
-  if (!sessionId || isRefreshing.value) return
-
-  // Get working directory
-  const session = sessionsStore.sessions.find((s) => s.id === sessionId)
-  const workspace = session?.workspaceId
-    ? workspacesStore.workspaces.find((w) => w.id === session.workspaceId)
-    : null
-  const workingDirectory = session?.workingDirectory || workspace?.workingDirectory
-
-  if (!workingDirectory) return
-
-  isRefreshing.value = true
-  try {
-    // Fetch fresh git data
-    const newData = await collectGitInfo(sessionId, workingDirectory)
-    // Update local data in-place
-    localGitData.value = newData
-  } catch (error) {
-    console.error('[Git Refresh] Error:', error)
-  } finally {
-    isRefreshing.value = false
-  }
 }
 
 // Handle close - persistently delete the message

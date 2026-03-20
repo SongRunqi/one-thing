@@ -14,7 +14,7 @@
  *
  * Channel naming convention:
  *   domain + camelCase method → "domain:kebab-case"
- *   e.g., "memory-feedback" + "getStats" → "memory-feedback:get-stats"
+ *   e.g., "settings" + "getAll" → "settings:get-all"
  */
 
 // --- Core Types ---

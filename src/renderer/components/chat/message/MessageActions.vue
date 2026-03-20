@@ -75,48 +75,6 @@
       </button>
     </Tooltip>
 
-    <!-- More menu button (for assistant messages) -->
-    <div v-if="role === 'assistant'" class="more-btn-wrapper" ref="moreBtnRef">
-      <Tooltip text="More">
-        <button class="action-btn more-btn" @click.stop="toggleMoreMenu">
-          <MoreHorizontal :size="15" :stroke-width="2" />
-        </button>
-      </Tooltip>
-      <!-- More menu dropdown -->
-      <Teleport to="body">
-        <div v-if="showMoreMenu" class="more-menu" :style="moreMenuStyle" @click.stop>
-          <!-- Action items -->
-          <div class="more-menu-actions">
-            <button class="more-menu-item" @click="handleViewTokenUsage">
-              <Hash :size="14" :stroke-width="2" />
-              <span>Token usage</span>
-              <span v-if="usage" class="more-menu-item-badge">{{ formatCompact(usage.totalTokens) }}</span>
-            </button>
-            <!-- Add more action items here in the future -->
-          </div>
-
-          <!-- Info section (shown when expanded) -->
-          <div v-if="showTokenDetails && usage" class="more-menu-details">
-            <div class="token-detail-row">
-              <span>Input</span>
-              <span>{{ formatNumber(usage.inputTokens) }}</span>
-            </div>
-            <div class="token-detail-row">
-              <span>Output</span>
-              <span>{{ formatNumber(usage.outputTokens) }}</span>
-            </div>
-            <div v-if="outputSpeed" class="token-detail-row speed">
-              <span>Speed</span>
-              <span>{{ outputSpeed }} tok/s</span>
-            </div>
-            <div v-if="model" class="token-detail-row model">
-              <span>Model</span>
-              <span>{{ model }}</span>
-            </div>
-          </div>
-        </div>
-      </Teleport>
-    </div>
   </div>
 </template>
 
@@ -136,8 +94,6 @@ import {
   GitBranch,
   ChevronRight,
   Plus,
-  MoreHorizontal,
-  Hash,
 } from 'lucide-vue-next'
 
 interface BranchInfo {
@@ -145,20 +101,11 @@ interface BranchInfo {
   name: string
 }
 
-interface TokenUsage {
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  durationMs?: number
-}
-
 interface Props {
   role: 'user' | 'assistant'
   content: string
   visible: boolean
   branches?: BranchInfo[]
-  usage?: TokenUsage
-  model?: string
   voiceConfig?: AgentVoice
   messageId: string
 }
@@ -278,92 +225,12 @@ function handleNewBranch() {
   emit('branch')
 }
 
-// More menu
-const showMoreMenu = ref(false)
-const showTokenDetails = ref(false)
-const moreBtnRef = ref<HTMLElement | null>(null)
-const moreMenuPosition = ref({ top: 0, left: 0 })
-
-const moreMenuStyle = computed(() => ({
-  position: 'fixed' as const,
-  top: `${moreMenuPosition.value.top}px`,
-  left: `${moreMenuPosition.value.left}px`,
-  zIndex: 1000,
-}))
-
-// Note: We don't auto-close menus when visible changes because
-// the menu is teleported to body and user needs to move mouse to it.
-// Menus are closed by click outside handler instead.
-
-function handleViewTokenUsage() {
-  showTokenDetails.value = !showTokenDetails.value
-}
-
-function formatCompact(num: number): string {
-  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
-  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`
-  return num.toString()
-}
-
-// Calculate output speed in tokens/second
-const outputSpeed = computed(() => {
-  if (!props.usage?.durationMs || props.usage.durationMs <= 0) return null
-  const seconds = props.usage.durationMs / 1000
-  return (props.usage.outputTokens / seconds).toFixed(1)
-})
-
-function toggleMoreMenu() {
-  if (showMoreMenu.value) {
-    showMoreMenu.value = false
-    showTokenDetails.value = false
-    emit('menuOpen', false)
-    return
-  }
-
-  if (moreBtnRef.value) {
-    const btnRect = moreBtnRef.value.getBoundingClientRect()
-    const menuWidth = 180
-    const menuHeight = 120
-    const padding = 4
-
-    let top = btnRect.bottom + padding
-    let left = btnRect.left
-
-    if (left + menuWidth > window.innerWidth - padding) {
-      left = window.innerWidth - menuWidth - padding
-    }
-    if (left < padding) {
-      left = padding
-    }
-    if (top + menuHeight > window.innerHeight - padding) {
-      top = btnRect.top - menuHeight - padding
-    }
-
-    moreMenuPosition.value = { top, left }
-  }
-
-  showMoreMenu.value = true
-  emit('menuOpen', true)
-}
-
-function formatNumber(num: number): string {
-  return num.toLocaleString()
-}
-
 // Click outside handler
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement
   if (!target.closest('.branch-btn-wrapper')) {
     if (showBranchMenu.value) {
       showBranchMenu.value = false
-      emit('menuOpen', false)
-    }
-  }
-  // For more menu, check both the button wrapper and the teleported menu itself
-  if (!target.closest('.more-btn-wrapper') && !target.closest('.more-menu')) {
-    if (showMoreMenu.value) {
-      showMoreMenu.value = false
-      showTokenDetails.value = false
       emit('menuOpen', false)
     }
   }
@@ -463,7 +330,7 @@ onUnmounted(() => {
 /* Branch menu */
 .branch-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-modal);
   min-width: 180px;
   max-width: 280px;
   background: var(--bg-floating);
@@ -544,95 +411,4 @@ onUnmounted(() => {
   background: rgba(var(--accent-rgb), 0.1);
 }
 
-/* More menu */
-.more-btn-wrapper {
-  position: relative;
-}
-</style>
-
-<!-- Global styles for Teleported menu -->
-<style>
-.more-menu {
-  min-width: 180px;
-  background: var(--bg-floating);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow-floating);
-  overflow: hidden;
-  animation: moreMenuSlideIn 0.15s ease-out;
-}
-
-@keyframes moreMenuSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.more-menu-actions {
-  padding: 4px;
-}
-
-.more-menu-item {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  font-size: 13px;
-  text-align: left;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.more-menu-item:hover {
-  background: rgba(var(--accent-rgb), 0.1);
-}
-
-.more-menu-item-badge {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.more-menu-details {
-  padding: 8px 12px;
-  border-top: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.02);
-}
-
-.token-detail-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  padding: 3px 0;
-}
-
-.token-detail-row span:first-child {
-  color: var(--muted);
-}
-
-.token-detail-row span:last-child {
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-
-.token-detail-row.model span:last-child {
-  font-size: 11px;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 </style>

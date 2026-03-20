@@ -1,56 +1,49 @@
 <template>
-  <Teleport to="body">
-    <Transition name="commit-dialog">
-      <div v-if="visible" class="commit-dialog-backdrop" @click.self="$emit('close')">
-        <div class="commit-dialog">
-          <div class="dialog-header">
-            <h3>Commit Changes</h3>
-            <button class="close-btn" @click="$emit('close')" title="Close (Esc)">
-              <X :size="16" :stroke-width="1.5" />
-            </button>
-          </div>
-
-          <div class="dialog-body">
-            <div class="staged-summary">
-              <GitCommitHorizontal :size="16" :stroke-width="1.5" />
-              <span>{{ stagedCount }} file{{ stagedCount !== 1 ? 's' : '' }} staged for commit</span>
-            </div>
-
-            <div class="input-group">
-              <label for="commit-message">Commit Message</label>
-              <textarea
-                id="commit-message"
-                ref="messageInput"
-                v-model="commitMessage"
-                placeholder="Enter a descriptive commit message..."
-                rows="4"
-                @keydown.ctrl.enter="handleCommit"
-                @keydown.meta.enter="handleCommit"
-              />
-              <span class="hint">Press Ctrl+Enter to commit</span>
-            </div>
-          </div>
-
-          <div class="dialog-footer">
-            <button class="btn secondary" @click="$emit('close')">Cancel</button>
-            <button
-              class="btn primary"
-              @click="handleCommit"
-              :disabled="!commitMessage.trim() || isCommitting"
-            >
-              <Loader2 v-if="isCommitting" :size="14" class="spinning" />
-              <span>{{ isCommitting ? 'Committing...' : 'Commit' }}</span>
-            </button>
-          </div>
-        </div>
+  <BaseDialog
+    :open="visible"
+    title="Commit Changes"
+    max-width="500px"
+    @update:open="val => { if (!val) $emit('close') }"
+  >
+    <div class="dialog-body-content">
+      <div class="staged-summary">
+        <GitCommitHorizontal :size="16" :stroke-width="1.5" />
+        <span>{{ stagedCount }} file{{ stagedCount !== 1 ? 's' : '' }} staged for commit</span>
       </div>
-    </Transition>
-  </Teleport>
+
+      <div class="input-group">
+        <label for="commit-message">Commit Message</label>
+        <textarea
+          id="commit-message"
+          ref="messageInput"
+          v-model="commitMessage"
+          placeholder="Enter a descriptive commit message..."
+          rows="4"
+          @keydown.ctrl.enter="handleCommit"
+          @keydown.meta.enter="handleCommit"
+        />
+        <span class="hint">Press Ctrl+Enter to commit</span>
+      </div>
+    </div>
+
+    <template #actions>
+      <button class="btn secondary" @click="$emit('close')">Cancel</button>
+      <button
+        class="btn primary"
+        @click="handleCommit"
+        :disabled="!commitMessage.trim() || isCommitting"
+      >
+        <Loader2 v-if="isCommitting" :size="14" class="spinning" />
+        <span>{{ isCommitting ? 'Committing...' : 'Commit' }}</span>
+      </button>
+    </template>
+  </BaseDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { X, GitCommitHorizontal, Loader2 } from 'lucide-vue-next'
+import { GitCommitHorizontal, Loader2 } from 'lucide-vue-next'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -142,70 +135,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.commit-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-}
-
-html[data-theme='light'] .commit-dialog-backdrop {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.commit-dialog {
-  width: 90%;
-  max-width: 500px;
-  background: var(--bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-}
-
-html[data-theme='light'] .commit-dialog {
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-}
-
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.dialog-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.close-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-
-.dialog-body {
-  padding: 20px;
+.dialog-body-content {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -270,16 +200,6 @@ html[data-theme='light'] .commit-dialog {
   color: var(--muted);
 }
 
-.dialog-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-subtle);
-  background: var(--bg-elevated);
-}
-
 .btn {
   display: inline-flex;
   align-items: center;
@@ -327,26 +247,5 @@ html[data-theme='light'] .commit-dialog {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-/* Transition animations */
-.commit-dialog-enter-active,
-.commit-dialog-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.commit-dialog-enter-active .commit-dialog,
-.commit-dialog-leave-active .commit-dialog {
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.commit-dialog-enter-from,
-.commit-dialog-leave-to {
-  opacity: 0;
-}
-
-.commit-dialog-enter-from .commit-dialog,
-.commit-dialog-leave-to .commit-dialog {
-  transform: scale(0.95);
 }
 </style>

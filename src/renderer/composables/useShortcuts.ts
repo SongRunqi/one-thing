@@ -91,26 +91,7 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       return
     }
 
-    // Close Chat - works everywhere
-    if (matchShortcut(event, shortcuts.closeChat)) {
-      event.preventDefault()
-      // In settings or image preview window, close the window instead of closing chat
-      const hash = window.location.hash
-      if (hash.startsWith('#/settings') || hash.startsWith('#/image-preview')) {
-        window.close()
-        return
-      }
-      if (handlers.onCloseChat) {
-        handlers.onCloseChat()
-      } else {
-        // Default: delete current session
-        const currentId = sessionsStore.currentSessionId
-        if (currentId) {
-          sessionsStore.deleteSession(currentId)
-        }
-      }
-      return
-    }
+
 
     // Toggle Sidebar - works everywhere
     if (matchShortcut(event, shortcuts.toggleSidebar)) {

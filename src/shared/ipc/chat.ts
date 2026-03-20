@@ -4,8 +4,6 @@
  */
 
 import type { ToolCall } from './tools.js'
-import type { BuiltinAgentMode } from './agents.js'
-import type { SessionPlan } from './plan.js'
 
 // Retrieved memory item for feedback UI
 export interface RetrievedMemory {
@@ -25,7 +23,7 @@ export type ContentPart =
   | { type: 'data-steps'; turnIndex: number }    // Placeholder for steps panel (rendered inline)
 
 // Step types for showing AI reasoning process
-export type StepType = 'skill-read' | 'tool-call' | 'thinking' | 'file-read' | 'file-write' | 'command' | 'tool-agent'
+export type StepType = 'skill-read' | 'tool-call' | 'thinking' | 'file-read' | 'file-write' | 'command'
 
 export interface Step {
   id: string
@@ -48,15 +46,7 @@ export interface Step {
     outputTokens: number
     totalTokens: number
   }
-  // Tool Agent specific fields
-  toolAgentResult?: {              // Result from Tool Agent execution
-    success: boolean
-    summary: string
-    toolCallCount: number
-    filesModified?: string[]
-    errors?: string[]
-  }
-  // Nested step support (for CustomAgent sub-tool calls)
+  // Nested step support
   parentStepId?: string            // Parent step ID (for child steps)
   childSteps?: Step[]              // Child steps array (populated by frontend)
 }
@@ -153,8 +143,6 @@ export interface SessionDetails extends SessionMeta {
   totalTokens?: number
   lastInputTokens?: number
   contextSize?: number
-  builtinMode?: BuiltinAgentMode
-  plan?: SessionPlan
   cachedProviderConfig?: CachedProviderConfig
 }
 
@@ -189,10 +177,6 @@ export interface ChatSession {
   totalTokens?: number          // Accumulated total tokens for this session
   lastInputTokens?: number      // Last request's input tokens
   contextSize?: number          // Current context window size (last turn's input tokens)
-  // Built-in agent mode (Ask Mode / Build Mode)
-  builtinMode?: BuiltinAgentMode  // 'build' (default) | 'ask'
-  // Planning workflow (AI creates task plan, executes step by step)
-  plan?: SessionPlan
   // Cached provider configuration (for session-level optimization)
   // Set when user selects a model, used during chat to avoid repeated settings lookups
   cachedProviderConfig?: CachedProviderConfig

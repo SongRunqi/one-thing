@@ -1,8 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS, AIProvider, MessageAttachment, PLUGIN_CHANNELS } from '../shared/ipc.js'
 import type { UIMessageStreamData, InstallPluginRequest, UpdatePluginConfigRequest } from '../shared/ipc.js'
-import { createRouterAPI } from './create-api.js'
-import { memoryFeedbackRouter } from '../shared/ipc/memory-feedback.js'
 
 const electronAPI = {
   // Chat methods
@@ -127,8 +125,8 @@ const electronAPI = {
   getSessions: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SESSIONS),
 
-  createSession: (name: string, workspaceId?: string, agentId?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.CREATE_SESSION, { name, workspaceId, agentId }),
+  createSession: (name: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CREATE_SESSION, { name }),
 
   switchSession: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.SWITCH_SESSION, { sessionId }),
@@ -154,42 +152,12 @@ const electronAPI = {
   updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_ARCHIVED, { sessionId, isArchived, archivedAt }),
 
-  updateSessionAgent: (sessionId: string, agentId: string | null) =>
-    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_AGENT, { sessionId, agentId }),
-
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY, { sessionId, workingDirectory }),
-
-  getSessionTokenUsage: (sessionId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, sessionId),
-
-  onContextSizeUpdated: (callback: (data: { sessionId: string; contextSize: number }) => void) => {
-    const listener = (_event: any, data: any) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.CONTEXT_SIZE_UPDATED, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.CONTEXT_SIZE_UPDATED, listener)
-  },
-
-  onContextCompactStarted: (callback: (data: { sessionId: string }) => void) => {
-    const listener = (_event: any, data: any) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.CONTEXT_COMPACT_STARTED, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.CONTEXT_COMPACT_STARTED, listener)
-  },
-
-  onContextCompactCompleted: (callback: (data: { sessionId: string; success: boolean; error?: string }) => void) => {
-    const listener = (_event: any, data: any) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.CONTEXT_COMPACT_COMPLETED, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.CONTEXT_COMPACT_COMPLETED, listener)
-  },
 
   updateSessionMaxTokens: (sessionId: string, maxTokens: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_MAX_TOKENS, sessionId, maxTokens),
 
-  // Builtin mode (Ask/Build) methods
-  setSessionBuiltinMode: (sessionId: string, mode: 'build' | 'ask') =>
-    ipcRenderer.invoke(IPC_CHANNELS.SET_SESSION_BUILTIN_MODE, { sessionId, mode }),
-
-  getSessionBuiltinMode: (sessionId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_BUILTIN_MODE, { sessionId }),
 
   // ============================================================================
   // Optimized Session Loading (Phase 4: Metadata Separation)
@@ -227,13 +195,6 @@ const electronAPI = {
   // Generic remove message by ID (for close button functionality)
   removeMessage: (sessionId: string, messageId: string) =>
     ipcRenderer.invoke('remove-message', { sessionId, messageId }),
-
-  // Plan update listener (for Planning workflow)
-  onPlanUpdated: (callback: (data: { sessionId: string; plan: any }) => void) => {
-    const listener = (_event: any, data: any) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.PLAN_UPDATED, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.PLAN_UPDATED, listener)
-  },
 
   // Settings methods
   getSettings: () =>
@@ -301,16 +262,6 @@ const electronAPI = {
 
   getModelDisplayName: (modelId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_MODEL_DISPLAY_NAME, { modelId }),
-
-  // Embedding models methods (from Models.dev registry)
-  getEmbeddingModels: (providerId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_EMBEDDING_MODELS, { providerId }),
-
-  getAllEmbeddingModels: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_EMBEDDING_MODELS),
-
-  getEmbeddingDimension: (modelId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_EMBEDDING_DIMENSION, { modelId }),
 
   // Providers methods
   getProviders: () =>
@@ -397,102 +348,6 @@ const electronAPI = {
   toggleSkillEnabled: (skillId: string, enabled: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.SKILLS_TOGGLE_ENABLED, { skillId, enabled }),
 
-  // Custom Agent methods
-  getCustomAgents: (workingDirectory?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_GET_ALL, { workingDirectory }),
-
-  refreshCustomAgents: (workingDirectory?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_REFRESH, { workingDirectory }),
-
-  openCustomAgentsDirectory: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_OPEN_DIRECTORY),
-
-  getCustomAgent: (agentId: string, workingDirectory?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_GET, { agentId, workingDirectory }),
-
-  createCustomAgent: (config: {
-    name: string
-    description: string
-    systemPrompt: string
-    customTools: Array<{
-      id: string
-      name: string
-      description: string
-      parameters: Array<{
-        name: string
-        type: 'string' | 'number' | 'boolean' | 'object' | 'array'
-        description: string
-        required: boolean
-        default?: unknown
-        enum?: string[]
-      }>
-      execution: { type: 'bash'; command: string; env?: Record<string, string>; timeout?: number }
-        | { type: 'http'; method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'; url: string; headers?: Record<string, string>; bodyTemplate?: string; timeout?: number }
-        | { type: 'builtin'; toolId: string; argsMapping?: Record<string, string> }
-    }>
-    avatar?: { type: 'emoji' | 'image'; value: string }
-    allowBuiltinTools?: boolean
-    allowedBuiltinTools?: string[]
-    maxToolCalls?: number
-    timeoutMs?: number
-    enableMemory?: boolean
-  }, source?: 'user' | 'project', workingDirectory?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_CREATE, { config, source, workingDirectory }),
-
-  updateCustomAgent: (agentId: string, updates: Partial<{
-    name: string
-    description: string
-    systemPrompt: string
-    customTools: Array<any>
-    avatar: { type: 'emoji' | 'image'; value: string }
-    allowBuiltinTools: boolean
-    allowedBuiltinTools: string[]
-    maxToolCalls: number
-    timeoutMs: number
-    enableMemory: boolean
-  }>, workingDirectory?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_UPDATE, { agentId, updates, workingDirectory }),
-
-  deleteCustomAgent: (agentId: string, workingDirectory?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_DELETE, { agentId, workingDirectory }),
-
-  getAvailableBuiltinTools: (): Promise<Array<{ id: string; name: string; description: string }>> =>
-    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_GET_AVAILABLE_BUILTIN_TOOLS),
-
-  // CustomAgent permission handling
-  respondToCustomAgentPermission: (requestId: string, decision: 'allow' | 'always' | 'reject'): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_PERMISSION_RESPOND, { requestId, decision }),
-
-  // CustomAgent pin/unpin (for sidebar display)
-  pinCustomAgent: (agentId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_PIN, { agentId }),
-
-  unpinCustomAgent: (agentId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.CUSTOM_AGENT_UNPIN, { agentId }),
-
-  onCustomAgentPermissionRequest: (callback: (data: {
-    requestId: string
-    sessionId: string
-    messageId: string
-    stepId: string
-    toolCall: {
-      id: string
-      toolName: string
-      arguments: Record<string, unknown>
-      commandType?: 'read-only' | 'dangerous' | 'forbidden'
-      error?: string
-    }
-  }) => void) => {
-    const listener = (_event: any, data: any) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.CUSTOM_AGENT_PERMISSION_REQUEST, listener)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.CUSTOM_AGENT_PERMISSION_REQUEST, listener)
-  },
-
-  // Refresh async tools (invalidate cache and re-initialize)
-  // Call this after creating/modifying/deleting CustomAgents
-  refreshAsyncTools: (workingDirectory?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.REFRESH_ASYNC_TOOLS, { workingDirectory }),
-
   // Message update methods
   updateMessageThinkingTime: (sessionId: string, messageId: string, thinkingTime: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_MESSAGE_THINKING_TIME, { sessionId, messageId, thinkingTime }),
@@ -500,150 +355,6 @@ const electronAPI = {
   // Dialog methods
   showOpenDialog: (options: { properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>; title?: string; defaultPath?: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.SHOW_OPEN_DIALOG, options),
-
-  // Workspace methods
-  getWorkspaces: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_GET_ALL),
-
-  createWorkspace: (name: string, avatar: { type: 'emoji' | 'image'; value: string }, workingDirectory: string | undefined, systemPrompt: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_CREATE, { name, avatar, workingDirectory, systemPrompt }),
-
-  updateWorkspace: (id: string, updates: { name?: string; avatar?: { type: 'emoji' | 'image'; value: string }; workingDirectory?: string; systemPrompt?: string }) =>
-    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_UPDATE, { id, ...updates }),
-
-  deleteWorkspace: (workspaceId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_DELETE, { workspaceId }),
-
-  switchWorkspace: (workspaceId: string | null) =>
-    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_SWITCH, { workspaceId }),
-
-  uploadWorkspaceAvatar: (workspaceId: string, imageData: string, mimeType: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_UPLOAD_AVATAR, { workspaceId, imageData, mimeType }),
-
-  // User Profile methods
-  getUserProfile: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.USER_PROFILE_GET),
-
-  addUserFact: (
-    content: string,
-    category: 'personal' | 'preference' | 'goal' | 'trait',
-    confidence?: number,
-    sourceAgentId?: string
-  ) =>
-    ipcRenderer.invoke(IPC_CHANNELS.USER_PROFILE_ADD_FACT, {
-      content,
-      category,
-      confidence,
-      sourceAgentId,
-    }),
-
-  updateUserFact: (
-    factId: string,
-    updates: {
-      content?: string
-      category?: 'personal' | 'preference' | 'goal' | 'trait'
-      confidence?: number
-    }
-  ) =>
-    ipcRenderer.invoke(IPC_CHANNELS.USER_PROFILE_UPDATE_FACT, { factId, ...updates }),
-
-  deleteUserFact: (factId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.USER_PROFILE_DELETE_FACT, { factId }),
-
-  // Agent Memory methods
-  getAgentRelationship: (agentId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_GET_RELATIONSHIP, { agentId }),
-
-  addAgentMemory: (
-    agentId: string,
-    content: string,
-    category: 'observation' | 'event' | 'feeling' | 'learning',
-    emotionalWeight?: number
-  ) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_ADD_MEMORY, {
-      agentId,
-      content,
-      category,
-      emotionalWeight,
-    }),
-
-  deleteAgentMemory: (memoryId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_DELETE, { memoryId }),
-
-  recallAgentMemory: (agentId: string, memoryId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_RECALL, { agentId, memoryId }),
-
-  getActiveAgentMemories: (agentId: string, limit?: number) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_GET_ACTIVE, { agentId, limit }),
-
-  updateAgentRelationship: (
-    agentId: string,
-    updates: {
-      trustLevel?: number
-      familiarity?: number
-      mood?: 'happy' | 'neutral' | 'concerned' | 'excited'
-      moodNotes?: string
-    }
-  ) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_UPDATE_RELATIONSHIP, { agentId, updates }),
-
-  recordAgentInteraction: (agentId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.AGENT_MEMORY_RECORD_INTERACTION, { agentId }),
-
-  // Memory Feedback methods (legacy - use memoryFeedback router API instead)
-  /** @deprecated Use memoryFeedback.record() instead */
-  recordMemoryFeedback: (filePath: string, feedbackType: 'positive' | 'negative') =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_FEEDBACK_RECORD, { filePath, feedbackType }),
-
-  /** @deprecated Use memoryFeedback.getStats() instead */
-  getMemoryFeedbackStats: (filePath: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_FEEDBACK_GET_STATS, { filePath }),
-
-  // Router-based API: memory feedback
-  memoryFeedback: createRouterAPI(memoryFeedbackRouter),
-
-  // Memory Management methods
-  memoryListFiles: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LIST_FILES),
-
-  memoryGetFile: (path: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GET_FILE, { path }),
-
-  memoryUpdateFile: (path: string, content: string, metadata?: Record<string, unknown>) =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_UPDATE_FILE, { path, content, metadata }),
-
-  memoryDeleteFile: (path: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_DELETE_FILE, { path }),
-
-  memoryDeleteFiles: (paths: string[]) =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_DELETE_FILES, { paths }),
-
-  memoryExport: (options: { includeMetadata: boolean; filter?: { tags?: string[]; dateRange?: [string, string] } }) =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_EXPORT, { options }),
-
-  memoryExportWithDialog: (options: { includeMetadata: boolean; filter?: { tags?: string[]; dateRange?: [string, string] } }) =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_EXPORT_WITH_DIALOG, { options }),
-
-  memoryImport: (filePath: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_IMPORT, { filePath }),
-
-  memoryImportWithDialog: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_IMPORT_WITH_DIALOG),
-
-  memoryGetTags: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GET_TAGS),
-
-  memoryRenameTag: (oldTag: string, newTag: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_RENAME_TAG, { oldTag, newTag }),
-
-  memoryDeleteTag: (tag: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_DELETE_TAG, { tag }),
-
-  memoryGetStats: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GET_STATS),
-
-  memoryRebuildIndex: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_REBUILD_INDEX),
 
   // Shell methods
   openPath: (filePath: string) =>

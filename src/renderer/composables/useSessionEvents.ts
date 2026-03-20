@@ -25,8 +25,6 @@ export interface SessionEventState {
   activeToolCalls: Ref<Map<string, ToolCall>>
   /** Execution steps */
   steps: Ref<Step[]>
-  /** Current context size (input tokens) */
-  contextSize: Ref<number>
   /** Error message if stream failed */
   error: Ref<string | null>
   /** Event count (for debugging) */
@@ -49,7 +47,6 @@ export function useSessionEvents(sessionIdRef: MaybeRef<string | undefined>): Se
   const isStreaming = ref(false)
   const activeToolCalls = ref<Map<string, ToolCall>>(new Map())
   const steps = ref<Step[]>([])
-  const contextSize = ref(0)
   const error = ref<string | null>(null)
   const eventCount = ref(0)
   const chunkCount = ref(0)
@@ -114,9 +111,6 @@ export function useSessionEvents(sessionIdRef: MaybeRef<string | undefined>): Se
         break
       }
 
-      case 'context:size-updated':
-        contextSize.value = event.contextSize
-        break
     }
   }
 
@@ -172,7 +166,6 @@ export function useSessionEvents(sessionIdRef: MaybeRef<string | undefined>): Se
     isStreaming,
     activeToolCalls,
     steps,
-    contextSize,
     error,
     eventCount,
     chunkCount,

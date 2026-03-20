@@ -2,15 +2,14 @@ import { app, BrowserWindow, protocol, net } from 'electron'
 import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { createWindow } from './window.js'
-import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills, initializeCustomAgents } from './ipc/handlers.js'
+import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills } from './ipc/handlers.js'
 import { initializeStores } from './store.js'
 import { initializeSettings } from './stores/settings.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
 import { initializeStreamEngine, shutdownStreamEngine, getStreamEngine } from './engine/index.js'
-import { initializeTextMemory } from './services/memory-text/index.js'
 import { getMediaImagesDir } from './stores/paths.js'
-import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './services/prompt/index.js'
+import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './prompt/index.js'
 import { initializePlugins, shutdownPlugins } from './plugins/index.js'
 import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge, getEventBus } from './events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
@@ -56,9 +55,6 @@ app.on('ready', async () => {
   // Clean up interrupted sessions from previous app instance
   sanitizeAllSessionsOnStartup()
 
-  // Initialize text-based memory system
-  await initializeTextMemory()
-
   // Initialize PromptManager for template-based prompts
   await initializePromptManager()
 
@@ -101,10 +97,6 @@ app.on('ready', async () => {
     console.error('[Skills] Initialization failed (non-blocking):', err)
   })
 
-  // Initialize custom agents system asynchronously
-  initializeCustomAgents().catch(err => {
-    console.error('[CustomAgent] Initialization failed (non-blocking):', err)
-  })
 })
 
 app.on('window-all-closed', () => {

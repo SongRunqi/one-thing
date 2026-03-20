@@ -305,7 +305,7 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 3000;
+  z-index: var(--z-toast);
   padding: 20px;
   animation: fadeIn 0.15s ease;
 }
