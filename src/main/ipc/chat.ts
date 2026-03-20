@@ -23,11 +23,6 @@ import {
 } from '../tools/index.js'
 import { getMCPToolsForAI } from '../mcp/index.js'
 import { getSkillsForSession } from './skills.js'
-import { getStorage } from '../storage/index.js'
-import { getCustomAgentById } from '../services/custom-agent/index.js'
-import { triggerManager } from '../services/triggers/index.js'
-import { textMemoryUpdateTrigger } from '../services/triggers/text-memory-update.js'
-// Note: contextCompactingTrigger removed - compacting now happens in real-time during tool loop
 import { Permission } from '../permission/index.js'
 import { saveMediaImage } from './media.js'
 import * as modelRegistry from '../services/ai/model-registry.js'
@@ -39,13 +34,6 @@ import {
 import {
   executeMessageStream,
 } from './chat/stream-executor.js'
-import {
-  formatUserProfilePrompt,
-  retrieveRelevantFacts,
-  retrieveRelevantAgentMemories,
-  formatAgentMemoryPrompt,
-  getTextFromContent,
-} from './chat/memory-helpers.js'
 import {
   formatMessagesForLog,
   buildMessageContent,
@@ -73,11 +61,6 @@ import {
   runStream,
   executeStreamGeneration,
 } from './chat/tool-loop.js'
-
-// Register triggers on module load
-triggerManager.register(textMemoryUpdateTrigger)
-// Note: contextCompactingTrigger removed - compacting now happens in real-time during tool loop
-// Note: Using text-based memory system instead of SQLite + embeddings
 
 // ============================================
 // IPC Handlers
@@ -753,17 +736,9 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     const skillsEnabled = skillsSettings?.enableSkills !== false
     const enabledSkills = skillsEnabled ? getSkillsForSession(session.workingDirectory) : []
 
-    // Get agent for permission context
-    const currentAgent = session.agentId ? getCustomAgentById(session.agentId, session.workingDirectory) : undefined
-
     // Set init context for async tools (like SkillTool)
     if (settings.tools?.enableToolCalls) {
       setInitContext({
-        agent: currentAgent ? {
-          id: currentAgent.id,
-          name: currentAgent.name,
-          permissions: undefined, // CustomAgents use allowBuiltinTools/allowedBuiltinTools instead
-        } : undefined,
         skills: enabledSkills.map(s => ({
           id: s.id,
           name: s.name,
@@ -794,75 +769,11 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
 
     const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
 
-    // Load user profile (shared) and agent memory (per-agent) for system prompt
-    let userProfilePrompt: string | undefined
-    let agentMemoryPrompt: string | undefined
-    const agentId = session.agentId
-
-    // Get the last user message for retrieval-based memory injection
-    const lastUserMsgContent = historyWithoutCurrent
-      .filter(m => m.role === 'user')
-      .pop()?.content
-    const lastUserMsg = lastUserMsgContent ? getTextFromContent(lastUserMsgContent) : ''
-
-    // Check if memory is enabled in settings
-    const memorySettings = store.getSettings()
-    const memoryEnabled = memorySettings.embedding?.memoryEnabled !== false
-
-    // Retrieve relevant user facts based on conversation context (semantic search)
-    if (memoryEnabled) {
-      try {
-        const storage = getStorage()
-        const relevantFacts = await retrieveRelevantFacts(storage, lastUserMsg, 10, 0.3)
-        if (relevantFacts.length > 0) {
-          userProfilePrompt = formatUserProfilePrompt(relevantFacts)
-          console.log(`[Chat] Retrieved ${relevantFacts.length} relevant facts for resume context`)
-        }
-      } catch (error) {
-        console.error('Failed to retrieve relevant facts:', error)
-      }
-    }
-
-    // Load agent-specific memory only for agent sessions
-    if (agentId && memoryEnabled) {
-      try {
-        const storage = getStorage()
-        const agentRelationship = await storage.agentMemory.getRelationship(agentId)
-        if (agentRelationship) {
-          // Use semantic search to retrieve context-relevant memories
-          const relevantMemories = await retrieveRelevantAgentMemories(
-            storage, agentId, lastUserMsg, 5, 0.3
-          )
-          if (relevantMemories.length > 0) {
-            console.log(`[Chat] Retrieved ${relevantMemories.length} relevant agent memories for resume context`)
-          }
-          agentMemoryPrompt = formatAgentMemoryPrompt(agentRelationship, relevantMemories)
-        }
-      } catch (error) {
-        console.error('Failed to load agent memory:', error)
-      }
-    }
-
-    // Get workspace/agent system prompt
-    let characterSystemPrompt: string | undefined
-    if (session.workspaceId) {
-      const workspace = store.getWorkspace(session.workspaceId)
-      characterSystemPrompt = workspace?.systemPrompt
-    } else if (session.agentId) {
-      const agent = getCustomAgentById(session.agentId, session.workingDirectory)
-      characterSystemPrompt = agent?.systemPrompt
-    }
-
     const systemPrompt = buildSystemPrompt({
       hasTools,
       skills: enabledSkills,
-      workspaceSystemPrompt: characterSystemPrompt,
-      userProfilePrompt,
-      agentMemoryPrompt,
       providerId,
       workingDirectory: session.workingDirectory,
-      builtinMode: session.builtinMode,
-      sessionPlan: session.plan,
     })
 
     conversationMessages.push({ role: 'system', content: systemPrompt })

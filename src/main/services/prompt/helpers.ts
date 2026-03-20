@@ -5,7 +5,6 @@
  */
 
 import Handlebars from 'handlebars'
-import type { PlanItemStatus } from './types.js'
 
 /**
  * Register all custom helpers on a Handlebars instance
@@ -52,18 +51,6 @@ export function registerHelpers(handlebars: typeof Handlebars): void {
     if (typeof text !== 'string') return ''
     if (text.length <= length) return text
     return text.slice(0, length) + '\n\n... (truncated)'
-  })
-
-  // Format plan item status icon: {{planIcon status}}
-  handlebars.registerHelper('planIcon', (status: PlanItemStatus) => {
-    switch (status) {
-      case 'completed':
-        return '[x]'
-      case 'in_progress':
-        return '[>]'
-      default:
-        return '[ ]'
-    }
   })
 
   // Join array with separator: {{join arr ", "}}

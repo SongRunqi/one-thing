@@ -3,7 +3,7 @@
  * Handles message building, history construction, and system prompt generation
  */
 
-import type { ChatMessage, SkillDefinition, BuiltinAgentMode, SessionPlan } from '../../../shared/ipc.js'
+import type { ChatMessage, SkillDefinition } from '../../../shared/ipc.js'
 import type { AIMessageContent } from '../../providers/index.js'
 import { buildSystemPromptV2 } from '../../services/prompt/index.js'
 import { getHistoryFilePath } from '../../services/ai/context-compacting.js'
@@ -290,11 +290,22 @@ export function buildSystemPrompt(options: {
   skills: SkillDefinition[]
   workspaceSystemPrompt?: string
   userProfilePrompt?: string
-  agentMemoryPrompt?: string
   providerId?: string
   workingDirectory?: string
-  builtinMode?: BuiltinAgentMode  // Ask mode / Build mode
-  sessionPlan?: SessionPlan  // Current session plan for context injection
 }): string {
   return buildSystemPromptV2(options)
+}
+
+/**
+ * Extract text content from AIMessageContent
+ */
+export function getTextFromContent(content: AIMessageContent): string {
+  if (typeof content === 'string') {
+    return content
+  }
+  // Extract text from array content
+  return content
+    .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+    .map(part => part.text)
+    .join('\n')
 }
