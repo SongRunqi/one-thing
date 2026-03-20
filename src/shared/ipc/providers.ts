@@ -122,6 +122,15 @@ export interface ModelInfo {
   type?: ModelType
 }
 
+// Embedding model with dimension info (from Models.dev registry)
+export interface EmbeddingModelInfo {
+  id: string
+  name: string
+  dimension: number
+  isConfigurable: boolean  // true if dimension can be customized
+  providerId: string       // Our provider ID (openai, gemini, zhipu, etc.)
+}
+
 export interface CachedModels {
   provider: AIProvider
   models: ModelInfo[]

@@ -14,6 +14,9 @@ import {
   isProviderSupported,
   requiresOAuth,
 } from '../providers/index.js'
+import { triggerManager } from '../services/triggers/index.js'
+import { textMemoryUpdateTrigger } from '../services/triggers/text-memory-update.js'
+// Note: contextCompactingTrigger removed - compacting now happens in real-time during tool loop
 import { Permission } from '../permission/index.js'
 
 // Import from chat sub-modules
@@ -21,17 +24,21 @@ import {
   buildMessageContent,
   buildHistoryMessages,
   filterHistoryForNonToolAPI,
-} from '../chat/message-helpers.js'
+} from './chat/message-helpers.js'
 import {
   extractErrorDetails,
   getProviderConfig,
   getApiKeyForProvider,
   getEffectiveProviderConfig,
   getProviderApiType,
-} from '../chat/provider-helpers.js'
+} from './chat/provider-helpers.js'
 import { getStreamEngine } from '../engine/index.js'
 import { getEventBus } from '../events/index.js'
 
+// Register triggers on module load
+triggerManager.register(textMemoryUpdateTrigger)
+// Note: contextCompactingTrigger removed - compacting now happens in real-time during tool loop
+// Note: Using text-based memory system instead of SQLite + embeddings
 
 // ============================================
 // IPC Handlers

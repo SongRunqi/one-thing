@@ -24,7 +24,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import * as DirectoryPermissions from './directory-permissions.js'
+import * as WorkspacePermissions from './workspace-permissions.js'
 
 // Lazy imports to avoid circular dependencies
 type EventBus = import('../events/event-bus.js').EventBus
@@ -226,7 +226,7 @@ export namespace Permission {
 
     // Check if approved at workspace level first (persistent)
     if (input.workingDirectory) {
-      if (DirectoryPermissions.areAllApprovedInWorkspace(input.workingDirectory, keys)) {
+      if (WorkspacePermissions.areAllApprovedInWorkspace(input.workingDirectory, keys)) {
         console.log('[Permission] Already approved at workspace level:', keys)
         return
       }
@@ -330,13 +330,13 @@ export namespace Permission {
 
     // Handle 'workspace' response - persist to workspace storage
     if (response === 'workspace' && pending.info.workingDirectory) {
-      DirectoryPermissions.approveInWorkspace(pending.info.workingDirectory, keys)
+      WorkspacePermissions.approveInWorkspace(pending.info.workingDirectory, keys)
 
       // Auto-approve any other pending requests that match (in this workspace)
       for (const [id, other] of session.pending) {
         if (other.info.workingDirectory === pending.info.workingDirectory) {
           const otherKeys = toKeys(other.info.pattern, other.info.type)
-          if (DirectoryPermissions.areAllApprovedInWorkspace(pending.info.workingDirectory, otherKeys)) {
+          if (WorkspacePermissions.areAllApprovedInWorkspace(pending.info.workingDirectory, otherKeys)) {
             session.pending.delete(id)
             other.resolve()
           }

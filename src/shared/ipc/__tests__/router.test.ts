@@ -4,11 +4,11 @@ import { defineRouter, getChannelName } from '../router'
 describe('IPC Router', () => {
   describe('getChannelName()', () => {
     it('should convert camelCase method to kebab-case channel', () => {
-      expect(getChannelName('user-profile', 'getStats')).toBe('user-profile:get-stats')
+      expect(getChannelName('memory-feedback', 'getStats')).toBe('memory-feedback:get-stats')
     })
 
     it('should keep lowercase method names unchanged', () => {
-      expect(getChannelName('user-profile', 'record')).toBe('user-profile:record')
+      expect(getChannelName('memory-feedback', 'record')).toBe('memory-feedback:record')
     })
 
     it('should handle multiple uppercase letters', () => {
@@ -51,15 +51,16 @@ describe('IPC Router', () => {
   })
 
   describe('backward compatibility', () => {
-    it('should generate channels matching domain:kebab-case pattern', () => {
-      type ProfileRoutes = {
+    it('should generate channels matching existing IPC_CHANNELS for memory-feedback', () => {
+      type MemoryFeedbackRoutes = {
         record: { input: { filePath: string; feedbackType: string }; output: { success: boolean } }
         getStats: { input: { filePath: string }; output: { success: boolean } }
       }
-      const router = defineRouter<ProfileRoutes>('user-profile', ['record', 'getStats'])
+      const router = defineRouter<MemoryFeedbackRoutes>('memory-feedback', ['record', 'getStats'])
 
-      expect(router.channels.record).toBe('user-profile:record')
-      expect(router.channels.getStats).toBe('user-profile:get-stats')
+      // These must match the values in channels.ts
+      expect(router.channels.record).toBe('memory-feedback:record')
+      expect(router.channels.getStats).toBe('memory-feedback:get-stats')
     })
   })
 })

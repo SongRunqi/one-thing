@@ -6,12 +6,16 @@
  * - Custom tools (can be registered at runtime)
  * - Tool execution with permission checks
  *
- * All tools use the Tool.define() pattern.
+ * Supports two formats:
+ * - Legacy: { definition, handler } objects
+ * - V2: Tool.Info objects (via Tool.define())
  */
 
 import type {
   ToolDefinition,
   ToolCall,
+  RegisteredTool,
+  ToolHandler,
   ToolExecutionContext,
   ToolExecutionResult,
   AIToolSchema,
@@ -21,11 +25,14 @@ import { v4 as uuidv4 } from 'uuid'
 import type { ToolInfo, ToolContext, ToolInfoAsync, ToolInfoUnion, InitContext } from './core/tool.js'
 import { zodToJsonSchema, isAsyncTool, Tool } from './core/tool.js'
 
-// Static tool registry (Tool.define() tools)
-const toolRegistry: Map<string, ToolInfo> = new Map()
+// Legacy tool registry storage
+const toolRegistry: Map<string, RegisteredTool> = new Map()
 
-// Async tool registry (Tool.define() with init function)
-const asyncToolRegistry: Map<string, ToolInfoAsync> = new Map()
+// V2 tool registry storage (Tool.define() static tools)
+const toolRegistryV2: Map<string, ToolInfo> = new Map()
+
+// V2 async tool registry storage (Tool.define() with init function)
+const toolRegistryV2Async: Map<string, ToolInfoAsync> = new Map()
 
 // Track if registry has been initialized
 let initialized = false
@@ -34,52 +41,82 @@ let initialized = false
 let currentInitContext: InitContext | undefined
 
 /**
- * Register a tool (Tool.define() format - both static and async)
+ * Register a tool with its handler (legacy format)
  */
-export function registerTool<T extends ToolInfoUnion>(tool: T): void {
-  if (toolRegistry.has(tool.id) || asyncToolRegistry.has(tool.id)) {
+export function registerTool(definition: ToolDefinition, handler: ToolHandler): void {
+  if (toolRegistry.has(definition.id) || toolRegistryV2.has(definition.id)) {
+    console.warn(`Tool "${definition.id}" is already registered. Overwriting.`)
+  }
+
+  toolRegistry.set(definition.id, {
+    definition,
+    handler,
+  })
+
+  console.log(`[ToolRegistry] Registered tool: ${definition.id}`)
+}
+
+/**
+ * Register a V2 tool (Tool.define() format - both static and async)
+ */
+export function registerToolV2<T extends ToolInfoUnion>(tool: T): void {
+  if (toolRegistry.has(tool.id) || toolRegistryV2.has(tool.id) || toolRegistryV2Async.has(tool.id)) {
     console.warn(`Tool "${tool.id}" is already registered. Overwriting.`)
   }
 
   if (isAsyncTool(tool)) {
-    asyncToolRegistry.set(tool.id, tool)
+    toolRegistryV2Async.set(tool.id, tool)
+    console.log(`[ToolRegistry] Registered V2 async tool: ${tool.id}`)
   } else {
-    toolRegistry.set(tool.id, tool as ToolInfo)
+    toolRegistryV2.set(tool.id, tool as ToolInfo)
+    console.log(`[ToolRegistry] Registered V2 tool: ${tool.id}`)
   }
 }
 
 /**
- * Unregister a tool
+ * Unregister a tool (from any registry)
  */
 export function unregisterTool(toolId: string): boolean {
-  const removedStatic = toolRegistry.delete(toolId)
-  const removedAsync = asyncToolRegistry.delete(toolId)
-  return removedStatic || removedAsync
+  const removedLegacy = toolRegistry.delete(toolId)
+  const removedV2 = toolRegistryV2.delete(toolId)
+  const removedV2Async = toolRegistryV2Async.delete(toolId)
+  const removed = removedLegacy || removedV2 || removedV2Async
+  if (removed) {
+    console.log(`[ToolRegistry] Unregistered tool: ${toolId}`)
+  }
+  return removed
 }
 
 /**
- * Get a registered static tool by ID
+ * Get a registered legacy tool by ID
  */
-export function getTool(toolId: string): ToolInfo | undefined {
+export function getTool(toolId: string): RegisteredTool | undefined {
   return toolRegistry.get(toolId)
 }
 
 /**
- * Get a registered async tool by ID
+ * Get a registered V2 tool by ID (static only)
  */
-export function getAsyncTool(toolId: string): ToolInfoAsync | undefined {
-  return asyncToolRegistry.get(toolId)
+export function getToolV2(toolId: string): ToolInfo | undefined {
+  return toolRegistryV2.get(toolId)
 }
 
 /**
- * Check if a tool exists
+ * Get a registered V2 async tool by ID
+ */
+export function getToolV2Async(toolId: string): ToolInfoAsync | undefined {
+  return toolRegistryV2Async.get(toolId)
+}
+
+/**
+ * Check if a tool exists (in any registry)
  */
 export function hasTool(toolId: string): boolean {
-  return toolRegistry.has(toolId) || asyncToolRegistry.has(toolId)
+  return toolRegistry.has(toolId) || toolRegistryV2.has(toolId) || toolRegistryV2Async.has(toolId)
 }
 
 /**
- * Convert ToolInfo to ToolDefinition format
+ * Convert V2 tool to legacy ToolDefinition format
  */
 function toolInfoToDefinition(tool: ToolInfo): ToolDefinition {
   // Extract parameters from Zod schema
@@ -114,15 +151,17 @@ function toolInfoToDefinition(tool: ToolInfo): ToolDefinition {
 }
 
 /**
- * Get all registered static tools as ToolDefinition[]
+ * Get all registered tools (both legacy and V2 static)
  * Note: Does NOT include async tools - use getAllToolsAsync() for that
  */
 export function getAllTools(): ToolDefinition[] {
-  return Array.from(toolRegistry.values()).map(toolInfoToDefinition)
+  const legacyTools = Array.from(toolRegistry.values()).map(t => t.definition)
+  const v2Tools = Array.from(toolRegistryV2.values()).map(toolInfoToDefinition)
+  return [...legacyTools, ...v2Tools]
 }
 
 /**
- * Convert async tool init result to ToolDefinition format
+ * Convert async tool init result to legacy ToolDefinition format
  */
 function asyncToolToDefinition(tool: ToolInfoAsync): ToolDefinition | null {
   if (!tool._initialized) {
@@ -163,11 +202,12 @@ function asyncToolToDefinition(tool: ToolInfoAsync): ToolDefinition | null {
  * This initializes any uninitialized async tools first
  */
 export async function getAllToolsAsync(): Promise<ToolDefinition[]> {
-  const staticTools = Array.from(toolRegistry.values()).map(toolInfoToDefinition)
+  const legacyTools = Array.from(toolRegistry.values()).map(t => t.definition)
+  const v2Tools = Array.from(toolRegistryV2.values()).map(toolInfoToDefinition)
 
   // Initialize and convert async tools
   const asyncTools: ToolDefinition[] = []
-  for (const tool of asyncToolRegistry.values()) {
+  for (const tool of toolRegistryV2Async.values()) {
     if (!tool._initialized) {
       await Tool.initialize(tool, currentInitContext)
     }
@@ -177,7 +217,7 @@ export async function getAllToolsAsync(): Promise<ToolDefinition[]> {
     }
   }
 
-  return [...staticTools, ...asyncTools]
+  return [...legacyTools, ...v2Tools, ...asyncTools]
 }
 
 /**
@@ -198,38 +238,38 @@ export async function getEnabledToolsAsync(
 }
 
 /**
- * Get all registered static tool infos
+ * Get all registered V2 tools (static only)
  */
-export function getAllToolInfos(): ToolInfo[] {
-  return Array.from(toolRegistry.values())
+export function getAllToolsV2(): ToolInfo[] {
+  return Array.from(toolRegistryV2.values())
 }
 
 /**
- * Get all registered async tool infos
+ * Get all registered V2 async tools
  */
-export function getAllAsyncToolInfos(): ToolInfoAsync[] {
-  return Array.from(asyncToolRegistry.values())
+export function getAllToolsV2Async(): ToolInfoAsync[] {
+  return Array.from(toolRegistryV2Async.values())
 }
 
 /**
- * Get enabled tools only
+ * Get enabled legacy tools only
  */
 export function getEnabledTools(): ToolDefinition[] {
   return getAllTools().filter(t => t.enabled)
 }
 
 /**
- * Get enabled static tool infos only
+ * Get enabled V2 tools only (static)
  */
-export function getEnabledToolInfos(): ToolInfo[] {
-  return getAllToolInfos().filter(t => t.enabled !== false)
+export function getEnabledToolsV2(): ToolInfo[] {
+  return getAllToolsV2().filter(t => t.enabled !== false)
 }
 
 /**
- * Get enabled async tool infos only
+ * Get enabled V2 async tools only
  */
-export function getEnabledAsyncToolInfos(): ToolInfoAsync[] {
-  return getAllAsyncToolInfos().filter(t => t.enabled !== false)
+export function getEnabledToolsV2Async(): ToolInfoAsync[] {
+  return getAllToolsV2Async().filter(t => t.enabled !== false)
 }
 
 /**
@@ -239,7 +279,7 @@ export function getEnabledAsyncToolInfos(): ToolInfoAsync[] {
 export function setInitContext(ctx: InitContext | undefined): void {
   currentInitContext = ctx
   // Reset all async tool initializations when context changes
-  for (const tool of asyncToolRegistry.values()) {
+  for (const tool of toolRegistryV2Async.values()) {
     Tool.resetInit(tool)
   }
 }
@@ -256,9 +296,10 @@ export function getInitContext(): InitContext | undefined {
  */
 export async function initializeAsyncTools(ctx?: InitContext): Promise<void> {
   const initContext = ctx ?? currentInitContext
-  for (const tool of asyncToolRegistry.values()) {
+  for (const tool of toolRegistryV2Async.values()) {
     if (!tool._initialized) {
       await Tool.initialize(tool, initContext)
+      console.log(`[ToolRegistry] Initialized async tool: ${tool.id}`)
     }
   }
 }
@@ -266,14 +307,24 @@ export async function initializeAsyncTools(ctx?: InitContext): Promise<void> {
 /**
  * Get tools formatted for AI SDK
  * Returns a record of tool schemas keyed by tool name
- * Includes static and async tools
+ * Includes legacy, V2 static, and V2 async tools
  * Note: Async tools must be initialized first via initializeAsyncTools()
  */
 export async function getToolsForAI(toolSettings?: Record<string, { enabled: boolean; autoExecute: boolean }>): Promise<Record<string, AIToolSchema>> {
   const result: Record<string, AIToolSchema> = {}
 
-  // Add static tools
-  for (const tool of getAllToolInfos()) {
+  // Add legacy tools
+  for (const tool of getAllTools()) {
+    const settings = toolSettings?.[tool.id]
+    const isEnabled = settings?.enabled ?? tool.enabled
+
+    if (isEnabled) {
+      result[tool.id] = toAIToolSchema(tool)
+    }
+  }
+
+  // Add V2 static tools
+  for (const tool of getAllToolsV2()) {
     const settings = toolSettings?.[tool.id]
     const isEnabled = settings?.enabled ?? tool.enabled !== false
 
@@ -291,8 +342,8 @@ export async function getToolsForAI(toolSettings?: Record<string, { enabled: boo
     }
   }
 
-  // Add async tools (must be initialized first)
-  for (const tool of getAllAsyncToolInfos()) {
+  // Add V2 async tools (must be initialized first)
+  for (const tool of getAllToolsV2Async()) {
     const settings = toolSettings?.[tool.id]
     const isEnabled = settings?.enabled ?? tool.enabled !== false
 
@@ -320,23 +371,41 @@ export async function getToolsForAI(toolSettings?: Record<string, { enabled: boo
 }
 
 /**
- * Execute a tool by ID (supports static and async tools)
+ * Execute a tool by ID (supports legacy, V2 static, and V2 async tools)
  */
 export async function executeTool(
   toolId: string,
   args: Record<string, any>,
   context: ToolExecutionContext
 ): Promise<ToolExecutionResult> {
-  // Try static tool
-  const staticTool = toolRegistry.get(toolId)
-  if (staticTool) {
+  // Try legacy tool first
+  const legacyTool = toolRegistry.get(toolId)
+  if (legacyTool) {
     try {
+      console.log(`[ToolRegistry] Executing legacy tool: ${toolId}`, args)
+      const result = await legacyTool.handler(args, context)
+      console.log(`[ToolRegistry] Tool "${toolId}" completed:`, result.success ? 'success' : 'failed')
+      return result
+    } catch (error: any) {
+      console.error(`[ToolRegistry] Tool "${toolId}" execution error:`, error)
+      return {
+        success: false,
+        error: error.message || 'Unknown error during tool execution',
+      }
+    }
+  }
+
+  // Try V2 static tool
+  const v2Tool = toolRegistryV2.get(toolId)
+  if (v2Tool) {
+    try {
+      console.log(`[ToolRegistry] Executing V2 tool: ${toolId}`, args)
 
       // Validate args with Zod schema
-      const parseResult = staticTool.parameters.safeParse(args)
+      const parseResult = v2Tool.parameters.safeParse(args)
       if (!parseResult.success) {
-        const errorMessage = staticTool.formatValidationError
-          ? staticTool.formatValidationError(parseResult.error)
+        const errorMessage = v2Tool.formatValidationError
+          ? v2Tool.formatValidationError(parseResult.error)
           : `Invalid arguments: ${parseResult.error.message}`
         return {
           success: false,
@@ -344,8 +413,8 @@ export async function executeTool(
         }
       }
 
-      // Create context with metadata callback and step callbacks
-      const toolCtx: ToolContext = {
+      // Create V2 context with metadata callback and step callbacks
+      const v2Context: ToolContext = {
         sessionId: context.sessionId,
         messageId: context.messageId,
         toolCallId: context.toolCallId,
@@ -365,8 +434,10 @@ export async function executeTool(
         onStepComplete: context.onStepComplete,
       }
 
-      const result = await staticTool.execute(parseResult.data, toolCtx)
+      const result = await v2Tool.execute(parseResult.data, v2Context)
+      console.log(`[ToolRegistry] V2 Tool "${toolId}" completed:`, result.title)
 
+      // Convert V2 result to legacy format
       return {
         success: true,
         data: {
@@ -377,7 +448,7 @@ export async function executeTool(
         },
       }
     } catch (error: any) {
-      console.error(`[ToolRegistry] Tool "${toolId}" execution error:`, error)
+      console.error(`[ToolRegistry] V2 Tool "${toolId}" execution error:`, error)
       return {
         success: false,
         error: error.message || 'Unknown error during tool execution',
@@ -385,16 +456,17 @@ export async function executeTool(
     }
   }
 
-  // Try async tool
-  const asyncTool = asyncToolRegistry.get(toolId)
-  if (asyncTool) {
+  // Try V2 async tool
+  const v2AsyncTool = toolRegistryV2Async.get(toolId)
+  if (v2AsyncTool) {
     try {
+      console.log(`[ToolRegistry] Executing V2 async tool: ${toolId}`, args)
 
       // Ensure tool is initialized
-      if (!asyncTool._initialized) {
-        await Tool.initialize(asyncTool, currentInitContext)
+      if (!v2AsyncTool._initialized) {
+        await Tool.initialize(v2AsyncTool, currentInitContext)
       }
-      const initResult = asyncTool._initialized!
+      const initResult = v2AsyncTool._initialized!
 
       // Validate args with Zod schema
       const parseResult = initResult.parameters.safeParse(args)
@@ -408,8 +480,8 @@ export async function executeTool(
         }
       }
 
-      // Create context with metadata callback and step callbacks
-      const toolCtx: ToolContext = {
+      // Create V2 context with metadata callback and step callbacks
+      const v2Context: ToolContext = {
         sessionId: context.sessionId,
         messageId: context.messageId,
         toolCallId: context.toolCallId,
@@ -429,8 +501,10 @@ export async function executeTool(
         onStepComplete: context.onStepComplete,
       }
 
-      const result = await initResult.execute(parseResult.data, toolCtx)
+      const result = await initResult.execute(parseResult.data, v2Context)
+      console.log(`[ToolRegistry] V2 Async Tool "${toolId}" completed:`, result.title)
 
+      // Convert V2 result to legacy format
       return {
         success: true,
         data: {
@@ -441,7 +515,7 @@ export async function executeTool(
         },
       }
     } catch (error: any) {
-      console.error(`[ToolRegistry] Async Tool "${toolId}" execution error:`, error)
+      console.error(`[ToolRegistry] V2 Async Tool "${toolId}" execution error:`, error)
       return {
         success: false,
         error: error.message || 'Unknown error during tool execution',
@@ -482,16 +556,22 @@ export function canAutoExecute(
 ): boolean {
   const settings = toolSettings?.[toolId]
 
-  // Check static tool
-  const staticTool = toolRegistry.get(toolId)
-  if (staticTool) {
-    return settings?.autoExecute ?? staticTool.autoExecute ?? false
+  // Check legacy tool
+  const legacyTool = toolRegistry.get(toolId)
+  if (legacyTool) {
+    return settings?.autoExecute ?? legacyTool.definition.autoExecute
   }
 
-  // Check async tool
-  const asyncTool = asyncToolRegistry.get(toolId)
-  if (asyncTool) {
-    return settings?.autoExecute ?? asyncTool.autoExecute ?? false
+  // Check V2 static tool
+  const v2Tool = toolRegistryV2.get(toolId)
+  if (v2Tool) {
+    return settings?.autoExecute ?? v2Tool.autoExecute ?? false
+  }
+
+  // Check V2 async tool
+  const v2AsyncTool = toolRegistryV2Async.get(toolId)
+  if (v2AsyncTool) {
+    return settings?.autoExecute ?? v2AsyncTool.autoExecute ?? false
   }
 
   return false
@@ -502,16 +582,23 @@ export function canAutoExecute(
  */
 export async function initializeToolRegistry(): Promise<void> {
   if (initialized) {
+    console.log('[ToolRegistry] Already initialized')
     return
   }
 
-  // Import and register built-in tools (both static and async)
+  console.log('[ToolRegistry] Initializing...')
+
+  // Import and register legacy built-in tools
   const { registerBuiltinTools } = await import('./builtin/index.js')
   registerBuiltinTools()
 
+  // Import and register V2 built-in tools (both static and async)
+  const { registerBuiltinToolsV2 } = await import('./builtin/index.js')
+  registerBuiltinToolsV2()
+
   initialized = true
-  const allIds = [...toolRegistry.keys(), ...asyncToolRegistry.keys()]
-  console.log(`[ToolRegistry] Initialized ${allIds.length} tools [${allIds.join(', ')}]`)
+  const totalTools = toolRegistry.size + toolRegistryV2.size + toolRegistryV2Async.size
+  console.log(`[ToolRegistry] Initialized with ${totalTools} tools (${toolRegistry.size} legacy, ${toolRegistryV2.size} V2 static, ${toolRegistryV2Async.size} V2 async)`)
 }
 
 /**

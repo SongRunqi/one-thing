@@ -268,7 +268,7 @@ Usage:
     }
 
     return {
-      title: `${path.basename(resolvedPath)} (${selectedLines.length} lines)`,
+      title: `Read ${path.basename(resolvedPath)} (${selectedLines.length} lines)`,
       output,
       metadata,
     }

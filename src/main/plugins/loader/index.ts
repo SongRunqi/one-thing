@@ -110,6 +110,7 @@ export class PluginLoader {
    */
   async initialize(): Promise<void> {
     if (this.initialized) {
+      console.log('[PluginLoader] Already initialized')
       return
     }
 
@@ -117,6 +118,7 @@ export class PluginLoader {
 
     // Load plugins from store config
     const configs = getPluginConfigs()
+    console.log(`[PluginLoader] Loading ${configs.length} configured plugins`)
 
     for (const config of configs) {
       if (config.enabled) {
@@ -145,10 +147,7 @@ export class PluginLoader {
       getEventBus().emitGlobal({ type: 'app:initialized', timestamp: Date.now() })
     } catch { /* EventBus not initialized */ }
 
-    if (this.loadedPlugins.size > 0) {
-      const ids = Array.from(this.loadedPlugins.keys())
-      console.log(`[Plugins] Initialized ${this.loadedPlugins.size} plugins [${ids.join(', ')}]`)
-    }
+    console.log(`[PluginLoader] Initialized with ${this.loadedPlugins.size} plugins`)
   }
 
   /**
@@ -197,6 +196,7 @@ export class PluginLoader {
    */
   async loadPlugin(config: PluginConfig): Promise<LoadedPlugin | null> {
     try {
+      console.log(`[PluginLoader] Loading plugin: ${config.id}`)
 
       // Load plugin definition based on source
       let definition: PluginDefinition
@@ -240,6 +240,7 @@ export class PluginLoader {
           status: 'loaded', loadedAt: Date.now(),
           cleanup, eventAPI,
         }
+        console.log(`[PluginLoader] V2 plugin initialized: ${config.id}`)
       } else {
         // V1 plugin: legacy hook-based
         const hooks = await definition.init(input)
@@ -252,6 +253,7 @@ export class PluginLoader {
       }
 
       this.loadedPlugins.set(config.id, loadedPlugin)
+      console.log(`[PluginLoader] Plugin loaded successfully: ${config.id}`)
 
       return loadedPlugin
     } catch (error: any) {

@@ -143,7 +143,7 @@ Use this tool when you need to find files by name patterns.`,
     }
 
     return {
-      title: `${files.length} file${files.length !== 1 ? 's' : ''}`,
+      title: `Found ${files.length} file${files.length !== 1 ? 's' : ''}`,
       output: outputLines.join('\n'),
       metadata,
     }

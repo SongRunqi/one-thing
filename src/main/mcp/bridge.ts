@@ -10,7 +10,6 @@ import { MCPManager } from './manager.js'
 import type { MCPToolInfo, MCPToolCallResult } from './types.js'
 import type { ToolDefinition, ToolParameter } from '../tools/types.js'
 import { registerTool, unregisterTool, getAllTools } from '../tools/registry.js'
-import { Tool } from '../tools/core/tool.js'
 import { getMCPToolsCatalogPath } from '../stores/paths.js'
 import { z } from 'zod'
 
@@ -403,47 +402,37 @@ export async function registerMCPTools(): Promise<void> {
   const mcpTools = MCPManager.getAllTools()
 
   for (const mcpTool of mcpTools) {
-    const toolId = `mcp:${mcpTool.serverId}:${mcpTool.name}`
-    const zodSchema = mcpInputSchemaToZod(mcpTool.inputSchema)
+    const definition = mcpToolToToolDefinition(mcpTool)
 
-    // Create tool using Tool.define()
-    const mcpToolInfo = Tool.define(toolId, {
-      name: mcpTool.name,
-      description: mcpTool.description || `MCP tool: ${mcpTool.name}`,
-      category: 'mcp',
-      enabled: true,
-      autoExecute: true,
-      parameters: zodSchema,
+    // Create handler that calls MCP
+    const handler = async (args: Record<string, any>) => {
+      const result = await MCPManager.callTool(mcpTool.serverId, mcpTool.name, args)
 
-      async execute(args, ctx) {
-        const result = await MCPManager.callTool(mcpTool.serverId, mcpTool.name, args)
-
-        if (!result.success) {
-          throw new Error(result.error || `MCP tool ${mcpTool.name} failed`)
-        }
-
-        // Convert content to string
-        let output: string
-        if (Array.isArray(result.content)) {
-          output = result.content
-            .map((c: any) => {
-              if (c.type === 'text') return c.text
-              return JSON.stringify(c)
-            })
-            .join('\n')
-        } else {
-          output = typeof result.content === 'string' ? result.content : JSON.stringify(result.content)
-        }
-
+      if (!result.success) {
         return {
-          title: `${mcpTool.name}`,
-          output,
-          metadata: {},
+          success: false,
+          error: result.error,
         }
-      },
-    })
+      }
 
-    registerTool(mcpToolInfo)
+      // Convert content to string
+      let data: any = result.content
+      if (Array.isArray(result.content)) {
+        data = result.content
+          .map((c: any) => {
+            if (c.type === 'text') return c.text
+            return JSON.stringify(c)
+          })
+          .join('\n')
+      }
+
+      return {
+        success: true,
+        data,
+      }
+    }
+
+    registerTool(definition, handler)
   }
 
   // Generate the tools catalog file for AI reference

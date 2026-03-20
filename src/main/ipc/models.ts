@@ -11,8 +11,8 @@ import {
   OpenRouterModel,
 } from '../../shared/ipc.js'
 import { getCachedModels, setCachedModels } from '../store.js'
-import * as modelRegistry from '../providers/model-registry.js'
-import { oauthManager } from '../providers/auth/oauth-manager.js'
+import * as modelRegistry from '../services/ai/model-registry.js'
+import { oauthManager } from '../services/auth/oauth-manager.js'
 import { fetchCopilotModels, detectModelCapabilities } from '../providers/builtin/github-copilot.js'
 
 // Predefined Claude models as fallback
@@ -383,6 +383,10 @@ async function handleFetchModels(
 
     console.log(`[Models] Fetched ${models.length} models for ${provider}`)
 
+    // Log embedding models specifically
+    const embeddingModels = models.filter(m => m.type === 'embedding' || m.id.toLowerCase().includes('embedding'))
+    console.log(`[Models] Embedding models for ${provider}:`, embeddingModels.map(m => ({ id: m.id, type: m.type })))
+
     // Cache the results
     if (models.length > 0) {
       setCachedModels(provider, models)
@@ -639,6 +643,101 @@ async function handleGetModelDisplayName(
   }
 }
 
+// Startup diagnostic: fetch and display embedding models from provider APIs
+async function diagnoseEmbeddingModels() {
+  console.log('\n=== [Embedding Models Diagnostic] ===')
+
+  // Get settings to check configured providers
+  const { getSettings } = await import('../store.js')
+  const settings = getSettings()
+
+  const providers = [
+    { id: AIProvider.OpenAI, name: 'OpenAI' },
+    { id: AIProvider.Gemini, name: 'Gemini' },
+    { id: AIProvider.Zhipu, name: 'Zhipu' },
+  ]
+
+  for (const provider of providers) {
+    const config = settings?.ai?.providers?.[provider.id]
+    if (!config?.apiKey) {
+      console.log(`[${provider.name}] No API key configured, skipping`)
+      continue
+    }
+
+    try {
+      const baseUrl = config.baseUrl || getDefaultBaseUrl(provider.id)
+      let models: ModelInfo[] = []
+
+      switch (provider.id) {
+        case AIProvider.OpenAI:
+          models = await fetchOpenAIModels(config.apiKey, baseUrl)
+          break
+        case AIProvider.Gemini:
+          models = await fetchGeminiModels(config.apiKey, baseUrl)
+          break
+        case AIProvider.Zhipu:
+          models = await fetchZhipuModels(config.apiKey, baseUrl)
+          break
+      }
+
+      const embeddingModels = models.filter(m => m.type === 'embedding')
+      console.log(`[${provider.name}] Total: ${models.length}, Embedding: ${embeddingModels.length}`)
+      // Log all models if no embedding found
+      if (embeddingModels.length === 0 && models.length > 0) {
+        console.log(`[${provider.name}] All model IDs:`, models.map(m => m.id))
+      }
+      if (embeddingModels.length > 0) {
+        console.log(`[${provider.name}] Embedding models:`)
+        embeddingModels.forEach(m => console.log(`  - ${m.id} (type: ${m.type})`))
+      }
+    } catch (error: any) {
+      console.log(`[${provider.name}] Error: ${error.message}`)
+    }
+  }
+
+  console.log('=== [End Diagnostic] ===\n')
+}
+
+// === Embedding Models Handlers (from Models.dev) ===
+
+async function handleGetEmbeddingModels(
+  _event: Electron.IpcMainInvokeEvent,
+  request: { providerId: string }
+): Promise<{ success: boolean; models?: modelRegistry.EmbeddingModelInfo[]; error?: string }> {
+  try {
+    const models = await modelRegistry.getEmbeddingModelsForProvider(request.providerId)
+    return { success: true, models }
+  } catch (error: any) {
+    console.error('[Models] Failed to get embedding models:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+async function handleGetAllEmbeddingModels(
+  _event: Electron.IpcMainInvokeEvent
+): Promise<{ success: boolean; models?: modelRegistry.EmbeddingModelInfo[]; error?: string }> {
+  try {
+    const models = await modelRegistry.getAllEmbeddingModels()
+    return { success: true, models }
+  } catch (error: any) {
+    console.error('[Models] Failed to get all embedding models:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+async function handleGetEmbeddingDimension(
+  _event: Electron.IpcMainInvokeEvent,
+  request: { modelId: string }
+): Promise<{ success: boolean; dimension?: number | null; error?: string }> {
+  try {
+    const dimension = await modelRegistry.getEmbeddingDimension(request.modelId)
+    return { success: true, dimension }
+  } catch (error: any) {
+    console.error('[Models] Failed to get embedding dimension:', error)
+    return { success: false, error: error.message }
+  }
+}
+
 export function registerModelsHandlers() {
   // Legacy handlers
   ipcMain.handle(IPC_CHANNELS.FETCH_MODELS, handleFetchModels)
@@ -651,4 +750,14 @@ export function registerModelsHandlers() {
   ipcMain.handle(IPC_CHANNELS.REFRESH_MODEL_REGISTRY, handleRefreshModelRegistry)
   ipcMain.handle(IPC_CHANNELS.GET_MODEL_NAME_ALIASES, handleGetModelNameAliases)
   ipcMain.handle(IPC_CHANNELS.GET_MODEL_DISPLAY_NAME, handleGetModelDisplayName)
+
+  // Embedding models handlers (from Models.dev registry)
+  ipcMain.handle(IPC_CHANNELS.GET_EMBEDDING_MODELS, handleGetEmbeddingModels)
+  ipcMain.handle(IPC_CHANNELS.GET_ALL_EMBEDDING_MODELS, handleGetAllEmbeddingModels)
+  ipcMain.handle(IPC_CHANNELS.GET_EMBEDDING_DIMENSION, handleGetEmbeddingDimension)
+
+  // Run diagnostic after a short delay to let settings load
+  setTimeout(() => {
+    diagnoseEmbeddingModels().catch(e => console.error('[Embedding Diagnostic] Failed:', e))
+  }, 3000)
 }

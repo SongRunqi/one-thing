@@ -104,7 +104,7 @@ Usage:
 
     // Update metadata with diff preview BEFORE asking for permission
     ctx.metadata({
-      title: path.basename(resolvedPath),
+      title: `Writing ${path.basename(resolvedPath)}`,
       metadata: {
         filePath: resolvedPath,
         bytesWritten,
@@ -164,7 +164,7 @@ Usage:
     const action = fileExists ? 'Updated' : 'Created'
 
     return {
-      title: path.basename(resolvedPath),
+      title: `${action} ${path.basename(resolvedPath)}`,
       output: `Successfully ${action.toLowerCase()} ${resolvedPath}\n${bytesWritten} bytes written (${lineCount} lines)`,
       metadata,
     }

@@ -1,8 +1,11 @@
 /**
- * Edit Tool
+ * Edit Tool (Legacy V1 Version)
  *
  * Performs exact string replacements in files using a chain of
- * replacement strategies for intelligent fuzzy matching.
+ * 9 replacement strategies for intelligent fuzzy matching.
+ *
+ * This is the legacy V1 implementation that uses Tool.define().
+ * For the new V2 implementation with proper confirmation flow, see edit-v2.ts
  */
 
 import { z } from 'zod'

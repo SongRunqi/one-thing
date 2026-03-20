@@ -31,6 +31,56 @@ export function getSessionPath(sessionId: string): string {
   return path.join(getSessionsDir(), `${sessionId}.json`)
 }
 
+export function getWorkspacesDir(): string {
+  return path.join(getStorePath(), 'workspaces')
+}
+
+export function getWorkspacePath(workspaceId: string): string {
+  return path.join(getWorkspacesDir(), `${workspaceId}.json`)
+}
+
+export function getWorkspaceAvatarsDir(): string {
+  return path.join(getWorkspacesDir(), 'avatars')
+}
+
+export function getWorkspaceAvatarPath(workspaceId: string, extension: string): string {
+  return path.join(getWorkspaceAvatarsDir(), `${workspaceId}.${extension}`)
+}
+
+export function getAgentsDir(): string {
+  return path.join(getStorePath(), 'agents')
+}
+
+export function getAgentPath(agentId: string): string {
+  return path.join(getAgentsDir(), `${agentId}.json`)
+}
+
+export function getAgentAvatarsDir(): string {
+  return path.join(getAgentsDir(), 'avatars')
+}
+
+export function getAgentAvatarPath(agentId: string, extension: string): string {
+  return path.join(getAgentAvatarsDir(), `${agentId}.${extension}`)
+}
+
+// User Profile paths
+export function getUserProfileDir(): string {
+  return path.join(getStorePath(), 'user-profile')
+}
+
+export function getUserProfilePath(): string {
+  return path.join(getUserProfileDir(), 'profile.json')
+}
+
+// Agent Memory paths (for Phase 3)
+export function getAgentMemoryDir(): string {
+  return path.join(getStorePath(), 'agent-memory')
+}
+
+export function getAgentMemoryPath(agentId: string): string {
+  return path.join(getAgentMemoryDir(), `${agentId}.json`)
+}
+
 // Screenshots directory (for automation screenshot captures)
 export function getScreenshotsDir(): string {
   return path.join(getStorePath(), 'screenshots')
@@ -47,6 +97,11 @@ export function getMediaImagesDir(): string {
 
 export function getMediaIndexPath(): string {
   return path.join(getMediaDir(), 'index.json')
+}
+
+// SQLite database path for vector storage
+export function getDatabasePath(): string {
+  return path.join(getStorePath(), 'memory.db')
 }
 
 // Tool outputs directory (for large outputs that exceed inline limits)
@@ -116,6 +171,12 @@ export function ensureStoreDirs(): void {
   const dirs = [
     getStorePath(),
     getSessionsDir(),
+    getWorkspacesDir(),
+    getWorkspaceAvatarsDir(),
+    getAgentsDir(),
+    getAgentAvatarsDir(),
+    getUserProfileDir(),
+    getAgentMemoryDir(),
     getScreenshotsDir(),
     getMediaDir(),
     getMediaImagesDir(),

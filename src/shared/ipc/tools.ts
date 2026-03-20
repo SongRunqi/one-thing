@@ -86,6 +86,15 @@ export interface BashToolSettings {
   dangerousCommandWhitelist: string[] // Commands to skip confirmation (e.g., "npm install")
 }
 
+// Tool Agent delegation settings
+export interface ToolAgentSettings {
+  autoConfirmDangerous?: boolean  // Auto-confirm dangerous commands (default: true)
+  maxToolCalls?: number           // Max tool calls per delegation (default: 50)
+  timeoutMs?: number              // Timeout for Tool Agent (default: 300000 = 5 min)
+  providerId?: string             // Optional: use different provider for Tool Agent
+  model?: string                  // Optional: use different model for Tool Agent
+}
+
 // Web Search settings
 export interface WebSearchSettings {
   enabled: boolean                // Master switch for web search
@@ -102,8 +111,15 @@ export interface ToolSettings {
     enabled: boolean
     autoExecute: boolean
   }>
+  // Per-agent settings (agentId -> settings)
+  // Used to enable/disable individual CustomAgents
+  agents?: Record<string, {
+    enabled: boolean
+  }>
   // Bash tool specific settings
   bash?: BashToolSettings
+  // Tool Agent settings (provider/model for tool execution)
+  toolAgentSettings?: ToolAgentSettings
   // Web Search settings
   webSearch?: WebSearchSettings
 }

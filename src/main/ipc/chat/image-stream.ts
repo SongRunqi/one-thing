@@ -1,0 +1,164 @@
+/**
+ * Image Stream Module
+ * Handles image generation streaming flow (IPC messages, media saving, etc.)
+ *
+ * Uses EventBus/StreamChannel for streaming lifecycle events.
+ * IMAGE_GENERATED is a one-off notification sent directly via sender.
+ */
+
+import type { WebContents } from 'electron'
+import { IPC_CHANNELS } from '../../../shared/ipc.js'
+import * as store from '../../store.js'
+import { saveMediaImage } from '../media.js'
+import { getEventBus, getStreamChannel } from '../../events/index.js'
+import {
+  normalizeImageModelId,
+  generateImage,
+  generateGeminiImage,
+  type ImageGenerationResult,
+} from './image-generation.js'
+
+export interface ImageStreamParams {
+  sender: WebContents
+  sessionId: string
+  assistantMessageId: string
+  prompt: string
+  providerId: string
+  apiKey: string
+  model: string
+  baseUrl?: string
+  sessionName?: string
+}
+
+/**
+ * Process image generation stream
+ * Handles the full flow: send progress, generate, save, send result
+ *
+ * @returns true if image generation was handled, false to continue with text stream
+ */
+export async function processImageGenerationStream(
+  params: ImageStreamParams
+): Promise<boolean> {
+  const {
+    sender,
+    sessionId,
+    assistantMessageId,
+    prompt,
+    providerId,
+    apiKey,
+    model,
+    baseUrl,
+    sessionName,
+  } = params
+
+  console.log(`[ImageStream] Processing image generation for model: ${model}`)
+
+  // Lazy-get event system singletons
+  let eventBus: ReturnType<typeof getEventBus> | null = null
+  let streamChannel: ReturnType<typeof getStreamChannel> | null = null
+  try { eventBus = getEventBus() } catch { /* not initialized */ }
+  try { streamChannel = getStreamChannel() } catch { /* not initialized */ }
+
+  // Emit stream:start so IPCBridge can track this session's messageId
+  eventBus?.emit(sessionId, {
+    type: 'stream:start',
+    messageId: assistantMessageId,
+    assistantMessageId,
+    model,
+  }).catch(err => console.error('[ImageStream] stream:start emit error:', err))
+
+  // Send a "thinking" message to show progress via StreamChannel
+  streamChannel?.push(sessionId, { type: 'text-delta', text: '正在生成图片...\n\n' })
+  store.updateMessageContent(sessionId, assistantMessageId, '正在生成图片...\n\n')
+
+  let result: ImageGenerationResult
+  let modelForDisplay: string
+
+  // Use provider ID to determine which image generation API to use
+  if (providerId === 'gemini') {
+    console.log(`[ImageStream] Using Gemini image generation`)
+    modelForDisplay = model
+    result = await generateGeminiImage(apiKey, model, prompt)
+  } else {
+    // OpenAI-compatible image generation (DALL-E, etc.)
+    const normalizedModel = normalizeImageModelId(model)
+    console.log(`[ImageStream] Using OpenAI image generation: ${normalizedModel}`)
+    modelForDisplay = normalizedModel
+    result = await generateImage(
+      apiKey,
+      baseUrl || 'https://api.openai.com/v1',
+      normalizedModel,
+      prompt
+    )
+  }
+
+  if (result.success && result.imageBase64) {
+    // Save image to media storage
+    const mediaItem = await saveMediaImage({
+      base64: result.imageBase64,
+      prompt: prompt,
+      revisedPrompt: result.revisedPrompt,
+      model: modelForDisplay,
+      sessionId,
+      messageId: assistantMessageId,
+    })
+    console.log('[ImageStream] Image saved to media:', mediaItem.id)
+
+    // Format the response
+    let responseContent = ''
+    if (result.revisedPrompt && result.revisedPrompt !== prompt) {
+      responseContent += `**优化后的提示词:** ${result.revisedPrompt}\n\n`
+    }
+    // Use base64 data URL for displaying in message
+    // Store mediaId in alt text for gallery lookup
+    const imageDataUrl = `data:image/png;base64,${result.imageBase64}`
+    responseContent += `![Generated Image|mediaId:${mediaItem.id}](${imageDataUrl})`
+
+    // Update message
+    store.updateMessageContent(sessionId, assistantMessageId, responseContent)
+    store.updateMessageStreaming(sessionId, assistantMessageId, false)
+
+    // Send complete content via content:part event (replaces progress text)
+    eventBus?.emit(sessionId, {
+      type: 'content:part',
+      part: { type: 'text', content: responseContent },
+    }).catch(err => console.error('[ImageStream] content:part emit error:', err))
+
+    // Notify frontend about the generated image (non-streaming one-off notification)
+    // This stays as direct sender.send — it's outside the event system scope
+    if (!sender.isDestroyed()) {
+      sender.send(IPC_CHANNELS.IMAGE_GENERATED, {
+        id: mediaItem.id,
+        mediaId: mediaItem.id,
+        filePath: mediaItem.filePath,
+        prompt: prompt,
+        revisedPrompt: result.revisedPrompt,
+        model: modelForDisplay,
+        sessionId,
+        messageId: assistantMessageId,
+        createdAt: mediaItem.createdAt,
+      })
+    }
+
+    // Send stream complete via EventBus
+    eventBus?.emit(sessionId, {
+      type: 'stream:complete',
+      data: { sessionName },
+    }).catch(err => console.error('[ImageStream] stream:complete emit error:', err))
+
+    console.log('[ImageStream] Image generation complete')
+    return true
+  } else {
+    // Handle error
+    const errorContent = `图片生成失败: ${result.error || '未知错误'}`
+    store.updateMessageContent(sessionId, assistantMessageId, errorContent)
+    store.updateMessageStreaming(sessionId, assistantMessageId, false)
+
+    eventBus?.emit(sessionId, {
+      type: 'stream:error',
+      data: { error: result.error || 'Image generation failed' },
+    }).catch(err => console.error('[ImageStream] stream:error emit error:', err))
+
+    return true // Still handled (as error)
+  }
+}

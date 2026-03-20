@@ -15,16 +15,7 @@ import fs from 'fs'
 import { Tool, type InitContext, type ToolContext, type ToolResult } from '../core/tool.js'
 import { Permission } from '../../permission/index.js'
 import { Wildcard } from '../../utils/wildcard.js'
-import type { SkillDefinition } from '../../../shared/ipc.js'
-
-/** Permission level for a skill: allow, ask user, or deny */
-type SkillPermission = 'allow' | 'ask' | 'deny'
-
-/** Agent permissions configuration with skill wildcard patterns */
-interface AgentPermissions {
-  skill?: Record<string, SkillPermission>
-  [key: string]: unknown
-}
+import type { SkillDefinition, AgentPermissions, SkillPermission } from '../../../shared/ipc.js'
 
 /**
  * Skill tool metadata for UI display
@@ -236,7 +227,7 @@ ${skill.files?.length ? `Additional files:\n${skill.files.map(f => `- ${skill.di
 Follow the instructions above to complete the task.`
 
         return {
-          title: name,
+          title: `Loaded skill: ${name}`,
           output,
           metadata: {
             skillName: name,

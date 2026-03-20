@@ -24,9 +24,9 @@ import {
   requiresOAuth as requiresOAuthFromRegistry,
   getProviderDefinition,
 } from './registry.js'
-import { modelSupportsReasoningSync } from './model-registry.js'
+import { modelSupportsReasoningSync } from '../services/ai/model-registry.js'
 import type { ProviderInfo, ProviderConfig } from './types.js'
-import { oauthManager } from './auth/oauth-manager.js'
+import { oauthManager } from '../services/auth/oauth-manager.js'
 
 // Multimodal content type for AI messages (Vercel AI SDK 6.x format)
 export type AIMessageContent = string | Array<
@@ -771,11 +771,10 @@ export async function* streamChatResponseWithTools(
   }
 
   // Build streamText options
-  const hasTools = Object.keys(aiTools).length > 0
   const streamOptions: Parameters<typeof streamText>[0] = {
     model,
     messages: convertedMessages,
-    tools: hasTools ? aiTools : undefined,
+    tools: Object.keys(aiTools).length > 0 ? aiTools : undefined,
     maxOutputTokens: options.maxTokens || 4096,
   }
 
@@ -848,10 +847,11 @@ export async function* streamChatResponseWithTools(
         break
 
       case 'tool-input-start':
+        const startToolCallId = chunkAny.toolCallId || chunkAny.id
         yield {
           type: 'tool-input-start',
           toolInputStart: {
-            toolCallId: chunkAny.id || chunkAny.toolCallId,
+            toolCallId: startToolCallId,
             toolName: chunkAny.toolName,
           },
         }
@@ -861,8 +861,8 @@ export async function* streamChatResponseWithTools(
         yield {
           type: 'tool-input-delta',
           toolInputDelta: {
-            toolCallId: chunkAny.id || chunkAny.toolCallId,
-            argsTextDelta: chunkAny.delta || chunkAny.inputTextDelta || '',
+            toolCallId: chunkAny.toolCallId || chunkAny.id,
+            argsTextDelta: chunkAny.inputTextDelta || '',
           },
         }
         break
@@ -1068,11 +1068,10 @@ export async function* streamChatWithUIMessages(
   }
 
   // Build streamText options
-  const hasTools = Object.keys(aiTools).length > 0
   const streamOptions: Parameters<typeof streamText>[0] = {
     model,
     messages: modelMessages,
-    tools: hasTools ? aiTools : undefined,
+    tools: Object.keys(aiTools).length > 0 ? aiTools : undefined,
     maxOutputTokens: options.maxTokens || 4096,
   }
 

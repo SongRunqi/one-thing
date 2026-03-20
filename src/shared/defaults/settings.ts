@@ -8,6 +8,7 @@ import type {
   AppSettings,
   GeneralSettings,
   ChatSettings,
+  EmbeddingSettings,
 } from '../ipc/settings.js'
 import type { ProviderConfig, AISettings } from '../ipc/providers.js'
 import type { ToolSettings } from '../ipc/tools.js'
@@ -115,7 +116,11 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     toggleSidebar: { key: 'b', metaKey: true },
     focusInput: { key: '/' },
   },
-  quickCommands: [],
+  quickCommands: [
+    { commandId: 'cd', enabled: true },
+    { commandId: 'git', enabled: true },
+    { commandId: 'files', enabled: true },
+  ],
 }
 
 // ============================================================================
@@ -152,6 +157,24 @@ export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
 }
 
 // ============================================================================
+// Embedding Settings
+// ============================================================================
+
+export const DEFAULT_EMBEDDING_SETTINGS: EmbeddingSettings = {
+  provider: 'openai',
+  memoryEnabled: true,
+  model: 'text-embedding-3-small',
+  dimensions: 384,
+  openai: {
+    model: 'text-embedding-3-small',
+    dimensions: 384,
+  },
+  local: {
+    model: 'all-MiniLM-L6-v2',
+  },
+}
+
+// ============================================================================
 // Complete Default Settings Factory
 // ============================================================================
 
@@ -166,6 +189,7 @@ export function createDefaultSettings(): AppSettings {
     general: JSON.parse(JSON.stringify(DEFAULT_GENERAL_SETTINGS)),
     chat: JSON.parse(JSON.stringify(DEFAULT_CHAT_SETTINGS)),
     tools: JSON.parse(JSON.stringify(DEFAULT_TOOL_SETTINGS)),
+    embedding: JSON.parse(JSON.stringify(DEFAULT_EMBEDDING_SETTINGS)),
   }
 }
 
@@ -208,6 +232,10 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         ...defaults.tools.bash,
         ...settings.tools?.bash,
       },
+    },
+    embedding: {
+      ...defaults.embedding,
+      ...settings.embedding,
     },
     mcp: settings.mcp,
     skills: settings.skills,

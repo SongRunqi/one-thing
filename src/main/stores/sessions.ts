@@ -5,6 +5,7 @@ import type {
   ToolCall,
   Step,
   ContentPart,
+  SessionPlan,
   SessionMeta,
   SessionDetails,
 } from '../../shared/ipc.js'
@@ -16,6 +17,7 @@ import {
   deleteJsonFile,
 } from './paths.js'
 import { getCurrentSessionId, setCurrentSessionId } from './app-state.js'
+import { getWorkspace } from './workspaces.js'
 import { getSettings } from './settings.js'
 import { expandPath } from '../tools/core/sandbox.js'
 import { LRUCache } from './lru-cache.js'
@@ -89,8 +91,9 @@ function sanitizeStepRecursive(step: Step): boolean {
   if (step.status === 'running' || step.status === 'pending') {
     step.status = 'failed'
     step.error = step.error || 'Interrupted: app was closed'
-    // Clean up any prefix from interrupted step titles
-    step.title = step.title.replace(/^(Running:|调用工具:|Run:\s*)\s*/, '')
+    if (step.title.startsWith('Running:') || step.title.startsWith('调用工具:')) {
+      step.title = step.title.replace(/^(Running:|调用工具:)\s*/, 'Interrupted: ')
+    }
     modified = true
   }
   if (step.status === 'awaiting-confirmation') {
@@ -256,6 +259,8 @@ function extractSessionMeta(session: ChatSession): SessionMeta {
     isPinned: session.isPinned,
     isArchived: session.isArchived,
     archivedAt: session.archivedAt,
+    workspaceId: session.workspaceId,
+    agentId: session.agentId,
     messageCount: session.messages.length,
     previewText,
   }
@@ -289,13 +294,21 @@ export function getSession(sessionId: string): ChatSession | undefined {
 }
 
 // Create a new session
-export function createSession(sessionId: string, name: string): ChatSession {
-  // Use defaultWorkingDirectory from settings if available
+export function createSession(sessionId: string, name: string, workspaceId?: string, agentId?: string): ChatSession {
+  // Inherit workingDirectory from workspace if available
   let workingDirectory: string | undefined
-  const settings = getSettings()
-  const defaultDir = settings.tools?.bash?.defaultWorkingDirectory
-  if (defaultDir) {
-    workingDirectory = expandPath(defaultDir)
+  if (workspaceId) {
+    const workspace = getWorkspace(workspaceId)
+    workingDirectory = workspace?.workingDirectory
+  }
+
+  // Fallback to defaultWorkingDirectory from settings if not set
+  if (!workingDirectory) {
+    const settings = getSettings()
+    const defaultDir = settings.tools?.bash?.defaultWorkingDirectory
+    if (defaultDir) {
+      workingDirectory = expandPath(defaultDir)
+    }
   }
 
   const session: ChatSession = {
@@ -304,6 +317,8 @@ export function createSession(sessionId: string, name: string): ChatSession {
     messages: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    workspaceId,
+    agentId,
     workingDirectory,
   }
 
@@ -317,6 +332,8 @@ export function createSession(sessionId: string, name: string): ChatSession {
     name: session.name,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
+    workspaceId,
+    agentId,
   })
   saveSessionsIndex(index)
 
@@ -333,11 +350,12 @@ export function createBranchSession(
   parentSessionId: string,
   branchFromMessageId: string,
   inheritedMessages: ChatMessage[],
+  agentId?: string
 ): ChatSession {
-  // Get parent session to inherit workingDirectory if not provided
+  // Get parent session to inherit workspaceId, agentId, and workingDirectory if not provided
   const parentSession = getSession(parentSessionId)
-
-
+  const inheritedWorkspaceId = parentSession?.workspaceId
+  const inheritedAgentId = agentId ?? parentSession?.agentId
 
   // Inherit workingDirectory from parent session
   let workingDirectory = parentSession?.workingDirectory
@@ -372,8 +390,8 @@ export function createBranchSession(
     updatedAt: Date.now(),
     parentSessionId,
     branchFromMessageId,
-
-
+    workspaceId: inheritedWorkspaceId,
+    agentId: inheritedAgentId,
     workingDirectory,
     totalInputTokens,
     totalOutputTokens,
@@ -392,8 +410,8 @@ export function createBranchSession(
     updatedAt: session.updatedAt,
     parentSessionId,
     branchFromMessageId,
-
-
+    workspaceId: inheritedWorkspaceId,
+    agentId: inheritedAgentId,
   })
   saveSessionsIndex(index)
 
@@ -524,6 +542,32 @@ export function updateSessionArchived(sessionId: string, isArchived: boolean, ar
 }
 
 // Update session agent (does not affect sort order)
+export function updateSessionAgent(sessionId: string, agentId: string | null): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  if (agentId === null) {
+    delete session.agentId
+  } else {
+    session.agentId = agentId
+  }
+
+  // Save session file
+  saveSessionToFile(sessionId, session)
+
+  // Update index
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    if (agentId === null) {
+      delete meta.agentId
+    } else {
+      meta.agentId = agentId
+    }
+    saveSessionsIndex(index)
+  }
+}
+
 // Update session working directory (does not affect sort order)
 export function updateSessionWorkingDirectory(sessionId: string, workingDirectory: string | null): void {
   const session = getSession(sessionId)
@@ -538,6 +582,42 @@ export function updateSessionWorkingDirectory(sessionId: string, workingDirector
 
   // Save session file
   saveSessionToFile(sessionId, session)
+}
+
+// Update session builtin mode (Ask mode / Build mode)
+export function updateSessionBuiltinMode(sessionId: string, mode: 'build' | 'ask'): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  if (mode === 'build') {
+    delete session.builtinMode  // 'build' is default, no need to store
+  } else {
+    session.builtinMode = mode
+  }
+
+  // Save session file
+  saveSessionToFile(sessionId, session)
+}
+
+// Update session plan (Planning workflow)
+export function updateSessionPlan(sessionId: string, plan: SessionPlan | null): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  if (plan === null) {
+    delete session.plan
+  } else {
+    session.plan = plan
+  }
+
+  // Save session file
+  saveSessionToFile(sessionId, session)
+}
+
+// Get session plan
+export function getSessionPlan(sessionId: string): SessionPlan | undefined {
+  const session = getSession(sessionId)
+  return session?.plan
 }
 
 // ============================================================================
@@ -622,6 +702,49 @@ export function inheritSessionWorkingDirectory(sessionId: string, workingDirecto
   saveSessionToFile(sessionId, session)
 }
 
+// Update session token usage (does not affect sort order)
+export function updateSessionTokenUsage(
+  sessionId: string,
+  usage: { inputTokens: number; outputTokens: number; totalTokens: number },
+  lastTurnUsage?: { inputTokens: number; outputTokens: number }
+): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  // Accumulate token usage (for statistics)
+  session.totalInputTokens = (session.totalInputTokens || 0) + usage.inputTokens
+  session.totalOutputTokens = (session.totalOutputTokens || 0) + usage.outputTokens
+  session.totalTokens = (session.totalTokens || 0) + usage.totalTokens
+
+  // Use last turn's usage for context size (NOT accumulated)
+  const turnUsage = lastTurnUsage || usage
+  session.lastInputTokens = turnUsage.inputTokens
+  // Context size = input tokens only (context window limit applies to input)
+  session.contextSize = turnUsage.inputTokens
+
+  // Save session file
+  saveSessionToFile(sessionId, session)
+}
+
+// Get session token usage
+export function getSessionTokenUsage(sessionId: string): {
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalTokens: number
+  lastInputTokens: number
+  contextSize: number
+} | null {
+  const session = getSession(sessionId)
+  if (!session) return null
+
+  return {
+    totalInputTokens: session.totalInputTokens || 0,
+    totalOutputTokens: session.totalOutputTokens || 0,
+    totalTokens: session.totalTokens || 0,
+    lastInputTokens: session.lastInputTokens || 0,
+    contextSize: session.contextSize || 0,
+  }
+}
 
 // Add a message to a session
 export function addMessage(sessionId: string, message: ChatMessage): void {
@@ -1060,6 +1183,32 @@ export function updateSessionSummary(
   }
 
   return true
+}
+
+// Delete all sessions associated with a workspace
+export function deleteSessionsByWorkspace(workspaceId: string): number {
+  const index = loadSessionsIndex()
+  const sessionsToDelete = index.filter(s => s.workspaceId === workspaceId)
+
+  // Delete session files
+  for (const session of sessionsToDelete) {
+    deleteJsonFile(getSessionPath(session.id))
+    sessionCache.delete(session.id)  // 清除缓存
+  }
+
+  // Update index - remove deleted sessions
+  const newIndex = index.filter(s => s.workspaceId !== workspaceId)
+  saveSessionsIndex(newIndex)
+
+  // If current session was deleted, clear it
+  const currentSessionId = getCurrentSessionId()
+  if (sessionsToDelete.some(s => s.id === currentSessionId)) {
+    // Try to switch to another session in default mode
+    const defaultSession = newIndex.find(s => !s.workspaceId)
+    setCurrentSessionId(defaultSession?.id || '')
+  }
+
+  return sessionsToDelete.length
 }
 
 // Update session model and provider (does not affect sort order)

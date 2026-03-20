@@ -21,9 +21,7 @@ function isDirectColorValue(value: string): boolean {
     value === 'transparent' ||
     value === 'inherit' ||
     value === 'currentColor' ||
-    value === 'none' ||
-    /^\d/.test(value) ||
-    value.startsWith('inset ')
+    value === 'none'
   )
 }
 
