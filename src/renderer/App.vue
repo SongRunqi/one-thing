@@ -30,7 +30,7 @@
         :no-transition="sidebarNoTransition"
         :width="sidebarWidth"
         :media-panel-open="showMediaPanel"
-        @open-settings="window.electronAPI.openSettingsWindow()"
+        @open-settings="openSettingsWindow"
         @toggle-collapse="handleSidebarToggle"
         @open-search="openSearch"
         @create-new-chat="createNewChat"
@@ -193,6 +193,10 @@ function toggleMediaPanel() {
     showMediaPanel.value = true
     sidebarCollapsed.value = true
   }
+}
+
+function openSettingsWindow() {
+  window.electronAPI.openSettingsWindow()
 }
 
 function closeMediaPanel() {
