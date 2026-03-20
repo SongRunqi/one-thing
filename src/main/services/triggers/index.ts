@@ -18,7 +18,6 @@ export interface TriggerContext {
   lastAssistantMessage: string
   providerId: string
   providerConfig: ProviderConfig
-  agentId?: string
 }
 
 /**

@@ -28,18 +28,9 @@ import { executeMessageStream, type ProviderConfigWithKey } from '../ipc/chat/st
 import { createStreamProcessor, type StreamContext } from '../ipc/chat/stream-processor.js'
 import { runStream } from '../ipc/chat/tool-loop.js'
 import { getSkillsForSession } from '../ipc/skills.js'
-import { getCustomAgentById } from '../services/custom-agent/index.js'
 import { getEnabledToolsAsync, setInitContext, initializeAsyncTools } from '../tools/index.js'
 import { getMCPToolsForAI } from '../mcp/index.js'
 import * as modelRegistry from '../services/ai/model-registry.js'
-import {
-  getTextFromContent,
-  formatUserProfilePrompt,
-  retrieveRelevantFacts,
-  retrieveRelevantAgentMemories,
-  formatAgentMemoryPrompt,
-} from '../ipc/chat/memory-helpers.js'
-import { getStorage } from '../storage/index.js'
 
 export class StreamEngine {
   /** Active AbortControllers keyed by sessionId */
@@ -208,17 +199,9 @@ export class StreamEngine {
       const skillsSettings = settings.skills
       const skillsEnabled = skillsSettings?.enableSkills !== false
       const enabledSkills = skillsEnabled ? getSkillsForSession(session.workingDirectory) : []
-      const currentAgent = session.agentId
-        ? getCustomAgentById(session.agentId, session.workingDirectory)
-        : undefined
 
       if (settings.tools?.enableToolCalls) {
         setInitContext({
-          agent: currentAgent ? {
-            id: currentAgent.id,
-            name: currentAgent.name,
-            permissions: undefined,
-          } : undefined,
           skills: enabledSkills.map(s => ({
             id: s.id, name: s.name, description: s.description,
             source: s.source, path: s.path, directoryPath: s.directoryPath,
@@ -237,58 +220,10 @@ export class StreamEngine {
       const supportsTools = await modelRegistry.modelSupportsTools(configWithApiKey.model, providerId)
       const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
 
-      // 6. Retrieve memory context
-      const lastUserMsgContent = historyWithoutCurrent.filter(m => m.role === 'user').pop()?.content
-      const lastUserMsg = lastUserMsgContent ? getTextFromContent(lastUserMsgContent) : ''
-
-      let userProfilePrompt: string | undefined
-      let agentMemoryPrompt: string | undefined
-      const memoryEnabled = settings.embedding?.memoryEnabled !== false
-
-      if (memoryEnabled) {
-        try {
-          const storage = getStorage()
-          const relevantFacts = await retrieveRelevantFacts(storage, lastUserMsg, 10, 0.3)
-          if (relevantFacts.length > 0) {
-            userProfilePrompt = formatUserProfilePrompt(relevantFacts)
-            console.log(`[StreamEngine] Retrieved ${relevantFacts.length} relevant facts for resume context`)
-          }
-        } catch (error) {
-          console.error('[StreamEngine] Failed to retrieve relevant facts:', error)
-        }
-      }
-
-      if (session.agentId && memoryEnabled) {
-        try {
-          const storage = getStorage()
-          const agentRelationship = await storage.agentMemory.getRelationship(session.agentId)
-          if (agentRelationship) {
-            const relevantMemories = await retrieveRelevantAgentMemories(
-              storage, session.agentId, lastUserMsg, 5, 0.3
-            )
-            agentMemoryPrompt = formatAgentMemoryPrompt(agentRelationship, relevantMemories)
-          }
-        } catch (error) {
-          console.error('[StreamEngine] Failed to load agent memory:', error)
-        }
-      }
-
-      // 7. Build system prompt
-      let characterSystemPrompt: string | undefined
-      if (session.workspaceId) {
-        const workspace = store.getWorkspace(session.workspaceId)
-        characterSystemPrompt = workspace?.systemPrompt
-      } else if (session.agentId) {
-        const agent = getCustomAgentById(session.agentId, session.workingDirectory)
-        characterSystemPrompt = agent?.systemPrompt
-      }
-
+      // 6. Build system prompt
       const systemPrompt = buildSystemPrompt({
         hasTools, skills: enabledSkills,
-        workspaceSystemPrompt: characterSystemPrompt,
-        userProfilePrompt, agentMemoryPrompt,
-        providerId, workingDirectory: session.workingDirectory,
-        builtinMode: session.builtinMode, sessionPlan: session.plan,
+        workingDirectory: session.workingDirectory,
       })
 
       // 8. Build conversation messages

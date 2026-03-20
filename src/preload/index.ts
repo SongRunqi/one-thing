@@ -152,9 +152,6 @@ const electronAPI = {
   updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_ARCHIVED, { sessionId, isArchived, archivedAt }),
 
-  updateSessionAgent: (sessionId: string, agentId: string | null) =>
-    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_AGENT, { sessionId, agentId }),
-
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY, { sessionId, workingDirectory }),
 

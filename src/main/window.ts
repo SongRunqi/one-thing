@@ -137,12 +137,6 @@ function setupApplicationMenu(mainWindow: BrowserWindow) {
             mainWindow.webContents.send('menu:new-chat')
           },
         },
-        {
-          label: 'Close Chat',
-          click: () => {
-            mainWindow.webContents.send('menu:close-chat')
-          },
-        },
         { type: 'separator' },
         isMac ? { role: 'close' as const } : { role: 'quit' as const },
       ],
@@ -266,7 +260,8 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
     minWidth: 700,
     minHeight: 500,
     show: false,
-    backgroundColor,
+    transparent: isMac,
+    backgroundColor: isMac ? undefined : backgroundColor,
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
     parent: parentWindow,
@@ -340,7 +335,8 @@ export function createWindow() {
     minHeight: 600,
     // Prevent flash: don't show until ready, use theme-aware background
     show: false,
-    backgroundColor,
+    transparent: isMac,
+    backgroundColor: isMac ? undefined : backgroundColor,
     // Use hidden title bar on macOS to keep traffic lights
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     // Position traffic lights - in sidebar header area
@@ -464,7 +460,8 @@ export function openImagePreviewWindow(data: ImagePreviewData) {
     minWidth: data.mode === 'gallery' ? 700 : 500,
     minHeight: 400,
     show: false, // Show after ready to ensure proper initialization
-    backgroundColor,
+    transparent: isMac,
+    backgroundColor: isMac ? undefined : backgroundColor,
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
     webPreferences: {

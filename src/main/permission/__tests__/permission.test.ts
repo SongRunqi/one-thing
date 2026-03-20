@@ -7,13 +7,13 @@ vi.mock('uuid', () => ({
 }))
 
 // Mock workspace permissions
-vi.mock('../workspace-permissions.js', () => ({
+vi.mock('../directory-permissions.js', () => ({
   areAllApprovedInWorkspace: vi.fn(() => false),
   approveInWorkspace: vi.fn(),
 }))
 
 import { Permission } from '../index'
-import * as WorkspacePermissions from '../workspace-permissions.js'
+import * as WorkspacePermissions from '../directory-permissions.js'
 
 describe('Permission', () => {
   beforeEach(async () => {

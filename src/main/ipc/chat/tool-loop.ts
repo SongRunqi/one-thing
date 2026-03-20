@@ -18,8 +18,6 @@ import {
 import { getMCPToolsForAI } from '../../mcp/index.js'
 import { getSkillsForSession } from '../skills.js'
 import { updateSessionUsage } from '../sessions.js'
-import { getStorage } from '../../storage/index.js'
-import { getCustomAgentById } from '../../services/custom-agent/index.js'
 import { triggerManager, type TriggerContext } from '../../services/triggers/index.js'
 import * as modelRegistry from '../../services/ai/model-registry.js'
 import { shouldCompact, executeCompacting, type CompactingContext } from '../../services/ai/context-compacting.js'
@@ -31,10 +29,7 @@ import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import { getEventBus } from '../../events/index.js'
 import { sendUIMessageFinish } from './stream-helpers.js'
 import { formatMessagesForLog, buildSystemPrompt, buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
-import {
-  getTextFromContent,
-  textRecordAgentInteraction,
-} from './memory-helpers.js'
+import { getTextFromContent } from './message-helpers.js'
 import { getProviderApiType } from './provider-helpers.js'
 import { executeToolAndUpdate } from './tool-execution.js'
 import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages } from './chat-logger.js'
@@ -635,14 +630,10 @@ export async function executeStreamGeneration(
       // Event system not initialized — ignore
     }
 
-    // Get session and agent info first (needed for tool init context)
+    // Get session info
     const session = store.getSession(ctx.sessionId)
-    const currentAgent = session?.agentId
-      ? getCustomAgentById(session.agentId, session.workingDirectory)
-      : undefined
 
-    // Get enabled skills based on session's workingDirectory (needed for tool init context and system prompt)
-    // This uses upward traversal to find project skills
+    // Get enabled skills based on session's workingDirectory
     const skillsSettings = ctx.settings.skills
     const skillsEnabled = skillsSettings?.enableSkills !== false
     const sessionWorkingDir = session?.workingDirectory
@@ -652,15 +643,9 @@ export async function executeStreamGeneration(
       console.log(`[Chat] Loading skills for session working directory: ${sessionWorkingDir}`)
     }
 
-    // Set init context for async tools (like SkillTool, CustomAgentTool)
-    // This provides agent permissions, available skills, working directory, and provider config
+    // Set init context for async tools (like SkillTool)
     if (ctx.toolSettings?.enableToolCalls) {
       setInitContext({
-        agent: currentAgent ? {
-          id: currentAgent.id,
-          name: currentAgent.name,
-          permissions: undefined, // CustomAgents use allowBuiltinTools/allowedBuiltinTools instead
-        } : undefined,
         skills: enabledSkills.map(s => ({
           id: s.id,
           name: s.name,
@@ -672,41 +657,16 @@ export async function executeStreamGeneration(
           instructions: s.instructions,
           files: s.files?.map(f => ({ name: f.name, path: f.path, type: f.type as 'markdown' | 'script' | 'template' | 'other' })),
         })),
-        // For CustomAgentTool: working directory and provider config
-        workingDirectory: sessionWorkingDir,
-        providerId: ctx.providerId,
-        providerConfig: {
-          apiKey: ctx.providerConfig.apiKey ?? '',
-          baseUrl: ctx.providerConfig.baseUrl,
-          model: ctx.providerConfig.model ?? '',
-        },
-        // For CustomAgentTool: agent enabled settings
-        agentSettings: ctx.toolSettings?.agents,
       })
-      // Initialize async tools with the new context
       await initializeAsyncTools()
     }
 
-    // Get enabled tools (filter out MCP tools since they're handled separately with sanitized names)
-    // Use async version to include tools with dynamic descriptions
-    // Pass toolSettings.tools to filter based on user's per-tool enabled settings
+    // Get enabled tools
     const allEnabledTools = ctx.toolSettings?.enableToolCalls ? await getEnabledToolsAsync(ctx.toolSettings.tools) : []
-    
-    // Check if memory is enabled in settings - if disabled, filter out memory tool
-    const memoryEnabled = ctx.settings.embedding?.memoryEnabled !== false
-    const enabledTools = allEnabledTools.filter(t => {
-      // Filter out MCP tools (handled separately)
-      if (t.id.startsWith('mcp:')) return false
-      // Filter out memory tool if memory is disabled
-      if (t.id === 'memory' && !memoryEnabled) {
-        console.log('[Chat] Memory tool disabled because memoryEnabled=false')
-        return false
-      }
-      return true
-    })
+    const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
     const mcpTools = ctx.toolSettings?.enableToolCalls ? getMCPToolsForAI(ctx.toolSettings.tools) : {}
 
-    // Check if the current model supports tools using Models.dev tool_call field
+    // Check if the current model supports tools
     const supportsTools = await modelRegistry.modelSupportsTools(ctx.providerConfig.model, ctx.providerId)
     if (!supportsTools) {
       console.log(`[Chat] Model ${ctx.providerConfig.model} does not support tools, skipping tool calls`)
@@ -714,30 +674,9 @@ export async function executeStreamGeneration(
 
     const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
 
-    // Get system prompt from agent (preferred) or workspace (fallback)
-    let characterSystemPrompt: string | undefined
-
-    // First, try to get system prompt from agent
-    if (session?.agentId) {
-      const agent = getCustomAgentById(session.agentId, session.workingDirectory)
-      if (agent?.systemPrompt) {
-        characterSystemPrompt = agent.systemPrompt
-      }
-    }
-
-    // Fallback to workspace system prompt if no agent prompt (for migration/backwards compatibility)
-    if (!characterSystemPrompt && session?.workspaceId) {
-      const workspace = store.getWorkspace(session.workspaceId)
-      if (workspace?.systemPrompt) {
-        characterSystemPrompt = workspace.systemPrompt
-      }
-    }
-
     // Build lightweight user context (low token, high value)
-    // Detailed memory is accessed via Memory tool on-demand
     const userProfile = ctx.settings.general?.userProfile
-    const agentIdForInteraction = session?.agentId
-    
+
     // Format lightweight context (~30-50 tokens)
     const contextParts: string[] = []
     if (userProfile?.name) {
@@ -764,7 +703,6 @@ export async function executeStreamGeneration(
     const systemPrompt = buildSystemPrompt({
       hasTools,
       skills: enabledSkills,
-      workspaceSystemPrompt: characterSystemPrompt,
       workingDirectory: sessionWorkingDir,
     })
 
@@ -827,18 +765,7 @@ export async function executeStreamGeneration(
       }
       console.log('[Backend] Streaming complete, total usage:', ctx.accumulatedUsage)
 
-      // Record interaction for agent sessions (update relationship stats)
-      if (agentIdForInteraction) {
-        try {
-          // Use text-based memory system
-          await textRecordAgentInteraction(agentIdForInteraction)
-          console.log('[Backend] Recorded interaction for agent:', agentIdForInteraction)
-        } catch (error) {
-          console.error('Failed to record agent interaction:', error)
-        }
-      }
-
-      // Run post-response triggers asynchronously (memory extraction, context compacting, etc.)
+      // Run post-response triggers asynchronously
       // Get the last user message from history
       const lastUserMessageObj = historyMessages
         .filter(m => m.role === 'user')
@@ -859,7 +786,6 @@ export async function executeStreamGeneration(
             lastAssistantMessage: processor.accumulatedContent,
             providerId: ctx.providerId,
             providerConfig: ctx.providerConfig,
-            agentId: agentIdForInteraction,
           }
 
           // Run triggers asynchronously - don't await

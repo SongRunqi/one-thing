@@ -15,7 +15,15 @@ import fs from 'fs'
 import { Tool, type InitContext, type ToolContext, type ToolResult } from '../core/tool.js'
 import { Permission } from '../../permission/index.js'
 import { Wildcard } from '../../utils/wildcard.js'
-import type { SkillDefinition, AgentPermissions, SkillPermission } from '../../../shared/ipc.js'
+import type { SkillDefinition } from '../../../shared/ipc.js'
+
+// Local type definitions (previously from custom-agents)
+type SkillPermission = 'allow' | 'deny' | 'ask'
+
+interface AgentPermissions {
+  skill?: Record<string, SkillPermission>
+  [key: string]: unknown
+}
 
 /**
  * Skill tool metadata for UI display

@@ -63,8 +63,6 @@ function getProjectThemeDir(projectPath?: string): string | null {
  * Initialize built-in themes
  */
 export function initializeThemes(): void {
-  console.log('[ThemeManager] Initializing built-in themes...')
-
   const builtinThemes: Theme[] = [
     flexokiTheme as Theme,
     draculaTheme as Theme,
@@ -87,10 +85,9 @@ export function initializeThemes(): void {
   for (const theme of builtinThemes) {
     theme.source = 'builtin'
     builtinThemeMap.set(theme.id, theme)
-    console.log(`[ThemeManager] Loaded built-in theme: ${theme.id}`)
   }
 
-  console.log(`[ThemeManager] Initialized ${builtinThemeMap.size} built-in themes`)
+  console.log(`[ThemeManager] Initialized ${builtinThemeMap.size} built-in themes [${builtinThemes.map(t => t.id).join(', ')}]`)
 }
 
 /**
@@ -144,7 +141,6 @@ function loadThemeFile(filePath: string, source: 'user' | 'project'): Theme | nu
  * Load custom themes from filesystem
  */
 export function loadCustomThemes(projectPath?: string): void {
-  console.log('[ThemeManager] Loading custom themes...')
   customThemeMap.clear()
 
   const dirs = [
@@ -157,7 +153,6 @@ export function loadCustomThemes(projectPath?: string): void {
       // Create directory if it doesn't exist (for user convenience)
       try {
         fs.mkdirSync(dir, { recursive: true })
-        console.log(`[ThemeManager] Created themes directory: ${dir}`)
       } catch {
         continue
       }
@@ -176,7 +171,6 @@ export function loadCustomThemes(projectPath?: string): void {
 
         if (theme) {
           customThemeMap.set(theme.id, theme)
-          console.log(`[ThemeManager] Loaded custom theme: ${theme.id} from ${file}`)
         }
       }
     } catch (err) {
@@ -184,7 +178,9 @@ export function loadCustomThemes(projectPath?: string): void {
     }
   }
 
-  console.log(`[ThemeManager] Loaded ${customThemeMap.size} custom themes`)
+  if (customThemeMap.size > 0) {
+    console.log(`[ThemeManager] Loaded ${customThemeMap.size} custom themes [${Array.from(customThemeMap.keys()).join(', ')}]`)
+  }
 }
 
 /**
@@ -326,15 +322,11 @@ function applyThemeInternal(
   theme: Theme,
   mode: 'dark' | 'light'
 ): Record<string, string> {
-  console.log(`[ThemeManager] Applying theme: ${theme.id} (${mode} mode)`)
-
   // Resolve all color references
   const resolvedColors = resolveTheme(theme, mode)
 
   // Map to CSS variables
   const cssVariables = generateCSSVariables(resolvedColors)
-
-  console.log(`[ThemeManager] Generated ${Object.keys(cssVariables).length} CSS variables`)
 
   return cssVariables
 }

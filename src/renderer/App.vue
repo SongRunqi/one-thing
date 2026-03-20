@@ -55,15 +55,6 @@
         @close-diff-overlay="closeDiffOverlay"
       />
 
-      <!-- Commit Dialog -->
-      <CommitDialog
-        :visible="showCommitDialog"
-        :staged-count="stagedFilesCount"
-        :working-directory="sessionsStore.currentSession?.workingDirectory || ''"
-        :session-id="sessionsStore.currentSessionId || ''"
-        @close="closeCommitDialog"
-        @committed="handleCommitted"
-      />
     </div>
 
     <!-- Search Overlay (teleported to body) -->
@@ -122,7 +113,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
-import CommitDialog from '@/components/git/CommitDialog.vue'
+
 
 // Type for diff overlay data
 interface DiffOverlayData {
@@ -158,10 +149,6 @@ const showMediaPanel = ref(false)
 const showDiffOverlay = ref(false)
 const diffOverlayData = ref<DiffOverlayData | null>(null)
 
-// Commit dialog state
-const showCommitDialog = ref(false)
-const stagedFilesCount = ref(0)
-
 // Diff overlay functions
 function openDiffOverlay(data: DiffOverlayData) {
   diffOverlayData.value = data
@@ -173,20 +160,6 @@ function closeDiffOverlay() {
   diffOverlayData.value = null
 }
 
-// Commit dialog functions
-function openCommitDialog() {
-  showCommitDialog.value = true
-}
-
-function closeCommitDialog() {
-  showCommitDialog.value = false
-}
-
-function handleCommitted() {
-  // Refresh git status after commit
-  // The GitTab will handle this via its own refresh mechanism
-  closeCommitDialog()
-}
 
 function toggleMediaPanel() {
   if (showMediaPanel.value) {

@@ -266,7 +266,7 @@ export const useChatStore = defineStore('chat', () => {
         let lastPart = parts[parts.length - 1]
 
         // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
+        if (lastPart && (lastPart.type === 'waiting')) {
           parts.pop()
           lastPart = parts[parts.length - 1]
         }
@@ -301,7 +301,7 @@ export const useChatStore = defineStore('chat', () => {
         let lastPart = parts[parts.length - 1]
 
         // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
+        if (lastPart && (lastPart.type === 'waiting')) {
           parts.pop()
           lastPart = parts[parts.length - 1]
         }
@@ -354,7 +354,7 @@ export const useChatStore = defineStore('chat', () => {
         let lastPart = parts[parts.length - 1]
 
         // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
+        if (lastPart && (lastPart.type === 'waiting')) {
           parts.pop()
           lastPart = parts[parts.length - 1]
         }
@@ -405,7 +405,7 @@ export const useChatStore = defineStore('chat', () => {
 
       // Remove loading-memory or waiting indicator if present
       const lastPart = parts[parts.length - 1]
-      if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
+      if (lastPart && (lastPart.type === 'waiting')) {
         parts.pop()
       }
 
@@ -456,7 +456,7 @@ export const useChatStore = defineStore('chat', () => {
       // Remove loading-memory or waiting indicator
       if (message.contentParts) {
         const lastPart = message.contentParts[message.contentParts.length - 1]
-        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
+        if (lastPart && (lastPart.type === 'waiting')) {
           message.contentParts.pop()
         }
 
@@ -634,7 +634,7 @@ export const useChatStore = defineStore('chat', () => {
       if (!hasPlaceholderForTurn) {
         const lastPart = parts[parts.length - 1]
         // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting' || lastPart.type === 'loading-memory')) {
+        if (lastPart && (lastPart.type === 'waiting')) {
           parts.pop()
         }
         parts.push({ type: 'data-steps', turnIndex: stepTurnIndex } as any)

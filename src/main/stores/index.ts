@@ -29,7 +29,6 @@ export {
   updateStepsUsageByTurn,
   updateSessionPin,
   updateSessionArchived,
-  updateSessionAgent,
   updateSessionModel,
   updateSessionWorkingDirectory,
   inheritSessionWorkingDirectory,

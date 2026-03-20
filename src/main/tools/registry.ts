@@ -52,8 +52,6 @@ export function registerTool(definition: ToolDefinition, handler: ToolHandler): 
     definition,
     handler,
   })
-
-  console.log(`[ToolRegistry] Registered tool: ${definition.id}`)
 }
 
 /**
@@ -66,10 +64,8 @@ export function registerToolV2<T extends ToolInfoUnion>(tool: T): void {
 
   if (isAsyncTool(tool)) {
     toolRegistryV2Async.set(tool.id, tool)
-    console.log(`[ToolRegistry] Registered V2 async tool: ${tool.id}`)
   } else {
     toolRegistryV2.set(tool.id, tool as ToolInfo)
-    console.log(`[ToolRegistry] Registered V2 tool: ${tool.id}`)
   }
 }
 
@@ -80,11 +76,7 @@ export function unregisterTool(toolId: string): boolean {
   const removedLegacy = toolRegistry.delete(toolId)
   const removedV2 = toolRegistryV2.delete(toolId)
   const removedV2Async = toolRegistryV2Async.delete(toolId)
-  const removed = removedLegacy || removedV2 || removedV2Async
-  if (removed) {
-    console.log(`[ToolRegistry] Unregistered tool: ${toolId}`)
-  }
-  return removed
+  return removedLegacy || removedV2 || removedV2Async
 }
 
 /**
@@ -299,7 +291,6 @@ export async function initializeAsyncTools(ctx?: InitContext): Promise<void> {
   for (const tool of toolRegistryV2Async.values()) {
     if (!tool._initialized) {
       await Tool.initialize(tool, initContext)
-      console.log(`[ToolRegistry] Initialized async tool: ${tool.id}`)
     }
   }
 }
@@ -382,9 +373,7 @@ export async function executeTool(
   const legacyTool = toolRegistry.get(toolId)
   if (legacyTool) {
     try {
-      console.log(`[ToolRegistry] Executing legacy tool: ${toolId}`, args)
       const result = await legacyTool.handler(args, context)
-      console.log(`[ToolRegistry] Tool "${toolId}" completed:`, result.success ? 'success' : 'failed')
       return result
     } catch (error: any) {
       console.error(`[ToolRegistry] Tool "${toolId}" execution error:`, error)
@@ -399,8 +388,6 @@ export async function executeTool(
   const v2Tool = toolRegistryV2.get(toolId)
   if (v2Tool) {
     try {
-      console.log(`[ToolRegistry] Executing V2 tool: ${toolId}`, args)
-
       // Validate args with Zod schema
       const parseResult = v2Tool.parameters.safeParse(args)
       if (!parseResult.success) {
@@ -435,7 +422,6 @@ export async function executeTool(
       }
 
       const result = await v2Tool.execute(parseResult.data, v2Context)
-      console.log(`[ToolRegistry] V2 Tool "${toolId}" completed:`, result.title)
 
       // Convert V2 result to legacy format
       return {
@@ -460,8 +446,6 @@ export async function executeTool(
   const v2AsyncTool = toolRegistryV2Async.get(toolId)
   if (v2AsyncTool) {
     try {
-      console.log(`[ToolRegistry] Executing V2 async tool: ${toolId}`, args)
-
       // Ensure tool is initialized
       if (!v2AsyncTool._initialized) {
         await Tool.initialize(v2AsyncTool, currentInitContext)
@@ -502,7 +486,6 @@ export async function executeTool(
       }
 
       const result = await initResult.execute(parseResult.data, v2Context)
-      console.log(`[ToolRegistry] V2 Async Tool "${toolId}" completed:`, result.title)
 
       // Convert V2 result to legacy format
       return {
@@ -582,11 +565,8 @@ export function canAutoExecute(
  */
 export async function initializeToolRegistry(): Promise<void> {
   if (initialized) {
-    console.log('[ToolRegistry] Already initialized')
     return
   }
-
-  console.log('[ToolRegistry] Initializing...')
 
   // Import and register legacy built-in tools
   const { registerBuiltinTools } = await import('./builtin/index.js')
@@ -597,8 +577,8 @@ export async function initializeToolRegistry(): Promise<void> {
   registerBuiltinToolsV2()
 
   initialized = true
-  const totalTools = toolRegistry.size + toolRegistryV2.size + toolRegistryV2Async.size
-  console.log(`[ToolRegistry] Initialized with ${totalTools} tools (${toolRegistry.size} legacy, ${toolRegistryV2.size} V2 static, ${toolRegistryV2Async.size} V2 async)`)
+  const allIds = [...toolRegistry.keys(), ...toolRegistryV2.keys(), ...toolRegistryV2Async.keys()]
+  console.log(`[ToolRegistry] Initialized ${allIds.length} tools [${allIds.join(', ')}]`)
 }
 
 /**

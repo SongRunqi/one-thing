@@ -97,9 +97,9 @@ export function registerSessionHandlers() {
   })
 
   // 创建新会话
-  ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name, agentId }) => {
+  ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name }) => {
     const sessionId = uuidv4()
-    const session = store.createSession(sessionId, name || 'New Chat', agentId)
+    const session = store.createSession(sessionId, name || 'New Chat')
     return { success: true, session }
   })
 
@@ -148,12 +148,6 @@ export function registerSessionHandlers() {
   // 归档/取消归档会话
   ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_ARCHIVED, async (_event, { sessionId, isArchived, archivedAt }) => {
     store.updateSessionArchived(sessionId, isArchived, archivedAt)
-    return { success: true }
-  })
-
-  // 更新会话关联的Agent
-  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_AGENT, async (_event, { sessionId, agentId }) => {
-    store.updateSessionAgent(sessionId, agentId)
     return { success: true }
   })
 

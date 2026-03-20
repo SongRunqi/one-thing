@@ -36,7 +36,7 @@
 
         <!-- v-memo prevents unnecessary re-renders during tool_input_delta streaming -->
         <div class="composer" v-memo="[isGenerating, effectiveSessionId]">
-          <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" @open-tool-settings="handleOpenToolSettings" :is-loading="isGenerating" :session-id="effectiveSessionId" />
+          <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" :is-loading="isGenerating" :session-id="effectiveSessionId" />
         </div>
       </div>
     </div>
@@ -143,14 +143,9 @@ async function handleUpdateTitle(title: string) {
 // Input box ref for setting quoted text
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
 
-// Handle open tool settings from InputBox - opens settings in new window
-function handleOpenToolSettings() {
-  window.electronAPI.openSettingsWindow()
-}
-
-async function handleSendMessage(message: string, attachments?: import('@/types').MessageAttachment[]) {
+async function handleSendMessage(message: string) {
   if (!currentSession.value) return
-  await chatSendMessage(message, attachments)
+  await chatSendMessage(message)
 }
 
 async function handleStopGeneration() {

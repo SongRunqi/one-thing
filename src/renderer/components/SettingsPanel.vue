@@ -35,14 +35,6 @@
       @delete="confirmDeleteCustomProvider"
     />
 
-    <!-- Delete Confirmation Dialog -->
-    <DeleteConfirmDialog
-      :visible="showDeleteConfirmDialog"
-      :provider-name="customProviderFormData.name"
-      @cancel="showDeleteConfirmDialog = false"
-      @confirm="deleteCustomProvider"
-    />
-
     <!-- Tab Navigation -->
     <div class="tabs-nav">
       <button
@@ -180,7 +172,7 @@ import { v4 as uuidv4 } from 'uuid'
 // Import settings components
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
 import UnsavedChangesDialog from './settings/UnsavedChangesDialog.vue'
-import DeleteConfirmDialog from './settings/DeleteConfirmDialog.vue'
+
 import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
 import GeneralSettingsTab from './settings/GeneralSettingsTab.vue'
@@ -294,7 +286,7 @@ const showUnsavedDialog = ref(false)
 // Custom provider dialog state
 const showCustomProviderDialog = ref(false)
 const editingCustomProvider = ref<string | null>(null)
-const showDeleteConfirmDialog = ref(false)
+
 const customProviderError = ref('')
 const customProviderFormData = ref<CustomProviderForm>({
   name: '',
@@ -472,7 +464,8 @@ async function handleSaveCustomProvider(formData: CustomProviderForm) {
 }
 
 function confirmDeleteCustomProvider() {
-  showDeleteConfirmDialog.value = true
+  if (!confirm(`Are you sure you want to delete "${customProviderFormData.value.name}"? This action cannot be undone.`)) return
+  deleteCustomProvider()
 }
 
 async function deleteCustomProvider() {
@@ -493,7 +486,6 @@ async function deleteCustomProvider() {
   }
 
   await saveSettings()
-  showDeleteConfirmDialog.value = false
   closeCustomProviderDialog()
 }
 

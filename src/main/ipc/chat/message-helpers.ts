@@ -281,5 +281,21 @@ export function filterHistoryForNonToolAPI(
     })
 }
 
+/**
+ * Extract text from AI message content (string or multimodal array)
+ */
+export function getTextFromContent(content: AIMessageContent): string {
+  if (typeof content === 'string') {
+    return content
+  }
+  if (Array.isArray(content)) {
+    return content
+      .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+      .map(part => part.text)
+      .join('\n')
+  }
+  return ''
+}
+
 // Re-export buildSystemPrompt from prompt service for backward compatibility
 export { buildSystemPrompt }

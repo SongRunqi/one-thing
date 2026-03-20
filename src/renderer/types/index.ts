@@ -248,7 +248,6 @@ export interface ElectronAPI {
   updateSessionPin: (sessionId: string, isPinned: boolean) => Promise<UpdateSessionPinResponse>
   updateSessionModel: (sessionId: string, provider: string, model: string) => Promise<{ success: boolean; error?: string }>
   updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) => Promise<{ success: boolean; error?: string }>
-  updateSessionAgent: (sessionId: string, agentId: string | null) => Promise<{ success: boolean; error?: string }>
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
   getSessionTokenUsage: (sessionId: string) => Promise<{ success: boolean; usage?: { totalInputTokens: number; totalOutputTokens: number; totalTokens: number; maxTokens: number; lastInputTokens: number; contextSize: number }; error?: string }>
   // Optimized session loading (Phase 4: Metadata Separation)
@@ -411,6 +410,14 @@ export interface ElectronAPI {
 
   // Window methods
   setWindowButtonVisibility: (visible: boolean) => Promise<{ success: boolean }>
+
+  // Unified event-driven channels (Phase 4)
+  onSessionEvent: (callback: (envelope: any) => void) => () => void
+  onSessionStream: (callback: (data: { sessionId: string; chunk: any }) => void) => () => void
+  emitCommand: (sessionId: string, command: any) => Promise<void>
+
+  // Skill execution
+  executeSkill: (skillId: string, options: { sessionId: string; input: string }) => Promise<{ success: boolean; result?: { output: string }; error?: string }>
 
   // Plugin methods
   getPlugins: () => Promise<{ success: boolean; plugins?: any[]; error?: string }>

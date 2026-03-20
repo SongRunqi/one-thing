@@ -256,7 +256,6 @@ function extractSessionMeta(session: ChatSession): SessionMeta {
     isPinned: session.isPinned,
     isArchived: session.isArchived,
     archivedAt: session.archivedAt,
-    agentId: session.agentId,
     messageCount: session.messages.length,
     previewText,
   }
@@ -290,7 +289,7 @@ export function getSession(sessionId: string): ChatSession | undefined {
 }
 
 // Create a new session
-export function createSession(sessionId: string, name: string, agentId?: string): ChatSession {
+export function createSession(sessionId: string, name: string): ChatSession {
   // Use defaultWorkingDirectory from settings if available
   let workingDirectory: string | undefined
   const settings = getSettings()
@@ -305,7 +304,6 @@ export function createSession(sessionId: string, name: string, agentId?: string)
     messages: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    agentId,
     workingDirectory,
   }
 
@@ -319,7 +317,6 @@ export function createSession(sessionId: string, name: string, agentId?: string)
     name: session.name,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
-    agentId,
   })
   saveSessionsIndex(index)
 
@@ -335,12 +332,10 @@ export function createBranchSession(
   name: string,
   parentSessionId: string,
   branchFromMessageId: string,
-  inheritedMessages: ChatMessage[],
-  agentId?: string
+  inheritedMessages: ChatMessage[]
 ): ChatSession {
-  // Get parent session to inherit agentId and workingDirectory if not provided
+  // Get parent session to inherit workingDirectory
   const parentSession = getSession(parentSessionId)
-  const inheritedAgentId = agentId ?? parentSession?.agentId
 
   // Inherit workingDirectory from parent session
   let workingDirectory = parentSession?.workingDirectory
@@ -375,7 +370,6 @@ export function createBranchSession(
     updatedAt: Date.now(),
     parentSessionId,
     branchFromMessageId,
-    agentId: inheritedAgentId,
     workingDirectory,
     totalInputTokens,
     totalOutputTokens,
@@ -394,7 +388,6 @@ export function createBranchSession(
     updatedAt: session.updatedAt,
     parentSessionId,
     branchFromMessageId,
-    agentId: inheritedAgentId,
   })
   saveSessionsIndex(index)
 
@@ -519,33 +512,6 @@ export function updateSessionArchived(sessionId: string, isArchived: boolean, ar
       meta.archivedAt = archivedAt
     } else if (!isArchived) {
       delete meta.archivedAt
-    }
-    saveSessionsIndex(index)
-  }
-}
-
-// Update session agent (does not affect sort order)
-export function updateSessionAgent(sessionId: string, agentId: string | null): void {
-  const session = getSession(sessionId)
-  if (!session) return
-
-  if (agentId === null) {
-    delete session.agentId
-  } else {
-    session.agentId = agentId
-  }
-
-  // Save session file
-  saveSessionToFile(sessionId, session)
-
-  // Update index
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    if (agentId === null) {
-      delete meta.agentId
-    } else {
-      meta.agentId = agentId
     }
     saveSessionsIndex(index)
   }
@@ -1132,7 +1098,6 @@ export function updateSessionSummary(
   return true
 }
 
-// Update session model and provider (does not affect sort order)
 export function updateSessionModel(sessionId: string, provider: string, model: string): boolean {
   const session = getSession(sessionId)
   if (!session) return false

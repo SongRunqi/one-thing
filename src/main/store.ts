@@ -40,7 +40,6 @@ export {
   addMessageStep,
   updateMessageStep,
   updateStepsUsageByTurn,
-  updateSessionAgent,
   updateSessionModel,
   updateSessionWorkingDirectory,
   inheritSessionWorkingDirectory,

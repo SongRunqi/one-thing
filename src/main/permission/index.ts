@@ -24,7 +24,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import * as WorkspacePermissions from './workspace-permissions.js'
+import * as WorkspacePermissions from './directory-permissions.js'
 
 // Lazy imports to avoid circular dependencies
 type EventBus = import('../events/event-bus.js').EventBus

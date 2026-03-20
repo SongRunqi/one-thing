@@ -1,18 +1,5 @@
 <template>
   <div class="composer-wrapper" ref="composerWrapperRef">
-    <!-- Hidden file input -->
-    <input
-      ref="fileInputRef"
-      type="file"
-      multiple
-      accept="image/*,.pdf,.doc,.docx,.txt,.md,.json,.csv"
-      style="display: none"
-      @change="handleFileSelect"
-    />
-
-    <!-- Attachment previews -->
-    <AttachmentPreview :files="attachedFiles" @remove="removeAttachment" />
-
     <!-- Quoted text context -->
     <QuotedContext :text="quotedText" @clear="clearQuotedText" />
 
@@ -77,7 +64,6 @@
           @focus="isFocused = true"
           @blur="isFocused = false"
           @input="adjustHeight"
-          @paste="handlePaste"
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
           rows="1"
@@ -87,14 +73,6 @@
       <!-- Bottom toolbar -->
       <div class="composer-toolbar">
         <div class="toolbar-left">
-          <button class="toolbar-btn" title="Attach file" @click="handleAttach">
-            <Paperclip :size="18" :stroke-width="2" />
-          </button>
-          <ToolsMenu
-            @tools-enabled-change="(enabled: boolean) => emit('toolsEnabledChange', enabled)"
-            @open-settings="() => emit('openToolSettings')"
-          />
-          <SkillsMenu @open-settings="() => emit('openToolSettings')" />
           <ModelSelector :session-id="props.sessionId" />
         </div>
 
@@ -126,10 +104,7 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
-import type { MessageAttachment } from '@/types'
-
 // Sub-components
-import AttachmentPreview from './AttachmentPreview.vue'
 import QuotedContext from './QuotedContext.vue'
 import SkillPicker from './SkillPicker.vue'
 import CommandPicker from './CommandPicker.vue'
@@ -137,13 +112,10 @@ import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
 import QuickCommandBar from './QuickCommandBar.vue'
 import ModelSelector from './ModelSelector.vue'
-import ToolsMenu from './ToolsMenu.vue'
-import SkillsMenu from './SkillsMenu.vue'
-import { X, Paperclip, Square, Send, Check } from 'lucide-vue-next'
+import { X, Square, Send, Check } from 'lucide-vue-next'
 import { findCommand } from '@/services/commands'
 
 // Composables
-import { useAttachments } from '@/composables/useAttachments'
 import { useInputHistory } from '@/composables/useInputHistory'
 import { usePickerOrchestration } from '@/composables/usePickerOrchestration'
 import { useCommandFeedback } from '@/composables/useCommandFeedback'
@@ -155,10 +127,8 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'sendMessage', message: string, attachments?: MessageAttachment[]): void
+  (e: 'sendMessage', message: string): void
   (e: 'stopGeneration'): void
-  (e: 'toolsEnabledChange', enabled: boolean): void
-  (e: 'openToolSettings'): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -194,17 +164,6 @@ const workingDirectory = computed(() => {
 })
 
 // --- Composables ---
-
-const {
-  attachedFiles,
-  fileInputRef,
-  handleAttach,
-  handleFileSelect,
-  handlePaste,
-  removeAttachment,
-  clearAttachments,
-  toMessageAttachments,
-} = useAttachments()
 
 function adjustHeight() {
   const textarea = textareaRef.value
@@ -248,7 +207,7 @@ const { commandFeedback, showCommandFeedback } = useCommandFeedback()
 // --- Computed ---
 
 const canSend = computed(() => {
-  const hasContent = messageInput.value.trim().length > 0 || attachedFiles.value.length > 0
+  const hasContent = messageInput.value.trim().length > 0
   return hasContent && !props.isLoading
 })
 
@@ -419,13 +378,10 @@ async function sendMessage() {
     fullMessage = `${quotedLines}\n\n${messageInput.value}`
   }
 
-  const attachments = toMessageAttachments()
-
-  emit('sendMessage', fullMessage, attachments)
+  emit('sendMessage', fullMessage)
   messageInput.value = ''
   resetHistoryNavigation()
   quotedText.value = ''
-  clearAttachments()
   if (effectiveSessionId.value) {
     sessionInputCache.delete(effectiveSessionId.value)
   }

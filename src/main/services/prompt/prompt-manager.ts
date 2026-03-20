@@ -30,6 +30,7 @@ class PromptManager {
   private templatesPath: string
   private initialized: boolean
   private readonly isDev: boolean
+  private _partialNames: string[] = []
 
   constructor() {
     // Create isolated Handlebars instance
@@ -63,7 +64,7 @@ class PromptManager {
     await this.registerPartials()
 
     this.initialized = true
-    console.log(`[PromptManager] Initialized with templates at: ${this.templatesPath}`)
+    console.log(`[PromptManager] Initialized with ${this._partialNames.length} partials [${this._partialNames.join(', ')}]`)
   }
 
   /**
@@ -99,7 +100,7 @@ class PromptManager {
 
         const content = fs.readFileSync(fullPath, 'utf-8')
         this.handlebars.registerPartial(partialName, content)
-        console.log(`[PromptManager] Registered partial: ${partialName}`)
+        this._partialNames.push(partialName)
       }
     }
   }
@@ -179,7 +180,6 @@ class PromptManager {
    */
   clearCache(): void {
     this.templateCache.clear()
-    console.log('[PromptManager] Template cache cleared')
   }
 
   /**
@@ -193,8 +193,8 @@ class PromptManager {
     }
 
     // Re-register
+    this._partialNames = []
     await this.registerPartials()
-    console.log('[PromptManager] Partials reloaded')
   }
 
   /**

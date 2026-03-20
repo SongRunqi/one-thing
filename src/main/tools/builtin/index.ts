@@ -17,13 +17,6 @@ import { WriteTool } from './write.js'
 import { GlobTool } from './glob.js'
 import { GrepTool } from './grep.js'
 import { SkillTool } from './skill.js'
-import { PlanTool } from './plan.js'
-import { CustomAgentTool } from './custom-agent.js'
-import { MemoryTool } from './memory.js'
-
-// Automation tools
-import { MouseTool } from './mouse.js'
-import { KeyboardTool } from './keyboard.js'
 
 // Web search
 import { WebSearchTool } from './web-search/index.js'
@@ -37,11 +30,6 @@ const builtinTools = [
   WriteTool,
   GlobTool,
   GrepTool,
-  PlanTool,
-  MemoryTool,
-  // Automation tools
-  MouseTool,
-  KeyboardTool,
   // Web tools
   WebSearchTool,
 ]
@@ -49,7 +37,6 @@ const builtinTools = [
 // Async tools that need initialization with context
 export const asyncBuiltinTools = [
   SkillTool,
-  CustomAgentTool,
 ]
 
 /**

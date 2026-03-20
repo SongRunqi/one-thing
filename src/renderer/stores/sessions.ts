@@ -97,7 +97,7 @@ export const useSessionsStore = defineStore('sessions', () => {
         }
       }
 
-      const response = await window.electronAPI.createSession(name, undefined, agentId)
+      const response = await window.electronAPI.createSession(name)
       if (response.success && response.session) {
         sessions.value.unshift(response.session)
         await switchSession(response.session.id)
@@ -112,9 +112,9 @@ export const useSessionsStore = defineStore('sessions', () => {
    * Create a new session without switching to it
    * Used for split view where we want to create a new chat in a split panel
    */
-  async function createSessionWithoutSwitch(name: string, agentId?: string) {
+  async function createSessionWithoutSwitch(name: string) {
     try {
-      const response = await window.electronAPI.createSession(name, undefined, agentId)
+      const response = await window.electronAPI.createSession(name)
       if (response.success && response.session) {
         sessions.value.unshift(response.session)
         return response.session
@@ -173,7 +173,7 @@ export const useSessionsStore = defineStore('sessions', () => {
       }
 
       // Also load usage data for this session
-      await chatStore.loadSessionUsage(sessionId)
+
 
       return sessionDetails
     } catch (error) {
@@ -207,7 +207,7 @@ export const useSessionsStore = defineStore('sessions', () => {
         }
 
         chatStore.setMessagesFromSession(sessionId, response.session.messages || [])
-        await chatStore.loadSessionUsage(sessionId)
+  
 
         return response.session
       }

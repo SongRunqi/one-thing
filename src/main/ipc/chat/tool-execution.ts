@@ -10,7 +10,6 @@ import { executeTool } from '../../tools/index.js'
 import { isMCPTool, executeMCPTool } from '../../mcp/index.js'
 import type { ToolExecutionContext, ToolExecutionResult } from '../../tools/types.js'
 import type { StreamContext } from './stream-processor.js'
-import { checkToolPermission } from '../../agents/builtin-agents.js'
 import { type IPCEmitter } from './ipc-emitter.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 
@@ -263,27 +262,6 @@ export async function executeToolAndUpdate(
 
   // Get session's workingDirectory for sandbox boundary (reuse session from above)
   const workingDirectory = session?.workingDirectory
-  const builtinMode = session?.builtinMode || 'build'
-
-  // Check tool permission based on builtin mode (Plan mode vs Build mode)
-  const permCheck = checkToolPermission(toolCallData.toolName, toolCallData.args, builtinMode)
-  if (!permCheck.allowed) {
-    console.log(`[Backend] Tool blocked by ${builtinMode} mode:`, toolCallData.toolName, permCheck.reason)
-    toolCall.endTime = Date.now()
-    toolCall.status = 'failed'
-    toolCall.error = permCheck.reason
-
-    // Update step with error
-    emitter.sendStepUpdated(step.id, {
-      status: 'failed',
-      toolCall: { ...toolCall },
-      error: permCheck.reason,
-    })
-
-    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-    emitter.sendToolResult(toolCall)
-    return
-  }
 
   // Emit tool:call for plugin interception (can modify args or suppress)
   let finalArgs = { ...toolCallData.args }

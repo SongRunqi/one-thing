@@ -45,7 +45,6 @@ export const IPC_CHANNELS = {
   UPDATE_SESSION_PIN: 'sessions:update-pin',
   UPDATE_SESSION_MODEL: 'sessions:update-model',
   UPDATE_SESSION_ARCHIVED: 'sessions:update-archived',
-  UPDATE_SESSION_AGENT: 'sessions:update-agent',
   UPDATE_SESSION_WORKING_DIRECTORY: 'sessions:update-working-directory',
   GET_SESSION: 'sessions:get',
   GET_SESSION_TOKEN_USAGE: 'sessions:get-token-usage',

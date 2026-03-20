@@ -31,6 +31,13 @@
         @overflow-change="handleOverflowChange"
       />
 
+      <!-- Settings bottom bar -->
+      <div class="sidebar-bottom">
+        <button class="sidebar-bottom-btn" title="Settings" @click="$emit('open-settings')">
+          <Settings :size="18" :stroke-width="1.5" />
+        </button>
+      </div>
+
       <!-- Context Menu -->
       <SessionContextMenu
         :show="contextMenu.show"
@@ -59,6 +66,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
+import { Settings } from 'lucide-vue-next'
 import SidebarHeader from './SidebarHeader.vue'
 import SessionList from './SessionList.vue'
 import SessionContextMenu from './SessionContextMenu.vue'
@@ -88,6 +96,7 @@ const emit = defineEmits<{
   'toggle-media-panel': []
   'create-new-chat': []
   'open-search': []
+  'open-settings': []
   'resize': [width: number]
 }>()
 
@@ -390,6 +399,32 @@ onUnmounted(() => {
   overflow: hidden;
   border: none;
   box-shadow: none;
+}
+
+.sidebar-bottom {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+
+.sidebar-bottom-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-bottom-btn:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 
 @media (max-width: 768px) {
