@@ -1,8 +1,6 @@
 <template>
   <div class="sidebar-header">
-    <div class="traffic-lights-row">
-      <div class="traffic-lights-space"></div>
-    </div>
+    <div class="traffic-lights-space"></div>
   </div>
 </template>
 
@@ -12,15 +10,10 @@
 <style scoped>
 .sidebar-header {
   flex-shrink: 0;
-  padding: 0 12px;
-}
-
-.traffic-lights-row {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
   height: 44px;
-  margin-top: -6px;
+  margin-top: -12px;
   -webkit-app-region: drag;
 }
 

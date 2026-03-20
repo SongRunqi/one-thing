@@ -35,7 +35,7 @@
         :can-close="panels.length > 1"
         :style="{ flex: panel.flex }"
         :show-settings="index === 0 && showSettings"
-        :show-sidebar-toggle="index === 0 && sidebarCollapsed && !sidebarFloating && !mediaPanelOpen"
+        :show-sidebar-toggle="false"
         @close="closePanel(panel.id)"
         @split="openSessionPicker(panel.id)"
         @equalize="equalizeAllPanels"
@@ -379,18 +379,12 @@ onUnmounted(() => {
 <style scoped>
 .chat-container-wrapper {
   flex: 1;
-  padding: 12px;
-  padding-left: 0px;
-  /* Slightly darker base for "surface" effect */
+  padding: 0;
   background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
   -webkit-app-region: drag;
   min-width: 0;
   display: flex;
   position: relative;
-}
-
-.chat-container-wrapper.sidebar-collapsed {
-  padding-left: 12px;
 }
 
 /* Hover trigger for floating sidebar */
@@ -413,8 +407,6 @@ onUnmounted(() => {
   -webkit-app-region: no-drag;
   position: relative;
   overflow: hidden;
-  /* Ensure proper border-radius clipping for child panels */
-  border-radius: var(--radius-lg);
 }
 
 .panel-resizer {

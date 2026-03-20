@@ -38,6 +38,26 @@
         @resize="handleSidebarResize"
         @mouseleave="handleSidebarMouseLeave"
       />
+
+      <!-- Toolbar buttons: animate between sidebar header (right) and traffic lights (left) -->
+      <div
+        v-show="!showMediaPanel"
+        class="app-toolbar"
+        :class="{ transitioning: toolbarAnimating }"
+        :style="{ left: toolbarLeft + 'px' }"
+      >
+        <button class="app-toolbar-btn" title="Toggle sidebar" @click="handleSidebarToggle">
+          <PanelLeftClose v-if="!sidebarCollapsed || sidebarFloating" :size="16" :stroke-width="1.5" />
+          <PanelLeftOpen v-else :size="16" :stroke-width="1.5" />
+        </button>
+        <button class="app-toolbar-btn" title="Search" @click="openSearch">
+          <Search :size="16" :stroke-width="1.5" />
+        </button>
+        <button class="app-toolbar-btn" title="New chat" @click="createNewChat">
+          <SquarePen :size="16" :stroke-width="1.5" />
+        </button>
+      </div>
+
       <ChatContainer
         ref="chatContainerRef"
         :show-settings="showSettings"
@@ -113,6 +133,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
+import { PanelLeftClose, PanelLeftOpen, Search, SquarePen } from 'lucide-vue-next'
 
 
 // Type for diff overlay data
@@ -204,6 +225,19 @@ const sidebarNoTransition = ref(false) // Disable transition during/after floati
 const floatingCooldown = ref(false) // Prevent re-expansion after toggle
 const floatingShowTimer = ref<ReturnType<typeof setTimeout> | null>(null) // Delay before showing floating sidebar
 
+// Toolbar position — single set of buttons, animated between sidebar right and traffic lights
+const toolbarLeft = computed(() => {
+  if (sidebarCollapsed.value && !sidebarFloating.value) return 84
+  if (sidebarFloating.value) return 300 - 96
+  return sidebarWidth.value - 96
+})
+
+const toolbarAnimating = ref(false)
+watch([sidebarCollapsed, sidebarFloating], () => {
+  toolbarAnimating.value = true
+  setTimeout(() => toolbarAnimating.value = false, 350)
+})
+
 // Close floating sidebar with animation
 function closeFloatingSidebar() {
   if (!sidebarFloating.value || sidebarFloatingClosing.value) return
@@ -288,14 +322,13 @@ watch(sidebarCollapsed, (collapsed) => {
   }
 })
 
-// Update traffic lights when sidebar state changes (main window only)
-watch([sidebarCollapsed, sidebarFloating, showMediaPanel], ([collapsed, floating, mediaOpen]) => {
+// Persist sidebar collapsed state and always show traffic lights
+watch([sidebarCollapsed, sidebarFloating, showMediaPanel], ([collapsed]) => {
   localStorage.setItem('sidebarCollapsed', String(collapsed))
   // Skip traffic light control for settings/preview windows - always show there
   if (isSettingsWindow || isImagePreviewWindow) return
-  // Show traffic lights when sidebar is visible (expanded or floating) or media panel is open
-  const showTrafficLights = !collapsed || floating || mediaOpen
-  window.electronAPI?.setWindowButtonVisibility?.(showTrafficLights).catch(() => {
+  // Always show traffic lights since sidebar strip is always visible
+  window.electronAPI?.setWindowButtonVisibility?.(true).catch(() => {
     // Handler may not be registered yet during initial load
   })
 }, { immediate: true })
@@ -476,6 +509,41 @@ html[data-theme='light'] .sidebar-floating-backdrop {
 @keyframes fadeOut {
   from { opacity: 1; }
   to { opacity: 0; }
+}
+
+/* App toolbar — single set of buttons that slides between sidebar right and traffic lights */
+.app-toolbar {
+  position: fixed;
+  top: 8px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  z-index: 600;
+}
+
+.app-toolbar.transitioning {
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-toolbar-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  -webkit-app-region: no-drag;
+}
+
+.app-toolbar-btn:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 
 /* Search Overlay */

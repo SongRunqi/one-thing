@@ -192,20 +192,10 @@ defineExpose({
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  /* Use lighter background to appear "on top" of the base */
   background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
-  /* Add subtle inner glow at top for raised effect */
   position: relative;
-  border-radius: var(--radius-lg);
   overflow: hidden;
-  /* "Placed on surface" shadow - more prominent */
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.15),
-    0 8px 16px rgba(0, 0, 0, 0.2),
-    0 20px 40px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   border: none;
-  /* Prevent flicker during sidebar toggle */
   contain: layout style;
 }
 
@@ -214,9 +204,6 @@ defineExpose({
   flex-direction: row;
   flex: 1;
   min-width: 0;
-  /* Inherit parent's bottom border-radius for proper clipping */
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -226,9 +213,6 @@ defineExpose({
   flex: 1;
   min-width: 0;
   position: relative;
-  /* Inherit parent's bottom border-radius for proper clipping */
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
   overflow: hidden;
 }
 

@@ -90,31 +90,6 @@
 
         <!-- Archived Chats Content -->
         <ArchivedChatsContent v-else-if="activeNav === 'archive'" />
-
-        <!-- Other content (Downloads, etc.) -->
-        <template v-else>
-          <div class="content-header">
-            <input
-              type="text"
-              class="search-input"
-              placeholder="Search..."
-            />
-          </div>
-
-          <div class="content-body">
-            <div class="empty-state">
-              <div class="empty-icon">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                  <circle cx="8.5" cy="8.5" r="1.5"/>
-                  <polyline points="21 15 16 10 5 21"/>
-                </svg>
-              </div>
-              <p class="empty-text">Coming soon</p>
-              <p class="empty-hint">This feature is under development</p>
-            </div>
-          </div>
-        </template>
       </div>
     </div>
   </Transition>
@@ -126,10 +101,6 @@ import ArchivedChatsContent from './ArchivedChatsContent.vue'
 import { useMediaStore, type GeneratedMedia } from '@/stores/media'
 import {
   Images,
-  Download,
-  PanelTop,
-  LayoutGrid,
-  Zap,
   Archive,
 } from 'lucide-vue-next'
 
@@ -196,10 +167,6 @@ onUnmounted(() => {
 // Navigation items with lucide-vue-next icons
 const navItems = [
   { id: 'media', label: 'Media', icon: Images },
-  { id: 'downloads', label: 'Downloads', icon: Download },
-  { id: 'easels', label: 'Easels', icon: PanelTop },
-  { id: 'spaces', label: 'Spaces', icon: LayoutGrid },
-  { id: 'boosts', label: 'Boosts', icon: Zap },
   { id: 'archive', label: 'Archived Chats', icon: Archive },
 ]
 

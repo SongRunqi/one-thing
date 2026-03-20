@@ -4,12 +4,8 @@
     :style="sidebarStyle"
   >
     <div v-show="showContent" class="sidebar-content" :class="{ 'content-hidden': collapsed && !floating }">
-      <!-- Sidebar Header: Traffic lights space + Search + New Chat -->
-      <SidebarHeader
-        :search-query="localSearchQuery"
-        @toggle-collapse="$emit('toggleCollapse')"
-        @update:search-query="localSearchQuery = $event"
-      />
+      <!-- Sidebar Header: Traffic lights space -->
+      <SidebarHeader />
 
       <!-- Session List -->
       <SessionList
@@ -31,8 +27,12 @@
         @overflow-change="handleOverflowChange"
       />
 
-      <!-- Settings bottom bar -->
+      <!-- Bottom bar -->
       <div class="sidebar-bottom">
+        <button class="sidebar-bottom-btn" title="Media" @click="$emit('toggle-media-panel')">
+          <Image :size="18" :stroke-width="1.5" />
+        </button>
+        <div class="sidebar-bottom-spacer"></div>
         <button class="sidebar-bottom-btn" title="Settings" @click="$emit('open-settings')">
           <Settings :size="18" :stroke-width="1.5" />
         </button>
@@ -66,7 +66,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
-import { Settings } from 'lucide-vue-next'
+import { Settings, Image } from 'lucide-vue-next'
 import SidebarHeader from './SidebarHeader.vue'
 import SessionList from './SessionList.vue'
 import SessionContextMenu from './SessionContextMenu.vue'
@@ -117,7 +117,7 @@ const localSearchQuery = ref('')
 const isResizing = ref(false)
 const hasContentBelow = ref(false)
 
-// Content visibility - always show, use CSS for fade effect
+// Content visibility
 const showContent = computed(() => !props.collapsed || props.floating)
 
 // Inline editing state
@@ -341,10 +341,6 @@ onUnmounted(() => {
   pointer-events: auto;
 }
 
-.sidebar.floating .traffic-lights-row {
-  margin-top: 3px;
-}
-
 .sidebar.floating.floating-closing {
   animation: slideOutLeft 0.2s cubic-bezier(0.4, 0, 1, 1) forwards;
 }
@@ -425,6 +421,10 @@ onUnmounted(() => {
 .sidebar-bottom-btn:hover {
   background: var(--hover);
   color: var(--text);
+}
+
+.sidebar-bottom-spacer {
+  flex: 1;
 }
 
 @media (max-width: 768px) {
