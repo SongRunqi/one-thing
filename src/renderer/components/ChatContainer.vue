@@ -630,12 +630,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
-  border-radius: var(--radius-lg);
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.15),
-    0 8px 16px rgba(0, 0, 0, 0.2),
-    0 20px 40px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .empty-state-content {
