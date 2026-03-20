@@ -30,7 +30,7 @@
         :no-transition="sidebarNoTransition"
         :width="sidebarWidth"
         :media-panel-open="showMediaPanel"
-        @open-settings="showSettings = true"
+        @open-settings="window.electronAPI.openSettingsWindow()"
         @toggle-collapse="handleSidebarToggle"
         @open-search="openSearch"
         @create-new-chat="createNewChat"
@@ -197,6 +197,7 @@ function toggleMediaPanel() {
 
 function closeMediaPanel() {
   showMediaPanel.value = false
+  sidebarCollapsed.value = false
   floatingCooldown.value = true
   setTimeout(() => {
     floatingCooldown.value = false
