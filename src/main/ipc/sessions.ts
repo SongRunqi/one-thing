@@ -70,15 +70,6 @@ export function registerSessionHandlers() {
         return { success: false, error: 'Session not found' }
       }
 
-      // If session has no workingDirectory but its workspace does, inherit it
-      if (!session.workingDirectory && session.workspaceId) {
-        const workspace = store.getWorkspace(session.workspaceId)
-        if (workspace?.workingDirectory) {
-          store.inheritSessionWorkingDirectory(sessionId, workspace.workingDirectory)
-          session.workingDirectory = workspace.workingDirectory
-        }
-      }
-
       store.setCurrentSessionId(sessionId)
       return {
         success: true,
@@ -106,9 +97,9 @@ export function registerSessionHandlers() {
   })
 
   // 创建新会话
-  ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name, workspaceId, agentId }) => {
+  ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name, agentId }) => {
     const sessionId = uuidv4()
-    const session = store.createSession(sessionId, name || 'New Chat', workspaceId, agentId)
+    const session = store.createSession(sessionId, name || 'New Chat', agentId)
     return { success: true, session }
   })
 
@@ -117,16 +108,6 @@ export function registerSessionHandlers() {
     const session = store.getSession(sessionId)
     if (!session) {
       return { success: false, error: 'Session not found' }
-    }
-
-    // If session has no workingDirectory but its workspace does, inherit it
-    // Note: Use inheritSessionWorkingDirectory to avoid updating updatedAt
-    if (!session.workingDirectory && session.workspaceId) {
-      const workspace = store.getWorkspace(session.workspaceId)
-      if (workspace?.workingDirectory) {
-        store.inheritSessionWorkingDirectory(sessionId, workspace.workingDirectory)
-        session.workingDirectory = workspace.workingDirectory
-      }
     }
 
     store.setCurrentSessionId(sessionId)
@@ -253,25 +234,6 @@ export function registerSessionHandlers() {
   ipcMain.handle(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, async (_event, sessionId: string) => {
     const usage = getSessionUsage(sessionId)
     return { success: true, usage }
-  })
-
-  // 设置会话的内置模式 (Plan mode / Build mode)
-  ipcMain.handle(IPC_CHANNELS.SET_SESSION_BUILTIN_MODE, async (_event, { sessionId, mode }) => {
-    const session = store.getSession(sessionId)
-    if (!session) {
-      return { success: false, error: 'Session not found' }
-    }
-    store.updateSessionBuiltinMode(sessionId, mode)
-    return { success: true, mode }
-  })
-
-  // 获取会话的内置模式
-  ipcMain.handle(IPC_CHANNELS.GET_SESSION_BUILTIN_MODE, async (_event, { sessionId }) => {
-    const session = store.getSession(sessionId)
-    if (!session) {
-      return { success: false, error: 'Session not found' }
-    }
-    return { success: true, mode: session.builtinMode || 'build' }
   })
 
   // Add a system message to a session (for /files command persistence)

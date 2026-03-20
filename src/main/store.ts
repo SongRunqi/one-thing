@@ -44,27 +44,14 @@ export {
   updateSessionModel,
   updateSessionWorkingDirectory,
   inheritSessionWorkingDirectory,
-  updateSessionBuiltinMode,
   updateSessionTokenUsage,
   getSessionTokenUsage,
-  deleteSessionsByWorkspace,
   // Optimized session loading (Phase 4: Metadata Separation)
   getSessionsList,
   getSessionDetails,
   getSessionMessages,
   getCachedProviderConfig,
   cacheSessionProviderConfig,
-
-  // Workspaces
-  getWorkspaces,
-  getWorkspace,
-  createWorkspace,
-  updateWorkspace,
-  deleteWorkspace,
-  switchWorkspace,
-  uploadWorkspaceAvatar,
-  getCurrentWorkspaceId,
-  setCurrentWorkspaceId,
 
   // Initialization
   initializeStores,
