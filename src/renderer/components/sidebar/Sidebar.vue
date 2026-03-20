@@ -11,13 +11,6 @@
         @update:search-query="localSearchQuery = $event"
       />
 
-      <!-- Agent Grid at top (shows pinned Custom Agents) -->
-      <AgentGrid
-        v-if="customAgentsStore.pinnedAgents.length > 0"
-        @edit-agent="(agent) => $emit('edit-agent', agent)"
-        @open-create-dialog="$emit('open-agent-dialog')"
-      />
-
       <!-- Session List -->
       <SessionList
         :sessions="flatSessions"
@@ -50,15 +43,6 @@
         @delete="handleContextDelete"
       />
 
-      <!-- Workspace Switcher -->
-      <WorkspaceSwitcher
-        :media-panel-open="mediaPanelOpen"
-        :show-separator="hasContentBelow"
-        @toggle-media-panel="$emit('toggle-media-panel')"
-        @open-create-dialog="$emit('open-workspace-dialog')"
-        @open-agent-dialog="$emit('open-agent-dialog')"
-        @edit-workspace="(workspace) => $emit('edit-workspace', workspace)"
-      />
     </div>
 
     <!-- Resize Handle -->
@@ -75,15 +59,12 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
-import { useCustomAgentsStore } from '@/stores/custom-agents'
-import WorkspaceSwitcher from '@/components/WorkspaceSwitcher.vue'
-import AgentGrid from '@/components/AgentGrid.vue'
 import SidebarHeader from './SidebarHeader.vue'
 import SessionList from './SessionList.vue'
 import SessionContextMenu from './SessionContextMenu.vue'
 import SidebarResizeHandle from './SidebarResizeHandle.vue'
 import { useSessionOrganizer, type SessionWithBranches } from './useSessionOrganizer'
-import type { ChatSession, Workspace, Agent, CustomAgent } from '@/types'
+import type { ChatSession } from '@/types'
 
 interface Props {
   collapsed?: boolean
@@ -105,10 +86,6 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   toggleCollapse: []
   'toggle-media-panel': []
-  'open-workspace-dialog': []
-  'edit-workspace': [workspace: Workspace]
-  'open-agent-dialog': []
-  'edit-agent': [agent: Agent | CustomAgent]
   'create-new-chat': []
   'open-search': []
   'resize': [width: number]
@@ -117,7 +94,6 @@ const emit = defineEmits<{
 // Stores
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
-const customAgentsStore = useCustomAgentsStore()
 
 // Composable
 const sessionOrganizer = useSessionOrganizer()

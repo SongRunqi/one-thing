@@ -5,17 +5,15 @@
       :session-name="currentSession?.name || 'New chat'"
       :working-directory="currentSession?.workingDirectory || null"
       :session-agent="sessionAgent"
-      :agents="customAgentsStore.customAgents"
+      :agents="[]"
       :is-branch-session="isBranchSession"
       :show-sidebar-toggle="showSidebarToggle"
       :show-split-button="canClose !== undefined"
       :can-close="!!canClose"
-      :is-right-sidebar-open="rightSidebarStore.isOpen"
+      :is-right-sidebar-open="false"
       @toggle-sidebar="emit('toggleSidebar')"
-      @toggle-right-sidebar="rightSidebarStore.toggle()"
       @open-directory-picker="openWorkingDirectoryPicker"
       @update-title="handleUpdateTitle"
-      @select-agent="selectAgent"
       @go-to-parent="goToParentSession"
       @split="emit('split')"
       @equalize="emit('equalize')"
@@ -54,18 +52,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
-import { useCustomAgentsStore } from '@/stores/custom-agents'
-import { useRightSidebarStore } from '@/stores/right-sidebar'
 import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import ChatHeader from './ChatHeader.vue'
 import SettingsPanel from '../SettingsPanel.vue'
-import type { CustomAgent } from '@/types'
 
 interface Props {
   showSettings?: boolean
-  showAgentSettings?: boolean
   sessionId?: string
   canClose?: boolean
   showSidebarToggle?: boolean
@@ -73,15 +67,12 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   showSettings: false,
-  showAgentSettings: false,
   showSidebarToggle: false,
 })
 
 const emit = defineEmits<{
   closeSettings: []
   openSettings: []
-  closeAgentSettings: []
-  openAgentSettings: []
   close: []
   split: []
   equalize: []
@@ -90,8 +81,6 @@ const emit = defineEmits<{
 }>()
 
 const sessionsStore = useSessionsStore()
-const customAgentsStore = useCustomAgentsStore()
-const rightSidebarStore = useRightSidebarStore()
 
 // Get effective session ID (props.sessionId or current session)
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
@@ -117,12 +106,8 @@ const currentSession = computed(() => {
 // Messages for this panel (from composable)
 const panelMessages = computed(() => messages.value)
 
-// Get the agent for current session
-const sessionAgent = computed(() => {
-  const agentId = currentSession.value?.agentId
-  if (!agentId) return null
-  return customAgentsStore.customAgents.find(a => a.id === agentId) || null
-})
+// Agent feature removed - always null
+const sessionAgent = computed(() => null)
 
 // Check if current session is a branch
 const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)
@@ -153,27 +138,6 @@ async function openWorkingDirectoryPicker() {
 async function handleUpdateTitle(title: string) {
   if (!currentSession.value) return
   await sessionsStore.renameSession(currentSession.value.id, title)
-}
-
-// Handle agent selection from ChatHeader
-async function selectAgent(agentId: string | null) {
-  const sessionId = currentSession.value?.id
-  if (!sessionId) return
-
-  try {
-    await window.electronAPI.updateSessionAgent(sessionId, agentId)
-    // Update local session data
-    const session = sessionsStore.sessions.find(s => s.id === sessionId)
-    if (session) {
-      if (agentId) {
-        session.agentId = agentId
-      } else {
-        delete session.agentId
-      }
-    }
-  } catch (error) {
-    console.error('Failed to update session agent:', error)
-  }
 }
 
 // Input box ref for setting quoted text

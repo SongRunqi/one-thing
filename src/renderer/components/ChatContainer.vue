@@ -8,29 +8,7 @@
       @mouseleave="$emit('hide-floating-sidebar')"
     ></div>
 
-    <!-- Memory Editor View (full-screen mode) -->
-    <div v-if="selectedMemoryFilePath" class="chat-panels">
-      <div class="full-page-container">
-        <MemoryEditor
-          :file-path="selectedMemoryFilePath"
-          @close="$emit('close-memory-file')"
-        />
-      </div>
-    </div>
-
-    <!-- Create/Edit Agent Page (full-screen mode) -->
-    <div v-else-if="showAgentCreate || editingAgent" class="chat-panels">
-      <div class="full-page-container">
-        <CreateAgentPage
-          :agent="editingAgent"
-          @created="handleAgentCreated"
-          @saved="handleAgentSaved"
-          @close="$emit('close-agent-create')"
-        />
-      </div>
-    </div>
-
-    <div v-else class="chat-panels">
+    <div class="chat-panels">
       <!-- Empty state when no sessions -->
       <div v-if="!sessionsStore.currentSessionId" class="empty-state">
         <div class="empty-state-content">
@@ -57,7 +35,6 @@
         :can-close="panels.length > 1"
         :style="{ flex: panel.flex }"
         :show-settings="index === 0 && showSettings"
-        :show-agent-settings="index === 0 && showAgentSettings"
         :show-sidebar-toggle="index === 0 && sidebarCollapsed && !sidebarFloating && !mediaPanelOpen"
         @close="closePanel(panel.id)"
         @split="openSessionPicker(panel.id)"
@@ -65,8 +42,6 @@
         @split-with-branch="(sessionId) => splitPanel(panel.id, sessionId)"
         @close-settings="$emit('close-settings')"
         @open-settings="$emit('open-settings')"
-        @close-agent-settings="$emit('close-agent-settings')"
-        @open-agent-settings="$emit('open-agent-settings')"
         @toggle-sidebar="$emit('toggle-sidebar')"
       />
       <!-- Panel resizer -->
@@ -156,10 +131,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
-import CreateAgentPage from '@/components/agent/CreateAgentPage.vue'
-import MemoryEditor from '@/components/MemoryEditor.vue'
 import DiffOverlay from '@/components/chat/DiffOverlay.vue'
-import type { CustomAgent } from '@/types'
 
 // Type for diff overlay data
 interface DiffOverlayData {
@@ -177,14 +149,10 @@ interface Panel {
 
 const props = defineProps<{
   showSettings?: boolean
-  showAgentSettings?: boolean
   sidebarCollapsed?: boolean
   sidebarFloating?: boolean
   showHoverTrigger?: boolean
   mediaPanelOpen?: boolean
-  showAgentCreate?: boolean
-  editingAgent?: CustomAgent | null
-  selectedMemoryFilePath?: string | null
   showDiffOverlay?: boolean
   diffOverlayData?: DiffOverlayData | null
 }>()
@@ -192,27 +160,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   'close-settings': []
   'open-settings': []
-  'close-agent-settings': []
-  'open-agent-settings': []
   'toggle-sidebar': []
   'show-floating-sidebar': []
   'hide-floating-sidebar': []
-  'close-agent-create': []
-  'agent-created': [agent: CustomAgent]
-  'agent-saved': [agent: CustomAgent]
-  'close-memory-file': []
   'close-diff-overlay': []
 }>()
-
-// Handle agent creation
-function handleAgentCreated(agent: CustomAgent) {
-  emit('agent-created', agent)
-}
-
-// Handle agent save (edit mode)
-function handleAgentSaved(agent: CustomAgent) {
-  emit('agent-saved', agent)
-}
 
 const sessionsStore = useSessionsStore()
 

@@ -32,18 +32,8 @@
 
       <!-- Content Area -->
       <div class="media-content">
-        <!-- Memory Content -->
-        <MemoryContent v-if="activeNav === 'memory'" @open-file="handleOpenMemoryFile" />
-
-        <!-- Agents Content -->
-        <AgentsContent
-          v-else-if="activeNav === 'agents'"
-          @create-agent="$emit('create-agent')"
-          @edit-agent="(agent) => $emit('edit-agent', agent)"
-        />
-
         <!-- Media Content -->
-        <template v-else-if="activeNav === 'media'">
+        <template v-if="activeNav === 'media'">
           <div class="content-header">
             <input
               v-model="searchQuery"
@@ -101,9 +91,6 @@
         <!-- Archived Chats Content -->
         <ArchivedChatsContent v-else-if="activeNav === 'archive'" />
 
-        <!-- Infographics Editor -->
-        <InfographicEditor v-else-if="activeNav === 'infographics'" />
-
         <!-- Other content (Downloads, etc.) -->
         <template v-else>
           <div class="content-header">
@@ -135,22 +122,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import MemoryContent from './MemoryContent.vue'
-import AgentsContent from './AgentsContent.vue'
 import ArchivedChatsContent from './ArchivedChatsContent.vue'
-import InfographicEditor from './infographic/InfographicEditor.vue'
 import { useMediaStore, type GeneratedMedia } from '@/stores/media'
-import type { CustomAgent } from '@/types'
 import {
-  Sparkles,
-  Bot,
   Images,
   Download,
   PanelTop,
   LayoutGrid,
   Zap,
   Archive,
-  BarChart2
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -160,16 +140,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  'create-agent': []
-  'edit-agent': [agent: CustomAgent]
-  'open-memory-file': [filePath: string]
 }>()
 
 const mediaStore = useMediaStore()
 const searchQuery = ref('')
 
-// Default to 'memory' tab, or use initialTab if provided
-const activeNav = ref(props.initialTab || 'memory')
+// Default to 'media' tab, or use initialTab if provided
+const activeNav = ref(props.initialTab || 'media')
 
 // Filter images by search query
 const filteredImages = computed(() => {
@@ -218,10 +195,7 @@ onUnmounted(() => {
 
 // Navigation items with lucide-vue-next icons
 const navItems = [
-  { id: 'memory', label: 'Memory', icon: Sparkles },
-  { id: 'agents', label: 'Agents', icon: Bot },
   { id: 'media', label: 'Media', icon: Images },
-  { id: 'infographics', label: '图表', icon: BarChart2 },
   { id: 'downloads', label: 'Downloads', icon: Download },
   { id: 'easels', label: 'Easels', icon: PanelTop },
   { id: 'spaces', label: 'Spaces', icon: LayoutGrid },
@@ -229,10 +203,6 @@ const navItems = [
   { id: 'archive', label: 'Archived Chats', icon: Archive },
 ]
 
-// Handle opening memory file in chat area
-function handleOpenMemoryFile(filePath: string) {
-  emit('open-memory-file', filePath)
-}
 </script>
 
 <style scoped>

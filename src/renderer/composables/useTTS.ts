@@ -1,5 +1,4 @@
 import { ref, shallowRef, onMounted, onUnmounted } from 'vue'
-import type { AgentVoice } from '@/types'
 
 export interface VoiceOption {
   voiceURI: string
@@ -62,7 +61,7 @@ export function useTTS() {
   /**
    * Speak text with optional voice configuration
    */
-  function speak(text: string, voiceConfig?: AgentVoice): Promise<void> {
+  function speak(text: string, voiceConfig?: { enabled?: boolean; voiceURI?: string; rate?: number; pitch?: number; volume?: number }): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!isSupported.value) {
         reject(new Error('Speech synthesis not supported'))

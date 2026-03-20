@@ -111,10 +111,7 @@ export const useChatStore = defineStore('chat', () => {
 
   // ============ UI State (Persisted across re-renders) ============
 
-  // Expanded agent panels (step IDs of agent steps that are expanded)
-  const expandedAgentPanels = ref<Set<string>>(new Set())
-
-  // Expanded tool calls within agent panels (tool call IDs that show details)
+  // Expanded tool calls (tool call IDs that show details)
   const expandedToolCalls = ref<Set<string>>(new Set())
 
   // ============ Getters ============
@@ -166,39 +163,6 @@ export const useChatStore = defineStore('chat', () => {
   // ============ UI State Functions ============
 
   /**
-   * Check if an agent panel is expanded
-   */
-  function isAgentPanelExpanded(stepId: string): boolean {
-    return expandedAgentPanels.value.has(stepId)
-  }
-
-  /**
-   * Toggle agent panel expansion state
-   */
-  function toggleAgentPanel(stepId: string): void {
-    const newSet = new Set(expandedAgentPanels.value)
-    if (newSet.has(stepId)) {
-      newSet.delete(stepId)
-    } else {
-      newSet.add(stepId)
-    }
-    expandedAgentPanels.value = newSet
-  }
-
-  /**
-   * Set agent panel expansion state explicitly
-   */
-  function setAgentPanelExpanded(stepId: string, expanded: boolean): void {
-    const newSet = new Set(expandedAgentPanels.value)
-    if (expanded) {
-      newSet.add(stepId)
-    } else {
-      newSet.delete(stepId)
-    }
-    expandedAgentPanels.value = newSet
-  }
-
-  /**
    * Check if a tool call is expanded (showing details)
    */
   function isToolCallExpanded(toolCallId: string): boolean {
@@ -219,7 +183,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * Collapse all tool calls within an agent panel
+   * Collapse specified tool calls
    */
   function collapseAllToolCalls(toolCallIds: string[]): void {
     const newSet = new Set(expandedToolCalls.value)
@@ -1320,12 +1284,8 @@ export const useChatStore = defineStore('chat', () => {
     isSessionGenerating,
     isSessionCompacting,
 
-    // UI State (for AgentExecutionPanel)
-    expandedAgentPanels,
+    // UI State
     expandedToolCalls,
-    isAgentPanelExpanded,
-    toggleAgentPanel,
-    setAgentPanelExpanded,
     isToolCallExpanded,
     toggleToolCall,
     collapseAllToolCalls,

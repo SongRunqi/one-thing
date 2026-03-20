@@ -2,12 +2,11 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatSession, SessionMeta, SessionDetails } from '@/types'
 import { useChatStore } from './chat'
-import { useWorkspacesStore } from './workspaces'
 import { useSettingsStore } from './settings'
 
 // Base session type for list display - can be either metadata-only or full session
 // This allows mixed loading: metadata on startup, full session after switching
-type SessionListItem = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary' | 'plan'>>
+type SessionListItem = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary'>>
 
 export const useSessionsStore = defineStore('sessions', () => {
   // Sessions list stores metadata-only items initially
@@ -24,19 +23,9 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   const sessionCount = computed(() => sessions.value.length)
 
-  // Filter sessions by current workspace (excluding archived), sorted by createdAt desc (stable order)
+  // Filter sessions (excluding archived), sorted by pinned first
   const filteredSessions = computed((): SessionListItem[] => {
-    const workspacesStore = useWorkspacesStore()
-    const workspaceId = workspacesStore.currentWorkspaceId
-
-    let filtered: SessionListItem[]
-    if (workspaceId === null) {
-      // Default mode: show sessions without workspace (exclude archived)
-      filtered = sessions.value.filter(s => !s.workspaceId && !s.isArchived)
-    } else {
-      // Workspace mode: show sessions for this workspace (exclude archived)
-      filtered = sessions.value.filter(s => s.workspaceId === workspaceId && !s.isArchived)
-    }
+    const filtered = sessions.value.filter(s => !s.isArchived)
 
     // Only group by pinned, keep array order (new sessions are unshifted to top)
     const pinned = filtered.filter(s => s.isPinned)
@@ -89,10 +78,7 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   async function createSession(name: string, agentId?: string) {
     try {
-      const workspacesStore = useWorkspacesStore()
-      const workspaceId = workspacesStore.currentWorkspaceId
-
-      // Check if there's already an empty "New Chat" session in the current workspace (no messages)
+      // Check if there's already an empty "New Chat" session (no messages)
       // Only reuse if no specific agent is requested, and only top-level sessions (not branches)
       // Use messageCount (from metadata) instead of messages array (which may not be loaded)
       if (!agentId) {
@@ -111,7 +97,7 @@ export const useSessionsStore = defineStore('sessions', () => {
         }
       }
 
-      const response = await window.electronAPI.createSession(name, workspaceId || undefined, agentId)
+      const response = await window.electronAPI.createSession(name, undefined, agentId)
       if (response.success && response.session) {
         sessions.value.unshift(response.session)
         await switchSession(response.session.id)
@@ -128,10 +114,7 @@ export const useSessionsStore = defineStore('sessions', () => {
    */
   async function createSessionWithoutSwitch(name: string, agentId?: string) {
     try {
-      const workspacesStore = useWorkspacesStore()
-      const workspaceId = workspacesStore.currentWorkspaceId
-
-      const response = await window.electronAPI.createSession(name, workspaceId || undefined, agentId)
+      const response = await window.electronAPI.createSession(name, undefined, agentId)
       if (response.success && response.session) {
         sessions.value.unshift(response.session)
         return response.session

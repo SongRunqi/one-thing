@@ -65,9 +65,6 @@
       @executed="handleQuickCommandExecuted"
     />
 
-    <!-- Plan Panel -->
-    <PlanPanel :session-id="effectiveSessionId" />
-
     <div class="composer" :class="{ focused: isFocused }" @click="focusTextarea">
       <!-- Input area -->
       <div class="input-area">
@@ -99,8 +96,6 @@
           />
           <SkillsMenu @open-settings="() => emit('openToolSettings')" />
           <ModelSelector :session-id="props.sessionId" />
-          <ContextIndicator :session-id="props.sessionId" />
-          <ModeToggle ref="modeToggleRef" :session-id="effectiveSessionId" />
         </div>
 
         <div class="toolbar-right" @click.stop>
@@ -142,11 +137,8 @@ import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
 import QuickCommandBar from './QuickCommandBar.vue'
 import ModelSelector from './ModelSelector.vue'
-import ContextIndicator from './ContextIndicator.vue'
 import ToolsMenu from './ToolsMenu.vue'
 import SkillsMenu from './SkillsMenu.vue'
-import ModeToggle from './ModeToggle.vue'
-import PlanPanel from './PlanPanel.vue'
 import { X, Paperclip, Square, Send, Check } from 'lucide-vue-next'
 import { findCommand } from '@/services/commands'
 
@@ -186,7 +178,6 @@ const isSending = ref(false)
 const isComposing = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const composerWrapperRef = ref<HTMLElement | null>(null)
-const modeToggleRef = ref<InstanceType<typeof ModeToggle> | null>(null)
 
 // Session input cache
 const sessionInputCache = new Map<string, string>()
@@ -349,15 +340,6 @@ function handleKeyDown(e: KeyboardEvent) {
   if (e.key === 'ArrowDown') {
     if (handleHistoryNavigation('down')) {
       e.preventDefault()
-      return
-    }
-  }
-
-  // Tab toggles between Build/Ask mode (only when input is empty)
-  if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    if (messageInput.value.trim() === '') {
-      e.preventDefault()
-      modeToggleRef.value?.toggleMode()
       return
     }
   }

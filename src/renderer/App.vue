@@ -14,9 +14,6 @@
       <MediaPanel
         :visible="showMediaPanel"
         @close="closeMediaPanel"
-        @create-agent="openAgentDialog()"
-        @edit-agent="openAgentDialog"
-        @open-memory-file="openMemoryFile"
       />
 
       <!-- Floating sidebar overlay backdrop -->
@@ -38,46 +35,24 @@
         @open-search="openSearch"
         @create-new-chat="createNewChat"
         @toggle-media-panel="toggleMediaPanel"
-        @open-workspace-dialog="openWorkspaceDialog()"
-        @edit-workspace="openWorkspaceDialog"
-        @open-agent-dialog="openAgentDialog()"
-        @edit-agent="openAgentDialog"
         @resize="handleSidebarResize"
         @mouseleave="handleSidebarMouseLeave"
       />
       <ChatContainer
         ref="chatContainerRef"
         :show-settings="showSettings"
-        :show-agent-settings="showAgentSettings"
         :sidebar-collapsed="sidebarCollapsed"
         :sidebar-floating="sidebarFloating"
         :show-hover-trigger="sidebarCollapsed && !sidebarFloating && !showMediaPanel"
         :media-panel-open="showMediaPanel"
-        :show-agent-create="showAgentCreate"
-        :editing-agent="editingAgent"
-        :selected-memory-file-path="selectedMemoryFilePath"
         :show-diff-overlay="showDiffOverlay"
         :diff-overlay-data="diffOverlayData"
         @close-settings="showSettings = false"
         @open-settings="showSettings = true"
-        @close-agent-settings="showAgentSettings = false"
-        @open-agent-settings="showAgentSettings = true"
         @toggle-sidebar="handleSidebarToggle"
         @show-floating-sidebar="handleTriggerEnter"
         @hide-floating-sidebar="handleTriggerLeave"
-        @close-agent-create="closeAgentCreate"
-        @agent-created="handleAgentCreated"
-        @agent-saved="handleAgentSaved"
-        @close-memory-file="closeMemoryFile"
         @close-diff-overlay="closeDiffOverlay"
-      />
-
-      <!-- Right Panel (Sidebar + Preview) -->
-      <RightPanel
-        :session-id="sessionsStore.currentSessionId"
-        :working-directory="sessionsStore.currentSession?.workingDirectory"
-        @open-diff="openDiffOverlay"
-        @open-commit-dialog="openCommitDialog"
       />
 
       <!-- Commit Dialog -->
@@ -90,13 +65,6 @@
         @committed="handleCommitted"
       />
     </div>
-
-    <!-- Workspace Dialog -->
-    <WorkspaceDialog
-      :visible="showWorkspaceDialog"
-      :workspace="editingWorkspace"
-      @close="closeWorkspaceDialog"
-    />
 
     <!-- Search Overlay (teleported to body) -->
     <Teleport to="body">
@@ -146,22 +114,15 @@ import { onMounted, onUnmounted, ref, computed, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
-import { useWorkspacesStore } from '@/stores/workspaces'
-import { useCustomAgentsStore } from '@/stores/custom-agents'
 import { useThemeStore } from '@/stores/themes'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { Sidebar } from '@/components/sidebar'
-import { RightPanel } from '@/components/right-panel'
-import { useRightSidebarStore } from '@/stores/right-sidebar'
 import ChatContainer from '@/components/ChatContainer.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
-import WorkspaceDialog from '@/components/WorkspaceDialog.vue'
-// CustomAgentDialog removed - now using full-page CreateAgentPage for both create and edit
 import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
 import CommitDialog from '@/components/git/CommitDialog.vue'
-import type { Workspace, CustomAgent } from '@/types'
 
 // Type for diff overlay data
 interface DiffOverlayData {
@@ -178,10 +139,7 @@ const isImagePreviewWindow = window.location.hash.startsWith('#/image-preview')
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
-const workspacesStore = useWorkspacesStore()
-const customAgentsStore = useCustomAgentsStore()
 const themeStore = useThemeStore()
-const rightSidebarStore = useRightSidebarStore()
 
 const showSettings = ref(false)
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
@@ -193,18 +151,8 @@ function handleSidebarResize(width: number) {
   localStorage.setItem('sidebarWidth', String(width))
 }
 
-// Workspace and Media Panel state
-const showWorkspaceDialog = ref(false)
-const editingWorkspace = ref<Workspace | null>(null)
+// Media Panel state
 const showMediaPanel = ref(false)
-
-// Agent state
-const editingAgent = ref<CustomAgent | null>(null)
-const showAgentSettings = ref(false)
-const showAgentCreate = ref(false)
-
-// Memory state
-const selectedMemoryFilePath = ref<string | null>(null)
 
 // Diff overlay state
 const showDiffOverlay = ref(false)
@@ -213,53 +161,6 @@ const diffOverlayData = ref<DiffOverlayData | null>(null)
 // Commit dialog state
 const showCommitDialog = ref(false)
 const stagedFilesCount = ref(0)
-
-function openWorkspaceDialog(workspace?: Workspace) {
-  editingWorkspace.value = workspace || null
-  showWorkspaceDialog.value = true
-}
-
-function closeWorkspaceDialog() {
-  showWorkspaceDialog.value = false
-  editingWorkspace.value = null
-}
-
-function openAgentDialog(agent?: CustomAgent) {
-  if (agent) {
-    // Editing existing CustomAgent - use full-page editor
-    editingAgent.value = agent
-    showAgentCreate.value = false
-  } else {
-    // Creating new agent - use full-page editor
-    editingAgent.value = null
-    showAgentCreate.value = true
-  }
-}
-
-function closeAgentCreate() {
-  showAgentCreate.value = false
-  editingAgent.value = null
-}
-
-function handleAgentCreated(_agent: CustomAgent) {
-  showAgentCreate.value = false
-  editingAgent.value = null
-  // Agent is already created and pinned in the store by CreateAgentPage
-}
-
-function handleAgentSaved(_agent: CustomAgent) {
-  editingAgent.value = null
-  showAgentCreate.value = false
-  // Agent is already updated in the store by CreateAgentPage
-}
-
-function openMemoryFile(filePath: string) {
-  selectedMemoryFilePath.value = filePath
-}
-
-function closeMemoryFile() {
-  selectedMemoryFilePath.value = null
-}
 
 // Diff overlay functions
 function openDiffOverlay(data: DiffOverlayData) {
@@ -309,11 +210,6 @@ function closeMediaPanel() {
 }
 
 
-// Toggle right sidebar
-function toggleRightSidebar() {
-  rightSidebarStore.toggle()
-}
-
 // Setup global keyboard shortcuts
 useShortcuts({
   onNewChat: createNewChat,
@@ -326,13 +222,6 @@ useShortcuts({
   },
 })
 
-// Additional keyboard shortcut for right sidebar (Cmd+Shift+E)
-function handleRightSidebarShortcut(event: KeyboardEvent) {
-  if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'e') {
-    event.preventDefault()
-    toggleRightSidebar()
-  }
-}
 
 // Persist sidebar collapsed state and control traffic lights visibility
 const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true')
@@ -487,29 +376,18 @@ watch(() => settingsStore.effectiveTheme, () => {
   themeStore.reapplyTheme()
 })
 
-// Create new chat (respects selected agent)
-// If there's already an empty "New Chat", reuse it and update agent if needed
+// Create new chat, reusing an existing empty session if available
 async function createNewChat() {
-  const agentId = customAgentsStore.selectedAgentId || null
-
-  // Check if there's an existing empty session in current workspace
+  // Check if there's an existing empty session
   const existingEmptySession = sessionsStore.filteredSessions.find(
     s => (s.name === 'New Chat' || s.name === '') && (!s.messages || s.messages.length === 0)
   )
 
   if (existingEmptySession) {
-    // Switch to existing empty session
     await sessionsStore.switchSession(existingEmptySession.id)
-    // Update agent if different
-    if (existingEmptySession.agentId !== agentId) {
-      await window.electronAPI.updateSessionAgent(existingEmptySession.id, agentId)
-      existingEmptySession.agentId = agentId || undefined
-    }
   } else {
-    // Create a new session with the selected agent
-    await sessionsStore.createSession('New Chat', agentId || undefined)
+    await sessionsStore.createSession('New Chat')
   }
-  // Keep agent selected for future chats
 }
 
 let unsubscribeSettingsChanged: (() => void) | null = null
@@ -518,8 +396,6 @@ let unsubscribeMenuCloseChat: (() => void) | null = null
 
 onMounted(async () => {
   // Load initial data
-  await workspacesStore.loadWorkspaces()
-  await customAgentsStore.loadCustomAgents()
   await sessionsStore.loadSessions()
   await settingsStore.loadSettings()
 
@@ -565,8 +441,6 @@ onMounted(async () => {
     }
   })
 
-  // Right sidebar keyboard shortcut (Cmd+Shift+E)
-  window.addEventListener('keydown', handleRightSidebarShortcut)
 })
 
 onUnmounted(() => {
@@ -579,8 +453,6 @@ onUnmounted(() => {
   if (unsubscribeMenuCloseChat) {
     unsubscribeMenuCloseChat()
   }
-  // Clean up right sidebar shortcut
-  window.removeEventListener('keydown', handleRightSidebarShortcut)
 })
 
 // Theme is managed by settingsStore.applyTheme() which correctly resolves 'system' to 'light'/'dark'

@@ -10,7 +10,7 @@ import { useSessionsStore } from '@/stores/sessions'
 
 // Base session type for organizer - compatible with both metadata-only and full sessions
 // This allows the organizer to work with metadata loaded on startup (no messages)
-type SessionBase = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary' | 'plan'>>
+type SessionBase = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary'>>
 
 // Extended session interface with branch information
 export interface SessionWithBranches extends SessionBase {
