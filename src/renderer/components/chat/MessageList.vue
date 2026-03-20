@@ -90,7 +90,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, onDeactivated, toRaw } from 'vue'
 import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
@@ -615,6 +615,22 @@ onUnmounted(() => {
   }
 })
 
+// KeepAlive deactivation: clear pending timers/RAF to prevent stale callbacks
+onDeactivated(() => {
+  if (scrollCooldownTimer) {
+    clearTimeout(scrollCooldownTimer)
+    scrollCooldownTimer = null
+  }
+  if (navigationCooldownTimer) {
+    clearTimeout(navigationCooldownTimer)
+    navigationCooldownTimer = null
+  }
+  if (navMarkerUpdateFrame !== null) {
+    cancelAnimationFrame(navMarkerUpdateFrame)
+    navMarkerUpdateFrame = null
+  }
+})
+
 // When session changes, reload any pending permission requests
 // This fixes the issue where permission requests are "lost" after switching sessions
 // Watch both sessionId AND messages.length to ensure messages are loaded before restoring permissions
@@ -662,7 +678,7 @@ watch(
 // scrollVersion is an O(1) counter incremented by the store on every chunk —
 // replacing the previous { deep: true } watcher that traversed all messages.
 watch(
-  [() => chatStore.scrollVersion, () => props.messages.length, () => props.isLoading],
+  [() => chatStore.getScrollVersion(effectiveSessionId.value), () => props.messages.length, () => props.isLoading],
   async () => {
     await nextTick()
     if (messageListRef.value && !userScrolledAway.value) {

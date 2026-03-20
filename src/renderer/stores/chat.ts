@@ -103,14 +103,22 @@ export const useChatStore = defineStore('chat', () => {
     return (messageId && messageId !== '') ? messageId : (activeStreams.value.get(sessionId) || '')
   }
 
-  // Scroll trigger — incremented on every handleStreamChunk call so MessageList
+  // Scroll trigger per session — incremented on every handleStreamChunk call so MessageList
   // can watch a cheap O(1) counter instead of deep-watching all messages.
-  const scrollVersion = ref(0)
+  const sessionScrollVersion = ref<Map<string, number>>(new Map())
 
-  // ============ UI State (Persisted across re-renders) ============
+  function getScrollVersion(sessionId: string): number {
+    return sessionScrollVersion.value.get(sessionId) ?? 0
+  }
 
-  // Expanded tool calls (tool call IDs that show details)
-  const expandedToolCalls = ref<Set<string>>(new Set())
+  function bumpScrollVersion(sessionId: string) {
+    sessionScrollVersion.value.set(sessionId, getScrollVersion(sessionId) + 1)
+  }
+
+  // ============ UI State (Per-session) ============
+
+  // Expanded tool calls per session
+  const sessionExpandedToolCalls = ref<Map<string, Set<string>>>(new Map())
 
   // ============ Getters ============
 
@@ -140,32 +148,38 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * Check if a tool call is expanded (showing details)
    */
-  function isToolCallExpanded(toolCallId: string): boolean {
-    return expandedToolCalls.value.has(toolCallId)
+  function isToolCallExpanded(sessionId: string, toolCallId: string): boolean {
+    return sessionExpandedToolCalls.value.get(sessionId)?.has(toolCallId) ?? false
   }
 
   /**
    * Toggle tool call expansion state
    */
-  function toggleToolCall(toolCallId: string): void {
-    const newSet = new Set(expandedToolCalls.value)
-    if (newSet.has(toolCallId)) {
-      newSet.delete(toolCallId)
-    } else {
-      newSet.add(toolCallId)
+  function toggleToolCall(sessionId: string, toolCallId: string): void {
+    let set = sessionExpandedToolCalls.value.get(sessionId)
+    if (!set) {
+      set = new Set()
+      sessionExpandedToolCalls.value.set(sessionId, set)
     }
-    expandedToolCalls.value = newSet
+    if (set.has(toolCallId)) {
+      set.delete(toolCallId)
+    } else {
+      set.add(toolCallId)
+    }
+    // Trigger reactivity
+    sessionExpandedToolCalls.value = new Map(sessionExpandedToolCalls.value)
   }
 
   /**
    * Collapse specified tool calls
    */
-  function collapseAllToolCalls(toolCallIds: string[]): void {
-    const newSet = new Set(expandedToolCalls.value)
+  function collapseAllToolCalls(sessionId: string, toolCallIds: string[]): void {
+    const set = sessionExpandedToolCalls.value.get(sessionId)
+    if (!set) return
     for (const id of toolCallIds) {
-      newSet.delete(id)
+      set.delete(id)
     }
-    expandedToolCalls.value = newSet
+    sessionExpandedToolCalls.value = new Map(sessionExpandedToolCalls.value)
   }
 
   // ============ Helper Functions ============
@@ -431,7 +445,7 @@ export const useChatStore = defineStore('chat', () => {
     // Increment scroll trigger — lets MessageList scroll without a deep watcher.
     // No need to spread messages or call triggerRef: sessionMessages is ref() (not
     // shallowRef), so every mutation via the reactive proxy is tracked surgically.
-    scrollVersion.value++
+    bumpScrollVersion(sessionId)
   }
 
   /**
@@ -662,7 +676,7 @@ export const useChatStore = defineStore('chat', () => {
       message.steps[stepIndex] = { ...message.steps[stepIndex], ...updates }
       message.steps = [...message.steps]
       setSessionMessages(sessionId, [...messages])
-      scrollVersion.value++
+      bumpScrollVersion(sessionId)
       return
     }
 
@@ -1204,14 +1218,13 @@ export const useChatStore = defineStore('chat', () => {
     getSessionState,
     isSessionGenerating,
 
-    // UI State
-    expandedToolCalls,
+    // UI State (per-session)
     isToolCallExpanded,
     toggleToolCall,
     collapseAllToolCalls,
 
-    // Scroll trigger (incremented every handleStreamChunk for O(1) auto-scroll watcher)
-    scrollVersion,
+    // Scroll trigger per session (incremented every handleStreamChunk for O(1) auto-scroll watcher)
+    getScrollVersion,
 
     // Event handlers (called by IPC Hub)
     handleStreamChunk,
