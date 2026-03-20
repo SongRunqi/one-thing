@@ -131,11 +131,6 @@
                 @confirm="(tc, r) => emit('confirmTool', tc, r)"
                 @reject="(tc) => emit('rejectTool', tc)"
               />
-              <!-- Retrieved memories with feedback UI -->
-              <RetrievedMemoriesPanel
-                v-else-if="part.type === 'retrieved-memories' && part.memories.length > 0"
-                :memories="part.memories"
-              />
             </template>
           </TransitionGroup>
         </template>
@@ -199,15 +194,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted, createApp, h, type App } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import ToolCallGroup from '../ToolCallGroup.vue'
 import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
-import InfographicBlock from '../InfographicBlock.vue'
-import RetrievedMemoriesPanel from './RetrievedMemoriesPanel.vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
-import type { InfographicConfig } from '@shared/ipc/infographics'
 
 interface Props {
   role: 'user' | 'assistant'
@@ -296,77 +288,7 @@ function getOtherPartKey(part: ContentPart, index: number): string {
   if (part.type === 'tool-call') return `tool-call-${index}`
   if (part.type === 'data-steps') return `steps-${part.turnIndex ?? index}`
   if (part.type === 'waiting') return `waiting-${index}`
-  if (part.type === 'retrieved-memories') return `retrieved-memories-${index}`
   return `part-${index}`
-}
-
-// Infographic 实例管理
-const infographicApps: App[] = []
-
-// 挂载 Infographic 组件到占位符
-function mountInfographics() {
-  if (!bubbleRef.value || props.isStreaming) return
-
-  // 清理旧实例
-  unmountInfographics()
-
-  // 查找所有 infographic 占位符
-  const placeholders = bubbleRef.value.querySelectorAll('.infographic-block:not(.mounted)')
-
-  placeholders.forEach((placeholder) => {
-    const configStr = placeholder.getAttribute('data-config')
-    const syntaxType = placeholder.getAttribute('data-syntax') || 'json'
-    if (!configStr) return
-
-    try {
-      const decodedConfig = decodeURIComponent(configStr)
-
-      // 创建挂载容器
-      const mountPoint = document.createElement('div')
-      mountPoint.className = 'infographic-mount-point'
-      placeholder.innerHTML = ''
-      placeholder.appendChild(mountPoint)
-      placeholder.classList.add('mounted')
-
-      // 根据语法类型选择传递的属性
-      const componentProps: Record<string, any> = {
-        isStreaming: props.isStreaming,
-        syntaxType
-      }
-
-      if (syntaxType === 'dsl') {
-        // DSL 语法：直接传递原始字符串
-        componentProps.syntax = decodedConfig
-      } else {
-        // JSON 格式：解析为对象
-        componentProps.config = JSON.parse(decodedConfig) as InfographicConfig
-      }
-
-      // 创建 Vue App 实例
-      const app = createApp({
-        render() {
-          return h(InfographicBlock, componentProps)
-        }
-      })
-
-      app.mount(mountPoint)
-      infographicApps.push(app)
-    } catch (e) {
-      console.error('Failed to mount infographic:', e)
-    }
-  })
-}
-
-// 卸载所有 Infographic 实例
-function unmountInfographics() {
-  infographicApps.forEach(app => {
-    try {
-      app.unmount()
-    } catch (e) {
-      // 忽略卸载错误
-    }
-  })
-  infographicApps.length = 0
 }
 
 // Computed
@@ -492,8 +414,6 @@ watch(
       startTypewriter()
     } else if (!newVal && oldVal) {
       stopTypewriter()
-      // 流式结束后挂载 Infographic
-      nextTick(() => mountInfographics())
       // 流式结束后检测溢出并默认折叠
       nextTick(() => {
         checkOverflow()
@@ -553,8 +473,6 @@ onMounted(() => {
     startTypewriter()
   } else {
     displayedContent.value = props.content
-    // 延迟挂载 Infographic，确保 DOM 已渲染
-    nextTick(() => mountInfographics())
   }
 
   // 设置内容溢出检测
@@ -563,7 +481,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopTypewriter()
-  unmountInfographics()
   cleanupResizeObserver()
 })
 
@@ -1151,49 +1068,4 @@ html[data-theme='light'] .content :deep(mjx-container svg) {
   color: #1a1a1a;
 }
 
-/* Infographic 占位符样式 */
-.content :deep(.infographic-block) {
-  margin: 16px 0;
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-}
-
-.content :deep(.infographic-placeholder) {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px;
-  gap: 12px;
-  color: var(--muted);
-}
-
-.content :deep(.infographic-placeholder .placeholder-icon) {
-  opacity: 0.5;
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 0.8; }
-}
-
-.content :deep(.infographic-parse-error) {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px;
-  color: var(--error, #ef4444);
-  font-size: 13px;
-}
-
-.content :deep(.infographic-parse-error .error-icon) {
-  opacity: 0.7;
-}
-
-.content :deep(.infographic-mount-point) {
-  width: 100%;
-}
 </style>

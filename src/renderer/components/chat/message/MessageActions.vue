@@ -124,7 +124,6 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { useTTS } from '@/composables/useTTS'
-import type { AgentVoice } from '@/types'
 import { stripMarkdown } from '@/composables/useMarkdownRenderer'
 import {
   Copy,
@@ -159,7 +158,6 @@ interface Props {
   branches?: BranchInfo[]
   usage?: TokenUsage
   model?: string
-  voiceConfig?: AgentVoice
   messageId: string
 }
 
@@ -196,7 +194,7 @@ async function handleSpeak() {
   speakingMessageId.value = props.messageId
 
   try {
-    await speak(textContent, props.voiceConfig)
+    await speak(textContent)
   } catch (error) {
     console.error('TTS error:', error)
   } finally {
