@@ -30,7 +30,6 @@ export type {
 
 // Chat types
 export type {
-  RetrievedMemory,
   ContentPart,
   StepType,
   Step,
@@ -81,7 +80,6 @@ export type {
   AISettings,
   ModelType,
   ModelInfo,
-  EmbeddingModelInfo,
   CachedModels,
   FetchModelsRequest,
   FetchModelsResponse,
@@ -167,9 +165,6 @@ export type {
   ShortcutSettings,
   GeneralSettings,
   ChatSettings,
-  EmbeddingProviderType,
-  EmbeddingProviderMeta,
-  EmbeddingSettings,
   AppSettings,
   GetSettingsResponse,
   SaveSettingsRequest,
@@ -197,127 +192,6 @@ export type {
   RefreshThemesResponse,
 } from './themes.js'
 
-// Workspace types
-export type {
-  WorkspaceAvatar,
-  Workspace,
-  GetWorkspacesResponse,
-  CreateWorkspaceRequest,
-  CreateWorkspaceResponse,
-  UpdateWorkspaceRequest,
-  UpdateWorkspaceResponse,
-  DeleteWorkspaceRequest,
-  DeleteWorkspaceResponse,
-  SwitchWorkspaceRequest,
-  SwitchWorkspaceResponse,
-  UploadWorkspaceAvatarRequest,
-  UploadWorkspaceAvatarResponse,
-} from './workspaces.js'
-
-// Shared Agent types (Avatar, Voice, Permissions, Builtin Mode)
-export type {
-  AgentAvatar,
-  AgentVoice,
-  SkillPermission,
-  AgentPermissions,
-  Agent, // @deprecated - use CustomAgent instead
-  // Built-in Agent types (Ask/Build mode)
-  BuiltinAgentMode,
-  BuiltinAgentToolPermissions,
-  BuiltinAgent,
-  SetBuiltinModeRequest,
-  SetBuiltinModeResponse,
-} from './agents.js'
-
-// Plan types (Planning workflow)
-export type {
-  PlanItemStatus,
-  PlanItem,
-  SessionPlan,
-  UpdatePlanRequest,
-  UpdatePlanResponse,
-  GetPlanRequest,
-  GetPlanResponse,
-} from './plan.js'
-
-// User Profile types
-export type {
-  UserFactCategory,
-  UserFact,
-  UserProfile,
-  GetUserProfileResponse,
-  AddUserFactRequest,
-  AddUserFactResponse,
-  UpdateUserFactRequest,
-  UpdateUserFactResponse,
-  DeleteUserFactRequest,
-  DeleteUserFactResponse,
-} from './user-profile.js'
-
-// Agent Memory types
-export type {
-  AgentMemoryCategory,
-  MemoryVividness,
-  AgentMood,
-  AgentMemory,
-  AgentUserRelationship,
-  GetAgentRelationshipRequest,
-  GetAgentRelationshipResponse,
-  AddAgentMemoryRequest,
-  AddAgentMemoryResponse,
-  DeleteAgentMemoryRequest,
-  DeleteAgentMemoryResponse,
-  RecallAgentMemoryRequest,
-  RecallAgentMemoryResponse,
-  GetActiveMemoriesRequest,
-  GetActiveMemoriesResponse,
-  UpdateAgentRelationshipRequest,
-  UpdateAgentRelationshipResponse,
-  RecordInteractionRequest,
-  RecordInteractionResponse,
-} from './agent-memory.js'
-
-// Memory Feedback types & router
-export type {
-  RecordFeedbackRequest,
-  RecordFeedbackResponse,
-  GetFeedbackStatsRequest,
-  GetFeedbackStatsResponse,
-  MemoryFeedbackRoutes,
-} from './memory-feedback.js'
-export { memoryFeedbackRouter } from './memory-feedback.js'
-
-// Memory Management types
-export type {
-  MemoryFileInfo,
-  TagInfo,
-  MemoryStats,
-  BatchDeleteResult,
-  ExportOptions,
-  ImportResult,
-  ListFilesResponse,
-  GetFileRequest,
-  GetFileResponse,
-  UpdateFileRequest,
-  DeleteFileRequest,
-  DeleteFilesRequest,
-  DeleteFilesResponse,
-  ExportRequest,
-  ExportResponse,
-  ImportRequest,
-  ImportResponse as MemoryImportResponse,
-  GetTagsResponse,
-  RenameTagRequest,
-  RenameTagResponse,
-  DeleteTagRequest,
-  DeleteTagResponse,
-  GetStatsResponse,
-  RebuildIndexResponse,
-  // Re-exported from memory-text types
-  ParsedMemoryFile,
-  MemoryFileMetadata,
-} from './memory.js'
-
 // Permission types
 export type {
   PermissionInfo,
@@ -326,41 +200,6 @@ export type {
   AgentPermissionConfig,
   BashPermissionRules,
 } from './permissions.js'
-
-// Custom Agent types
-export type {
-  CustomToolParameterType,
-  CustomToolParameter,
-  BashExecution,
-  HttpExecution,
-  BuiltinExecution,
-  CustomToolExecution,
-  CustomToolDefinition,
-  CustomAgentSource,
-  CustomAgent,
-  CustomAgentConfig,
-  CustomToolResult,
-  CustomAgentStep,
-  CustomAgentResult,
-  GetCustomAgentsRequest,
-  GetCustomAgentsResponse,
-  InvokeCustomAgentRequest,
-  InvokeCustomAgentResponse,
-  RefreshCustomAgentsRequest,
-  RefreshCustomAgentsResponse,
-  CustomAgentJsonFile,
-  CreateCustomAgentRequest,
-  CreateCustomAgentResponse,
-  UpdateCustomAgentRequest,
-  UpdateCustomAgentResponse,
-  DeleteCustomAgentRequest,
-  DeleteCustomAgentResponse,
-  // Pin/Unpin types (for sidebar display)
-  PinCustomAgentRequest,
-  PinCustomAgentResponse,
-  UnpinCustomAgentRequest,
-  UnpinCustomAgentResponse,
-} from './custom-agents.js'
 
 // UIMessage types
 export type {

@@ -48,14 +48,6 @@ import type {
   ContentPart,
   Step,
   StepType,
-  // Memory types
-  MemoryFileInfo,
-  TagInfo,
-  MemoryStats,
-  BatchDeleteResult,
-  ImportResult,
-  ExportOptions,
-  ParsedMemoryFile,
   // UIMessage types (AI SDK 6.x compatible)
   UIMessage,
   UIMessagePart,
@@ -100,50 +92,9 @@ import type {
   ReadSkillFileResponse,
   OpenSkillDirectoryResponse,
   CreateSkillResponse,
-  // Workspace types
-  Workspace,
-  WorkspaceAvatar,
-  GetWorkspacesResponse,
-  CreateWorkspaceResponse,
-  UpdateWorkspaceResponse,
-  DeleteWorkspaceResponse,
-  SwitchWorkspaceResponse,
-  UploadWorkspaceAvatarResponse,
-  // Shared Agent types (Avatar, Voice, Builtin Mode)
-  AgentAvatar,
-  AgentVoice,
-  Agent, // @deprecated - use CustomAgent instead
-  BuiltinAgentMode,
-  BuiltinAgent,
-  BuiltinAgentToolPermissions,
-  // User Profile types
-  UserProfile,
-  UserFact,
-  UserFactCategory,
-  GetUserProfileResponse,
-  AddUserFactResponse,
-  UpdateUserFactResponse,
-  DeleteUserFactResponse,
-  // Agent Memory types
-  AgentMemory,
-  AgentMemoryCategory,
-  AgentUserRelationship,
-  AgentMood,
-  MemoryVividness,
-  GetAgentRelationshipResponse,
-  AddAgentMemoryResponse,
-  DeleteAgentMemoryResponse,
-  RecallAgentMemoryResponse,
-  GetActiveMemoriesResponse,
-  UpdateAgentRelationshipResponse,
-  RecordInteractionResponse,
   // Permission types
   PermissionInfo,
   PermissionResponse,
-  // Plan types (Planning workflow)
-  PlanItemStatus,
-  PlanItem,
-  SessionPlan,
   // Theme types
   ThemeMeta,
   Theme,
@@ -151,26 +102,6 @@ import type {
   GetThemeResponse,
   ApplyThemeResponse,
   RefreshThemesResponse,
-  // CustomAgent types
-  CustomAgent,
-  CustomAgentConfig,
-  CustomAgentSource,
-  CustomToolDefinition,
-  CustomToolParameter,
-  CustomToolParameterType,
-  CustomToolExecution,
-  BashExecution,
-  HttpExecution,
-  BuiltinExecution,
-  CustomToolResult,
-  CustomAgentStep,
-  CustomAgentResult,
-  GetCustomAgentsResponse,
-  CreateCustomAgentResponse,
-  UpdateCustomAgentResponse,
-  DeleteCustomAgentResponse,
-  PinCustomAgentResponse,
-  UnpinCustomAgentResponse,
   // File Tree types (for right sidebar)
   FileTreeNode,
   FileTreeListRequest,
@@ -180,8 +111,6 @@ import type {
   FilePreview,
   FileReadRequest,
   FileReadResponse,
-  // Memory types for manager
-  MemoryFileMetadata,
 } from '../../shared/ipc'
 
 export type {
@@ -241,50 +170,12 @@ export type {
   SkillFile,
   SkillSource,
   SkillSettings,
-  // Workspace types
-  Workspace,
-  WorkspaceAvatar,
-  // Shared Agent types (Avatar, Voice, Builtin Mode)
-  AgentAvatar,
-  AgentVoice,
-  Agent, // @deprecated - use CustomAgent instead
-  BuiltinAgentMode,
-  BuiltinAgent,
-  BuiltinAgentToolPermissions,
-  // User Profile types
-  UserProfile,
-  UserFact,
-  UserFactCategory,
-  // Agent Memory types
-  AgentMemory,
-  AgentMemoryCategory,
-  AgentUserRelationship,
-  AgentMood,
-  MemoryVividness,
   // Permission types
   PermissionInfo,
   PermissionResponse,
-  // Plan types (Planning workflow)
-  PlanItemStatus,
-  PlanItem,
-  SessionPlan,
   // Theme types
   ThemeMeta,
   Theme,
-  // CustomAgent types
-  CustomAgent,
-  CustomAgentConfig,
-  CustomAgentSource,
-  CustomToolDefinition,
-  CustomToolParameter,
-  CustomToolParameterType,
-  CustomToolExecution,
-  BashExecution,
-  HttpExecution,
-  BuiltinExecution,
-  CustomToolResult,
-  CustomAgentStep,
-  CustomAgentResult,
   // File Tree types (for right sidebar)
   FileTreeNode,
   FileTreeListRequest,
@@ -294,15 +185,6 @@ export type {
   FilePreview,
   FileReadRequest,
   FileReadResponse,
-  // Memory types
-  MemoryFileInfo,
-  TagInfo,
-  MemoryStats,
-  BatchDeleteResult,
-  ImportResult,
-  ExportOptions,
-  ParsedMemoryFile,
-  MemoryFileMetadata,
 }
 
 // Gallery image type for image preview window
@@ -357,7 +239,7 @@ export interface ElectronAPI {
   editAndResend: (sessionId: string, messageId: string, newContent: string) => Promise<EditAndResendResponse>
   editAndResendStream: (sessionId: string, messageId: string, newContent: string) => Promise<StreamSendMessageResponse>
   getSessions: () => Promise<GetSessionsResponse>
-  createSession: (name: string, workspaceId?: string, agentId?: string) => Promise<CreateSessionResponse>
+  createSession: (name: string) => Promise<CreateSessionResponse>
   switchSession: (sessionId: string) => Promise<SwitchSessionResponse>
   getSession: (sessionId: string) => Promise<SwitchSessionResponse>
   deleteSession: (sessionId: string) => Promise<DeleteSessionResponse>
@@ -369,9 +251,6 @@ export interface ElectronAPI {
   updateSessionAgent: (sessionId: string, agentId: string | null) => Promise<{ success: boolean; error?: string }>
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
   getSessionTokenUsage: (sessionId: string) => Promise<{ success: boolean; usage?: { totalInputTokens: number; totalOutputTokens: number; totalTokens: number; maxTokens: number; lastInputTokens: number; contextSize: number }; error?: string }>
-  // Builtin mode (Ask/Build) methods
-  setSessionBuiltinMode: (sessionId: string, mode: BuiltinAgentMode) => Promise<{ success: boolean; mode?: BuiltinAgentMode; error?: string }>
-  getSessionBuiltinMode: (sessionId: string) => Promise<{ success: boolean; mode?: BuiltinAgentMode; error?: string }>
   // Optimized session loading (Phase 4: Metadata Separation)
   getSessionsList: () => Promise<GetSessionsListResponse>
   activateSession: (sessionId: string) => Promise<ActivateSessionResponse>
@@ -383,8 +262,6 @@ export interface ElectronAPI {
   removeGitStatusMessage: (sessionId: string) => Promise<{ success: boolean; removedId?: string | null; error?: string }>
   // Generic remove message by ID (for close button functionality)
   removeMessage: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>
-  // Plan update listener (for Planning workflow)
-  onPlanUpdated: (callback: (data: { sessionId: string; plan: SessionPlan }) => void) => () => void
   onContextSizeUpdated: (callback: (data: { sessionId: string; contextSize: number }) => void) => () => void
   onContextCompactStarted: (callback: (data: { sessionId: string }) => void) => () => void
   onContextCompactCompleted: (callback: (data: { sessionId: string; success: boolean; error?: string }) => void) => () => void
@@ -432,22 +309,6 @@ export interface ElectronAPI {
   getPendingPermissions: (sessionId: string) => Promise<{ success: boolean; pending?: PermissionInfo[]; error?: string }>
   onPermissionRequest: (callback: (info: PermissionInfo) => void) => () => void
 
-  // CustomAgent permission methods
-  respondToCustomAgentPermission: (requestId: string, decision: 'allow' | 'always' | 'reject') => Promise<{ success: boolean }>
-  onCustomAgentPermissionRequest: (callback: (data: {
-    requestId: string
-    sessionId: string
-    messageId: string
-    stepId: string
-    toolCall: {
-      id: string
-      toolName: string
-      arguments: Record<string, unknown>
-      commandType?: 'read-only' | 'dangerous' | 'forbidden'
-      error?: string
-    }
-  }) => void) => () => void
-
   // MCP methods
   mcpGetServers: () => Promise<MCPGetServersResponse>
   mcpAddServer: (config: MCPServerConfig) => Promise<MCPAddServerResponse>
@@ -478,29 +339,6 @@ export interface ElectronAPI {
 
   // Dialog methods
   showOpenDialog: (options: { properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>; title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<{ canceled: boolean; filePaths: string[] }>
-
-  // Workspace methods
-  getWorkspaces: () => Promise<GetWorkspacesResponse>
-  createWorkspace: (name: string, avatar: WorkspaceAvatar, workingDirectory: string | undefined, systemPrompt: string) => Promise<CreateWorkspaceResponse>
-  updateWorkspace: (id: string, updates: { name?: string; avatar?: WorkspaceAvatar; systemPrompt?: string }) => Promise<UpdateWorkspaceResponse>
-  deleteWorkspace: (workspaceId: string) => Promise<DeleteWorkspaceResponse>
-  switchWorkspace: (workspaceId: string | null) => Promise<SwitchWorkspaceResponse>
-  uploadWorkspaceAvatar: (workspaceId: string, imageData: string, mimeType: string) => Promise<UploadWorkspaceAvatarResponse>
-
-  // User Profile methods
-  getUserProfile: () => Promise<GetUserProfileResponse>
-  addUserFact: (content: string, category: UserFactCategory, confidence?: number, sourceAgentId?: string) => Promise<AddUserFactResponse>
-  updateUserFact: (factId: string, updates: { content?: string; category?: UserFactCategory; confidence?: number }) => Promise<UpdateUserFactResponse>
-  deleteUserFact: (factId: string) => Promise<DeleteUserFactResponse>
-
-  // Agent Memory methods
-  getAgentRelationship: (agentId: string) => Promise<GetAgentRelationshipResponse>
-  addAgentMemory: (agentId: string, content: string, category: AgentMemoryCategory, emotionalWeight?: number) => Promise<AddAgentMemoryResponse>
-  deleteAgentMemory: (memoryId: string) => Promise<DeleteAgentMemoryResponse>
-  recallAgentMemory: (agentId: string, memoryId: string) => Promise<RecallAgentMemoryResponse>
-  getActiveAgentMemories: (agentId: string, limit?: number) => Promise<GetActiveMemoriesResponse>
-  updateAgentRelationship: (agentId: string, updates: { trustLevel?: number; familiarity?: number; mood?: AgentMood; moodNotes?: string }) => Promise<UpdateAgentRelationshipResponse>
-  recordAgentInteraction: (agentId: string) => Promise<RecordInteractionResponse>
 
   // Shell methods
   openPath: (filePath: string) => Promise<string>
@@ -571,47 +409,8 @@ export interface ElectronAPI {
   // File content reading (for file preview panel)
   readFileContent: (filePath: string, maxSize?: number) => Promise<FileReadResponse>
 
-  // CustomAgent methods
-  getCustomAgents: (workingDirectory?: string) => Promise<GetCustomAgentsResponse>
-  refreshCustomAgents: (workingDirectory?: string) => Promise<GetCustomAgentsResponse>
-  openCustomAgentsDirectory: () => Promise<{ success: boolean; error?: string }>
-  getCustomAgent: (agentId: string, workingDirectory?: string) => Promise<{ success: boolean; agent?: CustomAgent; error?: string }>
-  createCustomAgent: (config: Omit<CustomAgentConfig, 'id' | 'createdAt' | 'updatedAt'>, source?: 'user' | 'project', workingDirectory?: string) => Promise<CreateCustomAgentResponse>
-  updateCustomAgent: (agentId: string, updates: Partial<Omit<CustomAgentConfig, 'id' | 'createdAt' | 'updatedAt'>>, workingDirectory?: string) => Promise<UpdateCustomAgentResponse>
-  deleteCustomAgent: (agentId: string, workingDirectory?: string) => Promise<DeleteCustomAgentResponse>
-  // CustomAgent pin methods
-  pinCustomAgent: (agentId: string) => Promise<PinCustomAgentResponse>
-  unpinCustomAgent: (agentId: string) => Promise<UnpinCustomAgentResponse>
-
-  // Tools methods (additional)
-  getAvailableBuiltinTools: () => Promise<Array<{ id: string; name: string; description: string }>>
-  refreshAsyncTools: (workingDirectory?: string) => Promise<{ success: boolean; error?: string }>
-
   // Window methods
   setWindowButtonVisibility: (visible: boolean) => Promise<{ success: boolean }>
-
-  // Memory Feedback methods
-  recordMemoryFeedback: (filePath: string, feedbackType: 'positive' | 'negative') => Promise<{ success: boolean; error?: string }>
-  getMemoryFeedbackStats: (filePath: string) => Promise<{ success: boolean; stats?: { positive: number; negative: number }; error?: string }>
-
-  // Memory Management methods
-  memoryListFiles: () => Promise<{ success: boolean; files?: MemoryFileInfo[]; error?: string }>
-  memoryGetFile: (path: string) => Promise<{ success: boolean; file?: ParsedMemoryFile; error?: string }>
-  memoryUpdateFile: (path: string, content: string, metadata?: Partial<MemoryFileMetadata>) => Promise<{ success: boolean; error?: string }>
-  memoryDeleteFile: (path: string) => Promise<{ success: boolean; error?: string }>
-  memoryDeleteFiles: (paths: string[]) => Promise<{ success: boolean; result?: BatchDeleteResult; error?: string }>
-  memoryExport: (options: ExportOptions) => Promise<{ success: boolean; filePath?: string; error?: string }>
-  memoryExportWithDialog: (options: ExportOptions) => Promise<{ success: boolean; filePath?: string | null; error?: string }>
-  memoryImport: (filePath: string) => Promise<{ success: boolean; result?: ImportResult; error?: string }>
-  memoryImportWithDialog: () => Promise<{ success: boolean; result?: ImportResult | null; error?: string }>
-  memoryGetTags: () => Promise<{ success: boolean; tags?: TagInfo[]; error?: string }>
-  memoryRenameTag: (oldTag: string, newTag: string) => Promise<{ success: boolean; affected?: number; error?: string }>
-  memoryDeleteTag: (tag: string) => Promise<{ success: boolean; affected?: number; error?: string }>
-  memoryGetStats: () => Promise<{ success: boolean; stats?: MemoryStats; error?: string }>
-  memoryRebuildIndex: () => Promise<{ success: boolean; error?: string }>
-
-  // Execute skill method (note: may not be fully implemented)
-  executeSkill: (skillId: string, options: { sessionId: string; input?: string }) => Promise<{ success: boolean; result?: { output?: string }; error?: string }>
 
   // Plugin methods
   getPlugins: () => Promise<{ success: boolean; plugins?: any[]; error?: string }>
