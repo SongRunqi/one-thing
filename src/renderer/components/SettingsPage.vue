@@ -79,11 +79,6 @@
               @update:settings="handleSkillsSettingsUpdate"
             />
 
-            <EmbeddingSettingsPanel
-              v-else-if="activeTab === 'embedding'"
-              :settings="localSettings.embedding || { provider: 'openai' }"
-              @update:settings="handleEmbeddingSettingsUpdate"
-            />
           </template>
           <div v-else class="loading-content">
             Loading...
@@ -125,7 +120,6 @@ import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
 import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
-import EmbeddingSettingsPanel from './settings/EmbeddingSettingsPanel.vue'
 
 // Dialogs
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
@@ -224,17 +218,6 @@ const navItems = [
       ])
     }
   },
-  {
-    id: 'embedding',
-    label: 'Memory',
-    icon: {
-      render: () => h('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
-        h('path', { d: 'M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.4V11a1 1 0 0 1 2 0v1.5c1.2.6 2 1.9 2 3.5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4c0-1.6.8-2.9 2-3.5V11a1 1 0 0 1 2 0v-1.6c-1.2-.6-2-1.9-2-3.4a4 4 0 0 1 4-4z' }),
-        h('circle', { cx: 12, cy: 6, r: 1.5, fill: 'currentColor' }),
-        h('circle', { cx: 12, cy: 16, r: 1.5, fill: 'currentColor' }),
-      ])
-    }
-  },
 ]
 
 const currentNavItem = computed(() => navItems.find(item => item.id === activeTab.value))
@@ -305,15 +288,6 @@ function handleSkillsSettingsUpdate(skillsSettings: any) {
   localSettings.value = {
     ...localSettings.value,
     skills: skillsSettings
-  }
-}
-
-// Handle Embedding settings update
-function handleEmbeddingSettingsUpdate(embeddingSettings: any) {
-  if (!localSettings.value) return
-  localSettings.value = {
-    ...localSettings.value,
-    embedding: embeddingSettings
   }
 }
 

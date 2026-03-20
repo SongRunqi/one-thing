@@ -3,9 +3,9 @@
  * Handles message building, history construction, and system prompt generation
  */
 
-import type { ChatMessage, SkillDefinition } from '../../../shared/ipc.js'
+import type { ChatMessage } from '../../../shared/ipc.js'
 import type { AIMessageContent } from '../../providers/index.js'
-import { buildSystemPromptV2 } from '../../services/prompt/index.js'
+import { buildSystemPrompt } from '../../services/prompt/index.js'
 import { getHistoryFilePath } from '../../services/ai/context-compacting.js'
 
 /**
@@ -281,31 +281,5 @@ export function filterHistoryForNonToolAPI(
     })
 }
 
-/**
- * Build dynamic system prompt with optional skills awareness and workspace character
- * Now uses Handlebars template system for maintainability
- */
-export function buildSystemPrompt(options: {
-  hasTools: boolean
-  skills: SkillDefinition[]
-  workspaceSystemPrompt?: string
-  userProfilePrompt?: string
-  providerId?: string
-  workingDirectory?: string
-}): string {
-  return buildSystemPromptV2(options)
-}
-
-/**
- * Extract text content from AIMessageContent
- */
-export function getTextFromContent(content: AIMessageContent): string {
-  if (typeof content === 'string') {
-    return content
-  }
-  // Extract text from array content
-  return content
-    .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
-    .map(part => part.text)
-    .join('\n')
-}
+// Re-export buildSystemPrompt from prompt service for backward compatibility
+export { buildSystemPrompt }

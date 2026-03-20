@@ -1,8 +1,8 @@
 /**
- * Prompt Builders (V2)
+ * Prompt Builders
  *
- * New prompt building functions using the Handlebars template system.
- * These functions transform the existing options to template variables
+ * Prompt building functions using the Handlebars template system.
+ * These functions transform options to template variables
  * and render using PromptManager.
  */
 
@@ -32,17 +32,14 @@ function transformSkills(skills: SkillDefinition[]): TemplateSkill[] {
 }
 
 /**
- * Build system prompt using templates (V2)
+ * Build system prompt using templates
  *
- * This is the new template-based implementation.
- * Use this when USE_TEMPLATE_PROMPTS is enabled.
+ * Uses the Handlebars template system for maintainability.
  */
-export function buildSystemPromptV2(options: {
+export function buildSystemPrompt(options: {
   hasTools: boolean
   skills: SkillDefinition[]
   workspaceSystemPrompt?: string
-  userProfilePrompt?: string
-  providerId?: string
   workingDirectory?: string
 }): string {
   const pm = getPromptManager()
@@ -66,7 +63,6 @@ export function buildSystemPromptV2(options: {
   const variables: SystemPromptVariables = {
     hasTools: options.hasTools,
     workspaceSystemPrompt: options.workspaceSystemPrompt?.trim(),
-    userProfilePrompt: options.userProfilePrompt?.trim(),
     workingDirectory: options.workingDirectory,
     displayPath,
     baseDirectory: baseDir,
@@ -80,9 +76,9 @@ export function buildSystemPromptV2(options: {
 }
 
 /**
- * Build skills awareness prompt using templates (V2)
+ * Build skills awareness prompt using templates
  */
-export function buildSkillsAwarenessPromptV2(skills: SkillDefinition[]): string {
+export function buildSkillsAwarenessPrompt(skills: SkillDefinition[]): string {
   if (!skills || skills.length === 0) return ''
 
   const pm = getPromptManager()
@@ -94,9 +90,9 @@ export function buildSkillsAwarenessPromptV2(skills: SkillDefinition[]): string 
 }
 
 /**
- * Build skills direct prompt using templates (V2)
+ * Build skills direct prompt using templates
  */
-export function buildSkillsDirectPromptV2(skills: SkillDefinition[], maxInstructionLength = 1000): string {
+export function buildSkillsDirectPrompt(skills: SkillDefinition[], maxInstructionLength = 1000): string {
   if (!skills || skills.length === 0) return ''
 
   const pm = getPromptManager()
@@ -109,9 +105,9 @@ export function buildSkillsDirectPromptV2(skills: SkillDefinition[], maxInstruct
 }
 
 /**
- * Build skills tool prompt using templates (V2)
+ * Build skills tool prompt using templates
  */
-export function buildSkillsToolPromptV2(skills: SkillDefinition[]): string {
+export function buildSkillsToolPrompt(skills: SkillDefinition[]): string {
   if (!skills || skills.length === 0) return ''
 
   const pm = getPromptManager()

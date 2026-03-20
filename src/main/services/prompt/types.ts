@@ -39,11 +39,8 @@ export interface SystemPromptVariables {
   // Feature flags
   hasTools: boolean
 
-  // Workspace persona
+  // Agent/workspace persona
   workspaceSystemPrompt?: string
-
-  // User context
-  userProfilePrompt?: string
 
   // Context
   workingDirectory?: string

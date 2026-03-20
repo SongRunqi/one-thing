@@ -24,10 +24,10 @@ export type {
 // Hot reload watcher (dev only)
 export { startTemplateWatcher, stopTemplateWatcher } from './watcher.js'
 
-// V2 Builders (template-based)
+// Builders (template-based)
 export {
-  buildSystemPromptV2,
-  buildSkillsAwarenessPromptV2,
-  buildSkillsDirectPromptV2,
-  buildSkillsToolPromptV2,
+  buildSystemPrompt,
+  buildSkillsAwarenessPrompt,
+  buildSkillsDirectPrompt,
+  buildSkillsToolPrompt,
 } from './builders.js'
