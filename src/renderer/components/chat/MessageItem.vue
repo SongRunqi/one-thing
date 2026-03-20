@@ -104,7 +104,8 @@
             :content="message.content"
             :visible="showActions"
             :branches="branches"
-            :voiceConfig="voiceConfig"
+            :usage="message.usage"
+            :model="message.model"
             :messageId="message.id"
             @edit="startEdit"
             @regenerate="handleRegenerate"
@@ -128,7 +129,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import type { ChatMessage, ToolCall, AgentVoice, MessageAttachment } from '@/types'
+import type { ChatMessage, ToolCall, MessageAttachment } from '@/types'
 import StepsPanel from './StepsPanel.vue'
 import ImagePreview from '../common/ImagePreview.vue'
 import MessageError from './message/MessageError.vue'
@@ -148,7 +149,6 @@ interface Props {
   branches?: BranchInfo[]
   canBranch?: boolean
   isHighlighted?: boolean
-  voiceConfig?: AgentVoice
 }
 
 const props = defineProps<Props>()
@@ -394,7 +394,6 @@ onUnmounted(() => {
   gap: 8px;
   max-width: 100%;
   margin: 0;
-  position: relative;
 }
 
 /* Message footer */

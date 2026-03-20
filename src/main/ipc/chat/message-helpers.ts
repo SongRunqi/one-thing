@@ -3,9 +3,9 @@
  * Handles message building, history construction, and system prompt generation
  */
 
-import type { ChatMessage, SkillDefinition, BuiltinAgentMode, SessionPlan } from '../../../shared/ipc.js'
+import type { ChatMessage } from '../../../shared/ipc.js'
 import type { AIMessageContent } from '../../providers/index.js'
-import { buildSystemPromptV2 } from '../../services/prompt/index.js'
+import { buildSystemPrompt } from '../../services/prompt/index.js'
 import { getHistoryFilePath } from '../../services/ai/context-compacting.js'
 
 /**
@@ -281,20 +281,5 @@ export function filterHistoryForNonToolAPI(
     })
 }
 
-/**
- * Build dynamic system prompt with optional skills awareness and workspace character
- * Now uses Handlebars template system for maintainability
- */
-export function buildSystemPrompt(options: {
-  hasTools: boolean
-  skills: SkillDefinition[]
-  workspaceSystemPrompt?: string
-  userProfilePrompt?: string
-  agentMemoryPrompt?: string
-  providerId?: string
-  workingDirectory?: string
-  builtinMode?: BuiltinAgentMode  // Ask mode / Build mode
-  sessionPlan?: SessionPlan  // Current session plan for context injection
-}): string {
-  return buildSystemPromptV2(options)
-}
+// Re-export buildSystemPrompt from prompt service for backward compatibility
+export { buildSystemPrompt }

@@ -91,6 +91,30 @@
         <!-- Archived Chats Content -->
         <ArchivedChatsContent v-else-if="activeNav === 'archive'" />
 
+        <!-- Other content (Downloads, etc.) -->
+        <template v-else>
+          <div class="content-header">
+            <input
+              type="text"
+              class="search-input"
+              placeholder="Search..."
+            />
+          </div>
+
+          <div class="content-body">
+            <div class="empty-state">
+              <div class="empty-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+              </div>
+              <p class="empty-text">Coming soon</p>
+              <p class="empty-hint">This feature is under development</p>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
   </Transition>
@@ -102,6 +126,10 @@ import ArchivedChatsContent from './ArchivedChatsContent.vue'
 import { useMediaStore, type GeneratedMedia } from '@/stores/media'
 import {
   Images,
+  Download,
+  PanelTop,
+  LayoutGrid,
+  Zap,
   Archive,
 } from 'lucide-vue-next'
 
@@ -168,6 +196,10 @@ onUnmounted(() => {
 // Navigation items with lucide-vue-next icons
 const navItems = [
   { id: 'media', label: 'Media', icon: Images },
+  { id: 'downloads', label: 'Downloads', icon: Download },
+  { id: 'easels', label: 'Easels', icon: PanelTop },
+  { id: 'spaces', label: 'Spaces', icon: LayoutGrid },
+  { id: 'boosts', label: 'Boosts', icon: Zap },
   { id: 'archive', label: 'Archived Chats', icon: Archive },
 ]
 
@@ -192,7 +224,7 @@ const navItems = [
   box-shadow:
     2px 0 8px rgba(0, 0, 0, 0.1),
     4px 0 16px rgba(0, 0, 0, 0.05);
-  z-index: var(--z-base);
+  z-index: 1;
 }
 
 html[data-theme='light'] .media-nav {
@@ -446,32 +478,15 @@ html[data-theme='light'] .media-nav {
   text-transform: uppercase;
 }
 
-/* Transition - slide from left with layout push */
-.media-panel-enter-active {
-  transition:
-    width var(--duration-slow, 0.3s) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
-    opacity var(--duration-slow, 0.3s) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
-    transform var(--duration-slow, 0.3s) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
-  overflow: hidden;
-}
-
+/* Transition - width-based for proper flexbox layout */
+.media-panel-enter-active,
 .media-panel-leave-active {
-  transition:
-    width var(--duration-normal, 0.2s) var(--ease-default, cubic-bezier(0.4, 0, 0.2, 1)),
-    opacity var(--duration-normal, 0.2s) var(--ease-default, cubic-bezier(0.4, 0, 0.2, 1)),
-    transform var(--duration-normal, 0.2s) var(--ease-default, cubic-bezier(0.4, 0, 0.2, 1));
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
 }
 
-.media-panel-enter-from {
-  width: 0;
-  opacity: 0;
-  transform: translateX(-100%);
-}
-
+.media-panel-enter-from,
 .media-panel-leave-to {
   width: 0;
-  opacity: 0;
-  transform: translateX(-100%);
 }
 </style>

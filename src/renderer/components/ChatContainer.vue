@@ -25,47 +25,25 @@
           </button>
         </div>
       </div>
-
-      <!-- Main panel: KeepAlive preserves each session's component instance -->
-      <template v-else>
-        <KeepAlive :max="10">
-          <ChatWindow
-            :key="mainPanel.sessionId"
-            :ref="el => setPanelRef(mainPanel.id, el)"
-            :session-id="mainPanel.sessionId"
-            :can-close="panels.length > 1"
-            :style="{ flex: mainPanel.flex }"
-            :show-settings="showSettings"
-            :show-sidebar-toggle="sidebarCollapsed && !sidebarFloating && !mediaPanelOpen"
-            @close="closePanel(mainPanel.id)"
-            @split="openSessionPicker(mainPanel.id)"
-            @equalize="equalizeAllPanels"
-            @split-with-branch="(sessionId) => splitPanel(mainPanel.id, sessionId)"
-            @close-settings="$emit('close-settings')"
-            @open-settings="$emit('open-settings')"
-
-            @toggle-sidebar="$emit('toggle-sidebar')"
-          />
-        </KeepAlive>
-
-        <!-- Split panels: independent instances, no KeepAlive needed -->
-        <template v-for="panel in splitPanels" :key="panel.id">
-          <ChatWindow
-            :ref="el => setPanelRef(panel.id, el)"
-            :session-id="panel.sessionId"
-            :can-close="true"
-            :style="{ flex: panel.flex }"
-            @close="closePanel(panel.id)"
-            @split="openSessionPicker(panel.id)"
-            @equalize="equalizeAllPanels"
-            @split-with-branch="(sessionId) => splitPanel(panel.id, sessionId)"
-            @close-settings="$emit('close-settings')"
-            @open-settings="$emit('open-settings')"
-
-            @toggle-sidebar="$emit('toggle-sidebar')"
-          />
-        </template>
-      </template>
+      <!-- Chat panels when session exists -->
+      <ChatWindow
+        v-else
+        v-for="(panel, index) in panels"
+        :key="panel.id"
+        :ref="el => setPanelRef(panel.id, el)"
+        :session-id="panel.sessionId"
+        :can-close="panels.length > 1"
+        :style="{ flex: panel.flex }"
+        :show-settings="index === 0 && showSettings"
+        :show-sidebar-toggle="index === 0 && sidebarCollapsed && !sidebarFloating && !mediaPanelOpen"
+        @close="closePanel(panel.id)"
+        @split="openSessionPicker(panel.id)"
+        @equalize="equalizeAllPanels"
+        @split-with-branch="(sessionId) => splitPanel(panel.id, sessionId)"
+        @close-settings="$emit('close-settings')"
+        @open-settings="$emit('open-settings')"
+        @toggle-sidebar="$emit('toggle-sidebar')"
+      />
       <!-- Panel resizer -->
       <div
         v-for="(panel, index) in panels.slice(0, -1)"
@@ -150,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
 import DiffOverlay from '@/components/chat/DiffOverlay.vue'
@@ -205,10 +183,6 @@ const panels = ref<Panel[]>([
     flex: 1
   }
 ])
-
-// Computed: main panel (follows currentSessionId) and split panels
-const mainPanel = computed(() => panels.value[0])
-const splitPanels = computed(() => panels.value.slice(1))
 
 // Sync main panel with current session
 watch(
@@ -405,12 +379,18 @@ onUnmounted(() => {
 <style scoped>
 .chat-container-wrapper {
   flex: 1;
-  padding: 0;
+  padding: 12px;
+  padding-left: 0px;
+  /* Slightly darker base for "surface" effect */
   background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
   -webkit-app-region: drag;
   min-width: 0;
   display: flex;
   position: relative;
+}
+
+.chat-container-wrapper.sidebar-collapsed {
+  padding-left: 12px;
 }
 
 /* Hover trigger for floating sidebar */
@@ -422,7 +402,7 @@ onUnmounted(() => {
   height: 100%;
   -webkit-app-region: no-drag;
   cursor: pointer;
-  z-index: var(--z-sticky);
+  z-index: 10;
 }
 
 .chat-panels {
@@ -433,6 +413,8 @@ onUnmounted(() => {
   -webkit-app-region: no-drag;
   position: relative;
   overflow: hidden;
+  /* Ensure proper border-radius clipping for child panels */
+  border-radius: var(--radius-lg);
 }
 
 .panel-resizer {
@@ -442,20 +424,13 @@ onUnmounted(() => {
   width: 4px;
   background: transparent;
   cursor: col-resize;
-  z-index: var(--z-sticky);
-  transition: background var(--duration-fast, 0.15s) ease, width var(--duration-fast, 0.15s) ease, margin-left var(--duration-fast, 0.15s) ease;
+  z-index: 10;
+  transition: background 0.15s ease;
 }
 
-.panel-resizer:hover {
-  background: rgba(var(--accent-rgb), 0.4);
-  width: 6px;
-  margin-left: -1px;
-}
-
+.panel-resizer:hover,
 .panel-resizer:active {
   background: var(--accent);
-  width: 6px;
-  margin-left: -1px;
 }
 
 /* Session Picker Dialog */
@@ -468,7 +443,7 @@ onUnmounted(() => {
   align-items: flex-start;
   justify-content: center;
   padding-top: 100px;
-  z-index: var(--z-modal);
+  z-index: 1000;
   animation: fadeIn 0.15s ease;
 }
 
@@ -642,6 +617,20 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
+/* Full page container for CreateAgent, etc. */
+.full-page-container {
+  flex: 1;
+  display: flex;
+  background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.2),
+    0 20px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
 /* Empty state when no sessions */
 .empty-state {
   flex: 1;
@@ -649,6 +638,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.2),
+    0 20px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .empty-state-content {
@@ -696,5 +691,4 @@ onUnmounted(() => {
   background: var(--accent-hover, var(--accent));
   transform: translateY(-1px);
 }
-
 </style>

@@ -765,11 +765,7 @@ export async function executeStreamGeneration(
       hasTools,
       skills: enabledSkills,
       workspaceSystemPrompt: characterSystemPrompt,
-      userProfilePrompt: userContextPrompt,  // Lightweight user context (~30-50 tokens)
-      providerId: ctx.providerId,
       workingDirectory: sessionWorkingDir,
-      builtinMode: session?.builtinMode,
-      sessionPlan: session?.plan,
     })
 
     let pausedForConfirmation = false

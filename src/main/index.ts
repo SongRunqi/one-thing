@@ -2,19 +2,15 @@ import { app, BrowserWindow, protocol, net } from 'electron'
 import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { createWindow } from './window.js'
-import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills, initializeCustomAgents } from './ipc/handlers.js'
+import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills } from './ipc/handlers.js'
 import { initializeStores } from './store.js'
 import { initializeSettings } from './stores/settings.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
-import { initializeStreamEngine, shutdownStreamEngine, getStreamEngine } from './engine/index.js'
-import { initializeTextMemory } from './services/memory-text/index.js'
+import { cleanupActiveStreams } from './ipc/chat/stream-processor.js'
 import { getMediaImagesDir } from './stores/paths.js'
 import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './services/prompt/index.js'
 import { initializePlugins, shutdownPlugins } from './plugins/index.js'
-import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge, getEventBus } from './events/index.js'
-import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
-import { Permission } from './permission/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -42,22 +38,8 @@ app.on('ready', async () => {
   // Initialize settings asynchronously (before any settings access)
   await initializeSettings()
 
-  // Initialize event system (EventBus + StreamChannel + SessionManager + StreamEngine)
-  initializeEventSystem()
-  initializeSessionLayer()
-  initializeStreamEngine()
-
-  // Initialize Permission system with EventBus and channel resolver
-  Permission.initialize(
-    getEventBus(),
-    (sessionId) => getStreamEngine().getChannel(sessionId),
-  )
-
   // Clean up interrupted sessions from previous app instance
   sanitizeAllSessionsOnStartup()
-
-  // Initialize text-based memory system
-  await initializeTextMemory()
 
   // Initialize PromptManager for template-based prompts
   await initializePromptManager()
@@ -79,15 +61,9 @@ app.on('ready', async () => {
   // Create window first for fast startup
   mainWindow = createWindow()
 
-  // Initialize IPCBridge — the single exit point for all renderer IPC
-  initializeIPCBridge(mainWindow.webContents)
-  // Bind StreamEngine to the window's WebContents for command handling
-  getStreamEngine().bind(mainWindow.webContents)
-
   // Abort all active streams when the window closes to prevent background resource leaks
   mainWindow.on('closed', () => {
-    shutdownIPCBridge()
-    getStreamEngine().abortAll()
+    cleanupActiveStreams()
     mainWindow = null
   })
 
@@ -101,10 +77,6 @@ app.on('ready', async () => {
     console.error('[Skills] Initialization failed (non-blocking):', err)
   })
 
-  // Initialize custom agents system asynchronously
-  initializeCustomAgents().catch(err => {
-    console.error('[CustomAgent] Initialization failed (non-blocking):', err)
-  })
 })
 
 app.on('window-all-closed', () => {
@@ -116,13 +88,6 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (mainWindow === null) {
     mainWindow = createWindow()
-    initializeIPCBridge(mainWindow.webContents)
-    getStreamEngine().bind(mainWindow.webContents)
-    mainWindow.on('closed', () => {
-      shutdownIPCBridge()
-      getStreamEngine().abortAll()
-      mainWindow = null
-    })
   }
 })
 
@@ -136,12 +101,6 @@ app.on('before-quit', async () => {
 
   // Shutdown MCP
   await shutdownMCP()
-
-  // Shutdown engine, permission, session layer, and event system (reverse init order)
-  shutdownStreamEngine()
-  Permission.shutdown()
-  shutdownSessionLayer()
-  shutdownEventSystem()
 })
 
 export { mainWindow }

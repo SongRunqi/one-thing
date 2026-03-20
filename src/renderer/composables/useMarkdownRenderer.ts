@@ -19,8 +19,6 @@ md.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx]
   const code = token.content
   const lang = token.info.trim() || 'text'
-  const trimmedCode = code.trim()
-
   let highlighted: string
   if (lang && hljs.getLanguage(lang)) {
     try {

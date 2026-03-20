@@ -8,46 +8,6 @@
   <!-- Main App Mode -->
   <ErrorBoundary v-else>
     <div class="app-shell">
-    <!-- Floating window action buttons (Alma-style, teleported to body to escape drag regions) -->
-    <Teleport to="body">
-      <div
-        v-if="!showMediaPanel"
-        class="window-action-buttons"
-        :style="{ left: windowActionsLeft + 'px' }"
-      >
-        <button
-          class="window-action-btn"
-          :title="sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'"
-          @click="handleSidebarToggle"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-            <line x1="9" y1="3" x2="9" y2="21"/>
-          </svg>
-        </button>
-        <button
-          class="window-action-btn"
-          title="Search"
-          @click="openSearch"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="m21 21-4.35-4.35"/>
-          </svg>
-        </button>
-        <button
-          class="window-action-btn"
-          title="New chat"
-          @click="createNewChat"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>
-          </svg>
-        </button>
-      </div>
-    </Teleport>
-
     <!-- Main Content - No Header -->
     <div class="app-content">
       <!-- Media Panel (left side) -->
@@ -70,7 +30,7 @@
         :no-transition="sidebarNoTransition"
         :width="sidebarWidth"
         :media-panel-open="showMediaPanel"
-        @open-settings="openSettings"
+        @open-settings="showSettings = true"
         @toggle-collapse="handleSidebarToggle"
         @open-search="openSearch"
         @create-new-chat="createNewChat"
@@ -85,14 +45,26 @@
         :sidebar-floating="sidebarFloating"
         :show-hover-trigger="sidebarCollapsed && !sidebarFloating && !showMediaPanel"
         :media-panel-open="showMediaPanel"
+        :show-diff-overlay="showDiffOverlay"
+        :diff-overlay-data="diffOverlayData"
         @close-settings="showSettings = false"
         @open-settings="showSettings = true"
         @toggle-sidebar="handleSidebarToggle"
         @show-floating-sidebar="handleTriggerEnter"
         @hide-floating-sidebar="handleTriggerLeave"
+        @close-diff-overlay="closeDiffOverlay"
+      />
+
+      <!-- Commit Dialog -->
+      <CommitDialog
+        :visible="showCommitDialog"
+        :staged-count="stagedFilesCount"
+        :working-directory="sessionsStore.currentSession?.workingDirectory || ''"
+        :session-id="sessionsStore.currentSessionId || ''"
+        @close="closeCommitDialog"
+        @committed="handleCommitted"
       />
     </div>
-
 
     <!-- Search Overlay (teleported to body) -->
     <Teleport to="body">
@@ -150,7 +122,15 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
+import CommitDialog from '@/components/git/CommitDialog.vue'
 
+// Type for diff overlay data
+interface DiffOverlayData {
+  filePath: string
+  workingDirectory: string
+  sessionId: string
+  isStaged: boolean
+}
 
 // Detect if this is the settings window or image preview window
 const isSettingsWindow = window.location.hash.startsWith('#/settings')
@@ -171,25 +151,41 @@ function handleSidebarResize(width: number) {
   localStorage.setItem('sidebarWidth', String(width))
 }
 
-// Floating window action buttons position (Alma-style sliding)
-// Sidebar open → buttons at sidebar's right edge; Sidebar closed → buttons next to traffic lights
-const BUTTON_GROUP_WIDTH = 100 // 3 buttons × 28px + gaps
-const TRAFFIC_LIGHTS_RIGHT = 78 // 70px traffic lights + 8px gap
-const windowActionsLeft = computed(() => {
-  if (sidebarCollapsed.value && !sidebarFloating.value) {
-    // Collapsed: right after traffic lights
-    return TRAFFIC_LIGHTS_RIGHT
-  }
-  // Expanded: right edge of sidebar
-  return sidebarWidth.value - BUTTON_GROUP_WIDTH - 12 // 12px sidebar padding
-})
-
+// Media Panel state
 const showMediaPanel = ref(false)
 
+// Diff overlay state
+const showDiffOverlay = ref(false)
+const diffOverlayData = ref<DiffOverlayData | null>(null)
 
+// Commit dialog state
+const showCommitDialog = ref(false)
+const stagedFilesCount = ref(0)
 
-function openSettings() {
-  window.electronAPI.openSettingsWindow()
+// Diff overlay functions
+function openDiffOverlay(data: DiffOverlayData) {
+  diffOverlayData.value = data
+  showDiffOverlay.value = true
+}
+
+function closeDiffOverlay() {
+  showDiffOverlay.value = false
+  diffOverlayData.value = null
+}
+
+// Commit dialog functions
+function openCommitDialog() {
+  showCommitDialog.value = true
+}
+
+function closeCommitDialog() {
+  showCommitDialog.value = false
+}
+
+function handleCommitted() {
+  // Refresh git status after commit
+  // The GitTab will handle this via its own refresh mechanism
+  closeCommitDialog()
 }
 
 function toggleMediaPanel() {
@@ -207,13 +203,11 @@ function toggleMediaPanel() {
 
 function closeMediaPanel() {
   showMediaPanel.value = false
-  sidebarCollapsed.value = false
   floatingCooldown.value = true
   setTimeout(() => {
     floatingCooldown.value = false
   }, 400)
 }
-
 
 
 // Setup global keyboard shortcuts
@@ -321,10 +315,17 @@ watch(sidebarCollapsed, (collapsed) => {
   }
 })
 
-// Persist sidebar collapsed state
-watch(sidebarCollapsed, (collapsed) => {
+// Update traffic lights when sidebar state changes (main window only)
+watch([sidebarCollapsed, sidebarFloating, showMediaPanel], ([collapsed, floating, mediaOpen]) => {
   localStorage.setItem('sidebarCollapsed', String(collapsed))
-})
+  // Skip traffic light control for settings/preview windows - always show there
+  if (isSettingsWindow || isImagePreviewWindow) return
+  // Show traffic lights when sidebar is visible (expanded or floating) or media panel is open
+  const showTrafficLights = !collapsed || floating || mediaOpen
+  window.electronAPI?.setWindowButtonVisibility?.(showTrafficLights).catch(() => {
+    // Handler may not be registered yet during initial load
+  })
+}, { immediate: true })
 
 
 // Search overlay state
@@ -375,10 +376,9 @@ watch(() => settingsStore.effectiveTheme, () => {
   themeStore.reapplyTheme()
 })
 
-// Create new chat
-// If there's already an empty "New Chat", reuse it
+// Create new chat, reusing an existing empty session if available
 async function createNewChat() {
-  // Check if there's an existing empty session in current workspace
+  // Check if there's an existing empty session
   const existingEmptySession = sessionsStore.filteredSessions.find(
     s => (s.name === 'New Chat' || s.name === '') && (!s.messages || s.messages.length === 0)
   )
@@ -392,6 +392,7 @@ async function createNewChat() {
 
 let unsubscribeSettingsChanged: (() => void) | null = null
 let unsubscribeMenuNewChat: (() => void) | null = null
+let unsubscribeMenuCloseChat: (() => void) | null = null
 
 onMounted(async () => {
   // Load initial data
@@ -433,6 +434,13 @@ onMounted(async () => {
     createNewChat()
   })
 
+  unsubscribeMenuCloseChat = window.electronAPI.onMenuCloseChat(async () => {
+    const currentId = sessionsStore.currentSessionId
+    if (currentId) {
+      await sessionsStore.deleteSession(currentId)
+    }
+  })
+
 })
 
 onUnmounted(() => {
@@ -441,6 +449,9 @@ onUnmounted(() => {
   }
   if (unsubscribeMenuNewChat) {
     unsubscribeMenuNewChat()
+  }
+  if (unsubscribeMenuCloseChat) {
+    unsubscribeMenuCloseChat()
   }
 })
 
@@ -455,7 +466,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: row;
   background: var(--bg);
-  position: relative;
 }
 
 /* Main Content - Full height, horizontal layout */
@@ -475,7 +485,7 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.3);
-  z-index: calc(var(--z-overlay) - 1); /* Just below floating sidebar (500) */
+  z-index: 499; /* Just below floating sidebar (500) */
   animation: fadeIn 0.2s ease forwards;
   /* Optimize rendering */
   contain: strict;
@@ -508,7 +518,7 @@ html[data-theme='light'] .sidebar-floating-backdrop {
   display: flex;
   justify-content: center;
   padding-top: 100px;
-  z-index: var(--z-modal);
+  z-index: 1000;
   animation: fadeIn 0.15s ease;
 }
 
@@ -650,7 +660,7 @@ html[data-theme='light'] .search-overlay {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: var(--z-modal);
+  z-index: 1000;
   padding: 20px;
 }
 
@@ -662,45 +672,5 @@ html[data-theme='light'] .search-overlay {
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-</style>
-
-<!-- Non-scoped styles for teleported window action buttons -->
-<style>
-.window-action-buttons {
-  position: fixed;
-  top: 6px;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  transition: left 0.3s cubic-bezier(0, 0, 0.2, 1);
-  -webkit-app-region: no-drag;
-  pointer-events: auto;
-}
-
-.window-action-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  -webkit-app-region: no-drag;
-  pointer-events: auto;
-}
-
-.window-action-btn:hover {
-  background: var(--hover, rgba(255, 255, 255, 0.08));
-  color: var(--text);
-}
-
-html[data-theme='light'] .window-action-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
 }
 </style>

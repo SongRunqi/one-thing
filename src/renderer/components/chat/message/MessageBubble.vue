@@ -66,7 +66,17 @@
       >
         <!-- New contentParts-based rendering -->
         <template v-if="contentParts && contentParts.length > 0">
-          <!-- All parts: text, tool-call, steps (rendered in document order with TransitionGroup) -->
+          <!-- Text 内容 - Waiting 状态由 MessageThinking 组件处理 -->
+          <Transition name="text-fade">
+            <div
+              v-if="firstTextPart"
+              class="content"
+              :class="{ typing: isTyping }"
+              v-html="renderContentMarkdown(firstTextPart.content)"
+            ></div>
+          </Transition>
+
+          <!-- Other parts: tool-call, steps, additional text (with TransitionGroup) -->
           <TransitionGroup
             v-if="otherParts && otherParts.length > 0"
             name="other-parts"
@@ -78,23 +88,40 @@
               <div v-if="part.type === 'waiting'" class="tool-loop-waiting">
                 <span class="thinking-text flowing">Waiting</span>
               </div>
-              <!-- Text parts (rendered in document order) -->
+              <!-- Additional text parts (after the first one) -->
               <div
                 v-else-if="part.type === 'text'"
                 class="content"
-                :class="{ typing: isTyping && isLastTextPart(part) }"
                 v-html="renderContentMarkdown(part.content)"
               ></div>
-              <!-- Tool call part — compact inline items -->
+              <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
               <template v-else-if="part.type === 'tool-call' && (!hasSteps || hasInputStreamingToolCalls(part.toolCalls))">
-                <ToolCallItem
-                  v-for="tc in (hasSteps ? getToolCallsWithoutSteps(part.toolCalls) : part.toolCalls)"
-                  :key="tc.id"
-                  :toolCall="tc"
-                  @execute="(tc) => emit('executeTool', tc)"
-                  @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                  @reject="(tc) => emit('rejectTool', tc)"
-                />
+                <template v-if="!hasSteps">
+                  <!-- No steps at all, show all tool calls -->
+                  <ToolCallGroup
+                    :toolCalls="part.toolCalls"
+                    @execute="(tc) => emit('executeTool', tc)"
+                  />
+                  <ToolCallItem
+                    v-for="tc in part.toolCalls"
+                    :key="tc.id"
+                    :toolCall="tc"
+                    @execute="(tc) => emit('executeTool', tc)"
+                    @confirm="(tc, r) => emit('confirmTool', tc, r)"
+                    @reject="(tc) => emit('rejectTool', tc)"
+                  />
+                </template>
+                <template v-else>
+                  <!-- Has steps, only show streaming tool calls without corresponding step -->
+                  <ToolCallItem
+                    v-for="tc in getToolCallsWithoutSteps(part.toolCalls)"
+                    :key="tc.id"
+                    :toolCall="tc"
+                    @execute="(tc) => emit('executeTool', tc)"
+                    @confirm="(tc, r) => emit('confirmTool', tc, r)"
+                    @reject="(tc) => emit('rejectTool', tc)"
+                  />
+                </template>
               </template>
               <!-- Steps panel - rendered inline -->
               <StepsPanel
@@ -110,16 +137,32 @@
 
         <!-- Fallback: legacy content display (no contentParts) -->
         <template v-else>
-          <!-- Tool calls — compact inline items -->
+          <!-- Tool calls if no steps OR if streaming input without step -->
           <template v-if="toolCalls && toolCalls.length > 0 && (!hasSteps || hasInputStreamingToolCalls(toolCalls))">
-            <ToolCallItem
-              v-for="tc in (hasSteps ? getToolCallsWithoutSteps(toolCalls) : toolCalls)"
-              :key="tc.id"
-              :toolCall="tc"
-              @execute="(tc) => emit('executeTool', tc)"
-              @confirm="(tc, r) => emit('confirmTool', tc, r)"
-              @reject="(tc) => emit('rejectTool', tc)"
-            />
+            <template v-if="!hasSteps">
+              <ToolCallGroup
+                :toolCalls="toolCalls"
+                @execute="(tc) => emit('executeTool', tc)"
+              />
+              <ToolCallItem
+                v-for="tc in toolCalls"
+                :key="tc.id"
+                :toolCall="tc"
+                @execute="(tc) => emit('executeTool', tc)"
+                @confirm="(tc, r) => emit('confirmTool', tc, r)"
+                @reject="(tc) => emit('rejectTool', tc)"
+              />
+            </template>
+            <template v-else>
+              <ToolCallItem
+                v-for="tc in getToolCallsWithoutSteps(toolCalls)"
+                :key="tc.id"
+                :toolCall="tc"
+                @execute="(tc) => emit('executeTool', tc)"
+                @confirm="(tc, r) => emit('confirmTool', tc, r)"
+                @reject="(tc) => emit('rejectTool', tc)"
+              />
+            </template>
           </template>
           <div :class="['content', { typing: isTyping }]" v-html="renderedContent"></div>
         </template>
@@ -152,6 +195,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import ToolCallGroup from '../ToolCallGroup.vue'
 import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
@@ -203,23 +247,16 @@ let typewriterInterval: ReturnType<typeof setInterval> | null = null
 
 // ============ New overlay-based transition system ============
 
-// Check if any text part exists (for potential future use)
+// Extract the first text part (rendered separately for smooth transition)
 const firstTextPart = computed(() => {
   return props.contentParts?.find(p => p.type === 'text') || null
 })
 
-// Check if a text part is the last text part (for typing animation)
-function isLastTextPart(part: ContentPart): boolean {
-  if (!props.contentParts) return false
-  const textParts = props.contentParts.filter(p => p.type === 'text')
-  return textParts.length > 0 && textParts[textParts.length - 1] === part
-}
-
-// All parts (keeping document order) for TransitionGroup
+// Other parts (excluding first text, but keeping tool loop waiting) for TransitionGroup
 const otherParts = computed(() => {
   if (!props.contentParts) return []
-  let foundFirstWaiting = false
   let foundFirstText = false
+  let foundFirstWaiting = false
 
   return props.contentParts.filter(p => {
     // 跳过 loading-memory（由 MessageThinking 处理）
@@ -237,21 +274,20 @@ const otherParts = computed(() => {
       return true // 后续 waiting（tool loop）保留
     }
 
-    if (p.type === 'text') {
+    if (p.type === 'text' && !foundFirstText) {
       foundFirstText = true
+      return false // first text is rendered separately
     }
-
     return true
   })
 })
 
 // Generate stable keys for other parts TransitionGroup
 function getOtherPartKey(part: ContentPart, index: number): string {
-  if (part.type === 'text') return `text-${index}`
+  if (part.type === 'text') return `text-other-${index}`
   if (part.type === 'tool-call') return `tool-call-${index}`
   if (part.type === 'data-steps') return `steps-${part.turnIndex ?? index}`
   if (part.type === 'waiting') return `waiting-${index}`
-  if (part.type === 'retrieved-memories') return `retrieved-memories-${index}`
   return `part-${index}`
 }
 
@@ -531,7 +567,6 @@ function handleContentClick(event: MouseEvent) {
 
 /* User message bubble */
 .bubble.user {
-  width: fit-content;
   background: var(--user-bubble);
   border-radius: 18px 18px 4px 18px;
   border: 1px solid var(--user-bubble-border);
@@ -667,6 +702,7 @@ html[data-theme='light'] .attachment-file {
 .content-wrapper {
   position: relative;
   overflow: hidden;
+  transition: max-height 0.3s ease;
 }
 
 .content-wrapper.collapsed {

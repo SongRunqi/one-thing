@@ -13,16 +13,44 @@ import {
   generateChatTitle,
   isProviderSupported,
   requiresOAuth,
+  convertToolDefinitionsForAI,
+  type ToolChatMessage,
 } from '../providers/index.js'
+import {
+  getEnabledToolsAsync,
+  setInitContext,
+  initializeAsyncTools,
+} from '../tools/index.js'
+import { getMCPToolsForAI } from '../mcp/index.js'
+import { getSkillsForSession } from './skills.js'
+import { getStorage } from '../storage/index.js'
+import { getCustomAgentById } from '../services/custom-agent/index.js'
 import { triggerManager } from '../services/triggers/index.js'
 import { textMemoryUpdateTrigger } from '../services/triggers/text-memory-update.js'
 // Note: contextCompactingTrigger removed - compacting now happens in real-time during tool loop
 import { Permission } from '../permission/index.js'
+import { saveMediaImage } from './media.js'
+import * as modelRegistry from '../services/ai/model-registry.js'
 
 // Import from chat sub-modules
 import {
+  sendUIMessageFinish,
+} from './chat/stream-helpers.js'
+import {
+  executeMessageStream,
+} from './chat/stream-executor.js'
+import {
+  formatUserProfilePrompt,
+  retrieveRelevantFacts,
+  retrieveRelevantAgentMemories,
+  formatAgentMemoryPrompt,
+  getTextFromContent,
+} from './chat/memory-helpers.js'
+import {
+  formatMessagesForLog,
   buildMessageContent,
   buildHistoryMessages,
+  buildSystemPrompt,
   filterHistoryForNonToolAPI,
 } from './chat/message-helpers.js'
 import {
@@ -32,8 +60,19 @@ import {
   getEffectiveProviderConfig,
   getProviderApiType,
 } from './chat/provider-helpers.js'
-import { getStreamEngine } from '../engine/index.js'
-import { getEventBus } from '../events/index.js'
+import {
+  activeStreams,
+  createStreamProcessor,
+  type StreamContext,
+} from './chat/stream-processor.js'
+import type { ProviderConfigWithKey } from './chat/stream-executor.js'
+import {
+  executeToolAndUpdate,
+} from './chat/tool-execution.js'
+import {
+  runStream,
+  executeStreamGeneration,
+} from './chat/tool-loop.js'
 
 // Register triggers on module load
 triggerManager.register(textMemoryUpdateTrigger)
@@ -105,10 +144,6 @@ export function registerChatHandlers() {
       if (!streamingMessage?.steps) return
 
       // Cancel all awaiting-confirmation and running steps
-      // Store mutations + EventBus emit (IPCBridge handles IPC delivery)
-      let eventBus: ReturnType<typeof getEventBus> | null = null
-      try { eventBus = getEventBus() } catch { /* not initialized */ }
-
       for (const step of streamingMessage.steps) {
         if (step.status === 'awaiting-confirmation' || step.status === 'running') {
           step.status = 'cancelled'
@@ -119,39 +154,51 @@ export function registerChatHandlers() {
             status: 'cancelled',
             toolCall: step.toolCall,
           })
-          eventBus?.emit(sid, {
-            type: 'step:updated',
+          sender.send(IPC_CHANNELS.STEP_UPDATED, {
+            sessionId: sid,
+            messageId: streamingMessage.id,
             stepId: step.id,
             updates: { status: 'cancelled', toolCall: step.toolCall },
-          }).catch(err => console.error('[Chat] step:updated emit error:', err))
+          })
         }
       }
 
-      // Mark message as not streaming and send aborted via EventBus
+      // Mark message as not streaming and send complete
       store.updateMessageStreaming(sid, streamingMessage.id, false)
-      eventBus?.emit(sid, {
-        type: 'stream:aborted',
-        reason: 'User cancelled',
-      }).catch(err => console.error('[Chat] stream:aborted emit error:', err))
+      sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+        messageId: streamingMessage.id,
+        sessionId: sid,
+        aborted: true,
+      })
     }
 
-    const engine = getStreamEngine()
-
     if (sessionId) {
-      // Abort specific session's stream (includes Permission.clearSession)
-      const hadStream = engine.abort(sessionId)
-      // Cancel any waiting steps (store + EventBus mutations)
-      cancelPendingSteps(sessionId)
-      if (hadStream) {
-        console.log(`[Backend] Aborted stream for session: ${sessionId}`)
+      // Abort specific session's stream
+      const controller = activeStreams.get(sessionId)
+      if (controller) {
+        console.log(`[Backend] Aborting stream for session: ${sessionId}`)
+        controller.abort()
+        activeStreams.delete(sessionId)
+        // Clear any pending permission requests for this session
+        Permission.clearSession(sessionId)
+        // Cancel any waiting steps
+        cancelPendingSteps(sessionId)
         return { success: true }
       }
+      // Even if no active stream, still clear pending permissions and cancel waiting steps
+      Permission.clearSession(sessionId)
+      cancelPendingSteps(sessionId)
       return { success: false, error: 'No active stream for this session' }
     } else {
       // Abort all streams (backwards compatibility)
-      const sessionIds = engine.getActiveSessionIds()
-      if (sessionIds.length > 0) {
-        engine.abortAll()
+      if (activeStreams.size > 0) {
+        console.log(`[Backend] Aborting all active streams (${activeStreams.size})`)
+        for (const [sid, controller] of activeStreams) {
+          controller.abort()
+          // Clear any pending permission requests for each session
+          Permission.clearSession(sid)
+        }
+        activeStreams.clear()
         return { success: true }
       }
       return { success: false, error: 'No active streams to abort' }
@@ -162,35 +209,13 @@ export function registerChatHandlers() {
   ipcMain.handle(IPC_CHANNELS.GET_ACTIVE_STREAMS, async () => {
     return {
       success: true,
-      sessionIds: getStreamEngine().getActiveSessionIds()
+      sessionIds: Array.from(activeStreams.keys())
     }
   })
 
   // Resume streaming after user confirms a tool
   ipcMain.handle(IPC_CHANNELS.RESUME_AFTER_TOOL_CONFIRM, async (event, { sessionId, messageId }) => {
     return handleResumeAfterToolConfirm(event.sender, sessionId, messageId)
-  })
-
-  // ── Unified command channel (Phase 4) ──────────
-  ipcMain.handle(IPC_CHANNELS.SESSION_COMMAND, async (event, { sessionId, command }) => {
-    const engine = getStreamEngine()
-    switch (command.type) {
-      case 'command:abort-stream':
-        engine.abort(sessionId)
-        // cancelPendingSteps is defined above in the ABORT_STREAM handler scope
-        // For unified path, we'd need to extract it. For now, delegate to existing handler.
-        return { success: true }
-
-      case 'command:permission-respond':
-        // Emit to EventBus with channel='ipc' — Permission subscription validates & processes
-        try {
-          getEventBus().emit(sessionId, { ...command, channel: 'ipc' })
-        } catch { /* EventBus not initialized */ }
-        return { success: true }
-
-      default:
-        return { success: false, error: `Unknown command type: ${command.type}` }
-    }
   })
 }
 
@@ -284,11 +309,43 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
       return { success: false, error: 'Message not found' }
     }
 
+    // Get settings and validate (use session-level model if available)
+    const settings = store.getSettings()
+    const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
+
+    // Get API key (handles OAuth providers)
+    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
+    if (!apiKey) {
+      const isOAuth = requiresOAuth(providerId)
+      return {
+        success: false,
+        error: isOAuth
+          ? `Not logged in to ${providerId}. Please login in settings.`
+          : 'API Key not configured. Please configure your AI settings.',
+      }
+    }
+
+    // Create config with the API key (for OAuth providers, this is the OAuth token)
+    const configWithApiKey: ProviderConfigWithKey = {
+      ...providerConfig,
+      model: effectiveModel,
+      selectedModels: providerConfig?.selectedModels ?? [effectiveModel],
+      apiKey,
+    }
+
+    if (!isProviderSupported(providerId)) {
+      return {
+        success: false,
+        error: `Unsupported provider: ${providerId}`,
+      }
+    }
+
     // Create assistant message
     const assistantMessageId = uuidv4()
     const assistantMessage: ChatMessage = {
       id: assistantMessageId,
       role: 'assistant',
+      model: effectiveModel,
       content: '',
       timestamp: Date.now(),
       isStreaming: true,
@@ -297,28 +354,37 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
     }
     store.addMessage(sessionId, assistantMessage)
 
+    // Get session and build history
     const session = store.getSession(sessionId)
-    const sessionName = session?.name
+    const historyMessages = buildHistoryMessages(session?.messages || [], session)
 
-    // Return response to renderer IMMEDIATELY
     const initialResponse = {
       success: true,
       messageId: assistantMessageId,
-      sessionName,
+      sessionName: session?.name,
     }
 
-    // Emit command to EventBus — StreamEngine subscribes and drives streaming
-    process.nextTick(() => {
+    // Start streaming in background using unified stream executor
+    process.nextTick(async () => {
+      console.log(`[Backend] Starting edit/resend stream for session: ${sessionId}`)
+
       try {
-        getEventBus().emit(sessionId, {
-          type: 'command:edit-and-resend',
-          channel: 'ipc',
-          messageId,
-          newContent,
+        // Use unified stream executor (handles both image generation and text streaming)
+        await executeMessageStream({
+          sender,
+          sessionId,
           assistantMessageId,
-          sessionName,
-        }).catch(err => console.error('[Chat] command:edit-and-resend emit error:', err))
-      } catch { /* EventBus not initialized */ }
+          messageContent: newContent,  // Use the edited content as prompt
+          historyMessages,
+          configWithApiKey,
+          providerId,
+          settings,
+          toolSettings: settings.tools,
+          sessionName: session?.name,
+        })
+      } catch (error: any) {
+        console.error('[Backend] Error in edit/resend stream execution:', error)
+      }
     })
 
     return initialResponse
@@ -487,7 +553,7 @@ async function handleGenerateTitle(userMessage: string) {
 
 // Handle streaming message with event emitter
 async function handleSendMessageStream(sender: Electron.WebContents, sessionId: string, messageContent: string, attachments?: MessageAttachment[]) {
-  console.log(`[Backend] handleSendMessageStream called`)
+  console.log(`[Backend] handleSendMessageStream called - BUILD_VERSION: 2025-01-05-v2`)
   try {
     // Get session to check if this is the first user message
     const session = store.getSession(sessionId)
@@ -503,21 +569,10 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       role: 'user',
       content: messageContent,
       timestamp: Date.now(),
-      attachments: attachments,
+      attachments: attachments, // Include file/image attachments
     }
     console.log('[Backend] Created user message with id:', userMessage.id, 'attachments:', attachments?.length || 0)
     store.addMessage(sessionId, userMessage)
-
-    // Emit message:user-created event
-    try {
-      getEventBus().emit(sessionId, {
-        type: 'message:user-created',
-        messageId: userMessage.id,
-        content: messageContent,
-      }).catch(err => console.error('[Chat] message:user-created emit error:', err))
-    } catch {
-      // Event system not initialized — ignore
-    }
 
     // Auto-rename session based on first user message
     if (isFirstUserMessage || isBranchFirstMessage) {
@@ -525,11 +580,45 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       store.renameSession(sessionId, newTitle)
     }
 
-    // Create assistant message (model resolved later by StreamEngine)
+    // Get settings and validate (use session-level model if available)
+    const settings = store.getSettings()
+    const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
+
+    // Get API key (handles OAuth providers)
+    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
+    if (!apiKey) {
+      const isOAuth = requiresOAuth(providerId)
+      return {
+        success: false,
+        error: isOAuth
+          ? `Not logged in to ${providerId}. Please login in settings.`
+          : 'API Key not configured. Please configure your AI settings.',
+      }
+    }
+
+    // Create config with the API key (for OAuth providers, this is the OAuth token)
+    const configWithApiKey: ProviderConfigWithKey = {
+      ...providerConfig,
+      model: effectiveModel,
+      selectedModels: providerConfig?.selectedModels ?? [effectiveModel],
+      apiKey,
+    }
+
+    if (!isProviderSupported(providerId)) {
+      return {
+        success: false,
+        error: `Unsupported provider: ${providerId}`,
+      }
+    }
+
+    console.log(`[Backend] Using provider: ${providerId}, model: ${effectiveModel}`)
+
+    // Create assistant message
     const assistantMessageId = uuidv4()
     const assistantMessage: ChatMessage = {
       id: assistantMessageId,
       role: 'assistant',
+      model: effectiveModel,
       content: '',
       timestamp: Date.now(),
       isStreaming: true,
@@ -538,40 +627,40 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     }
     store.addMessage(sessionId, assistantMessage)
 
-    // Emit message:assistant-created event
-    try {
-      getEventBus().emit(sessionId, {
-        type: 'message:assistant-created',
-        messageId: assistantMessageId,
-      }).catch(err => console.error('[Chat] message:assistant-created emit error:', err))
-    } catch {
-      // Event system not initialized — ignore
-    }
-
     // Get updated session name (may have been renamed above)
     const updatedSessionForName = store.getSession(sessionId)
-    const sessionName = updatedSessionForName?.name
-
-    // Return response to renderer IMMEDIATELY (sync phase done)
     const initialResponse = {
       success: true,
       userMessage,
       messageId: assistantMessageId,
-      sessionName,
+      sessionName: updatedSessionForName?.name,
     }
 
-    // Emit command to EventBus — StreamEngine subscribes and drives streaming
-    process.nextTick(() => {
+    // Start streaming in background using unified stream executor
+    process.nextTick(async () => {
+      console.log(`[Backend] Starting stream for session: ${sessionId}, model: ${configWithApiKey.model}`)
+
       try {
-        getEventBus().emit(sessionId, {
-          type: 'command:send-message',
-          channel: 'ipc',
-          content: messageContent,
-          attachments,
+        // Build history from updated session (includes user message)
+        const sessionForHistory = store.getSession(sessionId)
+        const historyMessages = buildHistoryMessages(sessionForHistory?.messages || [], sessionForHistory)
+
+        // Use unified stream executor (handles both image generation and text streaming)
+        await executeMessageStream({
+          sender,
+          sessionId,
           assistantMessageId,
-          sessionName,
-        }).catch(err => console.error('[Chat] command:send-message emit error:', err))
-      } catch { /* EventBus not initialized */ }
+          messageContent,
+          historyMessages,
+          configWithApiKey,
+          providerId,
+          settings,
+          toolSettings: settings.tools,
+          sessionName: updatedSessionForName?.name,
+        })
+      } catch (error: any) {
+        console.error('[Backend] Error in stream execution:', error)
+      }
     })
 
     return initialResponse
@@ -591,38 +680,336 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
   try {
     console.log(`[Backend] Resuming after tool confirm for session: ${sessionId}, message: ${messageId}`)
 
-    // Validate session and message state (sync checks)
+    // Get session
     const session = store.getSession(sessionId)
     if (!session) {
       return { success: false, error: 'Session not found' }
     }
 
+    // Find the assistant message with tool calls
     const assistantMessage = session.messages.find(m => m.id === messageId)
     if (!assistantMessage || assistantMessage.role !== 'assistant') {
       return { success: false, error: 'Assistant message not found' }
     }
 
+    // Check if there are completed tool calls to process
     const toolCalls = assistantMessage.toolCalls || []
     const completedToolCalls = toolCalls.filter(tc => tc.status === 'completed' || tc.status === 'failed')
     if (completedToolCalls.length === 0) {
       return { success: false, error: 'No completed tool calls to process' }
     }
 
+    // Check if there are still pending tool calls
     const pendingToolCalls = toolCalls.filter(tc => tc.status === 'pending' && tc.requiresConfirmation)
     if (pendingToolCalls.length > 0) {
       console.log(`[Backend] Still have ${pendingToolCalls.length} pending tool calls, not resuming yet`)
       return { success: false, error: 'Still have pending tool calls awaiting confirmation' }
     }
 
-    // Delegate to StreamEngine (fire-and-forget)
-    // Emit command to EventBus — StreamEngine subscribes and drives streaming
-    process.nextTick(() => {
+    // Get settings and validate (use session-level model if available)
+    const settings = store.getSettings()
+    const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
+
+    // Get API key (handles OAuth providers)
+    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
+    if (!apiKey) {
+      const isOAuth = requiresOAuth(providerId)
+      return {
+        success: false,
+        error: isOAuth
+          ? `Not logged in to ${providerId}. Please login in settings.`
+          : 'API Key not configured',
+      }
+    }
+
+    // Create config with the API key (for OAuth providers, this is the OAuth token)
+    const configWithApiKey: ProviderConfigWithKey = {
+      ...providerConfig,
+      model: effectiveModel,
+      selectedModels: providerConfig?.selectedModels ?? [effectiveModel],
+      apiKey,
+    }
+
+    if (!isProviderSupported(providerId)) {
+      return { success: false, error: `Unsupported provider: ${providerId}` }
+    }
+
+    // Build conversation messages for continuation
+    // We need to include history + assistant message with tool calls + tool results
+    const historyMessages = buildHistoryMessages(session.messages, session)
+
+    // Filter out the current assistant message from history (we'll add it with tool calls)
+    const historyWithoutCurrent = historyMessages.filter((_, idx) => {
+      // Remove the last assistant message if it matches our message
+      const msgCount = historyMessages.length
+      return idx !== msgCount - 1 || historyMessages[idx].role !== 'assistant'
+    })
+
+    // Build tool-aware conversation messages
+    const conversationMessages: ToolChatMessage[] = []
+
+    // Load skills first (before tools, as SkillTool needs them in InitContext)
+    const skillsSettings = settings.skills
+    const skillsEnabled = skillsSettings?.enableSkills !== false
+    const enabledSkills = skillsEnabled ? getSkillsForSession(session.workingDirectory) : []
+
+    // Get agent for permission context
+    const currentAgent = session.agentId ? getCustomAgentById(session.agentId, session.workingDirectory) : undefined
+
+    // Set init context for async tools (like SkillTool)
+    if (settings.tools?.enableToolCalls) {
+      setInitContext({
+        agent: currentAgent ? {
+          id: currentAgent.id,
+          name: currentAgent.name,
+          permissions: undefined, // CustomAgents use allowBuiltinTools/allowedBuiltinTools instead
+        } : undefined,
+        skills: enabledSkills.map(s => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          source: s.source,
+          path: s.path,
+          directoryPath: s.directoryPath,
+          enabled: s.enabled,
+          instructions: s.instructions,
+          files: s.files?.map(f => ({ name: f.name, path: f.path, type: f.type as 'markdown' | 'script' | 'template' | 'other' })),
+        })),
+      })
+      await initializeAsyncTools()
+    }
+
+    // Add system prompt
+    // Use async version to include tools with dynamic descriptions
+    // Pass toolSettings.tools to filter based on user's per-tool enabled settings
+    const allEnabledTools = settings.tools?.enableToolCalls ? await getEnabledToolsAsync(settings.tools.tools) : []
+    const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
+    const mcpTools = settings.tools?.enableToolCalls ? getMCPToolsForAI(settings.tools.tools) : {}
+
+    // Check if the current model supports tools using Models.dev tool_call field
+    const supportsTools = await modelRegistry.modelSupportsTools(providerConfig?.model || '', providerId)
+    if (!supportsTools) {
+      console.log(`[Chat] Model ${providerConfig?.model} does not support tools, skipping tool calls`)
+    }
+
+    const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
+
+    // Load user profile (shared) and agent memory (per-agent) for system prompt
+    let userProfilePrompt: string | undefined
+    let agentMemoryPrompt: string | undefined
+    const agentId = session.agentId
+
+    // Get the last user message for retrieval-based memory injection
+    const lastUserMsgContent = historyWithoutCurrent
+      .filter(m => m.role === 'user')
+      .pop()?.content
+    const lastUserMsg = lastUserMsgContent ? getTextFromContent(lastUserMsgContent) : ''
+
+    // Check if memory is enabled in settings
+    const memorySettings = store.getSettings()
+    const memoryEnabled = memorySettings.embedding?.memoryEnabled !== false
+
+    // Retrieve relevant user facts based on conversation context (semantic search)
+    if (memoryEnabled) {
       try {
-        getEventBus().emit(sessionId, {
-          type: 'command:resume-after-confirm',
-          messageId,
-        }).catch(err => console.error('[Chat] command:resume-after-confirm emit error:', err))
-      } catch { /* EventBus not initialized */ }
+        const storage = getStorage()
+        const relevantFacts = await retrieveRelevantFacts(storage, lastUserMsg, 10, 0.3)
+        if (relevantFacts.length > 0) {
+          userProfilePrompt = formatUserProfilePrompt(relevantFacts)
+          console.log(`[Chat] Retrieved ${relevantFacts.length} relevant facts for resume context`)
+        }
+      } catch (error) {
+        console.error('Failed to retrieve relevant facts:', error)
+      }
+    }
+
+    // Load agent-specific memory only for agent sessions
+    if (agentId && memoryEnabled) {
+      try {
+        const storage = getStorage()
+        const agentRelationship = await storage.agentMemory.getRelationship(agentId)
+        if (agentRelationship) {
+          // Use semantic search to retrieve context-relevant memories
+          const relevantMemories = await retrieveRelevantAgentMemories(
+            storage, agentId, lastUserMsg, 5, 0.3
+          )
+          if (relevantMemories.length > 0) {
+            console.log(`[Chat] Retrieved ${relevantMemories.length} relevant agent memories for resume context`)
+          }
+          agentMemoryPrompt = formatAgentMemoryPrompt(agentRelationship, relevantMemories)
+        }
+      } catch (error) {
+        console.error('Failed to load agent memory:', error)
+      }
+    }
+
+    // Get workspace/agent system prompt
+    let characterSystemPrompt: string | undefined
+    if (session.workspaceId) {
+      const workspace = store.getWorkspace(session.workspaceId)
+      characterSystemPrompt = workspace?.systemPrompt
+    } else if (session.agentId) {
+      const agent = getCustomAgentById(session.agentId, session.workingDirectory)
+      characterSystemPrompt = agent?.systemPrompt
+    }
+
+    const systemPrompt = buildSystemPrompt({
+      hasTools,
+      skills: enabledSkills,
+      workspaceSystemPrompt: characterSystemPrompt,
+      workingDirectory: session.workingDirectory,
+    })
+
+    conversationMessages.push({ role: 'system', content: systemPrompt })
+
+    // Add history messages (excluding current assistant message)
+    for (const msg of historyWithoutCurrent) {
+      if (msg.role === 'user') {
+        conversationMessages.push({ role: 'user', content: msg.content })
+      } else if (msg.role === 'assistant') {
+        conversationMessages.push({
+          role: 'assistant',
+          content: msg.content,
+          ...(msg.toolCalls && { toolCalls: msg.toolCalls }),
+          ...(msg.reasoningContent && { reasoningContent: msg.reasoningContent }),
+        })
+      } else if (msg.role === 'tool') {
+        conversationMessages.push({ role: 'tool', content: msg.content })
+      }
+    }
+
+    // Add the assistant message with tool calls
+    conversationMessages.push({
+      role: 'assistant',
+      content: assistantMessage.content || '',
+      toolCalls: toolCalls.map(tc => ({
+        toolCallId: tc.id,
+        toolName: tc.toolName,
+        args: tc.arguments,
+      })),
+      ...(assistantMessage.reasoning && { reasoningContent: assistantMessage.reasoning }),
+    })
+
+    // Add tool results
+    conversationMessages.push({
+      role: 'tool',
+      content: toolCalls.map(tc => ({
+        type: 'tool-result' as const,
+        toolCallId: tc.id,
+        toolName: tc.toolName,
+        result: tc.status === 'completed' ? tc.result : { error: tc.error },
+      })),
+    })
+
+    // Send continuation chunk immediately to show waiting indicator
+    sender.send(IPC_CHANNELS.STREAM_CHUNK, {
+      type: 'continuation',
+      content: '',
+      messageId,
+      sessionId,
+    })
+
+    // Start streaming continuation in background
+    process.nextTick(async () => {
+      const abortController = new AbortController()
+      activeStreams.set(sessionId, abortController)
+
+      const ctx: StreamContext = {
+        sender,
+        sessionId,
+        assistantMessageId: messageId,
+        abortSignal: abortController.signal,
+        settings,
+        providerConfig: configWithApiKey,
+        providerId,
+        toolSettings: settings.tools,
+      }
+
+      // Initialize processor with existing message content to preserve it
+      const processor = createStreamProcessor(ctx, {
+        content: assistantMessage.content || '',
+        reasoning: assistantMessage.reasoning || '',
+      })
+
+      try {
+        console.log('[Backend] Continuing tool loop after confirmation')
+
+        // Log request start
+        const requestStartTime = Date.now()
+        console.log('[Chat] ===== Resume Request Start =====')
+        console.log('[Chat] Time:', new Date(requestStartTime).toISOString())
+        console.log('[Chat] Provider:', providerId)
+        console.log('[Chat] Model:', configWithApiKey.model)
+        console.log('[Chat] System Prompt:', systemPrompt)
+        console.log('[Chat] Messages:', JSON.stringify(formatMessagesForLog(conversationMessages), null, 2))
+
+        // Build tools for AI
+        const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
+        const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
+
+        // Continue the stream (resume after tool confirmation)
+        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, processor, enabledSkills)
+
+        // Log request end
+        const requestEndTime = Date.now()
+        const requestDuration = (requestEndTime - requestStartTime) / 1000
+        console.log('[Chat] ===== Resume Request End =====')
+        console.log('[Chat] End Time:', new Date(requestEndTime).toISOString())
+        console.log('[Chat] Duration:', requestDuration.toFixed(2), 'seconds')
+
+        // Only finalize and send complete if not paused for another confirmation
+        if (!result.pausedForConfirmation) {
+          processor.finalize()
+          sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+            messageId,
+            sessionId,
+            sessionName: session.name,
+          })
+          console.log('[Backend] Resume streaming complete')
+          // Only remove controller if stream completed
+          activeStreams.delete(sessionId)
+        } else {
+          console.log('[Backend] Resume paused for another tool confirmation')
+          // Keep controller in activeStreams for abort support
+        }
+
+      } catch (error: any) {
+        const isAborted = error.name === 'AbortError' || abortController.signal.aborted
+        if (isAborted) {
+          console.log('[Backend] Resume stream aborted by user')
+          processor.finalize()
+          sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+            messageId,
+            sessionId,
+            sessionName: session.name,
+            aborted: true,
+          })
+        } else {
+          console.error('[Backend] Resume streaming error:', error)
+
+          // Remove the failed assistant message from storage
+          store.deleteMessage(sessionId, messageId)
+
+          // Add an error message to the session (persisted)
+          const errorMessage: ChatMessage = {
+            id: `error-${Date.now()}`,
+            role: 'error',
+            content: error.message || 'Streaming error',
+            timestamp: Date.now(),
+            errorDetails: extractErrorDetails(error),
+          }
+          store.addMessage(sessionId, errorMessage)
+
+          sender.send(IPC_CHANNELS.STREAM_ERROR, {
+            messageId,
+            sessionId,
+            error: error.message || 'Streaming error',
+            errorDetails: extractErrorDetails(error),
+          })
+        }
+        // On error/abort, always remove controller
+        activeStreams.delete(sessionId)
+      }
     })
 
     return { success: true }

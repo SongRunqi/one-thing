@@ -53,10 +53,6 @@ export const IPC_CHANNELS = {
   CONTEXT_SIZE_UPDATED: 'sessions:context-size-updated',
   CONTEXT_COMPACT_STARTED: 'sessions:context-compact-started',
   CONTEXT_COMPACT_COMPLETED: 'sessions:context-compact-completed',
-  SET_SESSION_BUILTIN_MODE: 'sessions:set-builtin-mode',
-  GET_SESSION_BUILTIN_MODE: 'sessions:get-builtin-mode',
-  PLAN_UPDATED: 'sessions:plan-updated',
-
   // Session optimization (metadata separation)
   GET_SESSIONS_LIST: 'sessions:get-list',           // Returns SessionMeta[] only (no messages)
   ACTIVATE_SESSION: 'sessions:activate',            // Mark session as active, return details
@@ -81,11 +77,6 @@ export const IPC_CHANNELS = {
   REFRESH_MODEL_REGISTRY: 'models:refresh-registry',
   GET_MODEL_NAME_ALIASES: 'models:get-name-aliases',
   GET_MODEL_DISPLAY_NAME: 'models:get-display-name',
-
-  // Embedding models (from Models.dev registry)
-  GET_EMBEDDING_MODELS: 'models:get-embedding',
-  GET_ALL_EMBEDDING_MODELS: 'models:get-all-embedding',
-  GET_EMBEDDING_DIMENSION: 'models:get-embedding-dimension',
 
   // Providers related
   GET_PROVIDERS: 'providers:get-all',
@@ -142,51 +133,6 @@ export const IPC_CHANNELS = {
   SKILLS_DELETE: 'skills:delete',
   SKILLS_TOGGLE_ENABLED: 'skills:toggle-enabled',
 
-  // Workspace related
-  WORKSPACE_GET_ALL: 'workspaces:get-all',
-  WORKSPACE_CREATE: 'workspaces:create',
-  WORKSPACE_UPDATE: 'workspaces:update',
-  WORKSPACE_DELETE: 'workspaces:delete',
-  WORKSPACE_SWITCH: 'workspaces:switch',
-  WORKSPACE_UPLOAD_AVATAR: 'workspaces:upload-avatar',
-
-  // User Profile related
-  USER_PROFILE_GET: 'user-profile:get',
-  USER_PROFILE_ADD_FACT: 'user-profile:add-fact',
-  USER_PROFILE_UPDATE_FACT: 'user-profile:update-fact',
-  USER_PROFILE_DELETE_FACT: 'user-profile:delete-fact',
-
-  // Agent Memory related
-  AGENT_MEMORY_GET_RELATIONSHIP: 'agent-memory:get-relationship',
-  AGENT_MEMORY_ADD_MEMORY: 'agent-memory:add-memory',
-  AGENT_MEMORY_DELETE: 'agent-memory:delete',
-  AGENT_MEMORY_RECALL: 'agent-memory:recall',
-  AGENT_MEMORY_GET_ACTIVE: 'agent-memory:get-active',
-  AGENT_MEMORY_UPDATE_RELATIONSHIP: 'agent-memory:update-relationship',
-  AGENT_MEMORY_RECORD_INTERACTION: 'agent-memory:record-interaction',
-
-  // Memory Feedback related (deprecated: use memoryFeedbackRouter from ./memory-feedback.ts)
-  /** @deprecated Use memoryFeedbackRouter instead */
-  MEMORY_FEEDBACK_RECORD: 'memory-feedback:record',
-  /** @deprecated Use memoryFeedbackRouter instead */
-  MEMORY_FEEDBACK_GET_STATS: 'memory-feedback:get-stats',
-
-  // Memory Management related
-  MEMORY_LIST_FILES: 'memory:list-files',
-  MEMORY_GET_FILE: 'memory:get-file',
-  MEMORY_UPDATE_FILE: 'memory:update-file',
-  MEMORY_DELETE_FILE: 'memory:delete-file',
-  MEMORY_DELETE_FILES: 'memory:delete-files',
-  MEMORY_EXPORT: 'memory:export',
-  MEMORY_EXPORT_WITH_DIALOG: 'memory:export-with-dialog',
-  MEMORY_IMPORT: 'memory:import',
-  MEMORY_IMPORT_WITH_DIALOG: 'memory:import-with-dialog',
-  MEMORY_GET_TAGS: 'memory:get-tags',
-  MEMORY_RENAME_TAG: 'memory:rename-tag',
-  MEMORY_DELETE_TAG: 'memory:delete-tag',
-  MEMORY_GET_STATS: 'memory:get-stats',
-  MEMORY_REBUILD_INDEX: 'memory:rebuild-index',
-
   // Theme related
   THEME_GET_ALL: 'themes:get-all',
   THEME_GET: 'themes:get',
@@ -212,22 +158,6 @@ export const IPC_CHANNELS = {
 
   // Directories related (for /cd path completion)
   DIRS_LIST: 'dirs:list',
-
-  // Custom Agent related
-  CUSTOM_AGENT_GET_ALL: 'custom-agents:get-all',
-  CUSTOM_AGENT_REFRESH: 'custom-agents:refresh',
-  CUSTOM_AGENT_OPEN_DIRECTORY: 'custom-agents:open-directory',
-  CUSTOM_AGENT_CREATE: 'custom-agents:create',
-  CUSTOM_AGENT_UPDATE: 'custom-agents:update',
-  CUSTOM_AGENT_DELETE: 'custom-agents:delete',
-  CUSTOM_AGENT_GET: 'custom-agents:get',
-  CUSTOM_AGENT_GET_AVAILABLE_BUILTIN_TOOLS: 'custom-agents:get-available-builtin-tools',
-  // CustomAgent permission (for tools that need user confirmation within CustomAgent execution)
-  CUSTOM_AGENT_PERMISSION_REQUEST: 'custom-agents:permission-request',
-  CUSTOM_AGENT_PERMISSION_RESPOND: 'custom-agents:permission-respond',
-  // CustomAgent pin/unpin (for sidebar display)
-  CUSTOM_AGENT_PIN: 'custom-agents:pin',
-  CUSTOM_AGENT_UNPIN: 'custom-agents:unpin',
 
   // File Tree related (for right sidebar file browser)
   FILE_TREE_LIST: 'file-tree:list',

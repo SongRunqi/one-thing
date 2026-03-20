@@ -92,8 +92,6 @@ import type {
   ReadSkillFileResponse,
   OpenSkillDirectoryResponse,
   CreateSkillResponse,
-  // Builtin Mode (Ask/Build)
-
   // Permission types
   PermissionInfo,
   PermissionResponse,
@@ -172,8 +170,6 @@ export type {
   SkillFile,
   SkillSource,
   SkillSettings,
-  // Builtin Mode (Ask/Build)
-
   // Permission types
   PermissionInfo,
   PermissionResponse,
@@ -243,7 +239,7 @@ export interface ElectronAPI {
   editAndResend: (sessionId: string, messageId: string, newContent: string) => Promise<EditAndResendResponse>
   editAndResendStream: (sessionId: string, messageId: string, newContent: string) => Promise<StreamSendMessageResponse>
   getSessions: () => Promise<GetSessionsResponse>
-  createSession: (name: string, workspaceId?: string, agentId?: string) => Promise<CreateSessionResponse>
+  createSession: (name: string) => Promise<CreateSessionResponse>
   switchSession: (sessionId: string) => Promise<SwitchSessionResponse>
   getSession: (sessionId: string) => Promise<SwitchSessionResponse>
   deleteSession: (sessionId: string) => Promise<DeleteSessionResponse>
@@ -252,7 +248,9 @@ export interface ElectronAPI {
   updateSessionPin: (sessionId: string, isPinned: boolean) => Promise<UpdateSessionPinResponse>
   updateSessionModel: (sessionId: string, provider: string, model: string) => Promise<{ success: boolean; error?: string }>
   updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) => Promise<{ success: boolean; error?: string }>
+  updateSessionAgent: (sessionId: string, agentId: string | null) => Promise<{ success: boolean; error?: string }>
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
+  getSessionTokenUsage: (sessionId: string) => Promise<{ success: boolean; usage?: { totalInputTokens: number; totalOutputTokens: number; totalTokens: number; maxTokens: number; lastInputTokens: number; contextSize: number }; error?: string }>
   // Optimized session loading (Phase 4: Metadata Separation)
   getSessionsList: () => Promise<GetSessionsListResponse>
   activateSession: (sessionId: string) => Promise<ActivateSessionResponse>
@@ -264,6 +262,9 @@ export interface ElectronAPI {
   removeGitStatusMessage: (sessionId: string) => Promise<{ success: boolean; removedId?: string | null; error?: string }>
   // Generic remove message by ID (for close button functionality)
   removeMessage: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>
+  onContextSizeUpdated: (callback: (data: { sessionId: string; contextSize: number }) => void) => () => void
+  onContextCompactStarted: (callback: (data: { sessionId: string }) => void) => () => void
+  onContextCompactCompleted: (callback: (data: { sessionId: string; success: boolean; error?: string }) => void) => () => void
   updateSessionMaxTokens: (sessionId: string, maxTokens: number) => Promise<{ success: boolean; error?: string }>
   getSettings: () => Promise<GetSettingsResponse>
   saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>
@@ -298,21 +299,15 @@ export interface ElectronAPI {
   cancelTool: (toolCallId: string) => Promise<{ success: boolean }>
   updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolCall>) => Promise<{ success: boolean }>
   updateContentParts: (sessionId: string, messageId: string, contentParts: ContentPart[]) => Promise<{ success: boolean }>
-  // Unified event-driven channels (Phase 4)
-  onSessionEvent: (callback: (envelope: any) => void) => () => void
-  onSessionStream: (callback: (data: { sessionId: string; chunk: any }) => void) => () => void
-  emitCommand: (sessionId: string, command: any) => Promise<{ success: boolean; error?: string }>
-
-  // Legacy streaming control
   abortStream: (sessionId?: string) => Promise<{ success: boolean }>
   getActiveStreams: () => Promise<{ success: boolean; streams?: string[] }>
   resumeAfterToolConfirm: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>
 
   // Permission methods
-  /** @deprecated Use emitCommand with command:permission-respond instead */
   respondToPermission: (request: { sessionId: string; permissionId: string; response: 'once' | 'session' | 'workspace' | 'reject' | 'always'; rejectReason?: string }) => Promise<{ success: boolean; error?: string }>
   clearSessionPermissions: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   getPendingPermissions: (sessionId: string) => Promise<{ success: boolean; pending?: PermissionInfo[]; error?: string }>
+  onPermissionRequest: (callback: (info: PermissionInfo) => void) => () => void
 
   // MCP methods
   mcpGetServers: () => Promise<MCPGetServersResponse>
@@ -344,7 +339,6 @@ export interface ElectronAPI {
 
   // Dialog methods
   showOpenDialog: (options: { properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>; title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<{ canceled: boolean; filePaths: string[] }>
-
 
   // Shell methods
   openPath: (filePath: string) => Promise<string>
@@ -415,15 +409,8 @@ export interface ElectronAPI {
   // File content reading (for file preview panel)
   readFileContent: (filePath: string, maxSize?: number) => Promise<FileReadResponse>
 
-  // Tools methods (additional)
-  getAvailableBuiltinTools: () => Promise<Array<{ id: string; name: string; description: string }>>
-  refreshAsyncTools: (workingDirectory?: string) => Promise<{ success: boolean; error?: string }>
-
   // Window methods
   setWindowButtonVisibility: (visible: boolean) => Promise<{ success: boolean }>
-
-  // Execute skill method (note: may not be fully implemented)
-  executeSkill: (skillId: string, options: { sessionId: string; input?: string }) => Promise<{ success: boolean; result?: { output?: string }; error?: string }>
 
   // Plugin methods
   getPlugins: () => Promise<{ success: boolean; plugins?: any[]; error?: string }>

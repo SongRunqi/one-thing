@@ -4,10 +4,13 @@
     <ChatHeader
       :session-name="currentSession?.name || 'New chat'"
       :working-directory="currentSession?.workingDirectory || null"
+      :session-agent="sessionAgent"
+      :agents="[]"
       :is-branch-session="isBranchSession"
       :show-sidebar-toggle="showSidebarToggle"
       :show-split-button="canClose !== undefined"
       :can-close="!!canClose"
+      :is-right-sidebar-open="false"
       @toggle-sidebar="emit('toggleSidebar')"
       @open-directory-picker="openWorkingDirectoryPicker"
       @update-title="handleUpdateTitle"
@@ -47,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onActivated } from 'vue'
+import { computed, ref } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
@@ -103,6 +106,9 @@ const currentSession = computed(() => {
 // Messages for this panel (from composable)
 const panelMessages = computed(() => messages.value)
 
+// Agent feature removed - always null
+const sessionAgent = computed(() => null)
+
 // Check if current session is a branch
 const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)
 
@@ -136,11 +142,6 @@ async function handleUpdateTitle(title: string) {
 
 // Input box ref for setting quoted text
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
-
-// Auto-focus input when restored from KeepAlive cache
-onActivated(() => {
-  inputBoxRef.value?.focus()
-})
 
 // Handle open tool settings from InputBox - opens settings in new window
 function handleOpenToolSettings() {
@@ -196,9 +197,19 @@ defineExpose({
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  /* Use lighter background to appear "on top" of the base */
   background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
+  /* Add subtle inner glow at top for raised effect */
   position: relative;
+  border-radius: var(--radius-lg);
   overflow: hidden;
+  /* "Placed on surface" shadow - more prominent */
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.2),
+    0 20px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  border: none;
   /* Prevent flicker during sidebar toggle */
   contain: layout style;
 }
@@ -208,6 +219,9 @@ defineExpose({
   flex-direction: row;
   flex: 1;
   min-width: 0;
+  /* Inherit parent's bottom border-radius for proper clipping */
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -217,6 +231,9 @@ defineExpose({
   flex: 1;
   min-width: 0;
   position: relative;
+  /* Inherit parent's bottom border-radius for proper clipping */
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -232,7 +249,7 @@ defineExpose({
   align-items: center;
   background: transparent;
   pointer-events: none;
-  z-index: var(--z-dropdown);
+  z-index: 100;
 }
 
 .composer > :deep(*) {

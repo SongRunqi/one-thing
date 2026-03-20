@@ -6,7 +6,7 @@ import { useSettingsStore } from './settings'
 
 // Base session type for list display - can be either metadata-only or full session
 // This allows mixed loading: metadata on startup, full session after switching
-type SessionListItem = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary' | 'plan'>>
+type SessionListItem = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary'>>
 
 export const useSessionsStore = defineStore('sessions', () => {
   // Sessions list stores metadata-only items initially
@@ -23,9 +23,11 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   const sessionCount = computed(() => sessions.value.length)
 
-  // All non-archived sessions, sorted with pinned first
+  // Filter sessions (excluding archived), sorted by pinned first
   const filteredSessions = computed((): SessionListItem[] => {
     const filtered = sessions.value.filter(s => !s.isArchived)
+
+    // Only group by pinned, keep array order (new sessions are unshifted to top)
     const pinned = filtered.filter(s => s.isPinned)
     const unpinned = filtered.filter(s => !s.isPinned)
     return [...pinned, ...unpinned]
@@ -74,21 +76,28 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
-  async function createSession(name: string) {
+  async function createSession(name: string, agentId?: string) {
     try {
-      // Reuse existing empty "New Chat" if available
-      const existingEmptySession = filteredSessions.value.find(
-        s => (s.name === 'New Chat' || s.name === '') && (s.messageCount === 0 || s.messageCount === undefined) && !s.parentSessionId
-      )
+      // Check if there's already an empty "New Chat" session (no messages)
+      // Only reuse if no specific agent is requested, and only top-level sessions (not branches)
+      // Use messageCount (from metadata) instead of messages array (which may not be loaded)
+      if (!agentId) {
+        const existingEmptySession = filteredSessions.value.find(
+          s => (s.name === 'New Chat' || s.name === '') && (s.messageCount === 0 || s.messageCount === undefined) && !s.parentSessionId
+        )
 
-      if (existingEmptySession) {
-        await switchSession(existingEmptySession.id)
-        existingEmptySession.updatedAt = Date.now()
-        sessions.value = [...sessions.value]
-        return existingEmptySession
+        if (existingEmptySession) {
+          // Switch to existing empty session instead of creating a new one
+          await switchSession(existingEmptySession.id)
+          // Update timestamp AFTER switchSession so it won't be overwritten by backend data
+          existingEmptySession.updatedAt = Date.now()
+          // Trigger reactivity for the sort to update
+          sessions.value = [...sessions.value]
+          return existingEmptySession
+        }
       }
 
-      const response = await window.electronAPI.createSession(name)
+      const response = await window.electronAPI.createSession(name, undefined, agentId)
       if (response.success && response.session) {
         sessions.value.unshift(response.session)
         await switchSession(response.session.id)
@@ -103,9 +112,9 @@ export const useSessionsStore = defineStore('sessions', () => {
    * Create a new session without switching to it
    * Used for split view where we want to create a new chat in a split panel
    */
-  async function createSessionWithoutSwitch(name: string) {
+  async function createSessionWithoutSwitch(name: string, agentId?: string) {
     try {
-      const response = await window.electronAPI.createSession(name)
+      const response = await window.electronAPI.createSession(name, undefined, agentId)
       if (response.success && response.session) {
         sessions.value.unshift(response.session)
         return response.session
@@ -163,6 +172,9 @@ export const useSessionsStore = defineStore('sessions', () => {
         console.warn('Failed to load messages for session:', messagesResponse.error)
       }
 
+      // Also load usage data for this session
+      await chatStore.loadSessionUsage(sessionId)
+
       return sessionDetails
     } catch (error) {
       console.error('Failed to switch session:', error)
@@ -195,6 +207,7 @@ export const useSessionsStore = defineStore('sessions', () => {
         }
 
         chatStore.setMessagesFromSession(sessionId, response.session.messages || [])
+        await chatStore.loadSessionUsage(sessionId)
 
         return response.session
       }
