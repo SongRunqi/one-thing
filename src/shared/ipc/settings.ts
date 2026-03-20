@@ -77,43 +77,6 @@ export interface ChatSettings {
   contextCompactThreshold?: number  // Context usage % to trigger compacting, 50-100, default 85
 }
 
-// Supported embedding provider types
-export type EmbeddingProviderType = 'openai' | 'zhipu' | 'gemini' | 'local'
-
-// Embedding provider metadata for UI
-export interface EmbeddingProviderMeta {
-  id: EmbeddingProviderType
-  name: string
-  defaultModel: string
-  models: { id: string; name: string; dimensions?: number }[]
-  supportsCustomDimensions?: boolean
-}
-
-// Embedding settings for memory system
-export interface EmbeddingSettings {
-  provider: EmbeddingProviderType  // Which embedding provider to use
-  memoryEnabled?: boolean          // Master switch for memory extraction (default: true)
-
-  // Common model settings (applies to API providers)
-  model?: string                   // Selected model ID
-  dimensions?: number              // Vector dimensions (if supported by model)
-
-  // Optional overrides (if not set, use AI Provider config)
-  apiKeyOverride?: string
-  baseUrlOverride?: string
-
-  // Legacy fields (for backward compatibility)
-  openai?: {
-    apiKey?: string
-    baseUrl?: string
-    model: string
-    dimensions?: number
-  }
-  local?: {
-    model: string
-  }
-}
-
 export interface AppSettings {
   ai: AISettings
   theme: 'light' | 'dark' | 'system'
@@ -122,7 +85,6 @@ export interface AppSettings {
   tools: ToolSettings
   mcp?: MCPSettings
   skills?: SkillSettings
-  embedding?: EmbeddingSettings
 }
 
 // Settings IPC Request/Response types

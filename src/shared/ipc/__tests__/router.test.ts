@@ -51,16 +51,15 @@ describe('IPC Router', () => {
   })
 
   describe('backward compatibility', () => {
-    it('should generate channels matching existing IPC_CHANNELS for memory-feedback', () => {
-      type MemoryFeedbackRoutes = {
-        record: { input: { filePath: string; feedbackType: string }; output: { success: boolean } }
-        getStats: { input: { filePath: string }; output: { success: boolean } }
+    it('should generate channels matching expected patterns', () => {
+      type TestRoutes = {
+        record: { input: { id: string }; output: { success: boolean } }
+        getStats: { input: { id: string }; output: { success: boolean } }
       }
-      const router = defineRouter<MemoryFeedbackRoutes>('memory-feedback', ['record', 'getStats'])
+      const router = defineRouter<TestRoutes>('test-domain', ['record', 'getStats'])
 
-      // These must match the values in channels.ts
-      expect(router.channels.record).toBe('memory-feedback:record')
-      expect(router.channels.getStats).toBe('memory-feedback:get-stats')
+      expect(router.channels.record).toBe('test-domain:record')
+      expect(router.channels.getStats).toBe('test-domain:get-stats')
     })
   })
 })

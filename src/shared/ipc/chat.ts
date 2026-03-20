@@ -4,24 +4,12 @@
  */
 
 import type { ToolCall } from './tools.js'
-import type { BuiltinAgentMode } from './agents.js'
-import type { SessionPlan } from './plan.js'
-
-// Retrieved memory item for feedback UI
-export interface RetrievedMemory {
-  path: string          // Relative path in memory directory
-  title: string         // File title
-  score: number         // Relevance score (0-100)
-  matchType: 'tag' | 'keyword' | 'related'  // How it was matched
-}
 
 // Content part types for sequential display
 export type ContentPart =
   | { type: 'text'; content: string }
   | { type: 'tool-call'; toolCalls: ToolCall[] }
   | { type: 'waiting' }  // Waiting for AI continuation after tool call
-  | { type: 'loading-memory' }  // Loading memory from text files
-  | { type: 'retrieved-memories'; memories: RetrievedMemory[] }  // Retrieved memories with feedback UI
   | { type: 'data-steps'; turnIndex: number }    // Placeholder for steps panel (rendered inline)
 
 // Step types for showing AI reasoning process
@@ -132,8 +120,6 @@ export interface SessionMeta {
   isPinned?: boolean
   isArchived?: boolean
   archivedAt?: number
-  workspaceId?: string
-  agentId?: string
   // Additional metadata for display (computed on save)
   messageCount?: number      // Number of messages in session
   previewText?: string       // First user message preview (truncated)
@@ -153,8 +139,6 @@ export interface SessionDetails extends SessionMeta {
   totalTokens?: number
   lastInputTokens?: number
   contextSize?: number
-  builtinMode?: BuiltinAgentMode
-  plan?: SessionPlan
   cachedProviderConfig?: CachedProviderConfig
 }
 
@@ -175,8 +159,6 @@ export interface ChatSession {
   isPinned?: boolean
   isArchived?: boolean  // Archived (soft-deleted) session
   archivedAt?: number   // Timestamp when session was archived
-  workspaceId?: string  // Associated workspace ID, null/undefined = default mode
-  agentId?: string      // Associated agent ID for system prompt injection
   // Sandbox boundary - tools restrict file access to this directory
   workingDirectory?: string  // Project directory for this session (sandbox boundary)
   // Context compacting fields
@@ -189,10 +171,6 @@ export interface ChatSession {
   totalTokens?: number          // Accumulated total tokens for this session
   lastInputTokens?: number      // Last request's input tokens
   contextSize?: number          // Current context window size (last turn's input tokens)
-  // Built-in agent mode (Ask Mode / Build Mode)
-  builtinMode?: BuiltinAgentMode  // 'build' (default) | 'ask'
-  // Planning workflow (AI creates task plan, executes step by step)
-  plan?: SessionPlan
   // Cached provider configuration (for session-level optimization)
   // Set when user selects a model, used during chat to avoid repeated settings lookups
   cachedProviderConfig?: CachedProviderConfig
