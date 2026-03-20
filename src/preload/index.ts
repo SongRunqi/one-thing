@@ -285,16 +285,6 @@ const electronAPI = {
   getModelDisplayName: (modelId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_MODEL_DISPLAY_NAME, { modelId }),
 
-  // Embedding models methods (from Models.dev registry)
-  getEmbeddingModels: (providerId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_EMBEDDING_MODELS, { providerId }),
-
-  getAllEmbeddingModels: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_EMBEDDING_MODELS),
-
-  getEmbeddingDimension: (modelId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_EMBEDDING_DIMENSION, { modelId }),
-
   // Providers methods
   getProviders: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDERS),

@@ -1,46 +1,20 @@
 /**
- * Prompt Builders (V2)
+ * Prompt Builders
  *
- * New prompt building functions using the Handlebars template system.
- * These functions transform the existing options to template variables
+ * Prompt building functions using the Handlebars template system.
+ * These functions transform options to template variables
  * and render using PromptManager.
  */
 
 import * as os from 'os'
-import type { SkillDefinition, BuiltinAgentMode, SessionPlan } from '../../../shared/ipc.js'
-import type { CustomAgent } from '../../../shared/ipc/custom-agents.js'
+import type { SkillDefinition } from '../../../shared/ipc.js'
 import { getPromptManager, PromptManager } from './prompt-manager.js'
 import { getMacOSAutomationDocsPath, getToolUsageDocsPath } from '../../stores/paths.js'
 import type {
   SystemPromptVariables,
-  ToolAgentVariables,
-  CustomAgentVariables,
   SkillsVariables,
-  TemplatePlan,
   TemplateSkill,
-  TemplateCustomTool,
 } from './types.js'
-
-/**
- * Transform SessionPlan to TemplatePlan for rendering
- */
-function transformPlan(plan: SessionPlan | undefined): TemplatePlan | undefined {
-  if (!plan?.items?.length) return undefined
-
-  const items = plan.items.map(item => ({
-    content: item.content,
-    activeForm: item.activeForm,
-    status: item.status,
-  }))
-
-  const completed = items.filter(i => i.status === 'completed').length
-
-  return {
-    items,
-    completedCount: completed,
-    totalCount: items.length,
-  }
-}
 
 /**
  * Transform SkillDefinition to TemplateSkill for rendering
@@ -58,21 +32,15 @@ function transformSkills(skills: SkillDefinition[]): TemplateSkill[] {
 }
 
 /**
- * Build system prompt using templates (V2)
+ * Build system prompt using templates
  *
- * This is the new template-based implementation.
- * Use this when USE_TEMPLATE_PROMPTS is enabled.
+ * Uses the Handlebars template system for maintainability.
  */
-export function buildSystemPromptV2(options: {
+export function buildSystemPrompt(options: {
   hasTools: boolean
   skills: SkillDefinition[]
   workspaceSystemPrompt?: string
-  userProfilePrompt?: string
-  agentMemoryPrompt?: string
-  providerId?: string
   workingDirectory?: string
-  builtinMode?: BuiltinAgentMode
-  sessionPlan?: SessionPlan
 }): string {
   const pm = getPromptManager()
   const baseDir = os.homedir()
@@ -95,14 +63,10 @@ export function buildSystemPromptV2(options: {
   const variables: SystemPromptVariables = {
     hasTools: options.hasTools,
     workspaceSystemPrompt: options.workspaceSystemPrompt?.trim(),
-    userProfilePrompt: options.userProfilePrompt?.trim(),
-    agentMemoryPrompt: options.agentMemoryPrompt?.trim(),
     workingDirectory: options.workingDirectory,
     displayPath,
     baseDirectory: baseDir,
     osType,
-    builtinMode: options.builtinMode,
-    sessionPlan: transformPlan(options.sessionPlan),
     skills: transformSkills(options.skills),
     macosAutomationDocsPath,
     toolUsageDocsPath,
@@ -112,49 +76,9 @@ export function buildSystemPromptV2(options: {
 }
 
 /**
- * Build tool agent system prompt using templates (V2)
+ * Build skills awareness prompt using templates
  */
-export function buildToolAgentSystemPromptV2(skills?: SkillDefinition[]): string {
-  const pm = getPromptManager()
-
-  const variables: ToolAgentVariables = {
-    skills: skills ? transformSkills(skills) : undefined,
-  }
-
-  return pm.render('main/tool-agent', variables)
-}
-
-/**
- * Build custom agent system prompt using templates (V2)
- */
-export function buildCustomAgentSystemPromptV2(agent: CustomAgent): string {
-  const pm = getPromptManager()
-
-  const customTools: TemplateCustomTool[] = agent.customTools.map(tool => ({
-    id: tool.id,
-    name: tool.name,
-    description: tool.description,
-    parameters: tool.parameters.map(p => ({
-      name: p.name,
-      type: p.type,
-      description: p.description,
-      required: p.required,
-    })),
-  }))
-
-  const variables: CustomAgentVariables = {
-    systemPrompt: agent.systemPrompt,
-    customTools,
-    hasCustomTools: customTools.length > 0,
-  }
-
-  return pm.render('main/custom-agent', variables)
-}
-
-/**
- * Build skills awareness prompt using templates (V2)
- */
-export function buildSkillsAwarenessPromptV2(skills: SkillDefinition[]): string {
+export function buildSkillsAwarenessPrompt(skills: SkillDefinition[]): string {
   if (!skills || skills.length === 0) return ''
 
   const pm = getPromptManager()
@@ -166,9 +90,9 @@ export function buildSkillsAwarenessPromptV2(skills: SkillDefinition[]): string 
 }
 
 /**
- * Build skills direct prompt using templates (V2)
+ * Build skills direct prompt using templates
  */
-export function buildSkillsDirectPromptV2(skills: SkillDefinition[], maxInstructionLength = 1000): string {
+export function buildSkillsDirectPrompt(skills: SkillDefinition[], maxInstructionLength = 1000): string {
   if (!skills || skills.length === 0) return ''
 
   const pm = getPromptManager()
@@ -181,9 +105,9 @@ export function buildSkillsDirectPromptV2(skills: SkillDefinition[], maxInstruct
 }
 
 /**
- * Build skills tool prompt using templates (V2)
+ * Build skills tool prompt using templates
  */
-export function buildSkillsToolPromptV2(skills: SkillDefinition[]): string {
+export function buildSkillsToolPrompt(skills: SkillDefinition[]): string {
   if (!skills || skills.length === 0) return ''
 
   const pm = getPromptManager()

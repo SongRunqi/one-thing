@@ -857,12 +857,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       hasTools,
       skills: enabledSkills,
       workspaceSystemPrompt: characterSystemPrompt,
-      userProfilePrompt,
-      agentMemoryPrompt,
-      providerId,
       workingDirectory: session.workingDirectory,
-      builtinMode: session.builtinMode,
-      sessionPlan: session.plan,
     })
 
     conversationMessages.push({ role: 'system', content: systemPrompt })

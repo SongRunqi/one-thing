@@ -17,26 +17,17 @@ export type {
   TemplateName,
   TemplateVariables,
   SystemPromptVariables,
-  ToolAgentVariables,
-  CustomAgentVariables,
   SkillsVariables,
-  TemplatePlan,
-  TemplatePlanItem,
   TemplateSkill,
-  TemplateCustomTool,
-  TemplateToolParameter,
-  PlanItemStatus,
 } from './types.js'
 
 // Hot reload watcher (dev only)
 export { startTemplateWatcher, stopTemplateWatcher } from './watcher.js'
 
-// V2 Builders (template-based)
+// Builders (template-based)
 export {
-  buildSystemPromptV2,
-  buildToolAgentSystemPromptV2,
-  buildCustomAgentSystemPromptV2,
-  buildSkillsAwarenessPromptV2,
-  buildSkillsDirectPromptV2,
-  buildSkillsToolPromptV2,
+  buildSystemPrompt,
+  buildSkillsAwarenessPrompt,
+  buildSkillsDirectPrompt,
+  buildSkillsToolPrompt,
 } from './builders.js'

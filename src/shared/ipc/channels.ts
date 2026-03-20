@@ -82,11 +82,6 @@ export const IPC_CHANNELS = {
   GET_MODEL_NAME_ALIASES: 'models:get-name-aliases',
   GET_MODEL_DISPLAY_NAME: 'models:get-display-name',
 
-  // Embedding models (from Models.dev registry)
-  GET_EMBEDDING_MODELS: 'models:get-embedding',
-  GET_ALL_EMBEDDING_MODELS: 'models:get-all-embedding',
-  GET_EMBEDDING_DIMENSION: 'models:get-embedding-dimension',
-
   // Providers related
   GET_PROVIDERS: 'providers:get-all',
 

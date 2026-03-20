@@ -20,10 +20,6 @@ export {
   getCacheStatus,
   getModelDisplayName,
   getModelNameAliases,
-  getEmbeddingModelsForProvider,
-  getAllEmbeddingModels,
-  getEmbeddingDimension,
-  type EmbeddingModelInfo,
 } from './model-registry.js'
 
 // Token counter utilities

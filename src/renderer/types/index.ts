@@ -14,7 +14,6 @@ import type {
   CustomProviderConfig,
   ProviderInfo,
   ModelInfo,
-  EmbeddingModelInfo,
   OpenRouterModel,
   ColorTheme,
   BaseTheme,
@@ -22,9 +21,6 @@ import type {
   KeyboardShortcut,
   ShortcutSettings,
   ChatSettings,
-  EmbeddingSettings,
-  EmbeddingProviderType,
-  EmbeddingProviderMeta,
   MessageAttachment,
   AttachmentMediaType,
   SendMessageResponse,
@@ -204,7 +200,6 @@ export type {
   CustomProviderConfig,
   ProviderInfo,
   ModelInfo,
-  EmbeddingModelInfo,
   OpenRouterModel,
   ColorTheme,
   BaseTheme,
@@ -212,9 +207,6 @@ export type {
   KeyboardShortcut,
   ShortcutSettings,
   ChatSettings,
-  EmbeddingSettings,
-  EmbeddingProviderType,
-  EmbeddingProviderMeta,
   MessageAttachment,
   AttachmentMediaType,
   ToolDefinition,
@@ -424,10 +416,6 @@ export interface ElectronAPI {
   refreshModelRegistry: () => Promise<{ success: boolean; error?: string }>
   getModelNameAliases: () => Promise<{ success: boolean; aliases?: Record<string, string>; error?: string }>
   getModelDisplayName: (modelId: string) => Promise<{ success: boolean; displayName?: string; error?: string }>
-  // Embedding models (from Models.dev registry)
-  getEmbeddingModels: (providerId: string) => Promise<{ success: boolean; models?: EmbeddingModelInfo[]; error?: string }>
-  getAllEmbeddingModels: () => Promise<{ success: boolean; models?: EmbeddingModelInfo[]; error?: string }>
-  getEmbeddingDimension: (modelId: string) => Promise<{ success: boolean; dimension?: number | null; error?: string }>
   // Tools methods
   getTools: () => Promise<GetToolsResponse>
   executeTool: (toolId: string, args: Record<string, any>, messageId: string, sessionId: string) => Promise<ExecuteToolResponse>
