@@ -149,9 +149,6 @@ const isComposing = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const composerWrapperRef = ref<HTMLElement | null>(null)
 
-// Session input cache
-const sessionInputCache = new Map<string, string>()
-
 // Get the effective session ID
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
 
@@ -219,26 +216,6 @@ watch(() => props.isLoading, (loading) => {
     isSending.value = false
   }
 })
-
-// Cache input text when switching sessions
-watch(effectiveSessionId, (newSessionId, oldSessionId) => {
-  if (oldSessionId && messageInput.value) {
-    sessionInputCache.set(oldSessionId, messageInput.value)
-  }
-  if (oldSessionId) {
-    messageInput.value = ''
-  }
-  if (newSessionId) {
-    const cachedInput = sessionInputCache.get(newSessionId)
-    if (cachedInput) {
-      messageInput.value = cachedInput
-      nextTick(() => {
-        adjustHeight()
-      })
-    }
-  }
-  resetHistoryNavigation()
-}, { immediate: true })
 
 // --- ResizeObserver ---
 
@@ -382,9 +359,6 @@ async function sendMessage() {
   messageInput.value = ''
   resetHistoryNavigation()
   quotedText.value = ''
-  if (effectiveSessionId.value) {
-    sessionInputCache.delete(effectiveSessionId.value)
-  }
   nextTick(() => {
     adjustHeight()
     if (textareaRef.value) {
@@ -450,7 +424,7 @@ defineExpose({
 
 <style scoped>
 .composer-wrapper {
-  width: 85%;
+  width: 92%;
   margin: 0 auto;
   position: relative;
 }
@@ -529,7 +503,7 @@ defineExpose({
   font-size: 15px;
   line-height: 1.6;
   resize: none;
-  min-height: 28px;
+  min-height: 40px;
   max-height: 200px;
   overflow-y: auto;
   caret-color: var(--accent);

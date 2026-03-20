@@ -143,12 +143,7 @@ export const useSessionsStore = defineStore('sessions', () => {
 
       const sessionDetails = activateResponse.session as SessionDetails
 
-      // Update current session ID and active state
-      currentSessionId.value = sessionId
-      isActive.value = true
-
       // Update local session data with latest from backend
-      // This ensures workingDirectory and other fields are in sync
       const localSession = sessions.value.find(s => s.id === sessionId)
       if (localSession) {
         Object.assign(localSession, sessionDetails)
@@ -156,24 +151,27 @@ export const useSessionsStore = defineStore('sessions', () => {
 
       // Sync model selection if session has a saved model (from cached config)
       if (sessionDetails.lastProvider && sessionDetails.lastModel) {
-        // Session has saved model - show it in UI
         settingsStore.updateAIProvider(sessionDetails.lastProvider as any)
         settingsStore.updateModel(sessionDetails.lastModel, sessionDetails.lastProvider as any)
       }
-      // If session has no saved model, keep using current global settings
 
-      // Step 2: Load messages on-demand (separate IPC call)
-      const messagesResponse = await window.electronAPI.getSessionMessages(sessionId)
-      if (messagesResponse.success) {
-        chatStore.setMessagesFromSession(sessionId, messagesResponse.messages || [])
-      } else {
-        // If messages fail to load, set empty array
-        chatStore.setMessagesFromSession(sessionId, [])
-        console.warn('Failed to load messages for session:', messagesResponse.error)
+      // Step 2: Load messages BEFORE switching currentSessionId (prevents flicker).
+      // Skip if messages are already cached in the store (KeepAlive component has them).
+      const existingMessages = chatStore.sessionMessages.get(sessionId)
+      if (!existingMessages || existingMessages.length === 0) {
+        const messagesResponse = await window.electronAPI.getSessionMessages(sessionId)
+        if (messagesResponse.success) {
+          chatStore.setMessagesFromSession(sessionId, messagesResponse.messages || [])
+        } else {
+          chatStore.setMessagesFromSession(sessionId, [])
+          console.warn('Failed to load messages for session:', messagesResponse.error)
+        }
       }
 
-      // Also load usage data for this session
-
+      // Step 3: Set currentSessionId LAST — triggers KeepAlive component swap.
+      // At this point messages are ready, so no empty state flash.
+      currentSessionId.value = sessionId
+      isActive.value = true
 
       return sessionDetails
     } catch (error) {
