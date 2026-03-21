@@ -117,6 +117,33 @@ export const useChatStore = defineStore('chat', () => {
 
   // ============ UI State (Per-session) ============
 
+  // Session UI snapshots — index-based scroll position for virtual scrolling.
+  // Saves the message array index instead of pixel values, so position is
+  // independent of component rendering heights.
+  interface SessionUISnapshot {
+    firstVisibleIndex: number  // index in messages array visible at viewport top
+    offsetWithinMessage: number // px of that message scrolled above viewport (sub-message precision)
+    userScrolledAway: boolean
+    navIndex: number
+    hasNavigated: boolean
+    messageInput: string
+    quotedText: string
+  }
+
+  const sessionSnapshots = new Map<string, SessionUISnapshot>()
+
+  function saveSnapshot(sessionId: string, snapshot: SessionUISnapshot) {
+    sessionSnapshots.set(sessionId, snapshot)
+  }
+
+  function getSnapshot(sessionId: string): SessionUISnapshot | null {
+    return sessionSnapshots.get(sessionId) ?? null
+  }
+
+  function deleteSnapshot(sessionId: string) {
+    sessionSnapshots.delete(sessionId)
+  }
+
   // Expanded tool calls per session
   const sessionExpandedToolCalls = ref<Map<string, Set<string>>>(new Map())
 
@@ -1095,6 +1122,7 @@ export const useChatStore = defineStore('chat', () => {
    */
   function clearSessionMessages(sessionId: string) {
     sessionMessages.value.set(sessionId, [])
+    sessionSnapshots.delete(sessionId)
     triggerRef(sessionMessages)
   }
 
@@ -1248,5 +1276,10 @@ export const useChatStore = defineStore('chat', () => {
     addLocalMessage,
     addMessageToState,
     removeMessage,
+
+    // Session UI snapshots
+    saveSnapshot,
+    getSnapshot,
+    deleteSnapshot,
   }
 })

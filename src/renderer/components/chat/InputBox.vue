@@ -419,6 +419,19 @@ defineExpose({
   clearQuotedText,
   setMessageInput,
   focus: focusTextarea,
+  // Snapshot API for session switching
+  getMessageInput: () => messageInput.value,
+  getQuotedText: () => quotedText.value,
+  restoreSnapshot: (snap: { messageInput: string; quotedText: string }) => {
+    messageInput.value = snap.messageInput
+    quotedText.value = snap.quotedText
+    nextTick(() => adjustHeight())
+  },
+  clearInput: () => {
+    messageInput.value = ''
+    quotedText.value = ''
+    nextTick(() => adjustHeight())
+  },
 })
 </script>
 

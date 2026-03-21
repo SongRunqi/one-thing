@@ -156,7 +156,7 @@ export const useSessionsStore = defineStore('sessions', () => {
       }
 
       // Step 2: Load messages BEFORE switching currentSessionId (prevents flicker).
-      // Skip if messages are already cached in the store (KeepAlive component has them).
+      // Skip if messages are already cached in the store.
       const existingMessages = chatStore.sessionMessages.get(sessionId)
       if (!existingMessages || existingMessages.length === 0) {
         const messagesResponse = await window.electronAPI.getSessionMessages(sessionId)
@@ -168,7 +168,7 @@ export const useSessionsStore = defineStore('sessions', () => {
         }
       }
 
-      // Step 3: Set currentSessionId LAST — triggers KeepAlive component swap.
+      // Step 3: Set currentSessionId LAST — triggers ChatWindow's sessionId watcher.
       // At this point messages are ready, so no empty state flash.
       currentSessionId.value = sessionId
       isActive.value = true

@@ -24,6 +24,7 @@
     <div class="chat-container">
       <div class="chat-main">
         <MessageList
+          ref="messageListRef"
           :messages="panelMessages"
           :is-loading="isLoading"
           :session-id="effectiveSessionId"
@@ -50,8 +51,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
+import { useChatStore } from '@/stores/chat'
 import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
@@ -81,6 +83,7 @@ const emit = defineEmits<{
 }>()
 
 const sessionsStore = useSessionsStore()
+const chatStore = useChatStore()
 
 // Get effective session ID (props.sessionId or current session)
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
@@ -140,8 +143,44 @@ async function handleUpdateTitle(title: string) {
   await sessionsStore.renameSession(currentSession.value.id, title)
 }
 
-// Input box ref for setting quoted text
+// Child component refs
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
+const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
+
+// Session switch: save snapshot of old session, restore snapshot of new session
+watch(effectiveSessionId, async (newId, oldId) => {
+  if (oldId && oldId !== newId) {
+    // Block auto-scroll in MessageList before data changes
+    messageListRef.value?.prepareForSwitch()
+
+    // Save current UI state as index-based snapshot (with sub-message offset)
+    chatStore.saveSnapshot(oldId, {
+      firstVisibleIndex: messageListRef.value?.getFirstVisibleIndex() ?? 0,
+      offsetWithinMessage: messageListRef.value?.getOffsetWithinMessage() ?? 0,
+      userScrolledAway: messageListRef.value?.getUserScrolledAway() ?? false,
+      navIndex: messageListRef.value?.getNavIndex() ?? -1,
+      hasNavigated: messageListRef.value?.getHasNavigated() ?? false,
+      messageInput: inputBoxRef.value?.getMessageInput() ?? '',
+      quotedText: inputBoxRef.value?.getQuotedText() ?? '',
+    })
+  }
+
+  // Wait for Vue to render new session's messages
+  await nextTick()
+
+  if (newId) {
+    const snapshot = chatStore.getSnapshot(newId)
+    if (snapshot) {
+      // Restore saved state
+      messageListRef.value?.restoreSnapshot(snapshot)
+      inputBoxRef.value?.restoreSnapshot(snapshot)
+    } else {
+      // First visit — scroll to bottom, clear input
+      messageListRef.value?.scrollToBottom()
+      inputBoxRef.value?.clearInput()
+    }
+  }
+})
 
 async function handleSendMessage(message: string) {
   if (!currentSession.value) return

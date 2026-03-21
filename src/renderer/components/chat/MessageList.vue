@@ -9,25 +9,42 @@
       v-if="messages.length === 0 && !isLoading"
       @suggestion="handleSuggestion"
     />
-    <TransitionGroup name="">
-      <MessageItem
-        v-for="message in messages"
-        :key="message.id"
-        :message="message"
-        :branches="getBranchesForMessage(message.id)"
-        :can-branch="canCreateBranch"
-        :is-highlighted="message.id === highlightedMessageId"
-        @edit="handleEdit"
-        @branch="handleBranch"
-        @go-to-branch="handleGoToBranch"
-        @quote="handleQuote"
-        @regenerate="handleRegenerate"
-        @execute-tool="handleExecuteTool"
-        @confirm-tool="handleConfirmTool"
-        @reject-tool="handleRejectTool"
-        @update-thinking-time="handleUpdateThinkingTime"
-      />
-    </TransitionGroup>
+
+    <!-- Virtual scroll container -->
+    <div
+      v-if="messages.length > 0"
+      :style="{ height: `${virtualizer.getTotalSize()}px`, position: 'relative', width: '100%' }"
+    >
+      <div
+        v-for="virtualItem in virtualizer.getVirtualItems()"
+        :key="messages[virtualItem.index]?.id || virtualItem.index"
+        :ref="(el) => { if (el) virtualizer.measureElement(el as Element) }"
+        :data-index="virtualItem.index"
+        :style="{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          transform: `translateY(${virtualItem.start}px)`,
+        }"
+      >
+        <MessageItem
+          :message="messages[virtualItem.index]"
+          :branches="getBranchesForMessage(messages[virtualItem.index]?.id)"
+          :can-branch="canCreateBranch"
+          :is-highlighted="messages[virtualItem.index]?.id === highlightedMessageId"
+          @edit="handleEdit"
+          @branch="handleBranch"
+          @go-to-branch="handleGoToBranch"
+          @quote="handleQuote"
+          @regenerate="handleRegenerate"
+          @execute-tool="handleExecuteTool"
+          @confirm-tool="handleConfirmTool"
+          @reject-tool="handleRejectTool"
+          @update-thinking-time="handleUpdateThinkingTime"
+        />
+      </div>
+    </div>
 
     </div>
 
@@ -90,7 +107,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted, onActivated, onDeactivated, toRaw } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw } from 'vue'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
@@ -195,15 +213,16 @@ let navigationCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let navMarkerUpdateFrame: number | null = null
 let navResizeObserver: ResizeObserver | null = null
 
-// KeepAlive reactivation guard — skip scroll/navigation watchers on reactivation
-// to preserve DOM scroll position that KeepAlive restored.
-const isReactivating = ref(false)
-onActivated(() => {
-  isReactivating.value = true
-  nextTick(() => {
-    isReactivating.value = false
-  })
-})
+// Session switch scroll suppression — blocks auto-scroll watcher during snapshot restore
+let suppressAutoScroll = false
+
+// Virtual scrolling — only render visible messages + overscan
+const virtualizer = useVirtualizer(computed(() => ({
+  count: props.messages.length,
+  getScrollElement: () => messageListRef.value,
+  estimateSize: () => 150,
+  overscan: 5,
+})))
 
 // Get indices of user messages
 const userMessageIndices = computed(() => {
@@ -253,13 +272,13 @@ const highlightedMessageId = computed(() => {
 })
 
 // Initialize navigation index when messages change
-// Note: Session switching is handled by KeepAlive (each session has its own MessageList instance).
-// This watcher only needs to handle message count changes within the same session.
+// Note: Session switching is handled by ChatWindow's snapshot save/restore.
+// This watcher handles message count changes (new messages arriving, session data swap).
 watch(
   () => props.messages.length,
   () => {
-    // Skip on KeepAlive reactivation — preserve cached navigation state
-    if (isReactivating.value) return
+    // Skip during session switch — snapshot restore will set the correct state
+    if (suppressAutoScroll) return
 
     // Reset navigation highlight (don't highlight on new message arrival)
     hasNavigated.value = false
@@ -326,24 +345,18 @@ function scrollToUserMessage(navIndex: number) {
   const messageIndex = userMessageIndices.value[navIndex]
   if (messageIndex === undefined) return
 
-  const message = props.messages[messageIndex]
-  if (!message || !messageListRef.value) return
-
-  const messageEl = messageListRef.value.querySelector(`[data-message-id="${message.id}"]`)
-  if (messageEl) {
-    // Prevent scroll handler from overriding the navigation index
-    isActivelyNavigating = true
-    if (navigationCooldownTimer) {
-      clearTimeout(navigationCooldownTimer)
-    }
-
-    messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
-
-    // Reset flag after highlight animation completes (2.5s) to prevent index override
-    navigationCooldownTimer = setTimeout(() => {
-      isActivelyNavigating = false
-    }, 2600)
+  // Prevent scroll handler from overriding the navigation index
+  isActivelyNavigating = true
+  if (navigationCooldownTimer) {
+    clearTimeout(navigationCooldownTimer)
   }
+
+  virtualizer.value.scrollToIndex(messageIndex, { align: 'center', behavior: 'smooth' })
+
+  // Reset flag after highlight animation completes (2.5s) to prevent index override
+  navigationCooldownTimer = setTimeout(() => {
+    isActivelyNavigating = false
+  }, 2600)
 }
 
 function formatNavTime(timestamp: number): string {
@@ -362,51 +375,40 @@ function buildNavMarkerLabel(message: ChatMessage, navIndex: number): string {
 }
 
 function updateNavMarkers() {
-  const listEl = messageListRef.value
-  if (!listEl || userMessageIndices.value.length === 0) {
+  if (userMessageIndices.value.length === 0) {
     navMarkers.value = []
     return
   }
 
-  // Use scrollHeight for total content height (includes scrolled-out content)
-  const totalHeight = listEl.scrollHeight || 1
-  const markers: NavMarker[] = []
-  const total = userMessageIndices.value.length
-
-  for (let navIndex = 0; navIndex < userMessageIndices.value.length; navIndex++) {
-    const messageIndex = userMessageIndices.value[navIndex]
-    const message = props.messages[messageIndex]
-    if (!message) continue
-
-    const messageEl = listEl.querySelector(`[data-message-id="${message.id}"]`) as HTMLElement | null
-    const fallbackPosition = total > 1 ? navIndex / (total - 1) : 0.5
-    let position = Math.min(0.98, Math.max(0.02, fallbackPosition))
-
-    if (messageEl) {
-      // Use getBoundingClientRect for reliable position calculation
-      // Account for current scroll position to get absolute position within scrollable content
-      const listRect = listEl.getBoundingClientRect()
-      const messageRect = messageEl.getBoundingClientRect()
-
-      // Calculate center position relative to scroll container
-      const scrollTop = listEl.scrollTop
-      const messageCenterInViewport = messageRect.top + messageRect.height / 2
-      const listTopInViewport = listRect.top
-      const messageCenterRelativeToList = messageCenterInViewport - listTopInViewport + scrollTop
-
-      const ratio = messageCenterRelativeToList / totalHeight
-      position = Math.min(0.98, Math.max(0.02, ratio))
-    }
-
-    markers.push({
-      navIndex,
-      messageId: message.id,
-      position,
-      label: buildNavMarkerLabel(message, navIndex)
+  const totalSize = virtualizer.value.getTotalSize()
+  if (totalSize === 0) {
+    // Virtualizer not ready yet — use fallback proportional positions
+    const total = userMessageIndices.value.length
+    navMarkers.value = userMessageIndices.value.map((messageIndex, navIndex) => {
+      const message = props.messages[messageIndex]
+      return {
+        navIndex,
+        messageId: message?.id || `nav-${navIndex}`,
+        position: Math.min(0.98, Math.max(0.02, total > 1 ? navIndex / (total - 1) : 0.5)),
+        label: message ? buildNavMarkerLabel(message, navIndex) : `${navIndex + 1}/${total}`
+      }
     })
+    return
   }
 
-  navMarkers.value = markers
+  const total = userMessageIndices.value.length
+  navMarkers.value = userMessageIndices.value.map((messageIndex, navIndex) => {
+    const message = props.messages[messageIndex]
+    // Use proportional position based on message index within total count
+    // This is more reliable than pixel-based positions from virtualizer
+    const position = total > 1 ? navIndex / (total - 1) : 0.5
+    return {
+      navIndex,
+      messageId: message?.id || `nav-${navIndex}`,
+      position: Math.min(0.98, Math.max(0.02, position)),
+      label: message ? buildNavMarkerLabel(message, navIndex) : `${navIndex + 1}/${total}`
+    }
+  })
 }
 
 function scheduleNavMarkerUpdate() {
@@ -472,37 +474,31 @@ function isNearBottom(): boolean {
 
 // Find which user message is currently most visible in the viewport
 function updateVisibleUserMessageIndex() {
-  // Skip if user is actively navigating (to prevent overriding manual navigation)
   if (isActivelyNavigating) return
-  if (!messageListRef.value || userMessageIndices.value.length === 0) return
+  if (userMessageIndices.value.length === 0) return
 
-  const container = messageListRef.value
-  const containerRect = container.getBoundingClientRect()
-  const containerCenter = containerRect.top + containerRect.height / 2
+  // Get the range of currently visible message indices from virtualizer
+  const items = virtualizer.value.getVirtualItems()
+  if (items.length === 0) return
 
-  let closestIndex = 0
+  const firstVisible = items[0].index
+  const lastVisible = items[items.length - 1].index
+  const centerIndex = Math.floor((firstVisible + lastVisible) / 2)
+
+  // Find the user message closest to the center of visible range
+  let closestNavIndex = 0
   let closestDistance = Infinity
 
-  // Find the user message closest to viewport center
   for (let i = 0; i < userMessageIndices.value.length; i++) {
-    const messageIndex = userMessageIndices.value[i]
-    const message = props.messages[messageIndex]
-    if (!message) continue
-
-    const messageEl = container.querySelector(`[data-message-id="${message.id}"]`)
-    if (!messageEl) continue
-
-    const rect = messageEl.getBoundingClientRect()
-    const messageCenter = rect.top + rect.height / 2
-    const distance = Math.abs(messageCenter - containerCenter)
-
+    const msgIdx = userMessageIndices.value[i]
+    const distance = Math.abs(msgIdx - centerIndex)
     if (distance < closestDistance) {
       closestDistance = distance
-      closestIndex = i
+      closestNavIndex = i
     }
   }
 
-  currentUserMessageNavIndex.value = closestIndex
+  currentUserMessageNavIndex.value = closestNavIndex
 }
 
 // Handle wheel events to detect user intent to scroll
@@ -601,10 +597,13 @@ onMounted(() => {
       navResizeObserver.observe(messageListRef.value)
     }
   }
-  nextTick(() => scheduleNavMarkerUpdate())
-
-  // Permission requests now arrive via EventBus → IPC Hub → chat store
-  // (no need for a separate listener here)
+  // Scroll to bottom on initial mount (messages may be pre-loaded in store)
+  nextTick(() => {
+    if (props.messages.length > 0) {
+      virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
+    }
+    scheduleNavMarkerUpdate()
+  })
 })
 
 onUnmounted(() => {
@@ -628,21 +627,6 @@ onUnmounted(() => {
   }
 })
 
-// KeepAlive deactivation: clear pending timers/RAF to prevent stale callbacks
-onDeactivated(() => {
-  if (scrollCooldownTimer) {
-    clearTimeout(scrollCooldownTimer)
-    scrollCooldownTimer = null
-  }
-  if (navigationCooldownTimer) {
-    clearTimeout(navigationCooldownTimer)
-    navigationCooldownTimer = null
-  }
-  if (navMarkerUpdateFrame !== null) {
-    cancelAnimationFrame(navMarkerUpdateFrame)
-    navMarkerUpdateFrame = null
-  }
-})
 
 // When session changes, reload any pending permission requests
 // This fixes the issue where permission requests are "lost" after switching sessions
@@ -693,12 +677,12 @@ watch(
 watch(
   [() => chatStore.getScrollVersion(effectiveSessionId.value), () => props.messages.length, () => props.isLoading],
   async () => {
-    // Skip on KeepAlive reactivation — preserve DOM scroll position
-    if (isReactivating.value) return
+    // Skip during session switch — snapshot restore handles scroll position
+    if (suppressAutoScroll) return
 
     await nextTick()
-    if (messageListRef.value && !userScrolledAway.value) {
-      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
+    if (!userScrolledAway.value && props.messages.length > 0) {
+      virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
     }
     scheduleNavMarkerUpdate()
   }
@@ -1094,6 +1078,60 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
     console.error('Failed to update thinking time:', error)
   }
 }
+
+// ============ Snapshot API for session switching ============
+
+defineExpose({
+  getFirstVisibleIndex: () => {
+    const items = virtualizer.value.getVirtualItems()
+    return items.length > 0 ? items[0].index : 0
+  },
+  getOffsetWithinMessage: () => {
+    // How many px of the first visible message are above the viewport top
+    const items = virtualizer.value.getVirtualItems()
+    if (items.length === 0) return 0
+    const firstItem = items[0]
+    const scrollOffset = virtualizer.value.scrollOffset ?? 0
+    return scrollOffset - firstItem.start
+  },
+  getUserScrolledAway: () => userScrolledAway.value,
+  getNavIndex: () => currentUserMessageNavIndex.value,
+  getHasNavigated: () => hasNavigated.value,
+
+  prepareForSwitch: () => { suppressAutoScroll = true },
+
+  restoreSnapshot: (snap: { firstVisibleIndex: number; offsetWithinMessage: number; userScrolledAway: boolean; navIndex: number; hasNavigated: boolean }) => {
+    userScrolledAway.value = snap.userScrolledAway
+    currentUserMessageNavIndex.value = snap.navIndex
+    hasNavigated.value = snap.hasNavigated
+    nextTick(() => {
+      if (snap.firstVisibleIndex >= 0 && props.messages.length > 0) {
+        const idx = Math.min(snap.firstVisibleIndex, props.messages.length - 1)
+        // First: position the message at viewport top
+        virtualizer.value.scrollToIndex(idx, { align: 'start' })
+        // Then: apply sub-message offset for line-level precision
+        nextTick(() => {
+          if (messageListRef.value && snap.offsetWithinMessage > 0) {
+            messageListRef.value.scrollTop += snap.offsetWithinMessage
+          }
+          suppressAutoScroll = false
+        })
+      } else {
+        suppressAutoScroll = false
+      }
+    })
+  },
+
+  scrollToBottom: () => {
+    userScrolledAway.value = false
+    suppressAutoScroll = false
+    nextTick(() => {
+      if (props.messages.length > 0) {
+        virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
+      }
+    })
+  },
+})
 </script>
 
 <style scoped>

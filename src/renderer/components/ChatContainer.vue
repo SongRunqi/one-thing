@@ -28,24 +28,21 @@
       <!-- Chat panels when session exists -->
       <template v-if="sessionsStore.currentSessionId">
         <template v-for="(panel, index) in panels" :key="panel.id">
-          <KeepAlive :max="10">
-            <ChatWindow
-              :key="panel.sessionId"
-              :ref="el => setPanelRef(panel.id, el)"
-              :session-id="panel.sessionId"
-              :can-close="panels.length > 1"
-              :style="{ flex: panel.flex }"
-              :show-settings="index === 0 && showSettings"
-              :show-sidebar-toggle="false"
-              @close="closePanel(panel.id)"
-              @split="openSessionPicker(panel.id)"
-              @equalize="equalizeAllPanels"
-              @split-with-branch="(sessionId) => splitPanel(panel.id, sessionId)"
-              @close-settings="$emit('close-settings')"
-              @open-settings="$emit('open-settings')"
-              @toggle-sidebar="$emit('toggle-sidebar')"
-            />
-          </KeepAlive>
+          <ChatWindow
+            :ref="el => setPanelRef(panel.id, el)"
+            :session-id="panel.sessionId"
+            :can-close="panels.length > 1"
+            :style="{ flex: panel.flex }"
+            :show-settings="index === 0 && showSettings"
+            :show-sidebar-toggle="false"
+            @close="closePanel(panel.id)"
+            @split="openSessionPicker(panel.id)"
+            @equalize="equalizeAllPanels"
+            @split-with-branch="(sessionId) => splitPanel(panel.id, sessionId)"
+            @close-settings="$emit('close-settings')"
+            @open-settings="$emit('open-settings')"
+            @toggle-sidebar="$emit('toggle-sidebar')"
+          />
         </template>
       </template>
       <!-- Panel resizer -->
