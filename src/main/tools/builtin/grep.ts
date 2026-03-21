@@ -217,7 +217,7 @@ Results are sorted by file modification time (newest first).`,
     }
 
     return {
-      title: `Found ${results.length} match${results.length !== 1 ? 'es' : ''}`,
+      title: `${results.length} match${results.length !== 1 ? 'es' : ''}`,
       output: outputLines.join('\n'),
       metadata,
     }

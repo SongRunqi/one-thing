@@ -270,7 +270,7 @@ The sandbox restricts file access to allowed directories only.`,
 
     // Update metadata with initial state
     ctx.metadata({
-      title: `Running: ${command}`,
+      title: command,
       metadata: {
         command,
         workingDirectory: workingDir,
@@ -452,7 +452,7 @@ To view last N lines: tail -n 100 "${outputFilePath}"
 
     return {
       title: result.exitCode === 0
-        ? `Executed: ${command}`
+        ? command
         : `Failed (exit ${result.exitCode}): ${command}`,
       output: finalOutput,
       metadata,

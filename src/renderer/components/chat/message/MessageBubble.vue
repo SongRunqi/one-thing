@@ -98,10 +98,6 @@
               <template v-else-if="part.type === 'tool-call' && (!hasSteps || hasInputStreamingToolCalls(part.toolCalls))">
                 <template v-if="!hasSteps">
                   <!-- No steps at all, show all tool calls -->
-                  <ToolCallGroup
-                    :toolCalls="part.toolCalls"
-                    @execute="(tc) => emit('executeTool', tc)"
-                  />
                   <ToolCallItem
                     v-for="tc in part.toolCalls"
                     :key="tc.id"
@@ -140,10 +136,6 @@
           <!-- Tool calls if no steps OR if streaming input without step -->
           <template v-if="toolCalls && toolCalls.length > 0 && (!hasSteps || hasInputStreamingToolCalls(toolCalls))">
             <template v-if="!hasSteps">
-              <ToolCallGroup
-                :toolCalls="toolCalls"
-                @execute="(tc) => emit('executeTool', tc)"
-              />
               <ToolCallItem
                 v-for="tc in toolCalls"
                 :key="tc.id"
@@ -195,7 +187,6 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import ToolCallGroup from '../ToolCallGroup.vue'
 import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
@@ -571,6 +562,7 @@ function handleContentClick(event: MouseEvent) {
   border-radius: 18px 18px 4px 18px;
   border: 1px solid var(--user-bubble-border);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  width: fit-content;
 }
 
 html[data-theme='light'] .bubble.user {

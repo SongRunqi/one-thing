@@ -1,6 +1,6 @@
 <template>
   <div class="sidebar-header">
-    <div class="traffic-lights-space"></div>
+    <div class="traffic-lights-space" />
   </div>
 </template>
 

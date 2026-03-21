@@ -847,11 +847,10 @@ export async function* streamChatResponseWithTools(
         break
 
       case 'tool-input-start':
-        const startToolCallId = chunkAny.toolCallId || chunkAny.id
         yield {
           type: 'tool-input-start',
           toolInputStart: {
-            toolCallId: startToolCallId,
+            toolCallId: chunkAny.id || chunkAny.toolCallId,
             toolName: chunkAny.toolName,
           },
         }
@@ -861,8 +860,8 @@ export async function* streamChatResponseWithTools(
         yield {
           type: 'tool-input-delta',
           toolInputDelta: {
-            toolCallId: chunkAny.toolCallId || chunkAny.id,
-            argsTextDelta: chunkAny.inputTextDelta || '',
+            toolCallId: chunkAny.id || chunkAny.toolCallId,
+            argsTextDelta: chunkAny.delta || chunkAny.inputTextDelta || '',
           },
         }
         break
@@ -1131,12 +1130,10 @@ export async function* streamChatWithUIMessages(
 
       // Streaming tool input chunks (AI SDK v6)
       case 'tool-input-start':
-        const uiStartToolCallId = chunkAny.toolCallId || chunkAny.id
-        console.log(`[Provider] UIMessage tool input start:`, uiStartToolCallId, chunkAny.toolName)
         yield {
           type: 'tool-input-start',
           toolInputStart: {
-            toolCallId: uiStartToolCallId,
+            toolCallId: chunkAny.id || chunkAny.toolCallId,
             toolName: chunkAny.toolName,
           },
         }
@@ -1146,8 +1143,8 @@ export async function* streamChatWithUIMessages(
         yield {
           type: 'tool-input-delta',
           toolInputDelta: {
-            toolCallId: chunkAny.toolCallId || chunkAny.id,
-            argsTextDelta: chunkAny.inputTextDelta || '',
+            toolCallId: chunkAny.id || chunkAny.toolCallId,
+            argsTextDelta: chunkAny.delta || chunkAny.inputTextDelta || '',
           },
         }
         break
