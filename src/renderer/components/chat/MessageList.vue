@@ -46,6 +46,9 @@
       </div>
     </div>
 
+    <!-- Spacer to ensure last message scrolls above InputBox -->
+    <div v-if="messages.length > 0" class="scroll-spacer"></div>
+
     </div>
 
     <!-- User message navigation rail (timeline) -->
@@ -222,6 +225,7 @@ const virtualizer = useVirtualizer(computed(() => ({
   getScrollElement: () => messageListRef.value,
   estimateSize: () => 150,
   overscan: 5,
+  scrollPaddingEnd: 120,
 })))
 
 // Get indices of user messages
@@ -1150,17 +1154,22 @@ defineExpose({
 .message-list {
   flex: 1;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  padding: 18px 18px var(--composer-height, 140px);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 18px;
   background: transparent;
-  /* Match parent container's border-radius for proper clipping at bottom corners */
   border-bottom-left-radius: var(--radius-lg);
   border-bottom-right-radius: var(--radius-lg);
-  /* Required for correct offsetTop calculation in nav markers */
   position: relative;
+}
+
+.message-list::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-spacer {
+  height: 120px;
+  flex-shrink: 0;
 }
 
 /* Message list density modes */
@@ -1172,7 +1181,7 @@ defineExpose({
   --avatar-size: 24px;
   --content-spacing: 0.4em;
   gap: 6px;
-  padding: 12px 12px var(--composer-height, 140px);
+  padding: 12px;
 }
 
 .message-list.density-comfortable {
@@ -1183,7 +1192,7 @@ defineExpose({
   --avatar-size: 32px;
   --content-spacing: 0.75em;
   gap: 14px;
-  padding: 18px 18px var(--composer-height, 140px);
+  padding: 18px 18px 120px;
 }
 
 .message-list.density-spacious {
@@ -1194,7 +1203,7 @@ defineExpose({
   --avatar-size: 40px;
   --content-spacing: 1em;
   gap: 24px;
-  padding: 24px 24px var(--composer-height, 140px);
+  padding: 24px;
 }
 
 
@@ -1203,7 +1212,7 @@ defineExpose({
 .nav-rail {
   position: absolute;
   top: 16px;
-  bottom: calc(var(--composer-height, 140px) + 16px);
+  bottom: 16px;
   right: 12px;
   width: 22px;
   display: flex;
@@ -1274,7 +1283,7 @@ defineExpose({
 /* Responsive styles */
 @media (max-width: 768px) {
   .message-list {
-    padding: 14px 12px var(--composer-height, 120px);
+    padding: 14px 12px;
     gap: 12px;
   }
 
@@ -1301,7 +1310,7 @@ defineExpose({
 
 @media (max-width: 480px) {
   .message-list {
-    padding: 10px 8px var(--composer-height, 100px);
+    padding: 10px 8px;
     gap: 10px;
   }
 

@@ -98,6 +98,7 @@ defineEmits<{
 .traffic-lights-reserved {
   width: 170px;
   flex-shrink: 0;
+  -webkit-app-region: drag;
 }
 
 .chat-header-title {

@@ -392,9 +392,9 @@ onUnmounted(() => {
 .sidebar-hover-trigger {
   position: absolute;
   left: 0;
-  top: 0;
+  top: 40px;
   width: 12px;
-  height: 100%;
+  height: calc(100% - 40px);
   -webkit-app-region: no-drag;
   cursor: pointer;
   z-index: 10;

@@ -519,7 +519,7 @@ html[data-theme='light'] .sidebar-floating-backdrop {
 /* App toolbar — single set of buttons that slides between sidebar right and traffic lights */
 .app-toolbar {
   position: fixed;
-  top: 8px;
+  top: 5px;
   height: 28px;
   display: flex;
   align-items: center;

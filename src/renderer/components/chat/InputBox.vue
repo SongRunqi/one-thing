@@ -437,7 +437,7 @@ defineExpose({
 
 <style scoped>
 .composer-wrapper {
-  width: 92%;
+  width: 96%;
   margin: 0 auto;
   position: relative;
 }
@@ -516,7 +516,7 @@ defineExpose({
   font-size: 15px;
   line-height: 1.6;
   resize: none;
-  min-height: 40px;
+  min-height: 56px;
   max-height: 200px;
   overflow-y: auto;
   caret-color: var(--accent);

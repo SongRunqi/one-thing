@@ -20,25 +20,22 @@
       @close="emit('close')"
     />
 
-    <!-- Chat View -->
-    <div class="chat-container">
-      <div class="chat-main">
-        <MessageList
-          ref="messageListRef"
-          :messages="panelMessages"
-          :is-loading="isLoading"
-          :session-id="effectiveSessionId"
-          @set-quoted-text="handleSetQuotedText"
-          @set-input-text="handleSetInputText"
-          @regenerate="handleRegenerate"
-          @edit-and-resend="handleEditAndResend"
-          @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
-        />
+    <!-- Chat body: MessageList fills space, InputBox floats at bottom -->
+    <div class="chat-body">
+      <MessageList
+        ref="messageListRef"
+        :messages="panelMessages"
+        :is-loading="isLoading"
+        :session-id="effectiveSessionId"
+        @set-quoted-text="handleSetQuotedText"
+        @set-input-text="handleSetInputText"
+        @regenerate="handleRegenerate"
+        @edit-and-resend="handleEditAndResend"
+        @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
+      />
 
-        <!-- v-memo prevents unnecessary re-renders during tool_input_delta streaming -->
-        <div class="composer" v-memo="[isGenerating, effectiveSessionId]">
-          <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" :is-loading="isGenerating" :session-id="effectiveSessionId" />
-        </div>
+      <div class="composer-container" v-memo="[isGenerating, effectiveSessionId]">
+        <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" :is-loading="isGenerating" :session-id="effectiveSessionId" />
       </div>
     </div>
 
@@ -238,24 +235,17 @@ defineExpose({
   contain: layout style;
 }
 
-.chat-container {
-  display: flex;
-  flex-direction: row;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.chat-main {
+.chat-body {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  min-height: 0;
   position: relative;
   overflow: hidden;
 }
 
-.composer {
+.composer-container {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -263,14 +253,13 @@ defineExpose({
   padding: 0 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
   align-items: center;
   background: transparent;
   pointer-events: none;
   z-index: 100;
 }
 
-.composer > :deep(*) {
+.composer-container > :deep(*) {
   pointer-events: auto;
 }
 

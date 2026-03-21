@@ -337,6 +337,7 @@ onUnmounted(() => {
 /* Wrapper for TransitionGroup compatibility */
 .message-item-wrapper {
   width: 91%;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
 }
