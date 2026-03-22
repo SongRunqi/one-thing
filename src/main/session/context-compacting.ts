@@ -9,14 +9,14 @@
  */
 
 import * as fs from 'fs'
-import type { ChatMessage } from '../../../shared/ipc.js'
-import { generateChatResponse } from '../../providers/index.js'
-import { updateSessionSummary, getSession, insertMessageAfter } from '../../stores/sessions.js'
+import type { ChatMessage } from '../../shared/ipc.js'
+import { generateChatResponse } from '../providers/index.js'
+import { updateSessionSummary, getSession, insertMessageAfter } from '../stores/sessions.js'
 import { v4 as uuidv4 } from 'uuid'
-import { getSettings } from '../../stores/settings.js'
-import { getSessionHistoryDir, getSessionHistoryPath } from '../../stores/paths.js'
-import { getPromptManager } from '../prompt/prompt-manager.js'
-import type { ContextCompactVariables } from '../prompt/types.js'
+import { getSettings } from '../stores/settings.js'
+import { getSessionHistoryDir, getSessionHistoryPath } from '../stores/paths.js'
+import { getPromptManager } from '../engine/prompt/prompt-manager.js'
+import type { ContextCompactVariables } from '../engine/prompt/types.js'
 
 // Configuration
 const DEFAULT_COMPACT_THRESHOLD = 85  // Default: compact at 85% context usage

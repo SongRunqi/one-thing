@@ -8,7 +8,7 @@
 
 import type { WebContents } from 'electron'
 import type { AppSettings, ProviderConfig, ToolSettings } from '../../../shared/ipc.js'
-import * as modelRegistry from '../../services/ai/model-registry.js'
+import * as modelRegistry from '../../providers/model-registry.js'
 import { processImageGenerationStream } from './image-stream.js'
 import { executeStreamGeneration, type StreamGenerationResult } from './tool-loop.js'
 import { type StreamContext } from './stream-processor.js'

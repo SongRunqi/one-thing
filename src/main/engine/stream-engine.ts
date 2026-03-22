@@ -30,7 +30,7 @@ import { runStream } from '../ipc/chat/tool-loop.js'
 import { getSkillsForSession } from '../ipc/skills.js'
 import { getEnabledToolsAsync, setInitContext, initializeAsyncTools } from '../tools/index.js'
 import { getMCPToolsForAI } from '../mcp/index.js'
-import * as modelRegistry from '../services/ai/model-registry.js'
+import * as modelRegistry from '../providers/model-registry.js'
 
 export class StreamEngine {
   /** Active AbortControllers keyed by sessionId */

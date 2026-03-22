@@ -5,8 +5,8 @@
 
 import type { ChatMessage } from '../../../shared/ipc.js'
 import type { AIMessageContent } from '../../providers/index.js'
-import { buildSystemPrompt } from '../../services/prompt/index.js'
-import { getHistoryFilePath } from '../../services/ai/context-compacting.js'
+import { buildSystemPrompt } from '../../engine/prompt/index.js'
+import { getHistoryFilePath } from '../../session/context-compacting.js'
 
 /**
  * Format messages for logging without full base64 data

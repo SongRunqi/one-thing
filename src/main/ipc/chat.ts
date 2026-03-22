@@ -23,10 +23,10 @@ import {
 } from '../tools/index.js'
 import { getMCPToolsForAI } from '../mcp/index.js'
 import { getSkillsForSession } from './skills.js'
-import { triggerManager } from '../services/triggers/index.js'
+import { triggerManager } from '../engine/triggers/index.js'
 import { Permission } from '../permission/index.js'
 import { saveMediaImage } from './media.js'
-import * as modelRegistry from '../services/ai/model-registry.js'
+import * as modelRegistry from '../providers/model-registry.js'
 
 // Import from chat sub-modules
 import {

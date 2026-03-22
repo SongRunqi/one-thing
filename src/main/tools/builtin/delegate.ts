@@ -13,7 +13,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 import type { Step, StepType } from '../../../shared/ipc.js'
-import { executeToolAgent, type ToolAgentContext, type DelegationRequest, type ToolAgentStep } from '../../services/tool-agent/index.js'
+import { executeToolAgent, type ToolAgentContext, type DelegationRequest, type ToolAgentStep } from '../../agents/tool-agent/index.js'
 
 /**
  * Format tool result for display in UI

@@ -6,7 +6,7 @@
 import * as store from '../../store.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '../../../shared/ipc.js'
 import { requiresOAuth } from '../../providers/index.js'
-import { oauthManager } from '../../services/auth/oauth-manager.js'
+import { oauthManager } from '../../providers/auth/oauth-manager.js'
 import { getCachedProviderConfig } from '../../stores/sessions.js'
 
 /**

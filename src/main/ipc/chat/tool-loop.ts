@@ -18,9 +18,9 @@ import {
 import { getMCPToolsForAI } from '../../mcp/index.js'
 import { getSkillsForSession } from '../skills.js'
 import { updateSessionUsage } from '../sessions.js'
-import { triggerManager, type TriggerContext } from '../../services/triggers/index.js'
-import * as modelRegistry from '../../services/ai/model-registry.js'
-import { shouldCompact, executeCompacting, type CompactingContext } from '../../services/ai/context-compacting.js'
+import { triggerManager, type TriggerContext } from '../../engine/triggers/index.js'
+import * as modelRegistry from '../../providers/model-registry.js'
+import { shouldCompact, executeCompacting, type CompactingContext } from '../../session/context-compacting.js'
 
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
 import { createStreamProcessor } from './stream-processor.js'

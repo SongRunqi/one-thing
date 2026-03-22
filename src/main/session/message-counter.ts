@@ -6,7 +6,7 @@
  * actual token counts from the AI SDK (usage.inputTokens).
  */
 
-import type { ChatMessage } from '../../../shared/ipc.js'
+import type { ChatMessage } from '../../shared/ipc.js'
 
 /**
  * Count messages after a specific message ID.

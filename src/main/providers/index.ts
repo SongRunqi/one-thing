@@ -24,9 +24,9 @@ import {
   requiresOAuth as requiresOAuthFromRegistry,
   getProviderDefinition,
 } from './registry.js'
-import { modelSupportsReasoningSync } from '../services/ai/model-registry.js'
+import { modelSupportsReasoningSync } from './model-registry.js'
 import type { ProviderInfo, ProviderConfig } from './types.js'
-import { oauthManager } from '../services/auth/oauth-manager.js'
+import { oauthManager } from '../providers/auth/oauth-manager.js'
 
 // Multimodal content type for AI messages (Vercel AI SDK 6.x format)
 export type AIMessageContent = string | Array<
