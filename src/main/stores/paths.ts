@@ -99,11 +99,6 @@ export function getMediaIndexPath(): string {
   return path.join(getMediaDir(), 'index.json')
 }
 
-// SQLite database path for vector storage
-export function getDatabasePath(): string {
-  return path.join(getStorePath(), 'memory.db')
-}
-
 // Tool outputs directory (for large outputs that exceed inline limits)
 export function getToolOutputsDir(): string {
   return path.join(getStorePath(), 'tool-outputs')

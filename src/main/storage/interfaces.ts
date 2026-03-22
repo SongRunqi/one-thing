@@ -25,16 +25,9 @@ export interface IStorageProvider {
 // Storage Configuration
 // ============================================
 
-export type StorageType = 'file' | 'sqlite' | 'postgres'
+export type StorageType = 'file'
 
 export interface StorageConfig {
   type: StorageType
   dataDir?: string
-  database?: {
-    host?: string
-    port?: number
-    name?: string
-    user?: string
-    password?: string
-  }
 }

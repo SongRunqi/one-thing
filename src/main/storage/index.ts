@@ -56,4 +56,3 @@ export async function closeStorage(): Promise<void> {
 
 export * from './interfaces.js'
 export { FileStorageProvider } from './file-storage.js'
-export { type MemoryLink, type MemoryLinkRelationship } from './sqlite-storage.js'
