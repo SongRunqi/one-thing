@@ -126,6 +126,15 @@ export class IPCBridge {
   // ── Stream lifecycle ───────────────────────────
 
   private handleStreamStart(sessionId: string, messageId: string): void {
+    // Clean up any existing subscription for this session first
+    // (prevents double delivery if stream:start fires twice, e.g. rapid messages)
+    const existing = this.sessions.get(sessionId)
+    if (existing) {
+      this.flushBuffer(sessionId, existing)
+      existing.unsubStream()
+      this.sessions.delete(sessionId)
+    }
+
     // Subscribe to StreamChannel for this session
     const streamChannel = getStreamChannel()
     const unsubStream = streamChannel.subscribe(sessionId, (chunk) => {

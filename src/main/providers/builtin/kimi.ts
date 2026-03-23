@@ -1,10 +1,12 @@
 /**
  * Kimi (Moonshot AI) Provider Definition
  *
- * Uses OpenAI-compatible API with chat/completions endpoint.
+ * Uses the dedicated @ai-sdk/moonshotai provider which correctly handles
+ * thinking/reasoning modes, reasoning_content serialization, and
+ * reasoning_history for multi-turn tool-call conversations.
  */
 
-import { createOpenAI } from '@ai-sdk/openai'
+import { createMoonshotAI } from '@ai-sdk/moonshotai'
 import type { ProviderDefinition } from '../types.js'
 
 const kimiProvider: ProviderDefinition = {
@@ -23,13 +25,12 @@ const kimiProvider: ProviderDefinition = {
   },
 
   create: ({ apiKey, baseUrl }) => {
-    const provider = createOpenAI({
+    const provider = createMoonshotAI({
       apiKey,
       baseURL: baseUrl || 'https://api.moonshot.cn/v1',
     })
     return {
-      // Use provider.chat() to use chat/completions API instead of responses API
-      createModel: (modelId: string) => provider.chat(modelId),
+      createModel: (modelId: string) => provider.chatModel(modelId),
     }
   },
 }

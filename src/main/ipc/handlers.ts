@@ -1,3 +1,5 @@
+import { ipcMain } from 'electron'
+import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { registerChatHandlers } from './chat.js'
 import { registerSessionHandlers } from './sessions.js'
 import { registerSettingsHandlers } from './settings.js'
@@ -28,6 +30,27 @@ export function initializeIPC() {
   registerOAuthHandlers()
   registerThemeHandlers()
   registerPluginHandlers()
+  registerCommandHandler()
+}
+
+/**
+ * Register the unified session:command handler.
+ * Routes renderer commands through EventBus for processing by
+ * subscribed systems (Permission, StreamEngine, plugins, etc.).
+ */
+function registerCommandHandler() {
+  ipcMain.handle(IPC_CHANNELS.SESSION_COMMAND, async (_event, { sessionId, command }) => {
+    try {
+      const { getEventBus } = await import('../events/index.js')
+      const eventBus = getEventBus()
+      const result = await eventBus.emit(sessionId, command)
+      return { success: true, result }
+    } catch (error: any) {
+      console.error('[IPC] session:command handler error:', error)
+      return { success: false, error: error.message || 'Failed to handle command' }
+    }
+  })
+  console.log('[IPC] session:command handler registered')
 }
 
 export { initializeMCP, shutdownMCP, initializeSkills, cleanupOAuth, initializeThemeSystem }

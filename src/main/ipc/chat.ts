@@ -58,6 +58,7 @@ import type { ProviderConfigWithKey } from './chat/stream-executor.js'
 import {
   executeToolAndUpdate,
 } from './chat/tool-execution.js'
+import { getStreamEngine } from '../engine/index.js'
 import {
   runStream,
   executeStreamGeneration,
@@ -158,34 +159,51 @@ export function registerChatHandlers() {
 
     if (sessionId) {
       // Abort specific session's stream
+      // Check both legacy activeStreams map AND StreamEngine's map
       const controller = activeStreams.get(sessionId)
+      let aborted = false
       if (controller) {
-        console.log(`[Backend] Aborting stream for session: ${sessionId}`)
+        console.log(`[Backend] Aborting stream for session (legacy): ${sessionId}`)
         controller.abort()
         activeStreams.delete(sessionId)
-        // Clear any pending permission requests for this session
-        Permission.clearSession(sessionId)
-        // Cancel any waiting steps
-        cancelPendingSteps(sessionId)
-        return { success: true }
+        aborted = true
       }
-      // Even if no active stream, still clear pending permissions and cancel waiting steps
+      // Also try StreamEngine (new EventBus-driven path)
+      try {
+        const engine = getStreamEngine()
+        if (engine.abort(sessionId)) {
+          console.log(`[Backend] Aborting stream for session (engine): ${sessionId}`)
+          aborted = true
+        }
+      } catch {
+        // StreamEngine not initialized, ignore
+      }
+      // Clear any pending permission requests for this session
       Permission.clearSession(sessionId)
+      // Cancel any waiting steps
       cancelPendingSteps(sessionId)
-      return { success: false, error: 'No active stream for this session' }
+      return { success: aborted }
     } else {
       // Abort all streams (backwards compatibility)
+      let aborted = false
       if (activeStreams.size > 0) {
         console.log(`[Backend] Aborting all active streams (${activeStreams.size})`)
         for (const [sid, controller] of activeStreams) {
           controller.abort()
-          // Clear any pending permission requests for each session
           Permission.clearSession(sid)
         }
         activeStreams.clear()
-        return { success: true }
+        aborted = true
       }
-      return { success: false, error: 'No active streams to abort' }
+      // Also abort all in StreamEngine
+      try {
+        const engine = getStreamEngine()
+        engine.abortAll()
+        aborted = true
+      } catch {
+        // StreamEngine not initialized, ignore
+      }
+      return { success: aborted }
     }
   })
 

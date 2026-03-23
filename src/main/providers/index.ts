@@ -635,8 +635,10 @@ export async function* streamChatResponseWithTools(
     }
   }
 
-  // Check if this is a DeepSeek Reasoner model (requires reasoning_content in all assistant messages)
-  const isDeepSeekReasoner = isReasoning && config.model.toLowerCase().includes('deepseek')
+  // Reasoning models (DeepSeek, Kimi, etc.) require reasoning_content in all assistant messages
+  // when thinking mode is enabled. The AI SDK sets `thinking: enabled` for these models,
+  // so the API expects reasoning_content on every assistant message — including tool-call-only ones.
+  const needsReasoningParts = isReasoning
 
   // Check if this provider requires system messages to be merged into user messages
   const needsSystemMerge = requiresSystemMergeFromRegistry(providerId)
@@ -661,7 +663,7 @@ export async function* streamChatResponseWithTools(
     if (msg.role === 'assistant') {
       // Check if we need complex content format (reasoning or tool calls)
       const hasToolCalls = msg.toolCalls && msg.toolCalls.length > 0
-      const hasReasoning = isDeepSeekReasoner && msg.reasoningContent
+      const hasReasoning = needsReasoningParts && msg.reasoningContent
 
       // For simple text-only responses, use string content (compatible with all APIs)
       if (!hasToolCalls && !hasReasoning) {
@@ -671,11 +673,15 @@ export async function* streamChatResponseWithTools(
       // Build content array with reasoning, text, and tool calls
       const content: any[] = []
 
-      // For DeepSeek Reasoner, reasoning must be included as a content part
-      // The provider's convertToDeepSeekChatMessages extracts { type: 'reasoning' } parts
-      // and converts them to reasoning_content for the API
+      // For reasoning models, reasoning must be included as a content part.
+      // The provider converts { type: 'reasoning' } parts to reasoning_content for the API.
+      // When thinking mode is enabled, ALL assistant messages need reasoning_content —
+      // including tool-call-only messages. Use empty string if no reasoning was produced.
       if (hasReasoning) {
         content.push({ type: 'reasoning', text: msg.reasoningContent })
+      } else if (needsReasoningParts && hasToolCalls) {
+        // Tool-call messages may not have reasoning, but the API still requires the field
+        content.push({ type: 'reasoning', text: '' })
       }
 
       // Add text content (handle both string and array content)
@@ -786,6 +792,18 @@ export async function* streamChatResponseWithTools(
   // Add abort signal if provided
   if (options.abortSignal) {
     streamOptions.abortSignal = options.abortSignal
+  }
+
+  // Provider-specific options for reasoning models with tool calls
+  // Kimi/Moonshot: reasoning_history tells the API how to handle reasoning_content
+  // in multi-turn conversation history. 'disabled' strips it so the API won't
+  // require reasoning_content on assistant messages (which the SDK doesn't serialize).
+  if (providerId === 'kimi' && isReasoning) {
+    (streamOptions as any).providerOptions = {
+      moonshotai: {
+        reasoningHistory: 'disabled',
+      },
+    }
   }
 
   // Log complete request body being sent to AI

@@ -209,6 +209,8 @@ const hasNavigated = ref(false)
 const userScrolledAway = ref(false)
 let lastScrollTop = 0
 let scrollCooldownTimer: ReturnType<typeof setTimeout> | null = null
+// Guard: prevents handleScroll from resetting userScrolledAway during programmatic scrolls
+let isProgrammaticScroll = false
 
 // Flag to prevent scroll handler from overriding navigation index during active navigation
 let isActivelyNavigating = false
@@ -532,8 +534,9 @@ function handleScroll() {
   if (!messageListRef.value) return
   const { scrollTop } = messageListRef.value
 
-  // Only reset userScrolledAway when user actively scrolls DOWN to bottom
-  if (scrollTop > lastScrollTop && isNearBottom()) {
+  // Only reset userScrolledAway when USER actively scrolls DOWN to bottom
+  // Skip if the scroll was triggered by programmatic scrollToIndex
+  if (!isProgrammaticScroll && scrollTop > lastScrollTop && isNearBottom()) {
     userScrolledAway.value = false
   }
 
@@ -686,7 +689,13 @@ watch(
 
     await nextTick()
     if (!userScrolledAway.value && props.messages.length > 0) {
-      virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
+      isProgrammaticScroll = true
+      try {
+        virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
+      } finally {
+        // Reset after a frame to allow the scroll event to fire with the guard active
+        requestAnimationFrame(() => { isProgrammaticScroll = false })
+      }
     }
     scheduleNavMarkerUpdate()
   }
