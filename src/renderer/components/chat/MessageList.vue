@@ -46,8 +46,6 @@
       </div>
     </div>
 
-    <!-- Spacer to ensure last message scrolls above InputBox -->
-    <div v-if="messages.length > 0" class="scroll-spacer"></div>
 
     </div>
 
@@ -218,7 +216,6 @@ const virtualizer = useVirtualizer(computed(() => ({
   getScrollElement: () => messageListRef.value,
   estimateSize: () => 150,
   overscan: 5,
-  scrollPaddingEnd: 120,
 })))
 
 // Auto-scroll composable — user-interaction-based state machine
@@ -1096,10 +1093,6 @@ defineExpose({
   display: none;
 }
 
-.scroll-spacer {
-  height: 120px;
-  flex-shrink: 0;
-}
 
 /* Message list density modes */
 .message-list.density-compact {
@@ -1121,7 +1114,7 @@ defineExpose({
   --avatar-size: 32px;
   --content-spacing: 0.75em;
   gap: 14px;
-  padding: 18px 18px 120px;
+  padding: 18px;
 }
 
 .message-list.density-spacious {
@@ -1140,16 +1133,22 @@ defineExpose({
 /* User message navigation rail */
 .nav-rail {
   position: absolute;
-  top: 16px;
-  bottom: 16px;
-  right: 12px;
-  width: 22px;
+  top: 24px;
+  bottom: 24px;
+  right: 8px;
+  width: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   z-index: var(--z-dropdown);
   user-select: none;
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.nav-rail:hover {
+  opacity: 1;
 }
 
 .nav-rail-track {
@@ -1164,49 +1163,43 @@ defineExpose({
   top: 0;
   bottom: 0;
   left: 50%;
-  width: 2px;
+  width: 1.5px;
   transform: translateX(-50%);
-  background: color-mix(in srgb, var(--border) 70%, transparent);
+  background: var(--border);
   border-radius: 999px;
+  opacity: 0.5;
 }
 
 .nav-marker {
   position: absolute;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 7px;
-  height: 7px;
+  width: 5px;
+  height: 5px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--text) 35%, var(--border));
-  background: color-mix(in srgb, var(--text) 65%, transparent);
-  opacity: 0.75;
+  border: none;
+  background: var(--muted);
+  padding: 0;
   z-index: var(--z-base);
-  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  transition: all 0.15s ease;
 }
 
 .nav-marker:hover {
-  transform: translate(-50%, -50%) scale(1.2);
+  transform: translate(-50%, -50%) scale(1.4);
   background: var(--text);
-  opacity: 1;
 }
 
 .nav-marker.active {
-  width: 11px;
-  height: 11px;
+  width: 7px;
+  height: 7px;
   background: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent);
-  opacity: 1;
 }
 
 .nav-counter {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--muted);
-  background: var(--panel);
-  padding: 2px 6px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* Responsive styles */
@@ -1222,18 +1215,8 @@ defineExpose({
   }
 
   .nav-rail {
-    right: 10px;
-    width: 20px;
-  }
-
-  .nav-marker {
-    width: 6px;
-    height: 6px;
-  }
-
-  .nav-marker.active {
-    width: 10px;
-    height: 10px;
+    right: 6px;
+    width: 14px;
   }
 }
 
@@ -1267,23 +1250,12 @@ defineExpose({
   }
 
   .nav-rail {
-    right: 8px;
-    width: 18px;
-  }
-
-  .nav-marker {
-    width: 5px;
-    height: 5px;
-  }
-
-  .nav-marker.active {
-    width: 9px;
-    height: 9px;
+    right: 4px;
+    width: 12px;
   }
 
   .nav-counter {
-    font-size: 9px;
-    padding: 1px 5px;
+    font-size: 8px;
   }
 }
 

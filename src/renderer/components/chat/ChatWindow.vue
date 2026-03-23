@@ -243,26 +243,15 @@ defineExpose({
   flex: 1;
   min-width: 0;
   min-height: 0;
-  position: relative;
   overflow: hidden;
 }
 
 .composer-container {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex-shrink: 0;
   padding: 0 16px 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: transparent;
-  pointer-events: none;
-  z-index: 100;
-}
-
-.composer-container > :deep(*) {
-  pointer-events: auto;
 }
 
 
