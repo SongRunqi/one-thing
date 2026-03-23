@@ -119,6 +119,7 @@ import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
+import { useAutoScroll } from '@/composables/useAutoScroll'
 
 interface BranchInfo {
   id: string
@@ -205,21 +206,11 @@ const currentUserMessageNavIndex = ref(-1)
 const hasNavigated = ref(false)
 
 
-// Track if user has scrolled away from bottom (to allow manual scrolling during streaming)
-const userScrolledAway = ref(false)
-let lastScrollTop = 0
-let scrollCooldownTimer: ReturnType<typeof setTimeout> | null = null
-// Guard: prevents handleScroll from resetting userScrolledAway during programmatic scrolls
-let isProgrammaticScroll = false
-
 // Flag to prevent scroll handler from overriding navigation index during active navigation
 let isActivelyNavigating = false
 let navigationCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let navMarkerUpdateFrame: number | null = null
 let navResizeObserver: ResizeObserver | null = null
-
-// Session switch scroll suppression — blocks auto-scroll watcher during snapshot restore
-let suppressAutoScroll = false
 
 // Virtual scrolling — only render visible messages + overscan
 const virtualizer = useVirtualizer(computed(() => ({
@@ -229,6 +220,20 @@ const virtualizer = useVirtualizer(computed(() => ({
   overscan: 5,
   scrollPaddingEnd: 120,
 })))
+
+// Auto-scroll composable — user-interaction-based state machine
+const autoScroll = useAutoScroll({
+  scrollElement: messageListRef,
+  messageCount: computed(() => props.messages.length),
+  scrollVersion: computed(() => chatStore.getScrollVersion(effectiveSessionId.value)),
+  isLoading: computed(() => props.isLoading),
+  scrollToEnd: () => {
+    if (props.messages.length > 0) {
+      virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
+    }
+  },
+})
+const { isFollowing } = autoScroll
 
 // Get indices of user messages
 const userMessageIndices = computed(() => {
@@ -284,7 +289,7 @@ watch(
   () => props.messages.length,
   () => {
     // Skip during session switch — snapshot restore will set the correct state
-    if (suppressAutoScroll) return
+    if (autoScroll.isSuppressed) return
 
     // Reset navigation highlight (don't highlight on new message arrival)
     hasNavigated.value = false
@@ -470,20 +475,11 @@ function getBranchesForMessage(messageId: string): BranchInfo[] {
   return messageBranches.value.get(messageId) || []
 }
 
-// Check if scroll is near bottom (within threshold)
-function isNearBottom(): boolean {
-  if (!messageListRef.value) return true
-  const { scrollTop, scrollHeight, clientHeight } = messageListRef.value
-  // Consider "near bottom" if within 50px of bottom
-  return scrollHeight - scrollTop - clientHeight < 50
-}
-
 // Find which user message is currently most visible in the viewport
 function updateVisibleUserMessageIndex() {
   if (isActivelyNavigating) return
   if (userMessageIndices.value.length === 0) return
 
-  // Get the range of currently visible message indices from virtualizer
   const items = virtualizer.value.getVirtualItems()
   if (items.length === 0) return
 
@@ -491,7 +487,6 @@ function updateVisibleUserMessageIndex() {
   const lastVisible = items[items.length - 1].index
   const centerIndex = Math.floor((firstVisible + lastVisible) / 2)
 
-  // Find the user message closest to the center of visible range
   let closestNavIndex = 0
   let closestDistance = Infinity
 
@@ -507,43 +502,9 @@ function updateVisibleUserMessageIndex() {
   currentUserMessageNavIndex.value = closestNavIndex
 }
 
-// Handle wheel events to detect user intent to scroll
-function handleWheel(event: WheelEvent) {
-  // deltaY > 0 means scrolling down, < 0 means scrolling up
-  if (event.deltaY < 0) {
-    // User is trying to scroll UP - stop auto-scroll with cooldown
-    userScrolledAway.value = true
-
-    // Clear any existing cooldown timer
-    if (scrollCooldownTimer) {
-      clearTimeout(scrollCooldownTimer)
-    }
-
-    // Set a cooldown period - auto-scroll won't resume for 1.5 seconds after last upward scroll
-    scrollCooldownTimer = setTimeout(() => {
-      // After cooldown, check if user is at bottom - if so, re-enable auto-scroll
-      if (isNearBottom()) {
-        userScrolledAway.value = false
-      }
-    }, 1500)
-  }
-}
-
-// Handle scroll events for position tracking and reset detection
+// Scroll event handler — only for nav marker position tracking
 function handleScroll() {
-  if (!messageListRef.value) return
-  const { scrollTop } = messageListRef.value
-
-  // Only reset userScrolledAway when USER actively scrolls DOWN to bottom
-  // Skip if the scroll was triggered by programmatic scrollToIndex
-  if (!isProgrammaticScroll && scrollTop > lastScrollTop && isNearBottom()) {
-    userScrolledAway.value = false
-  }
-
-  // Update visible user message index while scrolling
   updateVisibleUserMessageIndex()
-
-  lastScrollTop = scrollTop
 }
 
 // Track permission request cleanup function
@@ -598,12 +559,13 @@ usePermissionShortcuts(
 onMounted(() => {
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
-    messageListRef.value.addEventListener('wheel', handleWheel, { passive: true })
     if (typeof ResizeObserver !== 'undefined') {
       navResizeObserver = new ResizeObserver(() => scheduleNavMarkerUpdate())
       navResizeObserver.observe(messageListRef.value)
     }
   }
+  // Attach auto-scroll input event listeners
+  autoScroll.attach()
   // Scroll to bottom on initial mount (messages may be pre-loaded in store)
   nextTick(() => {
     if (props.messages.length > 0) {
@@ -616,11 +578,8 @@ onMounted(() => {
 onUnmounted(() => {
   if (messageListRef.value) {
     messageListRef.value.removeEventListener('scroll', handleScroll)
-    messageListRef.value.removeEventListener('wheel', handleWheel)
   }
-  if (scrollCooldownTimer) {
-    clearTimeout(scrollCooldownTimer)
-  }
+  autoScroll.detach()
   if (navigationCooldownTimer) {
     clearTimeout(navigationCooldownTimer)
   }
@@ -678,40 +637,7 @@ watch(
   { immediate: true }
 )
 
-// Auto-scroll to bottom when messages change or streaming content grows.
-// scrollVersion is an O(1) counter incremented by the store on every chunk —
-// replacing the previous { deep: true } watcher that traversed all messages.
-watch(
-  [() => chatStore.getScrollVersion(effectiveSessionId.value), () => props.messages.length, () => props.isLoading],
-  async () => {
-    // Skip during session switch — snapshot restore handles scroll position
-    if (suppressAutoScroll) return
-
-    await nextTick()
-    if (!userScrolledAway.value && props.messages.length > 0) {
-      isProgrammaticScroll = true
-      try {
-        virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
-      } finally {
-        // Reset after a frame to allow the scroll event to fire with the guard active
-        requestAnimationFrame(() => { isProgrammaticScroll = false })
-      }
-    }
-    scheduleNavMarkerUpdate()
-  }
-)
-
-// Reset userScrolledAway when streaming ends
-watch(
-  () => props.isLoading,
-  (isLoading, wasLoading) => {
-    // When loading finishes (was true, now false), reset scroll state
-    if (wasLoading && !isLoading) {
-      userScrolledAway.value = false
-    }
-  }
-)
-
+// Nav marker update on density/font changes
 watch(
   [messageListDensity, customLineHeight, chatFontSize],
   () => {
@@ -1107,42 +1033,36 @@ defineExpose({
     const scrollOffset = virtualizer.value.scrollOffset ?? 0
     return scrollOffset - firstItem.start
   },
-  getUserScrolledAway: () => userScrolledAway.value,
+  getIsFollowing: () => isFollowing.value,
   getNavIndex: () => currentUserMessageNavIndex.value,
   getHasNavigated: () => hasNavigated.value,
 
-  prepareForSwitch: () => { suppressAutoScroll = true },
+  prepareForSwitch: () => { autoScroll.suppress() },
 
-  restoreSnapshot: (snap: { firstVisibleIndex: number; offsetWithinMessage: number; userScrolledAway: boolean; navIndex: number; hasNavigated: boolean }) => {
-    userScrolledAway.value = snap.userScrolledAway
+  restoreSnapshot: (snap: { firstVisibleIndex: number; offsetWithinMessage: number; isFollowing?: boolean; userScrolledAway?: boolean; navIndex: number; hasNavigated: boolean }) => {
+    // Support both old (userScrolledAway) and new (isFollowing) snapshot format
+    const following = snap.isFollowing ?? (snap.userScrolledAway !== undefined ? !snap.userScrolledAway : true)
+    autoScroll.restoreState(following)
     currentUserMessageNavIndex.value = snap.navIndex
     hasNavigated.value = snap.hasNavigated
     nextTick(() => {
       if (snap.firstVisibleIndex >= 0 && props.messages.length > 0) {
         const idx = Math.min(snap.firstVisibleIndex, props.messages.length - 1)
-        // First: position the message at viewport top
         virtualizer.value.scrollToIndex(idx, { align: 'start' })
-        // Then: apply sub-message offset for line-level precision
         nextTick(() => {
           if (messageListRef.value && snap.offsetWithinMessage > 0) {
             messageListRef.value.scrollTop += snap.offsetWithinMessage
           }
-          suppressAutoScroll = false
+          autoScroll.unsuppress()
         })
       } else {
-        suppressAutoScroll = false
+        autoScroll.unsuppress()
       }
     })
   },
 
   scrollToBottom: () => {
-    userScrolledAway.value = false
-    suppressAutoScroll = false
-    nextTick(() => {
-      if (props.messages.length > 0) {
-        virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
-      }
-    })
+    autoScroll.scrollToBottom()
   },
 })
 </script>

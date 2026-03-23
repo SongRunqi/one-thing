@@ -154,7 +154,7 @@ watch(effectiveSessionId, async (newId, oldId) => {
     chatStore.saveSnapshot(oldId, {
       firstVisibleIndex: messageListRef.value?.getFirstVisibleIndex() ?? 0,
       offsetWithinMessage: messageListRef.value?.getOffsetWithinMessage() ?? 0,
-      userScrolledAway: messageListRef.value?.getUserScrolledAway() ?? false,
+      isFollowing: messageListRef.value?.getIsFollowing() ?? true,
       navIndex: messageListRef.value?.getNavIndex() ?? -1,
       hasNavigated: messageListRef.value?.getHasNavigated() ?? false,
       messageInput: inputBoxRef.value?.getMessageInput() ?? '',
@@ -181,6 +181,8 @@ watch(effectiveSessionId, async (newId, oldId) => {
 
 async function handleSendMessage(message: string) {
   if (!currentSession.value) return
+  // User sending a message = intent to follow the response
+  messageListRef.value?.scrollToBottom()
   await chatSendMessage(message)
 }
 

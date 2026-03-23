@@ -392,7 +392,7 @@ onUnmounted(() => {
 }
 
 .message.assistant .message-content-wrapper {
-  gap: 8px;
+  gap: 4px;
   max-width: 100%;
   margin: 0;
 }

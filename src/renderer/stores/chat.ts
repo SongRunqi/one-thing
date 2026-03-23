@@ -54,6 +54,7 @@ interface StreamErrorData {
   sessionId?: string
   error: string
   errorDetails?: string
+  preserved?: boolean
 }
 
 // Step data from IPC
@@ -123,7 +124,7 @@ export const useChatStore = defineStore('chat', () => {
   interface SessionUISnapshot {
     firstVisibleIndex: number  // index in messages array visible at viewport top
     offsetWithinMessage: number // px of that message scrolled above viewport (sub-message precision)
-    userScrolledAway: boolean
+    isFollowing: boolean
     navIndex: number
     hasNavigated: boolean
     messageInput: string
@@ -571,23 +572,34 @@ export const useChatStore = defineStore('chat', () => {
     triggerRef(sessionError)
     triggerRef(sessionErrorDetails)
 
-    // Add error message
     const messages = getSessionMessagesRef(sessionId)
-    const errorMessage: ChatMessage = {
-      id: `error-${Date.now()}`,
-      role: 'error',
-      content: data.error || 'Streaming error',
-      timestamp: Date.now(),
-      errorDetails: data.errorDetails,
-    }
-    messages.push(errorMessage)
 
-    // Remove the streaming assistant message if it exists
-    const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
-    if (resolvedMsgId) {
-      const streamingIndex = messages.findIndex(m => m.id === resolvedMsgId)
-      if (streamingIndex !== -1) {
-        messages.splice(streamingIndex, 1)
+    if (data.preserved) {
+      // Message content is preserved in backend — just attach error details to the existing assistant message
+      const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
+      if (resolvedMsgId) {
+        const msg = messages.find(m => m.id === resolvedMsgId)
+        if (msg) {
+          msg.errorDetails = data.errorDetails
+        }
+      }
+    } else {
+      // No preserved content — replace streaming message with error message
+      const errorMessage: ChatMessage = {
+        id: `error-${Date.now()}`,
+        role: 'error',
+        content: data.error || 'Streaming error',
+        timestamp: Date.now(),
+        errorDetails: data.errorDetails,
+      }
+      messages.push(errorMessage)
+
+      const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
+      if (resolvedMsgId) {
+        const streamingIndex = messages.findIndex(m => m.id === resolvedMsgId)
+        if (streamingIndex !== -1) {
+          messages.splice(streamingIndex, 1)
+        }
       }
     }
 

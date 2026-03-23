@@ -1,44 +1,46 @@
 <template>
-  <!-- Status overlay: in document flow, shows before message content -->
-  <Transition name="status-fade">
-    <div v-if="shouldShowStatus" class="thinking-status-overlay">
-      <Transition name="thinking-fade" mode="out-in">
-        <!-- Loading memory -->
-        <div v-if="loadingMemory && isStreaming && !hasContent && !reasoning" key="loading-memory" class="thinking-status-row">
-          <span class="thinking-text flowing">Extracting memory</span>
-          <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
-        </div>
+  <div class="thinking-container">
+    <!-- Status overlay: in document flow, shows before message content -->
+    <Transition name="status-fade">
+      <div v-if="shouldShowStatus" class="thinking-status-overlay">
+        <Transition name="thinking-fade" mode="out-in">
+          <!-- Loading memory -->
+          <div v-if="loadingMemory && isStreaming && !hasContent && !reasoning" key="loading-memory" class="thinking-status-row">
+            <span class="thinking-text flowing">Extracting memory</span>
+            <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+          </div>
 
-        <!-- Waiting -->
-        <div v-else-if="isStreaming && !hasContent && !reasoning" key="waiting" class="thinking-status-row">
-          <span class="thinking-text flowing">Waiting</span>
-          <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
-        </div>
+          <!-- Waiting -->
+          <div v-else-if="isStreaming && !hasContent && !reasoning" key="waiting" class="thinking-status-row">
+            <span class="thinking-text flowing">Waiting</span>
+            <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+          </div>
 
-        <!-- Reasoning status: Thinking / Thought for Xs -->
-        <div v-else-if="reasoning" key="reasoning-status" class="thinking-status-row clickable" @click="toggleExpand">
-          <Transition name="status-text-fade" mode="out-in">
-            <span v-if="isStreaming && !hasContent" key="thinking" class="thinking-text flowing">Thinking</span>
-            <span v-else key="thought" class="thinking-text thought">Thought for {{ formatThinkingTime(displayTime) }}</span>
-          </Transition>
-          <Transition name="time-fade">
-            <span v-if="isStreaming && !hasContent" class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
-          </Transition>
-          <button class="thinking-toggle-btn" :class="{ expanded: isExpanded }">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M6 9l6 6 6-6"/>
-            </svg>
-          </button>
-        </div>
-      </Transition>
-    </div>
-  </Transition>
+          <!-- Reasoning status: Thinking / Thought for Xs -->
+          <div v-else-if="reasoning" key="reasoning-status" class="thinking-status-row clickable" @click="toggleExpand">
+            <Transition name="status-text-fade" mode="out-in">
+              <span v-if="isStreaming && !hasContent" key="thinking" class="thinking-text flowing">Thinking</span>
+              <span v-else key="thought" class="thinking-text thought">Thought for {{ formatThinkingTime(displayTime) }}</span>
+            </Transition>
+            <Transition name="time-fade">
+              <span v-if="isStreaming && !hasContent" class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+            </Transition>
+            <button class="thinking-toggle-btn" :class="{ expanded: isExpanded }">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </button>
+          </div>
+        </Transition>
+      </div>
+    </Transition>
 
-  <!-- Reasoning expand: in document flow, smooth grid-rows animation -->
-  <!-- User-triggered expand, so pushing content down is expected -->
-  <div v-if="reasoning" class="thinking-reasoning-wrapper" :class="{ expanded: isExpanded }">
-    <div class="thinking-reasoning-inner">
-      <div class="thinking-content" v-html="renderedReasoning"></div>
+    <!-- Reasoning expand: in document flow, smooth grid-rows animation -->
+    <!-- User-triggered expand, so pushing content down is expected -->
+    <div v-if="reasoning" class="thinking-reasoning-wrapper" :class="{ expanded: isExpanded }">
+      <div class="thinking-reasoning-inner">
+        <div class="thinking-content" v-html="renderedReasoning"></div>
+      </div>
     </div>
   </div>
 </template>
@@ -180,6 +182,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* Container: single flex child in parent, empty when nothing shown */
+.thinking-container:empty {
+  display: none;
+}
+
 /* Status overlay: in document flow, aligned with message content */
 .thinking-status-overlay {
   display: flex;
@@ -221,6 +228,7 @@ onUnmounted(() => {
 
 .thinking-text.thought {
   color: var(--muted);
+  opacity: 0.6;
 }
 
 @keyframes flowingGradient {
@@ -342,6 +350,7 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   color: var(--muted);
+  opacity: 0.6;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -364,13 +373,12 @@ onUnmounted(() => {
 }
 
 .thinking-content {
-  padding: 12px;
-  background: rgba(var(--accent-rgb), 0.05);
-  border-radius: 8px;
-  border-left: 3px solid var(--accent);
-  font-size: 13px;
-  line-height: 1.6;
+  padding: 8px 12px;
+  border-left: 2px solid var(--border);
+  font-size: 12.5px;
+  line-height: 1.5;
   color: var(--muted);
+  opacity: 0.55;
 }
 
 .thinking-content :deep(p) {
@@ -379,5 +387,10 @@ onUnmounted(() => {
 
 .thinking-content :deep(p:last-child) {
   margin-bottom: 0;
+}
+
+.thinking-content :deep(ol),
+.thinking-content :deep(ul) {
+  padding-left: 1.5em;
 }
 </style>
