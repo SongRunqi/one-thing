@@ -1,5 +1,5 @@
 <template>
-  <!-- Status overlay: position absolute, never affects document flow -->
+  <!-- Status overlay: in document flow, shows before message content -->
   <Transition name="status-fade">
     <div v-if="shouldShowStatus" class="thinking-status-overlay">
       <Transition name="thinking-fade" mode="out-in">
@@ -180,16 +180,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Status overlay: absolute, positioned in the padding-top area of the parent */
+/* Status overlay: in document flow, aligned with message content */
 .thinking-status-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 28px;
   display: flex;
   align-items: center;
-  z-index: 1;
+  height: 28px;
 }
 
 .thinking-status-row {
