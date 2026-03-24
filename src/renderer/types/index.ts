@@ -419,17 +419,6 @@ export interface ElectronAPI {
   // Skill execution
   executeSkill: (skillId: string, options: { sessionId: string; input: string }) => Promise<{ success: boolean; result?: { output: string }; error?: string }>
 
-  // Plugin methods
-  getPlugins: () => Promise<{ success: boolean; plugins?: any[]; error?: string }>
-  getPlugin: (pluginId: string) => Promise<{ success: boolean; plugin?: any; error?: string }>
-  installPlugin: (request: { source: string; type?: string }) => Promise<{ success: boolean; plugin?: any; error?: string }>
-  uninstallPlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
-  enablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
-  disablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
-  reloadPlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
-  updatePluginConfig: (request: { pluginId: string; config: Record<string, unknown> }) => Promise<{ success: boolean; error?: string }>
-  getPluginDirectories: () => Promise<{ success: boolean; directories?: { plugins: string; npm: string; local: string }; error?: string }>
-  openPluginDirectory: (dirType: 'plugins' | 'npm' | 'local') => Promise<{ success: boolean; error?: string }>
 }
 
 declare global {

@@ -10,7 +10,6 @@ import { initializeToolRegistry } from './tools/index.js'
 import { initializeStreamEngine, shutdownStreamEngine, getStreamEngine } from './engine/index.js'
 import { getMediaImagesDir } from './stores/paths.js'
 import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './engine/prompt/index.js'
-import { initializePlugins, shutdownPlugins } from './plugins/index.js'
 import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge } from './events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
 import { Permission } from './permission/index.js'
@@ -67,11 +66,6 @@ app.on('ready', async () => {
   // Initialize IPC handlers
   initializeIPC()
 
-  // Initialize plugin system (loads plugins and executes app:init hooks)
-  initializePlugins().catch(err => {
-    console.error('[Plugins] Initialization failed (non-blocking):', err)
-  })
-
   // Create window first for fast startup
   mainWindow = createWindow()
 
@@ -120,9 +114,6 @@ app.on('activate', () => {
 
 // Cleanup on quit
 app.on('before-quit', async () => {
-  // Shutdown plugins (executes app:quit hooks)
-  await shutdownPlugins()
-
   // Stop template watcher
   stopTemplateWatcher()
 

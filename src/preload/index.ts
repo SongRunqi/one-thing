@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS, AIProvider, MessageAttachment, PLUGIN_CHANNELS } from '../shared/ipc.js'
-import type { UIMessageStreamData, InstallPluginRequest, UpdatePluginConfigRequest } from '../shared/ipc.js'
+import { IPC_CHANNELS, AIProvider, MessageAttachment } from '../shared/ipc.js'
+import type { UIMessageStreamData } from '../shared/ipc.js'
 
 const electronAPI = {
   // Chat methods
@@ -517,36 +517,6 @@ const electronAPI = {
   readFileContent: (filePath: string, maxSize?: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_CONTENT, { path: filePath, maxSize }),
 
-  // Plugin methods
-  getPlugins: () =>
-    ipcRenderer.invoke(PLUGIN_CHANNELS.GET_ALL),
-
-  getPlugin: (pluginId: string) =>
-    ipcRenderer.invoke(PLUGIN_CHANNELS.GET, pluginId),
-
-  installPlugin: (request: InstallPluginRequest) =>
-    ipcRenderer.invoke(PLUGIN_CHANNELS.INSTALL, request),
-
-  uninstallPlugin: (pluginId: string) =>
-    ipcRenderer.invoke(PLUGIN_CHANNELS.UNINSTALL, pluginId),
-
-  enablePlugin: (pluginId: string) =>
-    ipcRenderer.invoke(PLUGIN_CHANNELS.ENABLE, pluginId),
-
-  disablePlugin: (pluginId: string) =>
-    ipcRenderer.invoke(PLUGIN_CHANNELS.DISABLE, pluginId),
-
-  reloadPlugin: (pluginId: string) =>
-    ipcRenderer.invoke(PLUGIN_CHANNELS.RELOAD, pluginId),
-
-  updatePluginConfig: (request: UpdatePluginConfigRequest) =>
-    ipcRenderer.invoke(PLUGIN_CHANNELS.UPDATE_CONFIG, request),
-
-  getPluginDirectories: () =>
-    ipcRenderer.invoke(PLUGIN_CHANNELS.GET_DIRECTORIES),
-
-  openPluginDirectory: (dirType: 'plugins' | 'npm' | 'local') =>
-    ipcRenderer.invoke(PLUGIN_CHANNELS.OPEN_DIRECTORY, dirType),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

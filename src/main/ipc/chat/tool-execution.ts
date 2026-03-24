@@ -263,45 +263,10 @@ export async function executeToolAndUpdate(
   // Get session's workingDirectory for sandbox boundary (reuse session from above)
   const workingDirectory = session?.workingDirectory
 
-  // Emit tool:call for plugin interception (can modify args or suppress)
-  let finalArgs = { ...toolCallData.args }
-  try {
-    const { getEventBus } = await import('../../events/index.js')
-    const eventBus = getEventBus()
-    const emitResult = await eventBus.emit(ctx.sessionId, {
-      type: 'tool:call',
-      toolCall: { ...toolCall, arguments: finalArgs },
-    })
-    if (!emitResult.envelope) {
-      // Interceptor suppressed — treat as plugin abort
-      console.log('[Backend] Tool suppressed by plugin interceptor')
-      toolCall.endTime = Date.now()
-      toolCall.status = 'failed'
-      toolCall.error = 'Blocked by plugin'
-
-      emitter.sendStepUpdated(step.id, {
-        status: 'failed',
-        toolCall: { ...toolCall },
-        error: toolCall.error,
-      })
-
-      store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
-      emitter.sendToolResult(toolCall)
-      return
-    }
-    // Interceptors may have modified the tool call args
-    const interceptedEvent = emitResult.envelope.event as any
-    if (interceptedEvent.toolCall?.arguments) {
-      finalArgs = interceptedEvent.toolCall.arguments
-    }
-  } catch {
-    // Event system not initialized — use original args
-  }
-
   // Execute tool directly (no LLM overhead)
   result = await executeToolDirectly(
     toolCallData.toolName,
-    finalArgs,
+    { ...toolCallData.args },
     {
       sessionId: ctx.sessionId,
       messageId: ctx.assistantMessageId,
@@ -366,7 +331,6 @@ export async function executeToolAndUpdate(
 
   toolCall.endTime = Date.now()
 
-  // tool:result is emitted below via emitter.sendToolResult() — plugins observe via EventBus
 
   if (result.requiresConfirmation) {
     toolCall.status = 'pending'

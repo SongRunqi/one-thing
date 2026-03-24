@@ -234,24 +234,6 @@ export {
   getToolName,
 } from './ui-message.js'
 
-// Plugin types
-export type {
-  PluginSource,
-  PluginStatus,
-  PluginInfo,
-  GetPluginsResponse,
-  GetPluginResponse,
-  InstallPluginRequest,
-  InstallPluginResponse,
-  UninstallPluginResponse,
-  TogglePluginResponse,
-  ReloadPluginResponse,
-  UpdatePluginConfigRequest,
-  UpdatePluginConfigResponse,
-  PluginDirectoriesInfo,
-  PluginChannel,
-} from './plugins.js'
-
 // File Tree types (for right sidebar file browser)
 export type {
   FileTreeNode,
@@ -263,8 +245,6 @@ export type {
   FileReadRequest,
   FileReadResponse,
 } from './file-tree.js'
-
-export { PLUGIN_CHANNELS } from './plugins.js'
 
 // Re-export tool state mapping utilities
 export type { LegacyToolStatus } from '../tool-state-mapping.js'

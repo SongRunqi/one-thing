@@ -117,12 +117,6 @@ export function getProjectSkillsPath(cwd?: string): string {
   return path.join(workingDir, '.claude', 'skills')
 }
 
-/**
- * Get the official plugin skills directory path
- */
-export function getPluginSkillsPath(): string {
-  return path.join(os.homedir(), '.claude', 'plugins', 'cache', 'claude-plugins-official')
-}
 
 /**
  * Get the builtin skills directory path
@@ -382,59 +376,6 @@ function loadSkillsFromPath(skillsDir: string, source: SkillSource): SkillDefini
 }
 
 /**
- * Load plugin skills from nested directory structure
- * Structure: ~/.claude/plugins/cache/claude-plugins-official/{plugin}/{version}/skills/{skill}/SKILL.md
- * Deduplicates by skill name (only keeps first found version of each skill)
- */
-function loadPluginSkills(): SkillDefinition[] {
-  const pluginCacheDir = getPluginSkillsPath()
-  const skillsMap = new Map<string, SkillDefinition>()
-
-  if (!fs.existsSync(pluginCacheDir)) {
-    return []
-  }
-
-  try {
-    // Iterate through plugin directories (e.g., vercel, frontend-design)
-    const pluginDirs = fs.readdirSync(pluginCacheDir, { withFileTypes: true })
-
-    for (const pluginDir of pluginDirs) {
-      if (!pluginDir.isDirectory()) continue
-
-      const pluginPath = path.join(pluginCacheDir, pluginDir.name)
-      let versionDirs: fs.Dirent[] = []
-
-      try {
-        versionDirs = fs.readdirSync(pluginPath, { withFileTypes: true })
-      } catch {
-        continue
-      }
-
-      for (const versionDir of versionDirs) {
-        if (!versionDir.isDirectory()) continue
-
-        const skillsPath = path.join(pluginPath, versionDir.name, 'skills')
-        if (!fs.existsSync(skillsPath)) continue
-
-        // Load skills from this version's skills directory
-        const loadedSkills = loadSkillsFromPath(skillsPath, 'plugin')
-
-        // Deduplicate by skill name (keep first found)
-        for (const skill of loadedSkills) {
-          if (!skillsMap.has(skill.name)) {
-            skillsMap.set(skill.name, skill)
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error('[Skills] Error loading plugin skills:', error)
-  }
-
-  return Array.from(skillsMap.values())
-}
-
-/**
  * Load builtin skills from app resources
  */
 function loadBuiltinSkills(): SkillDefinition[] {
@@ -452,7 +393,7 @@ function loadBuiltinSkills(): SkillDefinition[] {
 }
 
 /**
- * Load all skills from user, project, plugin, and builtin directories
+ * Load all skills from user, project, and builtin directories
  * Uses upward traversal for project skills when workingDirectory is provided
  *
  * @param workingDirectory - Optional working directory for project skills (enables upward traversal)
@@ -499,13 +440,9 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
     console.log(`[Skills] Loaded ${envSkills.length} skills from ${SKILLS_DIR_ENV}:`, envSkills.map(s => s.name))
   }
 
-  // 5. Plugin skills
-  const pluginSkills = loadPluginSkills()
-  console.log(`[Skills] Plugin skills:`, pluginSkills.map(s => s.name))
-
-  // Priority: project > user > env > plugin > builtin
+  // Priority: project > user > env > builtin
   // Builtin skills can be overridden by user/project skills with the same name
-  const allSkills = [...projectSkills, ...userSkills, ...envSkills, ...pluginSkills, ...builtinSkills]
+  const allSkills = [...projectSkills, ...userSkills, ...envSkills, ...builtinSkills]
 
   // Deduplicate by name (first one wins, so higher priority sources take precedence)
   const seenNames = new Set<string>()
@@ -517,7 +454,7 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
     return true
   })
 
-  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${envSkills.length} env, ${pluginSkills.length} plugin skills`)
+  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${envSkills.length} env skills`)
   console.log(`[Skills] Total skills (after dedup): ${dedupedSkills.length}, names:`, dedupedSkills.map(s => s.name))
 
   return dedupedSkills
@@ -589,8 +526,6 @@ function getSkillsDirBySource(source: string): string {
   switch (source) {
     case 'user':
       return getUserSkillsPath()
-    case 'plugin':
-      return getPluginSkillsPath()
     case 'project':
     default:
       return getProjectSkillsPath()

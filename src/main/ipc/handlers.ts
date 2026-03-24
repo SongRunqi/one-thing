@@ -13,7 +13,6 @@ import { registerMediaHandlers } from './media.js'
 import { registerPermissionHandlers } from './permission.js'
 import { registerOAuthHandlers, cleanupOAuth } from './oauth.js'
 import { registerThemeHandlers, initializeThemeSystem } from './themes.js'
-import { registerPluginHandlers } from './plugins.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -29,14 +28,13 @@ export function initializeIPC() {
   registerPermissionHandlers()
   registerOAuthHandlers()
   registerThemeHandlers()
-  registerPluginHandlers()
   registerCommandHandler()
 }
 
 /**
  * Register the unified session:command handler.
  * Routes renderer commands through EventBus for processing by
- * subscribed systems (Permission, StreamEngine, plugins, etc.).
+ * subscribed systems (Permission, StreamEngine, etc.).
  */
 function registerCommandHandler() {
   ipcMain.handle(IPC_CHANNELS.SESSION_COMMAND, async (_event, { sessionId, command }) => {

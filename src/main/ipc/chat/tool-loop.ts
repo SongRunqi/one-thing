@@ -332,36 +332,8 @@ export async function runStream(
     const userMaxTokens = ctx.settings.chat?.maxTokens || 4096
     let effectiveMaxTokens = Math.min(userMaxTokens, modelMaxOutputTokens)
 
-    // Get temperature and other params with plugin hook support
-    let temperature = ctx.settings.ai.temperature
-    let model = ctx.providerConfig.model
-
-    // Emit stream:params-resolving (plugins can intercept to modify params)
-    try {
-      const eventBus = getEventBus()
-      const paramsResult = await eventBus.emit(ctx.sessionId, {
-        type: 'stream:params-resolving',
-        messageId: ctx.assistantMessageId,
-        params: {
-          providerId: ctx.providerId,
-          model,
-          temperature,
-          maxTokens: effectiveMaxTokens,
-          topP: (ctx.settings.ai as unknown as Record<string, unknown>).topP as number | undefined,
-        },
-      })
-      // Apply modifications from interceptors
-      if (paramsResult.envelope) {
-        const finalParams = (paramsResult.envelope.event as any).params
-        if (finalParams) {
-          model = finalParams.model ?? model
-          temperature = finalParams.temperature ?? temperature
-          effectiveMaxTokens = finalParams.maxTokens ?? effectiveMaxTokens
-        }
-      }
-    } catch {
-      // Event system not initialized — use original params
-    }
+    const temperature = ctx.settings.ai.temperature
+    const model = ctx.providerConfig.model
 
     // ============================================================
     // Checkpoint 3: Error recovery wrapper
@@ -774,7 +746,6 @@ export async function executeStreamGeneration(
       if (lastUserMessageObj && processor.accumulatedContent) {
         const lastUserMessageText = getTextFromContent(lastUserMessageObj.content)
 
-        // message:post hook removed — plugins observe stream:complete via EventBus
 
         const updatedSessionForTriggers = store.getSession(ctx.sessionId)
         if (updatedSessionForTriggers) {

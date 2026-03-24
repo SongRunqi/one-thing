@@ -166,18 +166,6 @@ export const IPC_CHANNELS = {
   // File Preview related (for reading file content)
   FILE_READ_CONTENT: 'file:read-content',
 
-  // Plugin related
-  PLUGINS_GET_ALL: 'plugins:get-all',
-  PLUGINS_GET: 'plugins:get',
-  PLUGINS_INSTALL: 'plugins:install',
-  PLUGINS_UNINSTALL: 'plugins:uninstall',
-  PLUGINS_ENABLE: 'plugins:enable',
-  PLUGINS_DISABLE: 'plugins:disable',
-  PLUGINS_RELOAD: 'plugins:reload',
-  PLUGINS_UPDATE_CONFIG: 'plugins:update-config',
-  PLUGINS_GET_DIRECTORIES: 'plugins:get-directories',
-  PLUGINS_OPEN_DIRECTORY: 'plugins:open-directory',
-
   // Unified event-driven channels (Phase 4)
   SESSION_EVENT: 'session:event',
   SESSION_STREAM: 'session:stream',
