@@ -618,15 +618,7 @@ export const useChatStore = defineStore('chat', () => {
    * Find a step by ID in a nested step structure
    */
   function findStepById(steps: Step[], stepId: string): Step | null {
-    for (const step of steps) {
-      if (step.id === stepId) return step
-      // Search in child steps recursively
-      if (step.childSteps?.length) {
-        const found = findStepById(step.childSteps, stepId)
-        if (found) return found
-      }
-    }
-    return null
+    return steps.find(s => s.id === stepId) ?? null
   }
 
   /**
@@ -642,41 +634,6 @@ export const useChatStore = defineStore('chat', () => {
 
     // Initialize steps array if needed
     if (!message.steps) message.steps = []
-
-    // Check if this is a child step (has parentStepId)
-    if (step.parentStepId) {
-      // Find parent step INDEX (not reference) to replace entire object for Vue reactivity
-      const parentIndex = message.steps.findIndex(s => s.id === step.parentStepId)
-      if (parentIndex >= 0) {
-        const parentStep = message.steps[parentIndex]
-        const existingChildSteps = parentStep.childSteps || []
-
-        // Check for duplicates in childSteps
-        const existingChildIndex = existingChildSteps.findIndex(
-          s => s.id === step.id || s.toolCallId === step.toolCallId
-        )
-
-        let newChildSteps: Step[]
-        if (existingChildIndex >= 0) {
-          // Update existing child step
-          newChildSteps = [...existingChildSteps]
-          newChildSteps[existingChildIndex] = { ...existingChildSteps[existingChildIndex], ...step }
-        } else {
-          // Add new child step
-          newChildSteps = [...existingChildSteps, step]
-        }
-
-        // Replace entire parent step object to trigger Vue reactivity
-        message.steps[parentIndex] = {
-          ...parentStep,
-          childSteps: newChildSteps,
-        }
-        message.steps = [...message.steps]
-        setSessionMessages(sessionId, [...messages])
-        return
-      }
-      // If parent not found, fall through to add as top-level step
-    }
 
     // Check if step already exists (avoid duplicates from streaming)
     const existingIndex = message.steps.findIndex(s => s.id === step.id || s.toolCallId === step.toolCallId)
@@ -732,28 +689,6 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    // If not found in top-level, search in nested childSteps
-    // Need to find parent step and replace it entirely for Vue reactivity
-    const parentIndex = message.steps.findIndex(s =>
-      s.childSteps?.some(c => c.id === stepId)
-    )
-    if (parentIndex >= 0) {
-      const parentStep = message.steps[parentIndex]
-      const childIndex = parentStep.childSteps!.findIndex(c => c.id === stepId)
-      if (childIndex >= 0) {
-        // Create new childSteps array with updated child
-        const newChildSteps = [...parentStep.childSteps!]
-        newChildSteps[childIndex] = { ...newChildSteps[childIndex], ...updates }
-
-        // Replace parent step object to trigger Vue reactivity
-        message.steps[parentIndex] = {
-          ...parentStep,
-          childSteps: newChildSteps,
-        }
-        message.steps = [...message.steps]
-        setSessionMessages(sessionId, [...messages])
-      }
-    }
   }
 
   /**

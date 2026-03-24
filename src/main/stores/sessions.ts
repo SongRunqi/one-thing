@@ -79,7 +79,7 @@ function sanitizeSession(session: ChatSession): ChatSession {
 }
 
 /**
- * Sanitize a step and its childSteps recursively
+ * Sanitize a step recursively
  * Returns true if any modifications were made
  */
 function sanitizeStepRecursive(step: Step): boolean {
@@ -105,9 +105,10 @@ function sanitizeStepRecursive(step: Step): boolean {
     }
   }
 
-  // Recursively sanitize childSteps
-  if (step.childSteps?.length) {
-    for (const childStep of step.childSteps) {
+  // Handle legacy childSteps from old session data
+  const legacyChildren = (step as any).childSteps
+  if (legacyChildren?.length) {
+    for (const childStep of legacyChildren) {
       if (sanitizeStepRecursive(childStep)) {
         modified = true
       }
@@ -951,21 +952,13 @@ export function updateMessageError(sessionId: string, messageId: string, errorDe
 }
 
 /**
- * Find a step by ID, recursively searching in childSteps
+ * Find a step by ID
  */
-function findStepByIdRecursive(steps: Step[], stepId: string): Step | undefined {
-  for (const step of steps) {
-    if (step.id === stepId) return step
-    if (step.childSteps?.length) {
-      const found = findStepByIdRecursive(step.childSteps, stepId)
-      if (found) return found
-    }
-  }
-  return undefined
+function findStepById(steps: Step[], stepId: string): Step | undefined {
+  return steps.find(s => s.id === stepId)
 }
 
 // Add a step to a message (does not affect sort order)
-// If step has parentStepId, adds to parent's childSteps array
 export function addMessageStep(sessionId: string, messageId: string, step: Step): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -977,31 +970,7 @@ export function addMessageStep(sessionId: string, messageId: string, step: Step)
     message.steps = []
   }
 
-  // If step has a parent, add to parent's childSteps
-  if (step.parentStepId) {
-    const parentStep = findStepByIdRecursive(message.steps, step.parentStepId)
-    if (parentStep) {
-      if (!parentStep.childSteps) {
-        parentStep.childSteps = []
-      }
-      // Check for duplicate in childSteps
-      const existingChildIndex = parentStep.childSteps.findIndex(
-        s => s.toolCallId && s.toolCallId === step.toolCallId
-      )
-      if (existingChildIndex >= 0) {
-        parentStep.childSteps[existingChildIndex] = { ...parentStep.childSteps[existingChildIndex], ...step }
-      } else {
-        parentStep.childSteps.push(step)
-      }
-      // Save session file
-      saveSessionToFile(sessionId, session)
-      return true
-    }
-    // Parent not found - fall through to add as top-level step
-    console.warn(`[sessions] Parent step not found for childStep: parentId=${step.parentStepId}, stepId=${step.id}`)
-  }
-
-  // Add as top-level step (no parent or parent not found)
+  // Add as top-level step
   // Check for duplicate by toolCallId to avoid creating multiple steps for the same tool call
   const existingIndex = message.steps.findIndex(s => s.toolCallId && s.toolCallId === step.toolCallId)
   if (existingIndex >= 0) {
@@ -1027,8 +996,7 @@ export function updateMessageStep(sessionId: string, messageId: string, stepId: 
   const message = session.messages.find((m) => m.id === messageId)
   if (!message || !message.steps) return false
 
-  // Use recursive search to find step (could be in childSteps)
-  const step = findStepByIdRecursive(message.steps, stepId)
+  const step = findStepById(message.steps, stepId)
   if (!step) return false
 
   // Apply updates

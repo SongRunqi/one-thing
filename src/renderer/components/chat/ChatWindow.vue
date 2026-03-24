@@ -4,8 +4,6 @@
     <ChatHeader
       :session-name="currentSession?.name || 'New chat'"
       :working-directory="currentSession?.workingDirectory || null"
-      :session-agent="sessionAgent"
-      :agents="[]"
       :is-branch-session="isBranchSession"
       :show-sidebar-toggle="showSidebarToggle"
       :show-split-button="canClose !== undefined"
@@ -106,8 +104,6 @@ const currentSession = computed(() => {
 // Messages for this panel (from composable)
 const panelMessages = computed(() => messages.value)
 
-// Agent feature removed - always null
-const sessionAgent = computed(() => null)
 
 // Check if current session is a branch
 const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)

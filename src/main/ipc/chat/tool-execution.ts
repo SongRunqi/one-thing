@@ -313,10 +313,7 @@ export async function executeToolAndUpdate(
           emitter.sendStepUpdated(step.id, metadataUpdates)
         }
       },
-      // Forward step events from sub-agent tools (e.g., CustomAgent)
       onStepStart: (subStep: Step) => {
-        // Set parent step ID for nested display in StepsPanel
-        subStep.parentStepId = step.id
         emitter.sendStepAdded(subStep)
       },
       onStepComplete: (subStep: Step) => {

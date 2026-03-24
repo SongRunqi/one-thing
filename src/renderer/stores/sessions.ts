@@ -76,12 +76,12 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
-  async function createSession(name: string, agentId?: string) {
+  async function createSession(name: string) {
     try {
       // Check if there's already an empty "New Chat" session (no messages)
-      // Only reuse if no specific agent is requested, and only top-level sessions (not branches)
+      // Only reuse top-level sessions (not branches)
       // Use messageCount (from metadata) instead of messages array (which may not be loaded)
-      if (!agentId) {
+      {
         const existingEmptySession = filteredSessions.value.find(
           s => (s.name === 'New Chat' || s.name === '') && (s.messageCount === 0 || s.messageCount === undefined) && !s.parentSessionId
         )

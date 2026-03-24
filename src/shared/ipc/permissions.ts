@@ -38,21 +38,3 @@ export interface PermissionRespondRequest {
   rejectReason?: string
 }
 
-// Agent permission configuration
-export interface AgentPermissionConfig {
-  // Bash command permissions: allow, ask, deny
-  bash?: 'allow' | 'ask' | 'deny' | BashPermissionRules
-  // External directory access
-  externalDirectory?: 'allow' | 'ask' | 'deny'
-  // File write permissions
-  fileWrite?: 'allow' | 'ask' | 'deny'
-  // File read permissions
-  fileRead?: 'allow' | 'ask' | 'deny'
-}
-
-export interface BashPermissionRules {
-  // Default action for unlisted commands
-  default: 'allow' | 'ask' | 'deny'
-  // Specific command rules (pattern -> action)
-  rules: Record<string, 'allow' | 'ask' | 'deny'>
-}

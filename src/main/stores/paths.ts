@@ -47,22 +47,6 @@ export function getWorkspaceAvatarPath(workspaceId: string, extension: string): 
   return path.join(getWorkspaceAvatarsDir(), `${workspaceId}.${extension}`)
 }
 
-export function getAgentsDir(): string {
-  return path.join(getStorePath(), 'agents')
-}
-
-export function getAgentPath(agentId: string): string {
-  return path.join(getAgentsDir(), `${agentId}.json`)
-}
-
-export function getAgentAvatarsDir(): string {
-  return path.join(getAgentsDir(), 'avatars')
-}
-
-export function getAgentAvatarPath(agentId: string, extension: string): string {
-  return path.join(getAgentAvatarsDir(), `${agentId}.${extension}`)
-}
-
 // User Profile paths
 export function getUserProfileDir(): string {
   return path.join(getStorePath(), 'user-profile')
@@ -70,15 +54,6 @@ export function getUserProfileDir(): string {
 
 export function getUserProfilePath(): string {
   return path.join(getUserProfileDir(), 'profile.json')
-}
-
-// Agent Memory paths (for Phase 3)
-export function getAgentMemoryDir(): string {
-  return path.join(getStorePath(), 'agent-memory')
-}
-
-export function getAgentMemoryPath(agentId: string): string {
-  return path.join(getAgentMemoryDir(), `${agentId}.json`)
 }
 
 // Screenshots directory (for automation screenshot captures)
@@ -168,10 +143,7 @@ export function ensureStoreDirs(): void {
     getSessionsDir(),
     getWorkspacesDir(),
     getWorkspaceAvatarsDir(),
-    getAgentsDir(),
-    getAgentAvatarsDir(),
     getUserProfileDir(),
-    getAgentMemoryDir(),
     getScreenshotsDir(),
     getMediaDir(),
     getMediaImagesDir(),

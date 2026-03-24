@@ -22,7 +22,6 @@ export type {
   ToolDefinition,
   ToolCall,
   BashToolSettings,
-  ToolAgentSettings,
   ToolSettings,
   StreamMessageChunk,
   SendMessageStreamResponse,
@@ -197,8 +196,6 @@ export type {
   PermissionInfo,
   PermissionResponse,
   PermissionRespondRequest,
-  AgentPermissionConfig,
-  BashPermissionRules,
 } from './permissions.js'
 
 // UIMessage types

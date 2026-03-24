@@ -13,7 +13,7 @@ export type ContentPart =
   | { type: 'data-steps'; turnIndex: number }    // Placeholder for steps panel (rendered inline)
 
 // Step types for showing AI reasoning process
-export type StepType = 'skill-read' | 'tool-call' | 'thinking' | 'file-read' | 'file-write' | 'command' | 'tool-agent'
+export type StepType = 'skill-read' | 'tool-call' | 'thinking' | 'file-read' | 'file-write' | 'command'
 
 export interface Step {
   id: string
@@ -36,17 +36,6 @@ export interface Step {
     outputTokens: number
     totalTokens: number
   }
-  // Tool Agent specific fields
-  toolAgentResult?: {              // Result from Tool Agent execution
-    success: boolean
-    summary: string
-    toolCallCount: number
-    filesModified?: string[]
-    errors?: string[]
-  }
-  // Nested step support (for CustomAgent sub-tool calls)
-  parentStepId?: string            // Parent step ID (for child steps)
-  childSteps?: Step[]              // Child steps array (populated by frontend)
 }
 
 // Message attachment types for file/image uploads
