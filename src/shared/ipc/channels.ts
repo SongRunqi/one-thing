@@ -158,11 +158,6 @@ export const IPC_CHANNELS = {
   // Directories related (for /cd path completion)
   DIRS_LIST: 'dirs:list',
 
-  // File Tree related (for right sidebar file browser)
-  FILE_TREE_LIST: 'file-tree:list',
-  FILE_TREE_WATCH: 'file-tree:watch',
-  FILE_TREE_UNWATCH: 'file-tree:unwatch',
-
   // File Preview related (for reading file content)
   FILE_READ_CONTENT: 'file:read-content',
 

@@ -509,10 +509,6 @@ const electronAPI = {
   listDirs: (options: { basePath: string; query?: string; limit?: number }) =>
     ipcRenderer.invoke(IPC_CHANNELS.DIRS_LIST, options),
 
-  // File tree methods (for right sidebar file browser)
-  fileTreeList: (options: { directory: string; depth?: number; includeHidden?: boolean; respectGitignore?: boolean }) =>
-    ipcRenderer.invoke(IPC_CHANNELS.FILE_TREE_LIST, options),
-
   // File content reading (for file preview panel)
   readFileContent: (filePath: string, maxSize?: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_CONTENT, { path: filePath, maxSize }),

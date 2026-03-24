@@ -231,30 +231,4 @@ export {
   getToolName,
 } from './ui-message.js'
 
-// File Tree types (for right sidebar file browser)
-export type {
-  FileTreeNode,
-  FileTreeListRequest,
-  FileTreeListResponse,
-  ExtractedDocument,
-  // File Preview types
-  FilePreview,
-  FileReadRequest,
-  FileReadResponse,
-} from './file-tree.js'
 
-// Re-export tool state mapping utilities
-export type { LegacyToolStatus } from '../tool-state-mapping.js'
-
-export {
-  LEGACY_TO_UI_STATE,
-  UI_TO_LEGACY_STATE,
-  legacyStatusToUIState,
-  uiStateToLegacyStatus,
-  isToolInProgress,
-  isToolFinished,
-  isToolSuccess,
-  isToolError,
-  isToolWaitingInput,
-  isToolWaitingExecution,
-} from '../tool-state-mapping.js'

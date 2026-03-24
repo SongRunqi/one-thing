@@ -102,15 +102,6 @@ import type {
   GetThemeResponse,
   ApplyThemeResponse,
   RefreshThemesResponse,
-  // File Tree types (for right sidebar)
-  FileTreeNode,
-  FileTreeListRequest,
-  FileTreeListResponse,
-  ExtractedDocument,
-  // File Preview types
-  FilePreview,
-  FileReadRequest,
-  FileReadResponse,
 } from '../../shared/ipc'
 
 export type {
@@ -176,15 +167,6 @@ export type {
   // Theme types
   ThemeMeta,
   Theme,
-  // File Tree types (for right sidebar)
-  FileTreeNode,
-  FileTreeListRequest,
-  FileTreeListResponse,
-  ExtractedDocument,
-  // File Preview types
-  FilePreview,
-  FileReadRequest,
-  FileReadResponse,
 }
 
 // Gallery image type for image preview window
@@ -402,11 +384,8 @@ export interface ElectronAPI {
   // Directories listing (for /cd path completion)
   listDirs: (options: { basePath: string; query?: string; limit?: number }) => Promise<{ success: boolean; dirs: string[]; basePath: string; error?: string }>
 
-  // File tree methods (for right sidebar file browser)
-  fileTreeList: (options: FileTreeListRequest) => Promise<FileTreeListResponse>
-
   // File content reading (for file preview panel)
-  readFileContent: (filePath: string, maxSize?: number) => Promise<FileReadResponse>
+  readFileContent: (filePath: string, maxSize?: number) => Promise<{ success: boolean; content?: string; error?: string }>
 
   // Window methods
   setWindowButtonVisibility: (visible: boolean) => Promise<{ success: boolean }>
