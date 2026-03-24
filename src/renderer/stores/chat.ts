@@ -318,20 +318,9 @@ export const useChatStore = defineStore('chat', () => {
           // Mutate in-place — Vue Proxy detects .content change and updates only
           // the v-html binding for this part, without invalidating otherParts computed.
           lastPart.content += chunk.content
-        } else if (lastPart && (lastPart.type === 'tool-call' || lastPart.type === 'data-steps')) {
-          // Text arrives after a tool-call/step in the SAME turn (no continuation yet).
-          // The AI model streams text and tool calls interleaved in one turn,
-          // e.g. "文件末尾添加 Con" → [edit tool call] → "da 配置:".
-          // Append to the last text part BEFORE the tool call to keep text contiguous.
-          const lastTextPart = [...parts].reverse().find(p => p.type === 'text')
-          if (lastTextPart) {
-            lastTextPart.content += chunk.content
-          } else {
-            // No previous text part exists — insert text before the non-text part
-            const insertIdx = parts.findIndex(p => p.type === 'tool-call' || p.type === 'data-steps')
-            parts.splice(insertIdx >= 0 ? insertIdx : parts.length, 0, { type: 'text', content: chunk.content })
-          }
         } else {
+          // Text after tool-call/data-steps or any other non-text part:
+          // Create a new text part to preserve correct interleaving order.
           // After continuation (waiting popped) or first text — create new part
           parts.push({ type: 'text', content: chunk.content })
         }

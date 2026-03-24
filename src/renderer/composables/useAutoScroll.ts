@@ -5,7 +5,7 @@ interface UseAutoScrollOptions {
   messageCount: Ref<number>
   scrollVersion: Ref<number>
   isLoading: Ref<boolean>
-  scrollToEnd: () => void // caller provides the virtualizer scrollToIndex call
+  scrollToEnd: () => void
 }
 
 /**
@@ -16,28 +16,29 @@ interface UseAutoScrollOptions {
  *   DETACHED   — auto-scroll disabled, user is reading history
  *
  * Transitions:
- *   FOLLOWING → DETACHED:  user scrolls up (wheel / pointer / keyboard)
- *   DETACHED → FOLLOWING:  user scrolls to bottom, clicks button, or sends message
- *
- * Race-free because user input events (wheel, pointerdown, keydown) fire synchronously
- * as macrotasks BEFORE any scheduled rAF callback, so the `userInteracting` flag is
- * always set by the time the auto-scroll rAF executes.
+ *   FOLLOWING → DETACHED:  user scrolls up (wheel deltaY < 0)
+ *   DETACHED → FOLLOWING:  user scrolls down to bottom (wheel + scroll near bottom)
+ *                          OR sends a message (scrollToBottom API)
  */
 export function useAutoScroll(options: UseAutoScrollOptions) {
   const { scrollElement, messageCount, scrollVersion, isLoading, scrollToEnd } = options
 
   // ── State ──────────────────────────────────
   const isFollowing = ref(true)
-  let suppressed = false           // session switch guard
-  let userInteracting = false      // physical interaction in progress
+  let suppressed = false
+  let userInteracting = false
   let interactionTimer: ReturnType<typeof setTimeout> | null = null
   let pendingScroll: number | null = null
+
+  // Track whether the user's latest wheel gesture is downward.
+  // Only a confirmed downward wheel gesture can re-enable following.
+  let wheelDirection: 'up' | 'down' | null = null
 
   // ── Helpers ────────────────────────────────
   function isNearBottom(): boolean {
     const el = scrollElement.value
     if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 50
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 25
   }
 
   function clearInteractionTimer() {
@@ -51,11 +52,13 @@ export function useAutoScroll(options: UseAutoScrollOptions) {
     clearInteractionTimer()
     interactionTimer = setTimeout(() => {
       userInteracting = false
-      // If user naturally scrolled back to bottom, resume following
-      if (!isFollowing.value && isNearBottom()) {
+      // After user stops interacting, check if they ended up at bottom
+      // while their last gesture was downward
+      if (!isFollowing.value && wheelDirection === 'down' && isNearBottom()) {
         isFollowing.value = true
       }
-    }, 150)
+      wheelDirection = null
+    }, 200)
   }
 
   // ── Input Event Handlers ───────────────────
@@ -63,6 +66,9 @@ export function useAutoScroll(options: UseAutoScrollOptions) {
     if (e.deltaY < 0) {
       // Scrolling UP — detach immediately
       isFollowing.value = false
+      wheelDirection = 'up'
+    } else if (e.deltaY > 0) {
+      wheelDirection = 'down'
     }
     userInteracting = true
     startInteractionTimer()
@@ -93,11 +99,9 @@ export function useAutoScroll(options: UseAutoScrollOptions) {
     () => {
       if (suppressed || !isFollowing.value || userInteracting) return
 
-      // Coalesce multiple chunk updates into a single rAF scroll
       if (pendingScroll === null) {
         pendingScroll = requestAnimationFrame(() => {
           pendingScroll = null
-          // Re-check — user events may have fired since the watcher scheduled this rAF
           if (!isFollowing.value || userInteracting || suppressed) return
           if (messageCount.value > 0) {
             scrollToEnd()
@@ -111,6 +115,7 @@ export function useAutoScroll(options: UseAutoScrollOptions) {
   function scrollToBottom() {
     isFollowing.value = true
     userInteracting = false
+    wheelDirection = null
     clearInteractionTimer()
     scrollToEnd()
   }
@@ -158,7 +163,6 @@ export function useAutoScroll(options: UseAutoScrollOptions) {
 
   return {
     isFollowing,
-    /** True when auto-scroll is suppressed (e.g. during session switch) */
     get isSuppressed() { return suppressed },
     scrollToBottom,
     suppress,

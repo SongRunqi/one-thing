@@ -239,8 +239,12 @@ let typewriterInterval: ReturnType<typeof setInterval> | null = null
 // ============ New overlay-based transition system ============
 
 // Extract the first text part (rendered separately for smooth transition)
+// Only treat the first part as "firstTextPart" if it's actually a text part.
+// If the first part is a tool-call/data-steps, all parts go through otherParts in order.
 const firstTextPart = computed(() => {
-  return props.contentParts?.find(p => p.type === 'text') || null
+  const parts = props.contentParts
+  if (!parts || parts.length === 0) return null
+  return parts[0].type === 'text' ? parts[0] : null
 })
 
 // Other parts (excluding first text, but keeping tool loop waiting) for TransitionGroup
