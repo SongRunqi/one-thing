@@ -575,12 +575,13 @@ export const useChatStore = defineStore('chat', () => {
     const messages = getSessionMessagesRef(sessionId)
 
     if (data.preserved) {
-      // Message content is preserved in backend — just attach error details to the existing assistant message
+      // Message content is preserved in backend — just attach error details and stop streaming
       const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
       if (resolvedMsgId) {
         const msg = messages.find(m => m.id === resolvedMsgId)
         if (msg) {
           msg.errorDetails = data.errorDetails
+          msg.isStreaming = false
         }
       }
     } else {
@@ -601,6 +602,11 @@ export const useChatStore = defineStore('chat', () => {
           messages.splice(streamingIndex, 1)
         }
       }
+    }
+
+    // Ensure no messages are stuck in streaming state
+    for (const msg of messages) {
+      if (msg.isStreaming) msg.isStreaming = false
     }
 
     setSessionMessages(sessionId, [...messages])
