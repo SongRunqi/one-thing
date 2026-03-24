@@ -402,37 +402,41 @@ export async function registerMCPTools(): Promise<void> {
   const mcpTools = MCPManager.getAllTools()
 
   for (const mcpTool of mcpTools) {
-    const definition = mcpToolToToolDefinition(mcpTool)
+    const toolId = `mcp:${mcpTool.serverId}:${mcpTool.name}`
 
-    // Create handler that calls MCP
-    const handler = async (args: Record<string, any>) => {
-      const result = await MCPManager.callTool(mcpTool.serverId, mcpTool.name, args)
+    // Create a ToolInfo-compatible object for the registry
+    const toolInfo = {
+      id: toolId,
+      name: mcpTool.name,
+      description: mcpTool.description || `MCP tool: ${mcpTool.name}`,
+      parameters: z.record(z.string(), z.any()),  // MCP handles its own validation
+      enabled: true,
+      autoExecute: true,
+      category: 'custom' as const,
+      async execute(args: Record<string, any>) {
+        const result = await MCPManager.callTool(mcpTool.serverId, mcpTool.name, args)
 
-      if (!result.success) {
-        return {
-          success: false,
-          error: result.error,
+        if (!result.success) {
+          throw new Error(result.error || 'MCP tool call failed')
         }
-      }
 
-      // Convert content to string
-      let data: any = result.content
-      if (Array.isArray(result.content)) {
-        data = result.content
-          .map((c: any) => {
-            if (c.type === 'text') return c.text
-            return JSON.stringify(c)
-          })
-          .join('\n')
-      }
+        let output: string = ''
+        if (Array.isArray(result.content)) {
+          output = result.content
+            .map((c: any) => {
+              if (c.type === 'text') return c.text
+              return JSON.stringify(c)
+            })
+            .join('\n')
+        } else {
+          output = typeof result.content === 'string' ? result.content : JSON.stringify(result.content)
+        }
 
-      return {
-        success: true,
-        data,
-      }
+        return { title: mcpTool.name, output, metadata: {} }
+      },
     }
 
-    registerTool(definition, handler)
+    registerTool(toolInfo as any)
   }
 
   // Generate the tools catalog file for AI reference

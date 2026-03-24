@@ -308,7 +308,7 @@ export async function executeToolAndUpdate(
       toolCallId: toolCall.id,
       workingDirectory,  // Pass session's working directory for sandbox
       abortSignal: ctx.abortSignal,
-      // V2 tool metadata streaming callback
+      // Tool metadata streaming callback
       onMetadata: (update) => {
         // Update step with real-time metadata
         const metadataUpdates: Partial<Step> = {}
@@ -390,7 +390,7 @@ export async function executeToolAndUpdate(
     toolCall.error = result.error
     // Update step status based on result, include result/error
     const stepStatus = result.aborted ? 'cancelled' : (result.success ? 'completed' : 'failed')
-    // Extract title from result.data if available (V2 tools return title in data)
+    // Extract title from result.data if available (tools return title in data)
     // Only use if it's a string - avoid [object Object] display for arrays/objects
     const rawTitle = result.data?.title
     const finalTitle = (typeof rawTitle === 'string' ? rawTitle : null) || step.title
