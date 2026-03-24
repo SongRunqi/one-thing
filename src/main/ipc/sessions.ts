@@ -44,7 +44,7 @@ export function clearSessionUsage(_sessionId: string): void {
 export function registerSessionHandlers() {
   // 获取所有会话
   ipcMain.handle(IPC_CHANNELS.GET_SESSIONS, async () => {
-    return { success: true, sessions: store.getSessions() }
+    return { success: true, sessions: store.getSessionsList() }
   })
 
   // ============================================================================

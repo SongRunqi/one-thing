@@ -70,8 +70,10 @@ export function registerToolHandlers() {
     try {
       // Set init context for async tools (like SkillTool)
       // Use the first session's working directory, or current directory if no sessions
-      const sessions = store.getSessions()
-      const workingDirectory = sessions.length > 0 ? sessions[0].workingDirectory : process.cwd()
+      const sessionsList = store.getSessionsList()
+      const workingDirectory = sessionsList.length > 0
+        ? (store.getSession(sessionsList[0].id)?.workingDirectory ?? process.cwd())
+        : process.cwd()
 
       setInitContext({
         workingDirectory,
