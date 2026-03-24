@@ -98,7 +98,7 @@ export class Session {
         break
 
       case 'message:assistant-created':
-        this._state.activeMessageId = event.messageId
+        this._state.activeMessageId = event.message.id
         break
 
       case 'tool:call':

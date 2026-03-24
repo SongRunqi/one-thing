@@ -96,8 +96,28 @@ export function initializeIPCHub() {
         })
         break
 
-      // stream:start, message:* — no store action needed
-      // (store creates messages via sendMessage action, not via events)
+      // Message lifecycle events (event-driven message creation)
+      case 'message:user-created':
+        store.handleMessageCreated({ sessionId, message: (event as any).message })
+        break
+
+      case 'message:assistant-created':
+        store.handleAssistantCreated({ sessionId, message: (event as any).message })
+        break
+
+      case 'message:deleted':
+        store.handleMessageDeleted({ sessionId, messageId: (event as any).messageId })
+        break
+
+      case 'messages:replaced':
+        store.handleMessagesReplaced({ sessionId, messages: (event as any).messages })
+        break
+
+      case 'session:renamed':
+        store.handleSessionRenamed({ sessionId, name: (event as any).name })
+        break
+
+      // stream:start — no store action needed
     }
   })
 

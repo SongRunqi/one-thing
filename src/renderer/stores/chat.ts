@@ -497,11 +497,6 @@ export const useChatStore = defineStore('chat', () => {
           message.contentParts.pop()
         }
 
-        // Save contentParts to backend
-        if (message.contentParts.length > 0) {
-          const plainContentParts = JSON.parse(JSON.stringify(message.contentParts))
-          await window.electronAPI.updateContentParts(sessionId, resolvedMsgId, plainContentParts)
-        }
       }
 
       // Mark message as not streaming and save usage
@@ -764,236 +759,66 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * Send a message (streaming mode)
    */
+  /**
+   * Send a message — emits command, events drive all state updates
+   */
   async function sendMessage(sessionId: string, content: string, attachments?: MessageAttachment[]) {
-    // Clear error state
     sessionError.value.set(sessionId, null)
     sessionErrorDetails.value.set(sessionId, null)
     triggerRef(sessionError)
     triggerRef(sessionErrorDetails)
-
-    // Create user message
-    const userMessage: ChatMessage = {
-      id: `temp-${Date.now()}`,
-      role: 'user',
-      content,
-      timestamp: Date.now(),
-      attachments,
-    }
-
-    // Add to session messages
-    const messages = getSessionMessagesRef(sessionId)
-    messages.push(userMessage)
-    setSessionMessages(sessionId, [...messages])
-
-    // Set states
     sessionLoading.value.set(sessionId, true)
     triggerRef(sessionLoading)
 
-    try {
-      // Call IPC (listeners already set up globally by IPC Hub)
-      const response = await window.electronAPI.sendMessageStream(sessionId, content, attachments)
-      sessionLoading.value.set(sessionId, false)
-      triggerRef(sessionLoading)
-      sessionGenerating.value.set(sessionId, true)
-      triggerRef(sessionGenerating)
-      if (!response.success) {
-        sessionError.value.set(sessionId, response.error || 'Failed to send message')
-        sessionErrorDetails.value.set(sessionId, response.errorDetails || null)
-        triggerRef(sessionError)
-        triggerRef(sessionErrorDetails)
-
-        // Add error message
-        const errorMessage: ChatMessage = {
-          id: `error-${Date.now()}`,
-          role: 'error',
-          content: response.error || 'Failed to send message',
-          timestamp: Date.now(),
-          errorDetails: response.errorDetails,
-        }
-        messages.push(errorMessage)
-        setSessionMessages(sessionId, [...messages])
-
-        sessionLoading.value.set(sessionId, false)
-        sessionGenerating.value.set(sessionId, false)
-        triggerRef(sessionLoading)
-        triggerRef(sessionGenerating)
-        return false
-      }
-
-      // Replace temp user message with actual message from server
-      if (response.userMessage) {
-        const tempIndex = messages.findIndex(m => m.id === userMessage.id)
-        if (tempIndex !== -1) {
-          messages[tempIndex] = response.userMessage
-        }
-      }
-
-      // Update session name immediately if it was renamed
-      if (response.sessionName) {
-        try {
-          const { useSessionsStore } = await import('./sessions')
-          const sessionsStore = useSessionsStore()
-          const sessionInStore = sessionsStore.sessions.find(s => s.id === sessionId)
-          if (sessionInStore) {
-            sessionInStore.name = response.sessionName
-            sessionInStore.updatedAt = Date.now()
-          }
-        } catch (e) {
-          console.error('[Chat Store] Failed to update session name:', e)
-        }
-      }
-
-      // Create streaming assistant message
-      const messageId = response.messageId || `assistant-${Date.now()}`
-      const assistantMessage: ChatMessage = {
-        id: messageId,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-        isStreaming: true,
-        contentParts: [],
-      }
-      messages.push(assistantMessage)
-      setSessionMessages(sessionId, [...messages])
-
-      // Record active stream
-      activeStreams.value.set(sessionId, messageId)
-      triggerRef(activeStreams)
-
-      // Hide loading (message bubble shows its own streaming state)
-      sessionLoading.value.set(sessionId, false)
-      triggerRef(sessionLoading)
-
-      return true
-    } catch (error: any) {
-      sessionError.value.set(sessionId, error.message || 'An error occurred')
-      triggerRef(sessionError)
-
-      // Remove temp user message
-      const tempIndex = messages.findIndex(m => m.id === userMessage.id)
-      if (tempIndex !== -1) {
-        messages.splice(tempIndex, 1)
-        setSessionMessages(sessionId, [...messages])
-      }
-
-      sessionLoading.value.set(sessionId, false)
-      sessionGenerating.value.set(sessionId, false)
-      triggerRef(sessionLoading)
-      triggerRef(sessionGenerating)
-      return false
-    }
+    await window.electronAPI.emitCommand(sessionId, {
+      type: 'command:send-message',
+      content,
+      attachments,
+    })
+    return true
   }
 
   /**
-   * Edit and resend a message
+   * Edit and resend a message — emits command
    */
   async function editAndResend(sessionId: string, messageId: string, newContent: string) {
-    // Clear error state
     sessionError.value.set(sessionId, null)
     sessionErrorDetails.value.set(sessionId, null)
     triggerRef(sessionError)
     triggerRef(sessionErrorDetails)
-
-    // Update message in UI immediately
-    const messages = getSessionMessagesRef(sessionId)
-    const messageIndex = messages.findIndex(m => m.id === messageId)
-    if (messageIndex !== -1) {
-      messages[messageIndex] = {
-        ...messages[messageIndex],
-        content: newContent,
-        timestamp: Date.now(),
-      }
-      // Remove all messages after this one
-      messages.splice(messageIndex + 1)
-      setSessionMessages(sessionId, [...messages])
-    }
-
-    // Set states
     sessionLoading.value.set(sessionId, true)
-    sessionGenerating.value.set(sessionId, true)
     triggerRef(sessionLoading)
-    triggerRef(sessionGenerating)
 
-    try {
-      const response = await window.electronAPI.editAndResendStream(sessionId, messageId, newContent)
-
-      if (!response.success) {
-        sessionError.value.set(sessionId, response.error || 'Failed to edit and resend')
-        sessionErrorDetails.value.set(sessionId, response.errorDetails || null)
-        triggerRef(sessionError)
-        triggerRef(sessionErrorDetails)
-
-        const errorMessage: ChatMessage = {
-          id: `error-${Date.now()}`,
-          role: 'error',
-          content: response.error || 'Failed to edit and resend',
-          timestamp: Date.now(),
-          errorDetails: response.errorDetails,
-        }
-        messages.push(errorMessage)
-        setSessionMessages(sessionId, [...messages])
-
-        sessionLoading.value.set(sessionId, false)
-        sessionGenerating.value.set(sessionId, false)
-        triggerRef(sessionLoading)
-        triggerRef(sessionGenerating)
-        return false
-      }
-
-      // Create streaming assistant message
-      const editMessageId = response.messageId || `assistant-${Date.now()}`
-      const assistantMessage: ChatMessage = {
-        id: editMessageId,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-        isStreaming: true,
-        contentParts: [],
-      }
-      messages.push(assistantMessage)
-      setSessionMessages(sessionId, [...messages])
-
-      // Record active stream
-      activeStreams.value.set(sessionId, editMessageId)
-      triggerRef(activeStreams)
-
-      // Hide loading
-      sessionLoading.value.set(sessionId, false)
-      triggerRef(sessionLoading)
-
-      return true
-    } catch (error: any) {
-      sessionError.value.set(sessionId, error.message || 'An error occurred')
-      triggerRef(sessionError)
-
-      sessionLoading.value.set(sessionId, false)
-      sessionGenerating.value.set(sessionId, false)
-      triggerRef(sessionLoading)
-      triggerRef(sessionGenerating)
-      return false
-    }
+    await window.electronAPI.emitCommand(sessionId, {
+      type: 'command:edit-and-resend',
+      messageId,
+      newContent,
+    })
+    return true
   }
 
   /**
-   * Regenerate from a message
+   * Regenerate from a message — emits retry command
    */
   async function regenerate(sessionId: string, messageId: string) {
     const messages = getSessionMessagesRef(sessionId)
     const message = messages.find(m => m.id === messageId)
     if (!message) return false
 
-    // If regenerating from an assistant message, find the preceding user message
+    // If regenerating from an assistant message, use the assistant message ID directly
+    const targetMessageId = message.role === 'assistant' ? messageId : undefined
     if (message.role === 'assistant') {
-      const messageIndex = messages.findIndex(m => m.id === messageId)
-      for (let i = messageIndex - 1; i >= 0; i--) {
-        if (messages[i].role === 'user') {
-          return await editAndResend(sessionId, messages[i].id, messages[i].content)
-        }
-      }
-      return false
+      sessionLoading.value.set(sessionId, true)
+      triggerRef(sessionLoading)
+
+      await window.electronAPI.emitCommand(sessionId, {
+        type: 'command:retry-message',
+        messageId,
+      })
+      return true
     }
 
-    // For user messages, just resend with same content
+    // For user messages, use edit-and-resend with same content
     return await editAndResend(sessionId, messageId, message.content)
   }
 
@@ -1112,6 +937,78 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // ── Event-driven message handlers (called by IPC Hub) ──
+
+  /**
+   * Handle message:user-created event — add user message from main process
+   */
+  function handleMessageCreated(data: { sessionId: string; message: ChatMessage }) {
+    const { sessionId, message } = data
+    const messages = getSessionMessagesRef(sessionId)
+    messages.push(rebuildContentParts(message))
+    setSessionMessages(sessionId, [...messages])
+    sessionLoading.value.set(sessionId, false)
+    triggerRef(sessionLoading)
+    bumpScrollVersion(sessionId)
+  }
+
+  /**
+   * Handle message:assistant-created event — add streaming assistant message
+   */
+  function handleAssistantCreated(data: { sessionId: string; message: ChatMessage }) {
+    const { sessionId, message } = data
+    const messages = getSessionMessagesRef(sessionId)
+    const assistantMessage: ChatMessage = {
+      ...message,
+      isStreaming: true,
+      contentParts: message.contentParts || [],
+    }
+    messages.push(assistantMessage)
+    setSessionMessages(sessionId, [...messages])
+
+    activeStreams.value.set(sessionId, message.id)
+    sessionGenerating.value.set(sessionId, true)
+    sessionLoading.value.set(sessionId, false)
+    triggerRef(activeStreams)
+    triggerRef(sessionGenerating)
+    triggerRef(sessionLoading)
+    bumpScrollVersion(sessionId)
+  }
+
+  /**
+   * Handle message:deleted event — remove message from UI
+   */
+  function handleMessageDeleted(data: { sessionId: string; messageId: string }) {
+    removeMessage(data.sessionId, data.messageId)
+  }
+
+  /**
+   * Handle messages:replaced event — replace entire message list (edit-and-resend truncation)
+   */
+  function handleMessagesReplaced(data: { sessionId: string; messages: ChatMessage[] }) {
+    const { sessionId, messages } = data
+    const rebuilt = messages.map(rebuildContentParts)
+    setSessionMessages(sessionId, rebuilt)
+    bumpScrollVersion(sessionId)
+  }
+
+  /**
+   * Handle session:renamed event — update session name in sessions store
+   */
+  async function handleSessionRenamed(data: { sessionId: string; name: string }) {
+    try {
+      const { useSessionsStore } = await import('./sessions')
+      const sessionsStore = useSessionsStore()
+      const session = sessionsStore.sessions.find(s => s.id === data.sessionId)
+      if (session) {
+        session.name = data.name
+        session.updatedAt = Date.now()
+      }
+    } catch (e) {
+      console.error('[Chat Store] Failed to update session name:', e)
+    }
+  }
+
   /**
    * Handle a permission:request event from EventBus (via IPC Hub).
    *
@@ -1210,6 +1107,11 @@ export const useChatStore = defineStore('chat', () => {
     handleStepUpdated,
     handleSkillActivated,
     handlePermissionRequest,
+    handleMessageCreated,
+    handleAssistantCreated,
+    handleMessageDeleted,
+    handleMessagesReplaced,
+    handleSessionRenamed,
 
     // Actions
     loadMessages,

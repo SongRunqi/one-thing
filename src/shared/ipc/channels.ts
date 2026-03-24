@@ -5,13 +5,9 @@
 
 export const IPC_CHANNELS = {
   // Chat related
-  SEND_MESSAGE: 'chat:send-message',
-  SEND_MESSAGE_STREAM: 'chat:send-message-stream',
   GET_CHAT_HISTORY: 'chat:get-history',
   CLEAR_CHAT: 'chat:clear',
   GENERATE_TITLE: 'chat:generate-title',
-  EDIT_AND_RESEND: 'chat:edit-and-resend',
-  EDIT_AND_RESEND_STREAM: 'chat:edit-and-resend-stream',
 
   // Streaming related
   STREAM_CHUNK: 'chat:stream-chunk',
@@ -88,7 +84,6 @@ export const IPC_CHANNELS = {
   REFRESH_ASYNC_TOOLS: 'tools:refresh-async',
   STREAM_TOOL_CALL: 'chat:stream-tool-call',
   STREAM_TOOL_RESULT: 'chat:stream-tool-result',
-  UPDATE_CONTENT_PARTS: 'chat:update-content-parts',
   UPDATE_MESSAGE_THINKING_TIME: 'chat:update-thinking-time',
   RESUME_AFTER_TOOL_CONFIRM: 'chat:resume-after-tool-confirm',
 

@@ -8,7 +8,7 @@
  * The Session state machine reduces these events into SessionState.
  */
 
-import type { Step, ToolCall, ContentPart } from '../ipc.js'
+import type { Step, ToolCall, ContentPart, ChatMessage } from '../ipc.js'
 import type { StreamCompleteData, StreamErrorData } from '../../main/engine/stream/ipc-emitter.js'
 import type { SessionCommand } from './session-commands.js'
 
@@ -163,19 +163,28 @@ export interface SessionRenamedEvent {
 
 export interface MessageUserCreatedEvent {
   type: 'message:user-created'
-  messageId: string
-  content: string
+  message: ChatMessage
 }
 
 export interface MessageAssistantCreatedEvent {
   type: 'message:assistant-created'
-  messageId: string
+  message: ChatMessage
 }
 
 export interface MessageUpdatedEvent {
   type: 'message:updated'
   messageId: string
   updates: Record<string, unknown>
+}
+
+export interface MessageDeletedEvent {
+  type: 'message:deleted'
+  messageId: string
+}
+
+export interface MessagesReplacedEvent {
+  type: 'messages:replaced'
+  messages: ChatMessage[]
 }
 
 // ── Union ───────────────────────────────────────
@@ -205,4 +214,6 @@ export type SessionEvent =
   | MessageUserCreatedEvent
   | MessageAssistantCreatedEvent
   | MessageUpdatedEvent
+  | MessageDeletedEvent
+  | MessagesReplacedEvent
   | SessionCommand

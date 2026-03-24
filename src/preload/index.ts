@@ -3,14 +3,6 @@ import { IPC_CHANNELS, AIProvider, MessageAttachment } from '../shared/ipc.js'
 import type { UIMessageStreamData } from '../shared/ipc.js'
 
 const electronAPI = {
-  // Chat methods
-  sendMessage: (sessionId: string, message: string, attachments?: MessageAttachment[]) =>
-    ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE, { sessionId, message, attachments }),
-
-  // Streaming chat methods (for reasoning models)
-  sendMessageStream: (sessionId: string, message: string, attachments?: MessageAttachment[]) =>
-    ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE_STREAM, { sessionId, message, attachments }),
-
   // Stream event listeners
   onStreamChunk: (callback: (chunk: {
     type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace' | 'tool_input_start' | 'tool_input_delta';
@@ -111,12 +103,6 @@ const electronAPI = {
 
   generateTitle: (message: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GENERATE_TITLE, { message }),
-
-  editAndResend: (sessionId: string, messageId: string, newContent: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.EDIT_AND_RESEND, { sessionId, messageId, newContent }),
-
-  editAndResendStream: (sessionId: string, messageId: string, newContent: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.EDIT_AND_RESEND_STREAM, { sessionId, messageId, newContent }),
 
   resumeAfterToolConfirm: (sessionId: string, messageId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.RESUME_AFTER_TOOL_CONFIRM, { sessionId, messageId }),
@@ -299,9 +285,6 @@ const electronAPI = {
 
   updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Record<string, any>) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_TOOL_CALL, { sessionId, messageId, toolCallId, updates }),
-
-  updateContentParts: (sessionId: string, messageId: string, contentParts: any[]) =>
-    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CONTENT_PARTS, { sessionId, messageId, contentParts }),
 
   // MCP methods
   mcpGetServers: () =>

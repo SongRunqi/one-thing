@@ -23,8 +23,6 @@ import type {
   ChatSettings,
   MessageAttachment,
   AttachmentMediaType,
-  SendMessageResponse,
-  EditAndResendResponse,
   GetChatHistoryResponse,
   GetSessionsResponse,
   CreateSessionResponse,
@@ -177,20 +175,7 @@ export interface GalleryImage {
   thumbnail?: string // Optional thumbnail URL
 }
 
-// Streaming response types
-export interface StreamSendMessageResponse {
-  success: boolean
-  userMessage?: ChatMessage
-  messageId?: string  // ID of the assistant message being streamed
-  assistantMessageId?: string  // Alias for messageId (backward compatibility)
-  sessionName?: string
-  error?: string
-  errorDetails?: string
-}
-
 export interface ElectronAPI {
-  sendMessage: (sessionId: string, message: string, attachments?: MessageAttachment[]) => Promise<SendMessageResponse>
-  sendMessageStream: (sessionId: string, message: string, attachments?: MessageAttachment[]) => Promise<StreamSendMessageResponse>
   onStreamChunk: (callback: (chunk: {
     type: 'text' | 'reasoning' | 'tool_call' | 'tool_result' | 'continuation' | 'replace' | 'tool_input_start' | 'tool_input_delta' | 'content_part'
     content: string
@@ -218,8 +203,6 @@ export interface ElectronAPI {
   onUIMessageStream: (callback: (data: UIMessageStreamData) => void) => () => void
   getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
   generateTitle: (message: string) => Promise<GenerateTitleResponse>
-  editAndResend: (sessionId: string, messageId: string, newContent: string) => Promise<EditAndResendResponse>
-  editAndResendStream: (sessionId: string, messageId: string, newContent: string) => Promise<StreamSendMessageResponse>
   getSessions: () => Promise<GetSessionsResponse>
   createSession: (name: string) => Promise<CreateSessionResponse>
   switchSession: (sessionId: string) => Promise<SwitchSessionResponse>
@@ -279,7 +262,6 @@ export interface ElectronAPI {
   executeTool: (toolId: string, args: Record<string, any>, messageId: string, sessionId: string) => Promise<ExecuteToolResponse>
   cancelTool: (toolCallId: string) => Promise<{ success: boolean }>
   updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolCall>) => Promise<{ success: boolean }>
-  updateContentParts: (sessionId: string, messageId: string, contentParts: ContentPart[]) => Promise<{ success: boolean }>
   abortStream: (sessionId?: string) => Promise<{ success: boolean }>
   getActiveStreams: () => Promise<{ success: boolean; streams?: string[] }>
   resumeAfterToolConfirm: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>

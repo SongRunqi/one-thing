@@ -69,16 +69,6 @@ import {
 // ============================================
 
 export function registerChatHandlers() {
-  // 发送消息（非流式）
-  ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE, async (_event, { sessionId, message }) => {
-    return handleSendMessage(sessionId, message)
-  })
-
-  // 发送消息（流式）- 使用事件发射器
-  ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE_STREAM, async (event, { sessionId, message, attachments }) => {
-    return handleSendMessageStream(event.sender, sessionId, message, attachments)
-  })
-
   // 获取聊天历史
   ipcMain.handle(IPC_CHANNELS.GET_CHAT_HISTORY, async (_event, { sessionId }) => {
     const session = store.getSession(sessionId)
@@ -88,25 +78,9 @@ export function registerChatHandlers() {
     return { success: true, messages: session.messages }
   })
 
-  // 编辑消息并重新发送
-  ipcMain.handle(IPC_CHANNELS.EDIT_AND_RESEND, async (_event, { sessionId, messageId, newContent }) => {
-    return handleEditAndResend(sessionId, messageId, newContent)
-  })
-
-  // 编辑消息并重新发送（流式）
-  ipcMain.handle(IPC_CHANNELS.EDIT_AND_RESEND_STREAM, async (event, { sessionId, messageId, newContent }) => {
-    return handleEditAndResendStream(event.sender, sessionId, messageId, newContent)
-  })
-
   // 生成聊天标题
   ipcMain.handle(IPC_CHANNELS.GENERATE_TITLE, async (_event, { message }) => {
     return handleGenerateTitle(message)
-  })
-
-  // 更新消息的 contentParts
-  ipcMain.handle(IPC_CHANNELS.UPDATE_CONTENT_PARTS, async (_event, { sessionId, messageId, contentParts }) => {
-    const updated = store.updateMessageContentParts(sessionId, messageId, contentParts)
-    return { success: updated }
   })
 
   // 更新消息的 thinkingTime（用于持久化thinking时长）

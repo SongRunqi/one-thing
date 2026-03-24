@@ -15,9 +15,6 @@ export interface SendMessageCommand {
   channel?: string
   content: string
   attachments?: unknown[]
-  /** Pre-resolved by IPC handler (sync phase) */
-  assistantMessageId: string
-  sessionName?: string
 }
 
 export interface EditAndResendCommand {
@@ -26,9 +23,6 @@ export interface EditAndResendCommand {
   channel?: string
   messageId: string
   newContent: string
-  /** Pre-resolved by IPC handler (sync phase) */
-  assistantMessageId: string
-  sessionName?: string
 }
 
 export interface AbortCommand {
