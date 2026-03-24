@@ -378,6 +378,21 @@ export async function runStream(
     // Wrap stream iteration in try-catch for error recovery
     try {
       for await (const chunk of stream) {
+        // Log raw stream chunks
+        if (chunk.type === 'text') {
+          console.log(`[Stream] text: "${chunk.text}"`)
+        } else if (chunk.type === 'reasoning') {
+          console.log(`[Stream] reasoning: "${chunk.reasoning?.substring(0, 50)}..."`)
+        } else if (chunk.type === 'tool-call') {
+          console.log(`[Stream] tool-call:`, chunk.toolCall?.toolName, JSON.stringify(chunk.toolCall?.args)?.substring(0, 100))
+        } else if (chunk.type === 'tool-input-start') {
+          console.log(`[Stream] tool-input-start:`, chunk.toolInputStart?.toolName, chunk.toolInputStart?.toolCallId)
+        } else if (chunk.type === 'tool-input-delta') {
+          console.log(`[Stream] tool-input-delta:`, chunk.toolInputDelta?.argsTextDelta)
+        } else {
+          console.log(`[Stream] ${chunk.type}:`, JSON.stringify(chunk).substring(0, 150))
+        }
+
         if (chunk.type === 'text' && chunk.text) {
           processor.handleTextChunk(chunk.text, turn.content)
         }
@@ -386,8 +401,6 @@ export async function runStream(
           processor.handleReasoningChunk(chunk.reasoning, turn.reasoning)
         }
 
-        // Handle streaming tool input chunks (AI SDK v6)
-        // These provide real-time visibility into tool arguments as they're generated
         if (chunk.type === 'tool-input-start' && chunk.toolInputStart) {
           processor.handleToolInputStart(
             chunk.toolInputStart.toolCallId,
@@ -415,11 +428,11 @@ export async function runStream(
           // Send data-steps placeholder BEFORE executing the first tool of this turn
           // This ensures proper ordering: text -> data-steps -> STEP_ADDED events
           if (turn.toolCalls.length === 0) {
-            // First tool call of this turn - send text content_part first (if any)
             if (turn.content.value) {
+              console.log(`[Stream] Sending content_part: text (${turn.content.value.length} chars) before first tool`)
               emitter.sendContentPart({ type: 'text', content: turn.content.value })
             }
-            // Then send data-steps placeholder
+            console.log(`[Stream] Sending content_part: data-steps turn=${currentTurn}`)
             emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
           }
 

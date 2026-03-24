@@ -525,6 +525,7 @@ html[data-theme='light'] .sidebar-floating-backdrop {
   align-items: center;
   gap: 2px;
   z-index: 600;
+  -webkit-app-region: no-drag;
 }
 
 .app-toolbar.transitioning {
@@ -542,6 +543,7 @@ html[data-theme='light'] .sidebar-floating-backdrop {
   color: var(--muted);
   border-radius: 6px;
   cursor: pointer;
+  -webkit-app-region: no-drag;
   transition: background 0.15s ease, color 0.15s ease;
   -webkit-app-region: no-drag;
 }

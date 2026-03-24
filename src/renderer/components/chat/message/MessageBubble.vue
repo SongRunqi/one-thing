@@ -247,31 +247,32 @@ const firstTextPart = computed(() => {
   return parts[0].type === 'text' ? parts[0] : null
 })
 
-// Other parts (excluding first text, but keeping tool loop waiting) for TransitionGroup
+// Other parts for TransitionGroup
+// If firstTextPart captured parts[0], skip it here; otherwise keep all parts in order
 const otherParts = computed(() => {
   if (!props.contentParts) return []
-  let foundFirstText = false
-  let foundFirstWaiting = false
+  const hasFirstText = !!firstTextPart.value
+  let skippedFirstText = false
+  let skippedFirstWaiting = false
 
   return props.contentParts.filter(p => {
-    // 跳过 loading-memory（由 MessageThinking 处理）
     if (p.type === 'loading-memory') {
       return false
     }
 
-    // 跳过第一个 waiting（由 MessageThinking 处理）
-    // 但保留后续的 waiting（tool loop 中的等待）
+    // Skip the initial waiting (handled by MessageThinking)
     if (p.type === 'waiting') {
-      if (!foundFirstWaiting && !foundFirstText) {
-        foundFirstWaiting = true
-        return false // 第一个 waiting 跳过
+      if (!skippedFirstWaiting && !skippedFirstText) {
+        skippedFirstWaiting = true
+        return false
       }
-      return true // 后续 waiting（tool loop）保留
+      return true
     }
 
-    if (p.type === 'text' && !foundFirstText) {
-      foundFirstText = true
-      return false // first text is rendered separately
+    // Only skip the first text if firstTextPart is rendering it
+    if (p.type === 'text' && hasFirstText && !skippedFirstText) {
+      skippedFirstText = true
+      return false
     }
     return true
   })

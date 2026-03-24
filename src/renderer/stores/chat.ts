@@ -297,31 +297,23 @@ export const useChatStore = defineStore('chat', () => {
 
     if (chunk.type === 'text') {
       if (chunk.replace) {
-        // Replace entire content
         message.content = chunk.content
         message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
       } else {
-        // Append text
         message.content = (message.content || '') + chunk.content
 
         const parts = message.contentParts!
         let lastPart = parts[parts.length - 1]
 
-        // Remove loading-memory or waiting indicator if present
         if (lastPart && (lastPart.type === 'waiting')) {
           parts.pop()
           lastPart = parts[parts.length - 1]
         }
 
-        // Append to existing text part or create new one
         if (lastPart && lastPart.type === 'text') {
-          // Mutate in-place — Vue Proxy detects .content change and updates only
-          // the v-html binding for this part, without invalidating otherParts computed.
           lastPart.content += chunk.content
         } else {
-          // Text after tool-call/data-steps or any other non-text part:
-          // Create a new text part to preserve correct interleaving order.
-          // After continuation (waiting popped) or first text — create new part
+          console.log('[ContentParts] New text part after:', lastPart?.type, '| parts:', parts.map(p => p.type).join(', '))
           parts.push({ type: 'text', content: chunk.content })
         }
       }
@@ -358,13 +350,14 @@ export const useChatStore = defineStore('chat', () => {
             lastPart.toolCalls.push(chunk.toolCall)
           }
         } else {
+          console.log('[ContentParts] New tool-call part after:', lastPart?.type, '| parts:', parts.map(p => p.type).join(', '))
           parts.push({ type: 'tool-call', toolCalls: [chunk.toolCall] })
         }
         message.contentParts = [...parts]
       }
     } else if (chunk.type === 'continuation') {
-      // AI continuing after tool execution
       const parts = message.contentParts!
+      console.log('[ContentParts] Continuation | parts before:', parts.map(p => p.type).join(', '))
       parts.push({ type: 'waiting' })
       message.contentParts = [...parts]
     } else if (chunk.type === 'replace') {
@@ -443,9 +436,9 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
     } else if (chunk.type === 'content_part' && chunk.contentPart) {
-      // Handle content_part chunk from backend (for proper interleaving of text and steps)
       const parts = message.contentParts!
       const newPart = chunk.contentPart
+      console.log('[ContentParts] content_part:', newPart.type, '| parts before:', parts.map(p => p.type).join(', '))
 
       // Remove loading-memory or waiting indicator if present
       const lastPart = parts[parts.length - 1]

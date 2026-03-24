@@ -88,6 +88,17 @@ defineEmits<{
   position: relative;
 }
 
+/* Reserve a no-drag zone for the fixed app toolbar (sidebar toggle, search, new chat) */
+.chat-header::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 200px;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
 .chat-header-left {
   display: flex;
   align-items: center;

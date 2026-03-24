@@ -382,7 +382,6 @@ onUnmounted(() => {
   flex: 1;
   padding: 0;
   background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
-  -webkit-app-region: drag;
   min-width: 0;
   display: flex;
   position: relative;

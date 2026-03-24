@@ -828,6 +828,14 @@ export async function* streamChatResponseWithTools(
   for await (const chunk of stream.fullStream) {
     const chunkAny = chunk as any
 
+    // Log raw AI stream response
+    if (chunk.type === 'text-delta') {
+      const _t = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
+      if (_t) console.log(`[AI Stream] text: "${_t}"`)
+    } else if (chunk.type !== 'reasoning-delta') {
+      console.log(`[AI Stream] ${chunk.type}:`, JSON.stringify(chunkAny).substring(0, 200))
+    }
+
     switch (chunk.type) {
       case 'text-delta':
         const text = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
