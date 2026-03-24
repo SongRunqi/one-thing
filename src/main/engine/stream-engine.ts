@@ -21,12 +21,12 @@ import {
   getEffectiveProviderConfig,
   getApiKeyForProvider,
   extractErrorDetails,
-} from '../ipc/chat/provider-helpers.js'
+} from './stream/provider-helpers.js'
 import { isProviderSupported, requiresOAuth, convertToolDefinitionsForAI } from '../providers/index.js'
-import { buildHistoryMessages, buildSystemPrompt, formatMessagesForLog } from '../ipc/chat/message-helpers.js'
-import { executeMessageStream, type ProviderConfigWithKey } from '../ipc/chat/stream-executor.js'
-import { createStreamProcessor, type StreamContext } from '../ipc/chat/stream-processor.js'
-import { runStream } from '../ipc/chat/tool-loop.js'
+import { buildHistoryMessages, buildSystemPrompt, formatMessagesForLog } from './stream/message-helpers.js'
+import { executeMessageStream, type ProviderConfigWithKey } from './stream/stream-executor.js'
+import { createStreamProcessor, type StreamContext } from './stream/stream-processor.js'
+import { runStream } from './stream/tool-loop.js'
 import { getSkillsForSession } from '../ipc/skills.js'
 import { getEnabledToolsAsync, setInitContext, initializeAsyncTools } from '../tools/index.js'
 import { getMCPToolsForAI } from '../mcp/index.js'

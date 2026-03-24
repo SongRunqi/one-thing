@@ -5,7 +5,7 @@
 
 import type { ChatMessage } from '../../../shared/ipc.js'
 import type { AIMessageContent } from '../../providers/index.js'
-import { buildSystemPrompt } from '../../engine/prompt/index.js'
+import { buildSystemPrompt } from '../prompt/index.js'
 import { getHistoryFilePath } from '../../session/context-compacting.js'
 
 /**

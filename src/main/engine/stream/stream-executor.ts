@@ -12,7 +12,7 @@ import * as modelRegistry from '../../providers/model-registry.js'
 import { processImageGenerationStream } from './image-stream.js'
 import { executeStreamGeneration, type StreamGenerationResult } from './tool-loop.js'
 import { type StreamContext } from './stream-processor.js'
-import { getStreamEngine } from '../../engine/index.js'
+import { getStreamEngine } from '../index.js'
 import type { HistoryMessage } from './message-helpers.js'
 
 // Re-export for convenience

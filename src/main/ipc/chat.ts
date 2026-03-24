@@ -31,38 +31,38 @@ import * as modelRegistry from '../providers/model-registry.js'
 // Import from chat sub-modules
 import {
   sendUIMessageFinish,
-} from './chat/stream-helpers.js'
+} from '../engine/stream/stream-helpers.js'
 import {
   executeMessageStream,
-} from './chat/stream-executor.js'
+} from '../engine/stream/stream-executor.js'
 import {
   formatMessagesForLog,
   buildMessageContent,
   buildHistoryMessages,
   buildSystemPrompt,
   filterHistoryForNonToolAPI,
-} from './chat/message-helpers.js'
+} from '../engine/stream/message-helpers.js'
 import {
   extractErrorDetails,
   getProviderConfig,
   getApiKeyForProvider,
   getEffectiveProviderConfig,
   getProviderApiType,
-} from './chat/provider-helpers.js'
+} from '../engine/stream/provider-helpers.js'
 import {
   activeStreams,
   createStreamProcessor,
   type StreamContext,
-} from './chat/stream-processor.js'
-import type { ProviderConfigWithKey } from './chat/stream-executor.js'
+} from '../engine/stream/stream-processor.js'
+import type { ProviderConfigWithKey } from '../engine/stream/stream-executor.js'
 import {
   executeToolAndUpdate,
-} from './chat/tool-execution.js'
+} from '../engine/stream/tool-execution.js'
 import { getStreamEngine } from '../engine/index.js'
 import {
   runStream,
   executeStreamGeneration,
-} from './chat/tool-loop.js'
+} from '../engine/stream/tool-loop.js'
 
 // ============================================
 // IPC Handlers

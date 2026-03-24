@@ -9,7 +9,7 @@
 import type { WebContents } from 'electron'
 import { IPC_CHANNELS } from '../../../shared/ipc.js'
 import * as store from '../../store.js'
-import { saveMediaImage } from '../media.js'
+import { saveMediaImage } from '../../ipc/media.js'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
 import {
   normalizeImageModelId,

@@ -16,9 +16,9 @@ import {
   initializeAsyncTools,
 } from '../../tools/index.js'
 import { getMCPToolsForAI } from '../../mcp/index.js'
-import { getSkillsForSession } from '../skills.js'
-import { updateSessionUsage } from '../sessions.js'
-import { triggerManager, type TriggerContext } from '../../engine/triggers/index.js'
+import { getSkillsForSession } from '../../ipc/skills.js'
+import { updateSessionUsage } from '../../ipc/sessions.js'
+import { triggerManager, type TriggerContext } from '../triggers/index.js'
 import * as modelRegistry from '../../providers/model-registry.js'
 import { shouldCompact, executeCompacting, type CompactingContext } from '../../session/context-compacting.js'
 

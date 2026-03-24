@@ -14,8 +14,8 @@
 
 import * as store from '../store.js'
 import type { SessionEvent } from '../../shared/events/index.js'
-import type { StreamContext } from '../ipc/chat/stream-processor.js'
-import type { IPCEmitter } from '../ipc/chat/ipc-emitter.js'
+import type { StreamContext } from '../engine/stream/stream-processor.js'
+import type { IPCEmitter } from '../engine/stream/ipc-emitter.js'
 import { getEventBus, getStreamChannel } from './index.js'
 
 /**
