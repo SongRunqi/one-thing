@@ -6,7 +6,7 @@ import globals from 'globals'
 export default [
   // Global ignores (must be a standalone config object)
   {
-    ignores: ['dist/**', 'out/**', 'release/**', 'node_modules/**', 'main.js', 'preload.js'],
+    ignores: ['dist/**', 'out/**', 'release/**', 'node_modules/**'],
   },
 
   js.configs.recommended,
