@@ -13,6 +13,7 @@
     <!-- Virtual scroll container -->
     <div
       v-if="messages.length > 0"
+      ref="messageListContentRef"
       :style="{ height: `${virtualizer.getTotalSize()}px`, position: 'relative', width: '100%' }"
     >
       <div
@@ -44,6 +45,19 @@
           @update-thinking-time="handleUpdateThinkingTime"
         />
       </div>
+
+      <div
+        ref="bottomSentinelRef"
+        aria-hidden="true"
+        :style="{
+          position: 'absolute',
+          left: 0,
+          bottom: 0,
+          width: '100%',
+          height: '1px',
+          pointerEvents: 'none',
+        }"
+      />
     </div>
 
 
@@ -117,7 +131,6 @@ import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
-import { useAutoScroll } from '@/composables/useAutoScroll'
 
 interface BranchInfo {
   id: string
@@ -153,6 +166,8 @@ const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const messageListRef = ref<HTMLElement | null>(null)
+const messageListContentRef = ref<HTMLElement | null>(null)
+const bottomSentinelRef = ref<HTMLElement | null>(null)
 const navRailTrackRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
 
@@ -210,27 +225,36 @@ let navigationCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let navMarkerUpdateFrame: number | null = null
 let navResizeObserver: ResizeObserver | null = null
 
+// Simple scroll state
+const isFollowing = ref(true)
+let suppressed = false
+let allowNextScroll = false  // one-shot bypass for scrollToFn
+
 // Virtual scrolling — only render visible messages + overscan
+// Custom scrollToFn: block virtualizer's internal scroll corrections when detached.
+// The virtualizer's resizeItem → _scrollToOffset path calls scrollTo() on every
+// measureElement update, which drags the user back to bottom during streaming.
 const virtualizer = useVirtualizer(computed(() => ({
   count: props.messages.length,
   getScrollElement: () => messageListRef.value,
   estimateSize: () => 150,
   overscan: 5,
+  scrollToFn: (offset, options, instance) => {
+    if (allowNextScroll) {
+      allowNextScroll = false
+    } else if (!isFollowing.value && !suppressed) {
+      return
+    }
+    instance.scrollElement?.scrollTo({ top: offset, behavior: options.behavior })
+  },
 })))
 
-// Auto-scroll composable — user-interaction-based state machine
-const autoScroll = useAutoScroll({
-  scrollElement: messageListRef,
-  messageCount: computed(() => props.messages.length),
-  scrollVersion: computed(() => chatStore.getScrollVersion(effectiveSessionId.value)),
-  isLoading: computed(() => props.isLoading),
-  scrollToEnd: () => {
-    if (props.messages.length > 0) {
-      virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
-    }
-  },
+// Auto-scroll: when following, scroll to last message on stream chunks or new messages
+const effectiveScrollVersion = computed(() => chatStore.getScrollVersion(effectiveSessionId.value))
+watch([effectiveScrollVersion, () => props.messages.length], () => {
+  if (!isFollowing.value || suppressed || props.messages.length === 0) return
+  virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
 })
-const { isFollowing } = autoScroll
 
 // Get indices of user messages
 const userMessageIndices = computed(() => {
@@ -286,7 +310,7 @@ watch(
   () => props.messages.length,
   () => {
     // Skip during session switch — snapshot restore will set the correct state
-    if (autoScroll.isSuppressed) return
+    if (suppressed) return
 
     // Reset navigation highlight (don't highlight on new message arrival)
     hasNavigated.value = false
@@ -359,6 +383,7 @@ function scrollToUserMessage(navIndex: number) {
     clearTimeout(navigationCooldownTimer)
   }
 
+  allowNextScroll = true
   virtualizer.value.scrollToIndex(messageIndex, { align: 'center', behavior: 'smooth' })
 
   // Reset flag after highlight animation completes (2.5s) to prevent index override
@@ -552,21 +577,34 @@ usePermissionShortcuts(
 // handlePermissionRequest is now in the chat store (called by IPC Hub)
 // The store's handlePermissionRequest() updates messages reactively.
 
+// Detach on wheel-up, re-attach when user scrolls back to bottom
+function onWheel(e: WheelEvent) {
+  if (e.deltaY < 0 && isFollowing.value) {
+    isFollowing.value = false
+  } else if (e.deltaY > 0 && !isFollowing.value) {
+    // scrollToFn is blocked when detached, so scrollTop is only
+    // changed by the user — safe to check position for re-attach.
+    const el = messageListRef.value
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 50) {
+      isFollowing.value = true
+    }
+  }
+}
+
 // Setup event listeners
 onMounted(() => {
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
+    messageListRef.value.addEventListener('wheel', onWheel, { passive: true })
     if (typeof ResizeObserver !== 'undefined') {
       navResizeObserver = new ResizeObserver(() => scheduleNavMarkerUpdate())
       navResizeObserver.observe(messageListRef.value)
     }
   }
-  // Attach auto-scroll input event listeners
-  autoScroll.attach()
   // Scroll to bottom on initial mount (messages may be pre-loaded in store)
   nextTick(() => {
-    if (props.messages.length > 0) {
-      virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
+    if (props.messages.length > 0 && messageListRef.value) {
+      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
     }
     scheduleNavMarkerUpdate()
   })
@@ -575,8 +613,8 @@ onMounted(() => {
 onUnmounted(() => {
   if (messageListRef.value) {
     messageListRef.value.removeEventListener('scroll', handleScroll)
+    messageListRef.value.removeEventListener('wheel', onWheel)
   }
-  autoScroll.detach()
   if (navigationCooldownTimer) {
     clearTimeout(navigationCooldownTimer)
   }
@@ -1034,32 +1072,39 @@ defineExpose({
   getNavIndex: () => currentUserMessageNavIndex.value,
   getHasNavigated: () => hasNavigated.value,
 
-  prepareForSwitch: () => { autoScroll.suppress() },
+  prepareForSwitch: () => { suppressed = true },
 
   restoreSnapshot: (snap: { firstVisibleIndex: number; offsetWithinMessage: number; isFollowing?: boolean; userScrolledAway?: boolean; navIndex: number; hasNavigated: boolean }) => {
-    // Support both old (userScrolledAway) and new (isFollowing) snapshot format
     const following = snap.isFollowing ?? (snap.userScrolledAway !== undefined ? !snap.userScrolledAway : true)
-    autoScroll.restoreState(following)
+    isFollowing.value = following
     currentUserMessageNavIndex.value = snap.navIndex
     hasNavigated.value = snap.hasNavigated
     nextTick(() => {
-      if (snap.firstVisibleIndex >= 0 && props.messages.length > 0) {
+      if (following && props.messages.length > 0) {
+        suppressed = false
+        if (messageListRef.value) {
+          messageListRef.value.scrollTop = messageListRef.value.scrollHeight
+        }
+      } else if (snap.firstVisibleIndex >= 0 && props.messages.length > 0) {
         const idx = Math.min(snap.firstVisibleIndex, props.messages.length - 1)
         virtualizer.value.scrollToIndex(idx, { align: 'start' })
         nextTick(() => {
           if (messageListRef.value && snap.offsetWithinMessage > 0) {
             messageListRef.value.scrollTop += snap.offsetWithinMessage
           }
-          autoScroll.unsuppress()
+          suppressed = false
         })
       } else {
-        autoScroll.unsuppress()
+        suppressed = false
       }
     })
   },
 
   scrollToBottom: () => {
-    autoScroll.scrollToBottom()
+    isFollowing.value = true
+    if (messageListRef.value) {
+      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
+    }
   },
 })
 </script>
@@ -1080,6 +1125,7 @@ defineExpose({
 .message-list {
   flex: 1;
   overflow-y: auto;
+  overflow-anchor: none;
   scrollbar-width: none;
   -ms-overflow-style: none;
   padding: 18px;

@@ -518,16 +518,16 @@ export async function executeStreamGeneration(
     const toolsForAI = hasTools ? { ...builtinToolsForAI, ...mcpTools } : {}
 
     // Log request start with structured format
-    logRequestStart({
-      provider: ctx.providerId,
-      model: ctx.providerConfig.model,
-      systemPromptLength: systemPrompt.length,
-      systemPrompt,
-      messages: historyMessages,
-      tools: toolsForAI,
-      skills: enabledSkills,
-      hasTools,
-    })
+    // logRequestStart({
+    //   provider: ctx.providerId,
+    //   model: ctx.providerConfig.model,
+    //   systemPromptLength: systemPrompt.length,
+    //   systemPrompt,
+    //   messages: historyMessages,
+    //   tools: toolsForAI,
+    //   skills: enabledSkills,
+    //   hasTools,
+    // })
 
     // Build conversation messages with system prompt
     const conversationMessages: ToolChatMessage[] = [
