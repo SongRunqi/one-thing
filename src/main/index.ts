@@ -77,7 +77,7 @@ app.on('ready', async () => {
   // Abort all active streams when the window closes to prevent background resource leaks
   mainWindow.on('closed', () => {
     shutdownIPCBridge()
-    getStreamEngine().abortAll()
+    try { getStreamEngine().abortAll() } catch { /* already shut down */ }
     mainWindow = null
   })
 
@@ -106,7 +106,7 @@ app.on('activate', () => {
     getStreamEngine().bind(mainWindow.webContents)
     mainWindow.on('closed', () => {
       shutdownIPCBridge()
-      getStreamEngine().abortAll()
+      try { getStreamEngine().abortAll() } catch { /* already shut down */ }
       mainWindow = null
     })
   }
