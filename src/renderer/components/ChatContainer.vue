@@ -14,6 +14,7 @@
         v-if="!sessionsStore.currentSessionId"
         class="empty-state"
       >
+        <div class="empty-state-drag-region" />
         <div class="empty-state-content">
           <svg
             width="48"
@@ -698,6 +699,16 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
+  position: relative;
+}
+
+.empty-state-drag-region {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  -webkit-app-region: drag;
 }
 
 .empty-state-content {
