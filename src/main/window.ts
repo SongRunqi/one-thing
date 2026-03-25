@@ -333,6 +333,7 @@ export function createWindow() {
     y: windowState.y,
     minWidth: 600,
     minHeight: 600,
+    icon: path.join(__dirname, '../../resources/onething.png'),
     // Prevent flash: don't show until ready, use theme-aware background
     show: false,
     transparent: isMac,
