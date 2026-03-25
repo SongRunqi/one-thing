@@ -45,7 +45,7 @@ jobs:
         run: bun run typecheck
 
       - name: Build application
-        run: bun run build && electron-builder --${{ matrix.platform }} --publish never
+        run: bun run build && bunx electron-builder --${{ matrix.platform }} --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
