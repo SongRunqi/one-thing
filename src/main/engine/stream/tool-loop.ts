@@ -20,7 +20,6 @@ import { getSkillsForSession } from '../../ipc/skills.js'
 import { updateSessionUsage } from '../../ipc/sessions.js'
 import { triggerManager, type TriggerContext } from '../triggers/index.js'
 import * as modelRegistry from '../../providers/model-registry.js'
-import { shouldCompact, executeCompacting, type CompactingContext } from '../../session/context-compacting.js'
 
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
 import { createStreamProcessor } from './stream-processor.js'
@@ -150,127 +149,6 @@ function buildContinuationMessages(
 }
 
 /**
- * Check and trigger context compacting if threshold is reached
- * Returns true if compacting was performed
- */
-async function checkAndTriggerCompacting(
-  ctx: StreamContext,
-  emitter: IPCEmitter,
-  inputTokens: number,
-  modelContextLength: number
-): Promise<boolean> {
-  // Skip if context length is unknown or too small
-  if (modelContextLength <= 0) {
-    return false
-  }
-
-  // Check if we should compact
-  if (!shouldCompact(inputTokens, modelContextLength)) {
-    return false
-  }
-
-  console.log(`[ToolLoop] Context usage ${((inputTokens / modelContextLength) * 100).toFixed(1)}% reached threshold, triggering compacting`)
-
-  return await performCompacting(ctx, emitter)
-}
-
-/**
- * Execute compacting and notify frontend
- * Returns true if compacting was successful
- */
-async function performCompacting(
-  ctx: StreamContext,
-  emitter: IPCEmitter
-): Promise<boolean> {
-  // Notify frontend that compacting started
-  emitter.sendCompactStarted()
-
-  try {
-    // Get session and its messages for compacting
-    const session = store.getSession(ctx.sessionId)
-    if (!session) {
-      console.warn('[ToolLoop] Session not found for compacting:', ctx.sessionId)
-      emitter.sendCompactCompleted({ success: false, error: 'Session not found' })
-      return false
-    }
-    const messages = session.messages as ChatMessage[]
-
-    // Build compacting context
-    const compactingCtx: CompactingContext = {
-      sessionId: ctx.sessionId,
-      messages,
-      providerId: ctx.providerId,
-      providerConfig: {
-        apiKey: ctx.providerConfig.apiKey ?? '',
-        baseUrl: ctx.providerConfig.baseUrl,
-        model: ctx.providerConfig.model ?? '',
-      },
-    }
-
-    // Execute compacting
-    const result = await executeCompacting(compactingCtx)
-
-    // Notify frontend with summary
-    emitter.sendCompactCompleted({ success: result.success, error: result.error, summary: result.summary })
-
-    if (result.success) {
-      console.log('[ToolLoop] Context compacting completed successfully')
-      return true
-    } else {
-      console.warn('[ToolLoop] Context compacting failed:', result.error)
-      return false
-    }
-  } catch (error) {
-    console.error('[ToolLoop] Context compacting error:', error)
-    emitter.sendCompactCompleted({ success: false, error: String(error) })
-    return false
-  }
-}
-
-/**
- * Rebuild conversation messages after compacting
- */
-function rebuildConversationMessages(
-  ctx: StreamContext,
-  systemPrompt: string,
-  conversationMessages: ToolChatMessage[]
-): void {
-  const updatedSession = store.getSession(ctx.sessionId)
-  if (updatedSession) {
-    const compactedHistory = buildHistoryMessages(
-      updatedSession.messages as ChatMessage[],
-      {
-        id: updatedSession.id,
-        summary: updatedSession.summary,
-        summaryUpToMessageId: updatedSession.summaryUpToMessageId,
-      }
-    )
-
-    // Clear and rebuild conversationMessages
-    conversationMessages.length = 0
-    conversationMessages.push({ role: 'system', content: systemPrompt })
-    conversationMessages.push(...compactedHistory)
-
-    console.log(`[ToolLoop] Rebuilt conversation with ${compactedHistory.length} messages after compacting`)
-  }
-}
-
-/**
- * Check if an error is a "prompt too long" error
- */
-function isPromptTooLongError(error: unknown): boolean {
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase()
-    return msg.includes('prompt is too long') ||
-           msg.includes('context_length_exceeded') ||
-           msg.includes('maximum context length') ||
-           msg.includes('too many tokens') ||
-           msg.includes('request too large')
-  }
-  return false
-}
-
-/**
  * Unified stream execution function
  * Handles both tool-enabled and simple streaming in a single code path
  *
@@ -280,7 +158,7 @@ function isPromptTooLongError(error: unknown): boolean {
 export async function runStream(
   ctx: StreamContext,
   conversationMessages: ToolChatMessage[],
-  systemPrompt: string,  // System prompt for rebuilding after compacting
+  systemPrompt: string,
   toolsForAI: Record<string, any>,  // Can be {} for no-tools mode
   processor: StreamProcessor,
   enabledSkills: SkillDefinition[]
@@ -290,8 +168,8 @@ export async function runStream(
   const apiType = getProviderApiType(ctx.settings, ctx.providerId)
   const emitter = createEventOnlyEmitter(ctx)
 
-  // Get model context length for compacting check
-  let modelContextLength = 128000  // Default fallback
+  // Get model context length for logging
+  let modelContextLength = 128000
   try {
     const modelInfo = await modelRegistry.getModelById(ctx.providerConfig.model)
     if (modelInfo?.context_length) {
@@ -306,19 +184,6 @@ export async function runStream(
     const turn = createTurnState()
 
     logTurnStart(currentTurn)
-
-    // ============================================================
-    // Checkpoint 1: Pre-request compacting check
-    // Check session.contextSize before sending API request
-    // ============================================================
-    const session = store.getSession(ctx.sessionId)
-    if (session?.contextSize && shouldCompact(session.contextSize, modelContextLength)) {
-      console.log(`[ToolLoop] Pre-request compacting: contextSize=${session.contextSize}, threshold=${Math.floor(modelContextLength * 0.85)}`)
-      const compacted = await performCompacting(ctx, emitter)
-      if (compacted) {
-        rebuildConversationMessages(ctx, systemPrompt, conversationMessages)
-      }
-    }
 
     // Send continuation at the START of each turn (except first) to show waiting indicator
     // This ensures waiting is displayed BEFORE the LLM call starts
@@ -335,43 +200,22 @@ export async function runStream(
     const temperature = ctx.settings.ai.temperature
     const model = ctx.providerConfig.model
 
-    // ============================================================
-    // Checkpoint 3: Error recovery wrapper
-    // Catch "prompt too long" errors and retry after compacting
-    // ============================================================
-    let stream: AsyncIterable<any>
-    try {
-      stream = streamChatResponseWithTools(
-        ctx.providerId,
-        {
-          apiKey: ctx.providerConfig.apiKey ?? '',
-          baseUrl: ctx.providerConfig.baseUrl,
-          model,
-          apiType,
-        },
-        conversationMessages,
-        toolsForAI,
-        {
-          temperature,
-          maxTokens: effectiveMaxTokens,
-          abortSignal: ctx.abortSignal,
-        }
-      )
-    } catch (error) {
-      // Check if error is "prompt too long" and attempt recovery
-      if (isPromptTooLongError(error)) {
-        console.log('[ToolLoop] Prompt too long error on stream creation, attempting compacting recovery')
-        const compacted = await performCompacting(ctx, emitter)
-        if (compacted) {
-          rebuildConversationMessages(ctx, systemPrompt, conversationMessages)
-          // Retry this turn
-          currentTurn--
-          continue
-        }
+    const stream = streamChatResponseWithTools(
+      ctx.providerId,
+      {
+        apiKey: ctx.providerConfig.apiKey ?? '',
+        baseUrl: ctx.providerConfig.baseUrl,
+        model,
+        apiType,
+      },
+      conversationMessages,
+      toolsForAI,
+      {
+        temperature,
+        maxTokens: effectiveMaxTokens,
+        abortSignal: ctx.abortSignal,
       }
-      // Re-throw if not recoverable
-      throw error
-    }
+    )
 
     let turnUsage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined
 
@@ -471,18 +315,6 @@ export async function runStream(
         }
       }
     } catch (error) {
-      // Check if error is "prompt too long" during streaming and attempt recovery
-      if (isPromptTooLongError(error)) {
-        console.log('[ToolLoop] Prompt too long error during streaming, attempting compacting recovery')
-        const compacted = await performCompacting(ctx, emitter)
-        if (compacted) {
-          rebuildConversationMessages(ctx, systemPrompt, conversationMessages)
-          // Retry this turn
-          currentTurn--
-          continue
-        }
-      }
-      // Re-throw if not recoverable
       throw error
     }
 
@@ -514,19 +346,6 @@ export async function runStream(
 
     // Persist content parts to store (and send IPC for non-tool-call turns)
     persistTurnContentParts(ctx, emitter, turn, currentTurn)
-
-    // ============================================================
-    // Checkpoint 2: Post-turn compacting check
-    // Check actual inputTokens after turn completion
-    // Removed toolCalls condition - pure text conversations also need compacting
-    // ============================================================
-    if (turnUsage && currentTurn < MAX_TOOL_TURNS) {
-      const compacted = await checkAndTriggerCompacting(ctx, emitter, turnUsage.inputTokens, modelContextLength)
-
-      if (compacted) {
-        rebuildConversationMessages(ctx, systemPrompt, conversationMessages)
-      }
-    }
 
     // If any tool requires confirmation, stop the loop and signal pause
     if (turn.toolCalls.some(tc => tc.requiresConfirmation)) {

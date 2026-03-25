@@ -87,14 +87,6 @@ export interface ContextSizeUpdatedEvent {
   contextSize: number
 }
 
-export interface CompactStartedEvent {
-  type: 'compact:started'
-}
-
-export interface CompactCompletedEvent {
-  type: 'compact:completed'
-  data: { success: boolean; error?: string; summary?: string }
-}
 
 // ── Params events ───────────────────────────────
 
@@ -202,8 +194,6 @@ export type SessionEvent =
   | ContentPartEvent
   | ContentContinuationEvent
   | ContextSizeUpdatedEvent
-  | CompactStartedEvent
-  | CompactCompletedEvent
   | StreamParamsResolvingEvent
   | SkillActivatedEvent
   | PermissionRequestEvent

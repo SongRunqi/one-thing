@@ -115,15 +115,6 @@ export function getToolUsageDocsPath(): string {
   return path.join(getDocsDir(), 'tool-usage-guide.md')
 }
 
-// Session history directory (for full conversation backup before context compacting)
-export function getSessionHistoryDir(): string {
-  return path.join(getStorePath(), 'session-history')
-}
-
-export function getSessionHistoryPath(sessionId: string): string {
-  return path.join(getSessionHistoryDir(), `${sessionId}.md`)
-}
-
 // Permissions directory (for workspace-level permissions)
 export function getPermissionsDir(): string {
   return path.join(getStorePath(), 'permissions')
@@ -148,7 +139,6 @@ export function ensureStoreDirs(): void {
     getMediaDir(),
     getMediaImagesDir(),
     getToolOutputsDir(),
-    getSessionHistoryDir(),
     getPermissionsDir(),
   ]
 

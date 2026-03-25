@@ -143,14 +143,6 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
       emitSafe({ type: 'context:size-updated', contextSize })
     },
 
-    sendCompactStarted() {
-      emitSafe({ type: 'compact:started' })
-    },
-
-    sendCompactCompleted(data) {
-      emitSafe({ type: 'compact:completed', data })
-    },
-
     // ── Skill → Store + EventBus ────────────────
     // Store mutation kept (updateMessageSkill)
 

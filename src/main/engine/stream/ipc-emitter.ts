@@ -68,12 +68,6 @@ export interface IPCEmitter {
   /** Send context size update */
   sendContextSizeUpdate(contextSize: number): void
 
-  /** Send context compact started event */
-  sendCompactStarted(): void
-
-  /** Send context compact completed event */
-  sendCompactCompleted(data: { success: boolean; error?: string; summary?: string }): void
-
   // ========== Step Events ==========
 
   /** Send step added event (also adds to store) */

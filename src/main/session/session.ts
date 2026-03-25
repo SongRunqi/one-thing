@@ -109,8 +109,6 @@ export class Session {
       case 'content:part':
       case 'content:continuation':
       case 'context:size-updated':
-      case 'compact:started':
-      case 'compact:completed':
       case 'stream:params-resolving':
       case 'skill:activated':
       case 'permission:request':

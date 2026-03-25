@@ -6,7 +6,6 @@
 import type { ChatMessage } from '../../../shared/ipc.js'
 import type { AIMessageContent } from '../../providers/index.js'
 import { buildSystemPrompt } from '../prompt/index.js'
-import { getHistoryFilePath } from '../../session/context-compacting.js'
 
 /**
  * Format messages for logging without full base64 data
@@ -117,16 +116,10 @@ export function buildHistoryMessages(
       // Build the history with summary + recent messages
       const result: HistoryMessage[] = []
 
-      // Check if we have a full history backup file
-      const historyPath = session.id ? getHistoryFilePath(session.id) : null
-      const historyNote = historyPath
-        ? `\n\n[Full conversation history backed up to: ${historyPath}. Use cat command to read original conversation if needed.]`
-        : ''
-
       // Add summary as a "user" message (context injection)
       result.push({
         role: 'user',
-        content: `[Conversation History Summary]\n${session.summary}${historyNote}\n\nPlease continue the conversation based on the above context.`,
+        content: `[Conversation History Summary]\n${session.summary}\n\nPlease continue the conversation based on the above context.`,
       })
 
       // Add an acknowledgment from assistant
