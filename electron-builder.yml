@@ -1,7 +1,7 @@
 appId: com.onething.app
 productName: 0neThing
 directories:
-  buildResources: public
+  buildResources: build
   output: release
 files:
   - out/**/*
