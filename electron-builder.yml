@@ -10,10 +10,6 @@ files:
 
 # Extra resources to include (copied to resources/ in the app bundle)
 extraResources:
-  - from: resources/skills
-    to: skills
-    filter:
-      - "**/*"
   - from: resources/templates
     to: templates
     filter:

@@ -1,7 +1,11 @@
 {
   "name": "0neThing",
-  "version": "0.1.0",
-  "description": "A chat ",
+  "version": "1.1.0",
+  "description": "An AI chat desktop app",
+  "author": {
+    "name": "SongRunqi",
+    "email": "yitiansong4@gmail.com"
+  },
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
