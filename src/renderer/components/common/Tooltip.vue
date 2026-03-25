@@ -1,11 +1,23 @@
 <template>
-  <div class="tooltip-wrapper" ref="wrapperRef" @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave">
-    <slot></slot>
+  <div
+    ref="wrapperRef"
+    class="tooltip-wrapper"
+    @mouseenter="handleMouseEnter"
+    @mouseleave="handleMouseLeave"
+  >
+    <slot />
     <Teleport to="body">
       <Transition name="tooltip-fade">
-        <div v-if="visible" class="tooltip" :style="tooltipStyle">
+        <div
+          v-if="visible"
+          class="tooltip"
+          :style="tooltipStyle"
+        >
           {{ text }}
-          <div class="tooltip-arrow" :style="arrowStyle"></div>
+          <div
+            class="tooltip-arrow"
+            :style="arrowStyle"
+          />
         </div>
       </Transition>
     </Teleport>

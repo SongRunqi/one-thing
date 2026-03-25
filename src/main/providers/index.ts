@@ -351,7 +351,7 @@ export async function* streamChatResponseWithReasoning(
   // For reasoning models, use fullStream to capture reasoning
   // For non-reasoning models, use textStream for simplicity
   if (isReasoning) {
-    let accumulatedReasoning: string[] = []
+    const accumulatedReasoning: string[] = []
     let chunkCount = 0
 
     for await (const chunk of stream.fullStream) {

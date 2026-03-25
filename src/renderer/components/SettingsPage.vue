@@ -1,18 +1,24 @@
 <template>
   <div class="settings-page">
     <!-- macOS-style titlebar drag region -->
-    <div class="titlebar-drag-region"></div>
+    <div class="titlebar-drag-region" />
 
     <!-- Loading State -->
-    <div v-if="isLoading" class="loading-state">
-      <div class="loading-spinner"></div>
+    <div
+      v-if="isLoading"
+      class="loading-state"
+    >
+      <div class="loading-spinner" />
       <span>Loading settings...</span>
     </div>
 
-    <div v-else class="settings-layout">
+    <div
+      v-else
+      class="settings-layout"
+    >
       <!-- Sidebar navigation -->
       <aside class="settings-sidebar">
-        <div class="sidebar-spacer"></div>
+        <div class="sidebar-spacer" />
         <nav class="sidebar-nav">
           <button
             v-for="item in navItems"
@@ -20,7 +26,10 @@
             :class="['sidebar-item', { active: activeTab === item.id }]"
             @click="activeTab = item.id"
           >
-            <component :is="item.icon" class="sidebar-icon" />
+            <component
+              :is="item.icon"
+              class="sidebar-icon"
+            />
             <span class="sidebar-label">{{ item.label }}</span>
           </button>
         </nav>
@@ -69,9 +78,11 @@
               :settings="localSettings.skills || { enableSkills: true, skills: {} }"
               @update:settings="handleSkillsSettingsUpdate"
             />
-
           </template>
-          <div v-else class="loading-content">
+          <div
+            v-else
+            class="loading-content"
+          >
             Loading...
           </div>
         </div>

@@ -1,12 +1,26 @@
 <template>
   <Teleport to="body">
-    <div v-if="show" class="dialog-overlay" @click.self="$emit('close')">
+    <div
+      v-if="show"
+      class="dialog-overlay"
+      @click.self="$emit('close')"
+    >
       <div class="dialog">
         <div class="dialog-header">
           <h3>{{ editingServer ? 'Edit Server' : 'Add MCP Server' }}</h3>
-          <button class="close-btn" @click="$emit('close')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
+          <button
+            class="close-btn"
+            @click="$emit('close')"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -19,7 +33,7 @@
               type="text"
               class="form-input"
               placeholder="My MCP Server"
-            />
+            >
           </div>
 
           <div class="form-group">
@@ -29,13 +43,52 @@
                 :class="['transport-option', { active: form.transport === 'stdio' }]"
                 @click="form.transport = 'stdio'"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
-                  <rect x="9" y="9" width="6" height="6"/>
-                  <line x1="9" y1="1" x2="9" y2="4"/>
-                  <line x1="15" y1="1" x2="15" y2="4"/>
-                  <line x1="9" y1="20" x2="9" y2="23"/>
-                  <line x1="15" y1="20" x2="15" y2="23"/>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <rect
+                    x="4"
+                    y="4"
+                    width="16"
+                    height="16"
+                    rx="2"
+                    ry="2"
+                  />
+                  <rect
+                    x="9"
+                    y="9"
+                    width="6"
+                    height="6"
+                  />
+                  <line
+                    x1="9"
+                    y1="1"
+                    x2="9"
+                    y2="4"
+                  />
+                  <line
+                    x1="15"
+                    y1="1"
+                    x2="15"
+                    y2="4"
+                  />
+                  <line
+                    x1="9"
+                    y1="20"
+                    x2="9"
+                    y2="23"
+                  />
+                  <line
+                    x1="15"
+                    y1="20"
+                    x2="15"
+                    y2="23"
+                  />
                 </svg>
                 <span>Stdio</span>
                 <span class="transport-desc">Local process</span>
@@ -44,10 +97,26 @@
                 :class="['transport-option', { active: form.transport === 'sse' }]"
                 @click="form.transport = 'sse'"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="2" y1="12" x2="22" y2="12"/>
-                  <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="10"
+                  />
+                  <line
+                    x1="2"
+                    y1="12"
+                    x2="22"
+                    y2="12"
+                  />
+                  <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
                 </svg>
                 <span>SSE</span>
                 <span class="transport-desc">HTTP endpoint</span>
@@ -64,7 +133,7 @@
                 type="text"
                 class="form-input"
                 placeholder="npx, python, node..."
-              />
+              >
             </div>
             <div class="form-group">
               <label class="form-label">Arguments</label>
@@ -73,8 +142,10 @@
                 type="text"
                 class="form-input"
                 placeholder="-y @modelcontextprotocol/server-everything"
-              />
-              <p class="form-hint">Space-separated arguments</p>
+              >
+              <p class="form-hint">
+                Space-separated arguments
+              </p>
             </div>
             <div class="form-group">
               <label class="form-label">Working Directory (optional)</label>
@@ -83,7 +154,7 @@
                 type="text"
                 class="form-input"
                 placeholder="/path/to/working/dir"
-              />
+              >
             </div>
           </template>
 
@@ -96,18 +167,30 @@
                 type="text"
                 class="form-input"
                 placeholder="http://localhost:3000/sse"
-              />
+              >
             </div>
           </template>
 
-          <div v-if="error" class="error-message">
+          <div
+            v-if="error"
+            class="error-message"
+          >
             {{ error }}
           </div>
         </div>
 
         <div class="dialog-footer">
-          <button class="btn secondary" @click="$emit('close')">Cancel</button>
-          <button class="btn primary" @click="handleSave" :disabled="isSaving">
+          <button
+            class="btn secondary"
+            @click="$emit('close')"
+          >
+            Cancel
+          </button>
+          <button
+            class="btn primary"
+            :disabled="isSaving"
+            @click="handleSave"
+          >
             {{ isSaving ? 'Saving...' : (editingServer ? 'Save Changes' : 'Add Server') }}
           </button>
         </div>

@@ -1,23 +1,44 @@
 <template>
   <div class="oauth-section">
     <template v-if="!oauthStatus.isLoggedIn">
-      <button class="oauth-login-btn" @click="$emit('start-login')" :disabled="isLoading">
-        <ProviderIcon :provider="providerId" :size="18" />
+      <button
+        class="oauth-login-btn"
+        :disabled="isLoading"
+        @click="$emit('start-login')"
+      >
+        <ProviderIcon
+          :provider="providerId"
+          :size="18"
+        />
         <span>{{ isLoading ? 'Connecting...' : `Login with ${providerName}` }}</span>
       </button>
 
       <!-- Device Flow Code Display (for GitHub Copilot) -->
-      <div v-if="deviceFlowInfo" class="device-flow-info">
+      <div
+        v-if="deviceFlowInfo"
+        class="device-flow-info"
+      >
         <p>Enter this code at:</p>
-        <a :href="deviceFlowInfo.verificationUri" target="_blank" class="device-flow-link">
+        <a
+          :href="deviceFlowInfo.verificationUri"
+          target="_blank"
+          class="device-flow-link"
+        >
           {{ deviceFlowInfo.verificationUri }}
         </a>
-        <div class="device-code">{{ deviceFlowInfo.userCode }}</div>
-        <p class="device-flow-hint">Waiting for authorization...</p>
+        <div class="device-code">
+          {{ deviceFlowInfo.userCode }}
+        </div>
+        <p class="device-flow-hint">
+          Waiting for authorization...
+        </p>
       </div>
 
       <!-- Manual Code Entry (for Claude Code) -->
-      <div v-if="codeEntryInfo" class="code-entry-info">
+      <div
+        v-if="codeEntryInfo"
+        class="code-entry-info"
+      >
         <p>{{ codeEntryInfo.instructions }}</p>
         <div class="code-entry-form">
           <input
@@ -27,28 +48,44 @@
             placeholder="Paste authorization code here..."
             @input="$emit('update:manualCode', ($event.target as HTMLInputElement).value)"
             @keydown.enter="$emit('submit-code')"
-          />
+          >
           <button
             class="submit-code-btn"
-            @click="$emit('submit-code')"
             :disabled="!manualCode.trim() || isSubmittingCode"
+            @click="$emit('submit-code')"
           >
             {{ isSubmittingCode ? 'Verifying...' : 'Submit' }}
           </button>
         </div>
-        <p v-if="codeEntryError" class="code-entry-error">{{ codeEntryError }}</p>
+        <p
+          v-if="codeEntryError"
+          class="code-entry-error"
+        >
+          {{ codeEntryError }}
+        </p>
       </div>
     </template>
 
     <template v-else>
       <div class="oauth-logged-in">
         <div class="oauth-status">
-          <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-            <path d="M20 6L9 17l-5-5"/>
+          <svg
+            class="check-icon"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+          >
+            <path d="M20 6L9 17l-5-5" />
           </svg>
           <span>Connected to {{ providerName }}</span>
         </div>
-        <button class="oauth-logout-btn" @click="$emit('logout')">
+        <button
+          class="oauth-logout-btn"
+          @click="$emit('logout')"
+        >
           Disconnect
         </button>
       </div>

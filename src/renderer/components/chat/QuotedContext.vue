@@ -1,10 +1,22 @@
 <template>
-  <div v-if="text" class="quoted-context">
-    <div class="quoted-bar"></div>
+  <div
+    v-if="text"
+    class="quoted-context"
+  >
+    <div class="quoted-bar" />
     <div class="quoted-content-wrapper">
-      <div class="quoted-text">{{ text }}</div>
-      <button class="remove-quote-btn" @click="emit('clear')" title="Remove">
-        <X :size="16" :stroke-width="2.5" />
+      <div class="quoted-text">
+        {{ text }}
+      </div>
+      <button
+        class="remove-quote-btn"
+        title="Remove"
+        @click="emit('clear')"
+      >
+        <X
+          :size="16"
+          :stroke-width="2.5"
+        />
       </button>
     </div>
   </div>

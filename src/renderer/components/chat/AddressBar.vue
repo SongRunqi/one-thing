@@ -7,14 +7,23 @@
       :title="workingDirectory || 'Set working directory'"
       @click="$emit('openDirectoryPicker')"
     >
-      <Folder :size="12" :stroke-width="2" />
-      <span v-if="workingDirectory" class="prefix-name">
+      <Folder
+        :size="12"
+        :stroke-width="2"
+      />
+      <span
+        v-if="workingDirectory"
+        class="prefix-name"
+      >
         {{ workingDirName }}
       </span>
     </button>
 
     <!-- Separator -->
-    <span v-if="workingDirectory" class="address-bar-separator">/</span>
+    <span
+      v-if="workingDirectory"
+      class="address-bar-separator"
+    >/</span>
 
     <!-- Title (editable) -->
     <input
@@ -25,7 +34,7 @@
       @blur="saveTitle"
       @keydown.enter="saveTitle"
       @keydown.escape="cancelEdit"
-    />
+    >
     <span
       v-else
       class="address-bar-title"
@@ -33,7 +42,6 @@
     >
       {{ title || 'New chat' }}
     </span>
-
   </div>
 </template>
 

@@ -1,16 +1,32 @@
 <template>
-  <div class="steps-panel" v-if="steps && steps.length > 0" :data-depth="depth">
-    <template v-for="step in steps" :key="step.id">
+  <div
+    v-if="steps && steps.length > 0"
+    class="steps-panel"
+    :data-depth="depth"
+  >
+    <template
+      v-for="step in steps"
+      :key="step.id"
+    >
       <!-- Regular Step: Standard step rendering -->
       <div
         :class="['step-inline', stepClass(step), { expanded: expandedSteps.has(step.id) }]"
         :style="{ '--depth': depth }"
       >
         <!-- Main Row - Simplified: icon + tool + preview + actions -->
-        <div class="step-row" @click="toggleExpand(step.id)">
+        <div
+          class="step-row"
+          @click="toggleExpand(step.id)"
+        >
           <!-- Status icon (single, clear) -->
-          <span class="status-icon" :class="step.status">
-            <span v-if="step.status === 'running'" class="spinner"></span>
+          <span
+            class="status-icon"
+            :class="step.status"
+          >
+            <span
+              v-if="step.status === 'running'"
+              class="spinner"
+            />
             <span v-else-if="step.status === 'completed'">✓</span>
             <span v-else-if="step.status === 'failed'">✗</span>
             <span v-else-if="step.status === 'cancelled'">—</span>
@@ -25,41 +41,77 @@
           <span class="step-param">{{ getSimplePreview(step) }}</span>
 
           <!-- Spacer -->
-          <span class="spacer"></span>
+          <span class="spacer" />
 
           <!-- Result preview (right-aligned) -->
-          <span v-if="inlineResult(step)" class="step-result">{{ inlineResult(step) }}</span>
+          <span
+            v-if="inlineResult(step)"
+            class="step-result"
+          >{{ inlineResult(step) }}</span>
 
           <!-- Right side: error OR buttons OR expand icon -->
-          <span v-if="step.status === 'failed' && step.error" class="error-tag">
+          <span
+            v-if="step.status === 'failed' && step.error"
+            class="error-tag"
+          >
             {{ truncateError(step.error, 30) }}
           </span>
 
           <template v-else-if="step.status === 'awaiting-confirmation'">
-            <div class="confirm-buttons" @click.stop>
+            <div
+              class="confirm-buttons"
+              @click.stop
+            >
               <AllowSplitButton @confirm="(response) => handleConfirm(step, response)" />
-              <button class="btn-reject" @click="handleReject(step)" title="Reject (D/Esc)">Reject</button>
+              <button
+                class="btn-reject"
+                title="Reject (D/Esc)"
+                @click="handleReject(step)"
+              >
+                Reject
+              </button>
             </div>
           </template>
 
           <svg
             v-else-if="hasExpandableContent(step)"
             :class="['expand-icon', { rotated: expandedSteps.has(step.id) }]"
-            width="12" height="12" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="2.5"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
           >
-            <polyline points="9 6 15 12 9 18"/>
+            <polyline points="9 6 15 12 9 18" />
           </svg>
         </div>
 
         <!-- Expanded Content -->
         <Transition name="slide">
-          <div v-if="shouldShowContent(step)" class="step-details">
+          <div
+            v-if="shouldShowContent(step)"
+            class="step-details"
+          >
             <!-- Streaming content preview (during input-streaming for edit/write tools) -->
-            <Transition name="streaming-fade" mode="out-in">
-              <div v-if="getStreamingContent(step)" key="streaming" class="detail-section diff-preview">
-                <div class="diff-content" :ref="(el) => { if (el) scrollToBottom(el as HTMLElement) }">
-                  <div v-for="(line, idx) in getStreamingLines(step)" :key="idx" class="diff-line diff-add">
+            <Transition
+              name="streaming-fade"
+              mode="out-in"
+            >
+              <div
+                v-if="getStreamingContent(step)"
+                key="streaming"
+                class="detail-section diff-preview"
+              >
+                <div
+                  :ref="(el) => { if (el) scrollToBottom(el as HTMLElement) }"
+                  class="diff-content"
+                >
+                  <div
+                    v-for="(line, idx) in getStreamingLines(step)"
+                    :key="idx"
+                    class="diff-line diff-add"
+                  >
                     <span class="line-number new">{{ idx + 1 }}</span>
                     <span class="line-prefix">+</span>
                     <span class="line-content">{{ line }}</span>
@@ -69,7 +121,10 @@
             </Transition>
 
             <!-- Diff preview for edit/write tool -->
-            <div v-if="step.status !== 'running' && getDiffFromStep(step)" class="detail-section diff-preview">
+            <div
+              v-if="step.status !== 'running' && getDiffFromStep(step)"
+              class="detail-section diff-preview"
+            >
               <div class="diff-content">
                 <!-- File header inside code block (IDE style) -->
                 <div class="diff-header">
@@ -78,48 +133,83 @@
                     <span class="additions">+{{ getDiffFromStep(step)?.additions || 0 }}</span>
                     <span class="deletions">-{{ getDiffFromStep(step)?.deletions || 0 }}</span>
                   </span>
-                  <span v-if="step.status === 'completed'" class="diff-status-badge">Applied</span>
+                  <span
+                    v-if="step.status === 'completed'"
+                    class="diff-status-badge"
+                  >Applied</span>
                 </div>
                 <!-- Diff lines (skip leading hunk separator) -->
-                <template v-for="(line, idx) in getVisibleDiffLines(step)" :key="idx">
-                  <div v-if="!(line.class === 'diff-hunk' && idx === 0)" :class="['diff-line', line.class]">
-                    <span v-if="getDiffFromStep(step)?.deletions" class="line-number old">{{ line.oldNum || '' }}</span>
+                <template
+                  v-for="(line, idx) in getVisibleDiffLines(step)"
+                  :key="idx"
+                >
+                  <div
+                    v-if="!(line.class === 'diff-hunk' && idx === 0)"
+                    :class="['diff-line', line.class]"
+                  >
+                    <span
+                      v-if="getDiffFromStep(step)?.deletions"
+                      class="line-number old"
+                    >{{ line.oldNum || '' }}</span>
                     <span class="line-number new">{{ line.newNum || '' }}</span>
                     <span class="line-prefix">{{ line.prefix }}</span>
-                    <span class="line-content" :class="{ 'line-deleted-text': line.class === 'diff-del' }">{{ line.content }}</span>
+                    <span
+                      class="line-content"
+                      :class="{ 'line-deleted-text': line.class === 'diff-del' }"
+                    >{{ line.content }}</span>
                   </div>
                 </template>
               </div>
             </div>
 
             <!-- Live output for running -->
-            <div v-if="step.status === 'running' && step.result" class="detail-section live">
+            <div
+              v-if="step.status === 'running' && step.result"
+              class="detail-section live"
+            >
               <pre>{{ truncateOutput(step.result) }}</pre>
             </div>
 
             <!-- Thinking -->
-            <div v-if="step.thinking && expandedSteps.has(step.id)" class="detail-section">
-              <div class="detail-label">💭 Thinking</div>
+            <div
+              v-if="step.thinking && expandedSteps.has(step.id)"
+              class="detail-section"
+            >
+              <div class="detail-label">
+                💭 Thinking
+              </div>
               <pre class="thinking">{{ step.thinking }}</pre>
             </div>
 
             <!-- Command (for bash) or Arguments (for other tools, excluding read/write/edit) -->
-            <div v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step) && !['edit', 'read', 'write'].includes(step.toolCall?.toolName || '')" class="detail-section">
-              <div class="detail-label">{{ step.toolCall?.toolName === 'bash' ? 'Command' : 'Arguments' }}</div>
+            <div
+              v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step) && !['edit', 'read', 'write'].includes(step.toolCall?.toolName || '')"
+              class="detail-section"
+            >
+              <div class="detail-label">
+                {{ step.toolCall?.toolName === 'bash' ? 'Command' : 'Arguments' }}
+              </div>
               <pre class="code-block">{{ step.toolCall?.toolName === 'bash' ? (step.toolCall.arguments as any).command || '' : formatArgsJson(step.toolCall.arguments) }}</pre>
             </div>
 
             <!-- Result (hidden when diff preview is already showing) -->
-            <div v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running' && !getDiffFromStep(step)" class="detail-section">
+            <div
+              v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running' && !getDiffFromStep(step)"
+              class="detail-section"
+            >
               <pre class="code-block">{{ formatResult(step.result) }}</pre>
             </div>
 
             <!-- Summary -->
-            <div v-if="step.summary && expandedSteps.has(step.id)" class="detail-section">
-              <div class="detail-label">📝 Analysis</div>
+            <div
+              v-if="step.summary && expandedSteps.has(step.id)"
+              class="detail-section"
+            >
+              <div class="detail-label">
+                📝 Analysis
+              </div>
               <pre class="summary">{{ step.summary }}</pre>
             </div>
-
           </div>
         </Transition>
       </div>

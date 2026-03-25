@@ -1,19 +1,57 @@
 <template>
-  <div v-if="visible" class="dialog-overlay" @click.self="$emit('cancel')">
+  <div
+    v-if="visible"
+    class="dialog-overlay"
+    @click.self="$emit('cancel')"
+  >
     <div class="dialog">
       <div class="dialog-header">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-          <line x1="12" y1="9" x2="12" y2="13"/>
-          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          <line
+            x1="12"
+            y1="9"
+            x2="12"
+            y2="13"
+          />
+          <line
+            x1="12"
+            y1="17"
+            x2="12.01"
+            y2="17"
+          />
         </svg>
         <h3>Unsaved Changes</h3>
       </div>
-      <p class="dialog-message">You have unsaved changes. What would you like to do?</p>
+      <p class="dialog-message">
+        You have unsaved changes. What would you like to do?
+      </p>
       <div class="dialog-actions">
-        <button class="btn secondary" @click="$emit('discard')">Discard</button>
-        <button class="btn secondary" @click="$emit('cancel')">Cancel</button>
-        <button class="btn primary" @click="$emit('save')">Save & Close</button>
+        <button
+          class="btn secondary"
+          @click="$emit('discard')"
+        >
+          Discard
+        </button>
+        <button
+          class="btn secondary"
+          @click="$emit('cancel')"
+        >
+          Cancel
+        </button>
+        <button
+          class="btn primary"
+          @click="$emit('save')"
+        >
+          Save & Close
+        </button>
       </div>
     </div>
   </div>

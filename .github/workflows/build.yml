@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*' # Triggers on tags like v1.0.0, v2.1.3, etc.
+      - 'v*'
 
 jobs:
   build:
@@ -49,6 +49,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: List release artifacts
+        shell: bash
+        run: ls -lah release/ || echo "No release directory"
+
       - name: Upload artifacts (macOS)
         if: matrix.platform == 'mac'
         uses: actions/upload-artifact@v4
@@ -57,6 +61,7 @@ jobs:
           path: |
             release/*.dmg
             release/*.zip
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Upload artifacts (Windows)
@@ -66,6 +71,7 @@ jobs:
           name: ${{ github.ref_name }}-windows
           path: |
             release/*.exe
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Upload artifacts (Linux)
@@ -76,6 +82,7 @@ jobs:
           path: |
             release/*.AppImage
             release/*.deb
+          if-no-files-found: warn
           retention-days: 30
 
   release:
@@ -102,7 +109,6 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          # Get previous tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -z "$PREV_TAG" ]; then
             echo "changelog=Initial release" >> $GITHUB_OUTPUT
@@ -123,9 +129,9 @@ jobs:
             artifacts/${{ github.ref_name }}-windows/*
             artifacts/${{ github.ref_name }}-linux/*
           body: |
-            ## 🎉 Release ${{ github.ref_name }}
+            ## Release ${{ github.ref_name }}
 
-            ### 📦 Downloads
+            ### Downloads
 
             | Platform | File | Description |
             |----------|------|-------------|
@@ -135,7 +141,7 @@ jobs:
             | Linux | `.AppImage` | Universal Linux package |
             | Linux | `.deb` | Debian/Ubuntu package |
 
-            ### 📝 Changes
+            ### Changes
 
             ${{ steps.changelog.outputs.changelog }}
 

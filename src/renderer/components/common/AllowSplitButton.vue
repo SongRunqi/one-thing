@@ -1,27 +1,42 @@
 <template>
-  <div class="allow-split-button" ref="containerRef" :class="{ 'is-open': showMenu }">
+  <div
+    ref="containerRef"
+    class="allow-split-button"
+    :class="{ 'is-open': showMenu }"
+  >
     <!-- 主按钮：点击立即执行默认操作 -->
     <button
       class="allow-main-btn"
-      @click="handleDefaultAction"
       :title="'Allow this time (Enter)'"
+      @click="handleDefaultAction"
     >
       Allow
     </button>
     <!-- 下拉箭头按钮 -->
     <button
       class="allow-dropdown-btn"
-      @click.stop="toggleMenu"
       :title="'More options'"
+      @click.stop="toggleMenu"
     >
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M6 9l6 6 6-6"/>
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+      >
+        <path d="M6 9l6 6 6-6" />
       </svg>
     </button>
 
     <!-- 下拉菜单 -->
     <Transition name="dropdown-fade">
-      <div v-if="showMenu" class="allow-menu" @click.stop>
+      <div
+        v-if="showMenu"
+        class="allow-menu"
+        @click.stop
+      >
         <button
           class="allow-menu-item"
           :class="{ 'is-default': true }"

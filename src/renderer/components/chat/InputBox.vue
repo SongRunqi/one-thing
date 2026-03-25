@@ -1,13 +1,30 @@
 <template>
-  <div class="composer-wrapper" ref="composerWrapperRef">
+  <div
+    ref="composerWrapperRef"
+    class="composer-wrapper"
+  >
     <!-- Quoted text context -->
-    <QuotedContext :text="quotedText" @clear="clearQuotedText" />
+    <QuotedContext
+      :text="quotedText"
+      @clear="clearQuotedText"
+    />
 
     <!-- Command Feedback -->
     <Transition name="fade">
-      <div v-if="commandFeedback" :class="['command-feedback', commandFeedback.type]">
-        <Check v-if="commandFeedback.type === 'success'" :size="14" :stroke-width="2.5" />
-        <X v-else :size="14" :stroke-width="2.5" />
+      <div
+        v-if="commandFeedback"
+        :class="['command-feedback', commandFeedback.type]"
+      >
+        <Check
+          v-if="commandFeedback.type === 'success'"
+          :size="14"
+          :stroke-width="2.5"
+        />
+        <X
+          v-else
+          :size="14"
+          :stroke-width="2.5"
+        />
         <span>{{ commandFeedback.message }}</span>
       </div>
     </Transition>
@@ -52,7 +69,11 @@
       @executed="handleQuickCommandExecuted"
     />
 
-    <div class="composer" :class="{ focused: isFocused }" @click="focusTextarea">
+    <div
+      class="composer"
+      :class="{ focused: isFocused }"
+      @click="focusTextarea"
+    >
       <!-- Input area -->
       <div class="input-area">
         <textarea
@@ -60,13 +81,13 @@
           v-model="messageInput"
           class="composer-input"
           placeholder="Ask anything..."
+          rows="1"
           @keydown="handleKeyDown"
           @focus="isFocused = true"
           @blur="isFocused = false"
           @input="adjustHeight"
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
-          rows="1"
         />
       </div>
 
@@ -76,23 +97,33 @@
           <ModelSelector :session-id="props.sessionId" />
         </div>
 
-        <div class="toolbar-right" @click.stop>
+        <div
+          class="toolbar-right"
+          @click.stop
+        >
           <button
             v-if="isLoading || isSending"
             class="send-btn stop-btn"
-            @click="stopGeneration"
             title="Stop generation"
+            @click="stopGeneration"
           >
-            <Square :size="16" fill="currentColor" :stroke-width="0" />
+            <Square
+              :size="16"
+              fill="currentColor"
+              :stroke-width="0"
+            />
           </button>
           <button
             v-else
             class="send-btn"
-            @click="sendMessage"
             :disabled="!canSend"
             title="Send message"
+            @click="sendMessage"
           >
-            <Send :size="18" :stroke-width="2" />
+            <Send
+              :size="18"
+              :stroke-width="2"
+            />
           </button>
         </div>
       </div>

@@ -28,20 +28,24 @@
       <main class="provider-detail">
         <!-- Provider Header -->
         <div class="detail-header">
-          <h2 class="detail-title">{{ providerSettings.currentProviderName.value }}</h2>
+          <h2 class="detail-title">
+            {{ providerSettings.currentProviderName.value }}
+          </h2>
           <label class="enable-toggle">
             <input
               type="checkbox"
               :checked="providerSettings.isProviderEnabled(providerSettings.viewingProvider.value)"
               @change="providerSettings.toggleProviderEnabled(providerSettings.viewingProvider.value)"
-            />
-            <span class="toggle-switch"></span>
+            >
+            <span class="toggle-switch" />
           </label>
         </div>
 
         <!-- API Configuration -->
         <section class="detail-section">
-          <h3 class="section-label">API Configuration</h3>
+          <h3 class="section-label">
+            API Configuration
+          </h3>
 
           <!-- OAuth Provider Login -->
           <ProviderOAuth
@@ -62,25 +66,57 @@
           />
 
           <!-- Traditional API Key Input -->
-          <div v-else class="settings-group">
+          <div
+            v-else
+            class="settings-group"
+          >
             <div class="settings-row">
               <span class="row-label">API Key</span>
               <div class="row-input-wrap">
                 <input
                   :value="settings.ai.providers[providerSettings.viewingProvider.value]?.apiKey"
-                  @input="providerSettings.updateProviderApiKey(($event.target as HTMLInputElement).value)"
                   :type="showApiKey ? 'text' : 'password'"
                   class="row-input"
                   :placeholder="`Enter ${providerSettings.currentProviderName.value} key...`"
-                />
-                <button class="input-toggle" @click="showApiKey = !showApiKey" type="button">
-                  <svg v-if="showApiKey" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/>
-                    <line x1="1" y1="1" x2="23" y2="23"/>
+                  @input="providerSettings.updateProviderApiKey(($event.target as HTMLInputElement).value)"
+                >
+                <button
+                  class="input-toggle"
+                  type="button"
+                  @click="showApiKey = !showApiKey"
+                >
+                  <svg
+                    v-if="showApiKey"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                    <line
+                      x1="1"
+                      y1="1"
+                      x2="23"
+                      y2="23"
+                    />
                   </svg>
-                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
+                  <svg
+                    v-else
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="3"
+                    />
                   </svg>
                 </button>
               </div>
@@ -89,11 +125,11 @@
               <span class="row-label">Base URL</span>
               <input
                 :value="settings.ai.providers[providerSettings.viewingProvider.value]?.baseUrl"
-                @input="providerSettings.updateProviderBaseUrl(($event.target as HTMLInputElement).value)"
                 type="text"
                 class="row-input"
                 :placeholder="providerSettings.getDefaultBaseUrl()"
-              />
+                @input="providerSettings.updateProviderBaseUrl(($event.target as HTMLInputElement).value)"
+              >
             </div>
           </div>
         </section>
@@ -131,13 +167,13 @@
             <div class="slider-row">
               <input
                 :value="settings.ai.temperature"
-                @input="providerSettings.updateTemperature(($event.target as HTMLInputElement).valueAsNumber)"
                 type="range"
                 min="0"
                 max="2"
                 step="0.1"
                 class="form-slider"
-              />
+                @input="providerSettings.updateTemperature(($event.target as HTMLInputElement).valueAsNumber)"
+              >
               <div class="slider-labels">
                 <span>Precise</span>
                 <span>Creative</span>

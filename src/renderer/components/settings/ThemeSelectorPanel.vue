@@ -19,7 +19,10 @@
     </div>
 
     <!-- Theme Grid -->
-    <div class="theme-grid" v-if="filteredThemes.length > 0">
+    <div
+      v-if="filteredThemes.length > 0"
+      class="theme-grid"
+    >
       <div
         v-for="theme in filteredThemes"
         :key="theme.id"
@@ -37,43 +40,78 @@
             '--preview-text': theme.previewColors?.text || '#ffffff',
           }"
         >
-          <div class="preview-sidebar"></div>
+          <div class="preview-sidebar" />
           <div class="preview-content">
-            <div class="preview-bubble user"></div>
-            <div class="preview-bubble assistant"></div>
+            <div class="preview-bubble user" />
+            <div class="preview-bubble assistant" />
           </div>
         </div>
 
         <!-- Theme Info -->
         <div class="theme-info">
           <span class="theme-name">{{ theme.name }}</span>
-          <span v-if="theme.author" class="theme-author">by {{ theme.author }}</span>
+          <span
+            v-if="theme.author"
+            class="theme-author"
+          >by {{ theme.author }}</span>
         </div>
 
         <!-- Active Check -->
-        <div v-if="selectedThemeIdForTab === theme.id" class="check-icon">
-          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
-            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+        <div
+          v-if="selectedThemeIdForTab === theme.id"
+          class="check-icon"
+        >
+          <svg
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            width="14"
+            height="14"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+              clip-rule="evenodd"
+            />
           </svg>
         </div>
       </div>
     </div>
 
     <!-- Empty State -->
-    <div class="empty-state" v-else-if="!themeStore.isLoading">
+    <div
+      v-else-if="!themeStore.isLoading"
+      class="empty-state"
+    >
       <p>No themes found. Click "Open Themes Folder" to add custom themes.</p>
     </div>
 
     <!-- Actions -->
     <div class="theme-actions">
-      <button class="action-btn" @click="openThemesFolder" title="Open themes folder">
-        <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
-          <path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1H8a3 3 0 00-3 3v1.5a1.5 1.5 0 01-3 0V6z" clip-rule="evenodd" />
+      <button
+        class="action-btn"
+        title="Open themes folder"
+        @click="openThemesFolder"
+      >
+        <svg
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          width="16"
+          height="16"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M2 6a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1H8a3 3 0 00-3 3v1.5a1.5 1.5 0 01-3 0V6z"
+            clip-rule="evenodd"
+          />
           <path d="M6 12a2 2 0 012-2h8a2 2 0 012 2v2a2 2 0 01-2 2H2h2a2 2 0 002-2v-2z" />
         </svg>
         <span>Open Themes Folder</span>
       </button>
-      <button class="action-btn" @click="refreshThemes" :disabled="themeStore.isLoading">
+      <button
+        class="action-btn"
+        :disabled="themeStore.isLoading"
+        @click="refreshThemes"
+      >
         <svg
           :class="['refresh-icon', { spinning: themeStore.isLoading }]"
           viewBox="0 0 20 20"
@@ -81,14 +119,21 @@
           width="16"
           height="16"
         >
-          <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+          <path
+            fill-rule="evenodd"
+            d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+            clip-rule="evenodd"
+          />
         </svg>
         <span>{{ themeStore.isLoading ? 'Refreshing...' : 'Refresh' }}</span>
       </button>
     </div>
 
     <!-- Error Message -->
-    <div class="error-message" v-if="themeStore.error">
+    <div
+      v-if="themeStore.error"
+      class="error-message"
+    >
       {{ themeStore.error }}
     </div>
   </div>

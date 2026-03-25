@@ -32,16 +32,27 @@
         @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
       />
 
-      <div class="composer-container" v-memo="[isGenerating, effectiveSessionId]">
-        <InputBox ref="inputBoxRef" @send-message="handleSendMessage" @stop-generation="handleStopGeneration" :is-loading="isGenerating" :session-id="effectiveSessionId" />
+      <div
+        v-memo="[isGenerating, effectiveSessionId]"
+        class="composer-container"
+      >
+        <InputBox
+          ref="inputBoxRef"
+          :is-loading="isGenerating"
+          :session-id="effectiveSessionId"
+          @send-message="handleSendMessage"
+          @stop-generation="handleStopGeneration"
+        />
       </div>
     </div>
 
     <!-- Settings Panel overlay -->
     <Transition name="settings-fade">
-      <SettingsPanel v-if="showSettings" @close="emit('closeSettings')" />
+      <SettingsPanel
+        v-if="showSettings"
+        @close="emit('closeSettings')"
+      />
     </Transition>
-
   </main>
 </template>
 

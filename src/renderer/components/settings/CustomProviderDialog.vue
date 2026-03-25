@@ -1,10 +1,25 @@
 <template>
-  <div v-if="visible" class="dialog-overlay" @click.self="$emit('close')">
+  <div
+    v-if="visible"
+    class="dialog-overlay"
+    @click.self="$emit('close')"
+  >
     <div class="dialog custom-provider-dialog">
       <div class="dialog-header">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="3"
+          />
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
         </svg>
         <h3>{{ isEditing ? 'Edit Provider' : 'Add Custom Provider' }}</h3>
       </div>
@@ -17,7 +32,7 @@
             type="text"
             class="form-input"
             placeholder="e.g., My Ollama, Together AI..."
-          />
+          >
         </div>
 
         <div class="form-group">
@@ -27,7 +42,7 @@
             type="text"
             class="form-input"
             placeholder="Optional description..."
-          />
+          >
         </div>
 
         <div class="form-group">
@@ -35,26 +50,38 @@
           <div class="api-type-selector">
             <button
               :class="['api-type-btn', { active: form.apiType === 'openai' }]"
-              @click="form.apiType = 'openai'"
               type="button"
+              @click="form.apiType = 'openai'"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M22.282 9.821a6 6 0 0 0-.516-4.91 6.05 6.05 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a6 6 0 0 0-3.998 2.9 6.05 6.05 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.05 6.05 0 0 0 6.515 2.9A6 6 0 0 0 13.26 24a6.06 6.06 0 0 0 5.772-4.206 6 6 0 0 0 3.997-2.9 6.06 6.06 0 0 0-.747-7.073M13.26 22.43a4.48 4.48 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.8.8 0 0 0 .392-.681v-6.737l2.02 1.168a.07.07 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494M3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.77.77 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646"/>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M22.282 9.821a6 6 0 0 0-.516-4.91 6.05 6.05 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a6 6 0 0 0-3.998 2.9 6.05 6.05 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.05 6.05 0 0 0 6.515 2.9A6 6 0 0 0 13.26 24a6.06 6.06 0 0 0 5.772-4.206 6 6 0 0 0 3.997-2.9 6.06 6.06 0 0 0-.747-7.073M13.26 22.43a4.48 4.48 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.8.8 0 0 0 .392-.681v-6.737l2.02 1.168a.07.07 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494M3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.77.77 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646" />
               </svg>
               OpenAI Compatible
             </button>
             <button
               :class="['api-type-btn', { active: form.apiType === 'anthropic' }]"
-              @click="form.apiType = 'anthropic'"
               type="button"
+              @click="form.apiType = 'anthropic'"
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="m3.127 10.604 3.135-1.76.053-.153-.053-.085H6.11l-.525-.032-1.791-.048-1.554-.065-1.505-.08-.38-.081L0 7.832l.036-.234.32-.214.455.04 1.009.069 1.513.105 1.097.064 1.626.17h.259l.036-.105-.089-.065"/>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+              >
+                <path d="m3.127 10.604 3.135-1.76.053-.153-.053-.085H6.11l-.525-.032-1.791-.048-1.554-.065-1.505-.08-.38-.081L0 7.832l.036-.234.32-.214.455.04 1.009.069 1.513.105 1.097.064 1.626.17h.259l.036-.105-.089-.065" />
               </svg>
               Anthropic Compatible
             </button>
           </div>
-          <p class="form-hint">Most local AI servers (Ollama, LM Studio, etc.) use OpenAI-compatible API</p>
+          <p class="form-hint">
+            Most local AI servers (Ollama, LM Studio, etc.) use OpenAI-compatible API
+          </p>
         </div>
 
         <div class="form-group">
@@ -64,8 +91,10 @@
             type="text"
             class="form-input"
             placeholder="e.g., http://localhost:11434/v1"
-          />
-          <p class="form-hint">The API endpoint URL (without /chat/completions)</p>
+          >
+          <p class="form-hint">
+            The API endpoint URL (without /chat/completions)
+          </p>
         </div>
 
         <div class="form-group">
@@ -75,8 +104,10 @@
             type="password"
             class="form-input"
             placeholder="Leave empty if not required..."
-          />
-          <p class="form-hint">Some local servers don't require an API key</p>
+          >
+          <p class="form-hint">
+            Some local servers don't require an API key
+          </p>
         </div>
 
         <div class="form-group">
@@ -86,10 +117,13 @@
             type="text"
             class="form-input"
             placeholder="e.g., llama3, mistral..."
-          />
+          >
         </div>
 
-        <div v-if="error" class="error-message">
+        <div
+          v-if="error"
+          class="error-message"
+        >
           {{ error }}
         </div>
       </div>
@@ -98,14 +132,24 @@
         <button
           v-if="isEditing"
           class="btn danger"
-          @click="$emit('delete')"
           type="button"
+          @click="$emit('delete')"
         >
           Delete
         </button>
         <div class="dialog-actions-right">
-          <button class="btn secondary" @click="$emit('close')" type="button">Cancel</button>
-          <button class="btn primary" @click="handleSave" type="button">
+          <button
+            class="btn secondary"
+            type="button"
+            @click="$emit('close')"
+          >
+            Cancel
+          </button>
+          <button
+            class="btn primary"
+            type="button"
+            @click="handleSave"
+          >
             {{ isEditing ? 'Save Changes' : 'Add Provider' }}
           </button>
         </div>

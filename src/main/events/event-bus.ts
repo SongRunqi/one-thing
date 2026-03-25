@@ -66,7 +66,7 @@ export class EventBus {
   private readonly bufferCapacity: number
 
   /** Handler → label mapping for logging */
-  private handlerLabels = new WeakMap<Function, string>()
+  private handlerLabels = new WeakMap<(...args: any[]) => any, string>()
 
   /** High-frequency event types — skip detailed fan-out logging */
   private static HIGH_FREQ_TYPES = new Set([

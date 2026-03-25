@@ -2,11 +2,13 @@
   <section class="detail-section">
     <!-- Section header (outside group) -->
     <div class="section-header">
-      <h3 class="section-label">Models <span class="count-badge">{{ selectedCount }} selected</span></h3>
+      <h3 class="section-label">
+        Models <span class="count-badge">{{ selectedCount }} selected</span>
+      </h3>
       <button
         class="refresh-btn"
-        @click="$emit('refresh')"
         :disabled="isLoading"
+        @click="$emit('refresh')"
       >
         <svg
           :class="{ spinning: isLoading }"
@@ -17,22 +19,42 @@
           stroke="currentColor"
           stroke-width="2"
         >
-          <path d="M23 4v6h-6M1 20v-6h6"/>
-          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+          <path d="M23 4v6h-6M1 20v-6h6" />
+          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
         </svg>
         {{ isLoading ? 'Loading...' : models.length === 0 ? 'Fetch Models' : 'Refresh' }}
       </button>
     </div>
 
-    <div v-if="error" class="error-message">{{ error }}</div>
+    <div
+      v-if="error"
+      class="error-message"
+    >
+      {{ error }}
+    </div>
 
     <!-- Models group container -->
     <div class="settings-group">
       <!-- Search row -->
-      <div v-if="models.length > 0" class="search-row">
-        <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"/>
-          <path d="M21 21l-4.35-4.35"/>
+      <div
+        v-if="models.length > 0"
+        class="search-row"
+      >
+        <svg
+          class="search-icon"
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <circle
+            cx="11"
+            cy="11"
+            r="8"
+          />
+          <path d="M21 21l-4.35-4.35" />
         </svg>
         <input
           :value="searchQuery"
@@ -40,28 +62,45 @@
           class="search-input"
           placeholder="Search models..."
           @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
-        />
+        >
         <button
           v-if="searchQuery"
           class="search-clear"
           @click="$emit('update:searchQuery', '')"
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 6L6 18M6 6l12 12"/>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
           </svg>
         </button>
       </div>
 
       <!-- Selected models (always shown) -->
-      <div v-if="selectedModelsList.length > 0 && models.length === 0" class="model-list-static">
+      <div
+        v-if="selectedModelsList.length > 0 && models.length === 0"
+        class="model-list-static"
+      >
         <label
           v-for="modelId in selectedModelsList"
           :key="modelId"
           class="model-row selected"
         >
           <span class="model-check checked">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-              <path d="M20 6L9 17l-5-5"/>
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3"
+            >
+              <path d="M20 6L9 17l-5-5" />
             </svg>
           </span>
           <span class="model-name">{{ modelId }}</span>
@@ -70,7 +109,12 @@
 
       <!-- Model rows (virtual scroll, shown after fetch) -->
       <template v-if="models.length > 0">
-        <div v-if="filteredModels.length > 0" class="model-list" @scroll="onScroll" ref="listRef">
+        <div
+          v-if="filteredModels.length > 0"
+          ref="listRef"
+          class="model-list"
+          @scroll="onScroll"
+        >
           <div :style="{ paddingTop: topPad + 'px', paddingBottom: bottomPad + 'px' }">
             <label
               v-for="model in visibleModels"
@@ -79,16 +123,36 @@
               @click="$emit('toggle', model.id)"
             >
               <span :class="['model-check', { checked: isModelSelected(model.id) }]">
-                <svg v-if="isModelSelected(model.id)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                  <path d="M20 6L9 17l-5-5"/>
+                <svg
+                  v-if="isModelSelected(model.id)"
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="3"
+                >
+                  <path d="M20 6L9 17l-5-5" />
                 </svg>
               </span>
               <span class="model-name">{{ model.name || model.id }}</span>
               <span class="model-caps">
-                <Eye v-if="hasVision(model)" :size="11" />
-                <Image v-if="hasImageGeneration(model)" :size="11" />
-                <Wrench v-if="hasTools(model)" :size="11" />
-                <Brain v-if="hasReasoning(model)" :size="11" />
+                <Eye
+                  v-if="hasVision(model)"
+                  :size="11"
+                />
+                <Image
+                  v-if="hasImageGeneration(model)"
+                  :size="11"
+                />
+                <Wrench
+                  v-if="hasTools(model)"
+                  :size="11"
+                />
+                <Brain
+                  v-if="hasReasoning(model)"
+                  :size="11"
+                />
               </span>
               <span class="model-ctx">{{ formatContextLength(model.context_length) }}</span>
             </label>
@@ -96,7 +160,10 @@
         </div>
 
         <!-- No results -->
-        <div v-else-if="searchQuery" class="empty-row">
+        <div
+          v-else-if="searchQuery"
+          class="empty-row"
+        >
           No models match "{{ searchQuery }}"
         </div>
       </template>
@@ -110,8 +177,12 @@
           placeholder="Enter model ID (e.g., gpt-4o)"
           @input="$emit('update:newModelInput', ($event.target as HTMLInputElement).value)"
           @keydown.enter="$emit('add-custom')"
-        />
-        <button class="add-model-btn" @click="$emit('add-custom')" :disabled="!newModelInput.trim()">
+        >
+        <button
+          class="add-model-btn"
+          :disabled="!newModelInput.trim()"
+          @click="$emit('add-custom')"
+        >
           Add
         </button>
       </div>

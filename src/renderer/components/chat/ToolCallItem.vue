@@ -1,16 +1,46 @@
 <template>
   <div :class="['tool-inline', statusClass, { expanded: isExpanded, 'needs-confirm': toolCall.requiresConfirmation }]">
     <!-- Main Row: always single-line, fixed height -->
-    <div class="tool-row" @click="toggleExpand">
+    <div
+      class="tool-row"
+      @click="toggleExpand"
+    >
       <!-- Status indicator (in-place "page flip" transition) -->
       <span class="status-indicator">
-        <Transition name="status-swap" mode="out-in">
-          <span v-if="toolCall.status === 'input-streaming'" key="streaming" class="status-streaming flowing-text">⟳</span>
-          <span v-else-if="toolCall.status === 'executing'" key="executing" class="status-exec flowing-text">⏳</span>
-          <span v-else-if="toolCall.status === 'completed'" key="completed" class="status-done">✓</span>
-          <span v-else-if="toolCall.status === 'failed'" key="failed" class="status-error">✗</span>
-          <span v-else-if="toolCall.requiresConfirmation" key="confirm" class="status-confirm flowing-text">⏳</span>
-          <span v-else key="pending" class="status-pending">○</span>
+        <Transition
+          name="status-swap"
+          mode="out-in"
+        >
+          <span
+            v-if="toolCall.status === 'input-streaming'"
+            key="streaming"
+            class="status-streaming flowing-text"
+          >⟳</span>
+          <span
+            v-else-if="toolCall.status === 'executing'"
+            key="executing"
+            class="status-exec flowing-text"
+          >⏳</span>
+          <span
+            v-else-if="toolCall.status === 'completed'"
+            key="completed"
+            class="status-done"
+          >✓</span>
+          <span
+            v-else-if="toolCall.status === 'failed'"
+            key="failed"
+            class="status-error"
+          >✗</span>
+          <span
+            v-else-if="toolCall.requiresConfirmation"
+            key="confirm"
+            class="status-confirm flowing-text"
+          >⏳</span>
+          <span
+            v-else
+            key="pending"
+            class="status-pending"
+          >○</span>
         </Transition>
       </span>
 
@@ -21,43 +51,81 @@
       <span class="tool-preview">{{ previewText }}</span>
 
       <!-- Spacer -->
-      <div class="spacer"></div>
+      <div class="spacer" />
 
       <!-- Confirmation buttons -->
-      <div v-if="toolCall.requiresConfirmation" class="confirm-buttons" @click.stop>
+      <div
+        v-if="toolCall.requiresConfirmation"
+        class="confirm-buttons"
+        @click.stop
+      >
         <AllowSplitButton @confirm="(response) => $emit('confirm', toolCall, response)" />
-        <button class="btn-inline btn-reject" @click="$emit('reject', toolCall)" title="Reject (D/Esc)">
+        <button
+          class="btn-inline btn-reject"
+          title="Reject (D/Esc)"
+          @click="$emit('reject', toolCall)"
+        >
           Reject <kbd>D</kbd>
         </button>
       </div>
 
       <!-- Execution time -->
-      <span v-if="executionTime" class="exec-time">{{ executionTime }}</span>
+      <span
+        v-if="executionTime"
+        class="exec-time"
+      >{{ executionTime }}</span>
 
       <!-- Expand indicator -->
-      <svg v-if="hasExpandableContent" :class="['expand-icon', { rotated: isExpanded }]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="6 9 12 15 18 9"/>
+      <svg
+        v-if="hasExpandableContent"
+        :class="['expand-icon', { rotated: isExpanded }]"
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <polyline points="6 9 12 15 18 9" />
       </svg>
     </div>
 
     <!-- Expanded details (user-initiated only, never auto-collapse) -->
     <Transition name="slide">
-      <div v-if="isExpanded && hasExpandableContent" class="tool-details">
+      <div
+        v-if="isExpanded && hasExpandableContent"
+        class="tool-details"
+      >
         <!-- Arguments -->
-        <div v-if="hasNonCommandArgs" class="detail-section">
-          <div class="detail-label">Arguments</div>
+        <div
+          v-if="hasNonCommandArgs"
+          class="detail-section"
+        >
+          <div class="detail-label">
+            Arguments
+          </div>
           <pre>{{ formatNonCommandArgs() }}</pre>
         </div>
 
         <!-- Result -->
-        <div v-if="toolCall.result && toolCall.status !== 'executing'" class="detail-section">
-          <div class="detail-label">Result</div>
+        <div
+          v-if="toolCall.result && toolCall.status !== 'executing'"
+          class="detail-section"
+        >
+          <div class="detail-label">
+            Result
+          </div>
           <pre>{{ formatResult(toolCall.result) }}</pre>
         </div>
 
         <!-- Error -->
-        <div v-if="toolCall.error" class="detail-section error">
-          <div class="detail-label">Error</div>
+        <div
+          v-if="toolCall.error"
+          class="detail-section error"
+        >
+          <div class="detail-label">
+            Error
+          </div>
           <pre class="error-text">{{ toolCall.error }}</pre>
         </div>
       </div>

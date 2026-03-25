@@ -1,6 +1,8 @@
 <template>
   <section class="settings-section">
-    <h3 class="section-title">Bash Tool Settings</h3>
+    <h3 class="section-title">
+      Bash Tool Settings
+    </h3>
 
     <!-- Enable Sandbox -->
     <div class="form-group">
@@ -11,59 +13,121 @@
             type="checkbox"
             :checked="bashSettings.enableSandbox"
             @change="updateSetting('enableSandbox', ($event.target as HTMLInputElement).checked)"
-          />
-          <span class="toggle-slider"></span>
+          >
+          <span class="toggle-slider" />
         </label>
       </div>
-      <p class="form-hint">Restrict command execution to allowed directories only</p>
+      <p class="form-hint">
+        Restrict command execution to allowed directories only
+      </p>
     </div>
 
     <!-- Default Working Directory -->
-    <div class="form-group" v-if="bashSettings.enableSandbox">
+    <div
+      v-if="bashSettings.enableSandbox"
+      class="form-group"
+    >
       <label class="form-label">Default Working Directory</label>
       <div class="input-with-button">
         <input
           type="text"
           class="text-input"
           :value="bashSettings.defaultWorkingDirectory"
-          @input="updateSetting('defaultWorkingDirectory', ($event.target as HTMLInputElement).value)"
           placeholder="Leave empty to use current project directory"
-        />
-        <button class="browse-btn" @click="browseDirectory('default')">
+          @input="updateSetting('defaultWorkingDirectory', ($event.target as HTMLInputElement).value)"
+        >
+        <button
+          class="browse-btn"
+          @click="browseDirectory('default')"
+        >
           Browse
         </button>
       </div>
-      <p class="form-hint">Commands will execute in this directory by default</p>
+      <p class="form-hint">
+        Commands will execute in this directory by default
+      </p>
     </div>
 
     <!-- Allowed Directories -->
-    <div class="form-group" v-if="bashSettings.enableSandbox">
+    <div
+      v-if="bashSettings.enableSandbox"
+      class="form-group"
+    >
       <label class="form-label">Allowed Directories</label>
-      <p class="form-hint">Commands can only access paths within these directories. Leave empty to use defaults.</p>
+      <p class="form-hint">
+        Commands can only access paths within these directories. Leave empty to use defaults.
+      </p>
 
-      <div class="directory-list" v-if="bashSettings.allowedDirectories.length > 0">
+      <div
+        v-if="bashSettings.allowedDirectories.length > 0"
+        class="directory-list"
+      >
         <div
           v-for="(dir, index) in bashSettings.allowedDirectories"
           :key="index"
           class="directory-item"
         >
           <span class="directory-path">{{ dir }}</span>
-          <button class="remove-btn" @click="removeDirectory(index)" title="Remove">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
+          <button
+            class="remove-btn"
+            title="Remove"
+            @click="removeDirectory(index)"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <line
+                x1="18"
+                y1="6"
+                x2="6"
+                y2="18"
+              />
+              <line
+                x1="6"
+                y1="6"
+                x2="18"
+                y2="18"
+              />
             </svg>
           </button>
         </div>
       </div>
-      <div v-else class="empty-hint">
+      <div
+        v-else
+        class="empty-hint"
+      >
         Using default directories: project folder, ~/.claude, /tmp, ~/Downloads
       </div>
 
-      <button class="add-btn" @click="browseDirectory('add')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <line x1="5" y1="12" x2="19" y2="12"/>
+      <button
+        class="add-btn"
+        @click="browseDirectory('add')"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <line
+            x1="12"
+            y1="5"
+            x2="12"
+            y2="19"
+          />
+          <line
+            x1="5"
+            y1="12"
+            x2="19"
+            y2="12"
+          />
         </svg>
         Add Directory
       </button>
@@ -78,24 +142,31 @@
             type="checkbox"
             :checked="bashSettings.confirmDangerousCommands"
             @change="updateSetting('confirmDangerousCommands', ($event.target as HTMLInputElement).checked)"
-          />
-          <span class="toggle-slider"></span>
+          >
+          <span class="toggle-slider" />
         </label>
       </div>
-      <p class="form-hint">Require confirmation before executing rm, mv, git push, etc.</p>
+      <p class="form-hint">
+        Require confirmation before executing rm, mv, git push, etc.
+      </p>
     </div>
 
     <!-- Dangerous Command Whitelist -->
-    <div class="form-group" v-if="bashSettings.confirmDangerousCommands">
+    <div
+      v-if="bashSettings.confirmDangerousCommands"
+      class="form-group"
+    >
       <label class="form-label">Command Whitelist</label>
       <input
         type="text"
         class="text-input"
         :value="bashSettings.dangerousCommandWhitelist.join(', ')"
-        @input="updateWhitelist(($event.target as HTMLInputElement).value)"
         placeholder="npm install, git push (comma separated)"
-      />
-      <p class="form-hint">Commands starting with these prefixes will skip confirmation</p>
+        @input="updateWhitelist(($event.target as HTMLInputElement).value)"
+      >
+      <p class="form-hint">
+        Commands starting with these prefixes will skip confirmation
+      </p>
     </div>
   </section>
 </template>

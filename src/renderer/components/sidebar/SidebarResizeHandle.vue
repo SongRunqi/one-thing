@@ -2,7 +2,7 @@
   <div
     class="resize-handle"
     @mousedown="startResize"
-  ></div>
+  />
 </template>
 
 <script setup lang="ts">

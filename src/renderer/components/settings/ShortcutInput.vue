@@ -2,24 +2,47 @@
   <div
     class="shortcut-input"
     :class="{ recording: isRecording, empty: !hasShortcut }"
-    @click="startRecording"
     tabindex="0"
+    @click="startRecording"
     @keydown="handleKeyDown"
     @blur="stopRecording"
   >
-    <span v-if="!isRecording" class="shortcut-display">
+    <span
+      v-if="!isRecording"
+      class="shortcut-display"
+    >
       {{ displayText }}
     </span>
-    <span v-else class="recording-hint">Press keys...</span>
+    <span
+      v-else
+      class="recording-hint"
+    >Press keys...</span>
     <button
       v-if="hasShortcut && !isRecording"
       class="clear-btn"
-      @click.stop="clearShortcut"
       title="Clear shortcut"
+      @click.stop="clearShortcut"
     >
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <line x1="18" y1="6" x2="6" y2="18"/>
-        <line x1="6" y1="6" x2="18" y2="18"/>
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <line
+          x1="18"
+          y1="6"
+          x2="6"
+          y2="18"
+        />
+        <line
+          x1="6"
+          y1="6"
+          x2="18"
+          y2="18"
+        />
       </svg>
     </button>
   </div>

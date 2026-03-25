@@ -1,5 +1,8 @@
 <template>
-  <component :is="themeComponent" @suggestion="$emit('suggestion', $event)" />
+  <component
+    :is="themeComponent"
+    @suggestion="$emit('suggestion', $event)"
+  />
 </template>
 
 <script setup lang="ts">

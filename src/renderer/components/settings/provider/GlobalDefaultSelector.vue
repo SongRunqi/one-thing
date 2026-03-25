@@ -1,6 +1,8 @@
 <template>
   <div class="default-model-section">
-    <h3 class="section-label">Default Model</h3>
+    <h3 class="section-label">
+      Default Model
+    </h3>
     <div class="settings-group">
       <div class="settings-row">
         <span class="row-label">Provider</span>

@@ -76,7 +76,7 @@ const FORBIDDEN_COMMANDS = new Set([
 
 // Dangerous patterns
 const DANGEROUS_PATTERNS = [
-  /\brm\s+-rf?\s+[\/~]/, // rm -rf / or ~
+  /\brm\s+-rf?\s+[/~]/, // rm -rf / or ~
   />\s*\/dev\/(?!null\b)/, // write to /dev (but allow /dev/null)
   /\|\s*sh\b/, // pipe to shell
   /\|\s*bash\b/,
@@ -263,7 +263,7 @@ The sandbox restricts file access to allowed directories only.`,
 
     // Determine working directory (default to sandbox boundary)
     // Also expand ~ in working_directory parameter from LLM
-    let workingDir = working_directory ? expandPath(working_directory) : sandboxBoundary
+    const workingDir = working_directory ? expandPath(working_directory) : sandboxBoundary
 
     // Classify the command
     const commandAction = classifyCommand(command)

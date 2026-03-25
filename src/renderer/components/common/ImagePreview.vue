@@ -1,53 +1,152 @@
 <template>
   <Teleport to="body">
     <Transition name="preview-fade">
-      <div v-if="visible" class="image-preview-overlay" @click="close">
-        <div class="preview-container" @click.stop>
+      <div
+        v-if="visible"
+        class="image-preview-overlay"
+        @click="close"
+      >
+        <div
+          class="preview-container"
+          @click.stop
+        >
           <img
             :src="src"
             :alt="alt"
             class="preview-image"
             :style="imageStyle"
             @wheel="handleWheel"
-          />
+          >
         </div>
 
         <!-- Controls -->
         <div class="preview-controls">
-          <button class="control-btn" @click.stop="zoomOut" title="Zoom out">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              <line x1="8" y1="11" x2="14" y2="11"/>
+          <button
+            class="control-btn"
+            title="Zoom out"
+            @click.stop="zoomOut"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle
+                cx="11"
+                cy="11"
+                r="8"
+              />
+              <line
+                x1="21"
+                y1="21"
+                x2="16.65"
+                y2="16.65"
+              />
+              <line
+                x1="8"
+                y1="11"
+                x2="14"
+                y2="11"
+              />
             </svg>
           </button>
           <span class="zoom-level">{{ Math.round(scale * 100) }}%</span>
-          <button class="control-btn" @click.stop="zoomIn" title="Zoom in">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              <line x1="11" y1="8" x2="11" y2="14"/>
-              <line x1="8" y1="11" x2="14" y2="11"/>
+          <button
+            class="control-btn"
+            title="Zoom in"
+            @click.stop="zoomIn"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle
+                cx="11"
+                cy="11"
+                r="8"
+              />
+              <line
+                x1="21"
+                y1="21"
+                x2="16.65"
+                y2="16.65"
+              />
+              <line
+                x1="11"
+                y1="8"
+                x2="11"
+                y2="14"
+              />
+              <line
+                x1="8"
+                y1="11"
+                x2="14"
+                y2="11"
+              />
             </svg>
           </button>
-          <button class="control-btn" @click.stop="resetZoom" title="Reset">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-              <path d="M3 3v5h5"/>
+          <button
+            class="control-btn"
+            title="Reset"
+            @click.stop="resetZoom"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
             </svg>
           </button>
         </div>
 
         <!-- Close button -->
-        <button class="close-btn" @click="close" title="Close (ESC)">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
+        <button
+          class="close-btn"
+          title="Close (ESC)"
+          @click="close"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line
+              x1="18"
+              y1="6"
+              x2="6"
+              y2="18"
+            />
+            <line
+              x1="6"
+              y1="6"
+              x2="18"
+              y2="18"
+            />
           </svg>
         </button>
 
         <!-- File name -->
-        <div v-if="alt" class="preview-filename">{{ alt }}</div>
+        <div
+          v-if="alt"
+          class="preview-filename"
+        >
+          {{ alt }}
+        </div>
       </div>
     </Transition>
   </Teleport>

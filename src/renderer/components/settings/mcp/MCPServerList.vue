@@ -1,36 +1,96 @@
 <template>
   <section class="settings-section">
     <div class="section-header">
-      <h3 class="section-title">MCP Servers</h3>
+      <h3 class="section-title">
+        MCP Servers
+      </h3>
       <div class="header-actions">
-        <button class="import-btn" @click="$emit('import')" title="Import servers">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
+        <button
+          class="import-btn"
+          title="Import servers"
+          @click="$emit('import')"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line
+              x1="12"
+              y1="3"
+              x2="12"
+              y2="15"
+            />
           </svg>
           Import
         </button>
-        <button class="add-server-btn" @click="$emit('add')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12h14"/>
+        <button
+          class="add-server-btn"
+          @click="$emit('add')"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 5v14M5 12h14" />
           </svg>
           Add Server
         </button>
       </div>
     </div>
 
-    <div v-if="servers.length === 0" class="empty-state">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-        <line x1="8" y1="21" x2="16" y2="21"/>
-        <line x1="12" y1="17" x2="12" y2="21"/>
+    <div
+      v-if="servers.length === 0"
+      class="empty-state"
+    >
+      <svg
+        width="48"
+        height="48"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      >
+        <rect
+          x="2"
+          y="3"
+          width="20"
+          height="14"
+          rx="2"
+          ry="2"
+        />
+        <line
+          x1="8"
+          y1="21"
+          x2="16"
+          y2="21"
+        />
+        <line
+          x1="12"
+          y1="17"
+          x2="12"
+          y2="21"
+        />
       </svg>
       <p>No MCP servers configured</p>
-      <p class="hint">Add a server to connect to external tools</p>
+      <p class="hint">
+        Add a server to connect to external tools
+      </p>
     </div>
 
-    <div v-else class="servers-list">
+    <div
+      v-else
+      class="servers-list"
+    >
       <MCPServerItem
         v-for="server in servers"
         :key="server.config.id"

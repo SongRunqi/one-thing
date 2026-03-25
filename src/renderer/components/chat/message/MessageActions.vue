@@ -2,51 +2,107 @@
   <div :class="['actions', role === 'user' ? 'user-actions' : '', { visible }]">
     <!-- Copy button -->
     <Tooltip :text="copied ? 'Copied!' : 'Copy'">
-      <button class="action-btn copy-btn" @click="handleCopy">
-        <Check v-if="copied" :size="15" :stroke-width="2" />
-        <Copy v-else :size="15" :stroke-width="1.5" />
+      <button
+        class="action-btn copy-btn"
+        @click="handleCopy"
+      >
+        <Check
+          v-if="copied"
+          :size="15"
+          :stroke-width="2"
+        />
+        <Copy
+          v-else
+          :size="15"
+          :stroke-width="1.5"
+        />
       </button>
     </Tooltip>
 
     <!-- Edit button for user messages -->
-    <Tooltip v-if="role === 'user'" text="Edit">
-      <button class="action-btn edit-btn" @click.stop="emit('edit')">
-        <Pencil :size="15" :stroke-width="1.5" />
+    <Tooltip
+      v-if="role === 'user'"
+      text="Edit"
+    >
+      <button
+        class="action-btn edit-btn"
+        @click.stop="emit('edit')"
+      >
+        <Pencil
+          :size="15"
+          :stroke-width="1.5"
+        />
       </button>
     </Tooltip>
 
     <!-- Regenerate button (for assistant messages) -->
-    <Tooltip v-if="role === 'assistant'" text="Regenerate">
-      <button class="action-btn regenerate-btn" @click="emit('regenerate')">
-        <RefreshCw :size="15" :stroke-width="2" />
+    <Tooltip
+      v-if="role === 'assistant'"
+      text="Regenerate"
+    >
+      <button
+        class="action-btn regenerate-btn"
+        @click="emit('regenerate')"
+      >
+        <RefreshCw
+          :size="15"
+          :stroke-width="2"
+        />
       </button>
     </Tooltip>
 
     <!-- Speak button (for assistant messages with TTS support) -->
-    <Tooltip v-if="role === 'assistant' && ttsSupported" :text="isCurrentlySpeaking ? 'Stop' : 'Speak'">
+    <Tooltip
+      v-if="role === 'assistant' && ttsSupported"
+      :text="isCurrentlySpeaking ? 'Stop' : 'Speak'"
+    >
       <button
         class="action-btn speak-btn"
         :class="{ speaking: isCurrentlySpeaking }"
         @click="handleSpeak"
       >
-        <Pause v-if="isCurrentlySpeaking" :size="15" :stroke-width="2" />
-        <Volume2 v-else :size="15" :stroke-width="2" />
+        <Pause
+          v-if="isCurrentlySpeaking"
+          :size="15"
+          :stroke-width="2"
+        />
+        <Volume2
+          v-else
+          :size="15"
+          :stroke-width="2"
+        />
       </button>
     </Tooltip>
 
     <!-- Branch button (for assistant messages) -->
-    <Tooltip v-if="role === 'assistant'" :text="hasBranches ? `${branchCount} branch${branchCount > 1 ? 'es' : ''}` : 'Branch'">
-      <div class="branch-btn-wrapper" ref="branchBtnRef">
+    <Tooltip
+      v-if="role === 'assistant'"
+      :text="hasBranches ? `${branchCount} branch${branchCount > 1 ? 'es' : ''}` : 'Branch'"
+    >
+      <div
+        ref="branchBtnRef"
+        class="branch-btn-wrapper"
+      >
         <button
           class="action-btn"
           :class="{ 'has-branches': hasBranches }"
           @click="hasBranches ? toggleBranchMenu() : emit('branch')"
         >
-          <GitBranch :size="15" :stroke-width="2" />
-          <span v-if="hasBranches" class="branch-count-badge">{{ branchCount }}</span>
+          <GitBranch
+            :size="15"
+            :stroke-width="2"
+          />
+          <span
+            v-if="hasBranches"
+            class="branch-count-badge"
+          >{{ branchCount }}</span>
         </button>
         <!-- Branch dropdown menu -->
-        <div v-if="showBranchMenu && hasBranches" class="branch-menu" :style="branchMenuStyle">
+        <div
+          v-if="showBranchMenu && hasBranches"
+          class="branch-menu"
+          :style="branchMenuStyle"
+        >
           <div class="branch-menu-list">
             <button
               v-for="branch in branches"
@@ -55,12 +111,21 @@
               @click="handleGoToBranch(branch.id)"
             >
               <span class="branch-name">{{ branch.name || 'Untitled branch' }}</span>
-              <ChevronRight :size="12" :stroke-width="2" />
+              <ChevronRight
+                :size="12"
+                :stroke-width="2"
+              />
             </button>
           </div>
           <div class="branch-menu-footer">
-            <button class="branch-menu-new" @click="handleNewBranch">
-              <Plus :size="12" :stroke-width="2" />
+            <button
+              class="branch-menu-new"
+              @click="handleNewBranch"
+            >
+              <Plus
+                :size="12"
+                :stroke-width="2"
+              />
               <span>New branch</span>
             </button>
           </div>
@@ -69,34 +134,70 @@
     </Tooltip>
 
     <!-- Regenerate button for user messages -->
-    <Tooltip v-if="role === 'user'" text="Regenerate response">
-      <button class="action-btn regenerate-btn" @click="emit('regenerate')">
-        <RefreshCw :size="15" :stroke-width="2" />
+    <Tooltip
+      v-if="role === 'user'"
+      text="Regenerate response"
+    >
+      <button
+        class="action-btn regenerate-btn"
+        @click="emit('regenerate')"
+      >
+        <RefreshCw
+          :size="15"
+          :stroke-width="2"
+        />
       </button>
     </Tooltip>
 
     <!-- More menu button (for assistant messages) -->
-    <div v-if="role === 'assistant'" class="more-btn-wrapper" ref="moreBtnRef">
+    <div
+      v-if="role === 'assistant'"
+      ref="moreBtnRef"
+      class="more-btn-wrapper"
+    >
       <Tooltip text="More">
-        <button class="action-btn more-btn" @click.stop="toggleMoreMenu">
-          <MoreHorizontal :size="15" :stroke-width="2" />
+        <button
+          class="action-btn more-btn"
+          @click.stop="toggleMoreMenu"
+        >
+          <MoreHorizontal
+            :size="15"
+            :stroke-width="2"
+          />
         </button>
       </Tooltip>
       <!-- More menu dropdown -->
       <Teleport to="body">
-        <div v-if="showMoreMenu" class="more-menu" :style="moreMenuStyle" @click.stop>
+        <div
+          v-if="showMoreMenu"
+          class="more-menu"
+          :style="moreMenuStyle"
+          @click.stop
+        >
           <!-- Action items -->
           <div class="more-menu-actions">
-            <button class="more-menu-item" @click="handleViewTokenUsage">
-              <Hash :size="14" :stroke-width="2" />
+            <button
+              class="more-menu-item"
+              @click="handleViewTokenUsage"
+            >
+              <Hash
+                :size="14"
+                :stroke-width="2"
+              />
               <span>Token usage</span>
-              <span v-if="usage" class="more-menu-item-badge">{{ formatCompact(usage.totalTokens) }}</span>
+              <span
+                v-if="usage"
+                class="more-menu-item-badge"
+              >{{ formatCompact(usage.totalTokens) }}</span>
             </button>
             <!-- Add more action items here in the future -->
           </div>
 
           <!-- Info section (shown when expanded) -->
-          <div v-if="showTokenDetails && usage" class="more-menu-details">
+          <div
+            v-if="showTokenDetails && usage"
+            class="more-menu-details"
+          >
             <div class="token-detail-row">
               <span>Input</span>
               <span>{{ formatNumber(usage.inputTokens) }}</span>
@@ -105,11 +206,17 @@
               <span>Output</span>
               <span>{{ formatNumber(usage.outputTokens) }}</span>
             </div>
-            <div v-if="outputSpeed" class="token-detail-row speed">
+            <div
+              v-if="outputSpeed"
+              class="token-detail-row speed"
+            >
               <span>Speed</span>
               <span>{{ outputSpeed }} tok/s</span>
             </div>
-            <div v-if="model" class="token-detail-row model">
+            <div
+              v-if="model"
+              class="token-detail-row model"
+            >
               <span>Model</span>
               <span>{{ model }}</span>
             </div>

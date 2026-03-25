@@ -2,21 +2,25 @@
   <div class="mcp-settings">
     <!-- Global MCP Toggle -->
     <section class="settings-section">
-      <h3 class="section-title">MCP Settings</h3>
+      <h3 class="section-title">
+        MCP Settings
+      </h3>
 
       <div class="form-group">
         <div class="toggle-row">
           <label class="form-label">Enable MCP</label>
           <label class="toggle">
             <input
-              type="checkbox"
               v-model="localMCPEnabled"
+              type="checkbox"
               @change="handleEnableChange"
-            />
-            <span class="toggle-slider"></span>
+            >
+            <span class="toggle-slider" />
           </label>
         </div>
-        <p class="form-hint">Enable Model Context Protocol to connect to external tool servers</p>
+        <p class="form-hint">
+          Enable Model Context Protocol to connect to external tool servers
+        </p>
       </div>
     </section>
 
@@ -46,7 +50,11 @@
 
     <!-- Delete Confirmation Dialog -->
     <Teleport to="body">
-      <div v-if="showDeleteDialog" class="dialog-overlay" @click.self="showDeleteDialog = false">
+      <div
+        v-if="showDeleteDialog"
+        class="dialog-overlay"
+        @click.self="showDeleteDialog = false"
+      >
         <div class="dialog small">
           <div class="dialog-header">
             <h3>Delete Server</h3>
@@ -55,8 +63,18 @@
             <p>Are you sure you want to delete this MCP server? This action cannot be undone.</p>
           </div>
           <div class="dialog-footer">
-            <button class="btn secondary" @click="showDeleteDialog = false">Cancel</button>
-            <button class="btn danger" @click="handleDeleteServer">Delete</button>
+            <button
+              class="btn secondary"
+              @click="showDeleteDialog = false"
+            >
+              Cancel
+            </button>
+            <button
+              class="btn danger"
+              @click="handleDeleteServer"
+            >
+              Delete
+            </button>
           </div>
         </div>
       </div>

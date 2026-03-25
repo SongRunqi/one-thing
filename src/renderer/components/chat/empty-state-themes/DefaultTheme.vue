@@ -1,5 +1,5 @@
 <template>
-  <div class="empty-state default-theme"></div>
+  <div class="empty-state default-theme" />
 </template>
 
 <script setup lang="ts">

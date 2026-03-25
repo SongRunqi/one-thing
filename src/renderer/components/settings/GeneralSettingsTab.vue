@@ -2,7 +2,9 @@
   <div class="tab-content">
     <!-- Mode (Light/Dark/System) -->
     <section class="settings-section">
-      <h3 class="section-title">Mode</h3>
+      <h3 class="section-title">
+        Mode
+      </h3>
 
       <div class="settings-card theme-cards">
         <div
@@ -11,15 +13,15 @@
         >
           <div class="theme-preview system">
             <div class="preview-half light">
-              <div class="preview-sidebar"></div>
+              <div class="preview-sidebar" />
               <div class="preview-content">
-                <div class="preview-line"></div>
+                <div class="preview-line" />
               </div>
             </div>
             <div class="preview-half dark">
-              <div class="preview-sidebar"></div>
+              <div class="preview-sidebar" />
               <div class="preview-content">
-                <div class="preview-line"></div>
+                <div class="preview-line" />
               </div>
             </div>
           </div>
@@ -30,10 +32,10 @@
           @click="updateTheme('light')"
         >
           <div class="theme-preview light">
-            <div class="preview-sidebar"></div>
+            <div class="preview-sidebar" />
             <div class="preview-content">
-              <div class="preview-line"></div>
-              <div class="preview-line short"></div>
+              <div class="preview-line" />
+              <div class="preview-line short" />
             </div>
           </div>
           <span>Light</span>
@@ -43,10 +45,10 @@
           @click="updateTheme('dark')"
         >
           <div class="theme-preview dark">
-            <div class="preview-sidebar"></div>
+            <div class="preview-sidebar" />
             <div class="preview-content">
-              <div class="preview-line"></div>
-              <div class="preview-line short"></div>
+              <div class="preview-line" />
+              <div class="preview-line short" />
             </div>
           </div>
           <span>Dark</span>
@@ -56,11 +58,11 @@
 
     <!-- Theme Selection -->
     <section class="settings-section">
-      <h3 class="section-title">Theme</h3>
-      <ThemeSelectorPanel @themeChange="handleThemeChange" />
+      <h3 class="section-title">
+        Theme
+      </h3>
+      <ThemeSelectorPanel @theme-change="handleThemeChange" />
     </section>
-
-
   </div>
 </template>
 

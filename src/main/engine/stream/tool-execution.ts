@@ -251,20 +251,11 @@ export async function executeToolAndUpdate(
   // Send executing status to frontend so UI shows "Calling..." with spinner
   emitter.sendToolCall(toolCall)
 
-  let result: {
-    success: boolean
-    data?: any
-    error?: string
-    requiresConfirmation?: boolean
-    commandType?: 'read-only' | 'dangerous' | 'forbidden'
-    aborted?: boolean
-  }
-
   // Get session's workingDirectory for sandbox boundary (reuse session from above)
   const workingDirectory = session?.workingDirectory
 
   // Execute tool directly (no LLM overhead)
-  result = await executeToolDirectly(
+  const result = await executeToolDirectly(
     toolCallData.toolName,
     { ...toolCallData.args },
     {

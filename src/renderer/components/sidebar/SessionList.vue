@@ -1,7 +1,7 @@
 <template>
   <div class="session-list-wrapper">
     <!-- Top scroll indicator line -->
-    <div :class="['scroll-indicator-top', { visible: isOverflowing }]"></div>
+    <div :class="['scroll-indicator-top', { visible: isOverflowing }]" />
 
     <div
       ref="listRef"
@@ -29,7 +29,10 @@
         @delete="$emit('delete', session.id)"
       />
 
-      <div v-if="sessions.length === 0" class="empty-sessions">
+      <div
+        v-if="sessions.length === 0"
+        class="empty-sessions"
+      >
         <span>No chats yet</span>
       </div>
     </div>

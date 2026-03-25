@@ -19,7 +19,7 @@
         :key="'confetti-' + i"
         class="confetti-piece"
         :style="confettiStyle(i)"
-      ></span>
+      />
     </div>
 
     <!-- 主内容 -->

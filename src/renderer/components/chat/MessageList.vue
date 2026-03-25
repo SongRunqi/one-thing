@@ -1,72 +1,77 @@
 <template>
   <div class="message-list-wrapper">
     <div
+      ref="messageListRef"
       :class="['message-list', `density-${messageListDensity}`]"
       :style="messageListStyles"
-      ref="messageListRef"
     >
-    <EmptyState
-      v-if="messages.length === 0 && !isLoading"
-      @suggestion="handleSuggestion"
-    />
+      <EmptyState
+        v-if="messages.length === 0 && !isLoading"
+        @suggestion="handleSuggestion"
+      />
 
-    <!-- Virtual scroll container -->
-    <div
-      v-if="messages.length > 0"
-      ref="messageListContentRef"
-      :style="{ height: `${virtualizer.getTotalSize()}px`, position: 'relative', width: '100%' }"
-    >
+      <!-- Virtual scroll container -->
       <div
-        v-for="virtualItem in virtualizer.getVirtualItems()"
-        :key="messages[virtualItem.index]?.id || virtualItem.index"
-        :ref="(el) => { if (el) virtualizer.measureElement(el as Element) }"
-        :data-index="virtualItem.index"
-        :style="{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          transform: `translateY(${virtualItem.start}px)`,
-        }"
+        v-if="messages.length > 0"
+        ref="messageListContentRef"
+        :style="{ height: `${virtualizer.getTotalSize()}px`, position: 'relative', width: '100%' }"
       >
-        <MessageItem
-          :message="messages[virtualItem.index]"
-          :branches="getBranchesForMessage(messages[virtualItem.index]?.id)"
-          :can-branch="canCreateBranch"
-          :is-highlighted="messages[virtualItem.index]?.id === highlightedMessageId"
-          @edit="handleEdit"
-          @branch="handleBranch"
-          @go-to-branch="handleGoToBranch"
-          @quote="handleQuote"
-          @regenerate="handleRegenerate"
-          @execute-tool="handleExecuteTool"
-          @confirm-tool="handleConfirmTool"
-          @reject-tool="handleRejectTool"
-          @update-thinking-time="handleUpdateThinkingTime"
+        <div
+          v-for="virtualItem in virtualizer.getVirtualItems()"
+          :key="messages[virtualItem.index]?.id || virtualItem.index"
+          :ref="(el) => { if (el) virtualizer.measureElement(el as Element) }"
+          :data-index="virtualItem.index"
+          :style="{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            transform: `translateY(${virtualItem.start}px)`,
+          }"
+        >
+          <MessageItem
+            :message="messages[virtualItem.index]"
+            :branches="getBranchesForMessage(messages[virtualItem.index]?.id)"
+            :can-branch="canCreateBranch"
+            :is-highlighted="messages[virtualItem.index]?.id === highlightedMessageId"
+            @edit="handleEdit"
+            @branch="handleBranch"
+            @go-to-branch="handleGoToBranch"
+            @quote="handleQuote"
+            @regenerate="handleRegenerate"
+            @execute-tool="handleExecuteTool"
+            @confirm-tool="handleConfirmTool"
+            @reject-tool="handleRejectTool"
+            @update-thinking-time="handleUpdateThinkingTime"
+          />
+        </div>
+
+        <div
+          ref="bottomSentinelRef"
+          aria-hidden="true"
+          :style="{
+            position: 'absolute',
+            left: 0,
+            bottom: 0,
+            width: '100%',
+            height: '1px',
+            pointerEvents: 'none',
+          }"
         />
       </div>
-
-      <div
-        ref="bottomSentinelRef"
-        aria-hidden="true"
-        :style="{
-          position: 'absolute',
-          left: 0,
-          bottom: 0,
-          width: '100%',
-          height: '1px',
-          pointerEvents: 'none',
-        }"
-      />
-    </div>
-
-
     </div>
 
     <!-- User message navigation rail (timeline) -->
-    <div v-if="userMessageIndices.length > 1" class="nav-rail">
-      <div ref="navRailTrackRef" class="nav-rail-track" @click="handleRailClick">
-        <div class="nav-rail-line"></div>
+    <div
+      v-if="userMessageIndices.length > 1"
+      class="nav-rail"
+    >
+      <div
+        ref="navRailTrackRef"
+        class="nav-rail-track"
+        @click="handleRailClick"
+      >
+        <div class="nav-rail-line" />
         <button
           v-for="marker in displayNavMarkers"
           :key="marker.messageId"
@@ -75,7 +80,7 @@
           :style="{ top: `${marker.position * 100}%` }"
           :title="marker.label"
           @click.stop="handleMarkerClick(marker.navIndex)"
-        ></button>
+        />
       </div>
       <span class="nav-counter">{{ navCounter }}</span>
     </div>
@@ -83,13 +88,27 @@
     <!-- Reject Reason Dialog -->
     <Teleport to="body">
       <Transition name="modal-fade">
-        <div v-if="showRejectDialog" class="reject-dialog-overlay" @click.self="cancelReject">
+        <div
+          v-if="showRejectDialog"
+          class="reject-dialog-overlay"
+          @click.self="cancelReject"
+        >
           <div class="reject-dialog">
             <div class="reject-dialog-header">
               <span class="reject-dialog-title">拒绝原因</span>
-              <button class="reject-dialog-close" @click="cancelReject">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
+              <button
+                class="reject-dialog-close"
+                @click="cancelReject"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>
             </div>
@@ -103,14 +122,22 @@
                 @keydown.enter.ctrl="confirmReject"
                 @keydown.enter.meta="confirmReject"
                 @keydown.escape="cancelReject"
-              ></textarea>
-              <div class="reject-dialog-hint">按 Ctrl+Enter 确认，Esc 取消</div>
+              />
+              <div class="reject-dialog-hint">
+                按 Ctrl+Enter 确认，Esc 取消
+              </div>
             </div>
             <div class="reject-dialog-footer">
-              <button class="reject-dialog-btn reject-dialog-btn-cancel" @click="cancelReject">
+              <button
+                class="reject-dialog-btn reject-dialog-btn-cancel"
+                @click="cancelReject"
+              >
                 取消
               </button>
-              <button class="reject-dialog-btn reject-dialog-btn-confirm" @click="confirmReject">
+              <button
+                class="reject-dialog-btn reject-dialog-btn-confirm"
+                @click="confirmReject"
+              >
                 确认拒绝
               </button>
             </div>
@@ -236,10 +263,11 @@ let allowNextScroll = false  // one-shot bypass for scrollToFn
 // measureElement update, which drags the user back to bottom during streaming.
 const virtualizer = useVirtualizer(computed(() => ({
   count: props.messages.length,
-  getScrollElement: () => messageListRef.value,
+  getScrollElement: () => messageListRef.value as HTMLElement | null,
   estimateSize: () => 150,
   overscan: 5,
-  scrollToFn: (offset, options, instance) => {
+  // eslint-disable-next-line no-undef
+  scrollToFn: (offset: number, options: { behavior?: ScrollBehavior }, instance: any) => {
     if (allowNextScroll) {
       allowNextScroll = false
     } else if (!isFollowing.value && !suppressed) {
@@ -661,7 +689,7 @@ watch(
             title: info.title,
             pattern: info.pattern,
             metadata: info.metadata,
-            canRespond: (info.targetChannel || 'ipc') === 'ipc',
+            canRespond: ((info as any).targetChannel || 'ipc') === 'ipc',
           })
         }
       }

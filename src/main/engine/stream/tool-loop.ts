@@ -195,7 +195,7 @@ export async function runStream(
     // This prevents errors when switching between models with different output limits
     const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(ctx.providerConfig.model)
     const userMaxTokens = ctx.settings.chat?.maxTokens || 4096
-    let effectiveMaxTokens = Math.min(userMaxTokens, modelMaxOutputTokens)
+    const effectiveMaxTokens = Math.min(userMaxTokens, modelMaxOutputTokens)
 
     const temperature = ctx.settings.ai.temperature
     const model = ctx.providerConfig.model
@@ -219,9 +219,7 @@ export async function runStream(
 
     let turnUsage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined
 
-    // Wrap stream iteration in try-catch for error recovery
-    try {
-      for await (const chunk of stream) {
+    for await (const chunk of stream) {
         // Log raw stream chunks
         if (chunk.type === 'text') {
           console.log(`[Stream] text: "${chunk.text}"`)
@@ -314,10 +312,6 @@ export async function runStream(
           }
         }
       }
-    } catch (error) {
-      throw error
-    }
-
     // Update all steps in this turn with the turn's usage data
     if (turnUsage && turn.toolCalls.length > 0) {
       const updatedStepIds = store.updateStepsUsageByTurn(

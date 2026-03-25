@@ -2,7 +2,10 @@
   <header :class="['chat-header', { 'with-traffic-lights': showSidebarToggle }]">
     <div class="chat-header-left">
       <!-- Reserve space for traffic lights + floating action buttons when sidebar is hidden -->
-      <div v-if="showSidebarToggle" class="traffic-lights-reserved"></div>
+      <div
+        v-if="showSidebarToggle"
+        class="traffic-lights-reserved"
+      />
     </div>
 
     <!-- Session name (centered) -->
@@ -16,7 +19,10 @@
         title="Back to parent chat"
         @click="$emit('goToParent')"
       >
-        <ArrowLeft :size="14" :stroke-width="2" />
+        <ArrowLeft
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
 
       <!-- Split button -->
@@ -26,7 +32,10 @@
         title="Split view"
         @click="$emit('split')"
       >
-        <Columns2 :size="14" :stroke-width="2" />
+        <Columns2
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
 
       <!-- Equalize panels button -->
@@ -36,7 +45,10 @@
         title="Equalize panels"
         @click="$emit('equalize')"
       >
-        <Equal :size="14" :stroke-width="2" />
+        <Equal
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
 
       <!-- Close button (for multi-panel) -->
@@ -46,7 +58,10 @@
         title="Close panel"
         @click="$emit('close')"
       >
-        <X :size="14" :stroke-width="2" />
+        <X
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
     </div>
   </header>

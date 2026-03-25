@@ -3,7 +3,11 @@
     :class="['sidebar', { collapsed, floating, 'floating-closing': floatingClosing, resizing: isResizing }]"
     :style="sidebarStyle"
   >
-    <div v-show="showContent" class="sidebar-content" :class="{ 'content-hidden': collapsed && !floating }">
+    <div
+      v-show="showContent"
+      class="sidebar-content"
+      :class="{ 'content-hidden': collapsed && !floating }"
+    >
       <!-- Sidebar Header: Traffic lights space -->
       <SidebarHeader />
 
@@ -29,12 +33,26 @@
 
       <!-- Bottom bar -->
       <div class="sidebar-bottom">
-        <button class="sidebar-bottom-btn" title="Media" @click="$emit('toggle-media-panel')">
-          <Image :size="18" :stroke-width="1.5" />
+        <button
+          class="sidebar-bottom-btn"
+          title="Media"
+          @click="$emit('toggle-media-panel')"
+        >
+          <Image
+            :size="18"
+            :stroke-width="1.5"
+          />
         </button>
-        <div class="sidebar-bottom-spacer"></div>
-        <button class="sidebar-bottom-btn" title="Settings" @click="$emit('open-settings')">
-          <Settings :size="18" :stroke-width="1.5" />
+        <div class="sidebar-bottom-spacer" />
+        <button
+          class="sidebar-bottom-btn"
+          title="Settings"
+          @click="$emit('open-settings')"
+        >
+          <Settings
+            :size="18"
+            :stroke-width="1.5"
+          />
         </button>
       </div>
 
@@ -49,7 +67,6 @@
         @pin="handleContextPin"
         @delete="handleContextDelete"
       />
-
     </div>
 
     <!-- Resize Handle -->

@@ -1,36 +1,63 @@
 <template>
   <div :class="['skill-item', { expanded }]">
-    <div class="skill-header" @click="$emit('toggle-expand')">
+    <div
+      class="skill-header"
+      @click="$emit('toggle-expand')"
+    >
       <div class="skill-info">
-        <div class="skill-name">{{ skill.name }}</div>
-        <div class="skill-description">{{ skill.description }}</div>
+        <div class="skill-name">
+          {{ skill.name }}
+        </div>
+        <div class="skill-description">
+          {{ skill.description }}
+        </div>
       </div>
-      <div class="skill-actions" @click.stop>
-        <label class="toggle small" title="Enable/Disable">
+      <div
+        class="skill-actions"
+        @click.stop
+      >
+        <label
+          class="toggle small"
+          title="Enable/Disable"
+        >
           <input
             type="checkbox"
             :checked="skill.enabled"
             @change="$emit('toggle-enabled', skill.id, ($event.target as HTMLInputElement).checked)"
-          />
-          <span class="toggle-slider"></span>
+          >
+          <span class="toggle-slider" />
         </label>
         <button
           class="icon-btn small"
-          @click="$emit('open-directory', skill.id)"
           title="Open in file manager"
+          @click="$emit('open-directory', skill.id)"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
           </svg>
         </button>
         <button
           v-if="canDelete"
           class="icon-btn small danger"
-          @click="$emit('delete', skill)"
           title="Delete skill"
+          @click="$emit('delete', skill)"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
           </svg>
         </button>
         <svg
@@ -42,12 +69,15 @@
           stroke="currentColor"
           stroke-width="2"
         >
-          <polyline points="6 9 12 15 18 9"/>
+          <polyline points="6 9 12 15 18 9" />
         </svg>
       </div>
     </div>
 
-    <div v-if="expanded" class="skill-expanded">
+    <div
+      v-if="expanded"
+      class="skill-expanded"
+    >
       <div class="skill-meta">
         <span class="meta-label">Name:</span>
         <span class="meta-value">{{ skill.name }}</span>
@@ -56,15 +86,24 @@
         <span class="meta-label">Description:</span>
         <span class="meta-value description-full">{{ skill.description }}</span>
       </div>
-      <div v-if="skill.allowedTools?.length" class="skill-meta">
+      <div
+        v-if="skill.allowedTools?.length"
+        class="skill-meta"
+      >
         <span class="meta-label">Allowed Tools:</span>
         <span class="meta-value">{{ skill.allowedTools.join(', ') }}</span>
       </div>
-      <div v-if="skill.files?.length" class="skill-meta">
+      <div
+        v-if="skill.files?.length"
+        class="skill-meta"
+      >
         <span class="meta-label">Files:</span>
         <span class="meta-value">{{ skill.files.map((f: any) => f.name).join(', ') }}</span>
       </div>
-      <div v-if="skill.instructions" class="skill-instructions">
+      <div
+        v-if="skill.instructions"
+        class="skill-instructions"
+      >
         <span class="meta-label">Instructions:</span>
         <pre class="instructions-content">{{ skill.instructions }}</pre>
       </div>

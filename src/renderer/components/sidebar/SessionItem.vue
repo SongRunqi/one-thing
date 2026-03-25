@@ -16,16 +16,20 @@
     @contextmenu.prevent="$emit('context-menu', $event)"
   >
     <!-- 树线缩进区域：参与 flex 布局，宽度 = depth * 16px -->
-    <div v-if="session.depth > 0" class="tree-indent" :style="{ width: `${session.depth * 16}px` }">
+    <div
+      v-if="session.depth > 0"
+      class="tree-indent"
+      :style="{ width: `${session.depth * 16}px` }"
+    >
       <div class="tree-lines">
         <!-- 祖先层级的垂直线 -->
         <span
           v-for="(isAncestorLast, idx) in session.ancestorsLastChild"
           :key="idx"
           :class="['tree-line-segment', { continue: !isAncestorLast }]"
-        ></span>
+        />
         <!-- 当前节点的连接线 -->
-        <span :class="['tree-line-segment', 'connector', { 'last-child': session.isLastChild }]"></span>
+        <span :class="['tree-line-segment', 'connector', { 'last-child': session.isLastChild }]" />
       </div>
     </div>
 
@@ -40,9 +44,17 @@
       @keydown.enter="confirmRename"
       @keydown.esc="cancelRename"
       @blur="confirmRename"
-    />
-    <Tooltip v-else :text="session.name || 'New chat'" position="right" :delay="600">
-      <span class="session-name" @dblclick.stop="startRename">{{ session.name || 'New chat' }}</span>
+    >
+    <Tooltip
+      v-else
+      :text="session.name || 'New chat'"
+      position="right"
+      :delay="600"
+    >
+      <span
+        class="session-name"
+        @dblclick.stop="startRename"
+      >{{ session.name || 'New chat' }}</span>
     </Tooltip>
 
     <!-- Branch Badge：圆形数字，点击展开/收起 -->
@@ -58,7 +70,7 @@
     <!-- 右侧状态区域 (固定宽度，始终占位) -->
     <div class="status-area">
       <!-- Generating dot - 始终存在，用 class 控制显隐 -->
-      <div :class="['generating-dot', { active: isGenerating }]"></div>
+      <div :class="['generating-dot', { active: isGenerating }]" />
       <!-- Pin icon -->
       <svg
         v-if="session.isPinned && session.depth === 0"
@@ -69,12 +81,15 @@
         fill="currentColor"
         stroke="none"
       >
-        <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7"/>
+        <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7" />
       </svg>
     </div>
 
     <!-- Session time (固定宽度，默认隐藏) -->
-    <span v-if="!isEditing" class="session-time">{{ formattedTime }}</span>
+    <span
+      v-if="!isEditing"
+      class="session-time"
+    >{{ formattedTime }}</span>
 
     <!-- Hover actions -->
     <div class="session-actions">
@@ -83,13 +98,32 @@
         :title="deleteTitle"
         @click.stop="$emit('delete')"
       >
-        <svg v-if="!isPendingDelete" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M18 6L6 18M6 6l12 12"/>
+        <svg
+          v-if="!isPendingDelete"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M18 6L6 18M6 6l12 12" />
         </svg>
         <template v-else>
-          <span v-if="session.hasBranches" class="delete-count">{{ session.branchCount + 1 }}</span>
-          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 13l4 4L19 7"/>
+          <span
+            v-if="session.hasBranches"
+            class="delete-count"
+          >{{ session.branchCount + 1 }}</span>
+          <svg
+            v-else
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M5 13l4 4L19 7" />
           </svg>
         </template>
       </button>

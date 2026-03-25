@@ -3,7 +3,12 @@
     <div class="settings-modal">
       <div class="settings-header">
         <h3>Settings</h3>
-        <button class="close-button" @click="$emit('close')">✕</button>
+        <button
+          class="close-button"
+          @click="$emit('close')"
+        >
+          ✕
+        </button>
       </div>
 
       <div class="settings-content">
@@ -13,9 +18,15 @@
             v-model="localSettings.ai.provider"
             class="input-field"
           >
-            <option value="openai">OpenAI (GPT)</option>
-            <option value="claude">Claude (Anthropic)</option>
-            <option value="custom">Custom API</option>
+            <option value="openai">
+              OpenAI (GPT)
+            </option>
+            <option value="claude">
+              Claude (Anthropic)
+            </option>
+            <option value="custom">
+              Custom API
+            </option>
           </select>
         </div>
 
@@ -26,7 +37,7 @@
             type="password"
             class="input-field"
             placeholder="Enter your API key"
-          />
+          >
         </div>
 
         <div class="setting-group">
@@ -36,17 +47,20 @@
             type="text"
             class="input-field"
             placeholder="e.g., gpt-3.5-turbo"
-          />
+          >
         </div>
 
-        <div v-if="localSettings.ai.provider === 'custom'" class="setting-group">
+        <div
+          v-if="localSettings.ai.provider === 'custom'"
+          class="setting-group"
+        >
           <label>Custom API URL</label>
           <input
             v-model="localSettings.ai.providers[localSettings.ai.provider].baseUrl"
             type="text"
             class="input-field"
             placeholder="https://api.example.com/chat"
-          />
+          >
         </div>
 
         <div class="setting-group">
@@ -58,8 +72,10 @@
             max="2"
             step="0.1"
             class="slider"
-          />
-          <p class="help-text">Controls randomness (0=deterministic, 2=very random)</p>
+          >
+          <p class="help-text">
+            Controls randomness (0=deterministic, 2=very random)
+          </p>
         </div>
 
         <div class="setting-group">
@@ -68,15 +84,29 @@
             v-model="localSettings.theme"
             class="input-field"
           >
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
+            <option value="light">
+              Light
+            </option>
+            <option value="dark">
+              Dark
+            </option>
           </select>
         </div>
       </div>
 
       <div class="settings-footer">
-        <button class="cancel-button" @click="$emit('close')">Cancel</button>
-        <button class="save-button" @click="saveSettings">Save Settings</button>
+        <button
+          class="cancel-button"
+          @click="$emit('close')"
+        >
+          Cancel
+        </button>
+        <button
+          class="save-button"
+          @click="saveSettings"
+        >
+          Save Settings
+        </button>
       </div>
     </div>
   </div>

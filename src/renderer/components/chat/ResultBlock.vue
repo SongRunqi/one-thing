@@ -2,18 +2,52 @@
   <div class="result-block">
     <div class="result-header">
       <span class="result-label">{{ label }}</span>
-      <button class="copy-btn" @click="copyContent" :title="copied ? 'Copied' : 'Copy'">
-        <svg v-if="!copied" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+      <button
+        class="copy-btn"
+        :title="copied ? 'Copied' : 'Copy'"
+        @click="copyContent"
+      >
+        <svg
+          v-if="!copied"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <rect
+            x="9"
+            y="9"
+            width="13"
+            height="13"
+            rx="2"
+            ry="2"
+          />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         </svg>
-        <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg
+          v-else
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <polyline points="20 6 9 17 4 12" />
         </svg>
       </button>
     </div>
-    <div class="result-content" :class="{ 'is-expanded': isExpanded }">
-      <pre><code ref="codeEl" :class="highlightClass" v-html="highlightedContent"></code></pre>
+    <div
+      class="result-content"
+      :class="{ 'is-expanded': isExpanded }"
+    >
+      <pre><code
+ref="codeEl"
+                 :class="highlightClass"
+v-html="highlightedContent"
+      /></pre>
     </div>
     <button
       v-if="shouldShowExpandButton"

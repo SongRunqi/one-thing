@@ -1,40 +1,78 @@
 <template>
   <Transition name="picker-slide">
-  <div class="path-picker" v-if="visible && (dirs.length > 0 || isLoading)">
-    <div class="path-picker-header">
-      <span class="title">Directories</span>
-      <span class="count" v-if="!isLoading">{{ dirs.length }}</span>
-      <span class="loading-indicator" v-else>
-        <svg class="spinner" width="14" height="14" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="32" stroke-linecap="round" />
-        </svg>
-      </span>
-    </div>
-    <div class="path-list" v-if="dirs.length > 0">
-      <div
-        v-for="(dir, index) in dirs"
-        :key="dir"
-        :class="['path-item', { selected: index === selectedIndex }]"
-        @click="selectPath(dir)"
-        @mouseenter="selectedIndex = index"
-      >
-        <div class="path-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    <div
+      v-if="visible && (dirs.length > 0 || isLoading)"
+      class="path-picker"
+    >
+      <div class="path-picker-header">
+        <span class="title">Directories</span>
+        <span
+          v-if="!isLoading"
+          class="count"
+        >{{ dirs.length }}</span>
+        <span
+          v-else
+          class="loading-indicator"
+        >
+          <svg
+            class="spinner"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-dasharray="32"
+              stroke-linecap="round"
+            />
           </svg>
+        </span>
+      </div>
+      <div
+        v-if="dirs.length > 0"
+        class="path-list"
+      >
+        <div
+          v-for="(dir, index) in dirs"
+          :key="dir"
+          :class="['path-item', { selected: index === selectedIndex }]"
+          @click="selectPath(dir)"
+          @mouseenter="selectedIndex = index"
+        >
+          <div class="path-icon">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+          </div>
+          <div class="path-name">
+            {{ getDisplayName(dir) }}
+          </div>
         </div>
-        <div class="path-name">{{ getDisplayName(dir) }}</div>
+      </div>
+      <div
+        v-else-if="!isLoading && pathInput"
+        class="path-list-empty"
+      >
+        <span>No directories found</span>
+      </div>
+      <div class="path-picker-hint">
+        <span><kbd>Tab</kbd> complete</span>
+        <span><kbd>Enter</kbd> confirm</span>
+        <span><kbd>Esc</kbd> close</span>
       </div>
     </div>
-    <div class="path-list-empty" v-else-if="!isLoading && pathInput">
-      <span>No directories found</span>
-    </div>
-    <div class="path-picker-hint">
-      <span><kbd>Tab</kbd> complete</span>
-      <span><kbd>Enter</kbd> confirm</span>
-      <span><kbd>Esc</kbd> close</span>
-    </div>
-  </div>
   </Transition>
 </template>
 
