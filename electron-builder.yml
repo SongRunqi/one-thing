@@ -13,6 +13,10 @@ files:
   - "!**/.{eslint,prettier,github,vscode}*"
   # onnxruntime-web is not needed in Electron main process
   - "!node_modules/onnxruntime-web"
+  # Font packages are bundled by Vite into renderer, no need in asar
+  - "!node_modules/@fontsource-variable"
+  - "!node_modules/lxgw-wenkai-webfont"
+  - "!node_modules/lxgw-wenkai-screen-webfont"
 
 # Extra resources to include (copied to resources/ in the app bundle)
 extraResources:
