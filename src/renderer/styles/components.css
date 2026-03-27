@@ -19,8 +19,8 @@
   justify-content: center;
   gap: 8px;
   padding: 10px 18px;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-label-weight);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -135,9 +135,10 @@
 }
 
 .dialog-header h3 {
-  font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 600;
+  font-family: var(--type-headline-font);
+  font-size: var(--type-headline-size);
+  font-weight: var(--type-headline-weight);
+  line-height: var(--type-headline-line-height);
   margin: 0;
 }
 
@@ -149,10 +150,10 @@
 
 .dialog-message {
   padding: 20px 24px;
-  font-size: 14px;
+  font-size: var(--type-body-size);
   color: var(--muted);
   margin: 0;
-  line-height: 1.5;
+  line-height: var(--type-body-line-height);
 }
 
 .dialog-actions {
@@ -182,8 +183,8 @@
 
 .form-label {
   display: block;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
   color: var(--text);
   margin-bottom: 8px;
 }
@@ -205,7 +206,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--type-body-size);
   outline: none;
   transition: border-color 0.15s ease;
 }
@@ -224,7 +225,7 @@
 }
 
 .form-hint {
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   margin-top: 6px;
 }
@@ -259,7 +260,7 @@
 .slider-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   margin-top: 4px;
 }
@@ -274,7 +275,7 @@
   border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: var(--radius-sm);
   color: var(--danger);
-  font-size: 13px;
+  font-size: var(--type-label-size);
   animation: messageSlideIn var(--duration-normal, 0.2s) var(--ease-out, cubic-bezier(0, 0, 0.2, 1));
 }
 
@@ -284,7 +285,7 @@
   border: 1px solid rgba(59, 130, 246, 0.3);
   border-radius: var(--radius-sm);
   color: var(--accent);
-  font-size: 13px;
+  font-size: var(--type-label-size);
   animation: messageSlideIn var(--duration-normal, 0.2s) var(--ease-out, cubic-bezier(0, 0, 0.2, 1));
 }
 
@@ -382,7 +383,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow);
-  font-size: 14px;
+  font-size: var(--type-body-size);
   z-index: var(--z-toast);
 }
 

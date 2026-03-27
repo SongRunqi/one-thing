@@ -352,8 +352,8 @@ function cancelRename() {
   border-radius: 9px;
   background: rgba(var(--accent-rgb), 0.15);
   color: var(--accent);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--type-caption-size);
+  font-weight: var(--font-weight-semibold);
   border: none;
   cursor: pointer;
   flex-shrink: 0;
@@ -404,9 +404,8 @@ function cancelRename() {
 .session-name {
   flex: 1;
   min-width: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
-  font-size: 14px;
-  font-weight: 400;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-body-weight);
   letter-spacing: -0.01em;
   color: var(--text-sidebar-item);
   white-space: nowrap;
@@ -420,7 +419,7 @@ function cancelRename() {
 }
 
 .session-item.active .session-name {
-  font-weight: 500;
+  font-weight: var(--type-label-weight);
   color: var(--text-primary);
 }
 
@@ -431,8 +430,8 @@ function cancelRename() {
   margin: 0;
   border: none;
   background: transparent;
-  font-size: 14px;
-  font-weight: 400;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-body-weight);
   color: var(--text);
   outline: none;
 }
@@ -441,7 +440,7 @@ function cancelRename() {
 .session-time {
   flex-shrink: 0;
   min-width: 36px;
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   color: var(--muted);
   text-align: right;
   opacity: 0.5;
@@ -507,7 +506,7 @@ function cancelRename() {
 
 .delete-count {
   font-size: 10px;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
 }
 
 @keyframes shake {

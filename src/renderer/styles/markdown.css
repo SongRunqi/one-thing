@@ -31,8 +31,9 @@
 .content :deep(h3),
 .content :deep(h4) {
   margin: calc(var(--content-spacing, 0.75em) * 1.33) 0 calc(var(--content-spacing, 0.75em) * 0.67) 0;
-  font-family: var(--font-display);
-  font-weight: 600;
+  font-family: var(--type-headline-font);
+  font-weight: var(--type-headline-weight);
+  line-height: var(--type-headline-line-height);
 }
 
 .content :deep(h1) { font-size: 1.4em; }

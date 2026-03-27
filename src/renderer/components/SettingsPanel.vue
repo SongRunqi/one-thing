@@ -702,8 +702,9 @@ html[data-theme='light'] .settings-header {
 
 .header-title h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  font-family: var(--type-headline-font);
+  font-size: var(--type-headline-size);
+  font-weight: var(--type-headline-weight);
 }
 
 .close-btn {
@@ -746,8 +747,8 @@ html[data-theme='light'] .tabs-nav {
   border: none;
   background: transparent;
   border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;

@@ -245,8 +245,8 @@ function updateFontZh(fontId: string) {
 }
 
 .section-title {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--type-caption-size);
+  font-weight: var(--font-weight-bold);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -269,8 +269,8 @@ function updateFontZh(fontId: string) {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
   color: var(--text-primary);
   margin-bottom: 8px;
 }
@@ -278,7 +278,7 @@ function updateFontZh(fontId: string) {
 .label-value {
   margin-left: auto;
   color: var(--accent);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Theme Cards */
@@ -304,8 +304,8 @@ function updateFontZh(fontId: string) {
 }
 
 .theme-card span {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
 }
 
 .theme-preview {
@@ -446,8 +446,8 @@ function updateFontZh(fontId: string) {
 }
 
 .color-name {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--type-label-weight);
   color: var(--text-primary);
 }
 
@@ -475,7 +475,7 @@ function updateFontZh(fontId: string) {
   display: flex;
   justify-content: space-between;
   margin-top: 8px;
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   color: var(--text-muted);
 }
 
@@ -515,14 +515,14 @@ function updateFontZh(fontId: string) {
 }
 
 .radio-label {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--type-body-size);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   margin-bottom: 2px;
 }
 
 .radio-desc {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
 }
 
@@ -573,7 +573,7 @@ function updateFontZh(fontId: string) {
 }
 
 .font-preview {
-  font-size: 14px;
+  font-size: var(--type-body-size);
   color: var(--text-primary);
   flex: 1;
   white-space: nowrap;
@@ -582,14 +582,14 @@ function updateFontZh(fontId: string) {
 }
 
 .font-name {
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   color: var(--text-muted);
   white-space: nowrap;
 }
 
 .font-tag {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-faint);
   background: rgba(128, 128, 128, 0.1);
   padding: 2px 6px;

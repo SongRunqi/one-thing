@@ -136,7 +136,7 @@ html[data-theme='light'] .panel {
 
 .kbd-hint {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .icon-button:hover {
