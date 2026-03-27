@@ -6,7 +6,13 @@ directories:
 files:
   - out/**/*
   - package.json
-  - node_modules
+  # Exclude unnecessary files from node_modules
+  - "!**/{CHANGELOG.md,README.md,readme.md,LICENSE,license,License}"
+  - "!**/*.{d.ts,map,ts.map}"
+  - "!**/test{,s}/**"
+  - "!**/.{eslint,prettier,github,vscode}*"
+  # onnxruntime-web is not needed in Electron main process
+  - "!node_modules/onnxruntime-web"
 
 # Extra resources to include (copied to resources/ in the app bundle)
 extraResources:
