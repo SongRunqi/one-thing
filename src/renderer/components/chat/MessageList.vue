@@ -158,6 +158,7 @@ import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
+import { buildFontFamily } from '@shared/fonts'
 
 interface BranchInfo {
   id: string
@@ -227,6 +228,10 @@ const chatFontSize = computed(() => {
   return settingsStore.settings.chat?.chatFontSize
 })
 
+// Get chat font settings
+const chatFontEn = computed(() => settingsStore.settings.chat?.chatFontEn)
+const chatFontZh = computed(() => settingsStore.settings.chat?.chatFontZh)
+
 // Combined styles for message list
 const messageListStyles = computed(() => {
   const styles: Record<string, string> = {}
@@ -235,6 +240,9 @@ const messageListStyles = computed(() => {
   }
   if (chatFontSize.value) {
     styles['--message-font-size'] = `${chatFontSize.value}px`
+  }
+  if (chatFontEn.value || chatFontZh.value) {
+    styles['--font-body'] = buildFontFamily(chatFontEn.value, chatFontZh.value)
   }
   return Object.keys(styles).length > 0 ? styles : undefined
 })
@@ -281,7 +289,11 @@ const virtualizer = useVirtualizer(computed(() => ({
 const effectiveScrollVersion = computed(() => chatStore.getScrollVersion(effectiveSessionId.value))
 watch([effectiveScrollVersion, () => props.messages.length], () => {
   if (!isFollowing.value || suppressed || props.messages.length === 0) return
-  virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
+  // nextTick ensures new message DOM is rendered and measureElement has fired,
+  // so scrollToIndex uses actual measured size instead of estimateSize.
+  nextTick(() => {
+    virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
+  })
 })
 
 // Get indices of user messages

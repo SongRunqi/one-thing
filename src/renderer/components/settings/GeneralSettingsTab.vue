@@ -63,6 +63,78 @@
       </h3>
       <ThemeSelectorPanel @theme-change="handleThemeChange" />
     </section>
+
+    <!-- Typography -->
+    <section class="settings-section">
+      <h3 class="section-title">
+        Typography
+      </h3>
+      <div class="settings-card">
+        <!-- Font Size -->
+        <div class="card-row">
+          <div class="form-group">
+            <label class="form-label">
+              Font Size
+              <span class="label-value">{{ currentFontSize }}px</span>
+            </label>
+            <input
+              type="range"
+              class="form-slider"
+              :min="12"
+              :max="20"
+              :step="1"
+              :value="currentFontSize"
+              @input="updateFontSize(Number(($event.target as HTMLInputElement).value))"
+            >
+            <div class="slider-labels">
+              <span>12</span>
+              <span>16</span>
+              <span>20</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- English Font -->
+        <div class="card-row">
+          <div class="form-group">
+            <label class="form-label">English Font</label>
+            <div class="font-options">
+              <button
+                v-for="font in enFonts"
+                :key="font.id"
+                :class="['font-option', { active: currentFontEn === font.id }]"
+                @click="updateFontEn(font.id)"
+              >
+                <span class="font-preview" :style="{ fontFamily: font.family }">
+                  {{ font.preview || 'Aa' }}
+                </span>
+                <span class="font-name">{{ font.name }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chinese Font -->
+        <div class="card-row">
+          <div class="form-group">
+            <label class="form-label">中文字体</label>
+            <div class="font-options">
+              <button
+                v-for="font in zhFonts"
+                :key="font.id"
+                :class="['font-option', { active: currentFontZh === font.id }]"
+                @click="updateFontZh(font.id)"
+              >
+                <span class="font-preview" :style="{ fontFamily: font.family }">
+                  {{ font.preview || '你好' }}
+                </span>
+                <span class="font-name">{{ font.name }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -70,6 +142,7 @@
 import { computed } from 'vue'
 import type { AppSettings } from '@/types'
 import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
+import { getFontsByLang, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '@shared/fonts'
 
 const props = defineProps<{
   settings: AppSettings
@@ -79,6 +152,14 @@ const emit = defineEmits<{
   'update:settings': [settings: AppSettings]
 }>()
 
+
+// Available fonts by language
+const enFonts = getFontsByLang('en')
+const zhFonts = getFontsByLang('zh')
+
+const currentFontSize = computed(() => props.settings.chat?.chatFontSize ?? 14)
+const currentFontEn = computed(() => props.settings.chat?.chatFontEn ?? DEFAULT_FONT_EN)
+const currentFontZh = computed(() => props.settings.chat?.chatFontZh ?? DEFAULT_FONT_ZH)
 
 function updateTheme(theme: 'light' | 'dark' | 'system') {
   emit('update:settings', { ...props.settings, theme })
@@ -93,6 +174,36 @@ function handleThemeChange(darkThemeId: string, lightThemeId: string) {
       ...props.settings.general,
       darkThemeId,
       lightThemeId,
+    },
+  })
+}
+
+function updateFontSize(size: number) {
+  emit('update:settings', {
+    ...props.settings,
+    chat: {
+      ...props.settings.chat!,
+      chatFontSize: size,
+    },
+  })
+}
+
+function updateFontEn(fontId: string) {
+  emit('update:settings', {
+    ...props.settings,
+    chat: {
+      ...props.settings.chat!,
+      chatFontEn: fontId,
+    },
+  })
+}
+
+function updateFontZh(fontId: string) {
+  emit('update:settings', {
+    ...props.settings,
+    chat: {
+      ...props.settings.chat!,
+      chatFontZh: fontId,
     },
   })
 }
@@ -429,6 +540,61 @@ function handleThemeChange(darkThemeId: string, lightThemeId: string) {
     width: 20px;
     height: 20px;
   }
+}
+
+/* Font Options */
+.font-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.font-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.font-option:hover {
+  background: var(--hover);
+  border-color: var(--border-default);
+}
+
+.font-option.active {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
+.font-preview {
+  font-size: 14px;
+  color: var(--text-primary);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.font-name {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.font-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-faint);
+  background: rgba(128, 128, 128, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
 </style>

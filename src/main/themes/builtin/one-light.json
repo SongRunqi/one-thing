@@ -76,9 +76,9 @@
 
     "text": {
       "primary": "fg",
-      "secondary": "fgDim",
-      "muted": "gutter",
-      "faint": "#A0A1A7",
+      "secondary": "#4F525B",
+      "muted": "fgDim",
+      "faint": "gutter",
       "error": "red",
       "warning": "orange",
       "success": "green",
@@ -87,38 +87,38 @@
       "linkHover": "cyan",
       "user": {
         "primary": "fg",
-        "secondary": "fgDim"
+        "secondary": "#4F525B"
       },
       "ai": {
-        "primary": "fgDim",
-        "secondary": "gutter",
-        "thinking": "#A0A1A7"
+        "primary": "fg",
+        "secondary": "fgDim",
+        "thinking": "gutter"
       },
       "tool": {
         "name": "purple",
-        "args": "#A0A1A7",
-        "result": "gutter",
+        "args": "gutter",
+        "result": "fgDim",
         "error": "red"
       },
       "sidebar": {
         "title": "fg",
-        "item": "gutter",
+        "item": "fgDim",
         "itemActive": "blue",
         "itemHover": "fg",
-        "muted": "#A0A1A7"
+        "muted": "gutter"
       },
       "input": "fg",
-      "inputPlaceholder": "#A0A1A7",
+      "inputPlaceholder": "gutter",
       "btn": {
         "primary": "bg",
         "secondary": "fg",
-        "ghost": "gutter",
+        "ghost": "fgDim",
         "danger": "bg"
       },
       "code": {
         "inline": "purple",
         "block": "fg",
-        "comment": "#A0A1A7",
+        "comment": "gutter",
         "keyword": "purple",
         "string": "green",
         "number": "orange",
@@ -127,13 +127,13 @@
         "operator": "cyan"
       },
       "menu": {
-        "item": "gutter",
+        "item": "fgDim",
         "itemHover": "fg",
         "itemActive": "blue",
-        "header": "#A0A1A7"
+        "header": "gutter"
       },
-      "label": "gutter",
-      "helper": "#A0A1A7"
+      "label": "fgDim",
+      "helper": "gutter"
     },
 
     "border": {

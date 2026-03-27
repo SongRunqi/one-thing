@@ -1,3 +1,12 @@
+@import '@fontsource-variable/public-sans';
+@import '@fontsource-variable/public-sans/wght-italic.css';
+@import '@fontsource-variable/lora';
+@import '@fontsource-variable/lora/wght-italic.css';
+@import '@fontsource-variable/noto-sans-sc';
+@import '@fontsource-variable/noto-serif-sc';
+@import 'lxgw-wenkai-webfont/lxgwwenkai-regular.css';
+@import 'lxgw-wenkai-webfont/lxgwwenkai-bold.css';
+@import 'lxgw-wenkai-screen-webfont/lxgwwenkaiscreen.css';
 @import './variables.css';
 @import './themes/light.css';
 @import './themes/dark.css';

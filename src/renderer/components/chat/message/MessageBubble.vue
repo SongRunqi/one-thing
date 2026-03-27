@@ -792,6 +792,7 @@ html[data-theme='light'] .attachment-file {
 .content {
   display: flow-root;
   word-wrap: break-word;
+  font-family: var(--font-body);
   line-height: var(--message-line-height, 1.6);
   font-size: var(--message-font-size, 15px);
   color: var(--text);

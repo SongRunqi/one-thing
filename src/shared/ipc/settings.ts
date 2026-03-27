@@ -74,6 +74,8 @@ export interface ChatSettings {
   frequencyPenalty?: number    // -2 to 2, default 0
   branchOpenInSplitScreen?: boolean  // Whether branches open in split screen, default true
   chatFontSize?: number        // Chat font size in px, 12-20, default 14
+  chatFontEn?: string          // English body font ID (e.g., 'public-sans', 'lora')
+  chatFontZh?: string          // Chinese body font ID (e.g., 'noto-sans-sc', 'lxgw-wenkai')
   contextCompactThreshold?: number  // Context usage % to trigger compacting, 50-100, default 85
 }
 
