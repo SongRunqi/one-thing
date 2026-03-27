@@ -289,10 +289,9 @@ const virtualizer = useVirtualizer(computed(() => ({
 const effectiveScrollVersion = computed(() => chatStore.getScrollVersion(effectiveSessionId.value))
 watch([effectiveScrollVersion, () => props.messages.length], () => {
   if (!isFollowing.value || suppressed || props.messages.length === 0) return
-  // nextTick ensures new message DOM is rendered and measureElement has fired,
-  // so scrollToIndex uses actual measured size instead of estimateSize.
   nextTick(() => {
-    virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
+    const el = messageListRef.value
+    if (el) el.scrollTop = el.scrollHeight
   })
 })
 
