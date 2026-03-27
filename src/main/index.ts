@@ -7,7 +7,7 @@ import { initializeStores } from './store.js'
 import { initializeSettings } from './stores/settings.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
-import { initializeStreamEngine, shutdownStreamEngine, getStreamEngine } from './engine/index.js'
+import { initializeStreamEngine, shutdownStreamEngine, getStreamEngine, getStreamEngineSafe } from './engine/index.js'
 import { getMediaImagesDir } from './stores/paths.js'
 import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './engine/prompt/index.js'
 import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge } from './events/index.js'
@@ -77,7 +77,7 @@ app.on('ready', async () => {
   // Abort all active streams when the window closes to prevent background resource leaks
   mainWindow.on('closed', () => {
     shutdownIPCBridge()
-    try { getStreamEngine().abortAll() } catch { /* already shut down */ }
+    getStreamEngineSafe()?.abortAll()
     mainWindow = null
   })
 
@@ -106,7 +106,7 @@ app.on('activate', () => {
     getStreamEngine().bind(mainWindow.webContents)
     mainWindow.on('closed', () => {
       shutdownIPCBridge()
-      try { getStreamEngine().abortAll() } catch { /* already shut down */ }
+      getStreamEngineSafe()?.abortAll()
       mainWindow = null
     })
   }

@@ -22,6 +22,14 @@ export function getStreamEngine(): StreamEngine {
 }
 
 /**
+ * Get the StreamEngine if initialized, or null.
+ * Safe to call during shutdown when engine may already be destroyed.
+ */
+export function getStreamEngineSafe(): StreamEngine | null {
+  return streamEngine
+}
+
+/**
  * Initialize the StreamEngine. Called after initializeSessionLayer().
  */
 export function initializeStreamEngine(): void {
