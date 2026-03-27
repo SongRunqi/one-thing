@@ -38,6 +38,23 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
+      - name: Extract version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Extracted version: $VERSION"
+
+      - name: Set package version from tag
+        shell: bash
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            pkg.version = '${{ env.VERSION }}';
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "package.json version set to: $(node -p "require('./package.json').version")"
+
       - name: Install dependencies
         run: bun install
 
