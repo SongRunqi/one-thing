@@ -12,6 +12,7 @@ import {
   getSessionPath,
   readJsonFile,
   writeJsonFile,
+  writeJsonFileAsync,
   deleteJsonFile,
 } from './paths.js'
 import { getCurrentSessionId, setCurrentSessionId } from './app-state.js'
@@ -25,12 +26,98 @@ import { LRUCache } from './lru-cache.js'
 const SESSION_CACHE_SIZE = 10
 const sessionCache = new LRUCache<string, ChatSession>(SESSION_CACHE_SIZE)
 
+// ============ 异步节流落盘 ============
+// Streaming updates (每个 token) 会频繁触发 updateMessageContent 等写入,
+// 同步 writeFileSync 会阻塞事件循环并拖慢流式节奏。
+// 策略:更新内存缓存后,用 300ms 节流把脏 session 异步写盘。
+// 同一 session 的多次写入在 promise 链上串行化,避免旧异步写盖新数据。
+// 关键生命周期(finalize / delete / 应用退出)会强制 flush。
+const SAVE_THROTTLE_MS = 300
+
+interface PendingSave {
+  timer: NodeJS.Timeout | null
+  writePromise: Promise<void>
+}
+
+const pendingSaves = new Map<string, PendingSave>()
+
+function getPendingSave(sessionId: string): PendingSave {
+  let p = pendingSaves.get(sessionId)
+  if (!p) {
+    p = { timer: null, writePromise: Promise.resolve() }
+    pendingSaves.set(sessionId, p)
+  }
+  return p
+}
+
+function enqueueAsyncWrite(sessionId: string, p: PendingSave): void {
+  p.writePromise = p.writePromise.then(async () => {
+    const latest = sessionCache.get(sessionId)
+    if (!latest) return
+    try {
+      await writeJsonFileAsync(getSessionPath(sessionId), latest)
+    } catch (err) {
+      console.error(`[Sessions] async save failed for ${sessionId}:`, err)
+    }
+  })
+}
+
+function scheduleAsyncSave(sessionId: string): void {
+  const p = getPendingSave(sessionId)
+  if (p.timer) return  // 已排入计时器,最新状态会在其触发时从 cache 读取
+  p.timer = setTimeout(() => {
+    p.timer = null
+    enqueueAsyncWrite(sessionId, p)
+  }, SAVE_THROTTLE_MS)
+}
+
 /**
- * 统一的保存函数 - 同时写磁盘和更新缓存
+ * 强制刷盘单个 session,等待所有挂起的写入完成。
+ * 用于 stream 结束、session 删除前等关键点。
+ */
+export async function flushSessionSave(sessionId: string): Promise<void> {
+  const p = pendingSaves.get(sessionId)
+  if (!p) return
+  if (p.timer) {
+    clearTimeout(p.timer)
+    p.timer = null
+    enqueueAsyncWrite(sessionId, p)
+  }
+  try {
+    await p.writePromise
+  } finally {
+    if (!p.timer) pendingSaves.delete(sessionId)
+  }
+}
+
+/**
+ * 应用退出前调用,刷完所有挂起的异步写入。
+ */
+export async function flushAllPendingSaves(): Promise<void> {
+  const ids = [...pendingSaves.keys()]
+  await Promise.all(ids.map(id => flushSessionSave(id).catch(() => {})))
+}
+
+/**
+ * 取消挂起的保存(用于删除场景,防止异步写重建已删文件)。
+ */
+function cancelPendingSave(sessionId: string): void {
+  const p = pendingSaves.get(sessionId)
+  if (!p) return
+  if (p.timer) {
+    clearTimeout(p.timer)
+    p.timer = null
+  }
+  pendingSaves.delete(sessionId)
+}
+
+/**
+ * 统一的保存函数 - 更新缓存并安排异步落盘
+ * 默认节流异步,finalize/delete 等关键路径可调 flushSessionSave 强刷
  */
 function saveSessionToFile(sessionId: string, session: ChatSession): void {
-  writeJsonFile(getSessionPath(sessionId), session)
   sessionCache.set(sessionId, session)
+  scheduleAsyncSave(sessionId)
 }
 
 /**
@@ -427,6 +514,7 @@ export function deleteSession(sessionId: string): DeleteSessionResult {
 
   // Delete all session files
   for (const id of allIdsToDelete) {
+    cancelPendingSave(id)  // 防止异步写在删除后重建文件
     deleteJsonFile(getSessionPath(id))
     sessionCache.delete(id)  // 清除缓存
   }
@@ -562,7 +650,8 @@ export function cacheSessionProviderConfig(
     providerId,
     model,
     baseUrl: providerConfig?.baseUrl,
-    temperature: settings.ai.temperature,
+    localAddress: providerConfig?.localAddress,
+    temperature: providerConfig?.temperature ?? settings.ai.temperature,
     cachedAt: Date.now(),
   }
 

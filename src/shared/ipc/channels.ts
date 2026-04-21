@@ -75,6 +75,7 @@ export const IPC_CHANNELS = {
 
   // Providers related
   GET_PROVIDERS: 'providers:get-all',
+  GET_NETWORK_INTERFACES: 'providers:get-network-interfaces',
 
   // Tools related
   GET_TOOLS: 'tools:get-all',

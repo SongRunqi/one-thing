@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import fsp from 'fs/promises'
 
 // Get the user data directory for storing app data
 export function getStorePath(): string {
@@ -176,6 +177,13 @@ export function writeJsonFile<T>(filePath: string, data: T): void {
     console.error(`Error writing ${filePath}:`, error)
     throw error
   }
+}
+
+// Async variant — avoids blocking the event loop during streaming writes
+export async function writeJsonFileAsync<T>(filePath: string, data: T): Promise<void> {
+  const dir = path.dirname(filePath)
+  await fsp.mkdir(dir, { recursive: true })
+  await fsp.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8')
 }
 
 // Helper to delete file safely

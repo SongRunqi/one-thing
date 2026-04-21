@@ -6,6 +6,7 @@
 
 import { createDeepSeek } from '@ai-sdk/deepseek'
 import type { ProviderDefinition } from '../types.js'
+import { createBoundFetch } from '../bound-fetch.js'
 
 const deepseekProvider: ProviderDefinition = {
   id: 'deepseek',
@@ -22,10 +23,11 @@ const deepseekProvider: ProviderDefinition = {
     // Models fetched dynamically from OpenRouter API
   },
 
-  create: ({ apiKey, baseUrl }) => {
+  create: ({ apiKey, baseUrl, localAddress }) => {
     const provider = createDeepSeek({
       apiKey,
       baseURL: baseUrl || 'https://api.deepseek.com',
+      fetch: createBoundFetch(localAddress),
     })
     return {
       createModel: (modelId: string) => provider(modelId),

@@ -10,6 +10,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { builtinProviders } from './builtin/index.js'
 import type { ProviderDefinition, ProviderInfo, ProviderInstance, ProviderConfig } from './types.js'
 import { oauthManager } from './auth/oauth-manager.js'
+import { createBoundFetch } from './bound-fetch.js'
 
 // Registry storage
 const providers = new Map<string, ProviderDefinition>()
@@ -22,7 +23,7 @@ const providerInstanceCache = new Map<string, {
 const PROVIDER_CACHE_TTL = 5 * 60 * 1000  // 5 分钟
 
 function getProviderCacheKey(providerId: string, config: ProviderConfig): string {
-  return `${providerId}#${config.apiKey || ''}#${config.baseUrl || ''}`
+  return `${providerId}#${config.apiKey || ''}#${config.baseUrl || ''}#${config.localAddress || ''}`
 }
 
 function cleanExpiredProviderCache(): void {
@@ -209,11 +210,13 @@ function createCustomProviderInstance(
   config: ProviderConfig & { apiType?: 'openai' | 'anthropic' }
 ): ProviderInstance {
   const apiType = config.apiType || 'openai'
+  const boundFetch = createBoundFetch(config.localAddress)
 
   if (apiType === 'anthropic') {
     const provider = createAnthropic({
       apiKey: config.apiKey,
       baseURL: config.baseUrl,
+      fetch: boundFetch,
     })
     return {
       createModel: (modelId: string) => provider(modelId),
@@ -228,6 +231,7 @@ function createCustomProviderInstance(
   const provider = createOpenAI({
     apiKey: config.apiKey,
     baseURL: config.baseUrl,
+    fetch: boundFetch,
   })
   return {
     // Use provider.chat() for OpenAI-compatible APIs (chat/completions endpoint)

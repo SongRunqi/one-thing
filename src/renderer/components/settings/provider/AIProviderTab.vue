@@ -132,6 +132,29 @@
               >
             </div>
           </div>
+
+          <!-- Network Interface (applies to all providers incl. OAuth) -->
+          <div class="settings-group network-group">
+            <div class="settings-row">
+              <span class="row-label">Network Interface</span>
+              <select
+                class="row-input row-select"
+                :value="settings.ai.providers[providerSettings.viewingProvider.value]?.localAddress ?? ''"
+                @change="providerSettings.updateProviderLocalAddress(($event.target as HTMLSelectElement).value)"
+              >
+                <option value="">
+                  System default
+                </option>
+                <option
+                  v-for="iface in providerSettings.networkInterfaces.value"
+                  :key="`${iface.name}-${iface.address}`"
+                  :value="iface.address"
+                >
+                  {{ iface.name }} — {{ iface.address }} ({{ iface.family }})
+                </option>
+              </select>
+            </div>
+          </div>
         </section>
 
         <!-- Models Section -->
@@ -157,22 +180,44 @@
           @add-custom="providerSettings.addCustomModel"
         />
 
-        <!-- Temperature Section -->
+        <!-- Temperature Section (per-provider, falls back to global default when unset).
+             Disabled when the active model rejects `temperature` (e.g. reasoning models). -->
         <section class="detail-section">
           <h3 class="section-label">
             Temperature
-            <span class="section-value">{{ settings.ai.temperature.toFixed(1) }}</span>
+            <span
+              class="section-value"
+              :class="{ muted: !providerSettings.activeModelSupportsTemperature.value }"
+            >{{ providerSettings.currentTemperature.value.toFixed(1) }}</span>
+            <span
+              v-if="!providerSettings.activeModelSupportsTemperature.value"
+              class="section-hint"
+            >not supported by this model</span>
+            <span
+              v-else-if="!providerSettings.hasProviderTemperatureOverride.value"
+              class="section-hint"
+            >(default)</span>
+            <button
+              v-else
+              class="section-reset"
+              type="button"
+              @click="providerSettings.resetProviderTemperature"
+            >Reset</button>
           </h3>
-          <div class="settings-group">
+          <div
+            class="settings-group"
+            :class="{ 'is-disabled': !providerSettings.activeModelSupportsTemperature.value }"
+          >
             <div class="slider-row">
               <input
-                :value="settings.ai.temperature"
+                :value="providerSettings.currentTemperature.value"
                 type="range"
                 min="0"
                 max="2"
                 step="0.1"
                 class="form-slider"
-                @input="providerSettings.updateTemperature(($event.target as HTMLInputElement).valueAsNumber)"
+                :disabled="!providerSettings.activeModelSupportsTemperature.value"
+                @input="providerSettings.updateProviderTemperature(($event.target as HTMLInputElement).valueAsNumber)"
               >
               <div class="slider-labels">
                 <span>Precise</span>
@@ -313,6 +358,43 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
+.section-value.muted {
+  color: var(--muted);
+}
+
+.settings-group.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.form-slider:disabled {
+  cursor: not-allowed;
+}
+
+.section-hint {
+  color: var(--muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+
+.section-reset {
+  margin-left: 4px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.section-reset:hover {
+  color: var(--text);
+  background: rgba(128, 128, 128, 0.1);
+}
+
 /* ── Settings Group (macOS 分组容器) ── */
 .settings-group {
   background: rgba(128, 128, 128, 0.06);
@@ -366,6 +448,17 @@ onUnmounted(() => {
 
 .row-input::placeholder {
   color: var(--muted);
+}
+
+.row-select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 8px;
+  cursor: pointer;
+}
+
+.network-group {
+  margin-top: 10px;
 }
 
 .input-toggle {

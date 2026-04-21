@@ -85,12 +85,6 @@
       </svg>
     </div>
 
-    <!-- Session time (固定宽度，默认隐藏) -->
-    <span
-      v-if="!isEditing"
-      class="session-time"
-    >{{ formattedTime }}</span>
-
     <!-- Hover actions -->
     <div class="session-actions">
       <button
@@ -143,7 +137,6 @@ interface Props {
   isEditing: boolean
   editingName: string
   isPendingDelete: boolean
-  formattedTime: string
 }
 
 interface Emits {
@@ -434,21 +427,6 @@ function cancelRename() {
   font-weight: var(--type-body-weight);
   color: var(--text);
   outline: none;
-}
-
-/* Session time - 默认显示，hover 时隐藏（给 actions 让位） */
-.session-time {
-  flex-shrink: 0;
-  min-width: 36px;
-  font-size: var(--type-caption-size);
-  color: var(--muted);
-  text-align: right;
-  opacity: 0.5;
-  transition: opacity 0.15s ease;
-}
-
-.session-item:hover .session-time {
-  opacity: 0;
 }
 
 /* Hover actions */

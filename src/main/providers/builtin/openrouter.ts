@@ -7,6 +7,7 @@
 
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { ProviderDefinition } from '../types.js'
+import { createBoundFetch } from '../bound-fetch.js'
 
 const openrouterProvider: ProviderDefinition = {
   id: 'openrouter',
@@ -23,11 +24,12 @@ const openrouterProvider: ProviderDefinition = {
     // All models fetched dynamically from OpenRouter API
   },
 
-  create: ({ apiKey }) => {
+  create: ({ apiKey, localAddress }) => {
     const provider = createOpenAICompatible({
       name: 'openrouter',
       apiKey,
       baseURL: 'https://openrouter.ai/api/v1',
+      fetch: createBoundFetch(localAddress),
     })
     return {
       createModel: (modelId: string) => provider(modelId),

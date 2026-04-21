@@ -19,7 +19,6 @@
         :is-editing="editingSessionId === session.id"
         :editing-name="editingName"
         :is-pending-delete="pendingDeleteId === session.id"
-        :formatted-time="formatSessionTime(session.createdAt)"
         @click="(e) => handleSessionClick(e, session)"
         @context-menu="(e) => $emit('context-menu', e, session)"
         @toggle-collapse="$emit('toggle-collapse', session.id)"
@@ -51,7 +50,6 @@ interface Props {
   editingSessionId: string | null
   editingName: string
   pendingDeleteId: string | null
-  formatSessionTime: (timestamp: number) => string
 }
 
 interface Emits {

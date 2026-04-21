@@ -94,7 +94,7 @@ export function registerChatHandlers() {
     const sender = event.sender
 
     // Helper to cancel pending/running steps for a session
-    const cancelPendingSteps = (sid: string) => {
+    const cancelPendingSteps = async (sid: string) => {
       const session = store.getSession(sid)
       if (!session) return
 
@@ -124,6 +124,7 @@ export function registerChatHandlers() {
 
       // Mark message as not streaming and send complete
       store.updateMessageStreaming(sid, streamingMessage.id, false)
+      await store.flushSessionSave(sid)
       sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
         messageId: streamingMessage.id,
         sessionId: sid,
@@ -155,7 +156,7 @@ export function registerChatHandlers() {
       // Clear any pending permission requests for this session
       Permission.clearSession(sessionId)
       // Cancel any waiting steps
-      cancelPendingSteps(sessionId)
+      await cancelPendingSteps(sessionId)
       return { success: aborted }
     } else {
       // Abort all streams (backwards compatibility)
@@ -245,9 +246,10 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
         baseUrl: providerConfig?.baseUrl,
         model: providerConfig?.model || '',
         apiType,
+        localAddress: providerConfig?.localAddress,
       },
       filterHistoryForNonToolAPI(historyMessages),
-      { temperature: settings.ai.temperature }
+      { temperature: providerConfig?.temperature ?? settings.ai.temperature }
     )
 
     const assistantMessage: ChatMessage = {
@@ -450,9 +452,10 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
         baseUrl: providerConfig?.baseUrl,
         model: providerConfig?.model || '',
         apiType,
+        localAddress: providerConfig?.localAddress,
       },
       filterHistoryForNonToolAPI(historyMessages),
-      { temperature: settings.ai.temperature }
+      { temperature: providerConfig?.temperature ?? settings.ai.temperature }
     )
 
     const assistantMessage: ChatMessage = {

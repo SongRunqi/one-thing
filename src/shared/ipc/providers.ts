@@ -58,6 +58,10 @@ export interface OpenRouterModel {
     is_moderated: boolean
   }
   supported_parameters: string[]  // 'temperature', 'tools', 'reasoning', 'response_format', etc.
+  // ISO-ish date string from models.dev (e.g. "2025-11-18"). Used to sort the
+  // model list newest-first in settings. Absent for custom-added or provider-direct
+  // entries — those sort to the end.
+  last_updated?: string
 }
 
 // Provider metadata for UI display
@@ -87,6 +91,11 @@ export interface ProviderConfig {
   // OAuth-specific fields (used when provider.requiresOAuth = true)
   authType?: 'apiKey' | 'oauth'  // Authentication method
   oauthToken?: OAuthToken        // Stored OAuth token (encrypted in storage)
+  // Outbound network interface binding — IPv4/IPv6 address of the NIC to source requests from.
+  // Empty/undefined = let the OS pick the default route.
+  localAddress?: string
+  // Per-provider sampling temperature. Undefined = inherit AISettings.temperature (global default).
+  temperature?: number
 }
 
 // User-defined custom provider
@@ -157,5 +166,19 @@ export interface GetCachedModelsResponse {
 export interface GetProvidersResponse {
   success: boolean
   providers?: ProviderInfo[]
+  error?: string
+}
+
+// Network interface info for localAddress selector
+export interface NetworkInterfaceInfo {
+  name: string        // Interface name, e.g. "en0", "utun6"
+  address: string     // IP address (used as localAddress value)
+  family: 'IPv4' | 'IPv6'
+  internal: boolean
+}
+
+export interface GetNetworkInterfacesResponse {
+  success: boolean
+  interfaces?: NetworkInterfaceInfo[]
   error?: string
 }

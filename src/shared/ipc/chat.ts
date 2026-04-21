@@ -86,6 +86,7 @@ export interface CachedProviderConfig {
   model: string
   baseUrl?: string
   temperature?: number
+  localAddress?: string
   cachedAt: number  // Timestamp when this config was cached
 }
 

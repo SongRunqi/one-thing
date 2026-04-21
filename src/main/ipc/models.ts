@@ -168,6 +168,37 @@ async function fetchClaudeModels(apiKey: string, baseUrl: string): Promise<Model
   }))
 }
 
+/**
+ * Fetch DeepSeek models.
+ * DeepSeek exposes /models at the API root (no /v1 prefix) and requires
+ * Accept: application/json — matches the official curl example.
+ */
+async function fetchDeepSeekModels(apiKey: string, baseUrl: string): Promise<ModelInfo[]> {
+  // DeepSeek's /models lives at the root; strip a trailing /v1 if the caller
+  // configured one for chat completions.
+  const root = baseUrl.replace(/\/v1\/?$/, '').replace(/\/$/, '')
+  const response = await fetch(`${root}/models`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    redirect: 'follow',
+  })
+
+  if (!response.ok) {
+    throw new Error(`DeepSeek API error: ${response.status} ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  return (data.data || []).map((m: any) => ({
+    id: m.id,
+    name: m.id,
+    type: 'chat' as ModelType,
+    createdAt: m.created ? new Date(m.created * 1000).toISOString() : undefined,
+  }))
+}
+
 async function fetchCustomModels(apiKey: string, baseUrl: string): Promise<ModelInfo[]> {
   const response = await fetch(`${baseUrl}/models`, {
     headers: {
@@ -312,7 +343,8 @@ function getDefaultBaseUrl(provider: AIProvider): string {
     case AIProvider.Claude:
       return 'https://api.anthropic.com/v1'
     case AIProvider.DeepSeek:
-      return 'https://api.deepseek.com/v1'
+      // DeepSeek's /models lives at the root; chat endpoints accept both / and /v1.
+      return 'https://api.deepseek.com'
     case AIProvider.Kimi:
       return 'https://api.moonshot.cn/v1'
     case AIProvider.Zhipu:
@@ -362,8 +394,10 @@ async function handleFetchModels(
         models = await fetchClaudeModels(apiKey, url)
         break
       case AIProvider.DeepSeek:
+        models = await fetchDeepSeekModels(apiKey, url)
+        break
       case AIProvider.Kimi:
-        // These providers use OpenAI-compatible API
+        // Kimi uses OpenAI-compatible /v1/models
         models = await fetchCustomModels(apiKey, url)
         break
       case AIProvider.Zhipu:

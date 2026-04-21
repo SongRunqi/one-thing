@@ -40,6 +40,8 @@ export {
   getSessionMessages,
   getCachedProviderConfig,
   cacheSessionProviderConfig,
+  flushSessionSave,
+  flushAllPendingSaves,
 } from './sessions.js'
 
 // Migration function

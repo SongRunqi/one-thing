@@ -9,6 +9,7 @@
 
 import { createAnthropic } from '@ai-sdk/anthropic'
 import type { ProviderDefinition } from '../types.js'
+import { createBoundFetch } from '../bound-fetch.js'
 
 // Required beta headers for Claude Code OAuth
 const OAUTH_BETA_HEADERS = [
@@ -25,7 +26,7 @@ const OAUTH_BETA_HEADERS = [
  * 3. Merges anthropic-beta headers
  * 4. Converts system array to string (Claude Code OAuth requires string format)
  */
-function createOAuthFetch(accessToken: string): typeof fetch {
+function createOAuthFetch(accessToken: string, baseFetch: typeof fetch = fetch): typeof fetch {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     // Convert incoming headers to plain object (handle Headers, array, or object)
     const incomingHeaders = init?.headers || {}
@@ -110,7 +111,7 @@ function createOAuthFetch(accessToken: string): typeof fetch {
       }
     }
 
-    return fetch(input, {
+    return baseFetch(input, {
       ...modifiedInit,
       headers,
     })
@@ -134,7 +135,7 @@ const claudeCodeProvider: ProviderDefinition = {
     // Models fetched dynamically from OpenRouter API (filtered for Pro/Max tier)
   },
 
-  create: ({ baseUrl, apiKey, oauthToken }) => {
+  create: ({ baseUrl, apiKey, oauthToken, localAddress }) => {
     // Get access token from either:
     // 1. oauthToken.accessToken (from registry async path)
     // 2. apiKey (from chat.ts which fetches OAuth token and passes it as apiKey)
@@ -147,10 +148,11 @@ const claudeCodeProvider: ProviderDefinition = {
     // Create provider with custom fetch for OAuth authentication
     // OAuth requires Authorization: Bearer header instead of x-api-key
     // Use empty apiKey (matching opencode-anthropic-auth plugin)
+    const boundFetch = createBoundFetch(localAddress)
     const provider = createAnthropic({
       apiKey: '', // Empty - our custom fetch handles real auth
       baseURL: baseUrl || 'https://api.anthropic.com/v1',
-      fetch: createOAuthFetch(accessToken),
+      fetch: createOAuthFetch(accessToken, boundFetch ?? fetch),
     })
 
     return {

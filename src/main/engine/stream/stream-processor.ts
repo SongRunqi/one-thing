@@ -122,7 +122,8 @@ export interface StreamProcessor {
   handleToolInputEnd(toolCallId: string): ToolCall | null
   /** Get step ID for a tool call (if placeholder was created during streaming) */
   getStepIdForToolCall(toolCallId: string): string | undefined
-  finalize(): void
+  /** Mark message as no longer streaming and force-flush pending async writes */
+  finalize(): Promise<void>
 }
 
 /**
@@ -322,8 +323,10 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       return toolInputBuffers.get(toolCallId)?.stepId
     },
 
-    finalize() {
+    async finalize() {
       store.updateMessageStreaming(ctx.sessionId, ctx.assistantMessageId, false)
+      // Force-flush pending throttled writes so disk state matches memory before stream:complete
+      await store.flushSessionSave(ctx.sessionId)
     },
   }
 }

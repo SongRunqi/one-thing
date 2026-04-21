@@ -8,6 +8,7 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { ProviderDefinition } from '../types.js'
 import type { ModelInfo } from '../../../shared/ipc.js'
+import { createBoundFetch } from '../bound-fetch.js'
 
 // Cache for Copilot completion tokens
 interface CopilotToken {
@@ -227,7 +228,7 @@ const githubCopilotProvider: ProviderDefinition = {
     // Models: GitHub Copilot provides its own model list
   },
 
-  create: ({ apiKey, oauthToken }) => {
+  create: ({ apiKey, oauthToken, localAddress }) => {
     // Get GitHub access token from either:
     // 1. oauthToken.accessToken (from registry async path)
     // 2. apiKey (from chat.ts which fetches OAuth token and passes it as apiKey)
@@ -253,6 +254,7 @@ const githubCopilotProvider: ProviderDefinition = {
         'User-Agent': '0neThing/1.0',
         'OpenAI-Intent': 'conversation-panel',
       },
+      fetch: createBoundFetch(localAddress),
     })
 
     return {

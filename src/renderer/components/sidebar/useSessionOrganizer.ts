@@ -283,41 +283,6 @@ export function useSessionOrganizer() {
     return [...pinned, ...unpinned]
   }
 
-  // Format session time for display
-  function formatSessionTime(timestamp: number): string {
-    const now = Date.now()
-    const diff = now - timestamp
-    const date = new Date(timestamp)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-
-    // Less than 1 minute
-    if (diff < 60000) return 'now'
-
-    // Less than 1 hour
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m`
-
-    // Today - show time
-    if (timestamp >= today.getTime()) {
-      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    }
-
-    // Yesterday
-    if (timestamp >= yesterday.getTime()) {
-      return 'Yesterday'
-    }
-
-    // Within a week
-    if (diff < 7 * 24 * 3600000) {
-      return date.toLocaleDateString('en-US', { weekday: 'short' })
-    }
-
-    // Older - show date
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  }
-
   // Get session preview text
   function getSessionPreview(session: SessionBase): string {
     if (!session.messages || session.messages.length === 0) {
@@ -367,7 +332,6 @@ export function useSessionOrganizer() {
     getBranchDepth,
     organizeSessionsWithBranches,
     getFlatSessions,
-    formatSessionTime,
     getSessionPreview,
     formatModelName,
   }

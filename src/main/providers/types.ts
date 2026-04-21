@@ -41,6 +41,8 @@ export interface ProviderConfig {
   baseUrl?: string
   /** OAuth token (for OAuth providers) */
   oauthToken?: OAuthToken
+  /** Outbound NIC IP — binds HTTP requests to this source address via undici Agent. */
+  localAddress?: string
 }
 
 /**

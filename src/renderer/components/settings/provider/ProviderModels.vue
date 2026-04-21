@@ -136,25 +136,45 @@
                 </svg>
               </span>
               <span class="model-name">{{ model.name || model.id }}</span>
-              <span class="model-caps">
-                <Eye
+              <span
+                class="model-caps"
+                @click.stop
+              >
+                <Tooltip
                   v-if="hasVision(model)"
-                  :size="11"
-                />
-                <Image
+                  text="Vision input"
+                >
+                  <Eye :size="12" />
+                </Tooltip>
+                <Tooltip
                   v-if="hasImageGeneration(model)"
-                  :size="11"
-                />
-                <Wrench
+                  text="Image generation"
+                >
+                  <Image :size="12" />
+                </Tooltip>
+                <Tooltip
                   v-if="hasTools(model)"
-                  :size="11"
-                />
-                <Brain
+                  text="Tool calling"
+                >
+                  <Wrench :size="12" />
+                </Tooltip>
+                <Tooltip
                   v-if="hasReasoning(model)"
-                  :size="11"
-                />
+                  text="Reasoning model"
+                >
+                  <Brain :size="12" />
+                </Tooltip>
               </span>
-              <span class="model-ctx">{{ formatContextLength(model.context_length) }}</span>
+              <Tooltip
+                v-if="model.context_length"
+                :text="`Context window: ${model.context_length.toLocaleString()} tokens`"
+              >
+                <span class="model-ctx">{{ formatContextLength(model.context_length) }}</span>
+              </Tooltip>
+              <span
+                v-else
+                class="model-ctx"
+              >{{ formatContextLength(model.context_length) }}</span>
             </label>
           </div>
         </div>
@@ -194,6 +214,7 @@
 import { ref, computed, watch } from 'vue'
 import { Eye, Image, Wrench, Brain } from 'lucide-vue-next'
 import type { OpenRouterModel } from '@/types'
+import Tooltip from '@/components/common/Tooltip.vue'
 
 const ROW_HEIGHT = 34
 const CONTAINER_HEIGHT = 240

@@ -443,7 +443,7 @@ export class StreamEngine {
         console.log(`[StreamEngine] Resume completed in ${requestDuration.toFixed(2)}s`)
 
         if (!result.pausedForConfirmation) {
-          processor.finalize()
+          await processor.finalize()
           this.eventBus?.emit(sessionId, {
             type: 'stream:complete',
             data: { sessionName: session.name },
@@ -453,7 +453,7 @@ export class StreamEngine {
       } catch (error: any) {
         const isAborted = error.name === 'AbortError' || abortController.signal.aborted
         if (isAborted) {
-          processor.finalize()
+          await processor.finalize()
           this.eventBus?.emit(sessionId, { type: 'stream:aborted', reason: 'User cancelled' })
             .catch(err => console.error('[StreamEngine] stream:aborted emit error:', err))
         } else {

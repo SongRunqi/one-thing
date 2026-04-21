@@ -3,7 +3,7 @@ import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { createWindow } from './window.js'
 import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills } from './ipc/handlers.js'
-import { initializeStores } from './store.js'
+import { initializeStores, flushAllPendingSaves } from './store.js'
 import { initializeSettings } from './stores/settings.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
@@ -125,6 +125,13 @@ app.on('before-quit', async () => {
   Permission.shutdown()
   shutdownSessionLayer()
   shutdownEventSystem()
+
+  // Flush any pending throttled session writes so nothing is lost on exit
+  try {
+    await flushAllPendingSaves()
+  } catch (err) {
+    console.error('[Shutdown] flushAllPendingSaves error:', err)
+  }
 })
 
 export { mainWindow }

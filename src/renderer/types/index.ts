@@ -37,6 +37,8 @@ import type {
   FetchModelsResponse,
   GetCachedModelsResponse,
   GetProvidersResponse,
+  GetNetworkInterfacesResponse,
+  NetworkInterfaceInfo,
   ToolDefinition,
   ToolCall,
   ToolSettings,
@@ -165,6 +167,8 @@ export type {
   // Theme types
   ThemeMeta,
   Theme,
+  // Network interface types for provider localAddress binding
+  NetworkInterfaceInfo,
 }
 
 // Gallery image type for image preview window
@@ -250,6 +254,7 @@ export interface ElectronAPI {
   ) => Promise<FetchModelsResponse>
   getCachedModels: (provider: AIProvider) => Promise<GetCachedModelsResponse>
   getProviders: () => Promise<GetProvidersResponse>
+  getNetworkInterfaces: () => Promise<GetNetworkInterfacesResponse>
   // New OpenRouter-based model API
   getModelsWithCapabilities: (providerId: string) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
   getAllModels: () => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>

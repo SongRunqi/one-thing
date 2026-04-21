@@ -33,6 +33,10 @@ import { getProviderApiType } from './provider-helpers.js'
 import { executeToolAndUpdate } from './tool-execution.js'
 import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages } from './chat-logger.js'
 
+// Gate per-chunk stream logs behind env flag. Running JSON.stringify on every
+// text/tool-input delta noticeably slows streaming, so default off.
+const DEBUG_STREAM = process.env.DEBUG_STREAM === '1' || process.env.DEBUG_STREAM === 'true'
+
 /**
  * Stream result indicating why the stream ended
  */
@@ -197,7 +201,7 @@ export async function runStream(
     const userMaxTokens = ctx.settings.chat?.maxTokens || 4096
     const effectiveMaxTokens = Math.min(userMaxTokens, modelMaxOutputTokens)
 
-    const temperature = ctx.settings.ai.temperature
+    const temperature = ctx.providerConfig.temperature ?? ctx.settings.ai.temperature
     const model = ctx.providerConfig.model
 
     const stream = streamChatResponseWithTools(
@@ -207,6 +211,7 @@ export async function runStream(
         baseUrl: ctx.providerConfig.baseUrl,
         model,
         apiType,
+        localAddress: ctx.providerConfig.localAddress,
       },
       conversationMessages,
       toolsForAI,
@@ -220,19 +225,21 @@ export async function runStream(
     let turnUsage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined
 
     for await (const chunk of stream) {
-        // Log raw stream chunks
-        if (chunk.type === 'text') {
-          console.log(`[Stream] text: "${chunk.text}"`)
-        } else if (chunk.type === 'reasoning') {
-          console.log(`[Stream] reasoning: "${chunk.reasoning?.substring(0, 50)}..."`)
-        } else if (chunk.type === 'tool-call') {
-          console.log(`[Stream] tool-call:`, chunk.toolCall?.toolName, JSON.stringify(chunk.toolCall?.args)?.substring(0, 100))
-        } else if (chunk.type === 'tool-input-start') {
-          console.log(`[Stream] tool-input-start:`, chunk.toolInputStart?.toolName, chunk.toolInputStart?.toolCallId)
-        } else if (chunk.type === 'tool-input-delta') {
-          console.log(`[Stream] tool-input-delta:`, chunk.toolInputDelta?.argsTextDelta)
-        } else {
-          console.log(`[Stream] ${chunk.type}:`, JSON.stringify(chunk).substring(0, 150))
+        // Log raw stream chunks (gated: each token passing through JSON.stringify slows streaming)
+        if (DEBUG_STREAM) {
+          if (chunk.type === 'text') {
+            console.log(`[Stream] text: "${chunk.text}"`)
+          } else if (chunk.type === 'reasoning') {
+            console.log(`[Stream] reasoning: "${chunk.reasoning?.substring(0, 50)}..."`)
+          } else if (chunk.type === 'tool-call') {
+            console.log(`[Stream] tool-call:`, chunk.toolCall?.toolName, JSON.stringify(chunk.toolCall?.args)?.substring(0, 100))
+          } else if (chunk.type === 'tool-input-start') {
+            console.log(`[Stream] tool-input-start:`, chunk.toolInputStart?.toolName, chunk.toolInputStart?.toolCallId)
+          } else if (chunk.type === 'tool-input-delta') {
+            console.log(`[Stream] tool-input-delta:`, chunk.toolInputDelta?.argsTextDelta)
+          } else {
+            console.log(`[Stream] ${chunk.type}:`, JSON.stringify(chunk).substring(0, 150))
+          }
         }
 
         if (chunk.type === 'text' && chunk.text) {
@@ -546,7 +553,7 @@ export async function executeStreamGeneration(
 
     // Only finalize and run post-processing if not paused for tool confirmation
     if (!pausedForConfirmation) {
-      processor.finalize()
+      await processor.finalize()
       const updatedSession = store.getSession(ctx.sessionId)
       emitter.sendStreamComplete({
         sessionName: updatedSession?.name || sessionName,
@@ -601,7 +608,7 @@ export async function executeStreamGeneration(
 
     if (isAborted) {
       console.log('[Backend] Stream aborted by user')
-      processor.finalize()
+      await processor.finalize()
       emitter.sendStreamAborted('User cancelled')
     } else {
       console.error('[Backend] Streaming error:', error)
@@ -611,7 +618,7 @@ export async function executeStreamGeneration(
 
       // Keep the assistant message with any content already generated
       // Just mark it with error details instead of deleting
-      processor.finalize()
+      await processor.finalize()
 
       const errorDetailsStr = extractErrorDetails(error) ?? ''
       const errorContent = error.message || 'Streaming error'

@@ -85,6 +85,8 @@ export type {
   GetCachedModelsRequest,
   GetCachedModelsResponse,
   GetProvidersResponse,
+  NetworkInterfaceInfo,
+  GetNetworkInterfacesResponse,
 } from './providers.js'
 
 export { AIProvider } from './providers.js'

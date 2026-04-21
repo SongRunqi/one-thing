@@ -19,7 +19,6 @@
         :editing-session-id="editingSessionId"
         :editing-name="editingName"
         :pending-delete-id="pendingDeleteId"
-        :format-session-time="sessionOrganizer.formatSessionTime"
         @create-new-chat="$emit('create-new-chat')"
         @session-click="handleSessionClick"
         @context-menu="openContextMenu"

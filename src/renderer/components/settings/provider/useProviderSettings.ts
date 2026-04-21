@@ -5,7 +5,7 @@
  */
 
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import type { AppSettings, AIProvider, ProviderInfo, OpenRouterModel } from '@/types'
+import type { AppSettings, AIProvider, ProviderInfo, OpenRouterModel, NetworkInterfaceInfo } from '@/types'
 import { useSettingsStore } from '@/stores/settings'
 
 export interface OAuthStatus {
@@ -34,6 +34,9 @@ export function useProviderSettings(
   const newModelInput = ref('')
   const modelError = ref('')
 
+  // Network interfaces (lazy-loaded on mount) for localAddress selector
+  const networkInterfaces = ref<NetworkInterfaceInfo[]>([])
+
   // OAuth state
   const isOAuthLoading = ref(false)
   const oauthStatus = ref<OAuthStatus>({ isLoggedIn: false })
@@ -55,8 +58,19 @@ export function useProviderSettings(
     viewingProvider.value = newProvider
   })
 
-  // Get models from unified store
-  const availableModels = computed(() => settingsStore.getCachedModels(viewingProvider.value))
+  // Get models from unified store, then merge in any selected models that aren't
+  // present in the fetched list. This keeps user-added custom models visible (and
+  // deselectable) after a Refresh wipes them from the models.dev-backed cache.
+  const availableModels = computed(() => {
+    const fetched = settingsStore.getCachedModels(viewingProvider.value)
+    const selectedIds = props.settings.ai.providers[viewingProvider.value]?.selectedModels ?? []
+    if (selectedIds.length === 0) return fetched
+    const fetchedIds = new Set(fetched.map(m => m.id))
+    const missing = selectedIds
+      .filter(id => !fetchedIds.has(id))
+      .map(id => createCustomModel(id))
+    return missing.length === 0 ? fetched : [...fetched, ...missing]
+  })
   const isLoadingModels = computed(() => settingsStore.isModelsLoading(viewingProvider.value))
 
   // Computed properties
@@ -66,6 +80,30 @@ export function useProviderSettings(
 
   const currentSelectedModels = computed(() => {
     return props.settings.ai.providers[viewingProvider.value]?.selectedModels || []
+  })
+
+  // Effective temperature for the viewing provider: per-provider override falls back to global default.
+  const currentTemperature = computed(() => {
+    return props.settings.ai.providers[viewingProvider.value]?.temperature ?? props.settings.ai.temperature
+  })
+
+  const hasProviderTemperatureOverride = computed(() => {
+    return props.settings.ai.providers[viewingProvider.value]?.temperature !== undefined
+  })
+
+  // Whether the currently-active model for this provider accepts a `temperature`
+  // parameter. Sourced from models.dev's per-model `temperature: boolean` field,
+  // which is surfaced as `'temperature'` in `supported_parameters`.
+  // Defaults to true when the model isn't in the registry (custom / user-added).
+  const activeModelSupportsTemperature = computed(() => {
+    const activeModelId = props.settings.ai.providers[viewingProvider.value]?.model
+    if (!activeModelId) return true
+    const found = availableModels.value.find(m => m.id === activeModelId)
+    if (!found || !found.supported_parameters) return true
+    // supported_parameters is only meaningfully populated for models.dev-backed entries.
+    // Empty arrays (e.g. synthetic custom-model entries) fall back to "allow".
+    if (found.supported_parameters.length === 0) return true
+    return found.supported_parameters.includes('temperature')
   })
 
   const filteredModels = computed(() => {
@@ -186,8 +224,39 @@ export function useProviderSettings(
     updateSettings({ ai: { ...props.settings.ai, providers } })
   }
 
-  function updateTemperature(temperature: number) {
-    updateSettings({ ai: { ...props.settings.ai, temperature } })
+  function updateProviderLocalAddress(localAddress: string) {
+    const providers = { ...props.settings.ai.providers }
+    // Treat empty string as "clear" so the OS picks the default route.
+    const value = localAddress.trim() ? localAddress : undefined
+    providers[viewingProvider.value] = { ...providers[viewingProvider.value], localAddress: value }
+    updateSettings({ ai: { ...props.settings.ai, providers } })
+  }
+
+  async function loadNetworkInterfaces() {
+    try {
+      const res = await window.electronAPI.getNetworkInterfaces()
+      if (res.success && res.interfaces) {
+        networkInterfaces.value = res.interfaces
+      }
+    } catch (err) {
+      console.error('Failed to load network interfaces:', err)
+    }
+  }
+
+  // Writes the per-provider override. Global ai.temperature remains the fallback default.
+  function updateProviderTemperature(temperature: number) {
+    const providers = { ...props.settings.ai.providers }
+    providers[viewingProvider.value] = { ...providers[viewingProvider.value], temperature }
+    updateSettings({ ai: { ...props.settings.ai, providers } })
+  }
+
+  // Clear the provider's override, letting it inherit the global default.
+  function resetProviderTemperature() {
+    const providers = { ...props.settings.ai.providers }
+    const current = { ...providers[viewingProvider.value] }
+    delete current.temperature
+    providers[viewingProvider.value] = current
+    updateSettings({ ai: { ...props.settings.ai, providers } })
   }
 
   function toggleProviderEnabled(providerId: string) {
@@ -208,8 +277,9 @@ export function useProviderSettings(
     codeEntryInfo.value = null
     manualCode.value = ''
     codeEntryError.value = ''
-    // Don't auto-fetch models — user clicks Fetch button to load
     await checkOAuthStatus()
+    // Warm-load from cache (no force) so capability icons show without a manual Fetch click.
+    loadCachedModels()
   }
 
   function toggleModelSelection(modelId: string) {
@@ -478,8 +548,10 @@ export function useProviderSettings(
 
   // Lifecycle
   async function initialize() {
-    // Don't auto-fetch models — user clicks Fetch button to load
     await checkOAuthStatus()
+    await loadNetworkInterfaces()
+    // Warm-load models for the initial provider so capability icons render on open.
+    loadCachedModels()
 
     oauthTokenRefreshedCleanup = window.electronAPI.onOAuthTokenRefreshed((data) => {
       if (data.providerId === viewingProvider.value) {
@@ -509,6 +581,7 @@ export function useProviderSettings(
     modelSearchQuery,
     newModelInput,
     modelError,
+    networkInterfaces,
     isOAuthLoading,
     oauthStatus,
     deviceFlowInfo,
@@ -522,6 +595,9 @@ export function useProviderSettings(
     isLoadingModels,
     currentProviderName,
     currentSelectedModels,
+    currentTemperature,
+    hasProviderTemperatureOverride,
+    activeModelSupportsTemperature,
     filteredModels,
     isOAuthProvider,
     enabledProviders,
@@ -541,7 +617,9 @@ export function useProviderSettings(
     formatContextLength,
     updateProviderApiKey,
     updateProviderBaseUrl,
-    updateTemperature,
+    updateProviderLocalAddress,
+    updateProviderTemperature,
+    resetProviderTemperature,
     toggleProviderEnabled,
     switchViewingProvider,
     toggleModelSelection,

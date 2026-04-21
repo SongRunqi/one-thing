@@ -273,6 +273,9 @@ const electronAPI = {
   getProviders: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDERS),
 
+  getNetworkInterfaces: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_NETWORK_INTERFACES),
+
   // Tools methods
   getTools: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_TOOLS),

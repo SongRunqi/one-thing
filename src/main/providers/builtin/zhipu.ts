@@ -10,6 +10,9 @@
 
 import type { LanguageModelV2, LanguageModelV2StreamPart, LanguageModelV2CallOptions, LanguageModelV2FunctionTool } from '@ai-sdk/provider'
 import type { ProviderDefinition } from '../types.js'
+import { createBoundFetch } from '../bound-fetch.js'
+
+type FetchFn = typeof globalThis.fetch
 
 // Check if model supports thinking mode (GLM-4.5 and above)
 function supportsThinking(modelId: string): boolean {
@@ -87,7 +90,7 @@ interface ZhipuStreamChunk {
 /**
  * Create a Zhipu language model (V2 API)
  */
-function createZhipuModel(modelId: string, apiKey: string, baseUrl: string): LanguageModelV2 {
+function createZhipuModel(modelId: string, apiKey: string, baseUrl: string, fetchImpl: FetchFn = fetch): LanguageModelV2 {
   const enableThinking = supportsThinking(modelId)
 
   return {
@@ -146,7 +149,7 @@ function createZhipuModel(modelId: string, apiKey: string, baseUrl: string): Lan
       }
 
       // Make API request
-      const response = await fetch(`${baseUrl}/chat/completions`, {
+      const response = await fetchImpl(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -269,7 +272,7 @@ function createZhipuModel(modelId: string, apiKey: string, baseUrl: string): Lan
       console.log('[Zhipu] Streaming request:', JSON.stringify(request, null, 2))
 
       // Make streaming API request
-      const response = await fetch(`${baseUrl}/chat/completions`, {
+      const response = await fetchImpl(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -629,10 +632,11 @@ const zhipuProvider: ProviderDefinition = {
     // Models fetched dynamically from OpenRouter API (if available)
   },
 
-  create: ({ apiKey, baseUrl }) => {
+  create: ({ apiKey, baseUrl, localAddress }) => {
     const finalBaseUrl = baseUrl || 'https://open.bigmodel.cn/api/paas/v4'
+    const fetchImpl = createBoundFetch(localAddress) ?? fetch
     return {
-      createModel: (modelId: string) => createZhipuModel(modelId, apiKey ?? '', finalBaseUrl) as any,
+      createModel: (modelId: string) => createZhipuModel(modelId, apiKey ?? '', finalBaseUrl, fetchImpl) as any,
     }
   },
 }

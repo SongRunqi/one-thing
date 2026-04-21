@@ -156,6 +156,7 @@ export interface ResolvedProviderConfig {
   model: string
   apiKey: string
   baseUrl?: string
+  localAddress?: string
   temperature: number
 }
 
@@ -189,6 +190,7 @@ export async function getProviderConfigForChat(
         model: cached.model,
         apiKey,
         baseUrl: cached.baseUrl,
+        localAddress: cached.localAddress ?? providerConfig?.localAddress,
         temperature: cached.temperature ?? settings.ai.temperature,
       }
     }
@@ -207,7 +209,8 @@ export async function getProviderConfigForChat(
         model: session.lastModel,
         apiKey,
         baseUrl: providerConfig?.baseUrl,
-        temperature: settings.ai.temperature,
+        localAddress: providerConfig?.localAddress,
+        temperature: providerConfig?.temperature ?? settings.ai.temperature,
       }
     }
   }
@@ -226,7 +229,8 @@ export async function getProviderConfigForChat(
     model: providerConfig?.model || '',
     apiKey,
     baseUrl: providerConfig?.baseUrl,
-    temperature: settings.ai.temperature,
+    localAddress: providerConfig?.localAddress,
+    temperature: providerConfig?.temperature ?? settings.ai.temperature,
   }
 }
 

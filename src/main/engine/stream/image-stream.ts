@@ -117,6 +117,7 @@ export async function processImageGenerationStream(
     // Update message
     store.updateMessageContent(sessionId, assistantMessageId, responseContent)
     store.updateMessageStreaming(sessionId, assistantMessageId, false)
+    await store.flushSessionSave(sessionId)
 
     // Send complete content via content:part event (replaces progress text)
     eventBus?.emit(sessionId, {
@@ -153,6 +154,7 @@ export async function processImageGenerationStream(
     const errorContent = `图片生成失败: ${result.error || '未知错误'}`
     store.updateMessageContent(sessionId, assistantMessageId, errorContent)
     store.updateMessageStreaming(sessionId, assistantMessageId, false)
+    await store.flushSessionSave(sessionId)
 
     eventBus?.emit(sessionId, {
       type: 'stream:error',

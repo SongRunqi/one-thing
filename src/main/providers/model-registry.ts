@@ -13,6 +13,7 @@ interface ModelsDevModel {
   name: string
   family?: string
   release_date?: string
+  last_updated?: string
   attachment?: boolean
   reasoning?: boolean
   temperature?: boolean
@@ -185,7 +186,24 @@ function convertToOpenRouterModel(model: ModelsDevModel, providerId: string): Op
       is_moderated: false,
     },
     supported_parameters,
+    last_updated: model.last_updated || model.release_date,
   }
+}
+
+/**
+ * Sort models newest-first by last_updated (falls back to release_date via
+ * convertToOpenRouterModel). Entries without a date sort to the end.
+ */
+function sortByLastUpdatedDesc(models: OpenRouterModel[]): OpenRouterModel[] {
+  return [...models].sort((a, b) => {
+    const ad = a.last_updated || ''
+    const bd = b.last_updated || ''
+    if (ad && !bd) return -1
+    if (!ad && bd) return 1
+    if (!ad && !bd) return a.id.localeCompare(b.id)
+    // ISO date strings compare lexicographically
+    return bd.localeCompare(ad)
+  })
 }
 
 /**
@@ -307,12 +325,13 @@ export async function getModelsForProvider(providerId: string): Promise<OpenRout
   // Special handling for claude-code (limited model set for Pro/Max tier)
   if (providerId === 'claude-code') {
     const claudeModels = cache.models.get('claude') || []
-    return claudeModels.filter(m =>
+    const filtered = claudeModels.filter(m =>
       CLAUDE_CODE_MODEL_PATTERNS.some(pattern => m.id.toLowerCase().includes(pattern))
     )
+    return sortByLastUpdatedDesc(filtered)
   }
 
-  return cache.models.get(providerId) || []
+  return sortByLastUpdatedDesc(cache.models.get(providerId) || [])
 }
 
 /**
@@ -323,7 +342,7 @@ export async function getAllModels(): Promise<OpenRouterModel[]> {
     await refreshCache()
   }
 
-  return cache.allModels
+  return sortByLastUpdatedDesc(cache.allModels)
 }
 
 /**

@@ -28,6 +28,10 @@ import { modelSupportsReasoningSync } from './model-registry.js'
 import type { ProviderInfo, ProviderConfig } from './types.js'
 import { oauthManager } from '../providers/auth/oauth-manager.js'
 
+// Gate per-chunk provider-layer logs. Every streamed delta went through JSON.stringify
+// before this gate, which measurably slowed streaming output.
+const DEBUG_STREAM = process.env.DEBUG_STREAM === '1' || process.env.DEBUG_STREAM === 'true'
+
 // Multimodal content type for AI messages (Vercel AI SDK 6.x format)
 export type AIMessageContent = string | Array<
   | { type: 'text'; text: string }
@@ -124,7 +128,7 @@ export async function getOAuthProviderConfig(
  */
 export function createProvider(
   providerId: string,
-  config: { apiKey?: string; baseUrl?: string; apiType?: 'openai' | 'anthropic' }
+  config: { apiKey?: string; baseUrl?: string; localAddress?: string; apiType?: 'openai' | 'anthropic' }
 ) {
   return createProviderInstance(providerId, config as ProviderConfig & { apiType?: 'openai' | 'anthropic' })
 }
@@ -135,7 +139,7 @@ export function createProvider(
  */
 export async function createProviderAsync(
   providerId: string,
-  config: { apiKey?: string; baseUrl?: string; apiType?: 'openai' | 'anthropic' }
+  config: { apiKey?: string; baseUrl?: string; localAddress?: string; apiType?: 'openai' | 'anthropic' }
 ) {
   return createProviderInstanceAsync(providerId, config as ProviderConfig & { apiType?: 'openai' | 'anthropic' })
 }
@@ -251,7 +255,7 @@ function createZodSchema(parameters: Array<{ name: string; type: string; descrip
  */
 export async function generateChatResponse(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: { apiKey: string; baseUrl?: string; model: string; localAddress?: string; apiType?: 'openai' | 'anthropic' },
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
   options: { temperature?: number; maxTokens?: number } = {}
 ): Promise<string> {
@@ -265,7 +269,7 @@ export async function generateChatResponse(
  */
 export async function* streamChatResponse(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: { apiKey: string; baseUrl?: string; model: string; localAddress?: string; apiType?: 'openai' | 'anthropic' },
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
   options: { temperature?: number; maxTokens?: number } = {}
 ): AsyncGenerator<{ text: string; reasoning?: string }, void, unknown> {
@@ -305,7 +309,7 @@ export type ReasoningStreamChunk =
  */
 export async function* streamChatResponseWithReasoning(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: { apiKey: string; baseUrl?: string; model: string; localAddress?: string; apiType?: 'openai' | 'anthropic' },
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: AIMessageContent; reasoningContent?: string }>,
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
 ): AsyncGenerator<ReasoningStreamChunk, void, unknown> {
@@ -454,7 +458,7 @@ export async function* streamChatResponseWithReasoning(
  */
 export async function generateChatResponseWithReasoning(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: { apiKey: string; baseUrl?: string; model: string; localAddress?: string; apiType?: 'openai' | 'anthropic' },
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: AIMessageContent; reasoningContent?: string }>,
   options: { temperature?: number; maxTokens?: number } = {}
 ): Promise<ChatResponseResult> {
@@ -584,7 +588,7 @@ export function shouldUseStreaming(providerId: string, modelId: string): boolean
  */
 export async function generateChatTitle(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: { apiKey: string; baseUrl?: string; model: string; localAddress?: string; apiType?: 'openai' | 'anthropic' },
   userMessage: string
 ): Promise<string> {
   const prompt = `Generate a short, concise title (max 6 words) for a chat conversation that starts with this message. Only respond with the title, nothing else:\n\n"${userMessage}"`
@@ -615,7 +619,7 @@ export type ToolChatMessage =
  */
 export async function* streamChatResponseWithTools(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: { apiKey: string; baseUrl?: string; model: string; localAddress?: string; apiType?: 'openai' | 'anthropic' },
   messages: ToolChatMessage[],
   tools: Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }>,
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
@@ -828,12 +832,14 @@ export async function* streamChatResponseWithTools(
   for await (const chunk of stream.fullStream) {
     const chunkAny = chunk as any
 
-    // Log raw AI stream response
-    if (chunk.type === 'text-delta') {
-      const _t = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
-      if (_t) console.log(`[AI Stream] text: "${_t}"`)
-    } else if (chunk.type !== 'reasoning-delta') {
-      console.log(`[AI Stream] ${chunk.type}:`, JSON.stringify(chunkAny).substring(0, 200))
+    // Log raw AI stream response (gated — each delta otherwise runs JSON.stringify synchronously)
+    if (DEBUG_STREAM) {
+      if (chunk.type === 'text-delta') {
+        const _t = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
+        if (_t) console.log(`[AI Stream] text: "${_t}"`)
+      } else if (chunk.type !== 'reasoning-delta') {
+        console.log(`[AI Stream] ${chunk.type}:`, JSON.stringify(chunkAny).substring(0, 200))
+      }
     }
 
     switch (chunk.type) {
@@ -1024,7 +1030,7 @@ function convertOurUIMessageToAISDK(messages: UIMessage[]): AISDKUIMessage[] {
  */
 export async function* streamChatWithUIMessages(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: { apiKey: string; baseUrl?: string; model: string; localAddress?: string; apiType?: 'openai' | 'anthropic' },
   uiMessages: UIMessage[],
   tools: Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }>,
   options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}

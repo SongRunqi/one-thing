@@ -52,6 +52,10 @@ export {
   getCachedProviderConfig,
   cacheSessionProviderConfig,
 
+  // Async throttled save
+  flushSessionSave,
+  flushAllPendingSaves,
+
   // Initialization
   initializeStores,
 } from './stores/index.js'
