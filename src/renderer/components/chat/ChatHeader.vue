@@ -51,6 +51,24 @@
         />
       </button>
 
+      <!-- Inspector toggle (right-side info panel: context / request / tool calls) -->
+      <button
+        :class="['chat-header-btn', { active: isInspectorOpen }]"
+        :title="isInspectorOpen ? 'Hide inspector' : 'Show inspector'"
+        @click="$emit('toggleInspector')"
+      >
+        <PanelRightClose
+          v-if="isInspectorOpen"
+          :size="14"
+          :stroke-width="2"
+        />
+        <PanelRightOpen
+          v-else
+          :size="14"
+          :stroke-width="2"
+        />
+      </button>
+
       <!-- Close button (for multi-panel) -->
       <button
         v-if="canClose"
@@ -68,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, Columns2, Equal, X } from 'lucide-vue-next'
+import { ArrowLeft, Columns2, Equal, X, PanelRightClose, PanelRightOpen } from 'lucide-vue-next'
 
 defineProps<{
   sessionName: string
@@ -77,6 +95,7 @@ defineProps<{
   showSidebarToggle: boolean
   showSplitButton: boolean
   canClose: boolean
+  isInspectorOpen?: boolean
 }>()
 
 defineEmits<{
@@ -87,6 +106,7 @@ defineEmits<{
   split: []
   equalize: []
   close: []
+  toggleInspector: []
 }>()
 </script>
 
@@ -179,7 +199,8 @@ defineEmits<{
   color: #ef4444;
 }
 
-.chat-header-btn.flow-btn.active {
+.chat-header-btn.flow-btn.active,
+.chat-header-btn.active {
   background: rgba(var(--accent-rgb), 0.15);
   color: var(--accent);
 }

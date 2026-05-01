@@ -285,15 +285,75 @@ const virtualizer = useVirtualizer(computed(() => ({
   },
 })))
 
-// Auto-scroll: when following, scroll to last message on stream chunks or new messages
+// Auto-scroll: when following, keep the bottom pinned through every layout
+// event that changes the scrollable content height — new message arrival,
+// streaming chunks growing the last bubble, markdown segments rendering,
+// attachments loading, etc.
+//
+// With estimateSize=150 a freshly inserted message starts as a 150px
+// placeholder; only after `measureElement` reports the real height does
+// `virtualizer.getTotalSize()` (and therefore the scroll container's
+// scrollHeight) settle. We track that value reactively so each measure
+// pass re-pins the bottom, which is more reliable than guessing frames.
 const effectiveScrollVersion = computed(() => chatStore.getScrollVersion(effectiveSessionId.value))
+
+function pinBottom() {
+  if (!isFollowing.value || suppressed) return
+  const el = messageListRef.value
+  if (el) el.scrollTop = el.scrollHeight
+}
+
+// User-driven triggers: new message count, store-emitted scroll bumps.
+// nextTick covers the immediate Vue patch; the ResizeObserver below
+// handles every subsequent layout (markdown segments rendering, the
+// virtualizer's measureElement reporting real heights, etc.).
 watch([effectiveScrollVersion, () => props.messages.length], () => {
   if (!isFollowing.value || suppressed || props.messages.length === 0) return
+  nextTick(pinBottom)
+})
+
+// Force-follow when a new user message lands. The user explicitly sent it,
+// so they want the new bubble + the response to be visible regardless of
+// whether they were detached. estimateSize=150 means scrollHeight at first
+// nextTick is wrong — re-pin across two rAFs to wait for measureElement to
+// report the real height.
+const lastUserMessageId = computed(() => {
+  for (let i = props.messages.length - 1; i >= 0; i--) {
+    if (props.messages[i].role === 'user') return props.messages[i].id
+  }
+  return null
+})
+watch(lastUserMessageId, (newId, oldId) => {
+  if (!newId || newId === oldId) return
+  isFollowing.value = true
   nextTick(() => {
-    const el = messageListRef.value
-    if (el) el.scrollTop = el.scrollHeight
+    pinBottom()
+    requestAnimationFrame(() => {
+      pinBottom()
+      requestAnimationFrame(pinBottom)
+    })
   })
 })
+
+// Layout-driven trigger: ResizeObserver fires after the browser has
+// actually laid out the new heights, so scrollHeight is guaranteed
+// fresh at this point. Reattach when messageListContentRef changes
+// (it's v-if'd off when there are no messages, so the DOM node may
+// be replaced across session swaps / empty states).
+let contentResizeObserver: ResizeObserver | null = null
+watch(
+  messageListContentRef,
+  (el) => {
+    if (contentResizeObserver) {
+      contentResizeObserver.disconnect()
+      contentResizeObserver = null
+    }
+    if (!el || typeof ResizeObserver === 'undefined') return
+    contentResizeObserver = new ResizeObserver(() => pinBottom())
+    contentResizeObserver.observe(el)
+  },
+  { immediate: true },
+)
 
 // Get indices of user messages
 const userMessageIndices = computed(() => {
@@ -664,6 +724,10 @@ onUnmounted(() => {
   if (navResizeObserver) {
     navResizeObserver.disconnect()
     navResizeObserver = null
+  }
+  if (contentResizeObserver) {
+    contentResizeObserver.disconnect()
+    contentResizeObserver = null
   }
 })
 

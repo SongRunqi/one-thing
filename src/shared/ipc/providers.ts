@@ -95,7 +95,42 @@ export interface ProviderConfig {
   // Empty/undefined = let the OS pick the default route.
   localAddress?: string
   // Per-provider sampling temperature. Undefined = inherit AISettings.temperature (global default).
+  // Used only as a fallback when a per-model override isn't set (see temperatureByModel).
   temperature?: number
+  // Per-model temperature overrides. Keys are model IDs (e.g. "gpt-4o").
+  // Resolution order at request time:
+  //   1. temperatureByModel[model]
+  //   2. ProviderConfig.temperature
+  //   3. AISettings.temperature
+  // Models whose models.dev metadata says `temperature: false` ignore this entirely
+  // — the backend skips sending the parameter so reasoning models don't reject it.
+  temperatureByModel?: Record<string, number>
+  // Per-model max output token overrides. Keys are model IDs (e.g. "deepseek-chat").
+  // Missing entries fall back to models.dev's `limit.output`, then to the global
+  // chat.maxTokens setting. Values are always capped to the model's hard limit at
+  // runtime so users can't accidentally request more than the API allows.
+  maxOutputByModel?: Record<string, number>
+  // Per-model native-thinking toggle. Keys are model IDs (e.g. "deepseek-v4-pro").
+  //   true  = explicitly enable thinking
+  //   false = explicitly disable thinking
+  //   missing = use the model's default
+  // Currently consumed by the DeepSeek provider for v4-series models that
+  // expose thinking as a request flag rather than a separate model id.
+  thinkingByModel?: Record<string, boolean>
+  // Per-model capability overrides. Keys are model IDs.
+  // Each capability is tri-state: `true` / `false` force the answer,
+  // `undefined` means "fall back to models.dev metadata, then name patterns".
+  // Lets users teach the app about hand-added models that aren't in
+  // models.dev yet (e.g. private deployments, just-released models).
+  modelCapabilitiesByModel?: Record<string, ModelCapabilityOverride>
+}
+
+export interface ModelCapabilityOverride {
+  tools?: boolean        // function / tool calling
+  vision?: boolean       // accepts image input
+  reasoning?: boolean    // supports thinking / reasoning mode
+  imageOutput?: boolean  // generates images
+  audio?: boolean        // accepts / emits audio
 }
 
 // User-defined custom provider

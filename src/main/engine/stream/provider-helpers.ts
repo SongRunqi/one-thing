@@ -189,7 +189,13 @@ export async function getProviderConfigForChat(
         providerId: cached.providerId,
         model: cached.model,
         apiKey,
-        baseUrl: cached.baseUrl,
+        // Cache is just a perf optimization, not a source of truth — fall back
+        // to the live providerConfig.baseUrl when the cached snapshot is empty.
+        // This matters for custom providers, where the cache may have been
+        // taken before the user filled in the baseUrl, and would otherwise
+        // hard-fail in createCustomProviderInstance with
+        // "Custom provider requires a base URL".
+        baseUrl: cached.baseUrl ?? providerConfig?.baseUrl,
         localAddress: cached.localAddress ?? providerConfig?.localAddress,
         temperature: cached.temperature ?? settings.ai.temperature,
       }

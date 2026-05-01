@@ -316,7 +316,8 @@ function saveCustomProvider(form: CustomProviderForm) {
     baseUrl: form.baseUrl,
     apiKey: form.apiKey,
     model: form.model,
-    selectedModels: editingProvider.value?.selectedModels || [form.model],
+    selectedModels: editingProvider.value?.selectedModels
+      ?? (form.model ? [form.model] : []),
     enabled: editingProvider.value?.enabled ?? true,
   }
 
@@ -329,11 +330,33 @@ function saveCustomProvider(form: CustomProviderForm) {
     providers.push(provider)
   }
 
+  // Also write a matching entry into `ai.providers[id]` — that map is what
+  // the model picker (ModelSelectorPanel.filteredProviders) and the settings
+  // ProviderModels read for `selectedModels`/`enabled`. Skipping it would
+  // leave the picker filtering the new provider out (modelCount === 0) and
+  // the Models section blank, even after a restart.
+  const existingConfig = localSettings.value.ai.providers?.[provider.id]
+  const nextProviders = {
+    ...(localSettings.value.ai.providers ?? {}),
+    [provider.id]: {
+      ...(existingConfig ?? {}),
+      apiKey: provider.apiKey,
+      baseUrl: provider.baseUrl,
+      model: provider.model,
+      selectedModels:
+        existingConfig?.selectedModels && existingConfig.selectedModels.length > 0
+          ? existingConfig.selectedModels
+          : provider.selectedModels,
+      enabled: existingConfig?.enabled ?? provider.enabled ?? true,
+    },
+  }
+
   localSettings.value = {
     ...localSettings.value,
     ai: {
       ...localSettings.value.ai,
-      customProviders: providers
+      customProviders: providers,
+      providers: nextProviders,
     }
   }
 

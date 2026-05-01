@@ -249,7 +249,12 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
         localAddress: providerConfig?.localAddress,
       },
       filterHistoryForNonToolAPI(historyMessages),
-      { temperature: providerConfig?.temperature ?? settings.ai.temperature }
+      {
+        temperature:
+          providerConfig?.temperatureByModel?.[providerConfig?.model ?? '']
+          ?? providerConfig?.temperature
+          ?? settings.ai.temperature,
+      }
     )
 
     const assistantMessage: ChatMessage = {
@@ -455,7 +460,12 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
         localAddress: providerConfig?.localAddress,
       },
       filterHistoryForNonToolAPI(historyMessages),
-      { temperature: providerConfig?.temperature ?? settings.ai.temperature }
+      {
+        temperature:
+          providerConfig?.temperatureByModel?.[providerConfig?.model ?? '']
+          ?? providerConfig?.temperature
+          ?? settings.ai.temperature,
+      }
     )
 
     const assistantMessage: ChatMessage = {

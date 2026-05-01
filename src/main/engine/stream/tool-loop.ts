@@ -195,14 +195,135 @@ export async function runStream(
       emitter.sendContinuation(currentTurn)
     }
 
-    // Get model's actual max output tokens and cap user setting
-    // This prevents errors when switching between models with different output limits
+    // Resolve max output tokens with per-model precedence:
+    //   1. User's per-model override (settings.providers[id].maxOutputByModel[model])
+    //   2. Half the model's own limit from models.dev — leaves room for input context
+    //      while still allowing reasonable replies. User can opt into the full limit
+    //      explicitly via the per-model setting.
+    //   3. Global chat.maxTokens setting (only when models.dev has no data).
+    // The resolved value is always hard-capped at the model's actual limit so the
+    // request never exceeds what the API will accept.
     const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(ctx.providerConfig.model)
-    const userMaxTokens = ctx.settings.chat?.maxTokens || 4096
-    const effectiveMaxTokens = Math.min(userMaxTokens, modelMaxOutputTokens)
+    const perModelOverride = ctx.providerConfig.maxOutputByModel?.[ctx.providerConfig.model]
+    const globalMax = ctx.settings.chat?.maxTokens || 4096
+    const halfDefault = modelMaxOutputTokens > 0
+      ? Math.max(1, Math.floor(modelMaxOutputTokens / 2))
+      : 0
+    const requested = perModelOverride ?? (halfDefault > 0 ? halfDefault : globalMax)
+    const effectiveMaxTokens = modelMaxOutputTokens > 0
+      ? Math.min(requested, modelMaxOutputTokens)
+      : requested
 
-    const temperature = ctx.providerConfig.temperature ?? ctx.settings.ai.temperature
+    // Resolve temperature with per-model precedence:
+    //   1. providerConfig.temperatureByModel[model]
+    //   2. providerConfig.temperature (legacy per-provider)
+    //   3. settings.ai.temperature (global default)
+    // Models that don't accept the temperature parameter (per models.dev) get
+    // `undefined` so the SDK skips it entirely — required for reasoning models
+    // that reject the field.
     const model = ctx.providerConfig.model
+    const supportsTemp = await modelRegistry.modelSupportsTemperature(model, ctx.providerId)
+    const perModelTemp = ctx.providerConfig.temperatureByModel?.[model]
+    const resolvedTemp = perModelTemp
+      ?? ctx.providerConfig.temperature
+      ?? ctx.settings.ai.temperature
+    const temperature = supportsTemp ? resolvedTemp : undefined
+
+    // Native per-model thinking toggle (DeepSeek v4 series and friends).
+    // `undefined` means "leave it to the provider's default"; only forward
+    // when the user has explicitly opted in or out via ThinkToggle.
+    const thinkingPref = ctx.providerConfig.thinkingByModel?.[model]
+
+    // Emit a pre-flight snapshot for the Inspector panel. Captures intent
+    // (messages, tools, thinking, sampling params) without touching the
+    // wire body — kept small so the renderer ring buffer stays cheap.
+    try {
+      const eventBus = getEventBus()
+      const snapshotMessages = conversationMessages.map((m) => {
+        if (m.role === 'tool') {
+          const first = (m.content as any[])?.[0]
+          const resultStr = (() => {
+            try {
+              return JSON.stringify(first?.result ?? '')
+            } catch {
+              return String(first?.result ?? '')
+            }
+          })()
+          return {
+            role: 'tool' as const,
+            contentPreview: resultStr.slice(0, 200),
+            contentLength: resultStr.length,
+            hasReasoning: false,
+            toolCallId: first?.toolCallId,
+            toolName: first?.toolName,
+          }
+        }
+        const text = typeof m.content === 'string'
+          ? m.content
+          : Array.isArray(m.content)
+            ? m.content
+                .filter((p: any) => p.type === 'text')
+                .map((p: any) => p.text)
+                .join('')
+            : String(m.content ?? '')
+        const base = {
+          role: m.role,
+          contentPreview: text.slice(0, 200),
+          contentLength: text.length,
+          hasReasoning: m.role === 'assistant' && !!(m as any).reasoningContent,
+          reasoningLength:
+            m.role === 'assistant' && (m as any).reasoningContent
+              ? ((m as any).reasoningContent as string).length
+              : undefined,
+        } as const
+        if (m.role === 'assistant' && (m as any).toolCalls?.length) {
+          return {
+            ...base,
+            toolCalls: (m as any).toolCalls.map((tc: any) => ({
+              id: tc.toolCallId,
+              name: tc.toolName,
+              argsLength: (() => {
+                try {
+                  return JSON.stringify(tc.args ?? {}).length
+                } catch {
+                  return 0
+                }
+              })(),
+            })),
+          }
+        }
+        return base
+      })
+
+      eventBus
+        .emit(ctx.sessionId, {
+          type: 'request:snapshot',
+          snapshot: {
+            timestamp: Date.now(),
+            providerId: ctx.providerId,
+            model,
+            turn: currentTurn,
+            messages: snapshotMessages,
+            tools: Object.entries(toolsForAI).map(([name, def]) => ({
+              name,
+              description: (def as any)?.description,
+            })),
+            thinking:
+              thinkingPref === undefined
+                ? undefined
+                : thinkingPref
+                  ? 'enabled'
+                  : 'disabled',
+            temperature,
+            maxTokens: effectiveMaxTokens,
+          },
+        })
+        .catch((err) =>
+          console.error('[ToolLoop] request:snapshot emit error:', err),
+        )
+    } catch {
+      // Event system not initialized — ignore.
+    }
 
     const stream = streamChatResponseWithTools(
       ctx.providerId,
@@ -219,6 +340,7 @@ export async function runStream(
         temperature,
         maxTokens: effectiveMaxTokens,
         abortSignal: ctx.abortSignal,
+        thinking: thinkingPref,
       }
     )
 

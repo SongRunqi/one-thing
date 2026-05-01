@@ -117,6 +117,22 @@ export function initializeIPCHub() {
         store.handleSessionRenamed({ sessionId, name: (event as any).name })
         break
 
+      case 'request:snapshot':
+        console.log('[IPCHub] request:snapshot', sessionId, (event as any).snapshot?.turn)
+        store.handleRequestSnapshot({ sessionId, snapshot: (event as any).snapshot })
+        break
+
+      case 'context:size-updated':
+        // Per-turn input-token usage. Inspector's Context tab uses
+        // contextSize as "last turn input" against the model's window.
+        import('@/stores/sessions').then(({ useSessionsStore }) => {
+          useSessionsStore().updateSessionTokenStats(sessionId, {
+            contextSize: (event as any).contextSize,
+            lastInputTokens: (event as any).contextSize,
+          })
+        })
+        break
+
       // stream:start — no store action needed
     }
   })

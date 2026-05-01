@@ -102,6 +102,41 @@ export interface StreamParamsResolvingEvent {
   }
 }
 
+// ── Request inspector ───────────────────────────
+
+export interface RequestMessageSnapshot {
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  /** First N chars of the text content, escaped, for quick preview. */
+  contentPreview: string
+  contentLength: number
+  /** Assistant only: whether reasoning_content is attached to this turn. */
+  hasReasoning: boolean
+  reasoningLength?: number
+  /** Assistant only: tool calls produced by this turn. */
+  toolCalls?: Array<{ id: string; name: string; argsLength: number }>
+  /** Tool only: which tool call this result belongs to. */
+  toolCallId?: string
+  toolName?: string
+}
+
+export interface RequestSnapshotEvent {
+  type: 'request:snapshot'
+  /** Pre-flight snapshot of an outbound LLM request, captured by the
+   *  tool loop right before handing off to the AI SDK. The Inspector
+   *  panel keeps a small ring buffer of these per session. */
+  snapshot: {
+    timestamp: number
+    providerId: string
+    model: string
+    turn: number
+    messages: RequestMessageSnapshot[]
+    tools: Array<{ name: string; description?: string }>
+    thinking?: 'enabled' | 'disabled'
+    temperature?: number
+    maxTokens?: number
+  }
+}
+
 // ── Skill events ────────────────────────────────
 
 export interface SkillActivatedEvent {
@@ -195,6 +230,7 @@ export type SessionEvent =
   | ContentContinuationEvent
   | ContextSizeUpdatedEvent
   | StreamParamsResolvingEvent
+  | RequestSnapshotEvent
   | SkillActivatedEvent
   | PermissionRequestEvent
   | PermissionTimeoutEvent

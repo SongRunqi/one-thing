@@ -256,9 +256,15 @@ const filteredProviders = computed(() => {
         name: p.name,
         modelCount: selectedModels.length,
         enabled: config?.enabled !== false,
+        isCustom: settingsStore.isCustomProvider(p.id),
       }
     })
-    .filter(p => p.enabled && p.modelCount > 0)
+    // User-added custom providers stay visible even before any models are
+    // selected — otherwise a freshly-added provider would silently disappear
+    // from the picker until the user remembers to go pick a model in Settings.
+    // Built-ins keep the modelCount > 0 filter so the picker doesn't list
+    // every provider the user hasn't configured.
+    .filter(p => p.enabled && (p.isCustom || p.modelCount > 0))
     .filter(p => {
       if (!query) return true
       // Filter providers by name or if any of their models match
@@ -266,32 +272,55 @@ const filteredProviders = computed(() => {
     })
 })
 
-// Cached selected models for current provider (loaded asynchronously)
-const selectedModelsCache = ref<Map<string, OpenRouterModel[]>>(new Map())
+// Build the displayable model list for a provider directly from the store —
+// reactive on both the cached metadata (providerModels) and settings.selectedModels,
+// so adding/removing a model in Settings shows up here without a manual refresh.
+function buildSelectedModels(providerId: string): OpenRouterModel[] {
+  const all = settingsStore.getCachedModels(providerId)
+  const ids = settingsStore.settings?.ai?.providers?.[providerId]?.selectedModels ?? []
+  if (ids.length === 0) return []
+  return ids.map((id) => {
+    const found = all.find((m) => m.id === id)
+    const displayName = settingsStore.getModelDisplayName(id) || (found?.name ?? id)
+    if (found) {
+      return { ...found, name: displayName }
+    }
+    // Placeholder for models not (yet) in the registry — keeps the entry visible
+    // and selectable even if metadata hasn't loaded.
+    return {
+      id,
+      name: displayName,
+      context_length: 0,
+      architecture: {
+        modality: 'text' as const,
+        input_modalities: ['text'],
+        output_modalities: ['text'],
+        tokenizer: 'unknown',
+      },
+      pricing: { prompt: '0', completion: '0', request: '0', image: '0' },
+      top_provider: { context_length: 0, max_completion_tokens: 0, is_moderated: false },
+      supported_parameters: [],
+    }
+  })
+}
 
-// Get models for selected provider
+// Get models for selected provider — fully reactive.
 const filteredModels = computed(() => {
-  const cached = selectedModelsCache.value.get(selectedProviderId.value)
-  if (!cached) return []
-
+  const list = buildSelectedModels(selectedProviderId.value)
   const query = searchQuery.value.toLowerCase()
-  if (!query) return cached
-
-  return cached.filter(m =>
+  if (!query) return list
+  return list.filter((m) =>
     m.id.toLowerCase().includes(query) ||
     m.name.toLowerCase().includes(query) ||
     m.description?.toLowerCase().includes(query)
   )
 })
 
-// Load models for a provider using unified store
+// Warm-load registry metadata (capabilities, context_length, etc.) so the
+// reactive list above gets enriched once data is in the store.
 async function loadModelsForProvider(providerId: string) {
-  if (selectedModelsCache.value.has(providerId)) return
-
   try {
-    // Use store's getSelectedModels which handles caching and fallbacks
-    const models = await settingsStore.getSelectedModels(providerId)
-    selectedModelsCache.value.set(providerId, models)
+    await settingsStore.fetchModelsForProvider(providerId)
   } catch (error) {
     console.error('Failed to load models:', error)
   }
@@ -304,10 +333,10 @@ function selectProvider(providerId: string) {
   loadModelsForProvider(providerId)
 }
 
-// Handle provider hover - only switch if models are already cached
+// Handle provider hover — switch immediately; the reactive computed handles
+// rendering whether or not metadata has finished loading.
 function handleProviderHover(providerId: string) {
-  // Only auto-switch on hover if models are already cached (no loading needed)
-  if (providerId !== selectedProviderId.value && selectedModelsCache.value.has(providerId)) {
+  if (providerId !== selectedProviderId.value) {
     selectedProviderId.value = providerId
     focusedIndex.value = -1
   }

@@ -102,8 +102,12 @@
               v-if="firstTextPart"
               class="content"
               :class="{ typing: isTyping }"
-              v-html="renderContentMarkdown(firstTextPart.content)"
-            />
+            >
+              <StreamingMarkdown
+                :content="firstTextPart.content"
+                :is-user="role === 'user'"
+              />
+            </div>
           </Transition>
 
           <!-- Other parts: tool-call, steps, additional text (with TransitionGroup) -->
@@ -128,8 +132,12 @@
               <div
                 v-else-if="part.type === 'text'"
                 class="content"
-                v-html="renderContentMarkdown(part.content)"
-              />
+              >
+                <StreamingMarkdown
+                  :content="part.content"
+                  :is-user="role === 'user'"
+                />
+              </div>
               <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
               <template v-else-if="part.type === 'tool-call' && (!hasSteps || hasInputStreamingToolCalls(part.toolCalls))">
                 <template v-if="!hasSteps">
@@ -192,10 +200,12 @@
               />
             </template>
           </template>
-          <div
-            :class="['content', { typing: isTyping }]"
-            v-html="renderedContent"
-          />
+          <div :class="['content', { typing: isTyping }]">
+            <StreamingMarkdown
+              :content="isTyping ? displayedContent : content"
+              :is-user="role === 'user'"
+            />
+          </div>
         </template>
       </div>
 
@@ -228,7 +238,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
-import { renderMarkdown } from '@/composables/useMarkdownRenderer'
+import StreamingMarkdown from './StreamingMarkdown.vue'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
 
 interface Props {
@@ -354,15 +364,6 @@ const hasVisibleContent = computed(() => {
     (props.contentParts && props.contentParts.length > 0) ||
     !props.isStreaming
 })
-
-const renderedContent = computed(() => {
-  const content = isTyping.value ? displayedContent.value : props.content
-  return renderContentMarkdown(content)
-})
-
-function renderContentMarkdown(content: string): string {
-  return renderMarkdown(content, props.role === 'user')
-}
 
 function getStepsForTurn(turnIndex: number | undefined) {
   if (!props.steps) return []

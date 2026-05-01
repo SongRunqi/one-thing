@@ -622,7 +622,14 @@ export async function* streamChatResponseWithTools(
   config: { apiKey: string; baseUrl?: string; model: string; localAddress?: string; apiType?: 'openai' | 'anthropic' },
   messages: ToolChatMessage[],
   tools: Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }>,
-  options: { temperature?: number; maxTokens?: number; abortSignal?: AbortSignal } = {}
+  options: {
+    temperature?: number
+    maxTokens?: number
+    abortSignal?: AbortSignal
+    /** Per-model thinking toggle. Currently only honored by DeepSeek's
+     *  v4 series, where it maps to the `thinking` request flag. */
+    thinking?: boolean
+  } = {}
 ): AsyncGenerator<StreamChunkWithTools, void, unknown> {
   const provider = createProvider(providerId, config)
   const model = provider.createModel(config.model)
@@ -641,8 +648,19 @@ export async function* streamChatResponseWithTools(
 
   // Reasoning models (DeepSeek, Kimi, etc.) require reasoning_content in all assistant messages
   // when thinking mode is enabled. The AI SDK sets `thinking: enabled` for these models,
-  // so the API expects reasoning_content on every assistant message — including tool-call-only ones.
-  const needsReasoningParts = isReasoning
+  // so the API expects reasoning_content on every assistant message — including tool-call-only
+  // and plain-text ones.
+  //
+  // Some servers run a thinking model under a name our registry doesn't know (e.g.
+  // deepseek-v4-pro — not in models.dev, no matching name pattern). Detect this
+  // dynamically: if any assistant message in the history carries reasoningContent,
+  // the server is treating this as a thinking session and every assistant message
+  // in the request must carry the reasoning field too, or the API returns 400
+  // ("The reasoning_content in the thinking mode must be passed back to the API").
+  const hasAnyReasoningInHistory = messages.some(
+    (m) => m.role === 'assistant' && !!m.reasoningContent,
+  )
+  const needsReasoningParts = isReasoning || hasAnyReasoningInHistory
 
   // Check if this provider requires system messages to be merged into user messages
   const needsSystemMerge = requiresSystemMergeFromRegistry(providerId)
@@ -667,24 +685,24 @@ export async function* streamChatResponseWithTools(
     if (msg.role === 'assistant') {
       // Check if we need complex content format (reasoning or tool calls)
       const hasToolCalls = msg.toolCalls && msg.toolCalls.length > 0
-      const hasReasoning = needsReasoningParts && msg.reasoningContent
+      const hasReasoning = !!msg.reasoningContent
 
-      // For simple text-only responses, use string content (compatible with all APIs)
-      if (!hasToolCalls && !hasReasoning) {
+      // Simple-text path: no reasoning, no tool calls, not a reasoning session.
+      // In a reasoning session every assistant message must carry the field
+      // (even empty), so fall through to the content-array path.
+      if (!hasToolCalls && !hasReasoning && !needsReasoningParts) {
         return { role: 'assistant', content: msg.content || '' }
       }
 
       // Build content array with reasoning, text, and tool calls
       const content: any[] = []
 
-      // For reasoning models, reasoning must be included as a content part.
-      // The provider converts { type: 'reasoning' } parts to reasoning_content for the API.
-      // When thinking mode is enabled, ALL assistant messages need reasoning_content —
-      // including tool-call-only messages. Use empty string if no reasoning was produced.
+      // Always emit a reasoning part in a reasoning session — real content
+      // if we captured it, empty string otherwise. The provider will convert
+      // { type: 'reasoning' } parts into the reasoning_content wire field.
       if (hasReasoning) {
         content.push({ type: 'reasoning', text: msg.reasoningContent })
-      } else if (needsReasoningParts && hasToolCalls) {
-        // Tool-call messages may not have reasoning, but the API still requires the field
+      } else if (needsReasoningParts) {
         content.push({ type: 'reasoning', text: '' })
       }
 
@@ -806,6 +824,19 @@ export async function* streamChatResponseWithTools(
     (streamOptions as any).providerOptions = {
       moonshotai: {
         reasoningHistory: 'disabled',
+      },
+    }
+  }
+
+  // DeepSeek: forward the user's per-model thinking preference (set via the
+  // ThinkToggle button) to our custom DeepSeek provider, which reads it from
+  // providerOptions.deepseek.thinking and writes it to the wire request.
+  if (providerId === 'deepseek' && options.thinking !== undefined) {
+    (streamOptions as any).providerOptions = {
+      ...((streamOptions as any).providerOptions ?? {}),
+      deepseek: {
+        ...((streamOptions as any).providerOptions?.deepseek ?? {}),
+        thinking: options.thinking ? 'enabled' : 'disabled',
       },
     }
   }

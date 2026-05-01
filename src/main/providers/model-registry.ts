@@ -6,6 +6,27 @@
  */
 
 import type { OpenRouterModel } from '../../shared/ipc.js'
+import type { ModelCapabilityOverride } from '../../shared/ipc/providers.js'
+import { getSettings } from '../stores/settings.js'
+
+/**
+ * User-defined per-model capability override (settings.ai.providers[id].modelCapabilitiesByModel).
+ * Returns `undefined` for "no opinion, fall through to models.dev / name patterns".
+ */
+function getCapabilityOverride(
+  modelId: string,
+  providerId: string | undefined,
+  key: keyof ModelCapabilityOverride,
+): boolean | undefined {
+  if (!providerId) return undefined
+  try {
+    const settings = getSettings()
+    const cfg = settings?.ai?.providers?.[providerId]
+    return cfg?.modelCapabilitiesByModel?.[modelId]?.[key]
+  } catch {
+    return undefined
+  }
+}
 
 // Models.dev API types
 interface ModelsDevModel {
@@ -387,6 +408,9 @@ export async function getModelMaxOutputTokens(modelId: string): Promise<number> 
  * Uses Models.dev's tool_call field for accurate detection
  */
 export async function modelSupportsTools(modelId: string, providerId?: string): Promise<boolean> {
+  const override = getCapabilityOverride(modelId, providerId, 'tools')
+  if (override !== undefined) return override
+
   if (!hasCacheLoaded() || cache.modelsDevData === null) {
     await refreshCache()
   }
@@ -436,11 +460,50 @@ export async function modelSupportsTools(modelId: string, providerId?: string): 
 }
 
 /**
+ * Whether a model accepts the `temperature` parameter, per models.dev.
+ * Models that explicitly mark `temperature: false` (most reasoning models) reject
+ * the parameter — callers should skip sending it. Unknown models default to true
+ * so we don't break custom / user-added entries.
+ */
+export async function modelSupportsTemperature(modelId: string, providerId?: string): Promise<boolean> {
+  if (!hasCacheLoaded() || cache.modelsDevData === null) {
+    await refreshCache()
+  }
+
+  if (cache.modelsDevData) {
+    if (providerId) {
+      const modelsDevProviderId = REVERSE_PROVIDER_MAPPING[providerId] || providerId
+      const provider = cache.modelsDevData[modelsDevProviderId]
+      if (provider?.models[modelId]) {
+        return provider.models[modelId].temperature !== false
+      }
+    }
+    for (const provider of Object.values(cache.modelsDevData)) {
+      if (provider.models[modelId]) {
+        return provider.models[modelId].temperature !== false
+      }
+    }
+  }
+
+  // Fallback: check converted supported_parameters list.
+  const model = await getModelById(modelId)
+  if (model?.supported_parameters && model.supported_parameters.length > 0) {
+    return model.supported_parameters.includes('temperature')
+  }
+
+  // Unknown model — assume yes so the slider isn't disabled by default.
+  return true
+}
+
+/**
  * Check if a model is a reasoning/thinking model
  * Uses Models.dev's reasoning field for accurate detection
  * Reasoning models (like DeepSeek Reasoner, o1, o3) don't support temperature
  */
 export async function modelSupportsReasoning(modelId: string, providerId?: string): Promise<boolean> {
+  const override = getCapabilityOverride(modelId, providerId, 'reasoning')
+  if (override !== undefined) return override
+
   if (!hasCacheLoaded() || cache.modelsDevData === null) {
     await refreshCache()
   }
@@ -494,6 +557,10 @@ export async function modelSupportsReasoning(modelId: string, providerId?: strin
  * This is needed for streaming where we can't await
  */
 export function modelSupportsReasoningSync(modelId: string, providerId?: string): boolean {
+  // User override beats every other detection path.
+  const override = getCapabilityOverride(modelId, providerId, 'reasoning')
+  if (override !== undefined) return override
+
   // 检查结果缓存
   const cacheKey = getCapabilityCacheKey(modelId, providerId)
   const cached = modelCapabilityCache.get(cacheKey)
@@ -547,6 +614,9 @@ export function modelSupportsReasoningSync(modelId: string, providerId?: string)
  * Uses Models.dev's modalities.output field for accurate detection
  */
 export async function modelSupportsImageGeneration(modelId: string, providerId?: string): Promise<boolean> {
+  const override = getCapabilityOverride(modelId, providerId, 'imageOutput')
+  if (override !== undefined) return override
+
   // 检查结果缓存
   const cacheKey = getCapabilityCacheKey(modelId, providerId)
   const cached = modelCapabilityCache.get(cacheKey)

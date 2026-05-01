@@ -116,13 +116,23 @@
           @scroll="onScroll"
         >
           <div :style="{ paddingTop: topPad + 'px', paddingBottom: bottomPad + 'px' }">
-            <label
+            <div
               v-for="model in visibleModels"
               :key="model.id"
-              class="model-row"
-              @click="$emit('toggle', model.id)"
+              :class="['model-row', { 'is-active': model.id === activeModelId }]"
+              :title="`Click to configure ${model.id}`"
+              @click="$emit('select-active', model.id)"
             >
-              <span :class="['model-check', { checked: isModelSelected(model.id) }]">
+              <span
+                :class="['model-check', { checked: isModelSelected(model.id) }]"
+                role="checkbox"
+                tabindex="0"
+                :aria-checked="isModelSelected(model.id)"
+                :title="isModelSelected(model.id) ? 'Deselect' : 'Select'"
+                @click.stop="$emit('toggle', model.id)"
+                @keydown.space.prevent="$emit('toggle', model.id)"
+                @keydown.enter.prevent="$emit('toggle', model.id)"
+              >
                 <svg
                   v-if="isModelSelected(model.id)"
                   width="10"
@@ -136,6 +146,96 @@
                 </svg>
               </span>
               <span class="model-name">{{ model.name || model.id }}</span>
+              <button
+                class="model-caps-edit"
+                :class="{ 'has-override': hasCapabilityOverride(model.id) }"
+                :title="capabilityEditTitle(model.id)"
+                type="button"
+                @click.stop="(e) => toggleCapabilityEditor(model.id, e.currentTarget as HTMLElement)"
+              >
+                <SlidersHorizontal :size="11" />
+              </button>
+              <Teleport
+                v-if="capabilityEditorOpenFor === model.id"
+                to="body"
+              >
+                <div
+                  ref="capabilityPopoverRef"
+                  class="model-caps-popover"
+                  :style="popoverStyle"
+                  @click.stop
+                >
+                <div class="model-caps-popover-head">
+                  <span>Edit model</span>
+                  <button
+                    type="button"
+                    class="model-caps-close"
+                    title="Close"
+                    @click="closeCapabilityEditor"
+                  >×</button>
+                </div>
+
+                <label class="model-caps-id-label">Model ID</label>
+                <div class="model-caps-id-row">
+                  <input
+                    v-model.trim="modelIdDraft"
+                    class="model-caps-id-input"
+                    type="text"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    autocorrect="off"
+                    @keydown.enter.prevent="commitRename(model.id)"
+                    @keydown.esc.prevent="closeCapabilityEditor"
+                  >
+                  <button
+                    type="button"
+                    class="model-caps-id-save"
+                    :disabled="!modelIdDraft || modelIdDraft === model.id"
+                    @click="commitRename(model.id)"
+                  >Save</button>
+                </div>
+                <p
+                  v-if="renameError"
+                  class="model-caps-id-error"
+                >{{ renameError }}</p>
+
+                <div class="model-caps-section-label">
+                  <span>Capabilities</span>
+                  <button
+                    v-if="hasCapabilityOverride(model.id)"
+                    type="button"
+                    class="model-caps-reset"
+                    @click="onResetCapabilities(model.id)"
+                  >Reset</button>
+                </div>
+                <div
+                  v-for="cap in CAPABILITY_KEYS"
+                  :key="cap.key"
+                  class="model-caps-row"
+                >
+                  <span class="model-caps-row-label">
+                    <component
+                      :is="cap.icon"
+                      :size="12"
+                    />
+                    {{ cap.label }}
+                  </span>
+                  <div class="model-caps-tristate">
+                    <button
+                      v-for="opt in TRISTATE_OPTIONS"
+                      :key="opt.value === undefined ? 'auto' : String(opt.value)"
+                      type="button"
+                      :class="['tristate-btn', { active: getCapabilityState(model.id, cap.key) === opt.value }]"
+                      :title="opt.title"
+                      @click="onUpdateCapability(model.id, cap.key, opt.value)"
+                    >{{ opt.label }}</button>
+                  </div>
+                </div>
+                <p class="model-caps-popover-hint">
+                  Auto = use the bundled models.dev metadata. Override for hand-added models.
+                </p>
+                </div>
+              </Teleport>
               <span
                 class="model-caps"
                 @click.stop
@@ -169,13 +269,50 @@
                 v-if="model.context_length"
                 :text="`Context window: ${model.context_length.toLocaleString()} tokens`"
               >
-                <span class="model-ctx">{{ formatContextLength(model.context_length) }}</span>
+                <span class="model-ctx">
+                  <ArrowDownToLine
+                    :size="10"
+                    class="ctx-icon"
+                  />{{ formatContextLength(model.context_length) }}
+                </span>
               </Tooltip>
               <span
                 v-else
                 class="model-ctx"
               >{{ formatContextLength(model.context_length) }}</span>
-            </label>
+              <Tooltip
+                :text="getMaxOutputTooltip(model)"
+              >
+                <span
+                  class="model-out-wrap"
+                  :class="{ overridden: maxOutputs[model.id] != null }"
+                  @click.stop
+                >
+                  <ArrowUpFromLine
+                    :size="10"
+                    class="out-icon"
+                  />
+                  <input
+                    class="model-out-input"
+                    type="number"
+                    inputmode="numeric"
+                    min="1"
+                    :placeholder="getPlaceholder(model)"
+                    :value="maxOutputs[model.id] ?? ''"
+                    @click.stop
+                    @input.stop="onMaxOutInput($event, model.id)"
+                    @change.stop="onMaxOutInput($event, model.id)"
+                  >
+                  <button
+                    v-if="maxOutputs[model.id] != null"
+                    class="model-out-clear"
+                    type="button"
+                    title="Reset to default (half of model limit)"
+                    @click.stop="emit('update-max-output', model.id, null)"
+                  >×</button>
+                </span>
+              </Tooltip>
+            </div>
           </div>
         </div>
 
@@ -211,10 +348,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { Eye, Image, Wrench, Brain } from 'lucide-vue-next'
-import type { OpenRouterModel } from '@/types'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { Eye, Image, Wrench, Brain, ArrowDownToLine, ArrowUpFromLine, SlidersHorizontal, AudioLines } from 'lucide-vue-next'
+import type { OpenRouterModel, ModelCapabilityOverride } from '@/types'
 import Tooltip from '@/components/common/Tooltip.vue'
+
+// Capability keys exposed in the per-model override editor.
+// Order here drives the popover order.
+const CAPABILITY_KEYS: Array<{
+  key: keyof ModelCapabilityOverride
+  label: string
+  icon: any
+}> = [
+  { key: 'tools', label: 'Tools', icon: Wrench },
+  { key: 'vision', label: 'Vision', icon: Eye },
+  { key: 'reasoning', label: 'Reasoning', icon: Brain },
+  { key: 'imageOutput', label: 'Image output', icon: Image },
+  { key: 'audio', label: 'Audio', icon: AudioLines },
+]
+
+// Tri-state button options. `undefined` = "auto / use models.dev default".
+const TRISTATE_OPTIONS: Array<{
+  value: boolean | undefined
+  label: string
+  title: string
+}> = [
+  { value: undefined, label: 'Auto', title: 'Defer to models.dev metadata' },
+  { value: true, label: 'On', title: 'Force enabled' },
+  { value: false, label: 'Off', title: 'Force disabled' },
+]
 
 const ROW_HEIGHT = 34
 const CONTAINER_HEIGHT = 240
@@ -229,6 +391,10 @@ interface Props {
   newModelInput: string
   isLoading: boolean
   error: string
+  maxOutputs: Record<string, number>
+  modelCapabilities: Record<string, ModelCapabilityOverride>
+  renameModel: (oldId: string, newId: string) => { ok: boolean; reason?: string }
+  activeModelId: string
   isModelSelected: (modelId: string) => boolean
   hasVision: (model: OpenRouterModel) => boolean
   hasImageGeneration: (model: OpenRouterModel) => boolean
@@ -243,10 +409,228 @@ interface Emits {
   (e: 'update:searchQuery', value: string): void
   (e: 'update:newModelInput', value: string): void
   (e: 'add-custom'): void
+  (e: 'update-max-output', modelId: string, value: number | null): void
+  (e: 'update-capability', modelId: string, key: keyof ModelCapabilityOverride, value: boolean | null): void
+  (e: 'reset-capabilities', modelId: string): void
+  (e: 'select-active', modelId: string): void
 }
 
 const props = defineProps<Props>()
-defineEmits<Emits>()
+const emit = defineEmits<Emits>()
+
+// Hard upper bound for the model: from models.dev's `limit.output`. Used as
+// the cap on any user-entered value.
+function getModelMaxLimit(model: OpenRouterModel): number {
+  return model.top_provider?.max_completion_tokens ?? 0
+}
+
+// Suggested default — half the model's hard limit. This matches the backend
+// resolution in tool-loop.ts when the user hasn't set an override.
+function getDefaultMaxOutput(model: OpenRouterModel): number {
+  const limit = getModelMaxLimit(model)
+  if (limit <= 0) return 0
+  return Math.max(1, Math.floor(limit / 2))
+}
+
+function getMaxOutputTooltip(model: OpenRouterModel): string {
+  const limit = getModelMaxLimit(model)
+  const def = getDefaultMaxOutput(model)
+  const override = props.maxOutputs[model.id]
+  const limitLine = limit > 0
+    ? `Model limit: ${limit.toLocaleString()} tokens (from models.dev)`
+    : 'No model limit available'
+  const defLine = def > 0
+    ? `Default when unset: ${def.toLocaleString()} (half of limit)`
+    : ''
+  if (override != null) {
+    return [
+      `Override: ${override.toLocaleString()} tokens`,
+      limitLine,
+      defLine,
+      'Clear the field to use the default.',
+    ].filter(Boolean).join('\n')
+  }
+  return [
+    'Max output tokens (per-model)',
+    limitLine,
+    defLine,
+    'Type to override; values above the limit are capped.',
+  ].filter(Boolean).join('\n')
+}
+
+function onMaxOutInput(event: Event, modelId: string) {
+  const target = event.target as HTMLInputElement
+  const raw = target.value.trim()
+  if (raw === '') {
+    emit('update-max-output', modelId, null)
+    return
+  }
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) {
+    emit('update-max-output', modelId, null)
+    return
+  }
+  // Cap at the model's hard limit if known, so users can't accidentally save
+  // a value the API will reject.
+  const limit = getModelMaxLimit(findModel(modelId))
+  const capped = limit > 0 ? Math.min(Math.floor(n), limit) : Math.floor(n)
+  // Reflect the capped value back into the input so the user sees what was stored.
+  if (capped !== Math.floor(n)) {
+    target.value = String(capped)
+  }
+  emit('update-max-output', modelId, capped)
+}
+
+function findModel(modelId: string): OpenRouterModel {
+  return props.filteredModels.find((m) => m.id === modelId)
+    ?? props.models.find((m) => m.id === modelId)
+    ?? ({ id: modelId } as OpenRouterModel)
+}
+
+// ── Capability override editor ───────────────────────────
+// Only one popover can be open at a time. Re-clicking the same row closes it.
+// The popover is teleported to <body> with fixed positioning so it can't be
+// clipped by the virtualized model list's overflow container.
+const capabilityEditorOpenFor = ref<string | null>(null)
+const capabilityPopoverRef = ref<HTMLElement | HTMLElement[] | null>(null)
+const modelIdDraft = ref('')
+const renameError = ref('')
+const popoverStyle = ref<Record<string, string>>({})
+const POPOVER_WIDTH = 280
+
+function placePopover(trigger: HTMLElement) {
+  const rect = trigger.getBoundingClientRect()
+  // Anchor below-right; clamp inside viewport with an 8px gutter.
+  let left = rect.left
+  if (left + POPOVER_WIDTH > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - POPOVER_WIDTH - 8)
+  }
+  popoverStyle.value = {
+    position: 'fixed',
+    top: `${Math.round(rect.bottom + 6)}px`,
+    left: `${Math.round(left)}px`,
+    width: `${POPOVER_WIDTH}px`,
+  }
+}
+
+function toggleCapabilityEditor(modelId: string, trigger?: HTMLElement) {
+  if (capabilityEditorOpenFor.value === modelId) {
+    closeCapabilityEditor()
+    return
+  }
+  capabilityEditorOpenFor.value = modelId
+  modelIdDraft.value = modelId
+  renameError.value = ''
+  if (trigger) placePopover(trigger)
+}
+
+function closeCapabilityEditor() {
+  capabilityEditorOpenFor.value = null
+  modelIdDraft.value = ''
+  renameError.value = ''
+}
+
+function commitRename(oldId: string) {
+  const next = modelIdDraft.value.trim()
+  if (!next || next === oldId) {
+    closeCapabilityEditor()
+    return
+  }
+  // Parent provides validation + storage write synchronously via prop.
+  const result = props.renameModel(oldId, next)
+  if (!result.ok) {
+    renameError.value =
+      result.reason === 'duplicate'
+        ? `Another model with id "${next}" already exists.`
+        : result.reason === 'empty'
+          ? 'Model id cannot be empty.'
+          : 'Could not rename model.'
+    return
+  }
+  // Move the popover focus to the new id so it stays open after rename.
+  capabilityEditorOpenFor.value = next
+  modelIdDraft.value = next
+  renameError.value = ''
+}
+
+function onPopoverOutsideClick(e: MouseEvent) {
+  if (!capabilityEditorOpenFor.value) return
+  const popovers = Array.isArray(capabilityPopoverRef.value)
+    ? capabilityPopoverRef.value
+    : capabilityPopoverRef.value
+      ? [capabilityPopoverRef.value]
+      : []
+  const target = e.target as Node | null
+  if (!target) return
+  // Don't close when the click came from the trigger button itself —
+  // toggleCapabilityEditor handles that case (and would race with us).
+  if (target instanceof HTMLElement && target.closest('.model-caps-edit')) return
+  for (const el of popovers) {
+    if (el && el.contains(target)) return
+  }
+  closeCapabilityEditor()
+}
+
+function onPopoverEsc(e: KeyboardEvent) {
+  if (e.key === 'Escape' && capabilityEditorOpenFor.value) {
+    closeCapabilityEditor()
+  }
+}
+
+watch(capabilityEditorOpenFor, (id) => {
+  if (id) {
+    document.addEventListener('mousedown', onPopoverOutsideClick)
+    document.addEventListener('keydown', onPopoverEsc)
+  } else {
+    document.removeEventListener('mousedown', onPopoverOutsideClick)
+    document.removeEventListener('keydown', onPopoverEsc)
+  }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onPopoverOutsideClick)
+  document.removeEventListener('keydown', onPopoverEsc)
+})
+
+function hasCapabilityOverride(modelId: string): boolean {
+  const entry = props.modelCapabilities[modelId]
+  if (!entry) return false
+  return Object.values(entry).some((v) => v !== undefined)
+}
+
+function getCapabilityState(
+  modelId: string,
+  key: keyof ModelCapabilityOverride,
+): boolean | undefined {
+  return props.modelCapabilities[modelId]?.[key]
+}
+
+function capabilityEditTitle(modelId: string): string {
+  return hasCapabilityOverride(modelId)
+    ? 'Edit capability overrides (custom)'
+    : 'Override model capabilities'
+}
+
+function onUpdateCapability(
+  modelId: string,
+  key: keyof ModelCapabilityOverride,
+  value: boolean | undefined,
+) {
+  // null = clear override (back to auto). The store side normalizes null → delete.
+  emit('update-capability', modelId, key, value === undefined ? null : value)
+}
+
+function onResetCapabilities(modelId: string) {
+  emit('reset-capabilities', modelId)
+  capabilityEditorOpenFor.value = null
+}
+
+// Placeholder shows the resolved default (half of limit) — empty string when
+// we have no data so the input doesn't display a misleading "—".
+function getPlaceholder(model: OpenRouterModel): string {
+  const def = getDefaultMaxOutput(model)
+  return def > 0 ? String(def) : '—'
+}
 
 const listRef = ref<HTMLElement | null>(null)
 const scrollTop = ref(0)
@@ -404,16 +788,17 @@ watch(() => props.filteredModels.length, () => {
 .model-list:hover::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); }
 
 .model-row {
+  position: relative;
   display: flex;
   align-items: center;
   padding: 7px 12px;
   gap: 8px;
-  cursor: pointer;
   font-size: 13px;
   height: 34px;
   box-sizing: border-box;
   border-bottom: 1px solid rgba(128, 128, 128, 0.06);
   transition: background 0.08s ease;
+  cursor: pointer;
 }
 
 .model-row:last-child {
@@ -421,22 +806,65 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-row:hover {
-  background: rgba(128, 128, 128, 0.06);
+  background: rgba(128, 128, 128, 0.04);
 }
 
+/* Active model: the one whose temperature / max-output the sliders below
+   are configuring. Marked with a left accent stripe + light tint. */
+.model-row.is-active {
+  background: rgba(var(--accent-rgb, 59, 130, 246), 0.06);
+}
+
+.model-row.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.model-row.is-active:hover {
+  background: rgba(var(--accent-rgb, 59, 130, 246), 0.1);
+}
+
+.model-row.is-active .model-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Checkbox is now the only click target for selection.
+   Larger invisible hit area via padding + negative margin so users don't
+   need pixel-perfect aim, while the visual square stays compact. */
 .model-check {
   width: 14px;
   height: 14px;
+  padding: 4px;
+  margin: -4px;
   border: 1.5px solid var(--border);
   border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  cursor: pointer;
+  background-clip: content-box;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.model-check:hover {
+  border-color: var(--accent);
+}
+
+.model-check:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .model-check.checked {
-  background: var(--accent);
+  background: var(--accent) content-box;
   border-color: var(--accent);
   color: white;
 }
@@ -459,11 +887,117 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-ctx {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   color: var(--muted);
   font-size: 11px;
-  min-width: 32px;
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
   text-align: right;
   flex-shrink: 0;
+}
+
+.ctx-icon { opacity: 0.55; }
+
+/* Per-model max-output cell: arrow icon + input + clear (×).
+   Wrapped in a single bordered pill so it reads as one control distinct
+   from the context-length number. */
+.model-out-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 4px 0 6px;
+  border: 1px solid rgba(128, 128, 128, 0.18);
+  border-radius: 5px;
+  background: rgba(128, 128, 128, 0.04);
+  flex-shrink: 0;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.model-out-wrap:hover {
+  border-color: rgba(128, 128, 128, 0.4);
+  background: rgba(128, 128, 128, 0.08);
+}
+
+.model-out-wrap:focus-within {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb, 59, 130, 246), 0.06);
+}
+
+.model-out-wrap.overridden {
+  border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.45);
+  background: rgba(var(--accent-rgb, 59, 130, 246), 0.08);
+}
+
+.out-icon {
+  color: var(--muted);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.model-out-wrap.overridden .out-icon {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.model-out-input {
+  width: 52px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  font-family: var(--font-mono, 'SF Mono', monospace);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+  /* Hide spinner arrows */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.model-out-input::-webkit-outer-spin-button,
+.model-out-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.model-out-input::placeholder {
+  color: var(--muted);
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.model-out-wrap.overridden .model-out-input {
+  color: var(--accent);
+  font-weight: 600;
+  font-style: normal;
+}
+
+.model-out-clear {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin-left: 2px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.model-out-clear:hover {
+  background: rgba(239, 68, 68, 0.18);
+  color: #ef4444;
 }
 
 .empty-row {
@@ -551,5 +1085,218 @@ watch(() => props.filteredModels.length, () => {
 .add-model-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Per-model capability override editor — trigger button (stays in-flow) */
+.model-caps-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.model-caps-edit:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.model-caps-edit.has-override {
+  border-color: rgba(168, 85, 247, 0.4);
+  color: var(--accent, #a855f7);
+}
+</style>
+
+<!--
+  Popover styles need to be unscoped: <Teleport to="body"> moves the
+  popover out of this component's data-v scope, so scoped selectors
+  wouldn't match. Keep these rules global and prefixed with
+  `.model-caps-popover ` so they don't leak.
+-->
+<style>
+/* Popover lives at <body> via Teleport; position is set inline. */
+.model-caps-popover {
+  z-index: 1000;
+  background: var(--bg-elevated, var(--bg-panel));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.model-caps-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 0 4px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.model-caps-reset {
+  border: none;
+  background: transparent;
+  color: var(--accent, #a855f7);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+.model-caps-reset:hover {
+  text-decoration: underline;
+}
+
+.model-caps-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px;
+}
+
+.model-caps-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.model-caps-tristate {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tristate-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.tristate-btn:last-child {
+  border-right: none;
+}
+.tristate-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.tristate-btn.active {
+  background: rgba(168, 85, 247, 0.15);
+  color: var(--accent, #a855f7);
+}
+
+.model-caps-popover-hint {
+  margin: 4px 4px 0;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.model-caps-close {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.model-caps-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.model-caps-id-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 4px 4px 2px;
+}
+
+.model-caps-id-row {
+  display: flex;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.model-caps-id-input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg, transparent);
+  color: var(--text);
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 12px;
+  outline: none;
+}
+.model-caps-id-input:focus {
+  border-color: var(--accent, #a855f7);
+}
+
+.model-caps-id-save {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  background: rgba(168, 85, 247, 0.18);
+  color: var(--accent, #a855f7);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.model-caps-id-save:hover {
+  background: rgba(168, 85, 247, 0.28);
+}
+.model-caps-id-save:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.model-caps-id-error {
+  margin: 4px 4px 0;
+  font-size: 11px;
+  color: #ef4444;
+  line-height: 1.3;
+}
+
+.model-caps-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 8px 4px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
 }
 </style>

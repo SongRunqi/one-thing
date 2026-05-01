@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '../../shared/ipc.js'
 import * as store from '../store.js'
 import { openSettingsWindow } from '../window.js'
 import { invalidateProviderCache } from '../providers/registry.js'
+import { invalidateAllCachedProviderConfigs } from '../stores/sessions.js'
 
 export function registerSettingsHandlers() {
   // Open settings window
@@ -40,6 +41,11 @@ export function registerSettingsHandlers() {
 
     // Invalidate provider cache so new API keys / base URLs take effect immediately
     invalidateProviderCache()
+
+    // Drop per-session cached provider snapshots — sessions cache baseUrl /
+    // localAddress / temperature at model-select time, and would otherwise
+    // keep using stale values until the user manually re-picks the model.
+    invalidateAllCachedProviderConfigs()
 
     // Get the sender's webContents ID to exclude from broadcast
     const senderWebContentsId = event.sender.id

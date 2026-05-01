@@ -82,28 +82,46 @@ export function useProviderSettings(
     return props.settings.ai.providers[viewingProvider.value]?.selectedModels || []
   })
 
-  // Effective temperature for the viewing provider: per-provider override falls back to global default.
-  const currentTemperature = computed(() => {
-    return props.settings.ai.providers[viewingProvider.value]?.temperature ?? props.settings.ai.temperature
-  })
+  // ──────────────── Temperature: per-model with provider/global fallbacks ────────────────
+  //
+  // Resolution chain (mirrors the backend in tool-loop.ts):
+  //   1. providers[viewing].temperatureByModel[activeModel]
+  //   2. providers[viewing].temperature   (legacy per-provider)
+  //   3. settings.ai.temperature           (global default)
+  //
+  // Models whose models.dev metadata says `temperature: false` are reported
+  // as unsupported — UI displays 0 and the backend skips sending the param.
 
-  const hasProviderTemperatureOverride = computed(() => {
-    return props.settings.ai.providers[viewingProvider.value]?.temperature !== undefined
-  })
-
-  // Whether the currently-active model for this provider accepts a `temperature`
-  // parameter. Sourced from models.dev's per-model `temperature: boolean` field,
-  // which is surfaced as `'temperature'` in `supported_parameters`.
+  // Whether the currently-active model accepts the `temperature` parameter.
   // Defaults to true when the model isn't in the registry (custom / user-added).
   const activeModelSupportsTemperature = computed(() => {
-    const activeModelId = props.settings.ai.providers[viewingProvider.value]?.model
-    if (!activeModelId) return true
-    const found = availableModels.value.find(m => m.id === activeModelId)
+    const id = props.settings.ai.providers[viewingProvider.value]?.model
+    if (!id) return true
+    const found = availableModels.value.find(m => m.id === id)
     if (!found || !found.supported_parameters) return true
-    // supported_parameters is only meaningfully populated for models.dev-backed entries.
-    // Empty arrays (e.g. synthetic custom-model entries) fall back to "allow".
     if (found.supported_parameters.length === 0) return true
     return found.supported_parameters.includes('temperature')
+  })
+
+  // The effective temperature for the active model.
+  // When the model doesn't accept temperature, surface 0 so the slider's
+  // displayed value matches what gets sent (i.e. nothing).
+  const currentTemperature = computed(() => {
+    if (!activeModelSupportsTemperature.value) return 0
+    const cfg = props.settings.ai.providers[viewingProvider.value]
+    const id = cfg?.model ?? ''
+    const perModel = cfg?.temperatureByModel?.[id]
+    if (typeof perModel === 'number') return perModel
+    if (typeof cfg?.temperature === 'number') return cfg.temperature
+    return props.settings.ai.temperature
+  })
+
+  // True only when the *active model* has its own override. Provider-level and
+  // global defaults are not counted as overrides for UI purposes.
+  const hasProviderTemperatureOverride = computed(() => {
+    const cfg = props.settings.ai.providers[viewingProvider.value]
+    const id = cfg?.model ?? ''
+    return typeof cfg?.temperatureByModel?.[id] === 'number'
   })
 
   const filteredModels = computed(() => {
@@ -224,6 +242,191 @@ export function useProviderSettings(
     updateSettings({ ai: { ...props.settings.ai, providers } })
   }
 
+  // Per-model max output token override map for the currently viewing provider.
+  // Read from settings; write via updateModelMaxOutput.
+  const currentProviderMaxOutputs = computed<Record<string, number>>(() => {
+    return props.settings.ai.providers[viewingProvider.value]?.maxOutputByModel ?? {}
+  })
+
+  // The model the slider should configure: the provider's currently active one
+  // (i.e. what gets used when you send a message with this provider).
+  const activeModelId = computed<string>(() => {
+    return props.settings.ai.providers[viewingProvider.value]?.model ?? ''
+  })
+
+  // Hard limit from models.dev for the active model. 0 = unknown.
+  const activeModelMaxLimit = computed<number>(() => {
+    const id = activeModelId.value
+    if (!id) return 0
+    const found = availableModels.value.find((m) => m.id === id)
+    return found?.top_provider?.max_completion_tokens ?? 0
+  })
+
+  // Default value used when no override is set: half of the model's hard limit.
+  const activeModelDefaultMaxOutput = computed<number>(() => {
+    const limit = activeModelMaxLimit.value
+    if (limit <= 0) return 0
+    return Math.max(1, Math.floor(limit / 2))
+  })
+
+  // Effective max output: override -> half-default. Used to drive the slider.
+  const activeModelMaxOutput = computed<number>(() => {
+    const id = activeModelId.value
+    const override = currentProviderMaxOutputs.value[id]
+    if (typeof override === 'number' && override > 0) return override
+    return activeModelDefaultMaxOutput.value
+  })
+
+  const hasActiveModelMaxOverride = computed<boolean>(() => {
+    const id = activeModelId.value
+    return id in currentProviderMaxOutputs.value
+  })
+
+  // Step size that gives ~100 ticks across the slider for smooth dragging.
+  const activeModelMaxOutputStep = computed<number>(() => {
+    const limit = activeModelMaxLimit.value
+    if (limit <= 0) return 1
+    if (limit <= 1024) return 1
+    if (limit <= 8192) return 64
+    if (limit <= 32_768) return 128
+    if (limit <= 131_072) return 256
+    return 1024
+  })
+
+  function updateActiveModelMaxOutput(value: number) {
+    if (!activeModelId.value) return
+    updateModelMaxOutput(activeModelId.value, value)
+  }
+
+  function resetActiveModelMaxOutput() {
+    if (!activeModelId.value) return
+    updateModelMaxOutput(activeModelId.value, null)
+  }
+
+  // Set the provider's active model — this is the row that the
+  // Temperature / Max Output sliders below the list will configure.
+  function setActiveModel(modelId: string) {
+    if (!modelId) return
+    const providers = { ...props.settings.ai.providers }
+    providers[viewingProvider.value] = {
+      ...providers[viewingProvider.value],
+      model: modelId,
+    }
+    updateSettings({ ai: { ...props.settings.ai, providers } })
+  }
+
+  function updateModelMaxOutput(modelId: string, value: number | null) {
+    const providers = { ...props.settings.ai.providers }
+    const current = { ...providers[viewingProvider.value] }
+    const map = { ...(current.maxOutputByModel ?? {}) }
+    if (value === null || !Number.isFinite(value) || value <= 0) {
+      delete map[modelId]
+    } else {
+      // Clamp to a sensible upper bound so a fat-fingered 99999999 doesn't poison settings.
+      map[modelId] = Math.min(Math.floor(value), 1_000_000)
+    }
+    if (Object.keys(map).length === 0) {
+      delete current.maxOutputByModel
+    } else {
+      current.maxOutputByModel = map
+    }
+    providers[viewingProvider.value] = current
+    updateSettings({ ai: { ...props.settings.ai, providers } })
+  }
+
+  // Per-model capability overrides (settings.ai.providers[id].modelCapabilitiesByModel).
+  // Pass `value: null` (or `undefined`) to clear the override for that key
+  // and fall back to models.dev / name-pattern detection.
+  const currentProviderModelCapabilities = computed<Record<string, import('@/types').ModelCapabilityOverride>>(() => {
+    return props.settings.ai.providers[viewingProvider.value]?.modelCapabilitiesByModel ?? {}
+  })
+
+  function updateModelCapability(
+    modelId: string,
+    key: keyof import('@/types').ModelCapabilityOverride,
+    value: boolean | null,
+  ) {
+    const providers = { ...props.settings.ai.providers }
+    const current = { ...providers[viewingProvider.value] }
+    const map: Record<string, import('@/types').ModelCapabilityOverride> = {
+      ...(current.modelCapabilitiesByModel ?? {}),
+    }
+    const entry: Record<string, boolean> = {
+      ...(map[modelId] ?? {}),
+    } as Record<string, boolean>
+    if (value === null) {
+      delete entry[key as string]
+    } else {
+      entry[key as string] = value
+    }
+    if (Object.keys(entry).length === 0) {
+      delete map[modelId]
+    } else {
+      map[modelId] = entry as import('@/types').ModelCapabilityOverride
+    }
+    if (Object.keys(map).length === 0) {
+      delete current.modelCapabilitiesByModel
+    } else {
+      current.modelCapabilitiesByModel = map
+    }
+    providers[viewingProvider.value] = current
+    updateSettings({ ai: { ...props.settings.ai, providers } })
+  }
+
+  /**
+   * Rename a hand-added model id. Migrates the id across every per-model
+   * map on the provider config so capability / max-output / thinking
+   * overrides survive the rename. No-op if the new id is empty, equals
+   * the old one, or already exists in selectedModels.
+   */
+  function renameModel(oldId: string, newId: string): { ok: boolean; reason?: string } {
+    const trimmed = newId.trim()
+    if (!trimmed) return { ok: false, reason: 'empty' }
+    if (trimmed === oldId) return { ok: true }
+
+    const providers = { ...props.settings.ai.providers }
+    const current = { ...providers[viewingProvider.value] }
+    const selected = current.selectedModels ?? []
+
+    if (selected.includes(trimmed)) {
+      return { ok: false, reason: 'duplicate' }
+    }
+
+    current.selectedModels = selected.map((id) => (id === oldId ? trimmed : id))
+    if (current.model === oldId) current.model = trimmed
+
+    const moveKey = <T,>(map: Record<string, T> | undefined): Record<string, T> | undefined => {
+      if (!map || !(oldId in map)) return map
+      const next: Record<string, T> = { ...map }
+      next[trimmed] = next[oldId]
+      delete next[oldId]
+      return next
+    }
+    current.maxOutputByModel = moveKey(current.maxOutputByModel)
+    current.temperatureByModel = moveKey(current.temperatureByModel)
+    current.thinkingByModel = moveKey(current.thinkingByModel)
+    current.modelCapabilitiesByModel = moveKey(current.modelCapabilitiesByModel)
+
+    providers[viewingProvider.value] = current
+    updateSettings({ ai: { ...props.settings.ai, providers } })
+    return { ok: true }
+  }
+
+  function resetModelCapabilities(modelId: string) {
+    const providers = { ...props.settings.ai.providers }
+    const current = { ...providers[viewingProvider.value] }
+    if (!current.modelCapabilitiesByModel?.[modelId]) return
+    const map = { ...current.modelCapabilitiesByModel }
+    delete map[modelId]
+    if (Object.keys(map).length === 0) {
+      delete current.modelCapabilitiesByModel
+    } else {
+      current.modelCapabilitiesByModel = map
+    }
+    providers[viewingProvider.value] = current
+    updateSettings({ ai: { ...props.settings.ai, providers } })
+  }
+
   function updateProviderLocalAddress(localAddress: string) {
     const providers = { ...props.settings.ai.providers }
     // Treat empty string as "clear" so the OS picks the default route.
@@ -243,18 +446,36 @@ export function useProviderSettings(
     }
   }
 
-  // Writes the per-provider override. Global ai.temperature remains the fallback default.
+  // Writes the per-model temperature override. Falls back to provider/global when unset.
+  // Function name kept for backwards compat with template; it now writes per-model.
   function updateProviderTemperature(temperature: number) {
+    const cfg = props.settings.ai.providers[viewingProvider.value]
+    const id = cfg?.model ?? ''
+    if (!id) return
     const providers = { ...props.settings.ai.providers }
-    providers[viewingProvider.value] = { ...providers[viewingProvider.value], temperature }
+    const current = { ...providers[viewingProvider.value] }
+    const map = { ...(current.temperatureByModel ?? {}) }
+    map[id] = temperature
+    current.temperatureByModel = map
+    providers[viewingProvider.value] = current
     updateSettings({ ai: { ...props.settings.ai, providers } })
   }
 
-  // Clear the provider's override, letting it inherit the global default.
+  // Clear the active model's per-model override, letting it fall back to
+  // provider-level then global temperature.
   function resetProviderTemperature() {
+    const cfg = props.settings.ai.providers[viewingProvider.value]
+    const id = cfg?.model ?? ''
+    if (!id) return
     const providers = { ...props.settings.ai.providers }
     const current = { ...providers[viewingProvider.value] }
-    delete current.temperature
+    const map = { ...(current.temperatureByModel ?? {}) }
+    delete map[id]
+    if (Object.keys(map).length === 0) {
+      delete current.temperatureByModel
+    } else {
+      current.temperatureByModel = map
+    }
     providers[viewingProvider.value] = current
     updateSettings({ ai: { ...props.settings.ai, providers } })
   }
@@ -598,6 +819,13 @@ export function useProviderSettings(
     currentTemperature,
     hasProviderTemperatureOverride,
     activeModelSupportsTemperature,
+    currentProviderMaxOutputs,
+    activeModelId,
+    activeModelMaxLimit,
+    activeModelDefaultMaxOutput,
+    activeModelMaxOutput,
+    hasActiveModelMaxOverride,
+    activeModelMaxOutputStep,
     filteredModels,
     isOAuthProvider,
     enabledProviders,
@@ -620,6 +848,14 @@ export function useProviderSettings(
     updateProviderLocalAddress,
     updateProviderTemperature,
     resetProviderTemperature,
+    updateModelMaxOutput,
+    updateActiveModelMaxOutput,
+    resetActiveModelMaxOutput,
+    currentProviderModelCapabilities,
+    updateModelCapability,
+    resetModelCapabilities,
+    renameModel,
+    setActiveModel,
     toggleProviderEnabled,
     switchViewingProvider,
     toggleModelSelection,

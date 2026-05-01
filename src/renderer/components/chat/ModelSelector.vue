@@ -44,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import type { AIProvider } from '../../../shared/ipc'
@@ -153,6 +153,22 @@ const displayName = computed(() => {
   if (!currentModel.value) return 'Select model'
   return settingsStore.getModelDisplayName(currentModel.value)
 })
+
+// Warm the model-name cache for the current provider so the button label
+// resolves from the model id (e.g. "deepseek-v4-pro") to its proper
+// display name (e.g. "DeepSeek V4 Pro") without waiting for the user to
+// open the model picker. Cheap when cached: fetchModelsForProvider
+// short-circuits on hit.
+watch(
+  currentProvider,
+  (provider) => {
+    if (!provider) return
+    settingsStore.fetchModelsForProvider(provider).catch((err) => {
+      console.warn('[ModelSelector] failed to warm model name cache:', err)
+    })
+  },
+  { immediate: true },
+)
 
 function openPanel() {
   if (selectorRef.value) {

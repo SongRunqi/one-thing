@@ -1,5 +1,13 @@
 <template>
-  <div :class="['tool-inline', statusClass, { expanded: isExpanded, 'needs-confirm': toolCall.requiresConfirmation }]">
+  <!-- Novelty tool: render with a dedicated animated component instead of the generic line -->
+  <FartCallItem
+    v-if="toolCall.toolName === 'fart'"
+    :tool-call="toolCall"
+  />
+  <div
+    v-else
+    :class="['tool-inline', statusClass, { expanded: isExpanded, 'needs-confirm': toolCall.requiresConfirmation }]"
+  >
     <!-- Main Row: always single-line, fixed height -->
     <div
       class="tool-row"
@@ -137,6 +145,7 @@
 import { ref, computed } from 'vue'
 import type { ToolCall } from '@/types'
 import AllowSplitButton from '../common/AllowSplitButton.vue'
+import FartCallItem from './FartCallItem.vue'
 
 interface Props {
   toolCall: ToolCall

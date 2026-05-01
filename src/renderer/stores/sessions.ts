@@ -429,6 +429,31 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  /**
+   * Update token-usage fields on a session in place. Called by ipc-hub
+   * for `context:size-updated` (per-turn input tokens) and on
+   * `stream:complete` (accumulated session totals). Inspector's Context
+   * tab reactively re-renders from these fields.
+   */
+  function updateSessionTokenStats(
+    sessionId: string,
+    stats: {
+      contextSize?: number
+      lastInputTokens?: number
+      totalInputTokens?: number
+      totalOutputTokens?: number
+      totalTokens?: number
+    },
+  ): void {
+    const session = sessions.value.find((s) => s.id === sessionId) as any
+    if (!session) return
+    if (stats.contextSize !== undefined) session.contextSize = stats.contextSize
+    if (stats.lastInputTokens !== undefined) session.lastInputTokens = stats.lastInputTokens
+    if (stats.totalInputTokens !== undefined) session.totalInputTokens = stats.totalInputTokens
+    if (stats.totalOutputTokens !== undefined) session.totalOutputTokens = stats.totalOutputTokens
+    if (stats.totalTokens !== undefined) session.totalTokens = stats.totalTokens
+  }
+
   return {
     sessions,
     currentSessionId,
@@ -447,6 +472,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     switchSessionLegacy,
     deleteSession,
     archiveSession,
+    updateSessionTokenStats,
     restoreSession,
     permanentlyDeleteSession,
     renameSession,

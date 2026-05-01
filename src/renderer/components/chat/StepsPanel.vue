@@ -8,8 +8,14 @@
       v-for="step in steps"
       :key="step.id"
     >
+      <!-- Novelty: fart tool renders a dedicated animated card -->
+      <FartCallItem
+        v-if="step.toolCall && step.toolCall.toolName === 'fart'"
+        :tool-call="step.toolCall"
+      />
       <!-- Regular Step: Standard step rendering -->
       <div
+        v-else
         :class="['step-inline', stepClass(step), { expanded: expandedSteps.has(step.id) }]"
         :style="{ '--depth': depth }"
       >
@@ -221,6 +227,7 @@
 import { ref, watch, nextTick } from 'vue'
 import type { Step, ToolCall } from '@/types'
 import AllowSplitButton from '../common/AllowSplitButton.vue'
+import FartCallItem from './FartCallItem.vue'
 
 const props = withDefaults(defineProps<{
   steps: Step[]

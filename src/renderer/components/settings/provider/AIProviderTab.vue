@@ -167,6 +167,10 @@
           :new-model-input="providerSettings.newModelInput.value"
           :is-loading="providerSettings.isLoadingModels.value"
           :error="providerSettings.modelError.value"
+          :max-outputs="providerSettings.currentProviderMaxOutputs.value"
+          :model-capabilities="providerSettings.currentProviderModelCapabilities.value"
+          :rename-model="providerSettings.renameModel"
+          :active-model-id="providerSettings.activeModelId.value"
           :is-model-selected="providerSettings.isModelSelected"
           :has-vision="providerSettings.hasVision"
           :has-image-generation="providerSettings.hasImageGeneration"
@@ -178,6 +182,10 @@
           @update:search-query="providerSettings.modelSearchQuery.value = $event"
           @update:new-model-input="providerSettings.newModelInput.value = $event"
           @add-custom="providerSettings.addCustomModel"
+          @update-max-output="providerSettings.updateModelMaxOutput"
+          @update-capability="providerSettings.updateModelCapability"
+          @reset-capabilities="providerSettings.resetModelCapabilities"
+          @select-active="providerSettings.setActiveModel"
         />
 
         <!-- Temperature Section (per-provider, falls back to global default when unset).
@@ -221,7 +229,75 @@
               >
               <div class="slider-labels">
                 <span>Precise</span>
+                <span v-if="providerSettings.activeModelId.value">
+                  for <code>{{ providerSettings.activeModelId.value }}</code>
+                </span>
                 <span>Creative</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Max Output Tokens — slider configures the override for the active model.
+             Mirrors the Temperature section's structure (default hint + Reset button). -->
+        <section class="detail-section">
+          <h3 class="section-label">
+            Max Output
+            <span
+              class="section-value"
+              :class="{ muted: !providerSettings.activeModelMaxLimit.value }"
+            >{{ providerSettings.activeModelMaxOutput.value.toLocaleString() }}</span>
+            <span
+              v-if="!providerSettings.activeModelId.value"
+              class="section-hint"
+            >no model selected</span>
+            <span
+              v-else-if="!providerSettings.activeModelMaxLimit.value"
+              class="section-hint"
+            >no limit data for this model</span>
+            <span
+              v-else-if="!providerSettings.hasActiveModelMaxOverride.value"
+              class="section-hint"
+            >(half of {{ providerSettings.activeModelMaxLimit.value.toLocaleString() }})</span>
+            <button
+              v-else
+              class="section-reset"
+              type="button"
+              @click="providerSettings.resetActiveModelMaxOutput"
+            >Reset</button>
+          </h3>
+          <div
+            class="settings-group"
+            :class="{ 'is-disabled': !providerSettings.activeModelMaxLimit.value }"
+          >
+            <div class="slider-row">
+              <!--
+                Remount the range input whenever the active model or its
+                known max limit changes. models.dev data arrives async, so
+                the first render has limit=0 → max=1 and the DOM clamps
+                value to 1; later patches to :value can't always unstick
+                it across browsers. A fresh mount sets min/max/value in
+                one shot and avoids the clamp.
+              -->
+              <input
+                :key="`${providerSettings.activeModelId.value}-${providerSettings.activeModelMaxLimit.value}`"
+                :value="providerSettings.activeModelMaxOutput.value"
+                type="range"
+                min="1"
+                :max="Math.max(1, providerSettings.activeModelMaxLimit.value)"
+                :step="providerSettings.activeModelMaxOutputStep.value"
+                class="form-slider"
+                :disabled="!providerSettings.activeModelMaxLimit.value"
+                @input="providerSettings.updateActiveModelMaxOutput(($event.target as HTMLInputElement).valueAsNumber)"
+              >
+              <div class="slider-labels">
+                <span>1</span>
+                <span v-if="providerSettings.activeModelId.value">
+                  for <code>{{ providerSettings.activeModelId.value }}</code>
+                </span>
+                <span>{{ providerSettings.activeModelMaxLimit.value
+                  ? providerSettings.formatContextLength(providerSettings.activeModelMaxLimit.value)
+                  : '—' }}</span>
               </div>
             </div>
           </div>
@@ -506,8 +582,23 @@ onUnmounted(() => {
 .slider-labels {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   margin-top: 6px;
   font-size: 11px;
   color: var(--muted);
+  gap: 8px;
+}
+
+.slider-labels code {
+  font-family: var(--font-mono, 'SF Mono', monospace);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(128, 128, 128, 0.1);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
 }
 </style>

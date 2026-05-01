@@ -75,6 +75,7 @@ export type {
   OpenRouterModel,
   ProviderInfo,
   ProviderConfig,
+  ModelCapabilityOverride,
   CustomProviderConfig,
   AISettings,
   ModelType,

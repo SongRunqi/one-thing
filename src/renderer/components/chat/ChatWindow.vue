@@ -8,7 +8,7 @@
       :show-sidebar-toggle="showSidebarToggle"
       :show-split-button="canClose !== undefined"
       :can-close="!!canClose"
-      :is-right-sidebar-open="false"
+      :is-inspector-open="inspectorOpen"
       @toggle-sidebar="emit('toggleSidebar')"
       @open-directory-picker="openWorkingDirectoryPicker"
       @update-title="handleUpdateTitle"
@@ -16,34 +16,43 @@
       @split="emit('split')"
       @equalize="emit('equalize')"
       @close="emit('close')"
+      @toggle-inspector="inspectorOpen = !inspectorOpen"
     />
 
-    <!-- Chat body: MessageList fills space, InputBox floats at bottom -->
-    <div class="chat-body">
-      <MessageList
-        ref="messageListRef"
-        :messages="panelMessages"
-        :is-loading="isLoading"
-        :session-id="effectiveSessionId"
-        @set-quoted-text="handleSetQuotedText"
-        @set-input-text="handleSetInputText"
-        @regenerate="handleRegenerate"
-        @edit-and-resend="handleEditAndResend"
-        @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
-      />
-
-      <div
-        v-memo="[isGenerating, effectiveSessionId]"
-        class="composer-container"
-      >
-        <InputBox
-          ref="inputBoxRef"
-          :is-loading="isGenerating"
+    <!-- Chat body + optional Inspector drawer (right) -->
+    <div class="chat-shell">
+      <div class="chat-body">
+        <MessageList
+          ref="messageListRef"
+          :messages="panelMessages"
+          :is-loading="isLoading"
           :session-id="effectiveSessionId"
-          @send-message="handleSendMessage"
-          @stop-generation="handleStopGeneration"
+          @set-quoted-text="handleSetQuotedText"
+          @set-input-text="handleSetInputText"
+          @regenerate="handleRegenerate"
+          @edit-and-resend="handleEditAndResend"
+          @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
         />
+
+        <div
+          v-memo="[isGenerating, effectiveSessionId]"
+          class="composer-container"
+        >
+          <InputBox
+            ref="inputBoxRef"
+            :is-loading="isGenerating"
+            :session-id="effectiveSessionId"
+            @send-message="handleSendMessage"
+            @stop-generation="handleStopGeneration"
+          />
+        </div>
       </div>
+
+      <ChatInspectorPanel
+        v-if="inspectorOpen && effectiveSessionId"
+        :session-id="effectiveSessionId"
+        @close="inspectorOpen = false"
+      />
     </div>
 
     <!-- Settings Panel overlay -->
@@ -64,6 +73,7 @@ import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import ChatHeader from './ChatHeader.vue'
+import ChatInspectorPanel from './ChatInspectorPanel.vue'
 import SettingsPanel from '../SettingsPanel.vue'
 
 interface Props {
@@ -220,6 +230,10 @@ function handleSetInputText(text: string) {
   }
 }
 
+// Inspector panel (right-side drawer). Per-panel local state — closes
+// automatically with the chat panel; not persisted across reloads.
+const inspectorOpen = ref(false)
+
 // Focus the input box (for keyboard shortcuts)
 function focusInput() {
   inputBoxRef.value?.focus()
@@ -242,6 +256,15 @@ defineExpose({
   overflow: hidden;
   border: none;
   contain: layout style;
+}
+
+.chat-shell {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chat-body {

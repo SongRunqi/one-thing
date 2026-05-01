@@ -206,7 +206,9 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       const response = await window.electronAPI.getProviders()
       if (response.success && response.providers) {
-        availableProviders.value = response.providers
+        // Merge with custom providers — a bare assignment here would clobber
+        // any custom providers a previous loadSettings() merge had populated.
+        updateAvailableProviders(response.providers)
       }
     } catch (error) {
       console.error('Failed to load providers:', error)
@@ -224,12 +226,24 @@ export const useSettingsStore = defineStore('settings', () => {
         settings.value.general?.colorTheme !== plainSettings.general?.colorTheme ||
         settings.value.general?.baseTheme !== plainSettings.general?.baseTheme
 
+      // Detect changes to the customProviders list so we can rebuild
+      // availableProviders — otherwise the InputBox ModelSelector and the
+      // settings ProviderList stay stale after add/edit/delete via the
+      // SettingsPage flow (which mutates localSettings then auto-saves).
+      const prevCustomKey = JSON.stringify(settings.value.ai?.customProviders ?? [])
+      const nextCustomKey = JSON.stringify(plainSettings.ai?.customProviders ?? [])
+      const customProvidersChanged = prevCustomKey !== nextCustomKey
+
       settings.value = plainSettings
       await window.electronAPI.saveSettings(plainSettings)
 
       // Only apply theme if theme-related settings actually changed
       if (themeChanged) {
         applyTheme()
+      }
+
+      if (customProvidersChanged) {
+        await refreshAvailableProviders()
       }
     } finally {
       isLoading.value = false

@@ -645,13 +645,17 @@ export function cacheSessionProviderConfig(
   const settings = getSettings()
   const providerConfig = settings.ai.providers[providerId]
 
-  // Cache the provider config (excluding sensitive data like API key)
+  // Cache the provider config (excluding sensitive data like API key).
+  // Temperature precedence: per-model > per-provider > global default.
   session.cachedProviderConfig = {
     providerId,
     model,
     baseUrl: providerConfig?.baseUrl,
     localAddress: providerConfig?.localAddress,
-    temperature: providerConfig?.temperature ?? settings.ai.temperature,
+    temperature:
+      providerConfig?.temperatureByModel?.[model]
+      ?? providerConfig?.temperature
+      ?? settings.ai.temperature,
     cachedAt: Date.now(),
   }
 
@@ -691,6 +695,20 @@ export function invalidateCachedProviderConfig(sessionId: string): void {
 
   delete session.cachedProviderConfig
   saveSessionToFile(sessionId, session)
+}
+
+/**
+ * Invalidate cached provider config for every session.
+ * Used when global settings change (e.g. user edits a provider's baseUrl /
+ * apiKey / localAddress in Settings) — the per-session snapshot taken at
+ * model-select time would otherwise mask the new config until the user
+ * re-picks the model in the InputBox.
+ */
+export function invalidateAllCachedProviderConfigs(): void {
+  const index = loadSessionsIndex()
+  for (const meta of index) {
+    invalidateCachedProviderConfig(meta.id)
+  }
 }
 
 // Inherit working directory from workspace (does not update updatedAt)

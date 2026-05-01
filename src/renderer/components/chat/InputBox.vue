@@ -95,6 +95,7 @@
       <div class="composer-toolbar">
         <div class="toolbar-left">
           <ModelSelector :session-id="props.sessionId" />
+          <ThinkToggle :session-id="props.sessionId" />
         </div>
 
         <div
@@ -143,6 +144,7 @@ import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
 import QuickCommandBar from './QuickCommandBar.vue'
 import ModelSelector from './ModelSelector.vue'
+import ThinkToggle from './ThinkToggle.vue'
 import { X, Square, Send, Check } from 'lucide-vue-next'
 import { findCommand } from '@/services/commands'
 

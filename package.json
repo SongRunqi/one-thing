@@ -30,7 +30,6 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.17.1",
     "@ai-sdk/anthropic": "^3.0.1",
-    "@ai-sdk/deepseek": "^2.0.1",
     "@ai-sdk/google": "^3.0.1",
     "@ai-sdk/moonshotai": "^2.0.12",
     "@ai-sdk/openai": "^3.0.1",
@@ -50,6 +49,7 @@
     "handlebars": "^4.7.8",
     "lxgw-wenkai-screen-webfont": "^1.7.0",
     "lxgw-wenkai-webfont": "^1.7.0",
+    "openai": "^6.35.0",
     "undici": "^8.1.0",
     "uuid": "^13.0.0",
     "yaml": "^2.8.2",

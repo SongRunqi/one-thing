@@ -116,6 +116,28 @@ export const useChatStore = defineStore('chat', () => {
     sessionScrollVersion.value.set(sessionId, getScrollVersion(sessionId) + 1)
   }
 
+  // ============ Inspector — request snapshots ring buffer ============
+  // Per-session list of the most recent outbound LLM requests (cap = 5).
+  // Populated from the `request:snapshot` event emitted by tool-loop.
+  // Used by ChatInspectorPanel's Request tab.
+  const REQUEST_SNAPSHOT_CAP = 5
+  const sessionRequestSnapshots = ref<Map<string, any[]>>(new Map())
+
+  function getRequestSnapshots(sessionId: string): any[] {
+    return sessionRequestSnapshots.value.get(sessionId) ?? []
+  }
+
+  function handleRequestSnapshot(data: { sessionId: string; snapshot: any }) {
+    const list = sessionRequestSnapshots.value.get(data.sessionId) ?? []
+    const next = [...list, data.snapshot]
+    if (next.length > REQUEST_SNAPSHOT_CAP) next.splice(0, next.length - REQUEST_SNAPSHOT_CAP)
+    sessionRequestSnapshots.value.set(data.sessionId, next)
+  }
+
+  function clearRequestSnapshots(sessionId: string) {
+    sessionRequestSnapshots.value.delete(sessionId)
+  }
+
   // ============ UI State (Per-session) ============
 
   // Session UI snapshots — index-based scroll position for virtual scrolling.
@@ -507,6 +529,25 @@ export const useChatStore = defineStore('chat', () => {
       setSessionMessages(sessionId, [...messages])
     }
 
+    // Fold the turn's usage into the session-level token stats so the
+    // Inspector's Context tab shows session totals without a refetch.
+    if (data.usage) {
+      try {
+        const { useSessionsStore } = await import('./sessions')
+        const sessionsStore = useSessionsStore()
+        const session = sessionsStore.sessions.find((s) => s.id === sessionId) as any
+        if (session) {
+          sessionsStore.updateSessionTokenStats(sessionId, {
+            totalInputTokens: (session.totalInputTokens ?? 0) + (data.usage.inputTokens ?? 0),
+            totalOutputTokens: (session.totalOutputTokens ?? 0) + (data.usage.outputTokens ?? 0),
+            totalTokens: (session.totalTokens ?? 0) + (data.usage.totalTokens ?? 0),
+          })
+        }
+      } catch (e) {
+        console.warn('[Chat Store] Failed to fold usage into session stats:', e)
+      }
+    }
+
     // Clear generating state
     sessionGenerating.value.set(sessionId, false)
     sessionLoading.value.set(sessionId, false)
@@ -559,6 +600,14 @@ export const useChatStore = defineStore('chat', () => {
         if (msg) {
           msg.errorDetails = data.errorDetails
           msg.isStreaming = false
+          // Drop any trailing `waiting` continuation indicator — the next turn
+          // never arrived. Mirrors the cleanup in handleStreamComplete.
+          if (msg.contentParts && msg.contentParts.length > 0) {
+            const lastPart = msg.contentParts[msg.contentParts.length - 1]
+            if (lastPart && lastPart.type === 'waiting') {
+              msg.contentParts.pop()
+            }
+          }
         }
       }
     } else {
@@ -1112,6 +1161,11 @@ export const useChatStore = defineStore('chat', () => {
     handleMessageDeleted,
     handleMessagesReplaced,
     handleSessionRenamed,
+    handleRequestSnapshot,
+
+    // Inspector — request snapshots ring buffer
+    getRequestSnapshots,
+    clearRequestSnapshots,
 
     // Actions
     loadMessages,

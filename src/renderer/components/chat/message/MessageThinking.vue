@@ -187,7 +187,10 @@ watch(
     if (newVal && !oldVal) {
       startThinkingTimer()
     } else if (!newVal && oldVal) {
-      // Don't stop here - wait for content to arrive
+      // Stream ended — stop regardless of whether content arrived.
+      // Reasoning-only turns (no text / no tool calls) would otherwise
+      // leave the timer running forever.
+      stopThinkingTimer()
     }
   },
   { immediate: true }

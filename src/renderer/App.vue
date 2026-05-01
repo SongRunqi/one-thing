@@ -473,6 +473,22 @@ onMounted(async () => {
     // Update settings store
     settingsStore.settings = newSettings
 
+    // Per-window model metadata cache: the Settings window may have just
+    // refreshed or added models. `settings.selectedModels` is synced via
+    // this broadcast, but `providerModels` (the capabilities/metadata Map)
+    // is local to each renderer. Drop it so the next ModelSelectorPanel
+    // open re-fetches — main has a disk cache, so the round-trip is cheap.
+    settingsStore.clearModelsCache()
+
+    // Re-build `availableProviders` from the new settings — direct settings
+    // assignment doesn't rebuild it, so a custom provider added in the
+    // Settings window would otherwise stay invisible to the InputBox model
+    // picker until restart. Fire-and-forget; the IPC round-trip just refetches
+    // built-ins and merges current customProviders.
+    settingsStore.loadProviders().catch((err) => {
+      console.warn('[App] Failed to refresh providers after settings change:', err)
+    })
+
     // Apply light/dark mode theme
     settingsStore.applyTheme()
 
