@@ -418,11 +418,19 @@ function getStreamingLines(step: Step): string[] {
   return info.content.split('\n')
 }
 
-// Get streaming content for edit/write tools during input-streaming
+// Get streaming content for edit/write tools.
+//
+// Why we don't gate on `toolCall.status === 'input-streaming'`: between the
+// `tool_call` chunk (status flips to executing) and the `permission:request`
+// event (which populates step.result with metadata.diff), there's a 50-500ms
+// window where neither streaming nor diff would render — causing a visible
+// "row briefly empties" flash. We instead keep the streaming preview visible
+// until a real diff arrives, then hand off to the diff block.
 function getStreamingContent(step: Step): { filePath: string; content: string } | null {
-  if (step.status !== 'running') return null
-  if (step.toolCall?.status !== 'input-streaming') return null
-  if (!step.toolCall.streamingArgs) return null
+  // Once a real diff is available it's the authoritative view; switching
+  // back to the streaming preview would show stale parsed content.
+  if (getDiffFromStep(step)) return null
+  if (!step.toolCall?.streamingArgs) return null
 
   const toolName = step.toolCall.toolName?.toLowerCase()
   if (toolName !== 'write' && toolName !== 'edit') return null
