@@ -11,20 +11,44 @@
       :class="{ clickable: hasDetails }"
       @click="onMainClick"
     >
-      <!-- Status icon -->
+      <!-- Status icon — wrapped in mode=out-in so each state change scales
+           in via the status-swap transition. Spinner shares one key across
+           streaming-input ↔ executing so it doesn't blink between those
+           visually-identical phases. -->
       <span
         class="status-icon"
         :class="status"
       >
-        <span
-          v-if="status === 'executing' || status === 'streaming-input'"
-          class="spinner"
-        />
-        <span v-else-if="status === 'completed'">✓</span>
-        <span v-else-if="status === 'failed'">✗</span>
-        <span v-else-if="status === 'cancelled'">—</span>
-        <span v-else-if="status === 'awaiting-confirmation'">⏳</span>
-        <span v-else>○</span>
+        <Transition
+          name="status-swap"
+          mode="out-in"
+        >
+          <span
+            v-if="status === 'streaming-input' || status === 'executing'"
+            key="spinner"
+            class="spinner"
+          />
+          <span
+            v-else-if="status === 'completed'"
+            key="completed"
+          >✓</span>
+          <span
+            v-else-if="status === 'failed'"
+            key="failed"
+          >✗</span>
+          <span
+            v-else-if="status === 'cancelled'"
+            key="cancelled"
+          >—</span>
+          <span
+            v-else-if="status === 'awaiting-confirmation'"
+            key="awaiting"
+          >⏳</span>
+          <span
+            v-else
+            key="pending"
+          >○</span>
+        </Transition>
       </span>
 
       <!-- Tool name + preview -->
@@ -36,33 +60,42 @@
       <!-- Consumer-supplied right-side meta (inline result, exec time, error tag) -->
       <slot name="meta" />
 
-      <!-- Right-side controls: confirm buttons OR expand chevron -->
-      <div
-        v-if="status === 'awaiting-confirmation'"
-        class="confirm-buttons"
-        @click.stop
+      <!-- Right-side controls: confirm buttons OR expand chevron — swap
+           via opacity fade with mode=out-in. Enter timing kept short so
+           confirm buttons stay quickly clickable for keyboard shortcuts. -->
+      <Transition
+        name="ctrl-swap"
+        mode="out-in"
       >
-        <AllowSplitButton @confirm="(r) => emit('confirm', toolCall, r)" />
-        <button
-          class="btn-reject"
-          title="Reject (D/Esc)"
-          @click="emit('reject', toolCall)"
+        <div
+          v-if="status === 'awaiting-confirmation'"
+          key="confirm"
+          class="confirm-buttons"
+          @click.stop
         >
-          Reject
-        </button>
-      </div>
-      <svg
-        v-else-if="hasDetails"
-        :class="['expand-icon', { rotated: expanded }]"
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <polyline points="6 9 12 15 18 9" />
-      </svg>
+          <AllowSplitButton @confirm="(r) => emit('confirm', toolCall, r)" />
+          <button
+            class="btn-reject"
+            title="Reject (D/Esc)"
+            @click="emit('reject', toolCall)"
+          >
+            Reject
+          </button>
+        </div>
+        <svg
+          v-else-if="hasDetails"
+          key="chevron"
+          :class="['expand-icon', { rotated: expanded }]"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </Transition>
     </div>
 
     <Transition name="slide">
@@ -119,15 +152,19 @@ function onMainClick() {
 <style scoped>
 .tool-row {
   font-size: 13px;
+  /* Default transparent border so toggling needs-confirm doesn't shift the
+     row by 1px. Background, border-color, and border-radius all transition
+     together so the awaiting-confirmation tint arrives as one motion. */
+  border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, border-radius 0.15s ease;
   margin: 2px 0;
 }
 
 .tool-row.needs-confirm {
   background: rgba(208, 162, 21, 0.06);
-  border: 1px solid rgba(208, 162, 21, 0.15);
+  border-color: rgba(208, 162, 21, 0.15);
   border-radius: var(--radius-sm, 8px);
 }
 
@@ -257,6 +294,38 @@ function onMainClick() {
 
 .slide-enter-from,
 .slide-leave-to {
+  opacity: 0;
+}
+
+/* Status icon swap — scaling page-flip across status changes. Spinner
+   shares one key across streaming-input ↔ executing so it doesn't
+   blink during that intra-busy transition. */
+.status-swap-enter-active {
+  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.status-swap-leave-active {
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+.status-swap-enter-from {
+  opacity: 0;
+  transform: scale(0.5);
+}
+.status-swap-leave-to {
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+/* Right-side control swap — opacity-only fade between confirm buttons
+   and expand chevron. Enter is short so confirm buttons stay quickly
+   clickable / keyboard-shortcut responsive. */
+.ctrl-swap-enter-active {
+  transition: opacity 0.18s ease;
+}
+.ctrl-swap-leave-active {
+  transition: opacity 0.12s ease;
+}
+.ctrl-swap-enter-from,
+.ctrl-swap-leave-to {
   opacity: 0;
 }
 
