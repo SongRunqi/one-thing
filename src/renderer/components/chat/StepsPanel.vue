@@ -335,14 +335,6 @@ function shouldShowContent(step: Step): boolean {
   return expandedSteps.value.has(step.id)
 }
 
-function getStatusText(step: Step): string {
-  if (step.status === 'running') return 'Running'
-  if (step.status === 'failed') return '✗'
-  if (step.status === 'completed') return '✓'
-  if (step.status === 'cancelled') return 'Cancelled'
-  return ''
-}
-
 /**
  * Return short result string for inline display, or null if result is too long.
  * Short results (single line, ≤80 chars) are shown directly on the step row.
@@ -470,117 +462,6 @@ function getSimplePreview(step: Step): string {
   }
 }
 
-// Keep old function for compatibility (can be removed later)
-interface ToolPreview {
-  primary: string
-  secondary?: string
-}
-
-function getToolPreview(step: Step): ToolPreview {
-  const args = step.toolCall?.arguments as Record<string, any> | undefined
-  const toolName = step.toolCall?.toolName?.toLowerCase()
-
-  if (!args) {
-    return { primary: step.title || '' }
-  }
-
-  switch (toolName) {
-    case 'read': {
-      const path = shortenPath(args.file_path || args.path || '')
-      const offset = args.offset as number | undefined
-      const limit = args.limit as number | undefined
-      let range = ''
-      if (offset || limit) {
-        const start = offset || 1
-        const end = limit ? start + limit - 1 : '?'
-        range = `:${start}-${end}`
-      }
-      return { primary: path + range }
-    }
-
-    case 'grep': {
-      const pattern = args.pattern as string
-      const glob = args.glob || args.type
-      const ctx = args['-C'] || args['-A'] || args['-B']
-      const truncatedPattern = pattern?.length > 25 ? pattern.slice(0, 22) + '...' : pattern
-      return {
-        primary: pattern ? `"${truncatedPattern}"` : '',
-        secondary: glob ? `in ${glob}${ctx ? ` (${ctx} ctx)` : ''}` : undefined
-      }
-    }
-
-    case 'bash': {
-      const cmd = args.command as string
-      const truncatedCmd = cmd?.length > 50 ? cmd.slice(0, 47) + '...' : cmd
-      return { primary: truncatedCmd || '' }
-    }
-
-    case 'edit': {
-      const path = shortenPath(args.file_path || '')
-      const changes = step.toolCall?.changes
-      const stats = changes
-        ? `+${changes.additions} -${changes.deletions}`
-        : ''
-      return { primary: path, secondary: stats || undefined }
-    }
-
-    case 'write': {
-      const path = shortenPath(args.file_path || '')
-      const content = args.content as string
-      const size = content?.length
-      return { primary: path, secondary: size ? `${size} chars` : undefined }
-    }
-
-    case 'glob': {
-      const pattern = args.pattern as string
-      const path = args.path as string
-      return {
-        primary: pattern || '',
-        secondary: path ? `in ${shortenPath(path)}` : undefined
-      }
-    }
-
-    case 'web-search':
-    case 'websearch': {
-      const query = args.query as string
-      return { primary: query ? `"${query}"` : '' }
-    }
-
-    case 'web-fetch':
-    case 'webfetch': {
-      const url = args.url as string
-      return { primary: url ? shortenUrl(url) : '' }
-    }
-
-    default:
-      // Fallback: try common argument patterns
-      if (args.file_path || args.path) {
-        return { primary: shortenPath(args.file_path || args.path) }
-      }
-      if (args.pattern) {
-        return { primary: `"${args.pattern}"` }
-      }
-      if (args.command) {
-        const cmd = args.command as string
-        return { primary: cmd?.length > 50 ? cmd.slice(0, 47) + '...' : cmd }
-      }
-      return { primary: '' }
-  }
-}
-
-/**
- * Shorten URL for display
- */
-function shortenUrl(url: string): string {
-  try {
-    const u = new URL(url)
-    const path = u.pathname.length > 20 ? '...' + u.pathname.slice(-17) : u.pathname
-    return u.hostname + path
-  } catch {
-    return url.length > 40 ? url.slice(0, 37) + '...' : url
-  }
-}
-
 /**
  * Truncate error message for inline display
  */
@@ -642,12 +523,6 @@ function formatArgsJson(args: Record<string, any>): string {
   }
 
   return JSON.stringify(displayArgs, null, 2)
-}
-
-function truncateTitle(title: string, maxLen: number = 50): string {
-  if (!title) return ''
-  if (title.length <= maxLen) return title
-  return title.slice(0, maxLen) + '...'
 }
 
 function formatResult(result: string): string {

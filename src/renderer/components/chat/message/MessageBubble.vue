@@ -174,38 +174,19 @@
           </TransitionGroup>
         </template>
 
-        <!-- Fallback: legacy content display (no contentParts) -->
-        <template v-else>
-          <!-- Tool calls if no steps OR if streaming input without step -->
-          <template v-if="toolCalls && toolCalls.length > 0 && (!hasSteps || hasInputStreamingToolCalls(toolCalls))">
-            <template v-if="!hasSteps">
-              <ToolCallItem
-                v-for="tc in toolCalls"
-                :key="tc.id"
-                :tool-call="tc"
-                @execute="(tc) => emit('executeTool', tc)"
-                @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                @reject="(tc) => emit('rejectTool', tc)"
-              />
-            </template>
-            <template v-else>
-              <ToolCallItem
-                v-for="tc in getToolCallsWithoutSteps(toolCalls)"
-                :key="tc.id"
-                :tool-call="tc"
-                @execute="(tc) => emit('executeTool', tc)"
-                @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                @reject="(tc) => emit('rejectTool', tc)"
-              />
-            </template>
-          </template>
-          <div class="content">
-            <StreamingMarkdown
-              :content="content"
-              :is-user="role === 'user'"
-            />
-          </div>
-        </template>
+        <!-- Fallback for messages without contentParts (user messages and
+             empty edge cases). Assistant messages always have contentParts
+             populated by rebuildContentParts before reaching here, so no
+             tool-call rendering is needed in this branch. -->
+        <div
+          v-else
+          class="content"
+        >
+          <StreamingMarkdown
+            :content="content"
+            :is-user="role === 'user'"
+          />
+        </div>
       </div>
 
       <!-- Collapse/Expand button (only for user messages) -->
