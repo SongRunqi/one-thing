@@ -130,6 +130,7 @@ Usage:
   category: 'builtin',
   enabled: true,
   autoExecute: true, // Safe read-only operation
+  permissionGuard: 'sandboxed',
 
   parameters: ReadParameters,
 

@@ -587,6 +587,7 @@ export const FartTool = Tool.define('fart', {
   category: 'builtin',
   enabled: true,
   autoExecute: true,
+  permissionGuard: 'safe',
 
   parameters: FartParameters,
 

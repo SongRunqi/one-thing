@@ -10,7 +10,7 @@ import * as path from 'path'
 import * as fs from 'fs/promises'
 import { Tool } from '../core/tool.js'
 import { Ripgrep } from '../../utils/ripgrep.js'
-import { expandPath } from '../core/sandbox.js'
+import { checkFileAccess, expandPath } from '../core/sandbox.js'
 
 // Maximum results to return
 const DEFAULT_LIMIT = 100
@@ -72,11 +72,12 @@ Results are sorted by file modification time (newest first).`,
   category: 'builtin',
   enabled: true,
   autoExecute: true, // Safe read-only operation
+  permissionGuard: 'sandboxed',
 
   parameters: GrepParameters,
 
   async execute(args, ctx) {
-    const { pattern, case_insensitive, context_lines } = args
+    const { pattern } = args
     // ctx.workingDirectory is already expanded by getSession
     const workDir = ctx.workingDirectory || process.cwd()
     // args.path from LLM may contain ~, so expand it
@@ -86,6 +87,7 @@ Results are sorted by file modification time (newest first).`,
     if (!path.isAbsolute(searchPath)) {
       searchPath = path.resolve(workDir, searchPath)
     }
+    searchPath = await checkFileAccess(searchPath, ctx, 'Search directory', 'directory')
 
     // Build glob patterns
     const globs: string[] = []

@@ -67,7 +67,8 @@ export async function checkFileAccess(
     toolCallId?: string
     workingDirectory?: string
   },
-  operation: string
+  operation: string,
+  targetType: 'file' | 'directory' = 'file',
 ): Promise<string> {
   // Ensure absolute path
   const absolutePath = path.isAbsolute(filePath)
@@ -79,18 +80,24 @@ export async function checkFileAccess(
 
   // Check if path is within boundary
   if (!isPathContained(boundary, absolutePath)) {
+    const pattern = targetType === 'directory'
+      ? [absolutePath, path.join(absolutePath, '*')]
+      : [path.dirname(absolutePath), absolutePath]
+
     // Request permission for external access
     await Permission.ask({
       type: 'external_directory',
-      pattern: [path.dirname(absolutePath), absolutePath],
+      pattern,
       sessionId: ctx.sessionId,
       messageId: ctx.messageId,
       callId: ctx.toolCallId,
       title: `${operation}: ${path.basename(absolutePath)}`,
+      workingDirectory: boundary,
       metadata: {
         filePath: absolutePath,
         boundary,
         operation,
+        targetType,
       },
     })
   }

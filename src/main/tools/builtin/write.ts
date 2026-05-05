@@ -57,6 +57,7 @@ Usage:
   category: 'builtin',
   enabled: true,
   autoExecute: false, // Requires confirmation for file writes
+  permissionGuard: 'permission-gated',
 
   parameters: WriteParameters,
 
@@ -130,6 +131,7 @@ Usage:
       title: fileExists
         ? `Overwrite file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`
         : `Create new file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`,
+      workingDirectory: boundary,
       metadata: {
         filePath: resolvedPath,
         diff,

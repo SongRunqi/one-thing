@@ -40,6 +40,7 @@ export interface ToolDefinition {
   // Permission settings
   enabled: boolean           // Whether this tool is enabled
   autoExecute: boolean       // Whether to auto-execute when called
+  permissionGuard?: 'safe' | 'sandboxed' | 'internal-check' | 'permission-gated' | 'external'
   // Tool category for grouping in UI
   category: 'builtin' | 'custom'
   // Icon for UI display

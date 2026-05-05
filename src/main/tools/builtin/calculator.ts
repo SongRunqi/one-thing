@@ -20,6 +20,7 @@ export const definition: ToolDefinition = {
   ],
   enabled: true,
   autoExecute: true,
+  permissionGuard: 'safe',
   category: 'builtin',
   icon: 'calculator',
 }

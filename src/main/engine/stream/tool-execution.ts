@@ -8,9 +8,9 @@ import * as store from '../../store.js'
 import type { Step, StepType, SkillDefinition, ToolCall } from '../../../shared/ipc.js'
 import { executeTool } from '../../tools/index.js'
 import { isMCPTool, executeMCPTool } from '../../mcp/index.js'
+import { Permission } from '../../permission/index.js'
 import type { ToolExecutionContext, ToolExecutionResult } from '../../tools/types.js'
 import type { StreamContext } from './stream-processor.js'
-import { type IPCEmitter } from './ipc-emitter.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 
 /**
@@ -117,6 +117,19 @@ export async function executeToolDirectly(
       if (context.abortSignal?.aborted) {
         return { success: false, error: 'Execution cancelled by user', aborted: true }
       }
+      await Permission.ask({
+        type: 'mcp',
+        pattern: toolName,
+        sessionId: context.sessionId,
+        messageId: context.messageId,
+        callId: context.toolCallId,
+        title: `Run MCP tool: ${toolName}`,
+        workingDirectory: context.workingDirectory,
+        metadata: {
+          toolName,
+          arguments: args,
+        },
+      })
       const result = await executeMCPTool(toolName, args)
       // Check abort after MCP call in case it was triggered during execution
       if (context.abortSignal?.aborted) {

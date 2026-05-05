@@ -19,11 +19,10 @@ import {
   hasTool,
   getAllTools,
   getEnabledTools,
+  getEnabledToolsAsync,
   executeTool,
   createToolCall,
   canAutoExecute,
-  initializeToolRegistry,
-  isInitialized,
 } from '../registry'
 
 import { Tool } from '../core/tool'
@@ -40,7 +39,8 @@ function createStaticTool(id: string, overrides: Partial<any> = {}) {
     }),
     enabled: overrides.enabled ?? true,
     autoExecute: overrides.autoExecute ?? false,
-    async execute(args, ctx) {
+    permissionGuard: overrides.permissionGuard ?? 'safe',
+    async execute(args, _ctx) {
       return {
         title: `Executed ${id}`,
         output: args.input,
@@ -79,7 +79,7 @@ describe('Tool Registry', () => {
         async () => ({
           description: 'Dynamic description',
           parameters: z.object({ query: z.string() }),
-          async execute(args: any, ctx: any) {
+          async execute(args: any, _ctx: any) {
             return { title: 'Done', output: args.query, metadata: {} }
           },
         })
@@ -232,10 +232,22 @@ describe('Tool Registry', () => {
       expect(canAutoExecute('test-tool', settings)).toBe(true)
     })
 
+    it('should refuse autoExecute when the tool has no dangerous permission guard', () => {
+      registerTool(createStaticTool('test-tool', { autoExecute: true, permissionGuard: undefined }))
+      expect(canAutoExecute('test-tool')).toBe(false)
+    })
+
+    it('should allow autoExecute for permission-gated tools when settings request it', () => {
+      registerTool(createStaticTool('test-tool', { autoExecute: false, permissionGuard: 'permission-gated' }))
+
+      const settings = { 'test-tool': { enabled: true, autoExecute: true } }
+      expect(canAutoExecute('test-tool', settings)).toBe(true)
+    })
+
     it('should check async tools', () => {
       const asyncTool = Tool.define(
         'async-tool',
-        { name: 'Async', category: 'builtin', autoExecute: true },
+        { name: 'Async', category: 'builtin', autoExecute: true, permissionGuard: 'safe' },
         async () => ({
           description: 'desc',
           parameters: z.object({}),
@@ -251,6 +263,15 @@ describe('Tool Registry', () => {
 
     it('should return false for non-existent tool', () => {
       expect(canAutoExecute('non-existent')).toBe(false)
+    })
+  })
+
+  describe('permission guard injection gate', () => {
+    it('should not inject enabled tools without a permission guard', async () => {
+      registerTool(createStaticTool('test-tool', { permissionGuard: undefined }))
+
+      const tools = await getEnabledToolsAsync()
+      expect(tools.some(t => t.id === 'test-tool')).toBe(false)
     })
   })
 

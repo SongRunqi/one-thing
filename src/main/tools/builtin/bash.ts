@@ -19,7 +19,6 @@ import { Tool } from '../core/tool.js'
 import { Permission } from '../../permission/index.js'
 import { getSettings } from '../../stores/settings.js'
 import { getToolOutputsDir, getToolOutputPath, generateToolOutputFilename } from '../../stores/paths.js'
-import BASHPROMPOT from './bash.txt'
 
 // Maximum output length
 const MAX_OUTPUT_LENGTH = 30_000
@@ -76,7 +75,6 @@ const FORBIDDEN_COMMANDS = new Set([
 
 // Dangerous patterns
 const DANGEROUS_PATTERNS = [
-  /\brm\s+-rf?\s+[/~]/, // rm -rf / or ~
   />\s*\/dev\/(?!null\b)/, // write to /dev (but allow /dev/null)
   /\|\s*sh\b/, // pipe to shell
   /\|\s*bash\b/,
@@ -121,11 +119,79 @@ function parseCommand(command: string): { head: string; args: string[] } {
   const trimmed = command.trim()
   // Remove env prefix
   const withoutEnv = trimmed.replace(/^(env\s+)?(\w+=\S+\s+)*/, '')
-  const parts = withoutEnv.split(/\s+/)
+  const parts = splitShellWords(withoutEnv)
   return {
     head: parts[0] || '',
     args: parts.slice(1),
   }
+}
+
+function splitShellWords(input: string): string[] {
+  const words: string[] = []
+  let current = ''
+  let quote: '"' | "'" | null = null
+  let escaped = false
+
+  for (const char of input) {
+    if (escaped) {
+      current += char
+      escaped = false
+      continue
+    }
+
+    if (char === '\\' && quote !== "'") {
+      escaped = true
+      continue
+    }
+
+    if ((char === '"' || char === "'") && (!quote || quote === char)) {
+      quote = quote ? null : char
+      continue
+    }
+
+    if (!quote && /\s/.test(char)) {
+      if (current) {
+        words.push(current)
+        current = ''
+      }
+      continue
+    }
+
+    current += char
+  }
+
+  if (current) words.push(current)
+  return words
+}
+
+function targetsRootOrHome(targets: string[]): boolean {
+  return targets.some(target => {
+    const normalized = target.replace(/\/+$/, '') || '/'
+    return normalized === '/' ||
+      normalized === '~' ||
+      normalized === '$HOME' ||
+      normalized === '${HOME}'
+  })
+}
+
+function commandRemovesRootOrHome(command: string): boolean {
+  const words = splitShellWords(command)
+
+  for (let index = 0; index < words.length; index++) {
+    if (words[index] !== 'rm') continue
+
+    const targets: string[] = []
+    for (let argIndex = index + 1; argIndex < words.length; argIndex++) {
+      const arg = words[argIndex]
+      if (arg === '&&' || arg === '||' || arg === ';' || arg === '|') break
+      if (arg.startsWith('-')) continue
+      targets.push(arg)
+    }
+
+    if (targetsRootOrHome(targets)) return true
+  }
+
+  return false
 }
 
 /**
@@ -144,6 +210,10 @@ function classifyCommand(command: string): 'allow' | 'ask' | 'deny' {
     if (pattern.test(command)) {
       return 'deny'
     }
+  }
+
+  if (commandRemovesRootOrHome(command)) {
+    return 'deny'
   }
 
   // Git commands
@@ -252,6 +322,7 @@ The sandbox restricts file access to allowed directories only.`,
   category: 'builtin',
   enabled: true,
   autoExecute: false, // Permission system handles auto-execute
+  permissionGuard: 'internal-check',
 
   parameters: BashParameters,
 
@@ -293,6 +364,7 @@ The sandbox restricts file access to allowed directories only.`,
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
         title: `Access directory outside project: ${workingDir}`,
+        workingDirectory: sandboxBoundary,
         metadata: {
           command,
           directory: workingDir,
@@ -310,6 +382,7 @@ The sandbox restricts file access to allowed directories only.`,
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
         title: command,
+        workingDirectory: sandboxBoundary,
         metadata: {
           command,
           pattern,

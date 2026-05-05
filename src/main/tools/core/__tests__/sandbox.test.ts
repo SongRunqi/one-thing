@@ -160,10 +160,29 @@ describe('sandbox', () => {
           messageId: 'test-message',
           callId: 'test-call',
           title: 'write: file.ts',
+          workingDirectory: '/workspace',
           metadata: expect.objectContaining({
             filePath: '/other/file.ts',
             boundary: '/workspace',
             operation: 'write',
+            targetType: 'file',
+          }),
+        })
+      )
+    })
+
+    it('should request directory-scoped permission for external directory paths', async () => {
+      const result = await checkFileAccess('/other/project', defaultCtx, 'search', 'directory')
+      expect(result).toBe('/other/project')
+      expect(Permission.ask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'external_directory',
+          pattern: ['/other/project', '/other/project/*'],
+          title: 'search: project',
+          workingDirectory: '/workspace',
+          metadata: expect.objectContaining({
+            filePath: '/other/project',
+            targetType: 'directory',
           }),
         })
       )
