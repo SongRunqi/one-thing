@@ -24,19 +24,19 @@
           class="step-row"
           @click="toggleExpand(step.id)"
         >
-          <!-- Status icon (single, clear) -->
+          <!-- Status icon (single, clear); class follows unified render status -->
           <span
             class="status-icon"
-            :class="step.status"
+            :class="renderStatus(step)"
           >
             <span
-              v-if="step.status === 'running'"
+              v-if="renderStatus(step) === 'executing' || renderStatus(step) === 'streaming-input'"
               class="spinner"
             />
-            <span v-else-if="step.status === 'completed'">✓</span>
-            <span v-else-if="step.status === 'failed'">✗</span>
-            <span v-else-if="step.status === 'cancelled'">—</span>
-            <span v-else-if="step.status === 'awaiting-confirmation'">⏳</span>
+            <span v-else-if="renderStatus(step) === 'completed'">✓</span>
+            <span v-else-if="renderStatus(step) === 'failed'">✗</span>
+            <span v-else-if="renderStatus(step) === 'cancelled'">—</span>
+            <span v-else-if="renderStatus(step) === 'awaiting-confirmation'">⏳</span>
             <span v-else>○</span>
           </span>
 
@@ -63,7 +63,7 @@
             {{ truncateError(step.error, 30) }}
           </span>
 
-          <template v-else-if="step.status === 'awaiting-confirmation'">
+          <template v-else-if="renderStatus(step) === 'awaiting-confirmation'">
             <div
               class="confirm-buttons"
               @click.stop
@@ -228,6 +228,8 @@ import { ref, watch, nextTick } from 'vue'
 import type { Step, ToolCall } from '@/types'
 import AllowSplitButton from '../common/AllowSplitButton.vue'
 import FartCallItem from './FartCallItem.vue'
+import { getToolRenderStatus, type ToolRenderStatus } from '@/stores/helpers/tool-status'
+import { formatToolCallPreview } from '@/stores/helpers/tool-preview'
 
 const props = withDefaults(defineProps<{
   steps: Step[]
@@ -248,7 +250,7 @@ const emit = defineEmits<{
 // ── Expansion Policy (single source of truth) ──────────────
 const EXPAND_POLICY = {
   autoExpandTools: new Set(['write', 'read', 'edit']),
-  temporaryShowStates: new Set(['awaiting-confirmation']),
+  temporaryShowStates: new Set<ToolRenderStatus>(['awaiting-confirmation']),
 }
 
 const expandedSteps = ref<Set<string>>(new Set())
@@ -263,9 +265,9 @@ interface DiffLine {
   newNum?: number | string
 }
 
-// ── Auto-expand watch (only triggers on step status changes, not streamingArgs) ──
+// ── Auto-expand watch (triggers on render-status changes) ──
 watch(
-  () => props.steps.map(s => `${s.id}:${s.status}:${s.toolCall?.status || ''}`).join(','),
+  () => props.steps.map(s => `${s.id}:${renderStatus(s)}`).join(','),
   () => {
     let changed = false
     for (const step of props.steps) {
@@ -274,9 +276,8 @@ watch(
       if (expandedSteps.value.has(step.id)) continue
       if (userCollapsedSteps.value.has(step.id)) continue
 
-      const shouldExpand =
-        (step.status === 'running' && step.toolCall?.status === 'input-streaming') ||
-        step.status === 'completed'
+      const status = renderStatus(step)
+      const shouldExpand = status === 'streaming-input' || status === 'completed'
 
       if (shouldExpand) {
         expandedSteps.value.add(step.id)
@@ -309,13 +310,15 @@ function toggleExpand(stepId: string) {
   userCollapsedSteps.value = new Set(userCollapsedSteps.value)
 }
 
+function renderStatus(step: Step): ToolRenderStatus {
+  return getToolRenderStatus(step.toolCall, step)
+}
+
 function stepClass(step: Step): Record<string, boolean> {
+  const status = renderStatus(step)
   return {
-    'status-running': step.status === 'running',
-    'status-completed': step.status === 'completed',
-    'status-failed': step.status === 'failed',
-    'status-cancelled': step.status === 'cancelled',
-    'needs-confirm': step.status === 'awaiting-confirmation',
+    [`status-${status}`]: true,
+    'needs-confirm': status === 'awaiting-confirmation',
   }
 }
 
@@ -331,7 +334,7 @@ function hasExpandableContent(step: Step): boolean {
 
 // Pure function — no side effects. Expansion state managed by watch + toggleExpand.
 function shouldShowContent(step: Step): boolean {
-  if (EXPAND_POLICY.temporaryShowStates.has(step.status)) return true
+  if (EXPAND_POLICY.temporaryShowStates.has(renderStatus(step))) return true
   return expandedSteps.value.has(step.id)
 }
 
@@ -359,107 +362,10 @@ function inlineResult(step: Step): string | null {
 }
 
 /**
- * Shorten file path for display
- * Shows last 2-3 segments if path is too long
- */
-function shortenPath(path: string, maxLen: number = 45): string {
-  if (!path) return ''
-  if (path.length <= maxLen) return path
-  const parts = path.split('/')
-  // Try to show filename and parent dir
-  if (parts.length >= 2) {
-    const short = '.../' + parts.slice(-2).join('/')
-    if (short.length <= maxLen) return short
-  }
-  // Just show filename
-  return '.../' + parts[parts.length - 1]
-}
-
-/**
- * Get a simple, single-line preview for the step
- * Combines all relevant info into one clean string
+ * Get a simple, single-line preview for the step (delegates to shared util).
  */
 function getSimplePreview(step: Step): string {
-  const args = step.toolCall?.arguments as Record<string, any> | undefined
-  const toolName = step.toolCall?.toolName?.toLowerCase()
-
-  if (!args) return ''
-
-  switch (toolName) {
-    case 'read': {
-      const path = shortenPath(args.file_path || args.path || '')
-      const offset = args.offset as number | undefined
-      const limit = args.limit as number | undefined
-      if (offset || limit) {
-        const start = offset || 1
-        const end = limit ? start + limit - 1 : '...'
-        return `${path}:${start}-${end}`
-      }
-      return path
-    }
-
-    case 'grep': {
-      const pattern = args.pattern as string
-      const glob = args.glob || args.type || ''
-      const truncPattern = pattern?.length > 20 ? pattern.slice(0, 17) + '...' : pattern
-      if (glob) {
-        return `"${truncPattern}" in ${glob}`
-      }
-      return `"${truncPattern}"`
-    }
-
-    case 'bash': {
-      const cmd = args.command as string
-      return cmd?.length > 55 ? cmd.slice(0, 52) + '...' : cmd || ''
-    }
-
-    case 'edit': {
-      const path = shortenPath(args.file_path || '')
-      const changes = step.toolCall?.changes
-      if (changes) {
-        return `${path} (+${changes.additions} -${changes.deletions})`
-      }
-      return path
-    }
-
-    case 'write': {
-      const path = shortenPath(args.file_path || '')
-      const content = args.content as string
-      if (content) {
-        return `${path} (${content.length} chars)`
-      }
-      return path
-    }
-
-    case 'glob': {
-      const pattern = args.pattern as string
-      const path = args.path as string
-      if (path) {
-        return `${pattern} in ${shortenPath(path, 25)}`
-      }
-      return pattern || ''
-    }
-
-    case 'web-search':
-    case 'websearch': {
-      const query = args.query as string
-      return query ? `"${query}"` : ''
-    }
-
-    default:
-      // Fallback: show path or pattern or command
-      if (args.file_path || args.path) {
-        return shortenPath(args.file_path || args.path)
-      }
-      if (args.pattern) {
-        return `"${args.pattern}"`
-      }
-      if (args.command) {
-        const cmd = args.command as string
-        return cmd?.length > 55 ? cmd.slice(0, 52) + '...' : cmd
-      }
-      return ''
-  }
+  return formatToolCallPreview(step.toolCall)
 }
 
 /**
@@ -811,7 +717,8 @@ function getVisibleDiffLines(step: Step): DiffLine[] {
 
 .status-icon.completed { color: var(--text-success); }
 .status-icon.failed { color: var(--text-error); }
-.status-icon.running { color: var(--accent); }
+.status-icon.executing { color: var(--accent); }
+.status-icon.streaming-input { color: var(--accent); }
 .status-icon.cancelled { color: var(--text-muted); opacity: 0.6; }
 .status-icon.awaiting-confirmation { color: var(--warning); }
 .status-icon.pending { color: var(--text-muted); }

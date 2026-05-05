@@ -20,27 +20,32 @@
           mode="out-in"
         >
           <span
-            v-if="toolCall.status === 'input-streaming'"
+            v-if="renderStatus === 'streaming-input'"
             key="streaming"
             class="status-streaming flowing-text"
           >⟳</span>
           <span
-            v-else-if="toolCall.status === 'executing'"
+            v-else-if="renderStatus === 'executing'"
             key="executing"
             class="status-exec flowing-text"
           >⏳</span>
           <span
-            v-else-if="toolCall.status === 'completed'"
+            v-else-if="renderStatus === 'completed'"
             key="completed"
             class="status-done"
           >✓</span>
           <span
-            v-else-if="toolCall.status === 'failed'"
+            v-else-if="renderStatus === 'failed'"
             key="failed"
             class="status-error"
           >✗</span>
           <span
-            v-else-if="toolCall.requiresConfirmation"
+            v-else-if="renderStatus === 'cancelled'"
+            key="cancelled"
+            class="status-cancelled"
+          >—</span>
+          <span
+            v-else-if="renderStatus === 'awaiting-confirmation'"
             key="confirm"
             class="status-confirm flowing-text"
           >⏳</span>
@@ -146,6 +151,8 @@ import { ref, computed } from 'vue'
 import type { ToolCall } from '@/types'
 import AllowSplitButton from '../common/AllowSplitButton.vue'
 import FartCallItem from './FartCallItem.vue'
+import { getToolRenderStatus } from '@/stores/helpers/tool-status'
+import { formatToolCallPreview } from '@/stores/helpers/tool-preview'
 
 interface Props {
   toolCall: ToolCall
@@ -164,43 +171,11 @@ defineEmits<{
 
 const isExpanded = ref(false)
 
-const statusClass = computed(() => `status-${props.toolCall.status}`)
+const renderStatus = computed(() => getToolRenderStatus(props.toolCall))
+const statusClass = computed(() => `status-${renderStatus.value}`)
 
-// Preview text — single-line summary of what the tool is doing
-const previewText = computed(() => {
-  // During input-streaming, show streaming args preview
-  if (props.toolCall.status === 'input-streaming') {
-    if (props.toolCall.streamingArgs) {
-      const toolName = props.toolCall.toolName?.toLowerCase()
-      // For file tools, extract file_path
-      if (toolName === 'write' || toolName === 'edit' || toolName === 'read') {
-        const pathMatch = props.toolCall.streamingArgs.match(/"file_path"\s*:\s*"([^"]*)"?/)
-        if (pathMatch) return pathMatch[1]
-      }
-      // For other tools, show tail of streaming args
-      const args = props.toolCall.streamingArgs
-      return args.length > 80 ? '...' + args.slice(-80) : args
-    }
-    return ''
-  }
-
-  const args = props.toolCall.arguments
-  if (!args) return ''
-
-  // Bash: show command
-  if (args.command) return String(args.command)
-
-  // File operations: show path
-  const pathField = args.path || args.file_path || args.filePath
-  if (pathField) return String(pathField)
-
-  // Patterns
-  if (args.pattern) return String(args.pattern)
-
-  // Default: first value
-  const firstVal = Object.values(args)[0]
-  return firstVal ? String(firstVal) : ''
-})
+// Preview text — single-line summary, shared with StepsPanel via util.
+const previewText = computed(() => formatToolCallPreview(props.toolCall))
 
 // Non-command arguments exist
 const hasNonCommandArgs = computed(() => {
@@ -294,6 +269,7 @@ function formatResult(result: any): string {
 .status-exec { color: #3b82f6; }
 .status-streaming { color: #a855f7; }
 .status-confirm { color: #d0a215; }
+.status-cancelled { color: #6b7280; opacity: 0.6; }
 
 /* Tool name */
 .tool-name {
