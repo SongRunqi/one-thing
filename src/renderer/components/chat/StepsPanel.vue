@@ -13,212 +13,155 @@
         v-if="step.toolCall && step.toolCall.toolName === 'fart'"
         :tool-call="step.toolCall"
       />
-      <!-- Regular Step: Standard step rendering -->
-      <div
+      <!-- Regular Step: shared row component handles status icon, name,
+           preview, confirm buttons, and expand chevron. StepsPanel supplies
+           inline result/error tag via `meta` slot and the rich step body
+           (streaming diff, diff preview, live output, thinking, args,
+           result, summary) via `details` slot.
+
+           Steps without an embedded toolCall (e.g. thinking-only steps)
+           still render through ToolCallRow with a synthetic toolCall
+           derived from step.title, so visual layout stays consistent. -->
+      <ToolCallRow
         v-else
-        :class="['step-inline', stepClass(step), { expanded: expandedSteps.has(step.id) }]"
-        :style="{ '--depth': depth }"
+        :tool-call="step.toolCall || syntheticToolCall(step)"
+        :step="step"
+        :expanded="shouldShowContent(step)"
+        :has-details="hasExpandableContent(step)"
+        @toggle-expand="toggleExpand(step.id)"
+        @confirm="(_tc, response) => handleConfirm(step, response)"
+        @reject="() => handleReject(step)"
       >
-        <!-- Main Row - Simplified: icon + tool + preview + actions -->
-        <div
-          class="step-row"
-          @click="toggleExpand(step.id)"
-        >
-          <!-- Status icon (single, clear); class follows unified render status -->
+        <template #meta>
           <span
-            class="status-icon"
-            :class="renderStatus(step)"
-          >
-            <span
-              v-if="renderStatus(step) === 'executing' || renderStatus(step) === 'streaming-input'"
-              class="spinner"
-            />
-            <span v-else-if="renderStatus(step) === 'completed'">✓</span>
-            <span v-else-if="renderStatus(step) === 'failed'">✗</span>
-            <span v-else-if="renderStatus(step) === 'cancelled'">—</span>
-            <span v-else-if="renderStatus(step) === 'awaiting-confirmation'">⏳</span>
-            <span v-else>○</span>
-          </span>
-
-          <!-- Tool name (cmd) -->
-          <span class="tool-name">{{ step.toolCall?.toolName || 'tool' }}</span>
-
-          <!-- Param (simplified arguments) -->
-          <span class="step-param">{{ getSimplePreview(step) }}</span>
-
-          <!-- Spacer -->
-          <span class="spacer" />
-
-          <!-- Result preview (right-aligned) -->
-          <span
-            v-if="inlineResult(step)"
+            v-if="inlineResult(step) && !(step.status === 'failed' && step.error)"
             class="step-result"
           >{{ inlineResult(step) }}</span>
-
-          <!-- Right side: error OR buttons OR expand icon -->
           <span
             v-if="step.status === 'failed' && step.error"
             class="error-tag"
           >
             {{ truncateError(step.error, 30) }}
           </span>
-
-          <template v-else-if="renderStatus(step) === 'awaiting-confirmation'">
-            <div
-              class="confirm-buttons"
-              @click.stop
-            >
-              <AllowSplitButton @confirm="(response) => handleConfirm(step, response)" />
-              <button
-                class="btn-reject"
-                title="Reject (D/Esc)"
-                @click="handleReject(step)"
-              >
-                Reject
-              </button>
-            </div>
-          </template>
-
-          <svg
-            v-else-if="hasExpandableContent(step)"
-            :class="['expand-icon', { rotated: expandedSteps.has(step.id) }]"
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
+        </template>
+        <template #details>
+          <!-- Streaming content preview (during input-streaming for edit/write tools) -->
+          <Transition
+            name="streaming-fade"
+            mode="out-in"
           >
-            <polyline points="9 6 15 12 9 18" />
-          </svg>
-        </div>
-
-        <!-- Expanded Content -->
-        <Transition name="slide">
-          <div
-            v-if="shouldShowContent(step)"
-            class="step-details"
-          >
-            <!-- Streaming content preview (during input-streaming for edit/write tools) -->
-            <Transition
-              name="streaming-fade"
-              mode="out-in"
-            >
-              <div
-                v-if="getStreamingContent(step)"
-                key="streaming"
-                class="detail-section diff-preview"
-              >
-                <div
-                  :ref="(el) => { if (el) scrollToBottom(el as HTMLElement) }"
-                  class="diff-content"
-                >
-                  <div
-                    v-for="(line, idx) in getStreamingLines(step)"
-                    :key="idx"
-                    class="diff-line diff-add"
-                  >
-                    <span class="line-number new">{{ idx + 1 }}</span>
-                    <span class="line-prefix">+</span>
-                    <span class="line-content">{{ line }}</span>
-                  </div>
-                </div>
-              </div>
-            </Transition>
-
-            <!-- Diff preview for edit/write tool -->
             <div
-              v-if="step.status !== 'running' && getDiffFromStep(step)"
+              v-if="getStreamingContent(step)"
+              key="streaming"
               class="detail-section diff-preview"
             >
-              <div class="diff-content">
-                <!-- File header inside code block (IDE style) -->
-                <div class="diff-header">
-                  <span class="diff-file-path">{{ getDiffFromStep(step)?.filePath }}</span>
-                  <span class="diff-stats">
-                    <span class="additions">+{{ getDiffFromStep(step)?.additions || 0 }}</span>
-                    <span class="deletions">-{{ getDiffFromStep(step)?.deletions || 0 }}</span>
-                  </span>
-                  <span
-                    v-if="step.status === 'completed'"
-                    class="diff-status-badge"
-                  >Applied</span>
-                </div>
-                <!-- Diff lines (skip leading hunk separator) -->
-                <template
-                  v-for="(line, idx) in getVisibleDiffLines(step)"
+              <div
+                :ref="(el) => { if (el) scrollToBottom(el as HTMLElement) }"
+                class="diff-content"
+              >
+                <div
+                  v-for="(line, idx) in getStreamingLines(step)"
                   :key="idx"
+                  class="diff-line diff-add"
                 >
-                  <div
-                    v-if="!(line.class === 'diff-hunk' && idx === 0)"
-                    :class="['diff-line', line.class]"
-                  >
-                    <span
-                      v-if="getDiffFromStep(step)?.deletions"
-                      class="line-number old"
-                    >{{ line.oldNum || '' }}</span>
-                    <span class="line-number new">{{ line.newNum || '' }}</span>
-                    <span class="line-prefix">{{ line.prefix }}</span>
-                    <span
-                      class="line-content"
-                      :class="{ 'line-deleted-text': line.class === 'diff-del' }"
-                    >{{ line.content }}</span>
-                  </div>
-                </template>
+                  <span class="line-number new">{{ idx + 1 }}</span>
+                  <span class="line-prefix">+</span>
+                  <span class="line-content">{{ line }}</span>
+                </div>
               </div>
             </div>
+          </Transition>
 
-            <!-- Live output for running -->
-            <div
-              v-if="step.status === 'running' && step.result"
-              class="detail-section live"
-            >
-              <pre>{{ truncateOutput(step.result) }}</pre>
-            </div>
-
-            <!-- Thinking -->
-            <div
-              v-if="step.thinking && expandedSteps.has(step.id)"
-              class="detail-section"
-            >
-              <div class="detail-label">
-                💭 Thinking
+          <!-- Diff preview for edit/write tool -->
+          <div
+            v-if="step.status !== 'running' && getDiffFromStep(step)"
+            class="detail-section diff-preview"
+          >
+            <div class="diff-content">
+              <div class="diff-header">
+                <span class="diff-file-path">{{ getDiffFromStep(step)?.filePath }}</span>
+                <span class="diff-stats">
+                  <span class="additions">+{{ getDiffFromStep(step)?.additions || 0 }}</span>
+                  <span class="deletions">-{{ getDiffFromStep(step)?.deletions || 0 }}</span>
+                </span>
+                <span
+                  v-if="step.status === 'completed'"
+                  class="diff-status-badge"
+                >Applied</span>
               </div>
-              <pre class="thinking">{{ step.thinking }}</pre>
-            </div>
-
-            <!-- Command (for bash) or Arguments (for other tools, excluding read/write/edit) -->
-            <div
-              v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step) && !['edit', 'read', 'write'].includes(step.toolCall?.toolName || '')"
-              class="detail-section"
-            >
-              <div class="detail-label">
-                {{ step.toolCall?.toolName === 'bash' ? 'Command' : 'Arguments' }}
-              </div>
-              <pre class="code-block">{{ step.toolCall?.toolName === 'bash' ? (step.toolCall.arguments as any).command || '' : formatArgsJson(step.toolCall.arguments) }}</pre>
-            </div>
-
-            <!-- Result (hidden when diff preview is already showing) -->
-            <div
-              v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running' && !getDiffFromStep(step)"
-              class="detail-section"
-            >
-              <pre class="code-block">{{ formatResult(step.result) }}</pre>
-            </div>
-
-            <!-- Summary -->
-            <div
-              v-if="step.summary && expandedSteps.has(step.id)"
-              class="detail-section"
-            >
-              <div class="detail-label">
-                📝 Analysis
-              </div>
-              <pre class="summary">{{ step.summary }}</pre>
+              <template
+                v-for="(line, idx) in getVisibleDiffLines(step)"
+                :key="idx"
+              >
+                <div
+                  v-if="!(line.class === 'diff-hunk' && idx === 0)"
+                  :class="['diff-line', line.class]"
+                >
+                  <span
+                    v-if="getDiffFromStep(step)?.deletions"
+                    class="line-number old"
+                  >{{ line.oldNum || '' }}</span>
+                  <span class="line-number new">{{ line.newNum || '' }}</span>
+                  <span class="line-prefix">{{ line.prefix }}</span>
+                  <span
+                    class="line-content"
+                    :class="{ 'line-deleted-text': line.class === 'diff-del' }"
+                  >{{ line.content }}</span>
+                </div>
+              </template>
             </div>
           </div>
-        </Transition>
-      </div>
+
+          <!-- Live output for running -->
+          <div
+            v-if="step.status === 'running' && step.result"
+            class="detail-section live"
+          >
+            <pre>{{ truncateOutput(step.result) }}</pre>
+          </div>
+
+          <!-- Thinking -->
+          <div
+            v-if="step.thinking && expandedSteps.has(step.id)"
+            class="detail-section"
+          >
+            <div class="detail-label">
+              💭 Thinking
+            </div>
+            <pre class="thinking">{{ step.thinking }}</pre>
+          </div>
+
+          <!-- Command (for bash) or Arguments (for other tools, excluding read/write/edit) -->
+          <div
+            v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step) && !['edit', 'read', 'write'].includes(step.toolCall?.toolName || '')"
+            class="detail-section"
+          >
+            <div class="detail-label">
+              {{ step.toolCall?.toolName === 'bash' ? 'Command' : 'Arguments' }}
+            </div>
+            <pre class="code-block">{{ step.toolCall?.toolName === 'bash' ? (step.toolCall.arguments as any).command || '' : formatArgsJson(step.toolCall.arguments) }}</pre>
+          </div>
+
+          <!-- Result (hidden when diff preview is already showing) -->
+          <div
+            v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running' && !getDiffFromStep(step)"
+            class="detail-section"
+          >
+            <pre class="code-block">{{ formatResult(step.result) }}</pre>
+          </div>
+
+          <!-- Summary -->
+          <div
+            v-if="step.summary && expandedSteps.has(step.id)"
+            class="detail-section"
+          >
+            <div class="detail-label">
+              📝 Analysis
+            </div>
+            <pre class="summary">{{ step.summary }}</pre>
+          </div>
+        </template>
+      </ToolCallRow>
     </template>
   </div>
 </template>
@@ -226,10 +169,9 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
 import type { Step, ToolCall } from '@/types'
-import AllowSplitButton from '../common/AllowSplitButton.vue'
 import FartCallItem from './FartCallItem.vue'
+import ToolCallRow from './ToolCallRow.vue'
 import { getToolRenderStatus, type ToolRenderStatus } from '@/stores/helpers/tool-status'
-import { formatToolCallPreview } from '@/stores/helpers/tool-preview'
 
 const props = withDefaults(defineProps<{
   steps: Step[]
@@ -314,11 +256,17 @@ function renderStatus(step: Step): ToolRenderStatus {
   return getToolRenderStatus(step.toolCall, step)
 }
 
-function stepClass(step: Step): Record<string, boolean> {
-  const status = renderStatus(step)
+/** Build a placeholder ToolCall for steps that don't carry one
+ *  (e.g. thinking-only steps), so ToolCallRow has something to render. */
+function syntheticToolCall(step: Step): ToolCall {
+  const name = step.title?.split(':')[0] || 'tool'
   return {
-    [`status-${status}`]: true,
-    'needs-confirm': status === 'awaiting-confirmation',
+    id: step.id,
+    toolId: name,
+    toolName: name,
+    arguments: {},
+    status: 'pending',
+    timestamp: step.timestamp,
   }
 }
 
@@ -359,13 +307,6 @@ function inlineResult(step: Step): string | null {
   const firstLine = text.split('\n')[0].trim()
   if (!firstLine || firstLine.length > 80) return null
   return firstLine
-}
-
-/**
- * Get a simple, single-line preview for the step (delegates to shared util).
- */
-function getSimplePreview(step: Step): string {
-  return formatToolCallPreview(step.toolCall)
 }
 
 /**

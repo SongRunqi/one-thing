@@ -145,9 +145,8 @@
                     v-for="tc in part.toolCalls"
                     :key="tc.id"
                     :tool-call="tc"
-                    @execute="(tc) => emit('executeTool', tc)"
-                    @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                    @reject="(tc) => emit('rejectTool', tc)"
+                    @confirm="(toolCall, r) => emit('confirmTool', toolCall, r)"
+                    @reject="(toolCall) => emit('rejectTool', toolCall)"
                   />
                 </template>
                 <template v-else>
@@ -156,9 +155,8 @@
                     v-for="tc in getToolCallsWithoutSteps(part.toolCalls)"
                     :key="tc.id"
                     :tool-call="tc"
-                    @execute="(tc) => emit('executeTool', tc)"
-                    @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                    @reject="(tc) => emit('rejectTool', tc)"
+                    @confirm="(toolCall, r) => emit('confirmTool', toolCall, r)"
+                    @reject="(toolCall) => emit('rejectTool', toolCall)"
                   />
                 </template>
               </template>

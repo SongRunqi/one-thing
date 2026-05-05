@@ -1,197 +1,92 @@
 <template>
-  <!-- Novelty tool: render with a dedicated animated component instead of the generic line -->
+  <!-- Novelty tool: render with a dedicated animated component -->
   <FartCallItem
     v-if="toolCall.toolName === 'fart'"
     :tool-call="toolCall"
   />
-  <div
+  <ToolCallRow
     v-else
-    :class="['tool-inline', statusClass, { expanded: isExpanded, 'needs-confirm': toolCall.requiresConfirmation }]"
+    :tool-call="toolCall"
+    :expanded="isExpanded"
+    :has-details="hasExpandableContent"
+    @toggle-expand="isExpanded = !isExpanded"
+    @confirm="(tc, r) => emit('confirm', tc, r)"
+    @reject="(tc) => emit('reject', tc)"
   >
-    <!-- Main Row: always single-line, fixed height -->
-    <div
-      class="tool-row"
-      @click="toggleExpand"
-    >
-      <!-- Status indicator (in-place "page flip" transition) -->
-      <span class="status-indicator">
-        <Transition
-          name="status-swap"
-          mode="out-in"
-        >
-          <span
-            v-if="renderStatus === 'streaming-input'"
-            key="streaming"
-            class="status-streaming flowing-text"
-          >⟳</span>
-          <span
-            v-else-if="renderStatus === 'executing'"
-            key="executing"
-            class="status-exec flowing-text"
-          >⏳</span>
-          <span
-            v-else-if="renderStatus === 'completed'"
-            key="completed"
-            class="status-done"
-          >✓</span>
-          <span
-            v-else-if="renderStatus === 'failed'"
-            key="failed"
-            class="status-error"
-          >✗</span>
-          <span
-            v-else-if="renderStatus === 'cancelled'"
-            key="cancelled"
-            class="status-cancelled"
-          >—</span>
-          <span
-            v-else-if="renderStatus === 'awaiting-confirmation'"
-            key="confirm"
-            class="status-confirm flowing-text"
-          >⏳</span>
-          <span
-            v-else
-            key="pending"
-            class="status-pending"
-          >○</span>
-        </Transition>
-      </span>
-
-      <!-- Tool name -->
-      <span class="tool-name">{{ toolCall.toolName }}</span>
-
-      <!-- Preview text: args summary, truncated to single line -->
-      <span class="tool-preview">{{ previewText }}</span>
-
-      <!-- Spacer -->
-      <div class="spacer" />
-
-      <!-- Confirmation buttons -->
-      <div
-        v-if="toolCall.requiresConfirmation"
-        class="confirm-buttons"
-        @click.stop
-      >
-        <AllowSplitButton @confirm="(response) => $emit('confirm', toolCall, response)" />
-        <button
-          class="btn-inline btn-reject"
-          title="Reject (D/Esc)"
-          @click="$emit('reject', toolCall)"
-        >
-          Reject <kbd>D</kbd>
-        </button>
-      </div>
-
-      <!-- Execution time -->
+    <template #meta>
       <span
         v-if="executionTime"
         class="exec-time"
       >{{ executionTime }}</span>
-
-      <!-- Expand indicator -->
-      <svg
-        v-if="hasExpandableContent"
-        :class="['expand-icon', { rotated: isExpanded }]"
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <polyline points="6 9 12 15 18 9" />
-      </svg>
-    </div>
-
-    <!-- Expanded details (user-initiated only, never auto-collapse) -->
-    <Transition name="slide">
+    </template>
+    <template #details>
+      <!-- Arguments (excluding bash command which goes in preview) -->
       <div
-        v-if="isExpanded && hasExpandableContent"
-        class="tool-details"
+        v-if="hasNonCommandArgs"
+        class="detail-section"
       >
-        <!-- Arguments -->
-        <div
-          v-if="hasNonCommandArgs"
-          class="detail-section"
-        >
-          <div class="detail-label">
-            Arguments
-          </div>
-          <pre>{{ formatNonCommandArgs() }}</pre>
+        <div class="detail-label">
+          Arguments
         </div>
-
-        <!-- Result -->
-        <div
-          v-if="toolCall.result && toolCall.status !== 'executing'"
-          class="detail-section"
-        >
-          <div class="detail-label">
-            Result
-          </div>
-          <pre>{{ formatResult(toolCall.result) }}</pre>
-        </div>
-
-        <!-- Error -->
-        <div
-          v-if="toolCall.error"
-          class="detail-section error"
-        >
-          <div class="detail-label">
-            Error
-          </div>
-          <pre class="error-text">{{ toolCall.error }}</pre>
-        </div>
+        <pre>{{ formatNonCommandArgs() }}</pre>
       </div>
-    </Transition>
-  </div>
+
+      <!-- Result -->
+      <div
+        v-if="toolCall.result && toolCall.status !== 'executing'"
+        class="detail-section"
+      >
+        <div class="detail-label">
+          Result
+        </div>
+        <pre>{{ formatResult(toolCall.result) }}</pre>
+      </div>
+
+      <!-- Error -->
+      <div
+        v-if="toolCall.error"
+        class="detail-section error"
+      >
+        <div class="detail-label">
+          Error
+        </div>
+        <pre class="error-text">{{ toolCall.error }}</pre>
+      </div>
+    </template>
+  </ToolCallRow>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { ToolCall } from '@/types'
-import AllowSplitButton from '../common/AllowSplitButton.vue'
 import FartCallItem from './FartCallItem.vue'
-import { getToolRenderStatus } from '@/stores/helpers/tool-status'
-import { formatToolCallPreview } from '@/stores/helpers/tool-preview'
+import ToolCallRow from './ToolCallRow.vue'
 
 interface Props {
   toolCall: ToolCall
-  showArguments?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  showArguments: true,
-})
+const props = defineProps<Props>()
 
-defineEmits<{
-  execute: [toolCall: ToolCall]
+const emit = defineEmits<{
   confirm: [toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always']
   reject: [toolCall: ToolCall]
 }>()
 
 const isExpanded = ref(false)
 
-const renderStatus = computed(() => getToolRenderStatus(props.toolCall))
-const statusClass = computed(() => `status-${renderStatus.value}`)
-
-// Preview text — single-line summary, shared with StepsPanel via util.
-const previewText = computed(() => formatToolCallPreview(props.toolCall))
-
-// Non-command arguments exist
 const hasNonCommandArgs = computed(() => {
   const args = props.toolCall.arguments
   if (!args) return false
   return Object.keys(args).filter(k => k !== 'command').length > 0
 })
 
-// Has expandable content (args, result, or error)
 const hasExpandableContent = computed(() => {
   return hasNonCommandArgs.value ||
          props.toolCall.result !== undefined ||
-         props.toolCall.error
+         !!props.toolCall.error
 })
 
-// Execution time
 const executionTime = computed(() => {
   const { startTime, endTime } = props.toolCall
   if (startTime && endTime) {
@@ -201,167 +96,27 @@ const executionTime = computed(() => {
   return null
 })
 
-function toggleExpand() {
-  if (hasExpandableContent.value) {
-    isExpanded.value = !isExpanded.value
-  }
-}
-
 function formatNonCommandArgs(): string {
   const args = props.toolCall.arguments
   if (!args) return ''
   const filtered = Object.fromEntries(
-    Object.entries(args).filter(([k]) => k !== 'command')
+    Object.entries(args).filter(([k]) => k !== 'command'),
   )
   return JSON.stringify(filtered, null, 2)
 }
 
-function formatResult(result: any): string {
+function formatResult(result: unknown): string {
   if (typeof result === 'string') return result
   return JSON.stringify(result, null, 2)
 }
 </script>
 
 <style scoped>
-.tool-inline {
-  font-size: 13px;
-  border-radius: 6px;
-  background: transparent;
-  transition: background 0.15s ease;
-  margin: 2px 0;
-}
-
-
-.tool-inline.needs-confirm {
-  background: rgba(208, 162, 21, 0.06);
-  border: 1px solid rgba(208, 162, 21, 0.15);
-  border-radius: var(--radius-sm, 8px);
-}
-
-.tool-inline.needs-confirm:hover {
-  background: rgba(208, 162, 21, 0.1);
-  border-color: rgba(208, 162, 21, 0.25);
-}
-
-/* Main row — fixed height, single line, no wrapping */
-.tool-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  cursor: pointer;
-  height: 32px;
-  overflow: hidden;
-}
-
-/* Status indicator */
-.status-indicator {
-  font-size: 13px;
-  font-weight: 600;
-  width: 16px;
-  flex-shrink: 0;
-  text-align: center;
-}
-
-.status-done { color: #22c55e; }
-.status-error { color: #ef4444; }
-.status-pending { color: #6b7280; }
-.status-exec { color: #3b82f6; }
-.status-streaming { color: #a855f7; }
-.status-confirm { color: #d0a215; }
-.status-cancelled { color: #6b7280; opacity: 0.6; }
-
-/* Tool name */
-.tool-name {
-  font-weight: 600;
-  color: var(--text-secondary, #888);
-  flex-shrink: 0;
-  font-size: 12px;
-}
-
-/* Preview — single line, truncated */
-.tool-preview {
-  color: var(--text-primary, #e5e5e5);
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex: 1;
-  opacity: 0.7;
-}
-
-.spacer {
-  flex: 0 0 4px;
-}
-
-/* Execution time */
 .exec-time {
   font-size: 11px;
   color: var(--text-tertiary, #666);
   flex-shrink: 0;
   opacity: 0.7;
-}
-
-/* Confirm buttons */
-.confirm-buttons {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-  align-items: center;
-}
-
-.btn-inline {
-  padding: 4px 8px;
-  border-radius: var(--radius-sm, 8px);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
-  background: transparent;
-  white-space: nowrap;
-}
-
-.btn-reject {
-  color: var(--text-muted, #9F9D96);
-  border-color: transparent;
-  background: transparent;
-}
-
-.btn-reject:hover {
-  color: var(--text-error, #D14D41);
-  background: rgba(209, 77, 65, 0.08);
-}
-
-.btn-inline kbd {
-  display: inline-block;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
-  padding: 0 4px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 10px;
-  margin-left: 4px;
-  vertical-align: middle;
-  line-height: 1.4;
-}
-
-/* Expand icon */
-.expand-icon {
-  color: var(--text-tertiary, #666);
-  flex-shrink: 0;
-  transition: transform 0.2s ease;
-}
-
-.expand-icon.rotated {
-  transform: rotate(180deg);
-}
-
-/* Expanded details */
-.tool-details {
-  padding: 0 10px 8px 34px;
 }
 
 .detail-section {
@@ -400,71 +155,7 @@ function formatResult(result: any): string {
   color: #ef4444;
 }
 
-/* Slide transition for details */
-.slide-enter-active {
-  transition: opacity 0.2s ease;
-}
-.slide-leave-active {
-  transition: opacity 0.15s ease;
-}
-.slide-enter-from,
-.slide-leave-to {
-  opacity: 0;
-}
-
-/* Status swap (in-place "page flip") */
-.status-swap-enter-active {
-  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.status-swap-leave-active {
-  transition: opacity 0.1s ease, transform 0.1s ease;
-}
-.status-swap-enter-from {
-  opacity: 0;
-  transform: scale(0.5);
-}
-.status-swap-leave-to {
-  opacity: 0;
-  transform: scale(0.8);
-}
-
-/* Executing pulse */
-.tool-inline.status-executing .status-indicator {
-  animation: executingPulse 2s ease-in-out infinite;
-}
-
-@keyframes executingPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-/* Light theme */
-
-html[data-theme='light'] .tool-inline.needs-confirm {
-  background: rgba(173, 131, 1, 0.06);
-  border-color: rgba(173, 131, 1, 0.15);
-}
-
-html[data-theme='light'] .tool-inline.needs-confirm:hover {
-  background: rgba(173, 131, 1, 0.1);
-  border-color: rgba(173, 131, 1, 0.25);
-}
-
 html[data-theme='light'] .detail-section pre {
   background: rgba(0, 0, 0, 0.04);
-}
-
-html[data-theme='light'] .btn-reject {
-  color: #878580;
-}
-
-html[data-theme='light'] .btn-reject:hover {
-  color: #AF3029;
-  background: rgba(175, 48, 41, 0.08);
-}
-
-html[data-theme='light'] .btn-inline kbd {
-  background: rgba(0, 0, 0, 0.06);
-  border-color: rgba(0, 0, 0, 0.1);
 }
 </style>
