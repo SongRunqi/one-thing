@@ -242,7 +242,7 @@ const emit = defineEmits<{
   contentClick: [event: MouseEvent]
   textSelection: [text: string, position: { top: number; left: number }]
   executeTool: [toolCall: ToolCall]
-  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always']
+  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
   rejectTool: [toolCall: ToolCall]
 }>()
 
@@ -303,7 +303,7 @@ const otherParts = computed(() => {
 // Generate stable keys for other parts TransitionGroup
 function getOtherPartKey(part: ContentPart, index: number): string {
   if (part.type === 'text') return `text-other-${index}`
-  if (part.type === 'tool-call') return `tool-call-${index}`
+  if (part.type === 'tool-call') return `tool-call-${part.toolCalls.map(tc => tc.id).join('-') || index}`
   if (part.type === 'data-steps') return `steps-${part.turnIndex ?? index}`
   if (part.type === 'waiting') return `waiting-${index}`
   return `part-${index}`
@@ -953,13 +953,13 @@ html[data-theme='light'] .content :deep(.inline-code) {
   justify-content: space-between;
   align-items: center;
   padding: 2px 10px;
-  background: var(--bg-code-header, rgba(255, 255, 255, 0.05));
+  background: var(--bg-code-block, rgba(0, 0, 0, 0.3));
   border-bottom: 1px solid var(--border-code, var(--border));
 }
 
 .content :deep(.code-block-lang) {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-secondary);
   text-transform: lowercase;
 }
 
@@ -973,14 +973,14 @@ html[data-theme='light'] .content :deep(.inline-code) {
   border-radius: 6px;
   background: transparent;
   border: none;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .content :deep(.code-block-copy:hover) {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .content :deep(.code-block-copy .check-icon) {

@@ -105,6 +105,31 @@ describe('content-parts helpers', () => {
       expect((parts[0] as { type: 'tool-call'; toolCalls: ToolCall[] }).toolCalls[0].status).toBe('completed')
     })
 
+    it('updates an existing tool call before data-steps without appending a duplicate part', () => {
+      const streaming = makeToolCall('write-1', {
+        toolName: 'write',
+        status: 'input-streaming',
+        streamingArgs: '{"file_path":"a.txt","content":"hello"}',
+      })
+      const parts: ContentPart[] = [
+        { type: 'tool-call', toolCalls: [streaming] },
+        { type: 'data-steps', turnIndex: 0 },
+      ]
+      const finalized = makeToolCall('write-1', {
+        toolName: 'write',
+        status: 'executing',
+        arguments: { file_path: 'a.txt', content: 'hello' },
+      })
+
+      upsertToolCall(parts, finalized)
+
+      expect(parts.map(p => p.type)).toEqual(['tool-call', 'data-steps'])
+      const toolCalls = (parts[0] as { type: 'tool-call'; toolCalls: ToolCall[] }).toolCalls
+      expect(toolCalls).toHaveLength(1)
+      expect(toolCalls[0].status).toBe('executing')
+      expect(toolCalls[0].streamingArgs).toBe('{"file_path":"a.txt","content":"hello"}')
+    })
+
     it('pops waiting before merging', () => {
       const a = makeToolCall('a')
       const parts: ContentPart[] = [
@@ -137,6 +162,20 @@ describe('content-parts helpers', () => {
       const parts: ContentPart[] = [partA]
       appendToolCallPlaceholder(parts, makeToolCall('a'))
       expect(parts[0]).toBe(partA)
+    })
+
+    it('skips when tool call id already exists before data-steps', () => {
+      const a = makeToolCall('a')
+      const partA = { type: 'tool-call' as const, toolCalls: [a] }
+      const parts: ContentPart[] = [
+        partA,
+        { type: 'data-steps', turnIndex: 0 },
+      ]
+      appendToolCallPlaceholder(parts, makeToolCall('a'))
+      expect(parts).toEqual([
+        partA,
+        { type: 'data-steps', turnIndex: 0 },
+      ])
     })
   })
 

@@ -419,7 +419,7 @@ const electronAPI = {
   respondToPermission: (request: {
     sessionId: string
     permissionId: string
-    response: 'once' | 'session' | 'workspace' | 'reject' | 'always'
+    response: 'once' | 'session' | 'workdir' | 'workspace' | 'reject' | 'always'
     rejectReason?: string
   }) => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_RESPOND, request),
 

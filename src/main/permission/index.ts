@@ -6,14 +6,14 @@
  *
  * Flow:
  * 1. Tool calls Permission.ask() before dangerous operations
- * 2. System checks if pattern is already approved (workspace → session)
+ * 2. System checks if pattern is already approved (workdir → session)
  * 3. If not, emits event via EventBus and waits for user response
- * 4. User can respond with: once, session, workspace, reject
+ * 4. User can respond with: once, session, workdir, reject
  *
  * Permission Levels:
  * - once: Allow this single operation only (本次)
  * - session: Allow for the duration of this session (本会话)
- * - workspace: Permanently allow in this workspace (本工作区)
+ * - workdir: Permanently allow in this working directory (本工作目录)
  * - reject: Deny the operation with optional reason
  *
  * Channel Affinity:
@@ -24,7 +24,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import * as WorkspacePermissions from './directory-permissions.js'
+import * as DirectoryPermissions from './directory-permissions.js'
 
 // Lazy imports to avoid circular dependencies
 type EventBus = import('../events/event-bus.js').EventBus
@@ -44,7 +44,7 @@ export namespace Permission {
     title: string
     metadata: Record<string, unknown>
     createdAt: number
-    /** Working directory for workspace-level permissions */
+    /** Working directory for persistent directory-level permissions */
     workingDirectory?: string
     /** The channel this permission request targets */
     targetChannel?: string
@@ -54,13 +54,13 @@ export namespace Permission {
    * User response types:
    * - 'once': Allow this single operation only
    * - 'session': Allow for the duration of this session
-   * - 'workspace': Permanently allow in this workspace
+   * - 'workdir': Permanently allow in this working directory
    * - 'reject': Deny the operation
    */
-  export type Response = 'once' | 'session' | 'workspace' | 'reject'
+  export type Response = 'once' | 'session' | 'workdir' | 'reject'
 
   /** Legacy response type for backwards compatibility */
-  export type LegacyResponse = 'once' | 'always' | 'reject'
+  export type LegacyResponse = 'once' | 'always' | 'workspace' | 'reject'
 
   /**
    * Permission state per session
@@ -218,16 +218,16 @@ export namespace Permission {
     sessionId: Info['sessionId']
     messageId: Info['messageId']
     metadata: Info['metadata']
-    /** Working directory for workspace-level permissions */
+    /** Working directory for persistent directory-level permissions */
     workingDirectory?: string
   }): Promise<void> {
     const session = getSession(input.sessionId)
     const keys = toKeys(input.pattern, input.type)
 
-    // Check if approved at workspace level first (persistent)
+    // Check if approved at working-directory level first (persistent)
     if (input.workingDirectory) {
-      if (WorkspacePermissions.areAllApprovedInWorkspace(input.workingDirectory, keys)) {
-        console.log('[Permission] Already approved at workspace level:', keys)
+      if (DirectoryPermissions.areAllApprovedInWorkingDirectory(input.workingDirectory, keys)) {
+        console.log('[Permission] Already approved at working-directory level:', keys)
         return
       }
     }
@@ -305,8 +305,7 @@ export namespace Permission {
       return false
     }
 
-    // Normalize legacy 'always' to 'session'
-    const response: Response = input.response === 'always' ? 'session' : input.response as Response
+    const response = normalizeResponse(input.response)
 
     console.log('[Permission] Response:', input.permissionId, response)
 
@@ -328,15 +327,15 @@ export namespace Permission {
 
     const keys = toKeys(pending.info.pattern, pending.info.type)
 
-    // Handle 'workspace' response - persist to workspace storage
-    if (response === 'workspace' && pending.info.workingDirectory) {
-      WorkspacePermissions.approveInWorkspace(pending.info.workingDirectory, keys)
+    // Handle 'workdir' response - persist to working-directory storage
+    if (response === 'workdir' && pending.info.workingDirectory) {
+      DirectoryPermissions.approveInWorkingDirectory(pending.info.workingDirectory, keys)
 
-      // Auto-approve any other pending requests that match (in this workspace)
+      // Auto-approve any other pending requests that match in this working directory.
       for (const [id, other] of session.pending) {
         if (other.info.workingDirectory === pending.info.workingDirectory) {
           const otherKeys = toKeys(other.info.pattern, other.info.type)
-          if (WorkspacePermissions.areAllApprovedInWorkspace(pending.info.workingDirectory, otherKeys)) {
+          if (DirectoryPermissions.areAllApprovedInWorkingDirectory(pending.info.workingDirectory, otherKeys)) {
             session.pending.delete(id)
             other.resolve()
           }
@@ -361,6 +360,12 @@ export namespace Permission {
     }
 
     return true
+  }
+
+  function normalizeResponse(response: Response | LegacyResponse): Response {
+    if (response === 'always') return 'session'
+    if (response === 'workspace') return 'workdir'
+    return response
   }
 
   /**

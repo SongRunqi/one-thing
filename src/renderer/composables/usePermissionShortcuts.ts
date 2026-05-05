@@ -4,7 +4,7 @@
  * Handles keyboard shortcuts for permission confirmation:
  * - Enter: Allow once (本次)
  * - S: Allow for session (本会话)
- * - W: Allow for workspace (本工作区) - permanent
+ * - W: Allow for working directory (本工作目录) - permanent
  * - D / Escape: Reject
  *
  * Based on OpenCode's permission interaction design.
@@ -16,8 +16,8 @@ export interface PermissionShortcutHandlers {
   onAllowOnce: () => void
   /** Allow for the duration of this session */
   onAllowSession: () => void
-  /** Allow permanently in this workspace */
-  onAllowWorkspace: () => void
+  /** Allow permanently in this working directory */
+  onAllowWorkdir: () => void
   onReject: () => void
 }
 
@@ -47,9 +47,8 @@ export function usePermissionShortcuts(
     onAllowOnce: handlers.onAllowOnce,
     // Map legacy onAllowAlways to new onAllowSession
     onAllowSession: isNewFormat ? newHandlers.onAllowSession : legacyHandlers.onAllowAlways,
-    // New workspace handler (fallback to session if not provided)
-    onAllowWorkspace: 'onAllowWorkspace' in handlers
-      ? newHandlers.onAllowWorkspace
+    onAllowWorkdir: 'onAllowWorkdir' in handlers
+      ? newHandlers.onAllowWorkdir
       : (isNewFormat ? newHandlers.onAllowSession : legacyHandlers.onAllowAlways),
     onReject: handlers.onReject,
   }
@@ -88,12 +87,12 @@ export function usePermissionShortcuts(
         normalizedHandlers.onAllowSession()
         break
 
-      // W = Workspace (allow permanently in this workspace)
+      // W = Workdir (allow permanently in this working directory)
       case 'w':
       case 'W':
         event.preventDefault()
         event.stopPropagation()
-        normalizedHandlers.onAllowWorkspace()
+        normalizedHandlers.onAllowWorkdir()
         break
 
       // A = legacy alias for Session (backwards compatibility)

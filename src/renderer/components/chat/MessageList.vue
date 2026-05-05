@@ -642,7 +642,7 @@ const currentPendingPermission = computed<{ message: ChatMessage; toolCall: Tool
 })
 
 // Setup keyboard shortcuts for permission confirmation
-// Enter = once (本次), S = session (本会话), W = workspace (本工作区), D/Escape = reject
+// Enter = once (本次), S = session (本会话), W = workdir (本工作目录), D/Escape = reject
 usePermissionShortcuts(
   () => !!currentPendingPermission.value && !showRejectDialog.value,
   {
@@ -658,10 +658,10 @@ usePermissionShortcuts(
         handleConfirmTool(pending.toolCall, 'session')
       }
     },
-    onAllowWorkspace: () => {
+    onAllowWorkdir: () => {
       const pending = currentPendingPermission.value
       if (pending) {
-        handleConfirmTool(pending.toolCall, 'workspace')
+        handleConfirmTool(pending.toolCall, 'workdir')
       }
     },
     onReject: () => {
@@ -903,9 +903,9 @@ async function handleExecuteTool(toolCall: any) {
 }
 
 // Handle tool confirmation (for dangerous bash commands)
-// response: 'once' = allow this time, 'session' = allow for session, 'workspace' = allow permanently in workspace
+// response: 'once' = allow this time, 'session' = allow for session, 'workdir' = allow permanently in this working directory
 // Note: 'always' is kept for backwards compatibility and maps to 'session'
-async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | 'workspace' | 'always' = 'once') {
+async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | 'workdir' | 'always' = 'once') {
   const currentSession = panelSession.value
   if (!currentSession) return
 

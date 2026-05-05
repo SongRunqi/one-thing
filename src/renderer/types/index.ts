@@ -263,7 +263,7 @@ export interface ElectronAPI {
   resumeAfterToolConfirm: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>
 
   // Permission methods
-  respondToPermission: (request: { sessionId: string; permissionId: string; response: 'once' | 'session' | 'workspace' | 'reject' | 'always'; rejectReason?: string }) => Promise<{ success: boolean; error?: string }>
+  respondToPermission: (request: { sessionId: string; permissionId: string; response: 'once' | 'session' | 'workdir' | 'workspace' | 'reject' | 'always'; rejectReason?: string }) => Promise<{ success: boolean; error?: string }>
   clearSessionPermissions: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   getPendingPermissions: (sessionId: string) => Promise<{ success: boolean; pending?: PermissionInfo[]; error?: string }>
   onPermissionRequest: (callback: (info: PermissionInfo) => void) => () => void

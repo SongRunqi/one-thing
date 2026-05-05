@@ -141,13 +141,13 @@ html[data-theme='light'] .content :deep(.inline-code) {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: var(--bg-code-header, rgba(255, 255, 255, 0.05));
+  background: var(--bg-code-block, rgba(0, 0, 0, 0.3));
   border-bottom: 1px solid var(--border-code, var(--border));
 }
 
 .content :deep(.code-block-lang) {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-secondary);
   text-transform: lowercase;
 }
 
@@ -160,13 +160,14 @@ html[data-theme='light'] .content :deep(.inline-code) {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.08);
   border: none;
-  color: var(--text);
+  color: var(--text-muted);
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .content :deep(.code-block-copy:hover) {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .content :deep(pre) {

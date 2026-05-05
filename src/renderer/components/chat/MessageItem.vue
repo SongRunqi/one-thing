@@ -188,7 +188,7 @@ const emit = defineEmits<{
   goToBranch: [sessionId: string]
   quote: [quotedText: string]
   executeTool: [toolCall: ToolCall]
-  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always']
+  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
   rejectTool: [toolCall: ToolCall]
   updateThinkingTime: [messageId: string, thinkingTime: number]
 }>()
@@ -315,7 +315,7 @@ function handleToolExecute(toolCall: ToolCall) {
   emit('executeTool', toolCall)
 }
 
-function handleToolConfirm(toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always') {
+function handleToolConfirm(toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always') {
   emit('confirmTool', toolCall, response)
 }
 

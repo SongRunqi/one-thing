@@ -113,7 +113,7 @@ export function getToolUsageDocsPath(): string {
   return path.join(getDocsDir(), 'tool-usage-guide.md')
 }
 
-// Permissions directory (for workspace-level permissions)
+// Permissions directory (for persistent working-directory permissions)
 export function getPermissionsDir(): string {
   return path.join(getStorePath(), 'permissions')
 }

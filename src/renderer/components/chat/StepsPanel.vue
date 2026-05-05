@@ -1,191 +1,272 @@
 <template>
   <div
-    v-if="steps && steps.length > 0"
+    v-if="views.length > 0"
     class="steps-panel"
     :data-depth="depth"
   >
-    <template
-      v-for="step in steps"
-      :key="step.id"
+    <FartCallItem
+      v-for="view in fartViews"
+      :key="view.id"
+      :tool-call="view.toolCall"
+    />
+
+    <section
+      v-if="editedViews.length > 0"
+      class="activity"
+      :class="{ open: isEditedOpen }"
     >
-      <!-- Novelty: fart tool renders a dedicated animated card -->
-      <FartCallItem
-        v-if="step.toolCall && step.toolCall.toolName === 'fart'"
-        :tool-call="step.toolCall"
-      />
-      <!-- Regular Step: shared row component handles status icon, name,
-           preview, confirm buttons, and expand chevron. StepsPanel supplies
-           inline result/error tag via `meta` slot and the rich step body
-           (streaming diff, diff preview, live output, thinking, args,
-           result, summary) via `details` slot.
-
-           Steps without an embedded toolCall (e.g. thinking-only steps)
-           still render through ToolCallRow with a synthetic toolCall
-           derived from step.title, so visual layout stays consistent. -->
-      <ToolCallRow
-        v-else
-        :tool-call="step.toolCall || syntheticToolCall(step)"
-        :step="step"
-        :expanded="shouldShowContent(step)"
-        :has-details="hasExpandableContent(step)"
-        @toggle-expand="toggleExpand(step.id)"
-        @confirm="(_tc, response) => handleConfirm(step, response)"
-        @reject="() => handleReject(step)"
+      <button
+        class="activity-summary"
+        type="button"
+        @click="toggleEdited"
       >
-        <template #meta>
-          <span
-            v-if="inlineResult(step) && !(step.status === 'failed' && step.error)"
-            class="step-result"
-          >{{ inlineResult(step) }}</span>
-          <span
-            v-if="step.status === 'failed' && step.error"
-            class="error-tag"
+        <Pencil
+          class="activity-icon"
+          :size="18"
+          :stroke-width="1.8"
+        />
+        <span class="activity-title">{{ editedTitle }}</span>
+        <ChevronDown
+          class="activity-chevron"
+          :class="{ open: isEditedOpen }"
+          :size="18"
+          :stroke-width="1.8"
+        />
+      </button>
+
+      <div
+        v-if="isEditedOpen"
+        class="activity-body"
+      >
+        <div
+          v-if="editedViews.length > 1"
+          class="edited-list"
+        >
+          <div
+            v-for="view in editedViews"
+            :key="view.id"
+            class="edited-item"
           >
-            {{ truncateError(step.error, 30) }}
-          </span>
-        </template>
-        <template #details>
-          <!-- Streaming preview (during input-streaming) ↔ diff preview
-               (once changes arrive). Wrapped in one Transition so leaving
-               streaming smoothly hands off to entering diff via mode=out-in.
-               The diff stays visible across awaiting-confirmation → running
-               → completed, so confirming a write doesn't cause the diff
-               to flicker out while the file is being applied. -->
-          <Transition
-            name="diff-swap"
-            mode="out-in"
-          >
-            <div
-              v-if="getStreamingContent(step)"
-              key="streaming"
-              class="detail-section diff-preview"
+            <button
+              class="edited-row"
+              type="button"
+              :aria-expanded="isEditedExpanded(view)"
+              @click="selectEdited(view.id)"
             >
-              <div
-                :ref="(el) => { if (el) scrollToBottom(el as HTMLElement) }"
-                class="diff-content"
+              <span class="edited-action">Edited</span>
+              <span class="edited-file">{{ fileLabel(view) }}</span>
+              <span
+                v-if="view.diff"
+                class="edited-stats"
               >
-                <div
-                  v-for="(line, idx) in getStreamingLines(step)"
-                  :key="idx"
-                  class="diff-line diff-add"
+                <span class="stat-add">+{{ view.diff.additions }}</span>
+                <span class="stat-del">-{{ view.diff.deletions }}</span>
+              </span>
+              <ChevronDown
+                class="row-chevron"
+                :class="{ open: isEditedExpanded(view) }"
+                :size="15"
+                :stroke-width="1.9"
+              />
+              <span class="edited-spacer" />
+              <span
+                v-if="view.isAwaitingConfirmation"
+                class="row-confirm"
+                @click.stop
+              >
+                <AllowSplitButton @confirm="(response) => confirmEdited(view, response)" />
+                <button
+                  class="btn-reject"
+                  type="button"
+                  @click="rejectEdited(view)"
                 >
-                  <span class="line-number new">{{ idx + 1 }}</span>
-                  <span class="line-prefix">+</span>
-                  <span class="line-content">{{ line }}</span>
-                </div>
-              </div>
-            </div>
+                  Reject
+                </button>
+              </span>
+            </button>
+
             <div
-              v-else-if="getDiffFromStep(step)"
-              key="diff"
-              class="detail-section diff-preview"
+              v-if="isEditedExpanded(view)"
+              class="active-edit nested"
             >
-              <div class="diff-content">
-                <div class="diff-header">
-                  <span class="diff-file-path">{{ getDiffFromStep(step)?.filePath }}</span>
-                  <span class="diff-stats">
-                    <span class="additions">+{{ getDiffFromStep(step)?.additions || 0 }}</span>
-                    <span class="deletions">-{{ getDiffFromStep(step)?.deletions || 0 }}</span>
-                  </span>
+              <div class="diff-shell">
+                <div class="diff-shell-header">
+                  <span class="diff-file">{{ fileLabel(view) }}</span>
                   <span
-                    v-if="step.status === 'running'"
-                    class="diff-status-badge applying"
-                  >Applying…</span>
-                  <span
-                    v-else-if="step.status === 'completed'"
-                    class="diff-status-badge"
-                  >Applied</span>
-                </div>
-                <template
-                  v-for="(line, idx) in getVisibleDiffLines(step)"
-                  :key="idx"
-                >
-                  <div
-                    v-if="!(line.class === 'diff-hunk' && idx === 0)"
-                    :class="['diff-line', line.class]"
+                    v-if="view.diff"
+                    class="edited-stats"
                   >
-                    <span
-                      v-if="getDiffFromStep(step)?.deletions"
-                      class="line-number old"
-                    >{{ line.oldNum || '' }}</span>
-                    <span class="line-number new">{{ line.newNum || '' }}</span>
-                    <span class="line-prefix">{{ line.prefix }}</span>
-                    <span
-                      class="line-content"
-                      :class="{ 'line-deleted-text': line.class === 'diff-del' }"
-                    >{{ line.content }}</span>
-                  </div>
-                </template>
+                    <span class="stat-add">+{{ view.diff.additions }}</span>
+                    <span class="stat-del">-{{ view.diff.deletions }}</span>
+                  </span>
+                  <span class="diff-spacer" />
+                  <span
+                    v-if="view.isAwaitingConfirmation"
+                    class="row-confirm"
+                  >
+                    <AllowSplitButton @confirm="(response) => confirmEdited(view, response)" />
+                    <button
+                      class="btn-reject"
+                      type="button"
+                      @click="rejectEdited(view)"
+                    >
+                      Reject
+                    </button>
+                  </span>
+                  <Copy
+                    v-else
+                    class="diff-copy"
+                    :size="17"
+                    :stroke-width="1.8"
+                  />
+                </div>
+                <ToolDiffPreview
+                  v-if="view.diff"
+                  class="embedded-diff"
+                  :diff="view.diff"
+                  :lines="view.diffLines"
+                  :status="view.status"
+                  :hide-header="true"
+                />
+                <ToolStepDetails
+                  v-else
+                  class="embedded-details"
+                  :view="view"
+                />
               </div>
             </div>
-          </Transition>
-
-          <!-- Live output for running -->
-          <div
-            v-if="step.status === 'running' && step.result"
-            class="detail-section live"
-          >
-            <pre>{{ truncateOutput(step.result) }}</pre>
           </div>
+        </div>
 
-          <!-- Thinking -->
-          <div
-            v-if="step.thinking && expandedSteps.has(step.id)"
-            class="detail-section"
-          >
-            <div class="detail-label">
-              💭 Thinking
+        <div
+          v-if="activeEditedView && editedViews.length === 1"
+          class="active-edit"
+        >
+          <div class="diff-shell">
+            <div class="diff-shell-header">
+              <span class="diff-file">{{ fileLabel(activeEditedView) }}</span>
+              <span
+                v-if="activeEditedView.diff"
+                class="edited-stats"
+              >
+                <span class="stat-add">+{{ activeEditedView.diff.additions }}</span>
+                <span class="stat-del">-{{ activeEditedView.diff.deletions }}</span>
+              </span>
+              <span class="diff-spacer" />
+              <span
+                v-if="activeEditedView.isAwaitingConfirmation"
+                class="row-confirm"
+              >
+                <AllowSplitButton @confirm="confirmActiveEdited" />
+                <button
+                  class="btn-reject"
+                  type="button"
+                  @click="rejectActiveEdited"
+                >
+                  Reject
+                </button>
+              </span>
+              <Copy
+                v-else
+                class="diff-copy"
+                :size="17"
+                :stroke-width="1.8"
+              />
             </div>
-            <pre class="thinking">{{ step.thinking }}</pre>
+            <ToolDiffPreview
+              v-if="activeEditedView.diff"
+              class="embedded-diff"
+              :diff="activeEditedView.diff"
+              :lines="activeEditedView.diffLines"
+              :status="activeEditedView.status"
+              :hide-header="true"
+            />
+            <ToolStepDetails
+              v-else
+              class="embedded-details"
+              :view="activeEditedView"
+            />
           </div>
+        </div>
+      </div>
+    </section>
 
-          <!-- Command (for bash) or Arguments (for other tools, excluding read/write/edit) -->
-          <div
-            v-if="expandedSteps.has(step.id) && step.toolCall?.arguments && hasArgs(step) && !['edit', 'read', 'write'].includes(step.toolCall?.toolName || '')"
-            class="detail-section"
+    <section
+      v-if="exploreViews.length > 0 || commandViews.length > 0"
+      class="activity muted"
+      :class="{ attention: utilityNeedsConfirmation }"
+    >
+      <button
+        class="activity-summary"
+        type="button"
+        @click="toggleExplore"
+      >
+        <SquareTerminal
+          class="activity-icon"
+          :size="18"
+          :stroke-width="1.8"
+        />
+        <span class="activity-title">{{ exploreTitle }}</span>
+      </button>
+      <div
+        v-if="isExploreOpen"
+        class="activity-body compact-list"
+      >
+        <div
+          v-for="view in utilityViews"
+          :key="view.id"
+          class="compact-row"
+          :class="{ awaiting: view.isAwaitingConfirmation }"
+        >
+          <span>{{ compactVerb(view) }}</span>
+          <span class="compact-value">{{ compactValue(view) }}</span>
+          <span class="compact-spacer" />
+          <span
+            v-if="view.isAwaitingConfirmation"
+            class="row-confirm"
+            @click.stop
           >
-            <div class="detail-label">
-              {{ step.toolCall?.toolName === 'bash' ? 'Command' : 'Arguments' }}
-            </div>
-            <pre class="code-block">{{ step.toolCall?.toolName === 'bash' ? (step.toolCall.arguments as any).command || '' : formatArgsJson(step.toolCall.arguments) }}</pre>
-          </div>
+            <AllowSplitButton @confirm="(response) => emit('confirm', view.toolCall, response)" />
+            <button
+              class="btn-reject"
+              type="button"
+              @click="emit('reject', view.toolCall)"
+            >
+              Reject
+            </button>
+          </span>
+        </div>
+      </div>
+    </section>
 
-          <!-- Result (hidden when diff preview is already showing) -->
-          <div
-            v-if="step.result && expandedSteps.has(step.id) && step.status !== 'running' && !getDiffFromStep(step)"
-            class="detail-section"
-          >
-            <pre class="code-block">{{ formatResult(step.result) }}</pre>
-          </div>
-
-          <!-- Summary -->
-          <div
-            v-if="step.summary && expandedSteps.has(step.id)"
-            class="detail-section"
-          >
-            <div class="detail-label">
-              📝 Analysis
-            </div>
-            <pre class="summary">{{ step.summary }}</pre>
-          </div>
-        </template>
-      </ToolCallRow>
-    </template>
+    <ToolStepItem
+      v-for="view in miscViews"
+      :key="view.id"
+      :view="view"
+      :expanded="isExpanded(view)"
+      @toggle-expand="toggleExpand(view.id)"
+      @confirm="(toolCall, response) => emit('confirm', toolCall, response)"
+      @reject="(toolCall) => emit('reject', toolCall)"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { ChevronDown, Copy, Pencil, SquareTerminal } from 'lucide-vue-next'
 import type { Step, ToolCall } from '@/types'
+import { buildToolStepView, type ToolStepView } from '@/stores/helpers/tool-step-view'
+import AllowSplitButton from '../common/AllowSplitButton.vue'
 import FartCallItem from './FartCallItem.vue'
-import ToolCallRow from './ToolCallRow.vue'
-import { getToolRenderStatus, type ToolRenderStatus } from '@/stores/helpers/tool-status'
+import ToolDiffPreview from './ToolDiffPreview.vue'
+import ToolStepDetails from './ToolStepDetails.vue'
+import ToolStepItem from './ToolStepItem.vue'
 
 const props = withDefaults(defineProps<{
   steps: Step[]
   depth?: number
-  parentCollapsed?: boolean  // When parent step is collapsed, propagate to children
-  sessionId?: string  // Session ID for AgentExecutionPanel state management
+  parentCollapsed?: boolean
+  sessionId?: string
 }>(), {
   depth: 0,
   parentCollapsed: false,
@@ -193,962 +274,419 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  confirm: [toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always']
+  confirm: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
   reject: [toolCall: ToolCall]
 }>()
 
-// ── Expansion Policy (single source of truth) ──────────────
-const EXPAND_POLICY = {
-  autoExpandTools: new Set(['write', 'read', 'edit']),
-  temporaryShowStates: new Set<ToolRenderStatus>(['awaiting-confirmation']),
-}
-
-const expandedSteps = ref<Set<string>>(new Set())
+const userExpandedSteps = ref<Set<string>>(new Set())
 const userCollapsedSteps = ref<Set<string>>(new Set())
+const editedOpen = ref<boolean | null>(null)
+const exploreOpen = ref<boolean | null>(null)
+const selectedEditedIds = ref<Set<string>>(new Set())
 
-// Diff line type for VS Code-style display
-interface DiffLine {
-  class: string
-  prefix: string
-  content: string
-  oldNum?: number | string
-  newNum?: number | string
-}
+const views = computed(() => props.steps.map(step => buildToolStepView(step)))
+const fartViews = computed(() => views.value.filter(view => view.toolName === 'fart'))
+const editedViews = computed(() => views.value.filter(isEditedView))
+const exploreViews = computed(() => views.value.filter(isExploreView))
+const commandViews = computed(() => views.value.filter(view => view.toolName === 'bash'))
+const utilityViews = computed(() => [...exploreViews.value, ...commandViews.value])
+const miscViews = computed(() => views.value.filter(view =>
+  view.toolName !== 'fart' &&
+  !isEditedView(view) &&
+  !isExploreView(view) &&
+  view.toolName !== 'bash',
+))
 
-// ── Auto-expand watch (triggers on render-status changes) ──
-watch(
-  () => props.steps.map(s => `${s.id}:${renderStatus(s)}`).join(','),
-  () => {
-    let changed = false
-    for (const step of props.steps) {
-      const toolName = step.toolCall?.toolName?.toLowerCase() || ''
-      if (!EXPAND_POLICY.autoExpandTools.has(toolName)) continue
-      if (expandedSteps.value.has(step.id)) continue
-      if (userCollapsedSteps.value.has(step.id)) continue
+const isEditedOpen = computed(() => {
+  if (editedViews.value.some(view => view.isAwaitingConfirmation || view.status === 'streaming-input')) {
+    return true
+  }
+  return editedOpen.value ?? editedViews.value.length === 1
+})
 
-      const status = renderStatus(step)
-      const shouldExpand = status === 'streaming-input' || status === 'completed'
-
-      if (shouldExpand) {
-        expandedSteps.value.add(step.id)
-        changed = true
-      }
-    }
-    if (changed) {
-      expandedSteps.value = new Set(expandedSteps.value)
-    }
-  },
-  { immediate: true }
+const utilityNeedsConfirmation = computed(() =>
+  utilityViews.value.some(view => view.isAwaitingConfirmation),
 )
 
-// Collapse propagation: when parent step is collapsed, reset all expanded states
+const isExploreOpen = computed(() =>
+  utilityNeedsConfirmation.value || exploreOpen.value === true,
+)
+
+const activeEditedView = computed(() => {
+  if (!isEditedOpen.value) return null
+  if (editedViews.value.length === 1) return editedViews.value[0]
+  return null
+})
+
+const editedTitle = computed(() =>
+  editedViews.value.length === 1 ? 'Edited file' : `Edited ${editedViews.value.length} files`,
+)
+
+const exploreTitle = computed(() => {
+  const parts: string[] = []
+  if (exploreViews.value.length > 0) {
+    parts.push(`Explored ${exploreViews.value.length} ${exploreViews.value.length === 1 ? 'file' : 'files'}`)
+  }
+  if (commandViews.value.length > 0) {
+    const verb = commandViews.value.some(view => view.isAwaitingConfirmation) ? 'run' : 'ran'
+    parts.push(`${verb} ${commandViews.value.length} ${commandViews.value.length === 1 ? 'command' : 'commands'}`)
+  }
+  return parts.join(', ')
+})
+
 watch(() => props.parentCollapsed, (collapsed) => {
   if (collapsed) {
-    expandedSteps.value = new Set()
+    userExpandedSteps.value = new Set()
+    userCollapsedSteps.value = new Set()
+    editedOpen.value = null
+    exploreOpen.value = null
+    selectedEditedIds.value = new Set()
   }
 })
 
+function isEditedView(view: ToolStepView): boolean {
+  return view.toolName === 'write' || view.toolName === 'edit' || !!view.diff || !!view.streamingContent
+}
+
+function isExploreView(view: ToolStepView): boolean {
+  return ['read', 'grep', 'glob'].includes(view.toolName)
+}
+
+function toggleEdited() {
+  editedOpen.value = !isEditedOpen.value
+  if (!editedOpen.value) selectedEditedIds.value = new Set()
+}
+
+function selectEdited(stepId: string) {
+  const next = new Set(selectedEditedIds.value)
+  if (next.has(stepId)) next.delete(stepId)
+  else next.add(stepId)
+  selectedEditedIds.value = next
+}
+
+function isEditedExpanded(view: ToolStepView): boolean {
+  return view.isAwaitingConfirmation ||
+    view.status === 'streaming-input' ||
+    selectedEditedIds.value.has(view.id)
+}
+
+function confirmEdited(view: ToolStepView, response: 'once' | 'session' | 'workdir' | 'always') {
+  emit('confirm', view.toolCall, response)
+}
+
+function rejectEdited(view: ToolStepView) {
+  emit('reject', view.toolCall)
+}
+
+function toggleExplore() {
+  exploreOpen.value = !isExploreOpen.value
+}
+
+function confirmActiveEdited(response: 'once' | 'session' | 'workdir' | 'always') {
+  if (activeEditedView.value) emit('confirm', activeEditedView.value.toolCall, response)
+}
+
+function rejectActiveEdited() {
+  if (activeEditedView.value) emit('reject', activeEditedView.value.toolCall)
+}
+
+function fileLabel(view: ToolStepView): string {
+  const path = view.diff?.filePath ||
+    view.streamingContent?.filePath ||
+    String(view.toolCall.arguments?.file_path || view.toolCall.arguments?.path || view.preview || view.displayName)
+  const normalized = path.replace(/\\/g, '/')
+  return normalized.split('/').filter(Boolean).pop() || normalized || view.displayName
+}
+
+function compactVerb(view: ToolStepView): string {
+  if (view.toolName === 'bash') return view.isAwaitingConfirmation ? 'Run' : 'Ran'
+  if (view.toolName === 'grep') return 'Searched'
+  if (view.toolName === 'glob') return 'Matched'
+  return 'Read'
+}
+
+function compactValue(view: ToolStepView): string {
+  return view.preview || view.displayName
+}
+
+function isExpanded(view: ToolStepView): boolean {
+  if (!view.hasDetails) return false
+  if (view.isAwaitingConfirmation) return true
+  if (userExpandedSteps.value.has(view.id)) return true
+  if (userCollapsedSteps.value.has(view.id)) return false
+  return view.defaultExpanded
+}
+
 function toggleExpand(stepId: string) {
-  if (expandedSteps.value.has(stepId)) {
-    expandedSteps.value.delete(stepId)
+  if (userCollapsedSteps.value.has(stepId)) {
+    userCollapsedSteps.value.delete(stepId)
+    userExpandedSteps.value.add(stepId)
+  } else if (userExpandedSteps.value.has(stepId)) {
+    userExpandedSteps.value.delete(stepId)
     userCollapsedSteps.value.add(stepId)
   } else {
-    expandedSteps.value.add(stepId)
-    userCollapsedSteps.value.delete(stepId)
+    const view = views.value.find(item => item.id === stepId)
+    if (view?.defaultExpanded) userCollapsedSteps.value.add(stepId)
+    else userExpandedSteps.value.add(stepId)
   }
-  expandedSteps.value = new Set(expandedSteps.value)
+
+  userExpandedSteps.value = new Set(userExpandedSteps.value)
   userCollapsedSteps.value = new Set(userCollapsedSteps.value)
 }
-
-function renderStatus(step: Step): ToolRenderStatus {
-  return getToolRenderStatus(step.toolCall, step)
-}
-
-/** Build a placeholder ToolCall for steps that don't carry one
- *  (e.g. thinking-only steps), so ToolCallRow has something to render. */
-function syntheticToolCall(step: Step): ToolCall {
-  const name = step.title?.split(':')[0] || 'tool'
-  return {
-    id: step.id,
-    toolId: name,
-    toolName: name,
-    arguments: {},
-    status: 'pending',
-    timestamp: step.timestamp,
-  }
-}
-
-function hasExpandableContent(step: Step): boolean {
-  return !!(
-    step.thinking ||
-    (step.toolCall?.arguments && Object.keys(step.toolCall.arguments).length > 0) ||
-    step.result ||
-    step.summary ||
-    step.error
-  )
-}
-
-// Pure function — no side effects. Expansion state managed by watch + toggleExpand.
-function shouldShowContent(step: Step): boolean {
-  if (EXPAND_POLICY.temporaryShowStates.has(renderStatus(step))) return true
-  return expandedSteps.value.has(step.id)
-}
-
-/**
- * Return short result string for inline display, or null if result is too long.
- * Short results (single line, ≤80 chars) are shown directly on the step row.
- */
-function inlineResult(step: Step): string | null {
-  if (step.status !== 'completed' && step.status !== 'failed') return null
-  const raw = step.result
-  if (!raw || typeof raw !== 'string') return null
-
-  // Extract the actual output (result is often JSON with .output field)
-  let text = raw
-  try {
-    const parsed = JSON.parse(raw)
-    if (parsed.output !== undefined) text = String(parsed.output)
-    else if (parsed.data?.output !== undefined) text = String(parsed.data.output)
-  } catch { /* not JSON, use raw */ }
-
-  if (!text) return null
-  const firstLine = text.split('\n')[0].trim()
-  if (!firstLine || firstLine.length > 80) return null
-  return firstLine
-}
-
-/**
- * Truncate error message for inline display
- */
-function truncateError(error: string, maxLen: number = 40): string {
-  if (!error) return ''
-  // Get first line only
-  const firstLine = error.split('\n')[0]
-  if (firstLine.length <= maxLen) return firstLine
-  return firstLine.slice(0, maxLen - 3) + '...'
-}
-
-function hasArgs(step: Step): boolean {
-  const args = step.toolCall?.arguments
-  if (!args) return false
-  return Object.keys(args).length > 0
-}
-
-function handleConfirm(step: Step, response: 'once' | 'session' | 'workspace' | 'always') {
-  // Use toolCall if available, otherwise construct a fallback from step info
-  const toolCall = step.toolCall || {
-    id: step.id,
-    toolId: step.title?.split(':')[0] || 'unknown',
-    toolName: step.title?.split(':')[0] || 'unknown',
-    arguments: {},
-    status: 'pending' as const,
-    timestamp: step.timestamp,
-    requiresConfirmation: true,
-  }
-  emit('confirm', toolCall, response)
-}
-
-function handleReject(step: Step) {
-  // Use toolCall if available, otherwise construct a fallback from step info
-  const toolCall = step.toolCall || {
-    id: step.id,
-    toolId: step.title?.split(':')[0] || 'unknown',
-    toolName: step.title?.split(':')[0] || 'unknown',
-    arguments: {},
-    status: 'pending' as const,
-    timestamp: step.timestamp,
-    requiresConfirmation: true,
-  }
-  emit('reject', toolCall)
-}
-
-/**
- * Format arguments as beautified JSON
- * Handles large content fields by truncating them
- */
-function formatArgsJson(args: Record<string, any>): string {
-  // Create a copy to avoid modifying original
-  const displayArgs = { ...args }
-
-  // Truncate large string values (e.g., content in write tool)
-  for (const [key, value] of Object.entries(displayArgs)) {
-    if (typeof value === 'string' && value.length > 500) {
-      displayArgs[key] = value.slice(0, 500) + `... (${value.length} chars total)`
-    }
-  }
-
-  return JSON.stringify(displayArgs, null, 2)
-}
-
-function formatResult(result: string): string {
-  // Try to parse as JSON and extract output
-  try {
-    const parsed = JSON.parse(result)
-    // If it has output field, use that
-    if (parsed.output !== undefined) {
-      return String(parsed.output)
-    }
-    // If it has data field with output
-    if (parsed.data?.output !== undefined) {
-      return String(parsed.data.output)
-    }
-    // Otherwise return formatted JSON
-    return JSON.stringify(parsed, null, 2)
-  } catch {
-    // Not JSON, return as-is
-    return result
-  }
-}
-
-function truncateOutput(output: string, maxLines: number = 8): string {
-  const lines = output.split('\n')
-  if (lines.length <= maxLines) return output
-  return '...\n' + lines.slice(-maxLines).join('\n')
-}
-
-// Auto-scroll streaming diff to bottom
-function scrollToBottom(el: HTMLElement) {
-  nextTick(() => { el.scrollTop = el.scrollHeight })
-}
-
-// Split streaming content into lines for diff-style rendering
-function getStreamingLines(step: Step): string[] {
-  const info = getStreamingContent(step)
-  if (!info?.content) return []
-  return info.content.split('\n')
-}
-
-// Get streaming content for edit/write tools.
-//
-// Why we don't gate on `toolCall.status === 'input-streaming'`: between the
-// `tool_call` chunk (status flips to executing) and the `permission:request`
-// event (which populates step.result with metadata.diff), there's a 50-500ms
-// window where neither streaming nor diff would render — causing a visible
-// "row briefly empties" flash. We instead keep the streaming preview visible
-// until a real diff arrives, then hand off to the diff block.
-function getStreamingContent(step: Step): { filePath: string; content: string } | null {
-  // Once a real diff is available it's the authoritative view; switching
-  // back to the streaming preview would show stale parsed content.
-  if (getDiffFromStep(step)) return null
-  if (!step.toolCall?.streamingArgs) return null
-
-  const toolName = step.toolCall.toolName?.toLowerCase()
-  if (toolName !== 'write' && toolName !== 'edit') return null
-
-  const args = step.toolCall.streamingArgs
-  const result = { filePath: '', content: '' }
-
-  // Extract file_path
-  const pathMatch = args.match(/"file_path"\s*:\s*"([^"]*)"?/)
-  if (pathMatch) result.filePath = pathMatch[1]
-
-  // Extract content (for write tool)
-  if (toolName === 'write') {
-    const contentMatch = args.match(/"content"\s*:\s*"/)
-    if (contentMatch) {
-      const startIdx = contentMatch.index! + contentMatch[0].length
-      let content = args.slice(startIdx)
-      // Unescape JSON string
-      content = content
-        .replace(/\\n/g, '\n')
-        .replace(/\\t/g, '\t')
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, '\\')
-      if (content.endsWith('"')) content = content.slice(0, -1)
-      result.content = content
-    }
-  }
-
-  // Extract new_string (for edit tool)
-  if (toolName === 'edit') {
-    const newStringMatch = args.match(/"new_string"\s*:\s*"/)
-    if (newStringMatch) {
-      const startIdx = newStringMatch.index! + newStringMatch[0].length
-      let content = args.slice(startIdx)
-      content = content
-        .replace(/\\n/g, '\n')
-        .replace(/\\t/g, '\t')
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, '\\')
-      if (content.endsWith('"')) content = content.slice(0, -1)
-      result.content = content
-    }
-  }
-
-  return (result.filePath || result.content) ? result : null
-}
-
-// Extract diff from step - priority: toolCall.changes > step.result
-function getDiffFromStep(step: Step): { diff: string; additions: number; deletions: number; filePath: string } | null {
-  // Priority 1: Get from toolCall.changes (new way)
-  if (step.toolCall?.changes?.diff) {
-    return {
-      diff: step.toolCall.changes.diff,
-      additions: step.toolCall.changes.additions || 0,
-      deletions: step.toolCall.changes.deletions || 0,
-      filePath: step.toolCall.changes.filePath || '',
-    }
-  }
-
-  // Fallback: Get from step.result (legacy way)
-  if (!step.result) return null
-  try {
-    const parsed = JSON.parse(step.result)
-    // Check direct diff field (permission metadata format)
-    if (parsed.diff) {
-      return {
-        diff: parsed.diff,
-        additions: parsed.additions || 0,
-        deletions: parsed.deletions || 0,
-        filePath: parsed.filePath || '',
-      }
-    }
-    // Check nested metadata.diff field (tool result format)
-    if (parsed.metadata?.diff) {
-      return {
-        diff: parsed.metadata.diff,
-        additions: parsed.metadata.additions || 0,
-        deletions: parsed.metadata.deletions || 0,
-        filePath: parsed.metadata.filePath || '',
-      }
-    }
-  } catch {
-    // Not JSON or no diff field
-  }
-  return null
-}
-
-// Get CSS class for diff line based on its prefix
-function getDiffLineClass(line: string): string {
-  if (line.startsWith('+') && !line.startsWith('+++')) return 'diff-add'
-  if (line.startsWith('-') && !line.startsWith('---')) return 'diff-del'
-  if (line.startsWith('@@')) return 'diff-hunk'
-  return ''
-}
-
-// Parse hunk header to get starting line numbers
-function parseHunkHeader(line: string): { oldStart: number; newStart: number } | null {
-  const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
-  if (match) {
-    return { oldStart: parseInt(match[1], 10), newStart: parseInt(match[2], 10) }
-  }
-  return null
-}
-
-// Parse diff into lines with line numbers
-function parseDiffWithLineNumbers(diff: string): DiffLine[] {
-  const rawLines = diff.split('\n')
-  // Remove trailing empty line from split
-  if (rawLines.length > 0 && rawLines[rawLines.length - 1] === '') {
-    rawLines.pop()
-  }
-  const result: DiffLine[] = []
-  let oldLineNum = 0
-  let newLineNum = 0
-  let inHunk = false
-
-  for (const line of rawLines) {
-    // Skip file headers
-    if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('Index:') || line.startsWith('diff ')) {
-      continue
-    }
-
-    // Parse hunk header - show as ellipsis indicator
-    if (line.startsWith('@@')) {
-      const parsed = parseHunkHeader(line)
-      if (parsed) {
-        oldLineNum = parsed.oldStart
-        newLineNum = parsed.newStart
-        inHunk = true
-        // Show ellipsis to indicate skipped unchanged code
-        result.push({
-          class: 'diff-hunk',
-          prefix: '',
-          content: '⋯',
-          oldNum: '',
-          newNum: '',
-        })
-      }
-      continue
-    }
-
-    if (!inHunk) continue
-
-    // Skip "\ No newline at end of file" marker
-    if (line.startsWith('\\ ')) continue
-
-    const lineClass = getDiffLineClass(line)
-    const prefix = line.charAt(0) || ' '
-    const content = line.slice(1)
-
-    if (lineClass === 'diff-del') {
-      result.push({
-        class: lineClass,
-        prefix,
-        content,
-        oldNum: oldLineNum,
-        newNum: '',
-      })
-      oldLineNum++
-    } else if (lineClass === 'diff-add') {
-      result.push({
-        class: lineClass,
-        prefix,
-        content,
-        oldNum: '',
-        newNum: newLineNum,
-      })
-      newLineNum++
-    } else {
-      // Context line
-      result.push({
-        class: '',
-        prefix,
-        content,
-        oldNum: oldLineNum,
-        newNum: newLineNum,
-      })
-      oldLineNum++
-      newLineNum++
-    }
-  }
-
-  return result
-}
-
-// Get visible diff lines - always show all lines (no collapsing)
-function getVisibleDiffLines(step: Step): DiffLine[] {
-  const diffData = getDiffFromStep(step)
-  if (!diffData) return []
-
-  return parseDiffWithLineNumbers(diffData.diff)
-}
-
 </script>
 
 <style scoped>
 .steps-panel {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
+  margin: 2px 0 4px;
 }
 
-
-/* Inline step row */
-.step-inline {
-  font-size: var(--message-font-size, 14px);
-  line-height: var(--message-line-height, 1.6);
-  border-radius: 6px;
-  background: transparent;
-  transition: background 0.15s ease;
-}
-
-
-.step-inline.needs-confirm {
-  background: transparent;
-}
-
-
-/* Main row - compact layout */
-.step-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  cursor: pointer;
-  height: 32px;
-  overflow: hidden;
-  user-select: none;
-}
-
-/* Status icon - single, clear indicator */
-.status-icon {
-  width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  flex-shrink: 0;
-}
-
-.status-icon.completed { color: var(--text-success); }
-.status-icon.failed { color: var(--text-error); }
-.status-icon.executing { color: var(--accent); }
-.status-icon.streaming-input { color: var(--accent); }
-.status-icon.cancelled { color: var(--text-muted); opacity: 0.6; }
-.status-icon.awaiting-confirmation { color: var(--warning); }
-.status-icon.pending { color: var(--text-muted); }
-
-/* Spinner for running status */
-.status-icon .spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--accent);
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Tool name - simple text label */
-.tool-name {
-  font-size: 12px;
-  font-weight: 600;
+.activity {
   color: var(--text-secondary);
-  flex-shrink: 0;
-  min-width: 50px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
 }
 
-/* Step param - simplified argument preview */
-.step-param {
-  min-width: 0;
-  font-size: 13px;
-  color: var(--text-primary);
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex-shrink: 1;
-  opacity: 0.8;
-}
-
-/* Spacer */
-.step-row .spacer {
-  flex: 1;
-  min-width: 8px;
-}
-
-/* Result preview (right-aligned, muted) */
-.step-result {
-  font-size: 12px;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 40%;
-  flex-shrink: 1;
-  opacity: 0.5;
-}
-
-/* Error tag - inline error indicator */
-.error-tag {
-  font-size: 11px;
-  color: var(--text-error);
-  background: rgba(var(--color-danger-rgb), 0.1);
-  padding: 2px 8px;
-  border-radius: 4px;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* Confirm buttons */
-.confirm-buttons {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
+.activity-summary {
+  display: inline-flex;
   align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  padding: 1px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 6px);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--font-size-md, 14px);
+  font-weight: var(--font-weight-normal, 400);
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.activity-summary:hover {
+  background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
+  border-color: color-mix(in srgb, var(--border-subtle) 70%, transparent);
+}
+
+.activity-summary:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--border-warning) 88%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-warning) 28%, transparent);
+}
+
+.activity.muted .activity-summary {
+  color: var(--text-faint);
+}
+
+.activity.attention .activity-summary {
+  color: var(--text-primary);
+}
+
+.activity.muted .activity-summary:hover {
+  border-color: color-mix(in srgb, var(--border-subtle) 72%, transparent);
+  box-shadow: none;
+}
+
+.activity-icon {
+  color: var(--text-faint);
+  flex: 0 0 auto;
+}
+
+.activity-title {
+  white-space: nowrap;
+}
+
+.activity-chevron {
+  color: var(--text-faint);
+  transition: transform var(--duration-normal, 0.2s) var(--ease-default, ease);
+}
+
+.activity-chevron.open {
+  transform: rotate(180deg);
+}
+
+.activity-body {
+  margin: 3px 0 2px 30px;
+}
+
+.edited-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.edited-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.edited-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 23px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--font-size-md, 14px);
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.edited-row:focus-visible {
+  outline: none;
+}
+
+.edited-row:hover .edited-file {
+  text-decoration: underline;
+}
+
+.edited-action {
+  color: var(--text-muted);
+}
+
+.edited-file {
+  color: var(--text-link);
+}
+
+.edited-stats {
+  display: inline-flex;
+  gap: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+.row-chevron {
+  color: var(--text-faint);
+  flex: 0 0 auto;
+  transform: rotate(-90deg);
+  transition: transform var(--duration-normal, 0.2s) var(--ease-default, ease);
+}
+
+.row-chevron.open {
+  transform: rotate(0deg);
+}
+
+.stat-add {
+  color: var(--text-success);
+}
+
+.stat-del {
+  color: var(--text-error);
+}
+
+.edited-spacer,
+.diff-spacer {
+  flex: 1;
+}
+
+.row-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .btn-reject {
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
-  background: transparent;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid color-mix(in srgb, var(--border-error) 18%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 5%, transparent);
   color: var(--text-muted);
+  font-size: var(--font-size-sm, 12px);
+  cursor: pointer;
 }
 
 .btn-reject:hover {
   color: var(--text-error);
-  background: rgba(var(--color-danger-rgb), 0.08);
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
 }
 
-/* Expand icon — hidden by default, visible on hover */
-.expand-icon {
-  color: var(--text-muted);
-  flex-shrink: 0;
-  transition: transform 0.2s ease, opacity 0.15s ease;
-  opacity: 0;
+.active-edit {
+  margin-top: 8px;
 }
 
-.step-inline:hover .expand-icon,
-.step-inline.expanded .expand-icon {
-  opacity: 1;
+.active-edit.nested {
+  margin: 2px 0 8px 0;
 }
 
-.expand-icon.rotated {
-  transform: rotate(90deg);
+.diff-shell {
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 8px);
+  background: color-mix(in srgb, var(--bg-code-block) 88%, var(--bg-panel));
 }
 
-/* Expanded details */
-.step-details {
-  padding: 0 10px 8px 34px;
-  font-size: var(--message-font-size, 14px);
-}
-
-.detail-section {
-  margin-top: 6px;
-}
-
-.detail-section.live {
-  border-left: 2px solid var(--accent);
-  padding-left: 8px;
-}
-
-
-
-
-.detail-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.detail-section pre {
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-/* Arguments JSON beautified */
-.args-json {
-  font-size: 12px;
-  line-height: 1.6;
-  padding: 10px 12px;
-  border-radius: 6px;
-  max-height: 250px;
-}
-
-pre.thinking {
-  background: rgba(var(--accent-rgb), 0.1);
-  border-left: 2px solid rgba(var(--accent-rgb), 0.5);
-}
-
-pre.summary {
-  background: rgba(var(--color-success-rgb), 0.1);
-  border-left: 2px solid rgba(var(--color-success-rgb), 0.5);
-}
-
-/* Diff preview for edit tool confirmation */
-.diff-preview {
-  margin-top: 4px;
-}
-
-.diff-header {
+.diff-shell-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.diff-stats {
-  display: flex;
   gap: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  min-height: 32px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-code-header) 42%, var(--bg-panel));
+  font-size: var(--font-size-md, 14px);
+  line-height: 1.35;
 }
 
-.diff-stats .additions {
-  color: var(--text-success);
+.diff-file {
+  color: var(--text-muted);
 }
 
-.diff-stats .deletions {
-  color: var(--text-error);
-}
-
-.diff-file-path {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.diff-status-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(var(--color-success-rgb), 0.15);
-  color: var(--text-success);
-  flex-shrink: 0;
-}
-
-/* Applying… variant: shown while step.status === 'running' after the user
-   has confirmed the write. Pulses subtly so it reads as in-progress
-   without competing with the overall diff. */
-.diff-status-badge.applying {
-  background: rgba(var(--accent-rgb), 0.15);
-  color: var(--accent);
-  animation: applyingPulse 1.4s ease-in-out infinite;
-}
-
-@keyframes applyingPulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.55; }
-}
-
-.diff-content {
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  padding: 0;
-  max-height: 240px;
-  overflow: hidden;
-  overflow-y: auto;
-  font-size: 13px;
-  line-height: 1.5;
-  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
-}
-
-.diff-line {
-  display: flex;
-  white-space: pre;
-  padding: 1px 12px 1px 0;
-  min-height: 22px;
-  align-items: center;
-  transition: background 0.1s ease;
-}
-
-
-.line-number {
-  width: 44px;
-  text-align: right;
-  padding-right: 12px;
+.diff-copy {
   color: var(--text-faint);
-  user-select: none;
-  flex-shrink: 0;
-  font-size: 12px;
 }
 
-.line-number.old {
-  border-right: 1px solid var(--border-subtle);
-}
-
-.line-prefix {
-  width: 20px;
-  min-width: 20px;
-  text-align: center;
-  color: inherit;
-  user-select: none;
-  flex-shrink: 0;
-  font-weight: 600;
-}
-
-.line-content {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  padding-right: 8px;
-}
-
-.line-deleted-text {
-  text-decoration: line-through;
-  opacity: 0.7;
-}
-
-.diff-add {
-  background: var(--diff-add-bg);
-  color: var(--diff-add-text);
-}
-
-.diff-add .line-prefix {
-  color: var(--text-success);
-}
-
-.diff-add .line-number {
-  color: rgba(var(--color-success-rgb), 0.6);
-}
-
-.diff-del {
-  background: var(--diff-del-bg);
-  color: var(--diff-del-text);
-}
-
-.diff-del .line-prefix {
-  color: var(--text-error);
-}
-
-.diff-del .line-number {
-  color: rgba(var(--color-danger-rgb), 0.6);
-}
-
-.diff-hunk {
-  color: var(--diff-hunk-text);
-  background: var(--diff-hunk-bg);
-  padding: 4px 0;
-  justify-content: center;
-}
-
-.diff-hunk .line-content {
-  font-size: 16px;
-  text-align: center;
-  letter-spacing: 4px;
-  opacity: 0.5;
-}
-
-/* Agent result */
-.agent-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.agent-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 3px;
-  text-transform: uppercase;
-}
-
-.agent-badge.success {
-  background: rgba(var(--color-success-rgb), 0.15);
-  color: var(--text-success);
-}
-
-.agent-badge.failed {
-  background: rgba(var(--color-danger-rgb), 0.15);
-  color: var(--text-error);
-}
-
-.agent-stats {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-/* Streaming diff preview */
-.streaming-diff {
-  margin-top: 4px;
-}
-
-.streaming-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.streaming-path {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 12px;
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.streaming-indicator {
-  font-size: 11px;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-/* Streaming preview ↔ diff preview swap. Both blocks share one Transition
-   wrapper with mode="out-in", so leave fires before enter. */
-.diff-swap-enter-active {
-  animation: streamingFadeIn 0.25s ease;
-}
-
-.diff-swap-leave-active {
-  animation: streamingFadeOut 0.18s ease forwards;
-}
-
-@keyframes streamingFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes streamingFadeOut {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-}
-
-.streaming-code {
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  padding: 10px 12px;
+.embedded-diff {
   margin: 0;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 400px;
-  overflow-y: auto;
 }
 
-.streaming-code code {
-  font-family: inherit;
-  font-size: inherit;
-  color: inherit;
+.embedded-diff :deep(.diff-content) {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   background: transparent;
 }
 
-/* Slide animation */
-.slide-enter-active,
-.slide-leave-active {
-  transition: all 0.2s ease;
+.embedded-details {
+  padding: 10px;
+}
+
+.compact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.compact-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.35;
+  min-height: 28px;
+}
+
+.compact-value {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm, 13px);
+  min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.slide-enter-from,
-.slide-leave-to {
-  opacity: 0;
-  max-height: 0;
+.compact-row.awaiting .compact-value {
+  color: var(--text-primary);
 }
 
-.slide-enter-to,
-.slide-leave-from {
-  max-height: 400px;
+.compact-spacer {
+  flex: 1;
 }
-
-/* Light theme - handled by CSS variables (--diff-*, --text-*, --accent-*, --color-*-rgb) */
-/* All color overrides removed - CSS variables automatically adapt to dark/light modes */
 </style>

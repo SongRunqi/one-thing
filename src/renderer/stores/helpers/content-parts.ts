@@ -33,20 +33,27 @@ export function appendOrMergeText(parts: ContentPart[], content: string): void {
 }
 
 /**
- * Upsert a tool call into the trailing tool-call part, or start a new one.
+ * Upsert a tool call into an existing tool-call part, or start a new one.
  * On id collision, fields are merged in place — preserving the array slot
  * identity that may be shared with `step.toolCall` references.
+ *
+ * A later data-steps part may already be trailing when the finalized
+ * `tool_call` chunk arrives, so search the full parts list before appending.
  */
 export function upsertToolCall(parts: ContentPart[], toolCall: ToolCall): void {
   popTrailingTransient(parts)
+  for (const part of parts) {
+    if (part.type !== 'tool-call') continue
+    const idx = part.toolCalls.findIndex(tc => tc.id === toolCall.id)
+    if (idx >= 0) {
+      mergeToolCall(part.toolCalls[idx], toolCall)
+      return
+    }
+  }
+
   const last = parts[parts.length - 1]
   if (last && last.type === 'tool-call') {
-    const idx = last.toolCalls.findIndex(tc => tc.id === toolCall.id)
-    if (idx >= 0) {
-      mergeToolCall(last.toolCalls[idx], toolCall)
-    } else {
-      last.toolCalls.push(toolCall)
-    }
+    last.toolCalls.push(toolCall)
   } else {
     parts.push({ type: 'tool-call', toolCalls: [toolCall] })
   }
@@ -60,9 +67,14 @@ export function upsertToolCall(parts: ContentPart[], toolCall: ToolCall): void {
  */
 export function appendToolCallPlaceholder(parts: ContentPart[], toolCall: ToolCall): void {
   popTrailingTransient(parts)
+  if (parts.some(part =>
+    part.type === 'tool-call' && part.toolCalls.some(tc => tc.id === toolCall.id)
+  )) {
+    return
+  }
+
   const last = parts[parts.length - 1]
   if (last && last.type === 'tool-call') {
-    if (last.toolCalls.some(tc => tc.id === toolCall.id)) return
     parts[parts.length - 1] = {
       ...last,
       toolCalls: [...last.toolCalls, toolCall],
