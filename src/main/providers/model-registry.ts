@@ -1,98 +1,23 @@
 /**
  * Model Registry Service
  *
- * Fetches and caches model information from Models.dev API.
- * Models.dev provides comprehensive model metadata including tool_call support.
+ * Fetches model metadata from models.dev API for configured providers only.
+ * Stores capabilities & pricing directly under settings.ai.providers[providerId].models.
+ *
+ * No automatic fetch on startup — user explicitly triggers refresh per provider.
  */
 
 import type { OpenRouterModel } from '../../shared/ipc.js'
-import type { ModelCapabilityOverride } from '../../shared/ipc/providers.js'
-import { getSettings } from '../stores/settings.js'
+import type { ModelCapabilityOverride, ProviderConfig, ModelCapabilityEntry } from '../../shared/ipc/providers.js'
+import { getSettings, saveSettings } from '../stores/settings.js'
 
-/**
- * User-defined per-model capability override (settings.ai.providers[id].modelCapabilitiesByModel).
- * Returns `undefined` for "no opinion, fall through to models.dev / name patterns".
- */
-function getCapabilityOverride(
-  modelId: string,
-  providerId: string | undefined,
-  key: keyof ModelCapabilityOverride,
-): boolean | undefined {
-  if (!providerId) return undefined
-  try {
-    const settings = getSettings()
-    const cfg = settings?.ai?.providers?.[providerId]
-    return cfg?.modelCapabilitiesByModel?.[modelId]?.[key]
-  } catch {
-    return undefined
-  }
-}
+// ============================================================================
+// Constants
+// ============================================================================
 
-// Models.dev API types
-interface ModelsDevModel {
-  id: string
-  name: string
-  family?: string
-  release_date?: string
-  last_updated?: string
-  attachment?: boolean
-  reasoning?: boolean
-  temperature?: boolean
-  tool_call?: boolean
-  knowledge?: boolean
-  cost?: {
-    input?: number
-    output?: number
-    cache_read?: number
-    cache_write?: number
-  }
-  limit?: {
-    context?: number
-    output?: number
-  }
-  modalities?: {
-    input?: string[]
-    output?: string[]
-  }
-  experimental?: boolean
-  status?: string
-}
-
-interface ModelsDevProvider {
-  id: string
-  name: string
-  api?: string
-  env?: string[]
-  npm?: string
-  models: Record<string, ModelsDevModel>
-}
-
-type ModelsDevResponse = Record<string, ModelsDevProvider>
-
-// Cache for fetched models
-interface ModelCache {
-  models: Map<string, OpenRouterModel[]>  // provider -> models
-  allModels: OpenRouterModel[]
-  modelsDevData: ModelsDevResponse | null  // Raw Models.dev data for capability lookup
-  lastFetched: number
-}
-
-// Cache never expires - only refresh manually or on app restart
-const CACHE_TTL = Infinity
 const MODELS_DEV_API = 'https://models.dev/api.json'
 
-// ============ 模型能力结果缓存 ============
-// 缓存 modelSupportsReasoningSync 和 modelSupportsImageGeneration 的结果
-const modelCapabilityCache = new Map<string, {
-  reasoning?: boolean
-  imageGeneration?: boolean
-}>()
-
-function getCapabilityCacheKey(modelId: string, providerId?: string): string {
-  return `${providerId || 'unknown'}:${modelId}`
-}
-
-// Provider ID mapping from Models.dev to our provider IDs
+/** Maps models.dev provider keys -> our provider IDs */
 const PROVIDER_MAPPING: Record<string, string> = {
   'openai': 'openai',
   'anthropic': 'claude',
@@ -107,609 +32,392 @@ const PROVIDER_MAPPING: Record<string, string> = {
   'xai': 'grok',
 }
 
-// Reverse mapping: our provider ID -> Models.dev provider ID
-const REVERSE_PROVIDER_MAPPING: Record<string, string> = Object.entries(PROVIDER_MAPPING)
-  .reduce((acc, [k, v]) => ({ ...acc, [v]: k }), {} as Record<string, string>)
-
-// Models that should be available for Claude Code OAuth (Pro/Max tier)
 const CLAUDE_CODE_MODEL_PATTERNS = [
-  'claude-sonnet',
-  'claude-haiku',
-  'claude-opus',
-  'claude-3-5',
-  'claude-3.5',
-  'claude-3.7',
-  'claude-4',
+  'claude-sonnet', 'claude-haiku', 'claude-opus',
+  'claude-3-5', 'claude-3.5', 'claude-3.7', 'claude-4',
 ]
 
-import {
-  loadModelsDevCache,
-  saveModelsDevCache,
-  hasCacheData,
-  getCacheAge,
-} from '../stores/models-dev-cache.js'
-
-// Initialize cache - try to load from disk first
-function initializeCache(): ModelCache {
-  const persisted = loadModelsDevCache()
-
-  if (hasCacheData(persisted)) {
-    // Restore cache from disk
-    const modelsByProvider = new Map<string, OpenRouterModel[]>()
-    for (const [providerId, models] of Object.entries(persisted!.modelsByProvider)) {
-      modelsByProvider.set(providerId, models as OpenRouterModel[])
-    }
-
-    console.log(`[ModelRegistry] Using persisted cache (${getCacheAge(persisted)})`)
-    return {
-      models: modelsByProvider,
-      allModels: persisted!.allModels as OpenRouterModel[],
-      modelsDevData: persisted!.modelsDevData as ModelsDevResponse | null,
-      lastFetched: persisted!.lastFetched,
-    }
-  }
-
-  // No valid cache, start empty (will fetch on first use)
-  console.log('[ModelRegistry] No persisted cache, will fetch on first use')
-  return {
-    models: new Map(),
-    allModels: [],
-    modelsDevData: null,
-    lastFetched: 0,
-  }
-}
-
-let cache: ModelCache = initializeCache()
-
-// Friendly name aliases for models (more fun names!)
 const MODEL_NAME_ALIASES: Record<string, string> = {
   'gemini-2.5-flash-image': 'Nano-Banana',
   'gemini-2.5-flash-image-preview': 'Nano-Banana Preview',
 }
 
-/**
- * Convert Models.dev model to OpenRouterModel format
- */
-function convertToOpenRouterModel(model: ModelsDevModel, providerId: string): OpenRouterModel {
-  const inputModalities = model.modalities?.input || ['text']
-  const outputModalities = model.modalities?.output || ['text']
+// ============================================================================
+// models.dev raw types
+// ============================================================================
 
-  // Build supported_parameters based on Models.dev fields
-  const supported_parameters: string[] = []
-  if (model.temperature !== false) supported_parameters.push('temperature')
-  if (model.tool_call) supported_parameters.push('tools')
-  if (model.reasoning) supported_parameters.push('reasoning')
-  if (model.attachment) supported_parameters.push('attachments')
+interface ModelsDevModel {
+  id: string
+  name: string
+  family?: string
+  release_date?: string
+  last_updated?: string
+  reasoning?: boolean
+  temperature?: boolean
+  tool_call?: boolean
+  cost?: { input?: number; output?: number; cache_read?: number; cache_write?: number }
+  limit?: { context?: number; output?: number }
+  modalities?: { input?: string[]; output?: string[] }
+}
 
-  // Use friendly alias if available
-  const displayName = MODEL_NAME_ALIASES[model.id] || model.name
+interface ModelsDevProvider {
+  id: string
+  name: string
+  models: Record<string, ModelsDevModel>
+}
+
+type ModelsDevResponse = Record<string, ModelsDevProvider>
+
+// ============================================================================
+// Settings helpers
+// ============================================================================
+
+function getProviderConfig(providerId: string): ProviderConfig | undefined {
+  return getSettings()?.ai?.providers?.[providerId] as ProviderConfig | undefined
+}
+
+function getProviderModels(providerId: string): Record<string, ModelCapabilityEntry> | undefined {
+  return getProviderConfig(providerId)?.models
+}
+
+function getModelEntry(modelId: string): ModelCapabilityEntry | undefined {
+  // Search across all providers
+  const providers = getSettings()?.ai?.providers
+  if (!providers) return undefined
+  for (const pid of Object.keys(providers)) {
+    const models = (providers[pid] as ProviderConfig)?.models
+    if (models?.[modelId]) return models[modelId]
+  }
+  return undefined
+}
+
+function getCapabilityOverride(
+  modelId: string,
+  providerId: string | undefined,
+  key: keyof ModelCapabilityOverride,
+): boolean | undefined {
+  if (!providerId) return undefined
+  return getProviderConfig(providerId)?.modelCapabilitiesByModel?.[modelId]?.[key]
+}
+
+// ============================================================================
+// Convert: models.dev raw -> ModelCapabilityEntry
+// ============================================================================
+
+function toCapabilityEntry(model: ModelsDevModel, providerId: string): ModelCapabilityEntry {
+  const inputMods = model.modalities?.input || ['text']
+  const outputMods = model.modalities?.output || ['text']
 
   return {
     id: model.id,
-    name: displayName,
-    description: model.family ? `${model.family} family` : undefined,
-    context_length: model.limit?.context || 128000,
+    name: MODEL_NAME_ALIASES[model.id] || model.name,
+    provider: providerId,
+    contextLength: model.limit?.context || 128000,
+    maxOutputTokens: model.limit?.output || 4096,
+    supportsTools: model.tool_call === true,
+    supportsVision: inputMods.includes('image'),
+    supportsReasoning: model.reasoning === true,
+    supportsImageOutput: outputMods.includes('image'),
+    supportsTemperature: model.temperature !== false,
+    inputModalities: inputMods,
+    outputModalities: outputMods,
+    pricing: {
+      input: model.cost?.input ?? 0,
+      output: model.cost?.output ?? 0,
+      cacheRead: model.cost?.cache_read ?? 0,
+      cacheWrite: model.cost?.cache_write ?? 0,
+    },
+    lastUpdated: model.last_updated || model.release_date,
+  }
+}
+
+// ============================================================================
+// Convert: ModelCapabilityEntry -> OpenRouterModel (for runtime API)
+// ============================================================================
+
+function toOpenRouterModel(entry: ModelCapabilityEntry): OpenRouterModel {
+  const supportedParams: string[] = []
+  if (entry.supportsTemperature) supportedParams.push('temperature')
+  if (entry.supportsTools) supportedParams.push('tools')
+  if (entry.supportsReasoning) supportedParams.push('reasoning')
+
+  return {
+    id: entry.id,
+    name: entry.name,
+    context_length: entry.contextLength,
     architecture: {
-      modality: inputModalities.includes('image') ? 'multimodal' : 'text',
-      input_modalities: inputModalities,
-      output_modalities: outputModalities,
+      modality: entry.supportsVision ? 'multimodal' : 'text',
+      input_modalities: entry.inputModalities,
+      output_modalities: entry.outputModalities,
       tokenizer: 'unknown',
     },
     pricing: {
-      prompt: model.cost?.input ? String(model.cost.input) : '0',
-      completion: model.cost?.output ? String(model.cost.output) : '0',
+      prompt: String(entry.pricing.input),
+      completion: String(entry.pricing.output),
       request: '0',
       image: '0',
     },
     top_provider: {
-      context_length: model.limit?.context || 128000,
-      max_completion_tokens: model.limit?.output || 4096,
+      context_length: entry.contextLength,
+      max_completion_tokens: entry.maxOutputTokens,
       is_moderated: false,
     },
-    supported_parameters,
-    last_updated: model.last_updated || model.release_date,
+    supported_parameters: supportedParams,
+    last_updated: entry.lastUpdated,
   }
 }
 
-/**
- * Sort models newest-first by last_updated (falls back to release_date via
- * convertToOpenRouterModel). Entries without a date sort to the end.
- */
-function sortByLastUpdatedDesc(models: OpenRouterModel[]): OpenRouterModel[] {
+function sortModels(models: OpenRouterModel[]): OpenRouterModel[] {
   return [...models].sort((a, b) => {
     const ad = a.last_updated || ''
     const bd = b.last_updated || ''
     if (ad && !bd) return -1
     if (!ad && bd) return 1
     if (!ad && !bd) return a.id.localeCompare(b.id)
-    // ISO date strings compare lexicographically
     return bd.localeCompare(ad)
   })
 }
 
-/**
- * Fetch models from Models.dev API
- */
-async function fetchFromModelsDev(): Promise<ModelsDevResponse> {
-  console.log('[ModelRegistry] Fetching models from Models.dev...')
+// ============================================================================
+// Fetch & Refresh — per provider
+// ============================================================================
+
+async function fetchModelsDevData(): Promise<ModelsDevResponse> {
+  console.log('[ModelRegistry] Fetching from models.dev...')
 
   const response = await fetch(MODELS_DEV_API, {
-    headers: {
-      'Accept': 'application/json',
-      'User-Agent': 'onething-electron/1.0',
-    },
-    signal: AbortSignal.timeout(10000),
+    headers: { 'Accept': 'application/json', 'User-Agent': 'onething-electron/1.0' },
+    signal: AbortSignal.timeout(15000),
   })
 
-  if (!response.ok) {
-    throw new Error(`Models.dev API error: ${response.status}`)
-  }
+  if (!response.ok) throw new Error(`models.dev API error: ${response.status}`)
 
   const data: ModelsDevResponse = await response.json()
-  const providerCount = Object.keys(data).length
-  const modelCount = Object.values(data).reduce((sum, p) => sum + Object.keys(p.models).length, 0)
-  console.log(`[ModelRegistry] Fetched ${modelCount} models from ${providerCount} providers via Models.dev`)
-
+  const pc = Object.keys(data).length
+  const mc = Object.values(data).reduce((s, p) => s + Object.keys(p.models).length, 0)
+  console.log(`[ModelRegistry] Fetched ${mc} models from ${pc} providers`)
   return data
 }
 
 /**
- * Process Models.dev data into our cache format
+ * Refresh models for a specific provider only.
+ * Fetches from models.dev and stores results under settings.ai.providers[providerId].models.
  */
-function processModelsDevData(data: ModelsDevResponse): {
-  models: Map<string, OpenRouterModel[]>
-  allModels: OpenRouterModel[]
-} {
-  const grouped = new Map<string, OpenRouterModel[]>()
-  const allModels: OpenRouterModel[] = []
+export async function refreshProviderModels(providerId: string): Promise<void> {
+  console.log(`[ModelRegistry] Refreshing models for provider: ${providerId}`)
 
-  // Initialize with empty arrays for known providers
-  for (const providerId of Object.values(PROVIDER_MAPPING)) {
-    grouped.set(providerId, [])
+  const data = await fetchModelsDevData()
+
+  // Find the models.dev key for this provider
+  const devProviderId = Object.entries(PROVIDER_MAPPING).find(([, v]) => v === providerId)?.[0] || providerId
+  const devProvider = data[devProviderId]
+
+  if (!devProvider) {
+    console.warn(`[ModelRegistry] No models.dev data found for provider: ${providerId} (dev key: ${devProviderId})`)
+    return
   }
-  grouped.set('openrouter', [])
 
-  for (const [modelsDevProviderId, provider] of Object.entries(data)) {
-    const ourProviderId = PROVIDER_MAPPING[modelsDevProviderId]
+  const models: Record<string, ModelCapabilityEntry> = {}
+  for (const [modelId, model] of Object.entries(devProvider.models)) {
+    models[modelId] = toCapabilityEntry(model, providerId)
+  }
 
-    for (const [modelId, model] of Object.entries(provider.models)) {
-      const converted = convertToOpenRouterModel(model, modelsDevProviderId)
+  // Store under provider config
+  const settings = getSettings()
+  const providerConfig = (settings.ai.providers[providerId] || {}) as ProviderConfig
+  providerConfig.models = models
+  providerConfig.modelsLastFetched = Date.now()
+  settings.ai.providers[providerId] = providerConfig
 
-      // Add to all models
-      allModels.push(converted)
+  saveSettings(settings)
+  console.log(`[ModelRegistry] Saved ${Object.keys(models).length} models for provider ${providerId}`)
+}
 
-      // Add to openrouter (all models)
-      const openrouterModels = grouped.get('openrouter')!
-      openrouterModels.push(converted)
+/**
+ * Refresh models for all configured providers.
+ */
+export async function refreshAllProviders(): Promise<void> {
+  const settings = getSettings()
+  const providers = settings?.ai?.providers
+  if (!providers) return
 
-      // Add to specific provider if mapped
-      if (ourProviderId) {
-        const providerModels = grouped.get(ourProviderId) || []
-        providerModels.push(converted)
-        grouped.set(ourProviderId, providerModels)
+  const providerIds = Object.keys(providers).filter(pid => {
+    // Skip 'custom' and empty/invalid providers
+    if (pid === 'custom') return false
+    return true
+  })
+
+  console.log(`[ModelRegistry] Refreshing models for ${providerIds.length} providers: ${providerIds.join(', ')}`)
+
+  const data = await fetchModelsDevData()
+
+  for (const providerId of providerIds) {
+    const devProviderId = Object.entries(PROVIDER_MAPPING).find(([, v]) => v === providerId)?.[0] || providerId
+    const devProvider = data[devProviderId]
+
+    if (!devProvider) {
+      console.warn(`[ModelRegistry] No models.dev data for provider: ${providerId}`)
+      continue
+    }
+
+    const models: Record<string, ModelCapabilityEntry> = {}
+    for (const [modelId, model] of Object.entries(devProvider.models)) {
+      models[modelId] = toCapabilityEntry(model, providerId)
+    }
+
+    const providerConfig = (providers[providerId] || {}) as ProviderConfig
+    providerConfig.models = models
+    providerConfig.modelsLastFetched = Date.now()
+    settings.ai.providers[providerId] = providerConfig
+
+    console.log(`[ModelRegistry]   ${providerId}: ${Object.keys(models).length} models`)
+  }
+
+  saveSettings(settings)
+  console.log('[ModelRegistry] All providers refreshed')
+}
+
+// Legacy alias
+export const forceRefresh = refreshAllProviders
+
+// ============================================================================
+// Public API — Data Queries (returns OpenRouterModel[] for compatibility)
+// ============================================================================
+
+export async function getModelsForProvider(providerId: string): Promise<OpenRouterModel[]> {
+  const models = getProviderModels(providerId)
+  if (!models) return []
+
+  let entries = Object.values(models)
+
+  if (providerId === 'claude-code') {
+    entries = entries.filter(e => {
+      const lower = e.id.toLowerCase()
+      return CLAUDE_CODE_MODEL_PATTERNS.some(p => lower.includes(p))
+    })
+  }
+
+  return sortModels(entries.map(toOpenRouterModel))
+}
+
+export async function getAllModels(): Promise<OpenRouterModel[]> {
+  const providers = getSettings()?.ai?.providers
+  if (!providers) return []
+
+  const all: OpenRouterModel[] = []
+  for (const pid of Object.keys(providers)) {
+    const models = (providers[pid] as ProviderConfig)?.models
+    if (models) {
+      for (const entry of Object.values(models)) {
+        all.push(toOpenRouterModel(entry))
       }
     }
   }
-
-  return { models: grouped, allModels }
+  return sortModels(all)
 }
 
-/**
- * Refresh the model cache from network and persist to disk
- * This should only be called:
- * 1. When user manually triggers refresh
- * 2. When cache is completely empty (first run)
- */
-async function refreshCache(): Promise<void> {
-  try {
-    const data = await fetchFromModelsDev()
-    const { models, allModels } = processModelsDevData(data)
-
-    cache = {
-      models,
-      allModels,
-      modelsDevData: data,
-      lastFetched: Date.now(),
-    }
-
-    // Persist to disk for next startup
-    const modelsByProvider: Record<string, OpenRouterModel[]> = {}
-    for (const [providerId, providerModels] of models) {
-      modelsByProvider[providerId] = providerModels
-    }
-    saveModelsDevCache(data, modelsByProvider, allModels)
-
-    console.log('[ModelRegistry] Cache refreshed with', allModels.length, 'models')
-  } catch (error) {
-    console.error('[ModelRegistry] Failed to refresh cache:', error)
-    throw error
-  }
-}
-
-/**
- * Check if cache has data (regardless of age)
- * We no longer use TTL-based staleness - cache is valid until user manually refreshes
- */
-function hasCacheLoaded(): boolean {
-  return cache.allModels.length > 0
-}
-
-/**
- * Get models for a specific provider
- */
-export async function getModelsForProvider(providerId: string): Promise<OpenRouterModel[]> {
-  // Only refresh if cache is completely empty (first run without persisted cache)
-  if (!hasCacheLoaded()) {
-    await refreshCache()
-  }
-
-  // Special handling for claude-code (limited model set for Pro/Max tier)
-  if (providerId === 'claude-code') {
-    const claudeModels = cache.models.get('claude') || []
-    const filtered = claudeModels.filter(m =>
-      CLAUDE_CODE_MODEL_PATTERNS.some(pattern => m.id.toLowerCase().includes(pattern))
-    )
-    return sortByLastUpdatedDesc(filtered)
-  }
-
-  return sortByLastUpdatedDesc(cache.models.get(providerId) || [])
-}
-
-/**
- * Get all available models
- */
-export async function getAllModels(): Promise<OpenRouterModel[]> {
-  if (!hasCacheLoaded()) {
-    await refreshCache()
-  }
-
-  return sortByLastUpdatedDesc(cache.allModels)
-}
-
-/**
- * Search models by name or ID
- */
 export async function searchModels(query: string, providerId?: string): Promise<OpenRouterModel[]> {
-  const models = providerId
-    ? await getModelsForProvider(providerId)
-    : await getAllModels()
-
-  const lowerQuery = query.toLowerCase()
+  const models = providerId ? await getModelsForProvider(providerId) : await getAllModels()
+  const lower = query.toLowerCase()
   return models.filter(m =>
-    m.id.toLowerCase().includes(lowerQuery) ||
-    m.name.toLowerCase().includes(lowerQuery) ||
-    m.description?.toLowerCase().includes(lowerQuery)
+    m.id.toLowerCase().includes(lower) ||
+    m.name.toLowerCase().includes(lower) ||
+    m.description?.toLowerCase().includes(lower)
   )
 }
 
-/**
- * Get model by ID
- */
 export async function getModelById(modelId: string): Promise<OpenRouterModel | undefined> {
-  if (!hasCacheLoaded()) {
-    await refreshCache()
-  }
-
-  // Search in all models
-  return cache.allModels.find(m => m.id === modelId)
+  const entry = getModelEntry(modelId)
+  return entry ? toOpenRouterModel(entry) : undefined
 }
 
-/**
- * Get the maximum output tokens supported by a model
- * Used to cap the user's maxTokens setting to prevent errors
- */
 export async function getModelMaxOutputTokens(modelId: string): Promise<number> {
-  const model = await getModelById(modelId)
-  return model?.top_provider?.max_completion_tokens || 4096
+  return getModelEntry(modelId)?.maxOutputTokens || 4096
 }
 
-/**
- * Check if a model supports tool calls
- * Uses Models.dev's tool_call field for accurate detection
- */
+// ============================================================================
+// Public API — Capability Checks
+// ============================================================================
+
 export async function modelSupportsTools(modelId: string, providerId?: string): Promise<boolean> {
   const override = getCapabilityOverride(modelId, providerId, 'tools')
   if (override !== undefined) return override
 
-  if (!hasCacheLoaded() || cache.modelsDevData === null) {
-    await refreshCache()
-  }
+  const entry = getModelEntry(modelId)
+  if (entry) return entry.supportsTools
 
-  // First try to find in Models.dev data directly
-  if (cache.modelsDevData) {
-    // Try the specific provider first
-    if (providerId) {
-      const modelsDevProviderId = REVERSE_PROVIDER_MAPPING[providerId] || providerId
-      const provider = cache.modelsDevData[modelsDevProviderId]
-      if (provider?.models[modelId]) {
-        const toolCall = provider.models[modelId].tool_call
-        console.log(`[ModelRegistry] Model ${modelId} tool_call=${toolCall} (from ${modelsDevProviderId})`)
-        return toolCall === true
-      }
-    }
-
-    // Search across all providers
-    for (const [provId, provider] of Object.entries(cache.modelsDevData)) {
-      if (provider.models[modelId]) {
-        const toolCall = provider.models[modelId].tool_call
-        console.log(`[ModelRegistry] Model ${modelId} tool_call=${toolCall} (from ${provId})`)
-        return toolCall === true
-      }
-    }
-  }
-
-  // Fallback: check supported_parameters in converted model
-  const model = await getModelById(modelId)
-  if (model?.supported_parameters) {
-    const hasTools = model.supported_parameters.includes('tools')
-    console.log(`[ModelRegistry] Model ${modelId} tools=${hasTools} (from supported_parameters)`)
-    return hasTools
-  }
-
-  // Final fallback: use name-based detection
-  const lowerModelId = modelId.toLowerCase()
-  const noToolsPatterns = ['image', 'vision-preview', 'dall-e', 'imagen', 'ocr', 'embedding', 'asr']
-  if (noToolsPatterns.some(p => lowerModelId.includes(p))) {
-    console.log(`[ModelRegistry] Model ${modelId} detected as non-tool model by name pattern`)
-    return false
-  }
-
-  // Default: assume supports tools
-  console.log(`[ModelRegistry] Model ${modelId} not found, assuming tools support`)
+  const lower = modelId.toLowerCase()
+  if (['image', 'vision-preview', 'dall-e', 'imagen', 'ocr', 'embedding', 'asr'].some(p => lower.includes(p))) return false
   return true
 }
 
-/**
- * Whether a model accepts the `temperature` parameter, per models.dev.
- * Models that explicitly mark `temperature: false` (most reasoning models) reject
- * the parameter — callers should skip sending it. Unknown models default to true
- * so we don't break custom / user-added entries.
- */
-export async function modelSupportsTemperature(modelId: string, providerId?: string): Promise<boolean> {
-  if (!hasCacheLoaded() || cache.modelsDevData === null) {
-    await refreshCache()
-  }
-
-  if (cache.modelsDevData) {
-    if (providerId) {
-      const modelsDevProviderId = REVERSE_PROVIDER_MAPPING[providerId] || providerId
-      const provider = cache.modelsDevData[modelsDevProviderId]
-      if (provider?.models[modelId]) {
-        return provider.models[modelId].temperature !== false
-      }
-    }
-    for (const provider of Object.values(cache.modelsDevData)) {
-      if (provider.models[modelId]) {
-        return provider.models[modelId].temperature !== false
-      }
-    }
-  }
-
-  // Fallback: check converted supported_parameters list.
-  const model = await getModelById(modelId)
-  if (model?.supported_parameters && model.supported_parameters.length > 0) {
-    return model.supported_parameters.includes('temperature')
-  }
-
-  // Unknown model — assume yes so the slider isn't disabled by default.
+export async function modelSupportsTemperature(modelId: string, _providerId?: string): Promise<boolean> {
+  const entry = getModelEntry(modelId)
+  if (entry) return entry.supportsTemperature
   return true
 }
 
-/**
- * Check if a model is a reasoning/thinking model
- * Uses Models.dev's reasoning field for accurate detection
- * Reasoning models (like DeepSeek Reasoner, o1, o3) don't support temperature
- */
 export async function modelSupportsReasoning(modelId: string, providerId?: string): Promise<boolean> {
   const override = getCapabilityOverride(modelId, providerId, 'reasoning')
   if (override !== undefined) return override
 
-  if (!hasCacheLoaded() || cache.modelsDevData === null) {
-    await refreshCache()
-  }
+  const entry = getModelEntry(modelId)
+  if (entry) return entry.supportsReasoning
 
-  // First try to find in Models.dev data directly
-  if (cache.modelsDevData) {
-    // Try the specific provider first
-    if (providerId) {
-      const modelsDevProviderId = REVERSE_PROVIDER_MAPPING[providerId] || providerId
-      const provider = cache.modelsDevData[modelsDevProviderId]
-      if (provider?.models[modelId]) {
-        const reasoning = provider.models[modelId].reasoning
-        console.log(`[ModelRegistry] Model ${modelId} reasoning=${reasoning} (from ${modelsDevProviderId})`)
-        return reasoning === true
-      }
-    }
-
-    // Search across all providers
-    for (const [provId, provider] of Object.entries(cache.modelsDevData)) {
-      if (provider.models[modelId]) {
-        const reasoning = provider.models[modelId].reasoning
-        console.log(`[ModelRegistry] Model ${modelId} reasoning=${reasoning} (from ${provId})`)
-        return reasoning === true
-      }
-    }
-  }
-
-  // Fallback: check supported_parameters in converted model
-  const model = await getModelById(modelId)
-  if (model?.supported_parameters) {
-    const hasReasoning = model.supported_parameters.includes('reasoning')
-    console.log(`[ModelRegistry] Model ${modelId} reasoning=${hasReasoning} (from supported_parameters)`)
-    return hasReasoning
-  }
-
-  // Final fallback: use name-based detection for known reasoning models
-  const lowerModelId = modelId.toLowerCase()
-  const reasoningPatterns = ['reasoner', 'o1', 'o3', 'thinking']
-  if (reasoningPatterns.some(p => lowerModelId.includes(p))) {
-    console.log(`[ModelRegistry] Model ${modelId} detected as reasoning model by name pattern`)
-    return true
-  }
-
-  console.log(`[ModelRegistry] Model ${modelId} not found, assuming no reasoning`)
-  return false
+  const lower = modelId.toLowerCase()
+  return ['reasoner', 'o1', 'o3', 'thinking'].some(p => lower.includes(p))
 }
 
-/**
- * Synchronous check if a model is a reasoning model
- * Uses cached data, falls back to name-based detection if cache is not ready
- * This is needed for streaming where we can't await
- */
 export function modelSupportsReasoningSync(modelId: string, providerId?: string): boolean {
-  // User override beats every other detection path.
   const override = getCapabilityOverride(modelId, providerId, 'reasoning')
   if (override !== undefined) return override
 
-  // 检查结果缓存
-  const cacheKey = getCapabilityCacheKey(modelId, providerId)
-  const cached = modelCapabilityCache.get(cacheKey)
-  if (cached?.reasoning !== undefined) {
-    return cached.reasoning
-  }
+  const entry = getModelEntry(modelId)
+  if (entry) return entry.supportsReasoning
 
-  let result = false
-
-  // First try Models.dev cache
-  if (cache.modelsDevData) {
-    // Try the specific provider first
-    if (providerId) {
-      const modelsDevProviderId = REVERSE_PROVIDER_MAPPING[providerId] || providerId
-      const provider = cache.modelsDevData[modelsDevProviderId]
-      if (provider?.models[modelId]) {
-        result = provider.models[modelId].reasoning === true
-        // 缓存结果
-        modelCapabilityCache.set(cacheKey, { ...cached, reasoning: result })
-        return result
-      }
-    }
-
-    // Search across all providers
-    for (const provider of Object.values(cache.modelsDevData)) {
-      if (provider.models[modelId]) {
-        result = provider.models[modelId].reasoning === true
-        modelCapabilityCache.set(cacheKey, { ...cached, reasoning: result })
-        return result
-      }
-    }
-  }
-
-  // Fallback: name-based detection
-  const lowerModelId = modelId.toLowerCase()
-  const reasoningPatterns = ['reasoner', 'o1-', 'o3-', '-o1', '-o3', 'thinking']
-  // Exclude non-reasoning models that might match patterns
-  if (lowerModelId.includes('gpt-5.2-chat') || lowerModelId.includes('gpt-5.2-instant')) {
-    result = false
-  } else {
-    result = reasoningPatterns.some(p => lowerModelId.includes(p))
-  }
-
-  // 缓存结果
-  modelCapabilityCache.set(cacheKey, { ...cached, reasoning: result })
-  return result
+  const lower = modelId.toLowerCase()
+  if (lower.includes('gpt-5.2-chat') || lower.includes('gpt-5.2-instant')) return false
+  if (['reasoner', 'o1-', 'o3-', '-o1', '-o3', 'thinking'].some(p => lower.includes(p))) return true
+  return false
 }
 
-/**
- * Check if a model supports image generation
- * Uses Models.dev's modalities.output field for accurate detection
- */
 export async function modelSupportsImageGeneration(modelId: string, providerId?: string): Promise<boolean> {
   const override = getCapabilityOverride(modelId, providerId, 'imageOutput')
   if (override !== undefined) return override
 
-  // 检查结果缓存
-  const cacheKey = getCapabilityCacheKey(modelId, providerId)
-  const cached = modelCapabilityCache.get(cacheKey)
-  if (cached?.imageGeneration !== undefined) {
-    return cached.imageGeneration
-  }
+  const lower = modelId.toLowerCase()
+  if (lower.includes('gemini') && lower.includes('image')) return true
+  if (['dall-e', 'dalle', 'imagen', 'gpt-image', 'flux', 'stable-diffusion', 'midjourney'].some(p => lower.includes(p))) return true
 
-  const lowerModelId = modelId.toLowerCase()
-  let result = false
+  const entry = getModelEntry(modelId)
+  if (entry) return entry.supportsImageOutput
 
-  // FIRST: Check name-based patterns (highest priority for known image models)
-  const imageGenPatterns = ['dall-e', 'dalle', 'imagen', 'gpt-image', 'flux', 'stable-diffusion', 'midjourney']
-
-  // Special case for Gemini image models
-  const hasGemini = lowerModelId.includes('gemini')
-  const hasImage = lowerModelId.includes('image')
-  if (hasGemini && hasImage) {
-    result = true
-    modelCapabilityCache.set(cacheKey, { ...cached, imageGeneration: result })
-    return result
-  }
-
-  if (imageGenPatterns.some(p => lowerModelId.includes(p))) {
-    result = true
-    modelCapabilityCache.set(cacheKey, { ...cached, imageGeneration: result })
-    return result
-  }
-
-  // SECOND: Try to find in Models.dev data
-  if (!hasCacheLoaded() || cache.modelsDevData === null) {
-    await refreshCache()
-  }
-
-  if (cache.modelsDevData) {
-    // Try the specific provider first
-    if (providerId) {
-      const modelsDevProviderId = REVERSE_PROVIDER_MAPPING[providerId] || providerId
-      const provider = cache.modelsDevData[modelsDevProviderId]
-      if (provider?.models[modelId]) {
-        const outputModalities = provider.models[modelId].modalities?.output || []
-        result = outputModalities.includes('image')
-        modelCapabilityCache.set(cacheKey, { ...cached, imageGeneration: result })
-        return result
-      }
-    }
-
-    // Search across all providers
-    for (const provider of Object.values(cache.modelsDevData)) {
-      if (provider.models[modelId]) {
-        const outputModalities = provider.models[modelId].modalities?.output || []
-        result = outputModalities.includes('image')
-        modelCapabilityCache.set(cacheKey, { ...cached, imageGeneration: result })
-        return result
-      }
-    }
-  }
-
-  // 缓存默认结果
-  modelCapabilityCache.set(cacheKey, { ...cached, imageGeneration: false })
   return false
 }
 
-/**
- * Force refresh the cache
- */
-export async function forceRefresh(): Promise<void> {
-  await refreshCache()
-}
+// ============================================================================
+// Public API — Utility
+// ============================================================================
 
-/**
- * Get cache status
- * Note: isStale is now false once cache is loaded (no TTL-based expiration)
- */
 export function getCacheStatus(): { lastFetched: number; modelCount: number; isStale: boolean } {
-  return {
-    lastFetched: cache.lastFetched,
-    modelCount: cache.allModels.length,
-    isStale: !hasCacheLoaded(), // Cache is "stale" only when empty
+  const providers = getSettings()?.ai?.providers
+  let total = 0
+  let latest = 0
+  if (providers) {
+    for (const pid of Object.keys(providers)) {
+      const cfg = providers[pid] as ProviderConfig
+      const count = cfg?.models ? Object.keys(cfg.models).length : 0
+      total += count
+      if (cfg?.modelsLastFetched && cfg.modelsLastFetched > latest) latest = cfg.modelsLastFetched
+    }
   }
+  return { lastFetched: latest, modelCount: total, isStale: total === 0 }
 }
 
-/**
- * Get display name for a model ID
- * Uses MODEL_NAME_ALIASES for friendly names
- */
 export function getModelDisplayName(modelId: string): string {
   return MODEL_NAME_ALIASES[modelId] || modelId
 }
 
-/**
- * Get all model name aliases
- */
 export function getModelNameAliases(): Record<string, string> {
   return { ...MODEL_NAME_ALIASES }
 }
-

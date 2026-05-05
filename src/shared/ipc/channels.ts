@@ -62,10 +62,8 @@ export const IPC_CHANNELS = {
   GET_SYSTEM_THEME: 'settings:get-system-theme',
   SYSTEM_THEME_CHANGED: 'settings:system-theme-changed',
 
-  // Models related
-  FETCH_MODELS: 'models:fetch',
-  GET_CACHED_MODELS: 'models:get-cached',
-  // Model registry (OpenRouter-based with capabilities)
+  // Models related (read from settings.json modelRegistry)
+  // Model registry
   GET_MODELS_WITH_CAPABILITIES: 'models:get-with-capabilities',
   GET_ALL_MODELS: 'models:get-all',
   SEARCH_MODELS: 'models:search',

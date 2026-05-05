@@ -1,11 +1,12 @@
 import { app } from 'electron'
 import path from 'path'
+import os from 'os'
 import fs from 'fs'
 import fsp from 'fs/promises'
 
 // Get the user data directory for storing app data
 export function getStorePath(): string {
-  return path.join(app.getPath('userData'), 'data')
+  return path.join(os.homedir(), '.onething')
 }
 
 export function getSettingsPath(): string {
@@ -14,10 +15,6 @@ export function getSettingsPath(): string {
 
 export function getAppStatePath(): string {
   return path.join(getStorePath(), 'app-state.json')
-}
-
-export function getModelsCachePath(): string {
-  return path.join(getStorePath(), 'models-cache.json')
 }
 
 export function getWindowStatePath(): string {

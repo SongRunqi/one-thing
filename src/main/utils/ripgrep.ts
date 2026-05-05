@@ -9,8 +9,8 @@
 
 import * as path from 'path'
 import * as fs from 'fs/promises'
+import * as os from 'os'
 import { spawn } from 'child_process'
-import { app } from 'electron'
 import { ZipReader, BlobReader, BlobWriter } from '@zip.js/zip.js'
 
 // Platform configurations for ripgrep download
@@ -31,7 +31,7 @@ let cachedRgPath: string | null = null
  * Get the bin directory for storing ripgrep
  */
 function getBinDir(): string {
-  return path.join(app.getPath('userData'), 'bin')
+  return path.join(os.homedir(), '.onething', 'bin')
 }
 
 /**

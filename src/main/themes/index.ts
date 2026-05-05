@@ -5,7 +5,7 @@
 
 import fs from 'fs'
 import path from 'path'
-import { app } from 'electron'
+import os from 'os'
 import type { Theme, ThemeMeta, Base46Theme } from '../../shared/ipc/themes.js'
 import { resolveTheme, extractPreviewColors } from './resolver.js'
 import { generateCSSVariables } from './css-mapper.js'
@@ -40,14 +40,11 @@ export const DEFAULT_THEME_ID = 'flexoki'
  * Get the themes directory paths
  */
 function getThemeDirs(): string[] {
-  const userDataPath = app.getPath('userData')
-  const homePath = app.getPath('home')
+  const homePath = os.homedir()
 
   return [
     // App data themes directory
-    path.join(userDataPath, 'themes'),
-    // Home config directory
-    path.join(homePath, '.config', 'start-electron', 'themes'),
+    path.join(homePath, '.onething', 'themes'),
   ]
 }
 
@@ -335,8 +332,7 @@ function applyThemeInternal(
  * Get the themes folder path (for "Open Themes Folder" button)
  */
 export function getThemesFolderPath(): string {
-  const userDataPath = app.getPath('userData')
-  const themesPath = path.join(userDataPath, 'themes')
+  const themesPath = path.join(os.homedir(), '.onething', 'themes')
 
   // Ensure directory exists
   if (!fs.existsSync(themesPath)) {

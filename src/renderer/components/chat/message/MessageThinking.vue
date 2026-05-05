@@ -1,11 +1,12 @@
 <template>
   <div class="thinking-container">
-    <!-- Status overlay: in document flow, shows before message content -->
-    <Transition name="status-fade">
-      <div
-        v-if="shouldShowStatus"
-        class="thinking-status-overlay"
-      >
+    <!-- Status overlay: always in DOM, collapses height to 0 when nothing to show.
+         Inner v-if chain handles row-to-row swap via mode="out-in". -->
+    <div
+      class="thinking-status-overlay"
+      :class="{ collapsed: !shouldShowStatus }"
+    >
+      <div class="thinking-status-overlay-inner">
         <Transition
           name="thinking-fade"
           mode="out-in"
@@ -76,7 +77,7 @@
           </div>
         </Transition>
       </div>
-    </Transition>
+    </div>
 
     <!-- Reasoning expand: in document flow, smooth grid-rows animation -->
     <!-- User-triggered expand, so pushing content down is expected -->
@@ -240,11 +241,26 @@ onUnmounted(() => {
   display: none;
 }
 
-/* Status overlay: in document flow, aligned with message content */
+/* Status overlay: always in DOM. Uses grid-template-rows trick to animate
+   height between auto (1fr) and 0 (0fr) when there's nothing to show.
+   Replaces the previous outer Transition + fixed 28px height, which caused
+   a 28px layout jump when Waiting disappeared without a reasoning row to
+   take its place. */
 .thinking-status-overlay {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.thinking-status-overlay.collapsed {
+  grid-template-rows: 0fr;
+}
+
+.thinking-status-overlay-inner {
+  overflow: hidden;
+  min-height: 0;
   display: flex;
   align-items: center;
-  height: 28px;
 }
 
 .thinking-status-row {
@@ -298,20 +314,6 @@ onUnmounted(() => {
   color: var(--muted);
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
-}
-
-/* Status overlay fade: opacity only, no translateY to prevent any positional shift */
-.status-fade-enter-active {
-  transition: opacity 0.2s ease;
-}
-
-.status-fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.status-fade-enter-from,
-.status-fade-leave-to {
-  opacity: 0;
 }
 
 /* Transition: Waiting <-> Thinking/Thought row */

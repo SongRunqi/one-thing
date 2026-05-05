@@ -622,95 +622,6 @@ export function updateSessionWorkingDirectory(sessionId: string, workingDirector
   saveSessionToFile(sessionId, session)
 }
 
-// ============================================================================
-// Provider Configuration Caching
-// ============================================================================
-
-/**
- * Cache provider configuration for a session
- * This is called when user selects a model, avoiding repeated settings lookups during chat
- *
- * @param sessionId - The session to cache config for
- * @param providerId - The provider ID
- * @param model - The model ID
- */
-export function cacheSessionProviderConfig(
-  sessionId: string,
-  providerId: string,
-  model: string
-): void {
-  const session = getSession(sessionId)
-  if (!session) return
-
-  const settings = getSettings()
-  const providerConfig = settings.ai.providers[providerId]
-
-  // Cache the provider config (excluding sensitive data like API key).
-  // Temperature precedence: per-model > per-provider > global default.
-  session.cachedProviderConfig = {
-    providerId,
-    model,
-    baseUrl: providerConfig?.baseUrl,
-    localAddress: providerConfig?.localAddress,
-    temperature:
-      providerConfig?.temperatureByModel?.[model]
-      ?? providerConfig?.temperature
-      ?? settings.ai.temperature,
-    cachedAt: Date.now(),
-  }
-
-  // Also update lastProvider and lastModel for backward compatibility
-  session.lastProvider = providerId
-  session.lastModel = model
-
-  // Save session file (does not update updatedAt to avoid reordering)
-  saveSessionToFile(sessionId, session)
-
-  // Update index with provider/model info
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.lastProvider = providerId
-    meta.lastModel = model
-    saveSessionsIndex(index)
-  }
-}
-
-/**
- * Get cached provider config for a session
- * Returns undefined if no config is cached
- */
-export function getCachedProviderConfig(sessionId: string) {
-  const session = getSession(sessionId)
-  return session?.cachedProviderConfig
-}
-
-/**
- * Invalidate cached provider config for a session
- * Call this when settings change that affect the cached config
- */
-export function invalidateCachedProviderConfig(sessionId: string): void {
-  const session = getSession(sessionId)
-  if (!session) return
-
-  delete session.cachedProviderConfig
-  saveSessionToFile(sessionId, session)
-}
-
-/**
- * Invalidate cached provider config for every session.
- * Used when global settings change (e.g. user edits a provider's baseUrl /
- * apiKey / localAddress in Settings) — the per-session snapshot taken at
- * model-select time would otherwise mask the new config until the user
- * re-picks the model in the InputBox.
- */
-export function invalidateAllCachedProviderConfigs(): void {
-  const index = loadSessionsIndex()
-  for (const meta of index) {
-    invalidateCachedProviderConfig(meta.id)
-  }
-}
-
 // Inherit working directory from workspace (does not update updatedAt)
 export function inheritSessionWorkingDirectory(sessionId: string, workingDirectory: string): void {
   const session = getSession(sessionId)
@@ -1177,8 +1088,18 @@ export function updateSessionModel(sessionId: string, provider: string, model: s
   const session = getSession(sessionId)
   if (!session) return false
 
-  // Use cacheSessionProviderConfig to update both cache and lastProvider/lastModel
-  cacheSessionProviderConfig(sessionId, provider, model)
+  session.lastProvider = provider
+  session.lastModel = model
+
+  saveSessionToFile(sessionId, session)
+
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.lastProvider = provider
+    meta.lastModel = model
+    saveSessionsIndex(index)
+  }
 
   return true
 }

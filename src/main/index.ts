@@ -17,6 +17,37 @@ import { Permission } from './permission/index.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+/**
+ * Refresh model metadata from models.dev on first startup.
+ * Only runs if no model data exists yet for any configured provider.
+ */
+async function refreshModelsOnFirstStartup(): Promise<void> {
+  const { getSettings } = await import('./stores/settings.js')
+  const settings = getSettings()
+  const providers = settings?.ai?.providers
+  if (!providers) return
+
+  // Check if any provider already has models
+  let hasModels = false
+  for (const pid of Object.keys(providers)) {
+    const cfg = providers[pid] as any
+    if (cfg?.models && Object.keys(cfg.models).length > 0) {
+      hasModels = true
+      break
+    }
+  }
+
+  if (hasModels) {
+    console.log('[Models] Model data already exists, skipping first-startup refresh')
+    return
+  }
+
+  console.log('[Models] First startup detected, refreshing model registry...')
+  const { refreshAllProviders } = await import('./providers/model-registry.js')
+  await refreshAllProviders()
+  console.log('[Models] First-startup refresh complete')
+}
+
 // Suppress security warnings in development mode
 // These warnings are expected because Vite HMR requires 'unsafe-eval'
 // Production builds use strict CSP and don't show these warnings
@@ -84,6 +115,11 @@ app.on('ready', async () => {
   // Initialize MCP system asynchronously (don't block startup)
   initializeMCP().catch(err => {
     console.error('[MCP] Initialization failed (non-blocking):', err)
+  })
+
+  // Refresh model registry on first startup (non-blocking)
+  refreshModelsOnFirstStartup().catch(err => {
+    console.error('[Models] First-startup refresh failed (non-blocking):', err)
   })
 
   // Initialize skills system asynchronously

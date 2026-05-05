@@ -80,16 +80,6 @@ export interface ChatMessage {
   }
 }
 
-// Cached provider configuration for session-level optimization
-export interface CachedProviderConfig {
-  providerId: string
-  model: string
-  baseUrl?: string
-  temperature?: number
-  localAddress?: string
-  cachedAt: number  // Timestamp when this config was cached
-}
-
 // ============================================================================
 // Session Metadata Types (for optimized loading)
 // ============================================================================
@@ -129,7 +119,6 @@ export interface SessionDetails extends SessionMeta {
   totalTokens?: number
   lastInputTokens?: number
   contextSize?: number
-  cachedProviderConfig?: CachedProviderConfig
 }
 
 // ============================================================================
@@ -161,9 +150,6 @@ export interface ChatSession {
   totalTokens?: number          // Accumulated total tokens for this session
   lastInputTokens?: number      // Last request's input tokens
   contextSize?: number          // Current context window size (last turn's input tokens)
-  // Cached provider configuration (for session-level optimization)
-  // Set when user selects a model, used during chat to avoid repeated settings lookups
-  cachedProviderConfig?: CachedProviderConfig
 }
 
 // IPC Request/Response types

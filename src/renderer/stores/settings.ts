@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, toRaw, computed } from 'vue'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, OpenRouterModel } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
-import type { AIProvider, ModelInfo } from '../../shared/ipc'
+import type { AIProvider } from '../../shared/ipc'
 import { createDefaultSettings } from '../../shared/defaults/settings'
 
 // Read initial theme from what index.html already set (via URL hash or localStorage)
@@ -430,10 +430,9 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   /**
-   * Fetch models for a provider with caching
-   * @param providerId - The provider ID
-   * @param forceRefresh - If true, bypass cache and fetch fresh data
-   * @returns The model list
+   * Fetch models for a provider from settings.json modelRegistry.
+   * Model data is stored in settings.json after user refreshes the registry.
+   * No network fetch here — that's done via refreshModelRegistry().
    */
   async function fetchModelsForProvider(
     providerId: string,
@@ -446,7 +445,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // Check if already loading
     if (modelsLoading.value.get(providerId)) {
-      // Wait for existing request to complete
       return new Promise((resolve) => {
         const checkInterval = setInterval(() => {
           if (!modelsLoading.value.get(providerId)) {
@@ -460,40 +458,17 @@ export const useSettingsStore = defineStore('settings', () => {
     modelsLoading.value.set(providerId, true)
 
     try {
-      // First try to get from capabilities cache (faster)
-      const cachedResponse = await window.electronAPI.getModelsWithCapabilities(providerId)
+      // Read from settings.json modelRegistry (via IPC)
+      const response = await window.electronAPI.getModelsWithCapabilities(providerId)
 
-      if (cachedResponse.success && cachedResponse.models && cachedResponse.models.length > 0) {
-        const models = cachedResponse.models
+      if (response.success && response.models && response.models.length > 0) {
+        const models = response.models
         providerModels.value.set(providerId, models)
-        // Update name cache
         updateModelNameCache(models)
         return models
       }
 
-      // If no cache, fetch from API
-      const providerConfig = settings.value.ai.providers[providerId]
-      if (!providerConfig?.apiKey && !providerConfig?.oauthToken) {
-        // No credentials, return empty
-        providerModels.value.set(providerId, [])
-        return []
-      }
-
-      const response = await window.electronAPI.fetchModels(
-        providerId as AIProvider,
-        providerConfig.apiKey || '',
-        providerConfig.baseUrl
-      )
-
-      if (response.success && response.models) {
-        const models = response.models as OpenRouterModel[]
-        providerModels.value.set(providerId, models)
-        // Update name cache
-        updateModelNameCache(models)
-        return models
-      }
-
-      // Fallback to empty
+      // No models in registry yet — user needs to refresh
       providerModels.value.set(providerId, [])
       return []
     } catch (error) {
@@ -506,7 +481,8 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   /**
-   * Refresh model registry and fetch fresh models for a provider
+   * Refresh model registry from models.dev and fetch fresh models for a provider.
+   * This triggers a network fetch to models.dev API via forceRefresh().
    */
   async function refreshModelsForProvider(providerId: string): Promise<OpenRouterModel[]> {
     try {
@@ -514,6 +490,8 @@ export const useSettingsStore = defineStore('settings', () => {
     } catch (error) {
       console.warn('[SettingsStore] Failed to refresh model registry:', error)
     }
+    // Clear client-side cache so we re-read from settings.json
+    providerModels.value.delete(providerId)
     return fetchModelsForProvider(providerId, true)
   }
 

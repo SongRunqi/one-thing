@@ -3,7 +3,6 @@ import type {
   ChatSession,
   SessionMeta,
   SessionDetails,
-  CachedProviderConfig,
   GetSessionsListResponse,
   ActivateSessionResponse,
   GetSessionMessagesResponse,
@@ -35,8 +34,6 @@ import type {
   GetSettingsResponse,
   SaveSettingsResponse,
   GenerateTitleResponse,
-  FetchModelsResponse,
-  GetCachedModelsResponse,
   GetProvidersResponse,
   GetNetworkInterfacesResponse,
   NetworkInterfaceInfo,
@@ -110,7 +107,6 @@ export type {
   ChatSession,
   SessionMeta,
   SessionDetails,
-  CachedProviderConfig,
   GetSessionsListResponse,
   ActivateSessionResponse,
   GetSessionMessagesResponse,
@@ -248,13 +244,6 @@ export interface ElectronAPI {
   applyTheme: (themeId: string, mode: 'dark' | 'light') => Promise<ApplyThemeResponse>
   refreshThemes: (projectPath?: string) => Promise<RefreshThemesResponse>
   openThemesFolder: () => Promise<{ success: boolean; error?: string }>
-  fetchModels: (
-    provider: AIProvider,
-    apiKey: string,
-    baseUrl?: string,
-    forceRefresh?: boolean
-  ) => Promise<FetchModelsResponse>
-  getCachedModels: (provider: AIProvider) => Promise<GetCachedModelsResponse>
   getProviders: () => Promise<GetProvidersResponse>
   getNetworkInterfaces: () => Promise<GetNetworkInterfacesResponse>
   // New OpenRouter-based model API

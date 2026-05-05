@@ -16,6 +16,7 @@ const electronAPI = {
     argsTextDelta?: string;
   }) => void) => {
     const listener = (_event: any, chunk: any) => callback(chunk)
+    // ipcRenderer.on 接收main进程的消息
     ipcRenderer.on(IPC_CHANNELS.STREAM_CHUNK, listener)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_CHUNK, listener)
   },
@@ -89,6 +90,7 @@ const electronAPI = {
   },
 
   emitCommand: (sessionId: string, command: any) =>
+      // 给main线程发送消息
     ipcRenderer.invoke(IPC_CHANNELS.SESSION_COMMAND, { sessionId, command }),
 
   // ── Legacy streaming methods ────────────────────
@@ -243,14 +245,7 @@ const electronAPI = {
   openThemesFolder: () =>
     ipcRenderer.invoke(IPC_CHANNELS.THEME_OPEN_FOLDER),
 
-  // Models methods (legacy)
-  fetchModels: (provider: AIProvider, apiKey: string, baseUrl?: string, forceRefresh?: boolean) =>
-    ipcRenderer.invoke(IPC_CHANNELS.FETCH_MODELS, { provider, apiKey, baseUrl, forceRefresh }),
-
-  getCachedModels: (provider: AIProvider) =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_CACHED_MODELS, { provider }),
-
-  // Model registry methods (OpenRouter-based with capabilities)
+  // Model registry methods (reads from settings.json modelRegistry)
   getModelsWithCapabilities: (providerId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_MODELS_WITH_CAPABILITIES, { providerId }),
 

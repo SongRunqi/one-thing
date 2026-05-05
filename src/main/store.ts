@@ -10,11 +10,6 @@ export {
   getCurrentSessionId,
   setCurrentSessionId,
 
-  // Models cache
-  getCachedModels,
-  setCachedModels,
-  clearModelsCache,
-
   // Sessions
   getSessions,
   getSession,
@@ -49,10 +44,6 @@ export {
   getSessionsList,
   getSessionDetails,
   getSessionMessages,
-  getCachedProviderConfig,
-  cacheSessionProviderConfig,
-
-  // Async throttled save
   flushSessionSave,
   flushAllPendingSaves,
 
