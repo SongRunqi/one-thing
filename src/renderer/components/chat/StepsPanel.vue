@@ -45,9 +45,14 @@
           </span>
         </template>
         <template #details>
-          <!-- Streaming content preview (during input-streaming for edit/write tools) -->
+          <!-- Streaming preview (during input-streaming) ↔ diff preview
+               (once changes arrive). Wrapped in one Transition so leaving
+               streaming smoothly hands off to entering diff via mode=out-in.
+               The diff stays visible across awaiting-confirmation → running
+               → completed, so confirming a write doesn't cause the diff
+               to flicker out while the file is being applied. -->
           <Transition
-            name="streaming-fade"
+            name="diff-swap"
             mode="out-in"
           >
             <div
@@ -70,47 +75,50 @@
                 </div>
               </div>
             </div>
-          </Transition>
-
-          <!-- Diff preview for edit/write tool -->
-          <div
-            v-if="step.status !== 'running' && getDiffFromStep(step)"
-            class="detail-section diff-preview"
-          >
-            <div class="diff-content">
-              <div class="diff-header">
-                <span class="diff-file-path">{{ getDiffFromStep(step)?.filePath }}</span>
-                <span class="diff-stats">
-                  <span class="additions">+{{ getDiffFromStep(step)?.additions || 0 }}</span>
-                  <span class="deletions">-{{ getDiffFromStep(step)?.deletions || 0 }}</span>
-                </span>
-                <span
-                  v-if="step.status === 'completed'"
-                  class="diff-status-badge"
-                >Applied</span>
-              </div>
-              <template
-                v-for="(line, idx) in getVisibleDiffLines(step)"
-                :key="idx"
-              >
-                <div
-                  v-if="!(line.class === 'diff-hunk' && idx === 0)"
-                  :class="['diff-line', line.class]"
-                >
+            <div
+              v-else-if="getDiffFromStep(step)"
+              key="diff"
+              class="detail-section diff-preview"
+            >
+              <div class="diff-content">
+                <div class="diff-header">
+                  <span class="diff-file-path">{{ getDiffFromStep(step)?.filePath }}</span>
+                  <span class="diff-stats">
+                    <span class="additions">+{{ getDiffFromStep(step)?.additions || 0 }}</span>
+                    <span class="deletions">-{{ getDiffFromStep(step)?.deletions || 0 }}</span>
+                  </span>
                   <span
-                    v-if="getDiffFromStep(step)?.deletions"
-                    class="line-number old"
-                  >{{ line.oldNum || '' }}</span>
-                  <span class="line-number new">{{ line.newNum || '' }}</span>
-                  <span class="line-prefix">{{ line.prefix }}</span>
+                    v-if="step.status === 'running'"
+                    class="diff-status-badge applying"
+                  >Applying…</span>
                   <span
-                    class="line-content"
-                    :class="{ 'line-deleted-text': line.class === 'diff-del' }"
-                  >{{ line.content }}</span>
+                    v-else-if="step.status === 'completed'"
+                    class="diff-status-badge"
+                  >Applied</span>
                 </div>
-              </template>
+                <template
+                  v-for="(line, idx) in getVisibleDiffLines(step)"
+                  :key="idx"
+                >
+                  <div
+                    v-if="!(line.class === 'diff-hunk' && idx === 0)"
+                    :class="['diff-line', line.class]"
+                  >
+                    <span
+                      v-if="getDiffFromStep(step)?.deletions"
+                      class="line-number old"
+                    >{{ line.oldNum || '' }}</span>
+                    <span class="line-number new">{{ line.newNum || '' }}</span>
+                    <span class="line-prefix">{{ line.prefix }}</span>
+                    <span
+                      class="line-content"
+                      :class="{ 'line-deleted-text': line.class === 'diff-del' }"
+                    >{{ line.content }}</span>
+                  </div>
+                </template>
+              </div>
             </div>
-          </div>
+          </Transition>
 
           <!-- Live output for running -->
           <div
@@ -887,6 +895,20 @@ pre.summary {
   flex-shrink: 0;
 }
 
+/* Applying… variant: shown while step.status === 'running' after the user
+   has confirmed the write. Pulses subtly so it reads as in-progress
+   without competing with the overall diff. */
+.diff-status-badge.applying {
+  background: rgba(var(--accent-rgb), 0.15);
+  color: var(--accent);
+  animation: applyingPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes applyingPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
 .diff-content {
   background: rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1046,19 +1068,20 @@ pre.summary {
   flex-shrink: 0;
 }
 
-/* Streaming fade transition - from Writing to Completed/Diff */
-.streaming-fade-enter-active {
-  animation: streamingFadeIn 0.3s ease;
+/* Streaming preview ↔ diff preview swap. Both blocks share one Transition
+   wrapper with mode="out-in", so leave fires before enter. */
+.diff-swap-enter-active {
+  animation: streamingFadeIn 0.25s ease;
 }
 
-.streaming-fade-leave-active {
-  animation: streamingFadeOut 0.2s ease forwards;
+.diff-swap-leave-active {
+  animation: streamingFadeOut 0.18s ease forwards;
 }
 
 @keyframes streamingFadeIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -1073,7 +1096,7 @@ pre.summary {
   }
   to {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(-6px);
   }
 }
 
