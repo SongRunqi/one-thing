@@ -101,7 +101,6 @@
             <div
               v-if="firstTextPart"
               class="content"
-              :class="{ typing: isTyping }"
             >
               <StreamingMarkdown
                 :content="firstTextPart.content"
@@ -200,9 +199,9 @@
               />
             </template>
           </template>
-          <div :class="['content', { typing: isTyping }]">
+          <div class="content">
             <StreamingMarkdown
-              :content="isTyping ? displayedContent : content"
+              :content="content"
               :is-user="role === 'user'"
             />
           </div>
@@ -280,11 +279,6 @@ const isCollapsed = ref(true) // 默认折叠
 const isOverflowing = ref(false) // 内容是否超出最大高度
 let resizeObserver: ResizeObserver | null = null
 
-// Typewriter effect
-const displayedContent = ref('')
-const isTyping = ref(false)
-let typewriterInterval: ReturnType<typeof setInterval> | null = null
-
 // ============ New overlay-based transition system ============
 
 // Extract the first text part (rendered separately for smooth transition)
@@ -305,7 +299,7 @@ const otherParts = computed(() => {
   let skippedFirstWaiting = false
 
   return props.contentParts.filter(p => {
-    if ((p.type as string) === 'loading-memory') {
+    if (p.type === 'loading-memory') {
       return false
     }
 
@@ -410,63 +404,23 @@ function handleEditKeyDown(e: KeyboardEvent) {
   }
 }
 
-// Typewriter effect
-function startTypewriter() {
-  if (props.role !== 'assistant' || !props.isStreaming) {
-    displayedContent.value = props.content
-    return
-  }
-
-  isTyping.value = true
-  displayedContent.value = ''
-  let currentIndex = 0
-  const content = props.content
-  const charsPerTick = 3
-  const tickInterval = 20
-
-  typewriterInterval = setInterval(() => {
-    if (currentIndex < content.length) {
-      currentIndex = Math.min(currentIndex + charsPerTick, content.length)
-      displayedContent.value = content.slice(0, currentIndex)
-    } else {
-      stopTypewriter()
-    }
-  }, tickInterval)
-}
-
-function stopTypewriter() {
-  if (typewriterInterval) {
-    clearInterval(typewriterInterval)
-    typewriterInterval = null
-  }
-  isTyping.value = false
-  displayedContent.value = props.content
-}
-
+// Reset collapse state when streaming ends so long user messages re-collapse
 watch(
   () => props.isStreaming,
   (newVal, oldVal) => {
-    if (newVal && !oldVal) {
-      startTypewriter()
-    } else if (!newVal && oldVal) {
-      stopTypewriter()
-      // 流式结束后检测溢出并默认折叠
+    if (!newVal && oldVal) {
       nextTick(() => {
         checkOverflow()
-        isCollapsed.value = true // 流式结束后重置为折叠状态
+        isCollapsed.value = true
       })
     }
-  },
-  { immediate: true }
+  }
 )
 
+// Re-check overflow when content changes (streaming chunks, edits, etc.)
 watch(
   () => props.content,
   () => {
-    if (!props.isStreaming && !isTyping.value) {
-      displayedContent.value = props.content
-    }
-    // 内容变化后重新检测溢出
     nextTick(() => checkOverflow())
   }
 )
@@ -505,18 +459,11 @@ function cleanupResizeObserver() {
 }
 
 onMounted(() => {
-  if (props.isStreaming) {
-    startTypewriter()
-  } else {
-    displayedContent.value = props.content
-  }
-
   // 设置内容溢出检测
   nextTick(() => setupResizeObserver())
 })
 
 onUnmounted(() => {
-  stopTypewriter()
   cleanupResizeObserver()
 })
 
@@ -808,19 +755,6 @@ html[data-theme='light'] .attachment-file {
 .bubble.user .content {
   line-height: var(--message-line-height, 1.6);
   color: var(--text-user-primary);
-}
-
-.content.typing::after {
-  content: '|';
-  animation: blink 0.7s infinite;
-  color: var(--accent);
-  font-weight: 300;
-  margin-left: 2px;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
 }
 
 /* ============ Text 淡入动画 ============ */

@@ -235,7 +235,7 @@ const isHighlighted = computed(() => props.isHighlighted || false)
 // Check if message is loading memory (has loading-memory contentPart)
 const isLoadingMemory = computed(() => {
   if (!props.message.contentParts) return false
-  return props.message.contentParts.some(part => (part.type as string) === 'loading-memory')
+  return props.message.contentParts.some(part => part.type === 'loading-memory')
 })
 
 // Format time

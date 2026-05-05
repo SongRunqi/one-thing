@@ -9,6 +9,14 @@
 import { defineStore } from 'pinia'
 import { ref, computed, triggerRef } from 'vue'
 import type { ChatMessage, MessageAttachment, Step, ContentPart } from '@/types'
+import {
+  appendOrMergeText,
+  appendToolCallPlaceholder,
+  popTrailingTransient,
+  pushDataStepsIfMissing,
+  pushWaiting,
+  upsertToolCall,
+} from './helpers/content-parts'
 
 // Stream chunk type from IPC
 interface StreamChunk {
@@ -317,87 +325,43 @@ export const useChatStore = defineStore('chat', () => {
       message.contentParts = []
     }
 
+    const parts = message.contentParts
+
     if (chunk.type === 'text') {
       if (chunk.replace) {
         message.content = chunk.content
         message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
       } else {
         message.content = (message.content || '') + chunk.content
-
-        const parts = message.contentParts!
-        let lastPart = parts[parts.length - 1]
-
-        if (lastPart && (lastPart.type === 'waiting')) {
-          parts.pop()
-          lastPart = parts[parts.length - 1]
-        }
-
-        if (lastPart && lastPart.type === 'text') {
-          lastPart.content += chunk.content
-        } else {
-          console.log('[ContentParts] New text part after:', lastPart?.type, '| parts:', parts.map(p => p.type).join(', '))
-          parts.push({ type: 'text', content: chunk.content })
-        }
+        appendOrMergeText(parts, chunk.content)
+        message.contentParts = [...parts]
       }
     } else if (chunk.type === 'reasoning') {
       message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
     } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
       if (chunk.toolCall) {
-        // Update toolCalls array
-        if (!message.toolCalls) {
-          message.toolCalls = []
-        }
-        const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
+        if (!message.toolCalls) message.toolCalls = []
+        const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCall!.id)
         if (existingIndex >= 0) {
           message.toolCalls[existingIndex] = chunk.toolCall
         } else {
           message.toolCalls.push(chunk.toolCall)
         }
-
-        // Update contentParts
-        const parts = message.contentParts!
-        let lastPart = parts[parts.length - 1]
-
-        // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting')) {
-          parts.pop()
-          lastPart = parts[parts.length - 1]
-        }
-
-        if (lastPart && lastPart.type === 'tool-call') {
-          const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
-          if (existingTcIndex >= 0) {
-            lastPart.toolCalls[existingTcIndex] = chunk.toolCall
-          } else {
-            lastPart.toolCalls.push(chunk.toolCall)
-          }
-        } else {
-          console.log('[ContentParts] New tool-call part after:', lastPart?.type, '| parts:', parts.map(p => p.type).join(', '))
-          parts.push({ type: 'tool-call', toolCalls: [chunk.toolCall] })
-        }
+        upsertToolCall(parts, chunk.toolCall)
         message.contentParts = [...parts]
       }
     } else if (chunk.type === 'continuation') {
-      const parts = message.contentParts!
-      console.log('[ContentParts] Continuation | parts before:', parts.map(p => p.type).join(', '))
-      parts.push({ type: 'waiting' })
+      pushWaiting(parts)
       message.contentParts = [...parts]
     } else if (chunk.type === 'replace') {
-      // Replace entire message content
       message.content = chunk.content
       message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
     } else if (chunk.type === 'tool_input_start') {
-      // Streaming tool input start - create a placeholder ToolCall with input-streaming status
-      console.log('[Chat Store] tool_input_start:', chunk.toolCallId, chunk.toolName, 'message:', message.id)
       if (chunk.toolCallId && chunk.toolName) {
-        if (!message.toolCalls) {
-          message.toolCalls = []
-        }
-        // Check if we already have this tool call (shouldn't happen, but be safe)
-        const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
-        if (existingIndex === -1) {
-          // Create a new streaming tool call placeholder
-          message.toolCalls.push({
+        if (!message.toolCalls) message.toolCalls = []
+        let placeholder = message.toolCalls.find(tc => tc.id === chunk.toolCallId)
+        if (!placeholder) {
+          placeholder = {
             id: chunk.toolCallId,
             toolId: chunk.toolName,
             toolName: chunk.toolName,
@@ -405,86 +369,39 @@ export const useChatStore = defineStore('chat', () => {
             status: 'input-streaming',
             timestamp: Date.now(),
             streamingArgs: '',
-          })
-        }
-
-        // Update contentParts
-        const parts = message.contentParts!
-        let lastPart = parts[parts.length - 1]
-
-        // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting')) {
-          parts.pop()
-          lastPart = parts[parts.length - 1]
-        }
-
-        if (lastPart && lastPart.type === 'tool-call') {
-          // Add to existing tool-call part if not already there
-          const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
-          if (existingTcIndex === -1) {
-            // Create new toolCalls array and new part object to trigger Vue reactivity
-            const newToolCall = message.toolCalls[message.toolCalls.length - 1]
-            const updatedPart = {
-              ...lastPart,
-              toolCalls: [...lastPart.toolCalls, newToolCall]
-            }
-            parts[parts.length - 1] = updatedPart
           }
-        } else {
-          parts.push({ type: 'tool-call', toolCalls: [message.toolCalls[message.toolCalls.length - 1]] })
+          message.toolCalls.push(placeholder)
         }
+        appendToolCallPlaceholder(parts, placeholder)
         message.contentParts = [...parts]
       }
     } else if (chunk.type === 'tool_input_delta') {
-      // Streaming tool input delta - accumulate args text
+      // Streaming tool input delta - accumulate args text in-place. The
+      // toolCall object is shared between message.toolCalls, contentParts'
+      // tool-call entries, and steps; a single field assignment triggers
+      // only the bindings that read streamingArgs.
       if (chunk.toolCallId && chunk.argsTextDelta && message.toolCalls) {
-        const toolCallIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
-        if (toolCallIndex >= 0) {
-          const toolCall = message.toolCalls[toolCallIndex]
-          if (toolCall.status === 'input-streaming') {
-            // Mutate in-place — the toolCall object is a reactive proxy shared by
-            // message.toolCalls, contentParts toolCalls, and steps. A single field
-            // assignment triggers only the bindings that read streamingArgs.
-            toolCall.streamingArgs = (toolCall.streamingArgs || '') + chunk.argsTextDelta
-
-            // Update the matching step's toolCall.streamingArgs if present
-            if (message.steps) {
-              const step = message.steps.find(s => s.toolCallId === chunk.toolCallId)
-              if (step?.toolCall) {
-                step.toolCall.streamingArgs = toolCall.streamingArgs
-              }
-            }
+        const toolCall = message.toolCalls.find(tc => tc.id === chunk.toolCallId)
+        if (toolCall && toolCall.status === 'input-streaming') {
+          toolCall.streamingArgs = (toolCall.streamingArgs || '') + chunk.argsTextDelta
+          const step = message.steps?.find(s => s.toolCallId === chunk.toolCallId)
+          if (step?.toolCall) {
+            step.toolCall.streamingArgs = toolCall.streamingArgs
           }
         }
       }
     } else if (chunk.type === 'content_part' && chunk.contentPart) {
-      const parts = message.contentParts!
       const newPart = chunk.contentPart
-      console.log('[ContentParts] content_part:', newPart.type, '| parts before:', parts.map(p => p.type).join(', '))
-
-      // Remove loading-memory or waiting indicator if present
-      const lastPart = parts[parts.length - 1]
-      if (lastPart && (lastPart.type === 'waiting')) {
-        parts.pop()
-      }
-
       if (newPart.type === 'data-steps') {
-        // For data-steps, check if we already have a placeholder for this turn
-        const turnIndex = (newPart as any).turnIndex
-        const hasPlaceholder = parts.some(
-          p => p.type === 'data-steps' && (p as any).turnIndex === turnIndex
-        )
-        if (!hasPlaceholder) {
-          parts.push(newPart as any)
-        }
+        pushDataStepsIfMissing(parts, newPart.turnIndex)
+        message.contentParts = [...parts]
       } else if (newPart.type === 'text') {
-        // For text content_part, this is a finalized text block for the turn
-        // We may already have streaming text, so we need to handle carefully
-        // The streaming text chunks have already built up the text, so we can skip
-        // adding duplicate text here - the content_part is mainly for data-steps ordering
+        // Finalized text block for the turn. Streaming text chunks have already
+        // built up the text, so nothing to add here — the content_part exists
+        // mainly to anchor data-steps ordering.
+        popTrailingTransient(parts)
+        message.contentParts = [...parts]
       }
-
-      message.contentParts = [...parts]
     }
 
     // Increment scroll trigger — lets MessageList scroll without a deep watcher.
@@ -512,13 +429,9 @@ export const useChatStore = defineStore('chat', () => {
     if (messageIndex !== -1) {
       const message = messages[messageIndex]
 
-      // Remove loading-memory or waiting indicator
+      // Drop trailing transient indicator (waiting / loading-memory)
       if (message.contentParts) {
-        const lastPart = message.contentParts[message.contentParts.length - 1]
-        if (lastPart && (lastPart.type === 'waiting')) {
-          message.contentParts.pop()
-        }
-
+        popTrailingTransient(message.contentParts)
       }
 
       // Mark message as not streaming and save usage
@@ -600,13 +513,9 @@ export const useChatStore = defineStore('chat', () => {
         if (msg) {
           msg.errorDetails = data.errorDetails
           msg.isStreaming = false
-          // Drop any trailing `waiting` continuation indicator — the next turn
-          // never arrived. Mirrors the cleanup in handleStreamComplete.
-          if (msg.contentParts && msg.contentParts.length > 0) {
-            const lastPart = msg.contentParts[msg.contentParts.length - 1]
-            if (lastPart && lastPart.type === 'waiting') {
-              msg.contentParts.pop()
-            }
+          // Drop any trailing transient indicator — the next turn never arrived.
+          if (msg.contentParts) {
+            popTrailingTransient(msg.contentParts)
           }
         }
       }
@@ -679,21 +588,9 @@ export const useChatStore = defineStore('chat', () => {
     message.steps = [...message.steps]
 
     // Add steps placeholder to contentParts if needed
-    if (message.contentParts) {
-      const stepTurnIndex = step.turnIndex
-      const parts = message.contentParts
-      const hasPlaceholderForTurn = parts.some(
-        p => p.type === 'data-steps' && (p as any).turnIndex === stepTurnIndex
-      )
-
-      if (!hasPlaceholderForTurn) {
-        const lastPart = parts[parts.length - 1]
-        // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting')) {
-          parts.pop()
-        }
-        parts.push({ type: 'data-steps', turnIndex: stepTurnIndex } as any)
-        message.contentParts = [...parts]
+    if (message.contentParts && step.turnIndex !== undefined) {
+      if (pushDataStepsIfMissing(message.contentParts, step.turnIndex)) {
+        message.contentParts = [...message.contentParts]
       }
     }
 
@@ -1093,8 +990,8 @@ export const useChatStore = defineStore('chat', () => {
 
     if (toolCall) {
       // Store permission ID and canRespond flag on tool call
-      ;(toolCall as any).permissionId = data.requestId
-      ;(toolCall as any).canRespond = data.canRespond
+      toolCall.permissionId = data.requestId
+      toolCall.canRespond = data.canRespond
       toolCall.requiresConfirmation = true
       toolCall.status = 'pending'
 
@@ -1107,8 +1004,8 @@ export const useChatStore = defineStore('chat', () => {
           step.result = JSON.stringify(data.metadata)
         }
         if (step.toolCall) {
-          ;(step.toolCall as any).permissionId = data.requestId
-          ;(step.toolCall as any).canRespond = data.canRespond
+          step.toolCall.permissionId = data.requestId
+          step.toolCall.canRespond = data.canRespond
           step.toolCall.requiresConfirmation = true
           step.toolCall.status = 'pending'
         }

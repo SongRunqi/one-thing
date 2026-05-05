@@ -919,7 +919,7 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
   const step = message?.steps?.find(s => s.toolCallId === toolCall.id)
 
   // Check if there's a pending permission request for this tool call
-  const permissionId = (toolCall as any).permissionId
+  const permissionId = toolCall.permissionId
   if (permissionId) {
     // Use unified command channel to respond (EventBus → Permission validates channel)
     console.log(`[Frontend] Responding to permission ${permissionId} with ${response}`)
@@ -1095,7 +1095,7 @@ async function handleRejectTool(toolCall: any, rejectReasonArg?: string) {
   )
 
   // Check if there's a pending permission request for this tool call
-  const permissionId = (toolCall as any).permissionId
+  const permissionId = toolCall.permissionId
   if (permissionId) {
     // Use unified command channel to reject (EventBus → Permission validates channel)
     console.log(`[Frontend] Rejecting permission ${permissionId}`, rejectReasonArg ? `Reason: ${rejectReasonArg}` : '')

@@ -9,8 +9,16 @@ import type { ToolCall } from './tools.js'
 export type ContentPart =
   | { type: 'text'; content: string }
   | { type: 'tool-call'; toolCalls: ToolCall[] }
-  | { type: 'waiting' }  // Waiting for AI continuation after tool call
+  | { type: 'waiting' }                          // Waiting for AI continuation after tool call
+  | { type: 'loading-memory' }                   // Loading memory before generation begins
   | { type: 'data-steps'; turnIndex: number }    // Placeholder for steps panel (rendered inline)
+
+// Helper: parts whose presence/absence affects subsequent content layout.
+// Used by the chunk reducer to pop trailing transient indicators when real
+// content arrives.
+export function isTransientPart(part: ContentPart): boolean {
+  return part.type === 'waiting' || part.type === 'loading-memory'
+}
 
 // Step types for showing AI reasoning process
 export type StepType = 'skill-read' | 'tool-call' | 'thinking' | 'file-read' | 'file-write' | 'command'
