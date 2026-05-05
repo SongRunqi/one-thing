@@ -936,10 +936,6 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
       }
       if (step) {
         step.status = 'running'
-        if (step.toolCall) {
-          step.toolCall.status = 'executing'
-          step.toolCall.requiresConfirmation = false
-        }
         if (message?.steps) {
           message.steps = [...message.steps]
         }
@@ -962,10 +958,6 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
   // Update step to running
   if (step) {
     step.status = 'running'
-    if (step.toolCall) {
-      step.toolCall.status = 'executing'
-      step.toolCall.requiresConfirmation = false
-    }
     // Force reactivity
     if (message?.steps) {
       message.steps = [...message.steps]
@@ -990,16 +982,12 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
       tc.error = result.error
     }
 
-    // Update step status
+    // Update step status (step-own fields only; step.toolCall === tc above
+    // so the field updates on tc already cover the canonical toolCall).
     if (step) {
       step.status = result.success ? 'completed' : 'failed'
       step.result = typeof result.result === 'string' ? result.result : JSON.stringify(result.result)
       step.error = result.error
-      if (step.toolCall) {
-        step.toolCall.status = result.success ? 'completed' : 'failed'
-        step.toolCall.result = result.result
-        step.toolCall.error = result.error
-      }
       // Force reactivity
       if (message?.steps) {
         message.steps = [...message.steps]
@@ -1034,10 +1022,6 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
     if (step) {
       step.status = 'failed'
       step.error = String(error)
-      if (step.toolCall) {
-        step.toolCall.status = 'failed'
-        step.toolCall.error = String(error)
-      }
       // Force reactivity
       if (message?.steps) {
         message.steps = [...message.steps]
@@ -1119,16 +1103,12 @@ async function handleRejectTool(toolCall: any, rejectReasonArg?: string) {
       tc.requiresConfirmation = false
     }
 
-    // Update the corresponding step
+    // Update the corresponding step (step-own fields only; step.toolCall is
+    // the same reference as tc above, so its fields are already updated).
     const step = message.steps?.find(s => s.toolCallId === toolCall.id)
     if (step) {
       step.status = 'failed'
       step.error = 'Command execution cancelled by user'
-      if (step.toolCall) {
-        step.toolCall.status = 'cancelled'
-        step.toolCall.error = 'Command rejected by user'
-        step.toolCall.requiresConfirmation = false
-      }
       // Force reactivity
       if (message.steps) {
         message.steps = [...message.steps]
