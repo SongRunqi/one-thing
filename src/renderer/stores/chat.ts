@@ -17,6 +17,10 @@ import {
   pushWaiting,
   upsertToolCall,
 } from './helpers/content-parts'
+import {
+  linkStepsToToolCalls,
+  upsertMessageToolCall,
+} from './helpers/tool-calls'
 
 // Stream chunk type from IPC
 interface StreamChunk {
@@ -248,6 +252,12 @@ export const useChatStore = defineStore('chat', () => {
    */
   function rebuildContentParts(message: ChatMessage): ChatMessage {
     if (message.role !== 'assistant') return message
+
+    // Reloaded messages have step.toolCall and message.toolCalls[i] as
+    // independent JSON objects. Relink so mutations from later chunks /
+    // user actions propagate to both consumers.
+    linkStepsToToolCalls(message)
+
     if (message.contentParts && message.contentParts.length > 0) return message
 
     const parts: ChatMessage['contentParts'] = []
@@ -340,14 +350,10 @@ export const useChatStore = defineStore('chat', () => {
       message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
     } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
       if (chunk.toolCall) {
-        if (!message.toolCalls) message.toolCalls = []
-        const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCall!.id)
-        if (existingIndex >= 0) {
-          message.toolCalls[existingIndex] = chunk.toolCall
-        } else {
-          message.toolCalls.push(chunk.toolCall)
-        }
-        upsertToolCall(parts, chunk.toolCall)
+        // Merge into the canonical entry in place so any step.toolCall
+        // referencing the same id sees the update without manual mirror writes.
+        const canonical = upsertMessageToolCall(message, chunk.toolCall)
+        upsertToolCall(parts, canonical)
         message.contentParts = [...parts]
       }
     } else if (chunk.type === 'continuation') {
@@ -377,17 +383,12 @@ export const useChatStore = defineStore('chat', () => {
       }
     } else if (chunk.type === 'tool_input_delta') {
       // Streaming tool input delta - accumulate args text in-place. The
-      // toolCall object is shared between message.toolCalls, contentParts'
-      // tool-call entries, and steps; a single field assignment triggers
-      // only the bindings that read streamingArgs.
+      // toolCall is shared with step.toolCall (relinked by handleStepAdded /
+      // rebuildContentParts), so a single field assignment is enough.
       if (chunk.toolCallId && chunk.argsTextDelta && message.toolCalls) {
         const toolCall = message.toolCalls.find(tc => tc.id === chunk.toolCallId)
         if (toolCall && toolCall.status === 'input-streaming') {
           toolCall.streamingArgs = (toolCall.streamingArgs || '') + chunk.argsTextDelta
-          const step = message.steps?.find(s => s.toolCallId === chunk.toolCallId)
-          if (step?.toolCall) {
-            step.toolCall.streamingArgs = toolCall.streamingArgs
-          }
         }
       }
     } else if (chunk.type === 'content_part' && chunk.contentPart) {
@@ -585,6 +586,10 @@ export const useChatStore = defineStore('chat', () => {
       // Add new step
       message.steps.push(step)
     }
+    // Re-point step.toolCall at the canonical message.toolCalls entry so
+    // mutations from the chunk reducer / MessageList handlers propagate to
+    // both consumers without manual mirror writes.
+    linkStepsToToolCalls(message)
     message.steps = [...message.steps]
 
     // Add steps placeholder to contentParts if needed
@@ -612,6 +617,8 @@ export const useChatStore = defineStore('chat', () => {
     const stepIndex = message.steps.findIndex(s => s.id === stepId)
     if (stepIndex !== -1) {
       message.steps[stepIndex] = { ...message.steps[stepIndex], ...updates }
+      // Re-link in case the update payload included a fresh `toolCall` clone.
+      linkStepsToToolCalls(message)
       message.steps = [...message.steps]
       setSessionMessages(sessionId, [...messages])
       bumpScrollVersion(sessionId)
@@ -782,16 +789,15 @@ export const useChatStore = defineStore('chat', () => {
           const messageIndex = messages.findIndex(m => m.id === currentMessageId)
           if (messageIndex !== -1) {
             const message = messages[messageIndex]
-            // Cancel all running steps
+            // Cancel all running steps. Mutate step.toolCall.status in place
+            // so the shared canonical message.toolCalls entry sees the change;
+            // the outer step shallow-spread keeps the toolCall reference.
             let updatedSteps = message.steps
             if (updatedSteps) {
               updatedSteps = updatedSteps.map(step => {
                 if (step.status === 'running') {
-                  return {
-                    ...step,
-                    status: 'cancelled' as const,
-                    toolCall: step.toolCall ? { ...step.toolCall, status: 'cancelled' as const } : undefined
-                  }
+                  if (step.toolCall) step.toolCall.status = 'cancelled'
+                  return { ...step, status: 'cancelled' as const }
                 }
                 return step
               })
@@ -995,19 +1001,14 @@ export const useChatStore = defineStore('chat', () => {
       toolCall.requiresConfirmation = true
       toolCall.status = 'pending'
 
-      // Update corresponding step
+      // Update corresponding step (step-own fields only; the step.toolCall
+      // mirror is the same reference as `toolCall` above).
       const step = message.steps?.find(s => s.toolCallId === toolCall!.id)
       if (step) {
         step.status = 'awaiting-confirmation'
         // Store metadata from permission request (contains diff for edit tool)
         if (data.metadata && (data.metadata.diff || data.metadata.filePath)) {
           step.result = JSON.stringify(data.metadata)
-        }
-        if (step.toolCall) {
-          step.toolCall.permissionId = data.requestId
-          step.toolCall.canRespond = data.canRespond
-          step.toolCall.requiresConfirmation = true
-          step.toolCall.status = 'pending'
         }
         // Force reactivity
         if (message.steps) {

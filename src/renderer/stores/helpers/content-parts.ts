@@ -6,6 +6,7 @@
  */
 
 import type { ContentPart, ToolCall } from '@/types'
+import { mergeToolCall } from './tool-calls'
 
 /** Transient indicators that should be popped when real content arrives. */
 function isTransient(part: ContentPart): boolean {
@@ -31,14 +32,18 @@ export function appendOrMergeText(parts: ContentPart[], content: string): void {
   }
 }
 
-/** Upsert a tool call into the trailing tool-call part, or start a new one. */
+/**
+ * Upsert a tool call into the trailing tool-call part, or start a new one.
+ * On id collision, fields are merged in place — preserving the array slot
+ * identity that may be shared with `step.toolCall` references.
+ */
 export function upsertToolCall(parts: ContentPart[], toolCall: ToolCall): void {
   popTrailingTransient(parts)
   const last = parts[parts.length - 1]
   if (last && last.type === 'tool-call') {
     const idx = last.toolCalls.findIndex(tc => tc.id === toolCall.id)
     if (idx >= 0) {
-      last.toolCalls[idx] = toolCall
+      mergeToolCall(last.toolCalls[idx], toolCall)
     } else {
       last.toolCalls.push(toolCall)
     }
