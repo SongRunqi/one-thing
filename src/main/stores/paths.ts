@@ -13,6 +13,10 @@ export function getSettingsPath(): string {
   return path.join(getStorePath(), 'settings.json')
 }
 
+export function getVariablesPath(): string {
+  return path.join(getStorePath(), 'variables.json')
+}
+
 export function getAppStatePath(): string {
   return path.join(getStorePath(), 'app-state.json')
 }

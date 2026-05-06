@@ -37,6 +37,7 @@ export {
   updateStepsUsageByTurn,
   updateSessionModel,
   updateSessionWorkingDirectory,
+  updateSessionVariables,
   inheritSessionWorkingDirectory,
   updateSessionTokenUsage,
   getSessionTokenUsage,

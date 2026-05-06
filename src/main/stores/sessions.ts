@@ -6,6 +6,7 @@ import type {
   ContentPart,
   SessionMeta,
   SessionDetails,
+  ContextVariable,
 } from '../../shared/ipc.js'
 import {
   getSessionsDir,
@@ -619,6 +620,20 @@ export function updateSessionWorkingDirectory(sessionId: string, workingDirector
   }
 
   // Save session file
+  saveSessionToFile(sessionId, session)
+}
+
+export function updateSessionVariables(sessionId: string, variables: ContextVariable[]): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  session.variables = variables.map(v => ({
+    name: v.name,
+    value: v.value,
+    description: v.description,
+    updatedAt: v.updatedAt ?? Date.now(),
+  }))
+
   saveSessionToFile(sessionId, session)
 }
 

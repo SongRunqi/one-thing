@@ -8,7 +8,7 @@
  * The Session state machine reduces these events into SessionState.
  */
 
-import type { Step, ToolCall, ContentPart, ChatMessage } from '../ipc.js'
+import type { Step, ToolCall, ContentPart, ChatMessage, ContextVariable } from '../ipc.js'
 import type { StreamCompleteData, StreamErrorData } from '../../main/engine/stream/ipc-emitter.js'
 import type { SessionCommand } from './session-commands.js'
 
@@ -85,6 +85,12 @@ export interface ContentContinuationEvent {
 export interface ContextSizeUpdatedEvent {
   type: 'context:size-updated'
   contextSize: number
+}
+
+export interface SessionVariablesUpdatedEvent {
+  type: 'session:variables-updated'
+  workingDirectory?: string
+  variables: ContextVariable[]
 }
 
 
@@ -229,6 +235,7 @@ export type SessionEvent =
   | ContentPartEvent
   | ContentContinuationEvent
   | ContextSizeUpdatedEvent
+  | SessionVariablesUpdatedEvent
   | StreamParamsResolvingEvent
   | RequestSnapshotEvent
   | SkillActivatedEvent

@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { TokenUsage, SessionTokenUsage } from '../../shared/ipc.js'
 import * as store from '../store.js'
+import { workdirGateway } from '../variables/gateways.js'
 
 /**
  * Update session usage (called from chat.ts when finish chunk is received)
@@ -153,9 +154,11 @@ export function registerSessionHandlers() {
 
   // 更新会话工作目录 (sandbox boundary)
   ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY, async (_event, { sessionId, workingDirectory }) => {
-    // 如果是清除目录，直接执行
+    // 如果是清除目录，直接执行（跳过 fs.stat；空字符串清空合法）
     if (workingDirectory === null || workingDirectory === '') {
-      store.updateSessionWorkingDirectory(sessionId, workingDirectory)
+      // Cast: gateway expects a string for the path, but accepts ''
+      // semantics through the underlying store mutator.
+      await workdirGateway.write(sessionId, workingDirectory ?? '')
       return { success: true }
     }
 
@@ -169,7 +172,7 @@ export function registerSessionHandlers() {
       return { success: false, error: `Directory does not exist: ${workingDirectory}` }
     }
 
-    store.updateSessionWorkingDirectory(sessionId, workingDirectory)
+    await workdirGateway.write(sessionId, workingDirectory)
     return { success: true }
   })
 

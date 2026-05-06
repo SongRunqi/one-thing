@@ -29,6 +29,8 @@ export type {
 
 // Chat types
 export type {
+  ContextVariable,
+  VariableLevel,
   ContentPart,
   StepType,
   Step,
@@ -196,6 +198,31 @@ export type {
   PermissionRespondRequest,
 } from './permissions.js'
 
+// Variable types
+export type {
+  VariablesListRequest,
+  VariablesListResponse,
+  VariablesSetRequest,
+  VariablesSetResponse,
+  VariablesDeleteRequest,
+  VariablesDeleteResponse,
+} from './variables.js'
+
+// Project directories types
+export type {
+  ProjectDirSummary,
+  ProjectDirRecord,
+  ProjectDirsListResponse,
+  ProjectDirsGetRequest,
+  ProjectDirsGetResponse,
+  ProjectDirsAddRequest,
+  ProjectDirsAddResponse,
+  ProjectDirsUpdateRequest,
+  ProjectDirsUpdateResponse,
+  ProjectDirsRemoveRequest,
+  ProjectDirsRemoveResponse,
+} from './project-dirs.js'
+
 // UIMessage types
 export type {
   ToolUIState,
@@ -228,5 +255,4 @@ export {
   isErrorUIPart,
   getToolName,
 } from './ui-message.js'
-
 

@@ -13,6 +13,8 @@ import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } fr
 import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge } from './events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
 import { Permission } from './permission/index.js'
+import { bootstrapVariableSystem } from './variables/index.js'
+import { bootstrapProjectDirs } from './project-dirs/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -90,6 +92,16 @@ app.on('ready', async () => {
 
   // Start template watcher in development mode (hot reload)
   startTemplateWatcher()
+
+  // Bootstrap variable subsystem (registers built-in providers, bridges
+  // change events to EventBus). Must run after EventBus init and before
+  // tool registry so the variable tool finds a populated registry.
+  bootstrapVariableSystem()
+
+  // Bootstrap project-dirs subsystem (independent storage). Order doesn't
+  // matter relative to variables, but must precede tool registry so the
+  // project_dirs tool finds a warm store.
+  bootstrapProjectDirs()
 
   // Initialize tool registry
   await initializeToolRegistry()

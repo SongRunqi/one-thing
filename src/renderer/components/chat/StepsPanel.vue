@@ -256,6 +256,7 @@ import { computed, ref, watch } from 'vue'
 import { ChevronDown, Copy, Pencil, SquareTerminal } from 'lucide-vue-next'
 import type { Step, ToolCall } from '@/types'
 import { buildToolStepView, type ToolStepView } from '@/stores/helpers/tool-step-view'
+import { useSessionsStore } from '@/stores/sessions'
 import AllowSplitButton from '../common/AllowSplitButton.vue'
 import FartCallItem from './FartCallItem.vue'
 import ToolDiffPreview from './ToolDiffPreview.vue'
@@ -278,6 +279,7 @@ const emit = defineEmits<{
   reject: [toolCall: ToolCall]
 }>()
 
+const sessionsStore = useSessionsStore()
 const userExpandedSteps = ref<Set<string>>(new Set())
 const userCollapsedSteps = ref<Set<string>>(new Set())
 const editedOpen = ref<boolean | null>(null)
@@ -285,6 +287,9 @@ const exploreOpen = ref<boolean | null>(null)
 const selectedEditedIds = ref<Set<string>>(new Set())
 
 const views = computed(() => props.steps.map(step => buildToolStepView(step)))
+const workingDirectory = computed(() =>
+  sessionsStore.sessions.find(session => session.id === props.sessionId)?.workingDirectory || '',
+)
 const fartViews = computed(() => views.value.filter(view => view.toolName === 'fart'))
 const editedViews = computed(() => views.value.filter(isEditedView))
 const exploreViews = computed(() => views.value.filter(isExploreView))
@@ -406,7 +411,67 @@ function compactVerb(view: ToolStepView): string {
 }
 
 function compactValue(view: ToolStepView): string {
+  if (view.toolName === 'bash') {
+    return formatCommand(view.preview || String(view.toolCall.arguments?.command || ''))
+  }
+
+  const raw = rawPathValue(view)
+  if (raw) return formatPath(raw)
   return view.preview || view.displayName
+}
+
+function rawPathValue(view: ToolStepView): string {
+  const args = view.toolCall.arguments || {}
+  if (view.diff?.filePath) return view.diff.filePath
+  if (view.streamingContent?.filePath) return view.streamingContent.filePath
+  if (typeof args.file_path === 'string') return args.file_path
+  if (typeof args.path === 'string') return args.path
+  return ''
+}
+
+function formatPath(value: string): string {
+  if (!value) return ''
+  const normalized = value.replace(/\\/g, '/')
+  const workdir = workingDirectory.value.replace(/\\/g, '/').replace(/\/+$/, '')
+  const home = getHomePath()
+
+  if (workdir && (normalized === workdir || normalized.startsWith(`${workdir}/`))) {
+    const relative = normalized === workdir ? '.' : normalized.slice(workdir.length + 1)
+    return relative || '.'
+  }
+
+  if (home && (normalized === home || normalized.startsWith(`${home}/`))) {
+    return `~${normalized.slice(home.length)}`
+  }
+
+  return normalized
+}
+
+function formatCommand(command: string): string {
+  if (!command) return ''
+  const workdir = workingDirectory.value.replace(/\\/g, '/').replace(/\/+$/, '')
+  const home = getHomePath()
+
+  let formatted = command.replace(/\\/g, '/')
+  if (workdir) {
+    formatted = formatted.split(workdir).join('.')
+  }
+  if (home) {
+    formatted = formatted.split(home).join('~')
+  }
+  return formatted
+}
+
+function getHomePath(): string {
+  const workdir = workingDirectory.value.replace(/\\/g, '/')
+  const marker = '/data/'
+  const markerIndex = workdir.indexOf(marker)
+  if (markerIndex > 0) return workdir.slice(0, markerIndex)
+  const parts = workdir.split('/').filter(Boolean)
+  if (workdir.startsWith('/') && parts.length >= 2 && parts[0] === 'Users') {
+    return `/${parts[0]}/${parts[1]}`
+  }
+  return ''
 }
 
 function isExpanded(view: ToolStepView): boolean {
@@ -471,8 +536,8 @@ function toggleExpand(stepId: string) {
 
 .activity-summary:focus-visible {
   outline: none;
-  border-color: color-mix(in srgb, var(--border-warning) 88%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-warning) 28%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .activity.muted .activity-summary {

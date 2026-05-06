@@ -133,6 +133,15 @@ export function initializeIPCHub() {
         })
         break
 
+      case 'session:variables-updated':
+        import('@/stores/sessions').then(({ useSessionsStore }) => {
+          useSessionsStore().updateSessionVariables(sessionId, {
+            workingDirectory: (event as any).workingDirectory,
+            variables: (event as any).variables,
+          })
+        })
+        break
+
       // stream:start — no store action needed
     }
   })

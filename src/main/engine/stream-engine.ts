@@ -34,6 +34,8 @@ import { getSkillsForSession } from '../ipc/skills.js'
 import { getEnabledToolsAsync, setInitContext, initializeAsyncTools } from '../tools/index.js'
 import { getMCPToolsForAI } from '../mcp/index.js'
 import * as modelRegistry from '../providers/model-registry.js'
+import { buildContextVariablesPromptText } from '../variables/index.js'
+import { buildProjectDirsPromptVars } from '../project-dirs/index.js'
 
 /**
  * Generate a short title from user message content
@@ -371,9 +373,13 @@ export class StreamEngine {
       const supportsTools = await modelRegistry.modelSupportsTools(configWithApiKey.model, providerId)
       const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
 
+      const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
       const systemPrompt = buildSystemPrompt({
         hasTools, skills: enabledSkills,
         workingDirectory: session.workingDirectory,
+        contextVariables: await buildContextVariablesPromptText(sessionId),
+        activeProject: projectVars.active,
+        knownProjects: projectVars.known,
       })
 
       const conversationMessages: ToolChatMessage[] = []

@@ -1,6 +1,7 @@
 import type {
   ChatMessage,
   ChatSession,
+  ContextVariable,
   SessionMeta,
   SessionDetails,
   GetSessionsListResponse,
@@ -100,11 +101,22 @@ import type {
   GetThemeResponse,
   ApplyThemeResponse,
   RefreshThemesResponse,
+  // Variables types
+  VariablesListResponse,
+  VariablesSetResponse,
+  VariablesDeleteResponse,
+  // Project directories types (independent module)
+  ProjectDirsListResponse,
+  ProjectDirsGetResponse,
+  ProjectDirsAddResponse,
+  ProjectDirsUpdateResponse,
+  ProjectDirsRemoveResponse,
 } from '../../shared/ipc'
 
 export type {
   ChatMessage,
   ChatSession,
+  ContextVariable,
   SessionMeta,
   SessionDetails,
   GetSessionsListResponse,
@@ -216,6 +228,16 @@ export interface ElectronAPI {
   updateSessionModel: (sessionId: string, provider: string, model: string) => Promise<{ success: boolean; error?: string }>
   updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) => Promise<{ success: boolean; error?: string }>
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
+  // Variables subsystem (scalar variables)
+  listVariables: (sessionId: string) => Promise<VariablesListResponse>
+  setVariable: (sessionId: string, name: string, value: string, description?: string) => Promise<VariablesSetResponse>
+  deleteVariable: (sessionId: string, name: string) => Promise<VariablesDeleteResponse>
+  // Project directories — independent module
+  projectDirsList: () => Promise<ProjectDirsListResponse>
+  projectDirsGet: (path: string) => Promise<ProjectDirsGetResponse>
+  projectDirsAdd: (path: string, description?: string) => Promise<ProjectDirsAddResponse>
+  projectDirsUpdate: (path: string, description: string) => Promise<ProjectDirsUpdateResponse>
+  projectDirsRemove: (path: string) => Promise<ProjectDirsRemoveResponse>
   getSessionTokenUsage: (sessionId: string) => Promise<{ success: boolean; usage?: { totalInputTokens: number; totalOutputTokens: number; totalTokens: number; maxTokens: number; lastInputTokens: number; contextSize: number }; error?: string }>
   // Optimized session loading (Phase 4: Metadata Separation)
   getSessionsList: () => Promise<GetSessionsListResponse>

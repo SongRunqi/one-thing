@@ -41,6 +41,9 @@ export function buildSystemPrompt(options: {
   skills: SkillDefinition[]
   workspaceSystemPrompt?: string
   workingDirectory?: string
+  contextVariables?: string
+  activeProject?: import('./types.js').PromptActiveProject
+  knownProjects?: import('./types.js').PromptKnownProjects
 }): string {
   const pm = getPromptManager()
   const baseDir = os.homedir()
@@ -67,6 +70,9 @@ export function buildSystemPrompt(options: {
     displayPath,
     baseDirectory: baseDir,
     osType,
+    contextVariables: options.contextVariables?.trim(),
+    activeProject: options.activeProject ?? { hasActive: false },
+    knownProjects: options.knownProjects ?? { hasAny: false, entries: [] },
     skills: transformSkills(options.skills),
     macosAutomationDocsPath,
     toolUsageDocsPath,

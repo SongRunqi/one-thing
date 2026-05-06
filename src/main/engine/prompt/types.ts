@@ -32,6 +32,18 @@ export interface TemplateSkill {
   instructions?: string
 }
 
+/** Project directory data fed into the system prompt's project partials. */
+export interface PromptActiveProject {
+  hasActive: boolean
+  path?: string
+  displayPath?: string
+  description?: string
+}
+export interface PromptKnownProjects {
+  hasAny: boolean
+  entries: Array<{ path: string; displayPath: string; description: string }>
+}
+
 /**
  * Variables for system prompt template (main/system-prompt.hbs)
  */
@@ -47,6 +59,13 @@ export interface SystemPromptVariables {
   displayPath?: string
   baseDirectory: string
   osType: OSType
+  contextVariables?: string
+
+  // Project directories — owned by the project-dirs subsystem.
+  // Both fields are present whenever hasTools is true; partials gate
+  // their own visibility.
+  activeProject?: PromptActiveProject
+  knownProjects?: PromptKnownProjects
 
   // Skills (currently unused in system prompt, but kept for flexibility)
   skills?: TemplateSkill[]

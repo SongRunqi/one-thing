@@ -32,6 +32,7 @@ export {
   updateSessionArchived,
   updateSessionModel,
   updateSessionWorkingDirectory,
+  updateSessionVariables,
   inheritSessionWorkingDirectory,
   updateSessionTokenUsage,
   getSessionTokenUsage,

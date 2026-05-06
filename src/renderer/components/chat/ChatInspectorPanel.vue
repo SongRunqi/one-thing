@@ -77,16 +77,58 @@
 
           <div class="totals">
             <div class="totals-cell">
-              <div class="totals-label">Session input</div>
-              <div class="totals-value">{{ formatTokens(accumulatedInput) }}</div>
+              <div class="totals-label">
+                Session input
+              </div>
+              <div class="totals-value">
+                {{ formatTokens(accumulatedInput) }}
+              </div>
             </div>
             <div class="totals-cell">
-              <div class="totals-label">Session output</div>
-              <div class="totals-value">{{ formatTokens(accumulatedOutput) }}</div>
+              <div class="totals-label">
+                Session output
+              </div>
+              <div class="totals-value">
+                {{ formatTokens(accumulatedOutput) }}
+              </div>
             </div>
             <div class="totals-cell">
-              <div class="totals-label">Turns</div>
-              <div class="totals-value">{{ assistantTurns }}</div>
+              <div class="totals-label">
+                Turns
+              </div>
+              <div class="totals-value">
+                {{ assistantTurns }}
+              </div>
+            </div>
+          </div>
+
+          <div class="variables-section">
+            <h4 class="block-heading">
+              Variables <span class="block-meta">({{ contextVariables.length }})</span>
+            </h4>
+            <div class="variable-list">
+              <div
+                v-for="variable in contextVariables"
+                :key="variable.name"
+                class="variable-row"
+              >
+                <div class="variable-head">
+                  <code class="variable-name">{{ variable.name }}</code>
+                  <span
+                    v-if="variable.readonly"
+                    class="variable-readonly"
+                  >readonly</span>
+                </div>
+                <div class="variable-value">
+                  {{ variable.value || '—' }}
+                </div>
+                <div
+                  v-if="variable.description"
+                  class="variable-description"
+                >
+                  {{ variable.description }}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -262,21 +304,27 @@
               class="tool-call-body"
             >
               <div class="tool-call-section">
-                <div class="tool-call-section-label">args</div>
+                <div class="tool-call-section-label">
+                  args
+                </div>
                 <pre class="tool-call-pre">{{ formatJson(entry.args) }}</pre>
               </div>
               <div
                 v-if="entry.result !== undefined"
                 class="tool-call-section"
               >
-                <div class="tool-call-section-label">result</div>
+                <div class="tool-call-section-label">
+                  result
+                </div>
                 <pre class="tool-call-pre">{{ truncate(formatJson(entry.result), 1500) }}</pre>
               </div>
               <div
                 v-if="entry.error"
                 class="tool-call-section"
               >
-                <div class="tool-call-section-label error">error</div>
+                <div class="tool-call-section-label error">
+                  error
+                </div>
                 <pre class="tool-call-pre error">{{ entry.error }}</pre>
               </div>
             </div>
@@ -288,7 +336,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { X, ChevronDown } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
@@ -357,6 +405,26 @@ const accumulatedOutput = computed(
 const messages = computed(() => chatStore.sessionMessages.get(props.sessionId) ?? [])
 const assistantTurns = computed(
   () => messages.value.filter((m: any) => m.role === 'assistant').length,
+)
+
+// Snapshot comes from the variable subsystem (main process). The store
+// hydrates on session switch via fetchVariables() and applies live
+// updates from session:variables-updated. No client-side recomputation
+// of system variables — keeps a single source of truth.
+const contextVariables = computed(() => {
+  return sessionsStore.sessionVariables.get(props.sessionId) ?? []
+})
+
+// Inspector may mount for a session whose snapshot wasn't yet
+// hydrated (split pane, deep link, panel reopened). Fetch on mount
+// and whenever the prop changes so we never render an empty panel
+// for a stale session.
+onMounted(() => {
+  if (props.sessionId) sessionsStore.fetchVariables(props.sessionId)
+})
+watch(
+  () => props.sessionId,
+  (sid) => { if (sid) sessionsStore.fetchVariables(sid) },
 )
 
 // ── Request tab data ────────────────────────────
@@ -665,6 +733,49 @@ code.tool-name {
   color: var(--text);
   font-variant-numeric: tabular-nums;
   margin-top: 2px;
+}
+
+.variables-section {
+  margin-top: 12px;
+}
+.variable-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.variable-row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: color-mix(in srgb, var(--panel) 75%, transparent);
+}
+.variable-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.variable-name {
+  font-size: 11.5px;
+}
+.variable-readonly {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.variable-value {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.variable-description {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.35;
 }
 
 /* request */

@@ -159,4 +159,16 @@ export const IPC_CHANNELS = {
   SESSION_EVENT: 'session:event',
   SESSION_STREAM: 'session:stream',
   SESSION_COMMAND: 'session:command',
+
+  // Variables subsystem (scalar-only)
+  VARIABLES_LIST: 'variables:list',
+  VARIABLES_SET: 'variables:set',
+  VARIABLES_DELETE: 'variables:delete',
+
+  // Project directories — independent module
+  PROJECT_DIRS_LIST: 'project-dirs:list',
+  PROJECT_DIRS_GET: 'project-dirs:get',
+  PROJECT_DIRS_ADD: 'project-dirs:add',
+  PROJECT_DIRS_UPDATE: 'project-dirs:update',
+  PROJECT_DIRS_REMOVE: 'project-dirs:remove',
 } as const

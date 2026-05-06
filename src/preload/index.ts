@@ -143,6 +143,34 @@ const electronAPI = {
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY, { sessionId, workingDirectory }),
 
+  // ── Variables subsystem ─────────────────────────────────────
+  // Live updates arrive through the existing session:variables-updated
+  // event; these RPCs are for explicit fetches and writes.
+  listVariables: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_LIST, { sessionId }),
+
+  setVariable: (sessionId: string, name: string, value: string, description?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_SET, { sessionId, name, value, description }),
+
+  deleteVariable: (sessionId: string, name: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_DELETE, { sessionId, name }),
+
+  // Project directories — independent module
+  projectDirsList: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_LIST),
+
+  projectDirsGet: (path: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_GET, { path }),
+
+  projectDirsAdd: (path: string, description?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_ADD, { path, description }),
+
+  projectDirsUpdate: (path: string, description: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_UPDATE, { path, description }),
+
+  projectDirsRemove: (path: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_REMOVE, { path }),
+
   getSessionTokenUsage: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, sessionId),
 

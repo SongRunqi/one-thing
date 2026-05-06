@@ -32,6 +32,8 @@ import { getTextFromContent } from './message-helpers.js'
 import { getProviderApiType } from './provider-helpers.js'
 import { executeToolAndUpdate } from './tool-execution.js'
 import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages } from './chat-logger.js'
+import { buildContextVariablesPromptText } from '../../variables/index.js'
+import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 
 // Gate per-chunk stream logs behind env flag. Running JSON.stringify on every
 // text/tool-input delta noticeably slows streaming, so default off.
@@ -627,10 +629,14 @@ export async function executeStreamGeneration(
     
     const userContextPrompt = contextParts.length > 0 ? contextParts.join('\n') : undefined
 
+    const projectVars = buildProjectDirsPromptVars(sessionWorkingDir)
     const systemPrompt = buildSystemPrompt({
       hasTools,
       skills: enabledSkills,
       workingDirectory: sessionWorkingDir,
+      contextVariables: await buildContextVariablesPromptText(ctx.sessionId),
+      activeProject: projectVars.active,
+      knownProjects: projectVars.known,
     })
 
     let pausedForConfirmation = false

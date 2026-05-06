@@ -1,7 +1,9 @@
 <template>
   <div class="code-block-container">
     <div class="code-block-header">
-      <div class="code-block-lang">{{ displayLang }}</div>
+      <div class="code-block-lang">
+        {{ displayLang }}
+      </div>
       <button
         class="code-block-copy"
         :class="{ copied }"

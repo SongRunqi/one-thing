@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatSession, SessionMeta, SessionDetails } from '@/types'
+import type { ChatSession, SessionMeta, SessionDetails, ContextVariable } from '@/types'
 import { useChatStore } from './chat'
 import { useSettingsStore } from './settings'
 
@@ -16,6 +16,14 @@ export const useSessionsStore = defineStore('sessions', () => {
   const isLoading = ref(false)
   // Track if current session is "active" (messages loaded in memory)
   const isActive = ref(false)
+
+  /**
+   * Per-session full variable snapshot (system + custom). The map is the
+   * single source of truth for the inspector. Hydrated on session
+   * switch via `fetchVariables()`, then live-updated by ipc-hub when
+   * `session:variables-updated` arrives.
+   */
+  const sessionVariables = ref<Map<string, ContextVariable[]>>(new Map())
 
   const currentSession = computed(() =>
     sessions.value.find(s => s.id === currentSessionId.value)
@@ -172,6 +180,11 @@ export const useSessionsStore = defineStore('sessions', () => {
       // At this point messages are ready, so no empty state flash.
       currentSessionId.value = sessionId
       isActive.value = true
+
+      // Step 4: Fetch the full variable snapshot for this session.
+      // Fire-and-forget — the inspector renders from sessionVariables
+      // and an empty initial state is fine until the response lands.
+      fetchVariables(sessionId)
 
       return sessionDetails
     } catch (error) {
@@ -454,11 +467,89 @@ export const useSessionsStore = defineStore('sessions', () => {
     if (stats.totalTokens !== undefined) session.totalTokens = stats.totalTokens
   }
 
+  /**
+   * Apply an incoming `session:variables-updated` event:
+   * - Mirror workingDirectory onto the SessionMeta entry (so other UI
+   *   that reads it stays consistent).
+   * - Replace the full variable snapshot for this session.
+   *
+   * The payload now carries the full snapshot (system + custom) — the
+   * inspector reads from `sessionVariables` directly and no longer
+   * recomputes system entries client-side.
+   */
+  function updateSessionVariables(
+    sessionId: string,
+    payload: {
+      workingDirectory?: string
+      variables?: ContextVariable[]
+    },
+  ): void {
+    const session = sessions.value.find((s) => s.id === sessionId) as any
+    if (session && payload.workingDirectory !== undefined) {
+      session.workingDirectory = payload.workingDirectory
+    }
+    if (payload.variables !== undefined) {
+      sessionVariables.value.set(sessionId, payload.variables)
+      // Trigger reactivity for Map mutation.
+      sessionVariables.value = new Map(sessionVariables.value)
+    }
+  }
+
+  /**
+   * Pull the latest variable snapshot from the main process. Called on
+   * session switch (initial fetch) and on any UI action that needs
+   * fresh state without waiting for the next change event.
+   */
+  async function fetchVariables(sessionId: string): Promise<ContextVariable[]> {
+    try {
+      const response = await window.electronAPI.listVariables(sessionId)
+      const variables = response.success && response.variables ? response.variables : []
+      sessionVariables.value.set(sessionId, variables)
+      sessionVariables.value = new Map(sessionVariables.value)
+      return variables
+    } catch (error) {
+      console.error('[Sessions] Failed to fetch variables:', error)
+      return []
+    }
+  }
+
+  /**
+   * Write a variable through the registry. The main process will emit
+   * `session:variables-updated`, so the local snapshot picks up via
+   * `updateSessionVariables` — no need to mutate state here.
+   */
+  async function setVariable(
+    sessionId: string,
+    name: string,
+    value: string,
+    description?: string,
+  ): Promise<{ success: boolean; error?: string; code?: string }> {
+    const response = await window.electronAPI.setVariable(sessionId, name, value, description)
+    return {
+      success: response.success,
+      error: response.error,
+      code: response.code,
+    }
+  }
+
+  async function deleteVariable(
+    sessionId: string,
+    name: string,
+  ): Promise<{ success: boolean; error?: string; code?: string }> {
+    const response = await window.electronAPI.deleteVariable(sessionId, name)
+    return {
+      success: response.success,
+      error: response.error,
+      code: response.code,
+    }
+  }
+
   return {
     sessions,
     currentSessionId,
     isLoading,
     isActive,
+    sessionVariables,
     currentSession,
     sessionCount,
     filteredSessions,
@@ -473,6 +564,10 @@ export const useSessionsStore = defineStore('sessions', () => {
     deleteSession,
     archiveSession,
     updateSessionTokenStats,
+    updateSessionVariables,
+    fetchVariables,
+    setVariable,
+    deleteVariable,
     restoreSession,
     permanentlyDeleteSession,
     renameSession,

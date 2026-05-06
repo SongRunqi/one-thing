@@ -5,6 +5,21 @@
 
 import type { ToolCall } from './tools.js'
 
+/**
+ * @deprecated Kept as a type alias for one version so old persisted
+ * session data with a `level` field still parses. New code does not
+ * read or write this field.
+ */
+export type VariableLevel = 'system' | 'session'
+
+export interface ContextVariable {
+  name: string
+  value: string
+  description?: string
+  readonly?: boolean
+  updatedAt?: number
+}
+
 // Content part types for sequential display
 export type ContentPart =
   | { type: 'text'; content: string }
@@ -119,6 +134,7 @@ export interface SessionMeta {
  */
 export interface SessionDetails extends SessionMeta {
   workingDirectory?: string
+  variables?: ContextVariable[]
   summary?: string
   summaryUpToMessageId?: string
   summaryCreatedAt?: number
@@ -148,6 +164,7 @@ export interface ChatSession {
   archivedAt?: number   // Timestamp when session was archived
   // Sandbox boundary - tools restrict file access to this directory
   workingDirectory?: string  // Project directory for this session (sandbox boundary)
+  variables?: ContextVariable[] // Session-scoped context variables
   // Context compacting fields
   summary?: string              // Conversation summary for context window management
   summaryUpToMessageId?: string // ID of the last message included in the summary

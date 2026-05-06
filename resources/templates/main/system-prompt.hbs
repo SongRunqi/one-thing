@@ -10,6 +10,16 @@
 {{!-- 2. Working directory context --}}
 {{> context/working-directory baseDirectory=baseDirectory workingDirectory=workingDirectory displayPath=displayPath hasTools=hasTools}}
 
+{{#if hasTools}}
+{{> context/active-project activeProject=activeProject}}
+{{> context/known-projects knownProjects=knownProjects}}
+
+# Context Variables
+{{{contextVariables}}}
+
+{{> guidance/workdir-protocol}}
+{{/if}}
+
 {{!-- 3. OS-specific context --}}
 
 # Operating System Context

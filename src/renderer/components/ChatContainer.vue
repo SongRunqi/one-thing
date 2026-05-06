@@ -473,7 +473,6 @@ onUnmounted(() => {
   display: flex;
   height: 100%;
   gap: 8px;
-  -webkit-app-region: no-drag;
   position: relative;
   overflow: hidden;
 }
@@ -700,6 +699,7 @@ onUnmounted(() => {
   justify-content: center;
   background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
   position: relative;
+  -webkit-app-region: drag;
 }
 
 .empty-state-drag-region {
@@ -722,6 +722,7 @@ onUnmounted(() => {
   gap: 12px;
   color: var(--muted);
   text-align: center;
+  -webkit-app-region: no-drag;
 }
 
 .empty-state-content svg {
@@ -754,6 +755,7 @@ onUnmounted(() => {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
 }
 
 .new-chat-btn:hover {

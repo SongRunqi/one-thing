@@ -210,7 +210,9 @@
               class="section-reset"
               type="button"
               @click="providerSettings.resetProviderTemperature"
-            >Reset</button>
+            >
+              Reset
+            </button>
           </h3>
           <div
             class="settings-group"
@@ -264,7 +266,9 @@
               class="section-reset"
               type="button"
               @click="providerSettings.resetActiveModelMaxOutput"
-            >Reset</button>
+            >
+              Reset
+            </button>
           </h3>
           <div
             class="settings-group"
