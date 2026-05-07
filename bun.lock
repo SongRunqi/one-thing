@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "0neThing",
+      "name": "onething",
       "dependencies": {
         "@agentclientprotocol/sdk": "^0.17.1",
         "@ai-sdk/anthropic": "^3.0.1",

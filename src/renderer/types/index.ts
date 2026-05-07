@@ -307,7 +307,7 @@ export interface ElectronAPI {
   mcpReadConfigFile: (filePath: string) => Promise<MCPReadConfigFileResponse>
 
   // Skills methods (Official Claude Code Skills)
-  getSkills: () => Promise<GetSkillsResponse>
+  getSkills: (workingDirectory?: string) => Promise<GetSkillsResponse>
   refreshSkills: () => Promise<RefreshSkillsResponse>
   readSkillFile: (skillId: string, fileName: string) => Promise<ReadSkillFileResponse>
   openSkillDirectory: (skillId?: string) => Promise<OpenSkillDirectoryResponse>

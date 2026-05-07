@@ -22,7 +22,7 @@ const GLOBAL_VARIABLE_SCHEMA = z.object({
 })
 
 export const VARIABLES_FILE_SCHEMA = z.object({
-  ai_note_dir: z.string().default('~/.0nething/notes'),
+  ai_note_dir: z.string().default('~/.onething/notes'),
   user_note_dir: z.string().default(''),
   work_note_dir: z.string().default(''),
   global_variables: z.array(GLOBAL_VARIABLE_SCHEMA).default([]),
@@ -32,7 +32,7 @@ export type VariablesFile = z.infer<typeof VARIABLES_FILE_SCHEMA>
 
 export function createDefaultVariablesFile(): VariablesFile {
   return {
-    ai_note_dir: '~/.0nething/notes',
+    ai_note_dir: '~/.onething/notes',
     user_note_dir: '',
     work_note_dir: '',
     global_variables: [],

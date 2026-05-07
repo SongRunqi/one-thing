@@ -15,6 +15,7 @@ import path from 'path'
 import os from 'os'
 import crypto from 'crypto'
 import { app } from 'electron'
+import { parse as parseYaml } from 'yaml'
 import type { SkillDefinition, SkillFile, SkillSource } from '../../shared/ipc.js'
 import { listPluginSkillRoots, type PluginSkillRoot } from './plugin-roots.js'
 
@@ -38,6 +39,28 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter | nu
 
   const yamlContent = match[1]
   const body = match[2]
+
+  try {
+    const parsed = parseYaml(yamlContent) as Record<string, unknown> | null
+    if (parsed && typeof parsed === 'object') {
+      const name = typeof parsed.name === 'string' ? parsed.name : ''
+      const description = typeof parsed.description === 'string' ? parsed.description : ''
+      const allowed = parsed['allowed-tools']
+      const allowedTools = Array.isArray(allowed)
+        ? allowed.filter((item): item is string => typeof item === 'string')
+        : undefined
+      return {
+        frontmatter: {
+          name,
+          description,
+          ...(allowedTools ? { 'allowed-tools': allowedTools } : {}),
+        },
+        body,
+      }
+    }
+  } catch (error) {
+    console.warn('[Skills] YAML frontmatter parser failed, falling back to simple parser:', error)
+  }
 
   // Simple YAML parsing for our specific use case
   const frontmatter: Partial<SkillFrontmatter> = {}
@@ -435,6 +458,62 @@ function loadPluginRootSkills(root: PluginSkillRoot): SkillDefinition[] {
   return skills
 }
 
+function findClaudePluginSkillPaths(): string[] {
+  const marketplacesDir = path.join(os.homedir(), '.claude', 'plugins', 'marketplaces')
+  if (!fs.existsSync(marketplacesDir)) return []
+
+  const roots: string[] = []
+  const visited = new Set<string>()
+  const maxDepth = 7
+
+  function scan(dir: string, depth: number): void {
+    if (depth > maxDepth) return
+    let resolved: string
+    try {
+      resolved = fs.realpathSync(dir)
+    } catch {
+      resolved = path.resolve(dir)
+    }
+    if (visited.has(resolved)) return
+    visited.add(resolved)
+
+    if (path.basename(dir) === 'skills') {
+      roots.push(dir)
+      return
+    }
+
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || EXCLUDED_DIRECTORIES.has(entry.name)) continue
+      const fullPath = path.join(dir, entry.name)
+      if (isDirectoryEntry(fullPath, entry)) {
+        scan(fullPath, depth + 1)
+      }
+    }
+  }
+
+  scan(marketplacesDir, 0)
+  return roots
+}
+
+function loadClaudePluginSkills(): SkillDefinition[] {
+  const skillPaths = findClaudePluginSkillPaths()
+  const skills = skillPaths.flatMap(skillPath => {
+    const ownerId = `claude:${path.relative(path.join(os.homedir(), '.claude', 'plugins'), skillPath)}`
+    const loaded = loadSkillsFromPath(skillPath, 'plugin', { ownerId })
+    console.log(`[Skills] Claude plugin skills path: ${skillPath}, found ${loaded.length} skills:`, loaded.map(s => s.name))
+    return loaded
+  })
+  console.log(`[Skills] Found ${skillPaths.length} Claude plugin skill directories`)
+  return skills
+}
+
 /**
  * Load all skills from user, project, and builtin directories
  * Uses upward traversal for project skills when workingDirectory is provided
@@ -486,9 +565,12 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
   // 5. Plugin-provided skill roots
   const pluginSkills = listPluginSkillRoots().flatMap(loadPluginRootSkills)
 
-  // Priority: project > plugin > user > env > builtin
+  // 6. Claude-compatible plugin marketplace skills
+  const claudePluginSkills = loadClaudePluginSkills()
+
+  // Priority: project > plugin > Claude plugin > user > env > builtin
   // Builtin skills can be overridden by user/project skills with the same name
-  const allSkills = [...projectSkills, ...pluginSkills, ...userSkills, ...envSkills, ...builtinSkills]
+  const allSkills = [...projectSkills, ...pluginSkills, ...claudePluginSkills, ...userSkills, ...envSkills, ...builtinSkills]
 
   // Deduplicate by name (first one wins, so higher priority sources take precedence)
   const seenNames = new Set<string>()
@@ -500,7 +582,7 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
     return true
   })
 
-  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${pluginSkills.length} plugin, ${envSkills.length} env skills`)
+  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${pluginSkills.length} plugin, ${claudePluginSkills.length} Claude plugin, ${envSkills.length} env skills`)
   console.log(`[Skills] Total skills (after dedup): ${dedupedSkills.length}, names:`, dedupedSkills.map(s => s.name))
 
   return dedupedSkills

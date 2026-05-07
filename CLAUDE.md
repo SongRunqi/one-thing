@@ -25,7 +25,7 @@ bun run typecheck          # typecheck:node + typecheck:web
 
 ## Architecture Overview
 
-This is **0neThing**, an Electron-based AI chat desktop app with multi-provider support, tool calling, and an event-driven streaming engine.
+This is **onething**, an Electron-based AI chat desktop app with multi-provider support, tool calling, and an event-driven streaming engine.
 
 ### Three-Process Model
 

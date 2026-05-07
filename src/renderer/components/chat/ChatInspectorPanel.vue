@@ -1508,7 +1508,6 @@ textarea.variable-value-input {
   height: 18px;
   border-radius: 4px;
   color: var(--muted);
-  transform: rotate(-90deg);
   transition: transform 0.15s ease, color 0.15s ease;
 }
 

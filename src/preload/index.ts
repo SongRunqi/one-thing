@@ -356,8 +356,8 @@ const electronAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.MCP_READ_CONFIG_FILE, { filePath }),
 
   // Skills methods (Official Claude Code Skills)
-  getSkills: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_GET_ALL),
+  getSkills: (workingDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_GET_ALL, { workingDirectory }),
 
   refreshSkills: () =>
     ipcRenderer.invoke(IPC_CHANNELS.SKILLS_REFRESH),

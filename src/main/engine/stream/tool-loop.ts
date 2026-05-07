@@ -48,6 +48,8 @@ const DEBUG_STREAM = process.env.DEBUG_STREAM === '1' || process.env.DEBUG_STREA
  */
 export interface StreamResult {
   pausedForConfirmation: boolean  // Stream paused waiting for tool confirmation
+  ctx?: StreamContext
+  processor?: StreamProcessor
 }
 
 /**
@@ -184,6 +186,67 @@ function appendAssistantTurnMessage(
   conversationMessages.push(assistantMsg)
 }
 
+async function markAssistantTurnComplete(
+  ctx: StreamContext,
+  processor: StreamProcessor,
+): Promise<void> {
+  await processor.finalize()
+  try {
+    const eventBus = getEventBus()
+    await eventBus.emit(ctx.sessionId, {
+      type: 'message:updated',
+      messageId: ctx.assistantMessageId,
+      updates: { isStreaming: false },
+    })
+  } catch (err) {
+    console.error('[ToolLoop] message:updated emit error:', err)
+  }
+}
+
+async function createNextAssistantTurn(
+  ctx: StreamContext,
+): Promise<{ ctx: StreamContext; processor: StreamProcessor; emitter: IPCEmitter }> {
+  const assistantMessageId = uuidv4()
+  const assistantMessage: ChatMessage = {
+    id: assistantMessageId,
+    role: 'assistant',
+    model: ctx.providerConfig.model,
+    content: '',
+    timestamp: Date.now(),
+    isStreaming: true,
+    thinkingStartTime: Date.now(),
+    toolCalls: [],
+    contentParts: [],
+  }
+
+  store.addMessage(ctx.sessionId, assistantMessage)
+
+  ctx.assistantMessageId = assistantMessageId
+
+  try {
+    const eventBus = getEventBus()
+    await eventBus.emit(ctx.sessionId, {
+      type: 'message:assistant-created',
+      message: assistantMessage,
+    })
+    await eventBus.emit(ctx.sessionId, {
+      type: 'stream:start',
+      messageId: assistantMessageId,
+      assistantMessageId,
+      model: ctx.providerConfig.model,
+    })
+  } catch (err) {
+    console.error('[ToolLoop] assistant turn emit error:', err)
+  }
+
+  const nextProcessor = createStreamProcessor(ctx)
+  return {
+    ctx,
+    processor: nextProcessor,
+    emitter: createEventOnlyEmitter(ctx),
+  }
+}
+
 /**
  * Unified stream execution function
  * Handles both tool-enabled and simple streaming in a single code path
@@ -201,11 +264,13 @@ export async function runStream(
   steeringQueue?: PendingMessageQueue,
   followUpQueue?: PendingMessageQueue,
   systemPromptSegments?: import('../prompt/types.js').PromptSegment[],
+  onWriterChanged?: (writer: { ctx: StreamContext; processor: StreamProcessor; emitter: IPCEmitter }) => void,
 ): Promise<StreamResult> {
   const MAX_TOOL_TURNS = 100
   let currentTurn = 0
+  let assistantTurn = 0
   const apiType = getProviderApiType(ctx.settings, ctx.providerId)
-  const emitter = createEventOnlyEmitter(ctx)
+  let emitter = createEventOnlyEmitter(ctx)
 
   // Get model context length for logging
   let modelContextLength = 128000
@@ -231,11 +296,23 @@ export async function runStream(
     while (hasMoreToolCalls || pendingSteering.length > 0) {
       // 1. Inject pending steering messages before the next LLM call
       if (pendingSteering.length > 0) {
-        injectPendingMessages(ctx, conversationMessages, emitter, pendingSteering)
+        if (currentTurn > 0) {
+          await markAssistantTurnComplete(ctx, processor)
+          injectPendingMessages(ctx, conversationMessages, emitter, pendingSteering)
+          const next = await createNextAssistantTurn(ctx)
+          ctx = next.ctx
+          processor = next.processor
+          emitter = next.emitter
+          onWriterChanged?.(next)
+          assistantTurn = 0
+        } else {
+          injectPendingMessages(ctx, conversationMessages, emitter, pendingSteering)
+        }
         pendingSteering = []
       }
 
       currentTurn++
+      assistantTurn++
       const turn = createTurnState()
       let visibleToolInputId: string | undefined
       const bufferedToolChunks = new Map<string, StreamChunkWithTools[]>()
@@ -245,7 +322,7 @@ export async function runStream(
       logTurnStart(currentTurn)
 
       // Send continuation at the START of each turn (except first) to show waiting indicator
-      if (currentTurn > 1) {
+      if (assistantTurn > 1) {
         emitter.sendContinuation(currentTurn)
       }
 
@@ -583,12 +660,12 @@ export async function runStream(
             const paused = await processToolChunk(chunk)
             if (paused) {
               console.log(`[Backend] Tool requires user confirmation, pausing loop`)
-              return { pausedForConfirmation: true }
+              return { pausedForConfirmation: true, ctx, processor }
             }
             const bufferedPaused = await flushBufferedToolChunks()
             if (bufferedPaused) {
               console.log(`[Backend] Tool requires user confirmation, pausing loop`)
-              return { pausedForConfirmation: true }
+              return { pausedForConfirmation: true, ctx, processor }
             }
           }
         }
@@ -655,7 +732,7 @@ export async function runStream(
     // If any tool requires confirmation, stop the loop and signal pause
     if (turn.toolCalls.some(tc => tc.requiresConfirmation)) {
       console.log(`[Backend] Tool requires user confirmation, pausing loop`)
-      return { pausedForConfirmation: true }
+      return { pausedForConfirmation: true, ctx, processor }
     }
 
     let appendedContinuation = false
@@ -717,7 +794,7 @@ export async function runStream(
     console.log(`[Backend] Reached max tool turns (${MAX_TOOL_TURNS})`)
   }
 
-  return { pausedForConfirmation: false }
+  return { pausedForConfirmation: false, ctx, processor }
 }
 
 /**
@@ -774,6 +851,9 @@ export async function executeStreamGeneration(
 ): Promise<StreamGenerationResult> {
   const processor = createStreamProcessor(ctx)
   const emitter = createEventOnlyEmitter(ctx)
+  let activeCtx = ctx
+  let activeProcessor = processor
+  let activeEmitter = emitter
 
   try {
     console.log('[Backend] Starting streaming for message:', ctx.assistantMessageId)
@@ -898,37 +978,54 @@ export async function executeStreamGeneration(
 
     // Unified stream execution - works for both tools and no-tools modes
     // When toolsForAI is {}, the stream loop naturally exits after first turn
-    const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, processor, enabledSkills, ctx.steeringQueue, ctx.followUpQueue, systemPromptSegments)
+    const result = await runStream(
+      ctx,
+      conversationMessages,
+      systemPrompt,
+      toolsForAI,
+      processor,
+      enabledSkills,
+      ctx.steeringQueue,
+      ctx.followUpQueue,
+      systemPromptSegments,
+      (writer) => {
+        activeCtx = writer.ctx
+        activeProcessor = writer.processor
+        activeEmitter = writer.emitter
+      },
+    )
     pausedForConfirmation = result.pausedForConfirmation
+    const finalCtx = result.ctx || activeCtx
+    const finalProcessor = result.processor || activeProcessor
 
     // Log request end with structured format
     const requestDurationMs = Date.now() - requestStartTime
     const requestDuration = requestDurationMs / 1000
-    logRequestEnd(requestDuration, ctx.accumulatedUsage, ctx.lastTurnUsage)
+    logRequestEnd(requestDuration, finalCtx.accumulatedUsage, finalCtx.lastTurnUsage)
 
     // Add duration to usage for speed calculation in UI
-    if (ctx.accumulatedUsage) {
-      ctx.accumulatedUsage.durationMs = requestDurationMs
+    if (finalCtx.accumulatedUsage) {
+      finalCtx.accumulatedUsage.durationMs = requestDurationMs
     }
 
     // Only finalize and run post-processing if not paused for tool confirmation
     if (!pausedForConfirmation) {
-      await processor.finalize()
-      const updatedSession = store.getSession(ctx.sessionId)
-      emitter.sendStreamComplete({
+      await finalProcessor.finalize()
+      const updatedSession = store.getSession(finalCtx.sessionId)
+      activeEmitter.sendStreamComplete({
         sessionName: updatedSession?.name || sessionName,
-        usage: ctx.accumulatedUsage,
-        lastTurnUsage: ctx.lastTurnUsage,  // For correct context size calculation
+        usage: finalCtx.accumulatedUsage,
+        lastTurnUsage: finalCtx.lastTurnUsage,  // For correct context size calculation
       })
       // TODO(Phase 3): Migrate UI_MESSAGE_STREAM to event system — separate protocol for AI SDK 6.x clients
-      sendUIMessageFinish(ctx.sender, ctx.sessionId, ctx.assistantMessageId, 'stop', ctx.accumulatedUsage)
+      sendUIMessageFinish(finalCtx.sender, finalCtx.sessionId, finalCtx.assistantMessageId, 'stop', finalCtx.accumulatedUsage)
       // Save usage to message for future token subtraction on edit/regenerate
-      if (ctx.accumulatedUsage) {
-        store.updateMessageUsage(ctx.sessionId, ctx.assistantMessageId, ctx.accumulatedUsage)
+      if (finalCtx.accumulatedUsage) {
+        store.updateMessageUsage(finalCtx.sessionId, finalCtx.assistantMessageId, finalCtx.accumulatedUsage)
         // Update session usage cache (pass lastTurnUsage for correct context size)
-        updateSessionUsage(ctx.sessionId, ctx.accumulatedUsage, ctx.lastTurnUsage)
+        updateSessionUsage(finalCtx.sessionId, finalCtx.accumulatedUsage, finalCtx.lastTurnUsage)
       }
-      console.log('[Backend] Streaming complete, total usage:', ctx.accumulatedUsage)
+      console.log('[Backend] Streaming complete, total usage:', finalCtx.accumulatedUsage)
 
       // Run post-response triggers asynchronously
       // Get the last user message from history
@@ -936,20 +1033,20 @@ export async function executeStreamGeneration(
         .filter(m => m.role === 'user')
         .pop()
 
-      if (lastUserMessageObj && processor.accumulatedContent) {
+      if (lastUserMessageObj && finalProcessor.accumulatedContent) {
         const lastUserMessageText = getTextFromContent(lastUserMessageObj.content)
 
 
-        const updatedSessionForTriggers = store.getSession(ctx.sessionId)
+        const updatedSessionForTriggers = store.getSession(finalCtx.sessionId)
         if (updatedSessionForTriggers) {
           const triggerContext: TriggerContext = {
-            sessionId: ctx.sessionId,
+            sessionId: finalCtx.sessionId,
             session: updatedSessionForTriggers,
             messages: updatedSessionForTriggers.messages,
             lastUserMessage: lastUserMessageText,
-            lastAssistantMessage: processor.accumulatedContent,
-            providerId: ctx.providerId,
-            providerConfig: ctx.providerConfig,
+            lastAssistantMessage: finalProcessor.accumulatedContent,
+            providerId: finalCtx.providerId,
+            providerConfig: finalCtx.providerConfig,
           }
 
           // Run triggers asynchronously - don't await
@@ -968,8 +1065,8 @@ export async function executeStreamGeneration(
 
     if (isAborted) {
       console.log('[Backend] Stream aborted by user')
-      await processor.finalize()
-      emitter.sendStreamAborted('User cancelled')
+      await activeProcessor.finalize()
+      activeEmitter.sendStreamAborted('User cancelled')
     } else {
       console.error('[Backend] Streaming error:', error)
 
@@ -978,24 +1075,24 @@ export async function executeStreamGeneration(
 
       // Keep the assistant message with any content already generated
       // Just mark it with error details instead of deleting
-      await processor.finalize()
+      await activeProcessor.finalize()
 
       const errorDetailsStr = extractErrorDetails(error) ?? ''
       const errorContent = error.message || 'Streaming error'
 
       // Update the assistant message with error details
-      store.updateMessageError(ctx.sessionId, ctx.assistantMessageId, errorDetailsStr)
+      store.updateMessageError(activeCtx.sessionId, activeCtx.assistantMessageId, errorDetailsStr)
 
       // Send error event to frontend (message is preserved, error is added)
-      emitter.sendStreamError({
+      activeEmitter.sendStreamError({
         error: errorContent,
         errorDetails: errorDetailsStr,
         preserved: true,  // Flag to indicate message content is preserved
       })
 
       // Also send stream complete to properly finalize the UI state
-      emitter.sendStreamComplete({
-        sessionName: store.getSession(ctx.sessionId)?.name,
+      activeEmitter.sendStreamComplete({
+        sessionName: store.getSession(activeCtx.sessionId)?.name,
         error: errorContent,
       })
     }

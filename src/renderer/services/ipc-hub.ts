@@ -105,6 +105,10 @@ export function initializeIPCHub() {
         store.handleAssistantCreated({ sessionId, message: (event as any).message })
         break
 
+      case 'message:updated':
+        store.updateSessionMessage(sessionId, (event as any).messageId, (event as any).updates)
+        break
+
       case 'message:deleted':
         store.handleMessageDeleted({ sessionId, messageId: (event as any).messageId })
         break

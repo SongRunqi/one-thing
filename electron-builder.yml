@@ -1,5 +1,5 @@
 appId: com.onething.app
-productName: 0neThing
+productName: onething
 directories:
   buildResources: build
   output: release

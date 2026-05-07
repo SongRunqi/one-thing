@@ -43,7 +43,7 @@ async function getCopilotCompletionToken(githubAccessToken: string): Promise<str
     headers: {
       'Authorization': `Bearer ${githubAccessToken}`,
       'Accept': 'application/json',
-      'User-Agent': '0neThing/1.0',
+      'User-Agent': 'onething/1.0',
       'Editor-Version': 'vscode/1.85.1',
       'Editor-Plugin-Version': 'copilot-chat/0.29.1',
     },
@@ -89,7 +89,7 @@ export async function fetchCopilotModels(githubAccessToken: string): Promise<Mod
         'Copilot-Integration-Id': 'vscode-chat',
         'Editor-Version': 'vscode/1.85.1',
         'Editor-Plugin-Version': 'copilot-chat/0.29.1',
-        'User-Agent': '0neThing/1.0',
+        'User-Agent': 'onething/1.0',
       },
     })
 
@@ -251,7 +251,7 @@ const githubCopilotProvider: ProviderDefinition = {
         'Editor-Version': 'vscode/1.85.1',
         'Editor-Plugin-Version': 'copilot-chat/0.29.1',
         'Copilot-Integration-Id': 'vscode-chat',
-        'User-Agent': '0neThing/1.0',
+        'User-Agent': 'onething/1.0',
         'OpenAI-Intent': 'conversation-panel',
       },
       fetch: createBoundFetch(localAddress),

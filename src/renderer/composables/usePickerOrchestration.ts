@@ -34,7 +34,7 @@ export function usePickerOrchestration(
 
   async function loadSkills() {
     try {
-      const response = await window.electronAPI.getSkills()
+      const response = await window.electronAPI.getSkills(workingDirectory.value || undefined)
       if (response.success && response.skills) {
         availableSkills.value = response.skills
       }
@@ -42,6 +42,10 @@ export function usePickerOrchestration(
       console.error('Failed to load skills:', error)
     }
   }
+
+  watch(workingDirectory, () => {
+    loadSkills()
+  })
 
   /** Returns true if any picker (except PathPicker) is visible */
   const anyPickerVisible = computed(() =>
@@ -57,6 +61,7 @@ export function usePickerOrchestration(
     const commandMatch = newValue.match(/^\/(\w*)$/)
 
     if (commandMatch) {
+      loadSkills()
       const query = commandMatch[1]
       const items = filterPaletteItems(query, enabledSkills.value)
       if (items.length > 0) {

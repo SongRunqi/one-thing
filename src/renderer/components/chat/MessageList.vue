@@ -69,6 +69,22 @@
       @navigate="navigateToUserMessage"
     />
 
+    <Transition name="scroll-bottom-btn">
+      <button
+        v-if="!isFollowing && messages.length > 0"
+        class="scroll-to-bottom-btn"
+        type="button"
+        title="Scroll to bottom"
+        aria-label="Scroll to bottom"
+        @click="scrollToBottomFromButton"
+      >
+        <ArrowDown
+          :size="18"
+          :stroke-width="2"
+        />
+      </button>
+    </Transition>
+
     <!-- Reject Reason Dialog -->
     <Teleport to="body">
       <Transition name="modal-fade">
@@ -139,6 +155,7 @@ import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
 import UserMessageNavRail, { type UserMessageNavMarker } from './UserMessageNavRail.vue'
+import { ArrowDown } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
@@ -646,6 +663,13 @@ usePermissionShortcuts(
 
 // handlePermissionRequest is now in the chat store (called by IPC Hub)
 // The store's handlePermissionRequest() updates messages reactively.
+
+function scrollToBottomFromButton() {
+  isFollowing.value = true
+  setNavIndexToLastUserMessage()
+  const el = messageListRef.value
+  if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+}
 
 // Detach on wheel-up, re-attach when user scrolls back to bottom
 function onWheel(e: WheelEvent) {
@@ -1178,6 +1202,47 @@ defineExpose({
   overflow: hidden;
 }
 
+.scroll-to-bottom-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 0.5px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated, var(--bg-panel)) 78%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  transition: background 0.15s ease, transform 0.15s ease, color 0.15s ease;
+  z-index: 4;
+}
+
+.scroll-to-bottom-btn:hover {
+  background: var(--bg-elevated, var(--bg-panel));
+  color: var(--accent);
+}
+
+.scroll-to-bottom-btn:active {
+  transform: translateX(-50%) scale(0.94);
+}
+
+.scroll-bottom-btn-enter-active,
+.scroll-bottom-btn-leave-active {
+  transition: opacity 0.15s ease, transform 0.18s ease;
+}
+.scroll-bottom-btn-enter-from,
+.scroll-bottom-btn-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(6px);
+}
+
 .message-list {
   flex: 1;
   overflow-y: auto;
@@ -1197,7 +1262,7 @@ defineExpose({
 
 .message-list-content {
   position: relative;
-  width: min(82%, 1040px);
+  width: min(74%, 860px);
   margin: 0 auto;
 }
 

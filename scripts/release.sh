@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Release script for 0neThing
+# Release script for onething
 # Usage: ./scripts/release.sh <version>
 # Example: ./scripts/release.sh 1.0.0
 
