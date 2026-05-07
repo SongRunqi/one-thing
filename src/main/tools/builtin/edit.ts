@@ -16,6 +16,10 @@ import { Permission } from '../../permission/index.js'
 // Diff library for generating unified diffs
 import { createTwoFilesPatch, diffLines } from 'diff'
 
+function filePermissionPattern(filePath: string): string {
+  return path.join(path.dirname(filePath), '*')
+}
+
 /**
  * Edit Tool Metadata
  */
@@ -126,13 +130,10 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
         },
       })
 
-      // Request permission for file edit (shows diff in UI)
-      // If external, include directory path in pattern for proper permission
+      // Request permission for this directory's file edits (shows diff in UI).
       await Permission.ask({
         type: 'file_edit',
-        pattern: isExternal
-          ? [path.dirname(resolvedPath), resolvedPath]
-          : resolvedPath,
+        pattern: filePermissionPattern(resolvedPath),
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
         callId: ctx.toolCallId,
@@ -225,13 +226,10 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
       },
     })
 
-    // Request permission for file edit (shows diff in UI)
-    // If external, include directory path in pattern for proper permission
+    // Request permission for this directory's file edits (shows diff in UI).
     await Permission.ask({
       type: 'file_edit',
-      pattern: isExternal
-        ? [path.dirname(resolvedPath), resolvedPath]
-        : resolvedPath,
+      pattern: filePermissionPattern(resolvedPath),
       sessionId: ctx.sessionId,
       messageId: ctx.messageId,
       callId: ctx.toolCallId,

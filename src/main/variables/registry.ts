@@ -109,7 +109,7 @@ export class VariableRegistry {
     assertValidValue(input.value)
 
     return this.serialize(ctx.sessionId, async () => {
-      const provider = this.findClaimant(input.name)
+      const provider = this.findClaimant(input.name, input.scope)
       if (!provider) {
         throw new VariableError(
           'NO_PROVIDER',
@@ -123,8 +123,7 @@ export class VariableRegistry {
         )
       }
       const result = await provider.set(ctx, input)
-      const snapshot = await this.list(ctx)
-      this.emit(ctx, snapshot)
+      await this.emitForWrite(ctx, input.scope)
       return result
     })
   }
@@ -133,10 +132,10 @@ export class VariableRegistry {
    * Route a delete to the claiming provider. NOT_FOUND if nobody owns
    * the name; READONLY if the provider lacks a delete capability.
    */
-  async delete(ctx: VariableContext, name: string): Promise<void> {
+  async delete(ctx: VariableContext, name: string, scope?: 'global' | 'session'): Promise<void> {
     assertValidName(name)
     return this.serialize(ctx.sessionId, async () => {
-      const provider = this.findClaimant(name)
+      const provider = this.findClaimant(name, scope)
       if (!provider) {
         throw new VariableError('NOT_FOUND', `No variable named "${name}"`)
       }
@@ -147,8 +146,7 @@ export class VariableRegistry {
         )
       }
       await provider.delete(ctx, name)
-      const snapshot = await this.list(ctx)
-      this.emit(ctx, snapshot)
+      await this.emitForWrite(ctx, scope)
     })
   }
 
@@ -170,8 +168,21 @@ export class VariableRegistry {
 
   // ── internals ───────────────────────────────────────────────
 
-  private findClaimant(name: string): VariableProvider | undefined {
-    return this.providers.find(p => p.claims(name))
+  private findClaimant(name: string, scope?: 'global' | 'session'): VariableProvider | undefined {
+    if (scope === 'global') {
+      return this.providers.find(p => p.id === 'global-store' && p.claims(name))
+        ?? this.providers.find(p => p.id !== 'session-store' && p.claims(name))
+    }
+    if (scope === 'session') {
+      return this.providers.find(p => p.id !== 'global-store' && p.claims(name))
+    }
+    return this.providers.find(p => p.id !== 'global-store' && p.claims(name))
+  }
+
+  private async emitForWrite(ctx: VariableContext, scope?: 'global' | 'session'): Promise<void> {
+    const snapshot = await this.list(ctx)
+    this.emit(ctx, snapshot)
+    if (scope === 'global') this.broadcast()
   }
 
   private serialize<T>(sessionId: string, task: () => Promise<T>): Promise<T> {

@@ -60,6 +60,7 @@ export class SessionStoreProvider implements VariableProvider {
       .map(v => ({
         name: v.name,
         value: v.value,
+        scope: 'session',
         description: v.description,
         updatedAt: v.updatedAt,
       }))
@@ -92,6 +93,7 @@ export class SessionStoreProvider implements VariableProvider {
     const next: ContextVariable = {
       name: input.name,
       value: input.value,
+      scope: 'session',
       description: input.description,
       updatedAt: Date.now(),
     }
@@ -115,4 +117,3 @@ export class SessionStoreProvider implements VariableProvider {
     return this.gateway.onChange((sessionId) => emit({ sessionId }))
   }
 }
-

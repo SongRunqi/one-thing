@@ -1,27 +1,10 @@
 <template>
   <div class="tool-step-details">
-    <div
-      v-if="view.streamingContent"
-      ref="streamingPreviewRef"
-      class="detail-section diff-preview"
-    >
-      <div class="diff-content streaming">
-        <div
-          v-for="(line, idx) in streamingLines"
-          :key="idx"
-          class="diff-line diff-add"
-        >
-          <span class="line-number new">{{ idx + 1 }}</span>
-          <span class="line-prefix">+</span>
-          <span class="line-content">{{ line }}</span>
-        </div>
-      </div>
-    </div>
-
     <ToolDiffPreview
-      v-else-if="view.diff"
-      :diff="view.diff"
-      :lines="view.diffLines"
+      v-if="activeDiff"
+      ref="streamingPreviewRef"
+      :diff="activeDiff"
+      :lines="activeDiffLines"
       :status="view.status"
     />
 
@@ -90,20 +73,16 @@ const props = defineProps<{
   view: ToolStepView
 }>()
 
-const streamingPreviewRef = ref<HTMLElement | null>(null)
+const streamingPreviewRef = ref<InstanceType<typeof ToolDiffPreview> | null>(null)
 
-const streamingLines = computed(() => {
-  const content = props.view.streamingContent?.content
-  return content ? content.split('\n') : []
-})
+const activeDiff = computed(() => props.view.diff || props.view.streamingDiff)
+const activeDiffLines = computed(() => props.view.diff ? props.view.diffLines : props.view.streamingDiffLines)
 
 watch(
   () => props.view.streamingContent?.content,
   () => {
     nextTick(() => {
-      if (streamingPreviewRef.value) {
-        streamingPreviewRef.value.scrollTop = streamingPreviewRef.value.scrollHeight
-      }
+      streamingPreviewRef.value?.scrollToBottom()
     })
   },
   { immediate: true },
@@ -167,62 +146,4 @@ pre {
   border-left: 2px solid color-mix(in srgb, var(--color-danger) 45%, transparent);
 }
 
-.diff-preview {
-  margin-top: 2px;
-}
-
-.diff-content {
-  background: var(--bg-code-block);
-  border: 1px solid var(--border-code);
-  border-radius: var(--radius-sm, 8px);
-  max-height: 240px;
-  overflow-y: auto;
-  font-size: var(--font-size-sm, 12px);
-  line-height: var(--line-height-normal, 1.5);
-  font-family: var(--font-mono);
-}
-
-.diff-line {
-  display: flex;
-  white-space: pre;
-  padding: 1px 10px 1px 0;
-  min-height: 21px;
-  align-items: center;
-}
-
-.line-number {
-  width: 42px;
-  text-align: right;
-  padding-right: 10px;
-  color: var(--text-faint);
-  user-select: none;
-  flex-shrink: 0;
-  font-size: var(--font-size-xs, 11px);
-}
-
-.line-prefix {
-  width: 18px;
-  min-width: 18px;
-  text-align: center;
-  user-select: none;
-  flex-shrink: 0;
-  font-weight: 600;
-  color: var(--text-success);
-}
-
-.line-content {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  padding-right: 8px;
-}
-
-.diff-add {
-  background: var(--diff-add-bg);
-  color: var(--diff-add-text);
-}
-
-.diff-add .line-number {
-  color: rgba(var(--color-success-rgb), 0.6);
-}
 </style>

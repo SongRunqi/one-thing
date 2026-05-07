@@ -5,6 +5,7 @@ import {
   popTrailingTransient,
   pushDataStepsIfMissing,
   pushWaiting,
+  removeTransientIndicators,
   upsertToolCall,
 } from '../helpers/content-parts'
 import type { ContentPart, ToolCall } from '@/types'
@@ -45,6 +46,29 @@ describe('content-parts helpers', () => {
       const parts: ContentPart[] = []
       popTrailingTransient(parts)
       expect(parts).toEqual([])
+    })
+  })
+
+  describe('removeTransientIndicators', () => {
+    it('removes all waiting and loading-memory parts', () => {
+      const parts: ContentPart[] = [
+        { type: 'text', content: 'a' },
+        { type: 'waiting' },
+        { type: 'data-steps', turnIndex: 1 },
+        { type: 'loading-memory' },
+        { type: 'waiting' },
+      ]
+      expect(removeTransientIndicators(parts)).toBe(true)
+      expect(parts).toEqual([
+        { type: 'text', content: 'a' },
+        { type: 'data-steps', turnIndex: 1 },
+      ])
+    })
+
+    it('returns false when there are no transient parts', () => {
+      const parts: ContentPart[] = [{ type: 'text', content: 'hi' }]
+      expect(removeTransientIndicators(parts)).toBe(false)
+      expect(parts).toEqual([{ type: 'text', content: 'hi' }])
     })
   })
 

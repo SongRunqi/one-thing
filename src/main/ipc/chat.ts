@@ -778,7 +778,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
 
     const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
-    const systemPrompt = buildSystemPrompt({
+    const { text: systemPrompt } = buildSystemPrompt({
       hasTools,
       skills: enabledSkills,
       workingDirectory: session.workingDirectory,

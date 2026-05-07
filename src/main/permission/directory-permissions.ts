@@ -228,5 +228,13 @@ function matchWildcard(text: string, pattern: string): boolean {
     const prefix = pattern.slice(0, -1)
     return text.startsWith(prefix)
   }
+  // Compatibility: older file-edit/write approvals were persisted as the
+  // concrete file path. New requests use the containing directory wildcard
+  // ("/dir/*"), so treat an old approved file in that directory as approval
+  // for the upgraded directory-scoped request.
+  if (text.endsWith('*') && path.isAbsolute(text) && path.isAbsolute(pattern)) {
+    const dir = text.slice(0, -1).replace(/[\\/]$/, '')
+    return path.dirname(pattern) === dir
+  }
   return false
 }

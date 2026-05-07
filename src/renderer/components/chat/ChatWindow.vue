@@ -19,7 +19,7 @@
       @toggle-inspector="inspectorOpen = !inspectorOpen"
     />
 
-    <!-- Chat body + optional Inspector drawer (right) -->
+    <!-- Chat body + optional session lens sidebar -->
     <div class="chat-shell">
       <div class="chat-body">
         <MessageList
@@ -48,11 +48,13 @@
         </div>
       </div>
 
-      <ChatInspectorPanel
-        v-if="inspectorOpen && effectiveSessionId"
-        :session-id="effectiveSessionId"
-        @close="inspectorOpen = false"
-      />
+      <Transition name="lens-pop">
+        <ChatInspectorPanel
+          v-if="inspectorOpen && effectiveSessionId"
+          :session-id="effectiveSessionId"
+          @close="inspectorOpen = false"
+        />
+      </Transition>
     </div>
 
     <!-- Settings Panel overlay -->
@@ -110,6 +112,8 @@ const {
   isLoading,
   isGenerating,
   sendMessage: chatSendMessage,
+  steerMessage: chatSteerMessage,
+  queueFollowUpMessage: chatQueueFollowUpMessage,
   regenerate: chatRegenerate,
   editAndResend: chatEditAndResend,
   stopGeneration: chatStopGeneration,
@@ -196,11 +200,17 @@ watch(effectiveSessionId, async (newId, oldId) => {
   }
 })
 
-async function handleSendMessage(message: string) {
+async function handleSendMessage(message: string, mode: 'send' | 'steer' | 'followup' = 'send') {
   if (!currentSession.value) return
   // User sending a message = intent to follow the response
   messageListRef.value?.scrollToBottom()
-  await chatSendMessage(message)
+  if (mode === 'steer') {
+    await chatSteerMessage(message)
+  } else if (mode === 'followup') {
+    await chatQueueFollowUpMessage(message)
+  } else {
+    await chatSendMessage(message)
+  }
 }
 
 async function handleStopGeneration() {
@@ -230,8 +240,8 @@ function handleSetInputText(text: string) {
   }
 }
 
-// Inspector panel (right-side drawer). Per-panel local state — closes
-// automatically with the chat panel; not persisted across reloads.
+// Session lens is local panel state: it closes with the chat panel and is
+// intentionally not persisted across reloads.
 const inspectorOpen = ref(false)
 
 // Focus the input box (for keyboard shortcuts)
@@ -282,6 +292,27 @@ defineExpose({
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+.lens-pop-enter-active,
+.lens-pop-leave-active {
+  transition: opacity 0.16s ease, width 0.18s ease;
+}
+
+.lens-pop-enter-active :deep(.session-lens-sidebar),
+.lens-pop-leave-active :deep(.session-lens-sidebar) {
+  transition: transform 0.18s ease, opacity 0.16s ease;
+}
+
+.lens-pop-enter-from,
+.lens-pop-leave-to {
+  opacity: 0;
+}
+
+.lens-pop-enter-from :deep(.session-lens-sidebar),
+.lens-pop-leave-to :deep(.session-lens-sidebar) {
+  opacity: 0;
+  transform: translateX(12px);
 }
 
 

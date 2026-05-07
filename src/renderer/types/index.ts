@@ -230,7 +230,7 @@ export interface ElectronAPI {
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
   // Variables subsystem (scalar variables)
   listVariables: (sessionId: string) => Promise<VariablesListResponse>
-  setVariable: (sessionId: string, name: string, value: string, description?: string) => Promise<VariablesSetResponse>
+  setVariable: (sessionId: string, name: string, value: string, description?: string, scope?: 'global' | 'session') => Promise<VariablesSetResponse>
   deleteVariable: (sessionId: string, name: string) => Promise<VariablesDeleteResponse>
   // Project directories — independent module
   projectDirsList: () => Promise<ProjectDirsListResponse>
@@ -397,6 +397,17 @@ export interface ElectronAPI {
 
   // Skill execution
   executeSkill: (skillId: string, options: { sessionId: string; input: string }) => Promise<{ success: boolean; result?: { output: string }; error?: string }>
+
+  // Plugin management
+  getPlugins: () => Promise<{ success: boolean; plugins?: Array<{
+    id: string; name: string; version: string; description: string;
+    author: string; loaded: boolean; enabled: boolean;
+    commands: string[]; error: string; dirPath: string;
+    needsInstall: boolean;
+  }>; error?: string }>
+  enablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
+  disablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
+  refreshPlugins: () => Promise<{ success: boolean; error?: string }>
 
 }
 

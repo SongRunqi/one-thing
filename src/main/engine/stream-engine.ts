@@ -15,7 +15,7 @@
 import type { WebContents } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import type { ChatMessage, MessageAttachment } from '../../shared/ipc.js'
-import type { SendMessageCommand, EditAndResendCommand, ResumeAfterConfirmCommand, RetryMessageCommand } from '../../shared/events/session-commands.js'
+import type { SendMessageCommand, EditAndResendCommand, ResumeAfterConfirmCommand, RetryMessageCommand, InjectSteeringCommand, InjectFollowUpCommand } from '../../shared/events/session-commands.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { ToolChatMessage } from '../providers/index.js'
 import { Permission } from '../permission/index.js'
@@ -36,6 +36,8 @@ import { getMCPToolsForAI } from '../mcp/index.js'
 import * as modelRegistry from '../providers/model-registry.js'
 import { buildContextVariablesPromptText } from '../variables/index.js'
 import { buildProjectDirsPromptVars } from '../project-dirs/index.js'
+import { getAIToolName } from '../providers/tool-name-alias.js'
+import { PendingMessageQueue, type PendingMessage } from './stream/message-queue.js'
 
 /**
  * Generate a short title from user message content
@@ -53,8 +55,53 @@ export class StreamEngine {
   private sender: WebContents | null = null
   private unsubs: Array<() => void> = []
 
+  /** Per-session steering message queues (injected mid-stream after each turn) */
+  private steeringQueues = new Map<string, PendingMessageQueue>()
+  /** Per-session follow-up message queues (injected only after agent stops) */
+  private followUpQueues = new Map<string, PendingMessageQueue>()
+
   getChannel(sessionId: string): string {
     return this.sessionChannels.get(sessionId) || 'ipc'
+  }
+
+  /** Get or create the steering queue for a session */
+  getSteeringQueue(sessionId: string): PendingMessageQueue {
+    let q = this.steeringQueues.get(sessionId)
+    if (!q) {
+      q = new PendingMessageQueue('one-at-a-time')
+      this.steeringQueues.set(sessionId, q)
+    }
+    return q
+  }
+
+  /** Get or create the follow-up queue for a session */
+  getFollowUpQueue(sessionId: string): PendingMessageQueue {
+    let q = this.followUpQueues.get(sessionId)
+    if (!q) {
+      q = new PendingMessageQueue('all')
+      this.followUpQueues.set(sessionId, q)
+    }
+    return q
+  }
+
+  /**
+   * Inject a steering message that will be processed after the current turn ends.
+   * This interrupts the agent's current work — use for urgent guidance.
+   */
+  steerMessage(sessionId: string, content: string, source = 'api'): void {
+    const q = this.getSteeringQueue(sessionId)
+    q.enqueue({ content, source, timestamp: Date.now() })
+    console.log(`[StreamEngine] Steering queued for ${sessionId.slice(0, 8)}: "${content.slice(0, 60)}..."`)
+  }
+
+  /**
+   * Inject a follow-up message that waits until the agent finishes.
+   * This doesn't interrupt — the agent completes its current work first.
+   */
+  followUpMessage(sessionId: string, content: string, source = 'api'): void {
+    const q = this.getFollowUpQueue(sessionId)
+    q.enqueue({ content, source, timestamp: Date.now() })
+    console.log(`[StreamEngine] Follow-up queued for ${sessionId.slice(0, 8)}: "${content.slice(0, 60)}..."`)
   }
 
   setEventBus(eventBus: EventBus): void {
@@ -88,6 +135,14 @@ export class StreamEngine {
         if (!this.sender) return
         this.handleResumeAfterConfirm(envelope.sessionId, envelope.event as ResumeAfterConfirmCommand, this.sender)
           .catch(err => console.error('[StreamEngine] command:resume-after-confirm error:', err))
+      }, 'StreamEngine'),
+      eventBus.onAnySession('command:inject-steering', (envelope) => {
+        const cmd = envelope.event as InjectSteeringCommand
+        this.steerMessage(envelope.sessionId, cmd.content, cmd.source || 'eventbus')
+      }, 'StreamEngine'),
+      eventBus.onAnySession('command:inject-followup', (envelope) => {
+        const cmd = envelope.event as InjectFollowUpCommand
+        this.followUpMessage(envelope.sessionId, cmd.content, cmd.source || 'eventbus')
       }, 'StreamEngine'),
     )
   }
@@ -374,7 +429,7 @@ export class StreamEngine {
       const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
 
       const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
-      const systemPrompt = buildSystemPrompt({
+      const { text: systemPrompt, segments: systemPromptSegments } = buildSystemPrompt({
         hasTools, skills: enabledSkills,
         workingDirectory: session.workingDirectory,
         contextVariables: await buildContextVariablesPromptText(sessionId),
@@ -403,7 +458,7 @@ export class StreamEngine {
         role: 'assistant',
         content: assistantMessage.content || '',
         toolCalls: toolCalls.map(tc => ({
-          toolCallId: tc.id, toolName: tc.toolName, args: tc.arguments,
+          toolCallId: tc.id, toolName: getAIToolName(tc.toolId || tc.toolName), args: tc.arguments,
         })),
         ...(assistantMessage.reasoning && { reasoningContent: assistantMessage.reasoning }),
       })
@@ -412,7 +467,7 @@ export class StreamEngine {
         role: 'tool',
         content: toolCalls.map(tc => ({
           type: 'tool-result' as const,
-          toolCallId: tc.id, toolName: tc.toolName,
+          toolCallId: tc.id, toolName: getAIToolName(tc.toolId || tc.toolName),
           result: tc.status === 'completed' ? tc.result : { error: tc.error },
         })),
       })
@@ -429,6 +484,8 @@ export class StreamEngine {
         abortSignal: abortController.signal,
         settings, providerConfig: configWithApiKey,
         providerId, toolSettings: settings.tools,
+        steeringQueue: this.getSteeringQueue(sessionId),
+        followUpQueue: this.getFollowUpQueue(sessionId),
       }
 
       const processor = createStreamProcessor(ctx, {
@@ -443,7 +500,7 @@ export class StreamEngine {
         const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
         const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
 
-        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, processor, enabledSkills)
+        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, processor, enabledSkills, ctx.steeringQueue, ctx.followUpQueue, systemPromptSegments)
 
         const requestDuration = (Date.now() - requestStartTime) / 1000
         console.log(`[StreamEngine] Resume completed in ${requestDuration.toFixed(2)}s`)
@@ -515,6 +572,9 @@ export class StreamEngine {
       this.activeStreams.delete(sessionId)
     }
     this.sessionChannels.delete(sessionId)
+    // Clear message queues for this session
+    this.steeringQueues.get(sessionId)?.clear()
+    this.followUpQueues.get(sessionId)?.clear()
     Permission.clearSession(sessionId)
     return !!controller
   }
@@ -535,6 +595,8 @@ export class StreamEngine {
     this.abortAll()
     for (const unsub of this.unsubs) unsub()
     this.unsubs = []
+    this.steeringQueues.clear()
+    this.followUpQueues.clear()
     this.sender = null
     console.log('[StreamEngine] Shut down')
   }

@@ -19,6 +19,7 @@ export type {
   SystemPromptVariables,
   SkillsVariables,
   TemplateSkill,
+  PromptSegment,
 } from './types.js'
 
 // Hot reload watcher (dev only)

@@ -110,11 +110,24 @@ export interface StreamParamsResolvingEvent {
 
 // ── Request inspector ───────────────────────────
 
+/** One slice of a system prompt, attributed to a specific .hbs template. */
+export interface PromptSourceSegment {
+  /** Path relative to resources/templates, no extension. */
+  source: string
+  content: string
+  /** Absolute on-disk path of the source .hbs file, for opening in an editor. */
+  absolutePath?: string
+}
+
 export interface RequestMessageSnapshot {
   role: 'system' | 'user' | 'assistant' | 'tool'
   /** First N chars of the text content, escaped, for quick preview. */
   contentPreview: string
+  /** Full text content for expanded inspection in the renderer. */
+  content: string
   contentLength: number
+  /** System only: per-template breakdown of the rendered prompt. */
+  sourceSegments?: PromptSourceSegment[]
   /** Assistant only: whether reasoning_content is attached to this turn. */
   hasReasoning: boolean
   reasoningLength?: number

@@ -523,8 +523,9 @@ export const useSessionsStore = defineStore('sessions', () => {
     name: string,
     value: string,
     description?: string,
+    scope?: 'global' | 'session',
   ): Promise<{ success: boolean; error?: string; code?: string }> {
-    const response = await window.electronAPI.setVariable(sessionId, name, value, description)
+    const response = await window.electronAPI.setVariable(sessionId, name, value, description, scope)
     return {
       success: response.success,
       error: response.error,

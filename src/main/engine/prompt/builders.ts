@@ -14,6 +14,7 @@ import type {
   SystemPromptVariables,
   SkillsVariables,
   TemplateSkill,
+  PromptSegment,
 } from './types.js'
 
 /**
@@ -44,7 +45,7 @@ export function buildSystemPrompt(options: {
   contextVariables?: string
   activeProject?: import('./types.js').PromptActiveProject
   knownProjects?: import('./types.js').PromptKnownProjects
-}): string {
+}): { text: string; segments: PromptSegment[] } {
   const pm = getPromptManager()
   const baseDir = os.homedir()
 
@@ -78,7 +79,7 @@ export function buildSystemPrompt(options: {
     toolUsageDocsPath,
   }
 
-  return pm.render('main/system-prompt', variables)
+  return pm.renderWithSegments('main/system-prompt', variables)
 }
 
 /**

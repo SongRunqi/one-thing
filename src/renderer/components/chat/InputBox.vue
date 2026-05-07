@@ -33,6 +33,7 @@
     <CommandPicker
       :visible="showCommandPicker"
       :query="commandQuery"
+      :skills="enabledSkills"
       @select="handleCommandSelect"
       @close="handleCommandPickerClose"
     />
@@ -61,12 +62,6 @@
       :path-input="pathQuery"
       @select="handlePathPickerSelect"
       @close="handlePathPickerClose"
-    />
-
-    <!-- Quick Command Bar -->
-    <QuickCommandBar
-      :session-id="effectiveSessionId"
-      @executed="handleQuickCommandExecuted"
     />
 
     <div
@@ -102,6 +97,41 @@
           class="toolbar-right"
           @click.stop
         >
+          <div
+            v-if="isLoading"
+            class="send-mode-toggle"
+            role="group"
+            aria-label="Streaming send mode"
+          >
+            <button
+              :class="{ active: streamingSendMode === 'steer' }"
+              type="button"
+              title="Steer the current tool loop"
+              @click="streamingSendMode = 'steer'"
+            >
+              Steer
+            </button>
+            <button
+              :class="{ active: streamingSendMode === 'followup' }"
+              type="button"
+              title="Queue for after this response"
+              @click="streamingSendMode = 'followup'"
+            >
+              Queue
+            </button>
+          </div>
+          <button
+            v-if="isLoading"
+            class="send-btn"
+            :disabled="!canSend"
+            :title="streamingSendMode === 'steer' ? 'Insert into current tool loop' : 'Queue message after current response'"
+            @click="sendMessage"
+          >
+            <Send
+              :size="18"
+              :stroke-width="2"
+            />
+          </button>
           <button
             v-if="isLoading || isSending"
             class="send-btn stop-btn"
@@ -142,7 +172,6 @@ import SkillPicker from './SkillPicker.vue'
 import CommandPicker from './CommandPicker.vue'
 import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
-import QuickCommandBar from './QuickCommandBar.vue'
 import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
 import { X, Square, Send, Check } from 'lucide-vue-next'
@@ -160,7 +189,7 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'sendMessage', message: string): void
+  (e: 'sendMessage', message: string, mode?: 'send' | 'steer' | 'followup'): void
   (e: 'stopGeneration'): void
 }
 
@@ -179,6 +208,7 @@ const quotedText = ref('')
 const isFocused = ref(false)
 const isSending = ref(false)
 const isComposing = ref(false)
+const streamingSendMode = ref<'steer' | 'followup'>('steer')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const composerWrapperRef = ref<HTMLElement | null>(null)
 
@@ -238,7 +268,7 @@ const { commandFeedback, showCommandFeedback } = useCommandFeedback()
 
 const canSend = computed(() => {
   const hasContent = messageInput.value.trim().length > 0
-  return hasContent && !props.isLoading
+  return hasContent && !isSending.value
 })
 
 // --- Watchers ---
@@ -364,23 +394,27 @@ async function sendMessage() {
 
       if (result.success) {
         showCommandFeedback('success', result.message || 'Done')
+        messageInput.value = ''
+        resetHistoryNavigation()
+        closeAllPickers()
+        nextTick(() => {
+          adjustHeight()
+          textareaRef.value?.focus()
+        })
       } else {
         showCommandFeedback('error', result.error || `/${commandId} failed`)
+        closeAllPickers()
+        nextTick(() => {
+          adjustHeight()
+          textareaRef.value?.focus()
+        })
       }
-
-      messageInput.value = ''
-      resetHistoryNavigation()
-      closeAllPickers()
-      nextTick(() => {
-        adjustHeight()
-        textareaRef.value?.focus()
-      })
       return
     }
   }
 
   // Regular message sending
-  isSending.value = true
+  isSending.value = !props.isLoading
   let fullMessage = messageInput.value
 
   if (quotedText.value) {
@@ -388,7 +422,13 @@ async function sendMessage() {
     fullMessage = `${quotedLines}\n\n${messageInput.value}`
   }
 
-  emit('sendMessage', fullMessage)
+  const sendMode = props.isLoading ? streamingSendMode.value : 'send'
+  emit('sendMessage', fullMessage, sendMode)
+  if (sendMode === 'steer') {
+    showCommandFeedback('success', 'Steering queued')
+  } else if (sendMode === 'followup') {
+    showCommandFeedback('success', 'Message queued')
+  }
   messageInput.value = ''
   resetHistoryNavigation()
   quotedText.value = ''
@@ -407,23 +447,6 @@ function stopGeneration() {
 
 function focusTextarea() {
   textareaRef.value?.focus()
-}
-
-// --- Quick Command Bar handler ---
-
-function handleQuickCommandExecuted(result: {
-  commandId: string
-  success: boolean
-  message?: string
-  error?: string
-}) {
-  if (result.success) {
-    if (result.message) {
-      showCommandFeedback('success', result.message)
-    }
-  } else {
-    showCommandFeedback('error', result.error || 'Command failed')
-  }
 }
 
 // --- Exposed methods ---
@@ -587,8 +610,40 @@ defineExpose({
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-shrink: 0;
+}
+
+.send-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.send-mode-toggle button {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.send-mode-toggle button:hover {
+  color: var(--text);
+}
+
+.send-mode-toggle button.active {
+  background: var(--hover);
+  color: var(--text);
 }
 
 /* Toolbar buttons */

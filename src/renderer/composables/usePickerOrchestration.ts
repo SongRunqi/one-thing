@@ -1,8 +1,8 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import { nextTick } from 'vue'
 import type { SkillDefinition } from '@/types'
-import type { CommandDefinition } from '@/types/commands'
-import { filterCommands } from '@/services/commands'
+import type { PaletteItem } from '@/types/palette'
+import { filterPaletteItems } from '@/services/palette'
 
 export function usePickerOrchestration(
   messageInput: Ref<string>,
@@ -58,8 +58,8 @@ export function usePickerOrchestration(
 
     if (commandMatch) {
       const query = commandMatch[1]
-      const commands = filterCommands(query)
-      if (commands.length > 0) {
+      const items = filterPaletteItems(query, enabledSkills.value)
+      if (items.length > 0) {
         commandQuery.value = query
         showCommandPicker.value = true
         showSkillPicker.value = false
@@ -106,15 +106,8 @@ export function usePickerOrchestration(
     showFilePicker.value = false
     fileQuery.value = ''
 
-    // Fall back to skill matching
-    const triggerMatch = newValue.match(/^([/@]\w*)$/)
-    if (triggerMatch && enabledSkills.value.length > 0) {
-      skillTriggerQuery.value = triggerMatch[1]
-      showSkillPicker.value = true
-    } else {
-      showSkillPicker.value = false
-      skillTriggerQuery.value = ''
-    }
+    showSkillPicker.value = false
+    skillTriggerQuery.value = ''
   })
 
   // --- Picker event handlers ---
@@ -144,9 +137,18 @@ export function usePickerOrchestration(
     showSkillPicker.value = false
   }
 
-  async function handleCommandSelect(command: CommandDefinition) {
+  async function handleCommandSelect(item: PaletteItem) {
     showCommandPicker.value = false
-    messageInput.value = `/${command.id} `
+
+    if (item.type === 'skill' && item.skill) {
+      await handleSkillSelect(item.skill)
+      return
+    }
+
+    if (item.type === 'command' && item.command) {
+      messageInput.value = `/${item.command.id} `
+    }
+
     await nextTick()
     adjustHeight()
     textareaRef.value?.focus()

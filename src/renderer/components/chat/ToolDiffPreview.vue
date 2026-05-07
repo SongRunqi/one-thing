@@ -1,6 +1,10 @@
 <template>
   <div class="diff-preview">
-    <div class="diff-content">
+    <div
+      ref="diffContentRef"
+      class="diff-content"
+      :class="{ fixed: shouldUseFixedHeight }"
+    >
       <div
         v-if="!hideHeader"
         class="diff-header"
@@ -44,15 +48,43 @@
 </template>
 
 <script setup lang="ts">
+import { computed, nextTick, ref, watch } from 'vue'
 import type { ToolDiffData, ToolDiffLine } from '@/stores/helpers/tool-step-view'
 import type { ToolRenderStatus } from '@/stores/helpers/tool-status'
 
-defineProps<{
+const props = defineProps<{
   diff: ToolDiffData
   lines: ToolDiffLine[]
   status: ToolRenderStatus
   hideHeader?: boolean
 }>()
+
+const diffContentRef = ref<HTMLElement | null>(null)
+const isLive = computed(() =>
+  props.status === 'streaming-input' || props.status === 'executing',
+)
+const shouldUseFixedHeight = computed(() =>
+  isLive.value || props.status === 'awaiting-confirmation',
+)
+
+function scrollToBottom() {
+  if (!diffContentRef.value) return
+  diffContentRef.value.scrollTop = diffContentRef.value.scrollHeight
+}
+
+watch(
+  () => [props.lines, props.diff.additions, props.diff.deletions, props.status],
+  async () => {
+    if (!isLive.value) return
+    await nextTick()
+    scrollToBottom()
+  },
+  { deep: true, flush: 'post' },
+)
+
+defineExpose({
+  scrollToBottom,
+})
 </script>
 
 <style scoped>
@@ -70,6 +102,12 @@ defineProps<{
   line-height: var(--line-height-normal, 1.5);
   font-family: var(--font-mono);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg-elevated) 40%, transparent);
+}
+
+.diff-content.fixed {
+  height: clamp(168px, 28vh, 260px);
+  max-height: clamp(168px, 28vh, 260px);
+  overscroll-behavior: contain;
 }
 
 .diff-header {

@@ -15,6 +15,10 @@ import { getSandboxBoundary, isPathContained } from '../core/sandbox.js'
 import { Permission } from '../../permission/index.js'
 import { createTwoFilesPatch, diffLines } from 'diff'
 
+function filePermissionPattern(filePath: string): string {
+  return path.join(path.dirname(filePath), '*')
+}
+
 /**
  * Write Tool Metadata
  */
@@ -118,13 +122,10 @@ Usage:
       },
     })
 
-    // Request permission for file write (shows diff in UI)
-    // If external, include directory path in pattern for proper permission
+    // Request permission for this directory's file writes (shows diff in UI).
     await Permission.ask({
       type: 'file_write',
-      pattern: isExternal
-        ? [path.dirname(resolvedPath), resolvedPath]
-        : resolvedPath,
+      pattern: filePermissionPattern(resolvedPath),
       sessionId: ctx.sessionId,
       messageId: ctx.messageId,
       callId: ctx.toolCallId,

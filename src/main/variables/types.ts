@@ -21,6 +21,7 @@ export interface VariableContext {
 export interface SetInput {
   name: string
   value: string
+  scope?: 'global' | 'session'
   description?: string
 }
 
@@ -101,6 +102,7 @@ export const RESERVED_NAMES = Object.freeze([
   'home',
   'ai_note_dir',
   'user_note_dir',
+  'work_note_dir',
 ] as const)
 
 export type ReservedName = (typeof RESERVED_NAMES)[number]

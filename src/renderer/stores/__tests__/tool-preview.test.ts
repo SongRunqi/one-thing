@@ -50,6 +50,14 @@ describe('formatToolCallPreview', () => {
       }))).toBe('src/foo.ts')
     })
 
+    it('does not use streamed edit content as a filename', () => {
+      expect(formatToolCallPreview(tc({
+        toolName: 'edit',
+        status: 'input-streaming',
+        streamingArgs: '{"new_string":"const FLUSH_INTERVAL_MS = 250"}',
+      }))).toBe('')
+    })
+
     it('falls back to streaming args tail when no file_path yet', () => {
       const longArgs = 'x'.repeat(200)
       const result = formatToolCallPreview(tc({

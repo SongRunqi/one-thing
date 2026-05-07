@@ -277,6 +277,9 @@ export function invalidateSkillsCache(workingDirectory?: string): void {
     console.log(`[Skills] Cache invalidated for: ${workingDirectory}`)
   } else {
     skillsCacheByDir.clear()
+    if (isInitialized) {
+      skillsCache = loadAllSkills()
+    }
     console.log('[Skills] All caches invalidated')
   }
 }

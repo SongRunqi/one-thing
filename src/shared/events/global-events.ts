@@ -73,6 +73,13 @@ export interface PluginErrorEvent {
   error: string
 }
 
+export interface PluginNotificationEvent {
+  type: 'plugin:notification'
+  pluginId: string
+  message: string
+  level: 'info' | 'warn' | 'error'
+}
+
 // ── Union ───────────────────────────────────────
 
 export type GlobalEvent =
@@ -87,3 +94,4 @@ export type GlobalEvent =
   | MCPServerErrorEvent
   | PluginLoadedEvent
   | PluginErrorEvent
+  | PluginNotificationEvent

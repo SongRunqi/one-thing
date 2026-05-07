@@ -82,7 +82,7 @@ export async function checkFileAccess(
   if (!isPathContained(boundary, absolutePath)) {
     const pattern = targetType === 'directory'
       ? [absolutePath, path.join(absolutePath, '*')]
-      : [path.dirname(absolutePath), absolutePath]
+      : path.join(path.dirname(absolutePath), '*')
 
     // Request permission for external access
     await Permission.ask({

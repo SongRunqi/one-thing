@@ -24,6 +24,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
+import path from 'path'
 import * as DirectoryPermissions from './directory-permissions.js'
 
 // Lazy imports to avoid circular dependencies
@@ -126,6 +127,10 @@ export namespace Permission {
     if (pattern.endsWith('*')) {
       const prefix = pattern.slice(0, -1)
       return text.startsWith(prefix)
+    }
+    if (text.endsWith('*') && path.isAbsolute(text) && path.isAbsolute(pattern)) {
+      const dir = text.slice(0, -1).replace(/[\\/]$/, '')
+      return path.dirname(pattern) === dir
     }
     return false
   }

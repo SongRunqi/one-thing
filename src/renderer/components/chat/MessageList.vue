@@ -14,7 +14,8 @@
       <div
         v-if="messages.length > 0"
         ref="messageListContentRef"
-        :style="{ height: `${virtualizer.getTotalSize()}px`, position: 'relative', width: '100%' }"
+        class="message-list-content"
+        :style="{ height: `${virtualizer.getTotalSize()}px` }"
       >
         <div
           v-for="virtualItem in virtualizer.getVirtualItems()"
@@ -61,29 +62,12 @@
       </div>
     </div>
 
-    <!-- User message navigation rail (timeline) -->
-    <div
+    <UserMessageNavRail
       v-if="userMessageIndices.length > 1"
-      class="nav-rail"
-    >
-      <div
-        ref="navRailTrackRef"
-        class="nav-rail-track"
-        @click="handleRailClick"
-      >
-        <div class="nav-rail-line" />
-        <button
-          v-for="marker in displayNavMarkers"
-          :key="marker.messageId"
-          class="nav-marker"
-          :class="{ active: marker.navIndex === currentUserMessageNavIndex }"
-          :style="{ top: `${marker.position * 100}%` }"
-          :title="marker.label"
-          @click.stop="handleMarkerClick(marker.navIndex)"
-        />
-      </div>
-      <span class="nav-counter">{{ navCounter }}</span>
-    </div>
+      :markers="displayNavMarkers"
+      :current-index="currentUserMessageNavIndex"
+      @navigate="navigateToUserMessage"
+    />
 
     <!-- Reject Reason Dialog -->
     <Teleport to="body">
@@ -154,6 +138,7 @@ import { useVirtualizer } from '@tanstack/vue-virtual'
 import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
+import UserMessageNavRail, { type UserMessageNavMarker } from './UserMessageNavRail.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
@@ -165,12 +150,7 @@ interface BranchInfo {
   name: string
 }
 
-interface NavMarker {
-  navIndex: number
-  messageId: string
-  position: number
-  label: string
-}
+type NavMarker = UserMessageNavMarker
 
 interface Props {
   messages: ChatMessage[]
@@ -196,7 +176,6 @@ const settingsStore = useSettingsStore()
 const messageListRef = ref<HTMLElement | null>(null)
 const messageListContentRef = ref<HTMLElement | null>(null)
 const bottomSentinelRef = ref<HTMLElement | null>(null)
-const navRailTrackRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
 
 // Reject reason dialog state
@@ -349,7 +328,11 @@ watch(
       contentResizeObserver = null
     }
     if (!el || typeof ResizeObserver === 'undefined') return
-    contentResizeObserver = new ResizeObserver(() => pinBottom())
+    contentResizeObserver = new ResizeObserver(() => {
+      pinBottom()
+      scheduleNavMarkerUpdate()
+      updateVisibleUserMessageIndex()
+    })
     contentResizeObserver.observe(el)
   },
   { immediate: true },
@@ -363,24 +346,18 @@ const userMessageIndices = computed(() => {
     .map(item => item.index)
 })
 
-const navCounter = computed(() => {
-  if (userMessageIndices.value.length === 0) return '0/0'
-  const index = currentUserMessageNavIndex.value >= 0 ? currentUserMessageNavIndex.value + 1 : 1
-  return `${index}/${userMessageIndices.value.length}`
-})
-
 const displayNavMarkers = computed<NavMarker[]>(() => {
   const total = userMessageIndices.value.length
   if (total === 0) return []
 
   const fallbackMarkers = userMessageIndices.value.map((messageIndex, navIndex) => {
     const message = props.messages[messageIndex]
-    const position = total > 1 ? navIndex / (total - 1) : 0.5
     return {
       navIndex,
       messageId: message?.id || `nav-${navIndex}`,
-      position: Math.min(0.98, Math.max(0.02, position)),
-      label: message ? buildNavMarkerLabel(message, navIndex) : `${navIndex + 1}/${total}`
+      position: getFallbackNavPosition(messageIndex),
+      label: message ? buildNavMarkerLabel(message, navIndex) : `${navIndex + 1}/${total}`,
+      preview: message ? buildNavMarkerPreview(message) : `${navIndex + 1}/${total}`,
     }
   })
 
@@ -447,30 +424,6 @@ function navigateToUserMessage(navIndex: number) {
   scrollToUserMessage(navIndex)
 }
 
-function handleMarkerClick(navIndex: number) {
-  navigateToUserMessage(navIndex)
-}
-
-function handleRailClick(event: MouseEvent) {
-  if (!navRailTrackRef.value || displayNavMarkers.value.length === 0) return
-  const rect = navRailTrackRef.value.getBoundingClientRect()
-  if (rect.height <= 0) return
-
-  const ratio = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))
-  let closestMarker = displayNavMarkers.value[0]
-  let closestDistance = Math.abs(closestMarker.position - ratio)
-
-  for (const marker of displayNavMarkers.value) {
-    const distance = Math.abs(marker.position - ratio)
-    if (distance < closestDistance) {
-      closestMarker = marker
-      closestDistance = distance
-    }
-  }
-
-  navigateToUserMessage(closestMarker.navIndex)
-}
-
 // Scroll to a specific user message by nav index
 function scrollToUserMessage(navIndex: number) {
   const messageIndex = userMessageIndices.value[navIndex]
@@ -500,10 +453,14 @@ function formatNavTime(timestamp: number): string {
 
 function buildNavMarkerLabel(message: ChatMessage, navIndex: number): string {
   const total = userMessageIndices.value.length
+  const snippet = buildNavMarkerPreview(message)
+  return `${navIndex + 1}/${total} ${formatNavTime(message.timestamp)} - ${snippet}`
+}
+
+function buildNavMarkerPreview(message: ChatMessage): string {
   const rawContent = typeof message.content === 'string' ? message.content : ''
   const compact = rawContent.replace(/\s+/g, ' ').trim()
-  const snippet = compact ? compact.slice(0, 48) : 'No text'
-  return `${navIndex + 1}/${total} ${formatNavTime(message.timestamp)} - ${snippet}`
+  return compact ? compact.slice(0, 36) : 'No text'
 }
 
 function updateNavMarkers() {
@@ -512,35 +469,41 @@ function updateNavMarkers() {
     return
   }
 
-  const totalSize = virtualizer.value.getTotalSize()
-  if (totalSize === 0) {
-    // Virtualizer not ready yet — use fallback proportional positions
-    const total = userMessageIndices.value.length
-    navMarkers.value = userMessageIndices.value.map((messageIndex, navIndex) => {
-      const message = props.messages[messageIndex]
-      return {
-        navIndex,
-        messageId: message?.id || `nav-${navIndex}`,
-        position: Math.min(0.98, Math.max(0.02, total > 1 ? navIndex / (total - 1) : 0.5)),
-        label: message ? buildNavMarkerLabel(message, navIndex) : `${navIndex + 1}/${total}`
-      }
-    })
-    return
-  }
-
   const total = userMessageIndices.value.length
   navMarkers.value = userMessageIndices.value.map((messageIndex, navIndex) => {
     const message = props.messages[messageIndex]
-    // Use proportional position based on message index within total count
-    // This is more reliable than pixel-based positions from virtualizer
-    const position = total > 1 ? navIndex / (total - 1) : 0.5
     return {
       navIndex,
       messageId: message?.id || `nav-${navIndex}`,
-      position: Math.min(0.98, Math.max(0.02, position)),
-      label: message ? buildNavMarkerLabel(message, navIndex) : `${navIndex + 1}/${total}`
+      position: getEvenNavPosition(navIndex, total),
+      label: message ? buildNavMarkerLabel(message, navIndex) : `${navIndex + 1}/${total}`,
+      preview: message ? buildNavMarkerPreview(message) : `${navIndex + 1}/${total}`,
     }
   })
+}
+
+function getMessageMeasurement(messageIndex: number): { start: number; end: number; size: number } | undefined {
+  virtualizer.value.getTotalSize()
+  const measurements = (virtualizer.value as any).measurementsCache as
+    | Array<{ start: number; end: number; size: number }>
+    | undefined
+  return measurements?.[messageIndex]
+}
+
+function getFallbackNavPosition(messageIndex: number): number {
+  const denominator = Math.max(props.messages.length - 1, 1)
+  return Math.min(0.98, Math.max(0.02, messageIndex / denominator))
+}
+
+function getEvenNavPosition(navIndex: number, total: number): number {
+  if (total <= 1) return 0.5
+  return (navIndex + 1) / (total + 1)
+}
+
+function setNavIndexToLastUserMessage() {
+  if (userMessageIndices.value.length > 0) {
+    currentUserMessageNavIndex.value = userMessageIndices.value.length - 1
+  }
 }
 
 function scheduleNavMarkerUpdate() {
@@ -601,30 +564,38 @@ function updateVisibleUserMessageIndex() {
   if (isActivelyNavigating) return
   if (userMessageIndices.value.length === 0) return
 
-  const items = virtualizer.value.getVirtualItems()
-  if (items.length === 0) return
+  const el = messageListRef.value
+  if (!el) return
 
-  const firstVisible = items[0].index
-  const lastVisible = items[items.length - 1].index
-  const centerIndex = Math.floor((firstVisible + lastVisible) / 2)
+  const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+  if (distanceToBottom < 96 || isFollowing.value) {
+    setNavIndexToLastUserMessage()
+    return
+  }
 
-  let closestNavIndex = 0
-  let closestDistance = Infinity
+  // A chat node represents a user turn, so assistant content belongs to the
+  // most recent user message above the viewport anchor.
+  const viewportAnchor = el.scrollTop + el.clientHeight * 0.18
+
+  let activeNavIndex = 0
 
   for (let i = 0; i < userMessageIndices.value.length; i++) {
     const msgIdx = userMessageIndices.value[i]
-    const distance = Math.abs(msgIdx - centerIndex)
-    if (distance < closestDistance) {
-      closestDistance = distance
-      closestNavIndex = i
-    }
+    const measurement = getMessageMeasurement(msgIdx)
+    const start = measurement
+      ? measurement.start
+      : getFallbackNavPosition(msgIdx) * virtualizer.value.getTotalSize()
+
+    if (start <= viewportAnchor) activeNavIndex = i
+    else break
   }
 
-  currentUserMessageNavIndex.value = closestNavIndex
+  currentUserMessageNavIndex.value = activeNavIndex
 }
 
 // Scroll event handler — only for nav marker position tracking
 function handleScroll() {
+  scheduleNavMarkerUpdate()
   updateVisibleUserMessageIndex()
 }
 
@@ -1165,6 +1136,7 @@ defineExpose({
     nextTick(() => {
       if (following && props.messages.length > 0) {
         suppressed = false
+        setNavIndexToLastUserMessage()
         if (messageListRef.value) {
           messageListRef.value.scrollTop = messageListRef.value.scrollHeight
         }
@@ -1185,6 +1157,7 @@ defineExpose({
 
   scrollToBottom: () => {
     isFollowing.value = true
+    setNavIndexToLastUserMessage()
     if (messageListRef.value) {
       messageListRef.value.scrollTop = messageListRef.value.scrollHeight
     }
@@ -1222,6 +1195,12 @@ defineExpose({
   display: none;
 }
 
+.message-list-content {
+  position: relative;
+  width: min(82%, 1040px);
+  margin: 0 auto;
+}
+
 
 /* Message list density modes */
 .message-list.density-compact {
@@ -1256,81 +1235,6 @@ defineExpose({
   gap: 24px;
   padding: 24px;
 }
-
-
-
-/* User message navigation rail */
-.nav-rail {
-  position: absolute;
-  top: 24px;
-  bottom: 24px;
-  right: 8px;
-  width: 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  z-index: var(--z-dropdown);
-  user-select: none;
-  opacity: 0.5;
-  transition: opacity 0.2s ease;
-}
-
-.nav-rail:hover {
-  opacity: 1;
-}
-
-.nav-rail-track {
-  position: relative;
-  flex: 1;
-  width: 100%;
-  cursor: pointer;
-}
-
-.nav-rail-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 1.5px;
-  transform: translateX(-50%);
-  background: var(--border);
-  border-radius: 999px;
-  opacity: 0.5;
-}
-
-.nav-marker {
-  position: absolute;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  border: none;
-  background: var(--muted);
-  padding: 0;
-  z-index: var(--z-base);
-  transition: all 0.15s ease;
-}
-
-.nav-marker:hover {
-  transform: translate(-50%, -50%) scale(1.4);
-  background: var(--text);
-}
-
-.nav-marker.active {
-  width: 7px;
-  height: 7px;
-  background: var(--accent);
-}
-
-.nav-counter {
-  font-size: 9px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 /* Responsive styles */
 @media (max-width: 768px) {
   .message-list {
@@ -1338,21 +1242,25 @@ defineExpose({
     gap: 12px;
   }
 
+  .message-list-content {
+    width: 94%;
+  }
+
   .thinking-indicator {
     padding: 14px 16px;
     border-radius: 14px;
   }
 
-  .nav-rail {
-    right: 6px;
-    width: 14px;
-  }
 }
 
 @media (max-width: 480px) {
   .message-list {
     padding: 10px 8px;
     gap: 10px;
+  }
+
+  .message-list-content {
+    width: 100%;
   }
 
   .empty-title {
@@ -1378,14 +1286,6 @@ defineExpose({
     height: 16px;
   }
 
-  .nav-rail {
-    right: 4px;
-    width: 12px;
-  }
-
-  .nav-counter {
-    font-size: 8px;
-  }
 }
 
 /* Reject Reason Dialog */

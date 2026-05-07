@@ -6,6 +6,7 @@
  *   user_note_dir : where the user keeps their notes (referenceable by
  *                   the AI for read-only inspection unless the user
  *                   explicitly asks for changes).
+ *   work_note_dir : where work/project notes are kept.
  *
  * Both are persisted in `variables.json` (via the injected
  * `NotesGateway`, which delegates to VariablesStore). AI may read or
@@ -33,13 +34,14 @@ export interface NotesGateway {
   onChange?(callback: () => void): () => void
 }
 
-export type NoteVarName = 'ai_note_dir' | 'user_note_dir'
+export type NoteVarName = 'ai_note_dir' | 'user_note_dir' | 'work_note_dir'
 
-const NAMES: NoteVarName[] = ['ai_note_dir', 'user_note_dir']
+const NAMES: NoteVarName[] = ['ai_note_dir', 'user_note_dir', 'work_note_dir']
 
 const DESC: Record<NoteVarName, string> = {
   ai_note_dir: "Directory where the assistant stores its own scratch notes. Writable by the AI via the variable tool.",
   user_note_dir: "Directory where the user keeps their personal notes. The AI may read it; only modify with explicit user permission.",
+  work_note_dir: "Directory where work or project notes are kept. The AI may read it; only modify with explicit user permission.",
 }
 
 export class NotesProvider implements VariableProvider {
@@ -57,6 +59,7 @@ export class NotesProvider implements VariableProvider {
     return NAMES.map((name) => ({
       name,
       value: this.gateway.read(name),
+      scope: 'global',
       description: DESC[name],
       readonly: false,
     }))
@@ -80,6 +83,7 @@ export class NotesProvider implements VariableProvider {
       return {
         name: which,
         value: '',
+        scope: 'global',
         description: DESC[which],
         readonly: false,
       }
@@ -107,6 +111,7 @@ export class NotesProvider implements VariableProvider {
     return {
       name: which,
       value: resolved,
+      scope: 'global',
       description: DESC[which],
       readonly: false,
     }

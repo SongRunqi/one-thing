@@ -10,6 +10,17 @@
 export type OSType = 'macos' | 'windows' | 'linux'
 
 /**
+ * One slice of a rendered prompt, attributed to a specific .hbs template.
+ * `source` is the template path relative to resources/templates (no extension).
+ * `absolutePath` is the on-disk path of that .hbs file, for opening in an editor.
+ */
+export interface PromptSegment {
+  source: string
+  content: string
+  absolutePath?: string
+}
+
+/**
  * Template names that can be rendered
  */
 export type TemplateName =

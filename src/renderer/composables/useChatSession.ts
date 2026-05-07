@@ -60,6 +60,18 @@ export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
     return chatStore.sendMessage(sid, content, attachments)
   }
 
+  async function steerMessage(content: string) {
+    const sid = sessionId.value
+    if (!sid) return false
+    return chatStore.steerMessage(sid, content)
+  }
+
+  async function queueFollowUpMessage(content: string) {
+    const sid = sessionId.value
+    if (!sid) return false
+    return chatStore.queueFollowUpMessage(sid, content)
+  }
+
   /**
    * Edit a message and resend
    */
@@ -129,6 +141,8 @@ export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
 
     // Actions (delegated to store)
     sendMessage,
+    steerMessage,
+    queueFollowUpMessage,
     editAndResend,
     regenerate,
     stopGeneration,

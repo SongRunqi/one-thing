@@ -106,6 +106,13 @@ app.on('ready', async () => {
   // Initialize tool registry
   await initializeToolRegistry()
 
+  // Bootstrap plugin system (after EventBus + StreamEngine + ToolRegistry)
+  const { bootstrapPluginSystem } = await import('./plugins/index.js')
+  const { getEventBus } = await import('./events/index.js')
+  bootstrapPluginSystem(getEventBus(), getStreamEngine()).catch(err => {
+    console.error('[Plugins] Bootstrap failed (non-blocking):', err)
+  })
+
   // Initialize IPC handlers
   initializeIPC()
 

@@ -31,8 +31,26 @@ function truncate(s: string, max: number): string {
 
 /** Pull the `file_path` value out of partially-streamed JSON args. */
 function extractStreamingPath(streamingArgs: string): string | null {
-  const match = streamingArgs.match(/"file_path"\s*:\s*"([^"]*)"?/)
-  return match ? match[1] : null
+  const match = streamingArgs.match(/"(?:file_path|path)"\s*:\s*"/)
+  if (!match || match.index === undefined) return null
+
+  let value = ''
+  let escaped = false
+  for (const char of streamingArgs.slice(match.index + match[0].length)) {
+    if (escaped) {
+      value += char === 'n' ? '\n' : char === 't' ? '\t' : char
+      escaped = false
+      continue
+    }
+    if (char === '\\') {
+      escaped = true
+      continue
+    }
+    if (char === '"') break
+    value += char
+  }
+
+  return value || null
 }
 
 /**
@@ -126,7 +144,7 @@ export function formatToolCallPreview(toolCall: ToolCall | undefined): string {
     const toolName = toolCall.toolName?.toLowerCase()
     if (toolName === 'write' || toolName === 'edit' || toolName === 'read') {
       const path = extractStreamingPath(args)
-      if (path) return path
+      return path || ''
     }
     return args.length > STREAMING_TAIL_MAX ? '...' + args.slice(-STREAMING_TAIL_MAX) : args
   }

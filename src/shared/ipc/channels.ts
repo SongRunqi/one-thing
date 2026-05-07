@@ -171,4 +171,10 @@ export const IPC_CHANNELS = {
   PROJECT_DIRS_ADD: 'project-dirs:add',
   PROJECT_DIRS_UPDATE: 'project-dirs:update',
   PROJECT_DIRS_REMOVE: 'project-dirs:remove',
+
+  // Plugin management
+  PLUGINS_LIST: 'plugins:list',
+  PLUGINS_ENABLE: 'plugins:enable',
+  PLUGINS_DISABLE: 'plugins:disable',
+  PLUGINS_REFRESH: 'plugins:refresh',
 } as const

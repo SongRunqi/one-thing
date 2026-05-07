@@ -7,15 +7,14 @@
 {{> base/base}}
 {{/if}}
 
-{{!-- 2. Working directory context --}}
-{{> context/working-directory baseDirectory=baseDirectory workingDirectory=workingDirectory displayPath=displayPath hasTools=hasTools}}
-
 {{#if hasTools}}
 {{> context/active-project activeProject=activeProject}}
 {{> context/known-projects knownProjects=knownProjects}}
 
+{{#if (hasValue contextVariables)}}
 # Context Variables
 {{{contextVariables}}}
+{{/if}}
 
 {{> guidance/workdir-protocol}}
 {{/if}}

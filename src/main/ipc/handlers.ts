@@ -15,6 +15,7 @@ import { registerOAuthHandlers, cleanupOAuth } from './oauth.js'
 import { registerThemeHandlers, initializeThemeSystem } from './themes.js'
 import { registerVariableHandlers } from '../variables/ipc.js'
 import { registerProjectDirsHandlers } from '../project-dirs/index.js'
+import { registerPluginHandlers } from './plugins.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -32,6 +33,7 @@ export function initializeIPC() {
   registerThemeHandlers()
   registerVariableHandlers()
   registerProjectDirsHandlers()
+  registerPluginHandlers()
   registerCommandHandler()
 }
 

@@ -15,6 +15,7 @@ import {
   popTrailingTransient,
   pushDataStepsIfMissing,
   pushWaiting,
+  removeTransientIndicators,
   upsertToolCall,
 } from './helpers/content-parts'
 import {
@@ -114,6 +115,28 @@ export const useChatStore = defineStore('chat', () => {
   /** Resolve messageId: use provided value or fallback to activeStreams lookup */
   function resolveMessageId(sessionId: string, messageId?: string): string {
     return (messageId && messageId !== '') ? messageId : (activeStreams.value.get(sessionId) || '')
+  }
+
+  function resolveStreamingMessage(messages: ChatMessage[], messageId?: string): ChatMessage | undefined {
+    if (messageId) {
+      const byId = messages.find(m => m.id === messageId)
+      if (byId) return byId
+    }
+    return [...messages].reverse().find(m => m.role === 'assistant' && m.isStreaming) ||
+      [...messages].reverse().find(m =>
+        m.role === 'assistant' &&
+        m.contentParts?.some(part => part.type === 'waiting' || part.type === 'loading-memory')
+      )
+  }
+
+  function stopMessageStreaming(message: ChatMessage, usage?: StreamCompleteData['usage']) {
+    if (message.contentParts && removeTransientIndicators(message.contentParts)) {
+      message.contentParts = [...message.contentParts]
+    }
+    message.isStreaming = false
+    if (usage) {
+      message.usage = usage
+    }
   }
 
   // Scroll trigger per session — incremented on every handleStreamChunk call so MessageList
@@ -426,20 +449,9 @@ export const useChatStore = defineStore('chat', () => {
     // Update message
     const messages = getSessionMessagesRef(sessionId)
     const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
-    const messageIndex = messages.findIndex(m => m.id === resolvedMsgId)
-    if (messageIndex !== -1) {
-      const message = messages[messageIndex]
-
-      // Drop trailing transient indicator (waiting / loading-memory)
-      if (message.contentParts) {
-        popTrailingTransient(message.contentParts)
-      }
-
-      // Mark message as not streaming and save usage
-      message.isStreaming = false
-      if (data.usage) {
-        message.usage = data.usage
-      }
+    const message = resolveStreamingMessage(messages, resolvedMsgId)
+    if (message) {
+      stopMessageStreaming(message, data.usage)
       setSessionMessages(sessionId, [...messages])
     }
 
@@ -509,16 +521,10 @@ export const useChatStore = defineStore('chat', () => {
     if (data.preserved) {
       // Message content is preserved in backend — just attach error details and stop streaming
       const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
-      if (resolvedMsgId) {
-        const msg = messages.find(m => m.id === resolvedMsgId)
-        if (msg) {
-          msg.errorDetails = data.errorDetails
-          msg.isStreaming = false
-          // Drop any trailing transient indicator — the next turn never arrived.
-          if (msg.contentParts) {
-            popTrailingTransient(msg.contentParts)
-          }
-        }
+      const msg = resolveStreamingMessage(messages, resolvedMsgId)
+      if (msg) {
+        msg.errorDetails = data.errorDetails
+        stopMessageStreaming(msg)
       }
     } else {
       // No preserved content — replace streaming message with error message
@@ -727,6 +733,32 @@ export const useChatStore = defineStore('chat', () => {
       type: 'command:send-message',
       content,
       attachments,
+    })
+    return true
+  }
+
+  /**
+   * Inject guidance into the active tool loop.
+   * The backend persists it as a user message and processes it before the next
+   * LLM call, without aborting the current stream.
+   */
+  async function steerMessage(sessionId: string, content: string) {
+    await window.electronAPI.emitCommand(sessionId, {
+      type: 'command:inject-steering',
+      content,
+      source: 'user',
+    })
+    return true
+  }
+
+  /**
+   * Queue a follow-up message for after the assistant would otherwise stop.
+   */
+  async function queueFollowUpMessage(sessionId: string, content: string) {
+    await window.electronAPI.emitCommand(sessionId, {
+      type: 'command:inject-followup',
+      content,
+      source: 'user',
     })
     return true
   }
@@ -1069,6 +1101,8 @@ export const useChatStore = defineStore('chat', () => {
     loadMessages,
     setMessagesFromSession,
     sendMessage,
+    steerMessage,
+    queueFollowUpMessage,
     editAndResend,
     regenerate,
     stopGeneration,

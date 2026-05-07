@@ -22,6 +22,7 @@ import * as fs from 'fs/promises'
 import { getEventBus } from '../events/index.js'
 import { expandPath } from '../tools/core/sandbox.js'
 import { CoreProvider } from './providers/core.js'
+import { GlobalStoreProvider } from './providers/global-store.js'
 import { NotesProvider } from './providers/notes.js'
 import { SessionStoreProvider } from './providers/session-store.js'
 import { getVariableRegistry } from './registry.js'
@@ -29,6 +30,7 @@ import { getVariablesStore } from './store/index.js'
 import type { VariableProvider } from './types.js'
 import {
   notesGateway,
+  globalStoreGateway,
   sessionStoreGateway,
   workdirGateway,
   notifyNotesDirChanged,
@@ -51,6 +53,7 @@ export function bootstrapVariableSystem(): void {
   const registry = getVariableRegistry()
   registry.register(new CoreProvider(workdirGateway))
   registry.register(new NotesProvider(notesGateway))
+  registry.register(new GlobalStoreProvider(globalStoreGateway))
   registry.register(new SessionStoreProvider(sessionStoreGateway))
 
   // Make sure the configured ai_note_dir directory exists on disk.
@@ -78,7 +81,7 @@ export function bootstrapVariableSystem(): void {
     }
   })
 
-  console.log('[variables] subsystem bootstrapped (3 providers)')
+  console.log('[variables] subsystem bootstrapped (4 providers)')
 }
 
 /**
@@ -115,12 +118,11 @@ export async function listContextVariables(sessionId: string): Promise<ContextVa
 }
 
 /**
- * Build the prompt-injection string for `sessionId`. The system
- * prompt renders the Context Variables block whenever tools are
- * enabled, so this helper guarantees the workdir line is always
- * present — emitting `- workdir: (unset)` when no workdir is set
- * yet. Project directories are rendered separately by the
- * project-dirs module's prompt partials.
+ * Build the prompt-injection string for `sessionId`. The system prompt
+ * renders the Context Variables block whenever tools are enabled, so
+ * this helper guarantees the workdir line is always present — emitting
+ * `- workdir: (unset)` when no workdir is set yet. Project directories
+ * are rendered separately by the project-dirs module's prompt partials.
  */
 export async function buildContextVariablesPromptText(sessionId: string): Promise<string> {
   const list = await listContextVariables(sessionId)

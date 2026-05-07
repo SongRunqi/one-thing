@@ -51,7 +51,7 @@ export function registerVariableHandlers(): void {
     try {
       const variable = await getVariableRegistry().set(
         { sessionId: req.sessionId },
-        { name: req.name, value: req.value, description: req.description },
+        { name: req.name, value: req.value, scope: req.scope, description: req.description },
       )
       return { success: true, variable }
     } catch (err) {
@@ -64,7 +64,7 @@ export function registerVariableHandlers(): void {
     req: VariablesDeleteRequest,
   ): Promise<VariablesDeleteResponse> => {
     try {
-      await getVariableRegistry().delete({ sessionId: req.sessionId }, req.name)
+      await getVariableRegistry().delete({ sessionId: req.sessionId }, req.name, req.scope)
       return { success: true }
     } catch (err) {
       return { success: false, ...toErrorPayload(err) }

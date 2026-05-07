@@ -200,6 +200,29 @@
           </svg>
           Skills
         </button>
+        <button
+          :class="['tab-btn', { active: activeTab === 'plugins' }]"
+          @click="activeTab = 'plugins'"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 2l3 6 6.5 1-4.7 4.5 1.2 6.5-6-3.2-6 3.2 1.2-6.5L2.5 9 9 8z" />
+            <circle
+              cx="12"
+              cy="12"
+              r="2"
+              fill="currentColor"
+              opacity="0.3"
+            />
+          </svg>
+          Plugins
+        </button>
       </div>
 
       <div class="settings-content">
@@ -256,6 +279,12 @@
             @update:settings="handleSkillsSettingsUpdate"
           />
         </div>
+
+        <!-- Plugins Tab -->
+        <PluginsSettingsTab
+          v-show="activeTab === 'plugins'"
+          @plugins-changed="loadAvailableTools"
+        />
       </div>
 
       <SettingsFooter
@@ -287,6 +316,7 @@ import { AIProviderTab } from './settings/provider'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
 import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import SettingsFooter from './settings/SettingsFooter.vue'
+import PluginsSettingsTab from './settings/PluginsSettingsTab.vue'
 
 const emit = defineEmits<{
   close: []
@@ -295,7 +325,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 
 // Active tab
-const activeTab = ref<'general' | 'ai' | 'tools' | 'shortcuts' | 'mcp' | 'skills'>('general')
+const activeTab = ref<'general' | 'ai' | 'tools' | 'shortcuts' | 'mcp' | 'skills' | 'plugins'>('general')
 
 // Deep clone settings, ensuring providers object exists
 const localSettings = ref<AppSettings>(

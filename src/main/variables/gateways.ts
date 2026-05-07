@@ -16,6 +16,7 @@ import * as store from '../store.js'
 import { getProjectsStore } from '../project-dirs/index.js'
 import { expandPath } from '../tools/core/sandbox.js'
 import { getVariablesStore } from './store/index.js'
+import type { GlobalStoreGateway } from './providers/global-store.js'
 import type { SessionStoreGateway } from './providers/session-store.js'
 import type { WorkdirGateway } from './providers/core.js'
 import type { NoteVarName, NotesGateway } from './providers/notes.js'
@@ -79,6 +80,20 @@ export const sessionStoreGateway: SessionStoreGateway = {
   },
 }
 
+// ── Global custom variables ─────────────────────────
+
+export const globalStoreGateway: GlobalStoreGateway = {
+  read() {
+    return getVariablesStore().getGlobalVariables()
+  },
+  write(variables) {
+    getVariablesStore().setGlobalVariables(variables)
+  },
+  onChange(callback) {
+    return getVariablesStore().subscribe(callback)
+  },
+}
+
 export function notifySessionVariablesChanged(sessionId: string): void {
   for (const cb of sessionStoreListeners) {
     try { cb(sessionId) } catch (err) {
@@ -97,8 +112,10 @@ export const notesGateway: NotesGateway = {
   write(which, path) {
     if (which === 'ai_note_dir') {
       getVariablesStore().setAiNoteDir(path)
-    } else {
+    } else if (which === 'user_note_dir') {
       getVariablesStore().setUserNoteDir(path)
+    } else {
+      getVariablesStore().setWorkNoteDir(path)
     }
     // Store fires its own change event via subscribe(); no redundant
     // notifyNotesDirChanged here.
@@ -111,7 +128,9 @@ export const notesGateway: NotesGateway = {
 
 function readNoteFromStore(which: NoteVarName): string {
   const s = getVariablesStore()
-  return which === 'ai_note_dir' ? s.getAiNoteDir() : s.getUserNoteDir()
+  if (which === 'ai_note_dir') return s.getAiNoteDir()
+  if (which === 'user_note_dir') return s.getUserNoteDir()
+  return s.getWorkNoteDir()
 }
 
 /**

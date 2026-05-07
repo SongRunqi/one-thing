@@ -10,7 +10,15 @@ import fs from 'fs'
 import path from 'path'
 import { app } from 'electron'
 import { registerHelpers } from './helpers.js'
-import type { TemplateName, TemplateVariables, OSType } from './types.js'
+import type { TemplateName, TemplateVariables, OSType, PromptSegment } from './types.js'
+
+// Sentinels used to mark which partial each rendered chunk came from.
+// Control characters that should never appear in legitimate template content.
+const SRC_OPEN = '\u0001__SRC__'
+const SRC_CLOSE_TAG = '__\u0002'
+const SRC_END = '\u0001__/SRC__\u0002'
+// eslint-disable-next-line no-control-regex -- intentional: matches the sentinel control chars above
+const SENTINEL_RE = /\u0001__SRC__([^\u0002]+)__\u0002|\u0001__\/SRC__\u0002/g
 
 /**
  * Cache entry for compiled templates
@@ -99,7 +107,10 @@ class PromptManager {
           : entry.name.replace('.hbs', '')
 
         const content = fs.readFileSync(fullPath, 'utf-8')
-        this.handlebars.registerPartial(partialName, content)
+        // Wrap with sentinels so the rendered output preserves the source
+        // attribution for each chunk. Stripped before being sent to the LLM.
+        const wrapped = `${SRC_OPEN}partials/${partialName}${SRC_CLOSE_TAG}${content}${SRC_END}`
+        this.handlebars.registerPartial(partialName, wrapped)
         this._partialNames.push(partialName)
       }
     }
@@ -150,11 +161,34 @@ class PromptManager {
 
     try {
       const template = this.getTemplate(templateName)
-      return template(variables).trim()
+      return stripSentinels(template(variables)).trim()
     } catch (error) {
       console.error(`[PromptManager] Failed to render template ${templateName}:`, error)
       throw error
     }
+  }
+
+  /**
+   * Render a template and return the clean text plus per-source segments.
+   * Each segment is attributed to a `.hbs` template path (relative to
+   * resources/templates, no extension). Useful for the inspector UI.
+   */
+  renderWithSegments<T extends TemplateVariables>(
+    templateName: TemplateName,
+    variables: T,
+  ): { text: string; segments: PromptSegment[] } {
+    if (!this.initialized) {
+      throw new Error('[PromptManager] Not initialized. Call initialize() first.')
+    }
+
+    const template = this.getTemplate(templateName)
+    const raw = template(variables)
+    const segments = parseSegments(raw, templateName)
+    for (const seg of segments) {
+      seg.absolutePath = path.join(this.templatesPath, seg.source + '.hbs')
+    }
+    const text = stripSentinels(raw).trim()
+    return { text, segments }
   }
 
   /**
@@ -224,6 +258,59 @@ class PromptManager {
         return 'linux'
     }
   }
+}
+
+
+function stripSentinels(s: string): string {
+  return s.replace(SENTINEL_RE, '')
+}
+
+/**
+ * Parse sentinel-marked rendered output into ordered segments.
+ * Each text chunk is attributed to the innermost open partial; chunks
+ * outside any partial belong to the top-level template (rootSource).
+ * Adjacent chunks with the same source are merged.
+ */
+function parseSegments(raw: string, rootSource: string): PromptSegment[] {
+  const segments: PromptSegment[] = []
+  const stack: string[] = [rootSource]
+  let cursor = 0
+
+  const push = (source: string, content: string) => {
+    if (!content) return
+    const last = segments[segments.length - 1]
+    if (last && last.source === source) {
+      last.content += content
+    } else {
+      segments.push({ source, content })
+    }
+  }
+
+  SENTINEL_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = SENTINEL_RE.exec(raw)) !== null) {
+    if (m.index > cursor) {
+      push(stack[stack.length - 1] ?? rootSource, raw.slice(cursor, m.index))
+    }
+    if (m[1] !== undefined) {
+      stack.push(m[1])
+    } else {
+      stack.pop()
+    }
+    cursor = m.index + m[0].length
+  }
+  if (cursor < raw.length) {
+    push(stack[stack.length - 1] ?? rootSource, raw.slice(cursor))
+  }
+
+  if (segments.length > 0) {
+    segments[0].content = segments[0].content.replace(/^\s+/, '')
+    const lastIdx = segments.length - 1
+    segments[lastIdx].content = segments[lastIdx].content.replace(/\s+$/, '')
+  }
+  // Drop whitespace-only segments — they're glue between partials in the
+  // parent template and shouldn't show up as their own row in the inspector.
+  return segments.filter((s) => s.content.trim().length > 0)
 }
 
 // ============================================================================

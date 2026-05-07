@@ -1,55 +1,34 @@
 <template>
   <Transition name="picker-slide">
     <div
-      v-if="visible && filteredCommands.length > 0"
+      v-if="visible && filteredItems.length > 0"
       class="command-picker"
     >
-      <div class="command-picker-header">
-        <span class="title">Commands</span>
-        <span class="count">{{ filteredCommands.length }}</span>
-      </div>
       <div class="command-list">
         <div
-          v-for="(command, index) in filteredCommands"
-          :key="command.id"
+          v-for="(item, index) in filteredItems"
+          :key="item.id"
           :class="['command-item', { selected: index === selectedIndex }]"
-          @click="selectCommand(command)"
+          @click="selectItem(item)"
           @mouseenter="selectedIndex = index"
         >
-          <div class="command-icon">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <polyline points="4 17 10 11 4 5" />
-              <line
-                x1="12"
-                y1="19"
-                x2="20"
-                y2="19"
-              />
-            </svg>
-          </div>
           <div class="command-info">
-            <div class="command-name">
-              /{{ command.id }}
+            <div class="command-title-row">
+              <div class="command-name">
+                {{ item.title }}
+              </div>
+              <div :class="['command-type', item.type]">
+                {{ item.type }}
+              </div>
             </div>
             <div class="command-description">
-              {{ command.description }}
+              {{ item.description }}
             </div>
           </div>
           <div class="command-usage">
-            {{ command.usage }}
+            {{ item.usage || item.type }}
           </div>
         </div>
-      </div>
-      <div class="command-picker-hint">
-        <span>Press <kbd>Enter</kbd> to select</span>
-        <span><kbd>Esc</kbd> to close</span>
       </div>
     </div>
   </Transition>
@@ -57,16 +36,18 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import type { CommandDefinition } from '@/types/commands'
-import { filterCommands } from '@/services/commands'
+import type { SkillDefinition } from '@/types'
+import type { PaletteItem } from '@/types/palette'
+import { filterPaletteItems } from '@/services/palette'
 
 interface Props {
   visible: boolean
   query: string
+  skills?: SkillDefinition[]
 }
 
 interface Emits {
-  (e: 'select', command: CommandDefinition): void
+  (e: 'select', item: PaletteItem): void
   (e: 'close'): void
 }
 
@@ -75,14 +56,14 @@ const emit = defineEmits<Emits>()
 
 const selectedIndex = ref(0)
 
-// Filter commands by query
-const filteredCommands = computed(() => {
-  return filterCommands(props.query)
+// Filter commands and skills by query
+const filteredItems = computed(() => {
+  return filterPaletteItems(props.query, props.skills || [])
 })
 
 // Reset selected index when query changes
 watch(
-  () => props.query,
+  () => [props.query, props.visible, filteredItems.value.length],
   () => {
     selectedIndex.value = 0
   }
@@ -99,13 +80,13 @@ function handleKeyDown(e: KeyboardEvent) {
       break
     case 'ArrowDown':
       e.preventDefault()
-      selectedIndex.value = Math.min(filteredCommands.value.length - 1, selectedIndex.value + 1)
+      selectedIndex.value = Math.min(filteredItems.value.length - 1, selectedIndex.value + 1)
       break
     case 'Tab':
     case 'Enter':
-      if (filteredCommands.value.length > 0) {
+      if (filteredItems.value.length > 0) {
         e.preventDefault()
-        selectCommand(filteredCommands.value[selectedIndex.value])
+        selectItem(filteredItems.value[selectedIndex.value])
       }
       break
     case 'Escape':
@@ -115,8 +96,8 @@ function handleKeyDown(e: KeyboardEvent) {
   }
 }
 
-function selectCommand(command: CommandDefinition) {
-  emit('select', command)
+function selectItem(item: PaletteItem) {
+  emit('select', item)
 }
 
 onMounted(() => {
@@ -130,51 +111,27 @@ onUnmounted(() => {
 
 <style scoped>
 .command-picker {
-  margin-bottom: 8px;
-  background: var(--panel-2);
+  margin-bottom: 6px;
+  background: color-mix(in srgb, var(--panel-2) 88%, transparent);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.10);
   overflow: hidden;
   z-index: var(--z-dropdown);
 }
 
-.command-picker-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.command-picker-header .title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.command-picker-header .count {
-  font-size: 11px;
-  padding: 2px 6px;
-  background: var(--hover);
-  border-radius: 10px;
-  color: var(--muted);
-}
-
 .command-list {
-  max-height: 240px;
+  max-height: 188px;
   overflow-y: auto;
-  padding: 6px;
+  padding: 4px;
 }
 
 .command-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.1s ease;
 }
@@ -185,25 +142,7 @@ onUnmounted(() => {
 }
 
 .command-item.selected {
-  background: rgba(59, 130, 246, 0.15);
-}
-
-.command-icon {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--hover);
-  border-radius: 6px;
-  color: var(--muted);
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.command-item.selected .command-icon {
-  background: rgba(59, 130, 246, 0.2);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .command-info {
@@ -218,47 +157,53 @@ onUnmounted(() => {
   font-family: 'SF Mono', 'Monaco', monospace;
 }
 
+.command-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.command-type {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.command-type.skill {
+  color: var(--accent);
+}
+
 .command-description {
   font-size: 12px;
   color: var(--muted);
-  margin-top: 2px;
-  line-height: 1.4;
+  margin-top: 1px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .command-usage {
   font-size: 11px;
   font-family: 'SF Mono', 'Monaco', monospace;
   color: var(--muted);
-  padding: 2px 6px;
-  background: var(--hover);
-  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
   flex-shrink: 0;
   margin-top: 2px;
 }
 
 .command-item.selected .command-usage {
-  background: rgba(59, 130, 246, 0.2);
   color: var(--accent);
-}
-
-.command-picker-hint {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.command-picker-hint kbd {
-  display: inline-block;
-  padding: 2px 5px;
-  background: var(--hover);
-  border-radius: 4px;
-  font-family: 'SF Mono', 'Monaco', monospace;
-  font-size: 10px;
-  margin: 0 2px;
 }
 
 /* Enter/leave transitions */

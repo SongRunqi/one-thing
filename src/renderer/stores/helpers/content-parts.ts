@@ -21,6 +21,17 @@ export function popTrailingTransient(parts: ContentPart[]): void {
   }
 }
 
+/** Remove every transient indicator when a stream ends or is aborted. */
+export function removeTransientIndicators(parts: ContentPart[]): boolean {
+  const originalLength = parts.length
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (isTransient(parts[i])) {
+      parts.splice(i, 1)
+    }
+  }
+  return parts.length !== originalLength
+}
+
 /** Append text, merging into the trailing text part if one exists. */
 export function appendOrMergeText(parts: ContentPart[], content: string): void {
   popTrailingTransient(parts)

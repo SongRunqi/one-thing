@@ -21,9 +21,11 @@ import { updateSessionUsage } from '../../ipc/sessions.js'
 import { triggerManager, type TriggerContext } from '../triggers/index.js'
 import * as modelRegistry from '../../providers/model-registry.js'
 
+import { v4 as uuidv4 } from 'uuid'
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
 import { createStreamProcessor } from './stream-processor.js'
 import { type IPCEmitter } from './ipc-emitter.js'
+import type { StreamChunkWithTools } from '../../providers/index.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import { getEventBus } from '../../events/index.js'
 import { sendUIMessageFinish } from './stream-helpers.js'
@@ -34,6 +36,8 @@ import { executeToolAndUpdate } from './tool-execution.js'
 import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages } from './chat-logger.js'
 import { buildContextVariablesPromptText } from '../../variables/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
+import { type PendingMessageQueue, type PendingMessage } from './message-queue.js'
+import { getAIToolName } from '../../providers/tool-name-alias.js'
 
 // Gate per-chunk stream logs behind env flag. Running JSON.stringify on every
 // text/tool-input delta noticeably slows streaming, so default off.
@@ -121,7 +125,7 @@ function buildContinuationMessages(
     content: turnState.content.value,
     toolCalls: turnState.toolCalls.map(tc => ({
       toolCallId: tc.id,
-      toolName: tc.toolName,
+      toolName: getAIToolName(tc.toolId),
       args: tc.arguments,
     })),
   }
@@ -135,7 +139,7 @@ function buildContinuationMessages(
     content: turnState.toolCalls.map(tc => ({
       type: 'tool-result' as const,
       toolCallId: tc.id,
-      toolName: tc.toolName,
+      toolName: getAIToolName(tc.toolId),
       result: tc.status === 'completed' ? tc.result : { error: tc.error },
     })),
   }
@@ -155,6 +159,32 @@ function buildContinuationMessages(
 }
 
 /**
+ * Append an assistant-only turn before injected user guidance.
+ * Tool-call turns use buildContinuationMessages() because they need paired
+ * tool result messages; plain text turns still need to be visible to the next
+ * LLM call when the user steers or queues a follow-up mid-stream.
+ */
+function appendAssistantTurnMessage(
+  turnState: TurnState,
+  conversationMessages: ToolChatMessage[],
+): void {
+  if (!turnState.content.value && !turnState.reasoning.value) return
+
+  const assistantMsg: {
+    role: 'assistant'
+    content: string
+    reasoningContent?: string
+  } = {
+    role: 'assistant' as const,
+    content: turnState.content.value,
+  }
+  if (turnState.reasoning.value) {
+    assistantMsg.reasoningContent = turnState.reasoning.value
+  }
+  conversationMessages.push(assistantMsg)
+}
+
+/**
  * Unified stream execution function
  * Handles both tool-enabled and simple streaming in a single code path
  *
@@ -167,7 +197,10 @@ export async function runStream(
   systemPrompt: string,
   toolsForAI: Record<string, any>,  // Can be {} for no-tools mode
   processor: StreamProcessor,
-  enabledSkills: SkillDefinition[]
+  enabledSkills: SkillDefinition[],
+  steeringQueue?: PendingMessageQueue,
+  followUpQueue?: PendingMessageQueue,
+  systemPromptSegments?: import('../prompt/types.js').PromptSegment[],
 ): Promise<StreamResult> {
   const MAX_TOOL_TURNS = 100
   let currentTurn = 0
@@ -185,17 +218,36 @@ export async function runStream(
     console.warn('[ToolLoop] Failed to get model context length:', error)
   }
 
+  // ── Double-loop: inner = tool calls + steering, outer = follow-up ──
+  // Check for queued messages at start (may have been queued before stream began)
+  let pendingSteering: PendingMessage[] = steeringQueue?.drain() || []
+
   while (currentTurn < MAX_TOOL_TURNS) {
-    currentTurn++
-    const turn = createTurnState()
+    let hasMoreToolCalls = true
+    let lastSettledTurn: TurnState | undefined
+    let lastTurnInConversation = false
 
-    logTurnStart(currentTurn)
+    // ── Inner loop: process tool calls and inject steering messages ──
+    while (hasMoreToolCalls || pendingSteering.length > 0) {
+      // 1. Inject pending steering messages before the next LLM call
+      if (pendingSteering.length > 0) {
+        injectPendingMessages(ctx, conversationMessages, emitter, pendingSteering)
+        pendingSteering = []
+      }
 
-    // Send continuation at the START of each turn (except first) to show waiting indicator
-    // This ensures waiting is displayed BEFORE the LLM call starts
-    if (currentTurn > 1) {
-      emitter.sendContinuation(currentTurn)
-    }
+      currentTurn++
+      const turn = createTurnState()
+      let visibleToolInputId: string | undefined
+      const bufferedToolChunks = new Map<string, StreamChunkWithTools[]>()
+      const bufferedToolOrder: string[] = []
+      const executedToolCallIds = new Set<string>()
+
+      logTurnStart(currentTurn)
+
+      // Send continuation at the START of each turn (except first) to show waiting indicator
+      if (currentTurn > 1) {
+        emitter.sendContinuation(currentTurn)
+      }
 
     // Resolve max output tokens with per-model precedence:
     //   1. User's per-model override (settings.providers[id].maxOutputByModel[model])
@@ -254,6 +306,7 @@ export async function runStream(
           return {
             role: 'tool' as const,
             contentPreview: resultStr.slice(0, 200),
+            content: resultStr,
             contentLength: resultStr.length,
             hasReasoning: false,
             toolCallId: first?.toolCallId,
@@ -271,7 +324,12 @@ export async function runStream(
         const base = {
           role: m.role,
           contentPreview: text.slice(0, 200),
+          content: text,
           contentLength: text.length,
+          sourceSegments:
+            m.role === 'system' && systemPromptSegments
+              ? systemPromptSegments
+              : undefined,
           hasReasoning: m.role === 'assistant' && !!(m as any).reasoningContent,
           reasoningLength:
             m.role === 'assistant' && (m as any).reasoningContent
@@ -348,6 +406,149 @@ export async function runStream(
 
     let turnUsage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined
 
+    const getChunkToolCallId = (chunk: StreamChunkWithTools): string | undefined => {
+      if (chunk.type === 'tool-input-start') return chunk.toolInputStart?.toolCallId
+      if (chunk.type === 'tool-input-delta') return chunk.toolInputDelta?.toolCallId
+      if (chunk.type === 'tool-input-end') return chunk.toolInputEnd?.toolCallId
+      if (chunk.type === 'tool-call') return chunk.toolCall?.toolCallId
+      return undefined
+    }
+
+    const bufferToolChunk = (toolCallId: string, chunk: StreamChunkWithTools): void => {
+      if (!bufferedToolChunks.has(toolCallId)) {
+        bufferedToolChunks.set(toolCallId, [])
+        bufferedToolOrder.push(toolCallId)
+      }
+      bufferedToolChunks.get(toolCallId)!.push(chunk)
+    }
+
+    const processToolChunk = async (chunk: StreamChunkWithTools): Promise<boolean> => {
+      if (chunk.type === 'tool-input-start' && chunk.toolInputStart) {
+        const toolCallId = chunk.toolInputStart.toolCallId
+        if (visibleToolInputId && visibleToolInputId !== toolCallId) {
+          bufferToolChunk(toolCallId, chunk)
+          return false
+        }
+        visibleToolInputId = toolCallId
+        processor.handleToolInputStart(
+          toolCallId,
+          chunk.toolInputStart.toolName,
+          currentTurn  // Pass turnIndex for proper contentParts ordering
+        )
+        return false
+      }
+
+      if (chunk.type === 'tool-input-delta' && chunk.toolInputDelta) {
+        const toolCallId = chunk.toolInputDelta.toolCallId
+        if (visibleToolInputId && visibleToolInputId !== toolCallId) {
+          bufferToolChunk(toolCallId, chunk)
+          return false
+        }
+        processor.handleToolInputDelta(
+          toolCallId,
+          chunk.toolInputDelta.argsTextDelta
+        )
+        return false
+      }
+
+      if (chunk.type === 'tool-call' && chunk.toolCall) {
+        const toolCallId = chunk.toolCall.toolCallId
+        if (executedToolCallIds.has(toolCallId)) {
+          return false
+        }
+        if (visibleToolInputId && visibleToolInputId !== toolCallId) {
+          bufferToolChunk(toolCallId, chunk)
+          return false
+        }
+
+        visibleToolInputId = toolCallId
+
+        // Get the step ID before handleToolCallChunk (which may clear the buffer)
+        const existingStepId = processor.getStepIdForToolCall(toolCallId)
+
+        const toolCall = processor.handleToolCallChunk(chunk.toolCall)
+
+        // Send data-steps placeholder BEFORE executing the first tool of this turn
+        // This ensures proper ordering: text -> data-steps -> STEP_ADDED events
+        if (turn.toolCalls.length === 0) {
+          if (turn.content.value) {
+            console.log(`[Stream] Sending content_part: text (${turn.content.value.length} chars) before first tool`)
+            emitter.sendContentPart({ type: 'text', content: turn.content.value })
+          }
+          console.log(`[Stream] Sending content_part: data-steps turn=${currentTurn}`)
+          emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
+        }
+
+        turn.toolCalls.push(toolCall)
+
+        // Always execute tools - the tool will decide if it needs confirmation
+        // by returning requiresConfirmation: true (e.g., bash for dangerous commands)
+        // Pass the resolved toolId for execution, include skills for Tool Agent
+        await executeToolAndUpdate(ctx, toolCall, {
+          toolName: toolCall.toolId,
+          args: chunk.toolCall.args
+        }, processor.toolCalls, enabledSkills, currentTurn, existingStepId)
+
+        visibleToolInputId = undefined
+        executedToolCallIds.add(toolCallId)
+        return !!toolCall.requiresConfirmation
+      }
+
+      if (chunk.type === 'tool-input-end' && chunk.toolInputEnd) {
+        const toolCallId = chunk.toolInputEnd.toolCallId
+        if (executedToolCallIds.has(toolCallId)) {
+          return false
+        }
+        if (visibleToolInputId && visibleToolInputId !== toolCallId) {
+          bufferToolChunk(toolCallId, chunk)
+          return false
+        }
+
+        const existingStepId = processor.getStepIdForToolCall(toolCallId)
+        const toolCall = processor.handleToolInputEnd(toolCallId)
+        if (!toolCall) {
+          visibleToolInputId = undefined
+          return false
+        }
+
+        if (turn.toolCalls.length === 0) {
+          if (turn.content.value) {
+            console.log(`[Stream] Sending content_part: text (${turn.content.value.length} chars) before first tool`)
+            emitter.sendContentPart({ type: 'text', content: turn.content.value })
+          }
+          console.log(`[Stream] Sending content_part: data-steps turn=${currentTurn}`)
+          emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
+        }
+
+        turn.toolCalls.push(toolCall)
+
+        await executeToolAndUpdate(ctx, toolCall, {
+          toolName: toolCall.toolId,
+          args: toolCall.arguments,
+        }, processor.toolCalls, enabledSkills, currentTurn, existingStepId)
+
+        visibleToolInputId = undefined
+        executedToolCallIds.add(toolCallId)
+        return !!toolCall.requiresConfirmation
+      }
+
+      return false
+    }
+
+    const flushBufferedToolChunks = async (): Promise<boolean> => {
+      while (!visibleToolInputId && bufferedToolOrder.length > 0) {
+        const nextToolCallId = bufferedToolOrder.shift()!
+        const chunks = bufferedToolChunks.get(nextToolCallId) || []
+        bufferedToolChunks.delete(nextToolCallId)
+
+        for (const bufferedChunk of chunks) {
+          const paused = await processToolChunk(bufferedChunk)
+          if (paused) return true
+        }
+      }
+      return false
+    }
+
     for await (const chunk of stream) {
         // Log raw stream chunks (gated: each token passing through JSON.stringify slows streaming)
         if (DEBUG_STREAM) {
@@ -374,51 +575,27 @@ export async function runStream(
           processor.handleReasoningChunk(chunk.reasoning, turn.reasoning)
         }
 
-        if (chunk.type === 'tool-input-start' && chunk.toolInputStart) {
-          processor.handleToolInputStart(
-            chunk.toolInputStart.toolCallId,
-            chunk.toolInputStart.toolName,
-            currentTurn  // Pass turnIndex for proper contentParts ordering
-          )
-        }
-
-        if (chunk.type === 'tool-input-delta' && chunk.toolInputDelta) {
-          processor.handleToolInputDelta(
-            chunk.toolInputDelta.toolCallId,
-            chunk.toolInputDelta.argsTextDelta
-          )
-        }
-
-        // Note: tool-input-end is not used - the 'tool-call' chunk contains the final parsed args
-        // AI SDK v6 flow: tool-call-streaming-start -> tool-call-delta* -> tool-call
-
-        if (chunk.type === 'tool-call' && chunk.toolCall) {
-          // Get the step ID before handleToolCallChunk (which may clear the buffer)
-          const existingStepId = processor.getStepIdForToolCall(chunk.toolCall.toolCallId)
-
-          const toolCall = processor.handleToolCallChunk(chunk.toolCall)
-
-          // Send data-steps placeholder BEFORE executing the first tool of this turn
-          // This ensures proper ordering: text -> data-steps -> STEP_ADDED events
-          if (turn.toolCalls.length === 0) {
-            if (turn.content.value) {
-              console.log(`[Stream] Sending content_part: text (${turn.content.value.length} chars) before first tool`)
-              emitter.sendContentPart({ type: 'text', content: turn.content.value })
+        if (chunk.type === 'tool-input-start' || chunk.type === 'tool-input-delta' || chunk.type === 'tool-input-end' || chunk.type === 'tool-call') {
+          const toolCallId = getChunkToolCallId(chunk)
+          if (toolCallId && visibleToolInputId && visibleToolInputId !== toolCallId) {
+            bufferToolChunk(toolCallId, chunk)
+          } else {
+            const paused = await processToolChunk(chunk)
+            if (paused) {
+              console.log(`[Backend] Tool requires user confirmation, pausing loop`)
+              return { pausedForConfirmation: true }
             }
-            console.log(`[Stream] Sending content_part: data-steps turn=${currentTurn}`)
-            emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
+            const bufferedPaused = await flushBufferedToolChunks()
+            if (bufferedPaused) {
+              console.log(`[Backend] Tool requires user confirmation, pausing loop`)
+              return { pausedForConfirmation: true }
+            }
           }
-
-          turn.toolCalls.push(toolCall)
-
-          // Always execute tools - the tool will decide if it needs confirmation
-          // by returning requiresConfirmation: true (e.g., bash for dangerous commands)
-          // Pass the resolved toolId for execution, include skills for Tool Agent
-          await executeToolAndUpdate(ctx, toolCall, {
-            toolName: toolCall.toolId,
-            args: chunk.toolCall.args
-          }, processor.toolCalls, enabledSkills, currentTurn, existingStepId)
         }
+
+        // AI SDK v6 flow: tool-input-start -> tool-input-delta* -> tool-input-end -> tool-call.
+        // We execute at tool-input-end so permission is requested per completed tool input;
+        // the later tool-call chunk for the same id is ignored as a duplicate.
 
         // Capture usage data and finishReason from finish chunk
         if (chunk.type === 'finish') {
@@ -472,58 +649,113 @@ export async function runStream(
     // Persist content parts to store (and send IPC for non-tool-call turns)
     persistTurnContentParts(ctx, emitter, turn, currentTurn)
 
+    lastSettledTurn = turn
+    lastTurnInConversation = false
+
     // If any tool requires confirmation, stop the loop and signal pause
     if (turn.toolCalls.some(tc => tc.requiresConfirmation)) {
       console.log(`[Backend] Tool requires user confirmation, pausing loop`)
       return { pausedForConfirmation: true }
     }
 
-    // Loop control based on finishReason (OpenCode style)
-    // AI decides when to stop - we trust the finishReason signal
+    let appendedContinuation = false
+
+    // Determine if we have more tool calls for the inner loop
     if (turn.toolCalls.length === 0) {
-      // No tool calls this turn - check finishReason to determine if we should exit
-      // "tool-calls" means AI intended to call tools (but didn't) - unusual, treat as stop
-      // "unknown" means uncertain - treat as stop
-      // "stop" means AI decided to stop - respect it
+      // No tool calls this turn - inner loop will settle
 
       // Check if output was truncated due to max token limit
-      // When finishReason is 'length', the AI's response was cut off mid-generation
-      // Tool call JSON may be incomplete and unparseable, resulting in no tool calls
       if (turn.finishReason === 'length') {
         const truncationMessage = '\n\n⚠️ Response was truncated due to max token limit. Please type "continue" to resume.'
-
-        // Append truncation message to existing content (don't replace!)
         const existingContent = turn.content.value || ''
         const fullContent = existingContent + truncationMessage
-
-        // Update store with combined content
         store.updateMessageContent(ctx.sessionId, ctx.assistantMessageId, fullContent)
-
-        // Send the truncation message to UI (append, not replace)
         emitter.sendTextChunk(truncationMessage)
       }
 
-      console.log(`[Backend] No tool calls in turn ${currentTurn}, finishReason: ${turn.finishReason}, ending loop`)
-      return { pausedForConfirmation: false }
+      console.log(`[Backend] No tool calls in turn ${currentTurn}, finishReason: ${turn.finishReason}`)
+      hasMoreToolCalls = false
+    } else if (!turn.toolCalls.every(tc => tc.status === 'completed' || tc.status === 'failed')) {
+      console.log(`[Backend] Not all tools auto-executed in turn ${currentTurn}`)
+      hasMoreToolCalls = false
+    } else {
+      // All tools executed successfully — build continuation for next inner loop iteration
+      hasMoreToolCalls = true
+      buildContinuationMessages(turn, conversationMessages, currentTurn)
+      appendedContinuation = true
+      lastTurnInConversation = true
     }
 
-    // Check if all tools were auto-executed
-    if (!turn.toolCalls.every(tc => tc.status === 'completed' || tc.status === 'failed')) {
-      console.log(`[Backend] Not all tools auto-executed, ending loop`)
-      return { pausedForConfirmation: false }
+    // After turn settles, drain steering queue for the next inner loop iteration
+    const nextSteering = steeringQueue?.drain() || []
+    if (nextSteering.length > 0) {
+      if (!appendedContinuation) {
+        appendAssistantTurnMessage(turn, conversationMessages)
+        lastTurnInConversation = true
+      }
+      pendingSteering = nextSteering
     }
+  } // end inner while (hasMoreToolCalls || pendingSteering)
 
-    // Build and append continuation messages for the next turn
-    buildContinuationMessages(turn, conversationMessages, currentTurn)
-    // Continuation IPC is sent at the START of the next turn
-    // This ensures waiting is displayed BEFORE the LLM call starts
+  // ── Inner loop settled. Check for follow-up messages. ──
+  const followUpMessages = followUpQueue?.drain() || []
+  if (followUpMessages.length > 0) {
+    console.log(`[ToolLoop] Injecting ${followUpMessages.length} follow-up message(s) after turn ${currentTurn}`)
+    if (lastSettledTurn && !lastTurnInConversation) {
+      appendAssistantTurnMessage(lastSettledTurn, conversationMessages)
+    }
+    // Process as steering on the next outer-loop iteration
+    pendingSteering = followUpMessages
+    continue
   }
+
+  // No more follow-up, truly exit
+  break
+  } // end outer while
 
   if (currentTurn >= MAX_TOOL_TURNS) {
     console.log(`[Backend] Reached max tool turns (${MAX_TOOL_TURNS})`)
   }
 
   return { pausedForConfirmation: false }
+}
+
+/**
+ * Inject pending messages into the conversation.
+ * Persists to store as user messages and emits events for UI.
+ */
+function injectPendingMessages(
+  ctx: StreamContext,
+  conversationMessages: ToolChatMessage[],
+  emitter: IPCEmitter,
+  messages: PendingMessage[],
+): void {
+  for (const msg of messages) {
+    console.log(`[ToolLoop] Steering: "${msg.content.slice(0, 80)}${msg.content.length > 80 ? '...' : ''}" (source=${msg.source})`)
+
+    // Push into LLM conversation as a user message
+    conversationMessages.push({ role: 'user', content: msg.content })
+
+    // Persist as a user message in the store
+    const userMsg: ChatMessage = {
+      id: uuidv4(),
+      role: 'user',
+      content: msg.content,
+      timestamp: msg.timestamp,
+    }
+    store.addMessage(ctx.sessionId, userMsg)
+
+    // Emit event for UI
+    try {
+      const eventBus = getEventBus()
+      eventBus.emit(ctx.sessionId, {
+        type: 'message:user-created',
+        message: userMsg,
+      }).catch(err => console.error('[ToolLoop] message:user-created emit error:', err))
+    } catch {
+      // Event system not initialized — ignore
+    }
+  }
 }
 
 /**
@@ -630,7 +862,7 @@ export async function executeStreamGeneration(
     const userContextPrompt = contextParts.length > 0 ? contextParts.join('\n') : undefined
 
     const projectVars = buildProjectDirsPromptVars(sessionWorkingDir)
-    const systemPrompt = buildSystemPrompt({
+    const { text: systemPrompt, segments: systemPromptSegments } = buildSystemPrompt({
       hasTools,
       skills: enabledSkills,
       workingDirectory: sessionWorkingDir,
@@ -666,7 +898,7 @@ export async function executeStreamGeneration(
 
     // Unified stream execution - works for both tools and no-tools modes
     // When toolsForAI is {}, the stream loop naturally exits after first turn
-    const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, processor, enabledSkills)
+    const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, processor, enabledSkills, ctx.steeringQueue, ctx.followUpQueue, systemPromptSegments)
     pausedForConfirmation = result.pausedForConfirmation
 
     // Log request end with structured format

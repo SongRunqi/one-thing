@@ -47,7 +47,7 @@ export class CoreProvider implements VariableProvider {
   list(ctx: VariableContext): ContextVariable[] {
     const wd = this.gateway.read(ctx.sessionId)
     return [
-      { name: NAME_WORKDIR, value: wd, description: DESC_WORKDIR, readonly: false },
+      { name: NAME_WORKDIR, value: wd, scope: 'session', description: DESC_WORKDIR, readonly: false },
     ]
   }
 
@@ -80,7 +80,7 @@ export class CoreProvider implements VariableProvider {
     }
 
     await this.gateway.write(ctx.sessionId, resolved)
-    return { name: NAME_WORKDIR, value: resolved, description: DESC_WORKDIR, readonly: false }
+    return { name: NAME_WORKDIR, value: resolved, scope: 'session', description: DESC_WORKDIR, readonly: false }
   }
 
   // No `delete` capability — registry will surface READONLY when triggered.

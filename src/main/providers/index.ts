@@ -27,6 +27,7 @@ import {
 import { modelSupportsReasoningSync } from './model-registry.js'
 import type { ProviderInfo, ProviderConfig } from './types.js'
 import { oauthManager } from '../providers/auth/oauth-manager.js'
+import { createAIToolName } from './tool-name-alias.js'
 
 // Gate per-chunk provider-layer logs. Every streamed delta went through JSON.stringify
 // before this gate, which measurably slowed streaming output.
@@ -929,6 +930,15 @@ export async function* streamChatResponseWithTools(
         }
         break
 
+      case 'tool-input-end':
+        yield {
+          type: 'tool-input-end',
+          toolInputEnd: {
+            toolCallId: chunkAny.id || chunkAny.toolCallId,
+          },
+        }
+        break
+
       case 'error':
         // Handle stream errors - throw to be caught by caller
         // OpenAI Responses API error structure: { type: 'error', error: { message, code, type } }
@@ -985,9 +995,11 @@ export function convertToolDefinitionsForAI(
   }>
 ): Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }> {
   const result: Record<string, any> = {}
+  const usedNames = new Set<string>()
 
   for (const tool of toolDefinitions) {
-    result[tool.id] = {
+    const aiToolName = createAIToolName(tool.id, usedNames)
+    result[aiToolName] = {
       description: tool.description,
       parameters: tool.parameters,
     }

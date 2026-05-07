@@ -9,7 +9,20 @@
   <ErrorBoundary v-else>
     <div class="app-shell">
       <!-- Main Content - No Header -->
-      <div class="app-content">
+      <div
+        class="app-content"
+        :style="{ '--app-toolbar-left': toolbarLeft + 'px' }"
+      >
+        <div
+          v-show="!showMediaPanel"
+          class="window-drag-hotspots"
+          aria-hidden="true"
+        >
+          <span class="window-drag-strip-top-before-toolbar" />
+          <span class="window-drag-strip-top-after-toolbar" />
+          <span class="window-drag-strip-left" />
+        </div>
+
         <!-- Media Panel (left side) -->
         <MediaPanel
           :visible="showMediaPanel"
@@ -555,6 +568,44 @@ onUnmounted(() => {
   position: relative;
 }
 
+.window-drag-hotspots {
+  position: fixed;
+  inset: 0 auto auto 0;
+  z-index: 550;
+  pointer-events: none;
+}
+
+.window-drag-strip-top-before-toolbar,
+.window-drag-strip-top-after-toolbar,
+.window-drag-strip-left {
+  position: fixed;
+  pointer-events: auto;
+  -webkit-app-region: drag;
+}
+
+.window-drag-strip-top-before-toolbar,
+.window-drag-strip-top-after-toolbar {
+  top: 0;
+  height: 44px;
+}
+
+.window-drag-strip-top-before-toolbar {
+  left: 0;
+  width: var(--app-toolbar-left, 204px);
+}
+
+.window-drag-strip-top-after-toolbar {
+  left: calc(var(--app-toolbar-left, 204px) + 92px);
+  right: 132px;
+}
+
+.window-drag-strip-left {
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 44px;
+}
+
 /* Floating sidebar backdrop */
 .sidebar-floating-backdrop {
   position: fixed;
@@ -612,7 +663,6 @@ html[data-theme='light'] .sidebar-floating-backdrop {
   cursor: pointer;
   -webkit-app-region: no-drag;
   transition: background 0.15s ease, color 0.15s ease;
-  -webkit-app-region: no-drag;
 }
 
 .app-toolbar-btn:hover {

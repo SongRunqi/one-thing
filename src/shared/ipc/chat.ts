@@ -15,6 +15,7 @@ export type VariableLevel = 'system' | 'session'
 export interface ContextVariable {
   name: string
   value: string
+  scope?: 'global' | 'session'
   description?: string
   readonly?: boolean
   updatedAt?: number

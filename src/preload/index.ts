@@ -149,8 +149,8 @@ const electronAPI = {
   listVariables: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_LIST, { sessionId }),
 
-  setVariable: (sessionId: string, name: string, value: string, description?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_SET, { sessionId, name, value, description }),
+  setVariable: (sessionId: string, name: string, value: string, description?: string, scope?: 'global' | 'session') =>
+    ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_SET, { sessionId, name, value, description, scope }),
 
   deleteVariable: (sessionId: string, name: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_DELETE, { sessionId, name }),
@@ -521,6 +521,19 @@ const electronAPI = {
   // File content reading (for file preview panel)
   readFileContent: (filePath: string, maxSize?: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_CONTENT, { path: filePath, maxSize }),
+
+  // ── Plugin management ───────────────────────────
+  getPlugins: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_LIST),
+
+  enablePlugin: (pluginId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_ENABLE, { pluginId }),
+
+  disablePlugin: (pluginId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_DISABLE, { pluginId }),
+
+  refreshPlugins: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REFRESH),
 
 }
 

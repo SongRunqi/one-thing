@@ -146,10 +146,10 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
 
 export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
   enableToolCalls: true,
-  tools: {
-    get_current_time: { enabled: true, autoExecute: true },
-    calculator: { enabled: true, autoExecute: true },
-  },
+  // Per-tool settings are user overrides keyed by the dynamic tool registry.
+  // Tool defaults come from each ToolDefinition, so new tools do not require
+  // editing this settings file.
+  tools: {},
   bash: {
     enableSandbox: true,
     defaultWorkingDirectory: '',

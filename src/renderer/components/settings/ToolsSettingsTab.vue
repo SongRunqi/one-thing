@@ -150,7 +150,8 @@ function updateEnableToolCalls(enabled: boolean) {
 }
 
 function getToolEnabled(toolId: string): boolean {
-  return props.settings.tools.tools[toolId]?.enabled ?? true
+  const tool = props.tools.find(item => item.id === toolId)
+  return props.settings.tools.tools[toolId]?.enabled ?? tool?.enabled ?? true
 }
 
 function setToolEnabled(toolId: string, enabled: boolean) {
@@ -163,7 +164,8 @@ function setToolEnabled(toolId: string, enabled: boolean) {
 }
 
 function getToolAutoExecute(toolId: string): boolean {
-  return props.settings.tools.tools[toolId]?.autoExecute ?? false
+  const tool = props.tools.find(item => item.id === toolId)
+  return props.settings.tools.tools[toolId]?.autoExecute ?? tool?.autoExecute ?? false
 }
 
 function setToolAutoExecute(toolId: string, autoExecute: boolean) {

@@ -78,6 +78,11 @@
               :settings="localSettings.skills || { enableSkills: true, skills: {} }"
               @update:settings="handleSkillsSettingsUpdate"
             />
+
+            <PluginsSettingsTab
+              v-else-if="activeTab === 'plugins'"
+              @plugins-changed="loadTools"
+            />
           </template>
           <div
             v-else
@@ -121,6 +126,7 @@ import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
 import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
+import PluginsSettingsTab from './settings/PluginsSettingsTab.vue'
 
 // Dialogs
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
@@ -209,6 +215,16 @@ const navItems = [
       ])
     }
   },
+  {
+    id: 'plugins',
+    label: 'Plugins',
+    icon: {
+      render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
+        h('path', { d: 'M12 2l3 6 6.5 1-4.7 4.5 1.2 6.5-6-3.2-6 3.2 1.2-6.5L2.5 9 9 8z' }),
+        h('circle', { cx: 12, cy: 12, r: 2, fill: 'currentColor', opacity: 0.3 }),
+      ])
+    }
+  },
 ]
 
 const currentNavItem = computed(() => navItems.find(item => item.id === activeTab.value))
@@ -223,6 +239,17 @@ const hasUnsavedChanges = computed(() => {
   if (!localSettings.value) return false
   return JSON.stringify(localSettings.value) !== originalSettings.value
 })
+
+async function loadTools() {
+  try {
+    const toolsResponse = await window.electronAPI.getTools()
+    if (toolsResponse.success && toolsResponse.tools) {
+      tools.value = toolsResponse.tools
+    }
+  } catch (err) {
+    console.error('Failed to load tools:', err)
+  }
+}
 
 // Load settings
 async function loadSettings() {

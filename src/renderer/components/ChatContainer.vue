@@ -14,7 +14,6 @@
         v-if="!sessionsStore.currentSessionId"
         class="empty-state"
       >
-        <div class="empty-state-drag-region" />
         <div class="empty-state-content">
           <svg
             width="48"
@@ -699,20 +698,6 @@ onUnmounted(() => {
   justify-content: center;
   background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
   position: relative;
-  -webkit-app-region: drag;
-}
-
-.empty-state-drag-region {
-  position: absolute;
-  top: 0;
-  /* Clear of the fixed .app-toolbar (sibling DOM branch). Electron's
-     no-drag doesn't compose across branches, so starting at 0 would
-     swallow clicks on sidebar-toggle / search / new-chat when the
-     sidebar is collapsed (toolbar sits at left:84, width ~90px). */
-  left: 180px;
-  right: 0;
-  height: 40px;
-  -webkit-app-region: drag;
 }
 
 .empty-state-content {

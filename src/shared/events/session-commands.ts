@@ -56,6 +56,20 @@ export interface RetryMessageCommand {
   messageId: string
 }
 
+/** Inject a steering message mid-stream (after current turn ends) */
+export interface InjectSteeringCommand {
+  type: 'command:inject-steering'
+  content: string
+  source?: string
+}
+
+/** Inject a follow-up message (only after agent would stop) */
+export interface InjectFollowUpCommand {
+  type: 'command:inject-followup'
+  content: string
+  source?: string
+}
+
 export type SessionCommand =
   | SendMessageCommand
   | EditAndResendCommand
@@ -64,3 +78,5 @@ export type SessionCommand =
   | ResumeAfterConfirmCommand
   | PermissionRespondCommand
   | RetryMessageCommand
+  | InjectSteeringCommand
+  | InjectFollowUpCommand

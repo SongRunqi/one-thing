@@ -25,7 +25,10 @@
           :size="18"
           :stroke-width="1.8"
         />
-        <span class="activity-title">{{ editedTitle }}</span>
+        <span
+          class="activity-title"
+          :class="{ flowing: isEditing }"
+        >{{ editedTitle }}</span>
         <ChevronDown
           class="activity-chevron"
           :class="{ open: isEditedOpen }"
@@ -56,11 +59,11 @@
               <span class="edited-action">Edited</span>
               <span class="edited-file">{{ fileLabel(view) }}</span>
               <span
-                v-if="view.diff"
+                v-if="editStats(view)"
                 class="edited-stats"
               >
-                <span class="stat-add">+{{ view.diff.additions }}</span>
-                <span class="stat-del">-{{ view.diff.deletions }}</span>
+                <span class="stat-add">+{{ editStats(view)!.additions }}</span>
+                <span class="stat-del">-{{ editStats(view)!.deletions }}</span>
               </span>
               <ChevronDown
                 class="row-chevron"
@@ -68,21 +71,6 @@
                 :size="15"
                 :stroke-width="1.9"
               />
-              <span class="edited-spacer" />
-              <span
-                v-if="view.isAwaitingConfirmation"
-                class="row-confirm"
-                @click.stop
-              >
-                <AllowSplitButton @confirm="(response) => confirmEdited(view, response)" />
-                <button
-                  class="btn-reject"
-                  type="button"
-                  @click="rejectEdited(view)"
-                >
-                  Reject
-                </button>
-              </span>
             </button>
 
             <div
@@ -93,11 +81,11 @@
                 <div class="diff-shell-header">
                   <span class="diff-file">{{ fileLabel(view) }}</span>
                   <span
-                    v-if="view.diff"
+                    v-if="editStats(view)"
                     class="edited-stats"
                   >
-                    <span class="stat-add">+{{ view.diff.additions }}</span>
-                    <span class="stat-del">-{{ view.diff.deletions }}</span>
+                    <span class="stat-add">+{{ editStats(view)!.additions }}</span>
+                    <span class="stat-del">-{{ editStats(view)!.deletions }}</span>
                   </span>
                   <span class="diff-spacer" />
                   <span
@@ -121,10 +109,10 @@
                   />
                 </div>
                 <ToolDiffPreview
-                  v-if="view.diff"
+                  v-if="activeDiff(view)"
                   class="embedded-diff"
-                  :diff="view.diff"
-                  :lines="view.diffLines"
+                  :diff="activeDiff(view)!"
+                  :lines="activeDiffLines(view)"
                   :status="view.status"
                   :hide-header="true"
                 />
@@ -146,11 +134,11 @@
             <div class="diff-shell-header">
               <span class="diff-file">{{ fileLabel(activeEditedView) }}</span>
               <span
-                v-if="activeEditedView.diff"
+                v-if="editStats(activeEditedView)"
                 class="edited-stats"
               >
-                <span class="stat-add">+{{ activeEditedView.diff.additions }}</span>
-                <span class="stat-del">-{{ activeEditedView.diff.deletions }}</span>
+                <span class="stat-add">+{{ editStats(activeEditedView)!.additions }}</span>
+                <span class="stat-del">-{{ editStats(activeEditedView)!.deletions }}</span>
               </span>
               <span class="diff-spacer" />
               <span
@@ -174,10 +162,10 @@
               />
             </div>
             <ToolDiffPreview
-              v-if="activeEditedView.diff"
+              v-if="activeDiff(activeEditedView)"
               class="embedded-diff"
-              :diff="activeEditedView.diff"
-              :lines="activeEditedView.diffLines"
+              :diff="activeDiff(activeEditedView)!"
+              :lines="activeDiffLines(activeEditedView)"
               :status="activeEditedView.status"
               :hide-header="true"
             />
@@ -206,7 +194,10 @@
           :size="18"
           :stroke-width="1.8"
         />
-        <span class="activity-title">{{ exploreTitle }}</span>
+        <span
+          class="activity-title"
+          :class="{ flowing: isUtilityFlowing }"
+        >{{ exploreTitle }}</span>
       </button>
       <div
         v-if="isExploreOpen"
@@ -255,7 +246,7 @@
 import { computed, ref, watch } from 'vue'
 import { ChevronDown, Copy, Pencil, SquareTerminal } from 'lucide-vue-next'
 import type { Step, ToolCall } from '@/types'
-import { buildToolStepView, type ToolStepView } from '@/stores/helpers/tool-step-view'
+import { buildToolStepView, type ToolDiffData, type ToolDiffLine, type ToolStepView } from '@/stores/helpers/tool-step-view'
 import { useSessionsStore } from '@/stores/sessions'
 import AllowSplitButton from '../common/AllowSplitButton.vue'
 import FartCallItem from './FartCallItem.vue'
@@ -309,8 +300,34 @@ const isEditedOpen = computed(() => {
   return editedOpen.value ?? editedViews.value.length === 1
 })
 
+const isEditing = computed(() =>
+  editedViews.value.some(isViewFlowing),
+)
+
+const activeEditedActivityView = computed(() =>
+  [...editedViews.value].reverse().find(isViewInProgress) ||
+  editedViews.value[editedViews.value.length - 1] ||
+  null,
+)
+
 const utilityNeedsConfirmation = computed(() =>
   utilityViews.value.some(view => view.isAwaitingConfirmation),
+)
+
+const isUtilityActive = computed(() =>
+  utilityViews.value.some(isViewInProgress),
+)
+
+const isUtilityFlowing = computed(() =>
+  utilityViews.value.some(isViewFlowing),
+)
+
+const activeUtilityView = computed(() =>
+  [...views.value].reverse().find(view =>
+    (isExploreView(view) || view.toolName === 'bash') && isViewInProgress(view),
+  ) ||
+  utilityViews.value[utilityViews.value.length - 1] ||
+  null,
 )
 
 const isExploreOpen = computed(() =>
@@ -323,18 +340,28 @@ const activeEditedView = computed(() => {
   return null
 })
 
-const editedTitle = computed(() =>
-  editedViews.value.length === 1 ? 'Edited file' : `Edited ${editedViews.value.length} files`,
-)
+const editedTitle = computed(() => {
+  if (isEditing.value && activeEditedActivityView.value) {
+    return `${editingVerb(activeEditedActivityView.value)} ${fileLabel(activeEditedActivityView.value)}`
+  }
+  if (editedViews.value.length !== 1) return `Edited ${editedViews.value.length} files`
+  const view = editedViews.value[0]
+  const stats = editStats(view)
+  const suffix = stats ? ` +${stats.additions} -${stats.deletions}` : ''
+  return `Edited ${fileLabel(view)}${suffix}`
+})
 
 const exploreTitle = computed(() => {
+  if (isUtilityActive.value && activeUtilityView.value) {
+    return utilityActiveTitle(activeUtilityView.value)
+  }
+
   const parts: string[] = []
   if (exploreViews.value.length > 0) {
     parts.push(`Explored ${exploreViews.value.length} ${exploreViews.value.length === 1 ? 'file' : 'files'}`)
   }
   if (commandViews.value.length > 0) {
-    const verb = commandViews.value.some(view => view.isAwaitingConfirmation) ? 'run' : 'ran'
-    parts.push(`${verb} ${commandViews.value.length} ${commandViews.value.length === 1 ? 'command' : 'commands'}`)
+    parts.push(`Ran ${commandViews.value.length} ${commandViews.value.length === 1 ? 'command' : 'commands'}`)
   }
   return parts.join(', ')
 })
@@ -355,6 +382,14 @@ function isEditedView(view: ToolStepView): boolean {
 
 function isExploreView(view: ToolStepView): boolean {
   return ['read', 'grep', 'glob'].includes(view.toolName)
+}
+
+function isViewInProgress(view: ToolStepView): boolean {
+  return ['pending', 'streaming-input', 'awaiting-confirmation', 'executing'].includes(view.status)
+}
+
+function isViewFlowing(view: ToolStepView): boolean {
+  return ['pending', 'streaming-input', 'executing'].includes(view.status)
 }
 
 function toggleEdited() {
@@ -395,12 +430,46 @@ function rejectActiveEdited() {
   if (activeEditedView.value) emit('reject', activeEditedView.value.toolCall)
 }
 
+function activeDiff(view: ToolStepView): ToolDiffData | null {
+  return view.diff || view.streamingDiff
+}
+
+function activeDiffLines(view: ToolStepView): ToolDiffLine[] {
+  return view.diff ? view.diffLines : view.streamingDiffLines
+}
+
 function fileLabel(view: ToolStepView): string {
   const path = view.diff?.filePath ||
     view.streamingContent?.filePath ||
-    String(view.toolCall.arguments?.file_path || view.toolCall.arguments?.path || view.preview || view.displayName)
+    String(view.toolCall.arguments?.file_path || view.toolCall.arguments?.path || '')
+
+  if (!path && isEditedView(view)) {
+    return 'file'
+  }
+
   const normalized = path.replace(/\\/g, '/')
   return normalized.split('/').filter(Boolean).pop() || normalized || view.displayName
+}
+
+function editStats(view: ToolStepView): { additions: number; deletions: number } | null {
+  if (view.diff) {
+    return {
+      additions: view.diff.additions,
+      deletions: view.diff.deletions,
+    }
+  }
+  if (view.streamingContent?.additions) {
+    return {
+      additions: view.streamingContent.additions,
+      deletions: 0,
+    }
+  }
+  return null
+}
+
+function editingVerb(view: ToolStepView): string {
+  if (view.toolName === 'write') return 'Writing'
+  return 'Editing'
 }
 
 function compactVerb(view: ToolStepView): string {
@@ -418,6 +487,22 @@ function compactValue(view: ToolStepView): string {
   const raw = rawPathValue(view)
   if (raw) return formatPath(raw)
   return view.preview || view.displayName
+}
+
+function exploreTargetLabel(view: ToolStepView): string {
+  const value = compactValue(view)
+  return value || view.displayName
+}
+
+function utilityActiveTitle(view: ToolStepView): string {
+  if (view.toolName === 'bash') {
+    const command = compactValue(view)
+    const verb = view.isAwaitingConfirmation ? 'Run' : 'Running'
+    return command ? `${verb} ${command}` : verb
+  }
+
+  const target = exploreTargetLabel(view)
+  return target ? `Exploring ${target}` : 'Exploring'
 }
 
 function rawPathValue(view: ToolStepView): string {
@@ -559,7 +644,29 @@ function toggleExpand(stepId: string) {
 }
 
 .activity-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.activity-title.flowing {
+  background: linear-gradient(
+    90deg,
+    var(--text-faint) 0%,
+    var(--accent) 50%,
+    var(--text-faint) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: flowingGradient 2s linear infinite;
+}
+
+@keyframes flowingGradient {
+  0% { background-position: 200% center; }
+  100% { background-position: -200% center; }
 }
 
 .activity-chevron {

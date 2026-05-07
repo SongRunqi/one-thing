@@ -20,6 +20,7 @@ export interface ToolDiffLine {
 export interface StreamingToolContent {
   filePath: string
   content: string
+  additions: number
 }
 
 export interface ToolStepView {
@@ -33,6 +34,8 @@ export interface ToolStepView {
   inlineResult: string | null
   errorPreview: string | null
   streamingContent: StreamingToolContent | null
+  streamingDiff: ToolDiffData | null
+  streamingDiffLines: ToolDiffLine[]
   diff: ToolDiffData | null
   diffLines: ToolDiffLine[]
   argsJson: string | null
@@ -64,6 +67,7 @@ export function buildToolStepView(step: Step): ToolStepView {
   const status = getToolRenderStatus(toolCall, step)
   const diff = getDiffFromStep(step)
   const streamingContent = getStreamingContent(step, diff)
+  const streamingDiff = getStreamingDiff(streamingContent)
   const argsJson = getArgsJson(step)
   const resultText = getResultText(step)
   const liveOutput = step.status === 'running' && step.result
@@ -95,6 +99,8 @@ export function buildToolStepView(step: Step): ToolStepView {
     inlineResult,
     errorPreview,
     streamingContent,
+    streamingDiff,
+    streamingDiffLines: streamingDiff ? parseStreamingDiffLines(streamingContent?.content || '') : [],
     diff,
     diffLines: diff ? parseDiffWithLineNumbers(diff.diff) : [],
     argsJson,
@@ -105,6 +111,26 @@ export function buildToolStepView(step: Step): ToolStepView {
       (AUTO_EXPAND_TOOLS.has(toolName) && (status === 'streaming-input' || status === 'completed')),
     isAwaitingConfirmation: status === 'awaiting-confirmation',
   }
+}
+
+function getStreamingDiff(streamingContent: StreamingToolContent | null): ToolDiffData | null {
+  if (!streamingContent) return null
+  return {
+    diff: '',
+    filePath: streamingContent.filePath,
+    additions: streamingContent.additions,
+    deletions: 0,
+  }
+}
+
+function parseStreamingDiffLines(content: string): ToolDiffLine[] {
+  if (!content) return []
+  return content.split('\n').map((line, index) => ({
+    class: 'diff-add',
+    prefix: '+',
+    content: line,
+    newNum: index + 1,
+  }))
 }
 
 export function getResultText(step: Step): string | null {
@@ -189,17 +215,20 @@ function getStreamingContent(step: Step, diff: ToolDiffData | null): StreamingTo
   try {
     const parsed = JSON.parse(args)
     const parsedContent = toolName === 'write' ? parsed.content : parsed.new_string
+    const content = typeof parsedContent === 'string' ? parsedContent : ''
     return {
       filePath: typeof parsed.file_path === 'string' ? parsed.file_path : '',
-      content: typeof parsedContent === 'string' ? parsedContent : '',
+      content,
+      additions: countAddedLines(content),
     }
   } catch {
     // Incomplete JSON while the model is still streaming; fall through to
     // tolerant extraction below.
   }
 
-  const pathMatch = args.match(/"file_path"\s*:\s*"([^"]*)"?/)
-  if (pathMatch) result.filePath = pathMatch[1]
+  result.filePath = extractStreamingStringValue(args, 'file_path') ||
+    extractStreamingStringValue(args, 'path') ||
+    ''
 
   const contentKey = toolName === 'write' ? 'content' : 'new_string'
   const contentMatch = args.match(new RegExp(`"${contentKey}"\\s*:\\s*"`))
@@ -215,7 +244,39 @@ function getStreamingContent(step: Step, diff: ToolDiffData | null): StreamingTo
     result.content = content
   }
 
-  return (result.filePath || result.content) ? result : null
+  return (result.filePath || result.content)
+    ? { ...result, additions: countAddedLines(result.content) }
+    : null
+}
+
+function countAddedLines(content: string): number {
+  if (!content) return 0
+  return content.endsWith('\n')
+    ? content.split('\n').length - 1
+    : content.split('\n').length
+}
+
+function extractStreamingStringValue(source: string, key: string): string | null {
+  const match = source.match(new RegExp(`"${key}"\\s*:\\s*"`))
+  if (!match || match.index === undefined) return null
+
+  let value = ''
+  let escaped = false
+  for (const char of source.slice(match.index + match[0].length)) {
+    if (escaped) {
+      value += char === 'n' ? '\n' : char === 't' ? '\t' : char
+      escaped = false
+      continue
+    }
+    if (char === '\\') {
+      escaped = true
+      continue
+    }
+    if (char === '"') break
+    value += char
+  }
+
+  return value || null
 }
 
 export function getDiffFromStep(step: Step): ToolDiffData | null {
