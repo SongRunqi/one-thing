@@ -11,7 +11,10 @@
       <!-- Main Content - No Header -->
       <div
         class="app-content"
-        :style="{ '--app-toolbar-left': toolbarLeft + 'px' }"
+        :style="{
+          '--app-toolbar-left': toolbarLeft + 'px',
+          '--app-drag-right': (inspectorOpen ? 340 + 132 : 132) + 'px',
+        }"
       >
         <div
           v-show="!showMediaPanel"
@@ -106,13 +109,24 @@
           :media-panel-open="showMediaPanel"
           :show-diff-overlay="showDiffOverlay"
           :diff-overlay-data="diffOverlayData"
+          :is-inspector-open="inspectorOpen"
           @close-settings="showSettings = false"
           @open-settings="showSettings = true"
           @toggle-sidebar="handleSidebarToggle"
           @show-floating-sidebar="handleTriggerEnter"
           @hide-floating-sidebar="handleTriggerLeave"
           @close-diff-overlay="closeDiffOverlay"
+          @toggle-inspector="inspectorOpen = !inspectorOpen"
         />
+
+        <!-- Session Lens (app-level right sidebar) -->
+        <Transition name="lens-pop">
+          <ChatInspectorPanel
+            v-if="inspectorOpen && sessionsStore.currentSessionId"
+            :session-id="sessionsStore.currentSessionId"
+            @close="inspectorOpen = false"
+          />
+        </Transition>
       </div>
 
       <!-- Search Overlay (teleported to body) -->
@@ -197,6 +211,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
+import ChatInspectorPanel from '@/components/chat/ChatInspectorPanel.vue'
 import { PanelLeftClose, PanelLeftOpen, Search, SquarePen } from 'lucide-vue-next'
 
 
@@ -219,6 +234,7 @@ const themeStore = useThemeStore()
 
 const showSettings = ref(false)
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
+const inspectorOpen = ref(false)
 
 // Sidebar width (persisted)
 const sidebarWidth = ref(parseInt(localStorage.getItem('sidebarWidth') || '300', 10))
@@ -596,7 +612,7 @@ onUnmounted(() => {
 
 .window-drag-strip-top-after-toolbar {
   left: calc(var(--app-toolbar-left, 204px) + 92px);
-  right: 132px;
+  right: var(--app-drag-right, 132px);
 }
 
 .window-drag-strip-left {
@@ -604,6 +620,19 @@ onUnmounted(() => {
   left: 0;
   width: 20px;
   height: 44px;
+}
+
+/* Session Lens slide transition */
+.lens-pop-enter-active,
+.lens-pop-leave-active {
+  transition: width 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.26s ease;
+  overflow: hidden;
+}
+
+.lens-pop-enter-from,
+.lens-pop-leave-to {
+  width: 0 !important;
+  opacity: 0;
 }
 
 /* Floating sidebar backdrop */

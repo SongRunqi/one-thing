@@ -60,17 +60,11 @@
       </button>
 
       <button
-        :class="['chat-header-btn', { active: isInspectorOpen }]"
-        :title="isInspectorOpen ? 'Hide session lens' : 'Show session lens'"
+        :class="['chat-header-btn', 'inspector-toggle', { hidden: isInspectorOpen }]"
+        title="Show session lens"
         @click="$emit('toggleInspector')"
       >
-        <Gauge
-          v-if="isInspectorOpen"
-          :size="14"
-          :stroke-width="2"
-        />
         <Radar
-          v-else
           :size="14"
           :stroke-width="2"
         />
@@ -93,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, Columns2, Equal, X, Gauge, Radar } from 'lucide-vue-next'
+import { ArrowLeft, Columns2, Equal, X, Radar } from 'lucide-vue-next'
 
 defineProps<{
   sessionName: string
@@ -189,17 +183,17 @@ defineEmits<{
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
   min-width: 60px;
   flex-shrink: 0;
   position: relative;
   z-index: 1;
-  pointer-events: none;
+  -webkit-app-region: no-drag;
 }
 
 .chat-header-btn {
   width: 28px;
   height: 28px;
+  margin-left: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -208,9 +202,11 @@ defineEmits<{
   border-radius: 6px;
   color: var(--muted);
   cursor: pointer;
-  pointer-events: auto;
   transition: all 0.15s ease;
-  -webkit-app-region: no-drag;
+}
+
+.chat-header-btn:first-child {
+  margin-left: 0;
 }
 
 .chat-header-btn:hover {
@@ -231,5 +227,20 @@ defineEmits<{
 .chat-header-btn.active {
   background: rgba(var(--accent-rgb), 0.15);
   color: var(--accent);
+}
+
+.chat-header-btn.inspector-toggle {
+  transition: background 0.15s ease, color 0.15s ease,
+              opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+              width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+              margin-left 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.inspector-toggle.hidden {
+  width: 0;
+  margin-left: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 </style>

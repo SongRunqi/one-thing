@@ -58,6 +58,7 @@
             :style="{ flex: panel.flex }"
             :show-settings="index === 0 && showSettings"
             :show-sidebar-toggle="false"
+            :is-inspector-open="isInspectorOpen"
             @close="closePanel(panel.id)"
             @split="openSessionPicker(panel.id)"
             @equalize="equalizeAllPanels"
@@ -65,6 +66,7 @@
             @close-settings="$emit('close-settings')"
             @open-settings="$emit('open-settings')"
             @toggle-sidebar="$emit('toggle-sidebar')"
+            @toggle-inspector="$emit('toggle-inspector')"
           />
         </template>
       </template>
@@ -224,6 +226,7 @@ const props = defineProps<{
   mediaPanelOpen?: boolean
   showDiffOverlay?: boolean
   diffOverlayData?: DiffOverlayData | null
+  isInspectorOpen?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -233,6 +236,7 @@ const emit = defineEmits<{
   'show-floating-sidebar': []
   'hide-floating-sidebar': []
   'close-diff-overlay': []
+  'toggle-inspector': []
 }>()
 
 const sessionsStore = useSessionsStore()

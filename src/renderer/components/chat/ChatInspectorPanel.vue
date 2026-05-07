@@ -6,12 +6,25 @@
       aria-label="Session details"
     >
       <header class="lens-header">
-        <div class="lens-title">
-          <Sparkles
-            :size="16"
-            :stroke-width="1.9"
-          />
-          <span>Session Lens</span>
+        <div class="lens-header-top">
+          <div class="lens-title">
+            <Sparkles
+              :size="16"
+              :stroke-width="1.9"
+            />
+            <span>Session Lens</span>
+          </div>
+
+          <button
+            class="icon-btn lens-toggle-btn"
+            title="Close session lens"
+            @click="$emit('close')"
+          >
+            <Radar
+              :size="14"
+              :stroke-width="2"
+            />
+          </button>
         </div>
 
         <div
@@ -36,17 +49,6 @@
             <span>{{ tab.label }}</span>
           </button>
         </div>
-
-        <button
-          class="icon-btn"
-          title="Close"
-          @click="$emit('close')"
-        >
-          <X
-            :size="15"
-            :stroke-width="2"
-          />
-        </button>
       </header>
 
       <div class="lens-summary">
@@ -523,7 +525,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Box, Check, ChevronDown, ChevronRight, Database, FileText, Pencil, Plus, Sparkles, TerminalSquare, X } from 'lucide-vue-next'
+import { Box, Check, ChevronDown, ChevronRight, Database, FileText, Pencil, Plus, Radar, Sparkles, TerminalSquare, X } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
@@ -919,8 +921,11 @@ function formatDuration(ms: number): string {
   width: 340px;
   flex-shrink: 0;
   min-height: 0;
-  border-left: 1px solid var(--border);
-  background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
+  background: color-mix(in srgb, var(--bg-panel, var(--bg-elevated, var(--bg-chat))) 94%, #8898aa);
+}
+
+html[data-theme='light'] .session-lens-sidebar {
+  background: color-mix(in srgb, var(--bg-panel, var(--bg-elevated, var(--bg-chat))) 96%, #8898aa);
 }
 
 .session-lens {
@@ -935,10 +940,17 @@ function formatDuration(ms: number): string {
 
 .lens-header {
   display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 14px 8px;
+}
+
+.lens-header-top {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 14px 12px 8px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  height: 44px;
+  padding-right: 2px;
 }
 
 .lens-title,
@@ -953,7 +965,6 @@ function formatDuration(ms: number): string {
 
 .lens-title {
   gap: 8px;
-  flex: 1 1 120px;
   min-width: 0;
   color: var(--text);
   font-size: 13px;
@@ -965,7 +976,6 @@ function formatDuration(ms: number): string {
 }
 
 .lens-tabs {
-  order: 3;
   width: 100%;
   gap: 4px;
   padding: 2px;
@@ -1016,6 +1026,10 @@ function formatDuration(ms: number): string {
 .icon-btn:hover {
   background: var(--hover);
   color: var(--text);
+}
+
+.lens-toggle-btn {
+  flex-shrink: 0;
 }
 
 .lens-summary {

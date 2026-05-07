@@ -8,7 +8,7 @@
       :show-sidebar-toggle="showSidebarToggle"
       :show-split-button="canClose !== undefined"
       :can-close="!!canClose"
-      :is-inspector-open="inspectorOpen"
+      :is-inspector-open="isInspectorOpen"
       @toggle-sidebar="emit('toggleSidebar')"
       @open-directory-picker="openWorkingDirectoryPicker"
       @update-title="handleUpdateTitle"
@@ -16,45 +16,35 @@
       @split="emit('split')"
       @equalize="emit('equalize')"
       @close="emit('close')"
-      @toggle-inspector="inspectorOpen = !inspectorOpen"
+      @toggle-inspector="emit('toggleInspector')"
     />
 
-    <!-- Chat body + optional session lens sidebar -->
-    <div class="chat-shell">
-      <div class="chat-body">
-        <MessageList
-          ref="messageListRef"
-          :messages="panelMessages"
-          :is-loading="isLoading"
-          :session-id="effectiveSessionId"
-          @set-quoted-text="handleSetQuotedText"
-          @set-input-text="handleSetInputText"
-          @regenerate="handleRegenerate"
-          @edit-and-resend="handleEditAndResend"
-          @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
-        />
+    <!-- Chat body -->
+    <div class="chat-body">
+      <MessageList
+        ref="messageListRef"
+        :messages="panelMessages"
+        :is-loading="isLoading"
+        :session-id="effectiveSessionId"
+        @set-quoted-text="handleSetQuotedText"
+        @set-input-text="handleSetInputText"
+        @regenerate="handleRegenerate"
+        @edit-and-resend="handleEditAndResend"
+        @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
+      />
 
-        <div
-          v-memo="[isGenerating, effectiveSessionId]"
-          class="composer-container"
-        >
-          <InputBox
-            ref="inputBoxRef"
-            :is-loading="isGenerating"
-            :session-id="effectiveSessionId"
-            @send-message="handleSendMessage"
-            @stop-generation="handleStopGeneration"
-          />
-        </div>
+      <div
+        v-memo="[isGenerating, effectiveSessionId]"
+        class="composer-container"
+      >
+        <InputBox
+          ref="inputBoxRef"
+          :is-loading="isGenerating"
+          :session-id="effectiveSessionId"
+          @send-message="handleSendMessage"
+          @stop-generation="handleStopGeneration"
+        />
       </div>
-
-      <Transition name="lens-pop">
-        <ChatInspectorPanel
-          v-if="inspectorOpen && effectiveSessionId"
-          :session-id="effectiveSessionId"
-          @close="inspectorOpen = false"
-        />
-      </Transition>
     </div>
 
     <!-- Settings Panel overlay -->
@@ -75,7 +65,6 @@ import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import ChatHeader from './ChatHeader.vue'
-import ChatInspectorPanel from './ChatInspectorPanel.vue'
 import SettingsPanel from '../SettingsPanel.vue'
 
 interface Props {
@@ -83,6 +72,7 @@ interface Props {
   sessionId?: string
   canClose?: boolean
   showSidebarToggle?: boolean
+  isInspectorOpen?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -98,6 +88,7 @@ const emit = defineEmits<{
   equalize: []
   splitWithBranch: [sessionId: string]
   toggleSidebar: []
+  toggleInspector: []
 }>()
 
 const sessionsStore = useSessionsStore()
@@ -240,10 +231,6 @@ function handleSetInputText(text: string) {
   }
 }
 
-// Session lens is local panel state: it closes with the chat panel and is
-// intentionally not persisted across reloads.
-const inspectorOpen = ref(false)
-
 // Focus the input box (for keyboard shortcuts)
 function focusInput() {
   inputBoxRef.value?.focus()
@@ -268,15 +255,6 @@ defineExpose({
   contain: layout style;
 }
 
-.chat-shell {
-  display: flex;
-  flex-direction: row;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .chat-body {
   display: flex;
   flex-direction: column;
@@ -293,28 +271,6 @@ defineExpose({
   flex-direction: column;
   align-items: center;
 }
-
-.lens-pop-enter-active,
-.lens-pop-leave-active {
-  transition: opacity 0.16s ease, width 0.18s ease;
-}
-
-.lens-pop-enter-active :deep(.session-lens-sidebar),
-.lens-pop-leave-active :deep(.session-lens-sidebar) {
-  transition: transform 0.18s ease, opacity 0.16s ease;
-}
-
-.lens-pop-enter-from,
-.lens-pop-leave-to {
-  opacity: 0;
-}
-
-.lens-pop-enter-from :deep(.session-lens-sidebar),
-.lens-pop-leave-to :deep(.session-lens-sidebar) {
-  opacity: 0;
-  transform: translateX(12px);
-}
-
 
 
 /* Settings Fade Transition */
