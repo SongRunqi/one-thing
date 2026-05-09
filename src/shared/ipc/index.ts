@@ -256,3 +256,11 @@ export {
   getToolName,
 } from './ui-message.js'
 
+// Search types
+export type {
+  SearchCategory,
+  SearchRequest,
+  SearchResult,
+  SearchResponse,
+} from './search.js'
+

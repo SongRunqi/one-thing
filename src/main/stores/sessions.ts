@@ -350,6 +350,15 @@ function extractSessionMeta(session: ChatSession): SessionMeta {
   }
 }
 
+/**
+ * Read a session from disk without inserting into the LRU cache.
+ * Use for bulk read-only operations like search that scan many sessions.
+ */
+export function getSessionRaw(sessionId: string): ChatSession | undefined {
+  const sessionPath = getSessionPath(sessionId)
+  return readJsonFile<ChatSession | null>(sessionPath, null) ?? undefined
+}
+
 // Get a single session by ID
 export function getSession(sessionId: string): ChatSession | undefined {
   // 检查缓存

@@ -384,8 +384,9 @@ export interface ElectronAPI {
   // Directories listing (for /cd path completion)
   listDirs: (options: { basePath: string; query?: string; limit?: number }) => Promise<{ success: boolean; dirs: string[]; basePath: string; error?: string }>
 
-  // File content reading (for file preview panel)
-  readFileContent: (filePath: string, maxSize?: number) => Promise<{ success: boolean; content?: string; error?: string }>
+  // File content reading/writing (for file preview panel)
+  readFileContent: (filePath: string, maxSize?: number) => Promise<{ success: boolean; content?: string; size?: number; error?: string }>
+  saveFileContent: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>
 
   // Window methods
   setWindowButtonVisibility: (visible: boolean) => Promise<{ success: boolean }>
@@ -408,6 +409,27 @@ export interface ElectronAPI {
   enablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
   disablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
   refreshPlugins: () => Promise<{ success: boolean; error?: string }>
+
+  // App State
+  getAppState: () => Promise<{
+    currentSessionId: string
+    currentWorkspaceId: string | null
+    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; title?: string }>
+    activeTabIndex?: number
+    sidebarCollapsed?: boolean
+  }>
+  saveUIState: (uiState: {
+    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; title?: string }>
+    activeTabIndex?: number
+    sidebarCollapsed?: boolean
+  }) => Promise<{ success: boolean }>
+
+  // Search Everywhere
+  toggleSearchWindow: () => Promise<{ success: boolean }>
+  closeSearchWindow: () => Promise<{ success: boolean }>
+  searchQuery: (req: { query: string; category: string; limit?: number }) => Promise<{ success: boolean; results: import('@shared/ipc/search').SearchResult[] }>
+  searchExecuteAction: (actionId: string) => Promise<{ success: boolean }>
+  onSearchAction: (callback: (actionId: string) => void) => () => void
 
 }
 

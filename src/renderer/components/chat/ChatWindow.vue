@@ -1,17 +1,19 @@
 <template>
   <main class="chat">
-    <!-- Chat Header -->
-    <ChatHeader
-      :session-name="currentSession?.name || 'New chat'"
-      :working-directory="currentSession?.workingDirectory || null"
+    <!-- Tab Bar (replaces ChatHeader) -->
+    <TabBar
+      :tabs="tabs"
+      :active-tab-id="activeTabId"
+      :session-name="currentSession?.name || 'New Chat'"
       :is-branch-session="isBranchSession"
       :show-sidebar-toggle="showSidebarToggle"
       :show-split-button="canClose !== undefined"
       :can-close="!!canClose"
       :is-inspector-open="isInspectorOpen"
+      @select-tab="tabState.setActiveTab"
+      @close-tab="tabState.removeTab"
+      @move-tab="tabState.moveTab"
       @toggle-sidebar="emit('toggleSidebar')"
-      @open-directory-picker="openWorkingDirectoryPicker"
-      @update-title="handleUpdateTitle"
       @go-to-parent="goToParentSession"
       @split="emit('split')"
       @equalize="emit('equalize')"
@@ -19,32 +21,19 @@
       @toggle-inspector="emit('toggleInspector')"
     />
 
-    <!-- Chat body -->
-    <div class="chat-body">
-      <MessageList
-        ref="messageListRef"
-        :messages="panelMessages"
-        :is-loading="isLoading"
+    <!-- Tab Content -->
+    <div class="tab-content">
+      <ChatPanel
+        v-if="activeTab?.type === 'chat'"
+        ref="chatPanelRef"
         :session-id="effectiveSessionId"
-        @set-quoted-text="handleSetQuotedText"
-        @set-input-text="handleSetInputText"
-        @regenerate="handleRegenerate"
-        @edit-and-resend="handleEditAndResend"
         @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
       />
-
-      <div
-        v-memo="[isGenerating, effectiveSessionId]"
-        class="composer-container"
-      >
-        <InputBox
-          ref="inputBoxRef"
-          :is-loading="isGenerating"
-          :session-id="effectiveSessionId"
-          @send-message="handleSendMessage"
-          @stop-generation="handleStopGeneration"
-        />
-      </div>
+      <FilePanel
+        v-else-if="activeTab?.type === 'file'"
+        :file-path="(activeTab as FileTab).filePath"
+        :max-size-kb="maxFilePreviewKB"
+      />
     </div>
 
     <!-- Settings Panel overlay -->
@@ -58,14 +47,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, watch, onMounted } from 'vue'
+import { ref } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
-import { useChatStore } from '@/stores/chat'
-import { useChatSession } from '@/composables/useChatSession'
-import MessageList from './MessageList.vue'
-import InputBox from './InputBox.vue'
-import ChatHeader from './ChatHeader.vue'
+import { useSettingsStore } from '@/stores/settings'
+import { useTabs } from '@/composables/useTabs'
+import TabBar from './TabBar.vue'
+import ChatPanel from './ChatPanel.vue'
+import FilePanel from './FilePanel.vue'
 import SettingsPanel from '../SettingsPanel.vue'
+import type { FileTab } from '@/types/tabs'
 
 interface Props {
   showSettings?: boolean
@@ -92,153 +83,60 @@ const emit = defineEmits<{
 }>()
 
 const sessionsStore = useSessionsStore()
-const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
 
-// Get effective session ID (props.sessionId or current session)
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
+const maxTabs = computed(() => settingsStore.settings?.general?.maxTabs ?? 15)
+const maxFilePreviewKB = computed(() => settingsStore.settings?.general?.maxFilePreviewKB ?? 256)
 
-// Use independent chat session state
-const {
-  messages,
-  isLoading,
-  isGenerating,
-  sendMessage: chatSendMessage,
-  steerMessage: chatSteerMessage,
-  queueFollowUpMessage: chatQueueFollowUpMessage,
-  regenerate: chatRegenerate,
-  editAndResend: chatEditAndResend,
-  stopGeneration: chatStopGeneration,
-} = useChatSession(effectiveSessionId)
+// Tab state
+const tabState = useTabs(effectiveSessionId.value || '')
+const { tabs, activeTabId, activeTab } = tabState
 
-// Get the session for this panel
+// Restore saved tabs on mount
+onMounted(async () => {
+  try {
+    const appState = await window.electronAPI.getAppState()
+    if (appState.openTabs && appState.openTabs.length > 0) {
+      tabState.restore(appState.openTabs as any, appState.activeTabIndex)
+    }
+  } catch {}
+})
+
+// Sync session changes to the chat tab
+watch(effectiveSessionId, (newId) => {
+  if (newId) tabState.updateChatSession(newId)
+}, { immediate: true })
+
+// Session info for TabBar
 const currentSession = computed(() => {
   const sid = effectiveSessionId.value
   if (!sid) return null
   return sessionsStore.sessions.find(s => s.id === sid) || null
 })
 
-// Messages for this panel (from composable)
-const panelMessages = computed(() => messages.value)
-
-
-// Check if current session is a branch
 const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)
 
-// Go back to parent session
 async function goToParentSession() {
   if (currentSession.value?.parentSessionId) {
     await sessionsStore.switchSession(currentSession.value.parentSessionId)
   }
 }
 
-// Open folder picker to set working directory
-async function openWorkingDirectoryPicker() {
-  if (!currentSession.value) return
+// ChatPanel ref for focusInput
+const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null)
 
-  const result = await window.electronAPI.showOpenDialog({
-    properties: ['openDirectory'],
-    title: 'Select Working Directory',
-    defaultPath: currentSession.value.workingDirectory || undefined,
-  })
-
-  if (!result.canceled && result.filePaths.length > 0) {
-    await sessionsStore.updateSessionWorkingDirectory(currentSession.value.id, result.filePaths[0])
-  }
-}
-
-// Handle title update from ChatHeader
-async function handleUpdateTitle(title: string) {
-  if (!currentSession.value) return
-  await sessionsStore.renameSession(currentSession.value.id, title)
-}
-
-// Child component refs
-const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
-const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
-
-// Session switch: save snapshot of old session, restore snapshot of new session
-watch(effectiveSessionId, async (newId, oldId) => {
-  if (oldId && oldId !== newId) {
-    // Block auto-scroll in MessageList before data changes
-    messageListRef.value?.prepareForSwitch()
-
-    // Save current UI state as index-based snapshot (with sub-message offset)
-    chatStore.saveSnapshot(oldId, {
-      firstVisibleIndex: messageListRef.value?.getFirstVisibleIndex() ?? 0,
-      offsetWithinMessage: messageListRef.value?.getOffsetWithinMessage() ?? 0,
-      isFollowing: messageListRef.value?.getIsFollowing() ?? true,
-      navIndex: messageListRef.value?.getNavIndex() ?? -1,
-      hasNavigated: messageListRef.value?.getHasNavigated() ?? false,
-      messageInput: inputBoxRef.value?.getMessageInput() ?? '',
-      quotedText: inputBoxRef.value?.getQuotedText() ?? '',
-    })
-  }
-
-  // Wait for Vue to render new session's messages
-  await nextTick()
-
-  if (newId) {
-    const snapshot = chatStore.getSnapshot(newId)
-    if (snapshot) {
-      // Restore saved state
-      messageListRef.value?.restoreSnapshot(snapshot)
-      inputBoxRef.value?.restoreSnapshot(snapshot)
-    } else {
-      // First visit — scroll to bottom, clear input
-      messageListRef.value?.scrollToBottom()
-      inputBoxRef.value?.clearInput()
-    }
-  }
-})
-
-async function handleSendMessage(message: string, mode: 'send' | 'steer' | 'followup' = 'send') {
-  if (!currentSession.value) return
-  // User sending a message = intent to follow the response
-  messageListRef.value?.scrollToBottom()
-  if (mode === 'steer') {
-    await chatSteerMessage(message)
-  } else if (mode === 'followup') {
-    await chatQueueFollowUpMessage(message)
-  } else {
-    await chatSendMessage(message)
-  }
-}
-
-async function handleStopGeneration() {
-  await chatStopGeneration()
-}
-
-function handleSetQuotedText(text: string) {
-  // Set quoted text in the input box
-  if (inputBoxRef.value) {
-    inputBoxRef.value.setQuotedText(text)
-  }
-}
-
-async function handleRegenerate(messageId: string) {
-  if (!currentSession.value) return
-  await chatRegenerate(messageId)
-}
-
-async function handleEditAndResend(messageId: string, newContent: string) {
-  if (!currentSession.value) return
-  await chatEditAndResend(messageId, newContent)
-}
-
-function handleSetInputText(text: string) {
-  if (inputBoxRef.value) {
-    inputBoxRef.value.setMessageInput(text)
-  }
-}
-
-// Focus the input box (for keyboard shortcuts)
 function focusInput() {
-  inputBoxRef.value?.focus()
+  chatPanelRef.value?.focusInput()
 }
 
-// Expose methods for parent component
+function addFileTab(filePath: string) {
+  tabState.addFileTab(filePath, maxTabs.value)
+}
+
 defineExpose({
   focusInput,
+  addFileTab,
 })
 </script>
 
@@ -255,7 +153,7 @@ defineExpose({
   contain: layout style;
 }
 
-.chat-body {
+.tab-content {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -263,15 +161,6 @@ defineExpose({
   min-height: 0;
   overflow: hidden;
 }
-
-.composer-container {
-  flex-shrink: 0;
-  padding: 0 16px 18px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
 
 /* Settings Fade Transition */
 .settings-fade-enter-active,

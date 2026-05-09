@@ -57,7 +57,7 @@
             :can-close="panels.length > 1"
             :style="{ flex: panel.flex }"
             :show-settings="index === 0 && showSettings"
-            :show-sidebar-toggle="false"
+            :show-sidebar-toggle="sidebarCollapsed && !sidebarFloating"
             :is-inspector-open="isInspectorOpen"
             @close="closePanel(panel.id)"
             @split="openSessionPicker(panel.id)"
@@ -438,9 +438,18 @@ function focusInput() {
   }
 }
 
+// Open a file in a new tab in the first panel
+function openFileTab(filePath: string) {
+  const firstPanel = panels.value[0]
+  if (firstPanel && panelRefs.value[firstPanel.id]) {
+    panelRefs.value[firstPanel.id]?.addFileTab(filePath)
+  }
+}
+
 // Expose methods
 defineExpose({
-  focusInput
+  focusInput,
+  openFileTab,
 })
 
 onUnmounted(() => {

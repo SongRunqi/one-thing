@@ -55,6 +55,8 @@ export interface GeneralSettings {
   quickCommands?: QuickCommandConfig[]  // Quick command buttons shown above InputBox
   // User profile for lightweight context injection
   userProfile?: UserProfileSettings
+  maxTabs?: number           // Maximum open tabs per panel, 3-30, default 15
+  maxFilePreviewKB?: number  // Maximum file preview size in KB, 64-1024, default 256
   /**
    * @deprecated Migrated to `variables.json` (variables subsystem). The
    * field is retained so that older installs can be migrated on first

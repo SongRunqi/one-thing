@@ -240,22 +240,21 @@ export function registerFilesHandlers() {
           return { success: false, error: 'Path is not a file' }
         }
 
-        if (stats.size > maxSize) {
+        // Read up to maxSize bytes (truncate large files instead of refusing)
+        const fileHandle = await fs.open(filePath, 'r')
+        try {
+          const buf = Buffer.alloc(Math.min(stats.size, maxSize))
+          const { bytesRead } = await fileHandle.read(buf, 0, buf.length, 0)
+          const content = buf.subarray(0, bytesRead).toString('utf-8')
+
           return {
-            success: false,
-            error: `File is too large (${Math.round(stats.size / 1024)}KB). Maximum size is ${Math.round(maxSize / 1024)}KB.`,
+            success: true,
+            content,
+            encoding: 'utf-8',
             size: stats.size,
           }
-        }
-
-        // Read the file content
-        const content = await fs.readFile(filePath, 'utf-8')
-
-        return {
-          success: true,
-          content,
-          encoding: 'utf-8',
-          size: stats.size,
+        } finally {
+          await fileHandle.close()
         }
       } catch (error) {
         console.error('[Files IPC] Failed to read file content:', error)
@@ -271,6 +270,31 @@ export function registerFilesHandlers() {
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to read file',
+        }
+      }
+    }
+  )
+
+  // Save file content
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_SAVE_CONTENT,
+    async (_event, request: { path: string; content: string }): Promise<{ success: boolean; error?: string }> => {
+      const { path: filePath, content } = request
+
+      if (!filePath) {
+        return { success: false, error: 'File path is required' }
+      }
+
+      try {
+        await fs.writeFile(filePath, content, 'utf-8')
+        return { success: true }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EACCES') {
+          return { success: false, error: 'Permission denied' }
+        }
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to save file',
         }
       }
     }

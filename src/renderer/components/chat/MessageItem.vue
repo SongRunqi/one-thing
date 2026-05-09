@@ -120,7 +120,10 @@
         />
 
         <!-- Message footer -->
-        <div class="message-footer">
+        <div
+          class="message-footer"
+          data-message-footer
+        >
           <div
             v-if="message.role !== 'user'"
             class="meta"

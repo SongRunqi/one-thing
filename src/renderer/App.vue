@@ -5,15 +5,17 @@
   <!-- Image Preview Window Mode -->
   <ImagePreviewWindow v-else-if="isImagePreviewWindow" />
 
+  <!-- Search Everywhere Window Mode -->
+  <SearchWindow v-else-if="isSearchWindow" />
+
   <!-- Main App Mode -->
-  <ErrorBoundary v-else>
+  <ErrorBoundary v-else-if="appReady">
     <div class="app-shell">
       <!-- Main Content - No Header -->
       <div
         class="app-content"
         :style="{
           '--app-toolbar-left': toolbarLeft + 'px',
-          '--app-drag-right': (inspectorOpen ? 340 + 132 : 132) + 'px',
         }"
       >
         <div
@@ -22,7 +24,6 @@
           aria-hidden="true"
         >
           <span class="window-drag-strip-top-before-toolbar" />
-          <span class="window-drag-strip-top-after-toolbar" />
           <span class="window-drag-strip-left" />
         </div>
 
@@ -129,71 +130,7 @@
         </Transition>
       </div>
 
-      <!-- Search Overlay (teleported to body) -->
-      <Teleport to="body">
-        <div
-          v-if="showSearchOverlay"
-          class="search-overlay"
-          @click.self="showSearchOverlay = false"
-        >
-          <div class="search-modal">
-            <div class="search-input-wrapper">
-              <svg
-                class="search-icon"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <circle
-                  cx="11"
-                  cy="11"
-                  r="8"
-                />
-                <path d="m21 21-4.35-4.35" />
-              </svg>
-              <input
-                ref="searchInput"
-                v-model="searchQuery"
-                type="text"
-                class="search-input"
-                placeholder="Search chats..."
-                @keydown.escape="showSearchOverlay = false"
-                @keydown.enter="selectFirstResult"
-              >
-            </div>
-            <div class="search-results">
-              <div
-                v-for="session in filteredSessions"
-                :key="session.id"
-                class="search-result-item"
-                :class="{ active: session.id === sessionsStore.currentSession?.id }"
-                @click="selectSession(session.id)"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-                <span class="result-name">{{ session.name || 'New chat' }}</span>
-              </div>
-              <div
-                v-if="filteredSessions.length === 0"
-                class="no-results"
-              >
-                No chats found
-              </div>
-            </div>
-          </div>
-        </div>
-      </Teleport>
+      <!-- Old search overlay removed — replaced by Search Everywhere window -->
     </div>
   </ErrorBoundary>
 </template>
@@ -212,7 +149,9 @@ import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
 import ChatInspectorPanel from '@/components/chat/ChatInspectorPanel.vue'
+import SearchWindow from '@/components/search/SearchWindow.vue'
 import { PanelLeftClose, PanelLeftOpen, Search, SquarePen } from 'lucide-vue-next'
+import { useDoubleShift } from '@/composables/useDoubleShift'
 
 
 // Type for diff overlay data
@@ -226,12 +165,14 @@ interface DiffOverlayData {
 // Detect if this is the settings window or image preview window
 const isSettingsWindow = window.location.hash.startsWith('#/settings')
 const isImagePreviewWindow = window.location.hash.startsWith('#/image-preview')
+const isSearchWindow = window.location.hash.startsWith('#/search')
 
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const themeStore = useThemeStore()
 
+const appReady = ref(false)
 const showSettings = ref(false)
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
 const inspectorOpen = ref(false)
@@ -419,48 +360,15 @@ watch([sidebarCollapsed, sidebarFloating, showMediaPanel], ([collapsed]) => {
 }, { immediate: true })
 
 
-// Search overlay state
-const showSearchOverlay = ref(false)
-const searchQuery = ref('')
-const searchInput = ref<HTMLInputElement | null>(null)
-
-// Filtered sessions based on search query
-const filteredSessions = computed(() => {
-  const sessions = sessionsStore.sessions
-  if (!searchQuery.value.trim()) {
-    return sessions.slice(0, 15)
-  }
-  const query = searchQuery.value.toLowerCase()
-  return sessions.filter(s =>
-    (s.name || '').toLowerCase().includes(query)
-  ).slice(0, 15)
-})
-
-// Open search overlay
+// Search Everywhere — open via IPC (toolbar button + double shift)
 function openSearch() {
-  showSearchOverlay.value = true
+  window.electronAPI.toggleSearchWindow()
 }
 
-// Select a session from search results
-async function selectSession(sessionId: string) {
-  await sessionsStore.switchSession(sessionId)
-  showSearchOverlay.value = false
-  searchQuery.value = ''
+// Double Shift to open search (only in main window)
+if (!isSettingsWindow && !isImagePreviewWindow && !isSearchWindow) {
+  useDoubleShift(() => openSearch())
 }
-
-// Select first result on Enter
-function selectFirstResult() {
-  if (filteredSessions.value.length > 0) {
-    selectSession(filteredSessions.value[0].id)
-  }
-}
-
-// Auto focus search input when overlay opens
-watch(showSearchOverlay, (val) => {
-  if (val) {
-    nextTick(() => searchInput.value?.focus())
-  }
-})
 
 // Re-apply theme when mode (light/dark) changes
 watch(() => settingsStore.effectiveTheme, () => {
@@ -484,6 +392,7 @@ async function createNewChat() {
 let unsubscribeSettingsChanged: (() => void) | null = null
 let unsubscribeMenuNewChat: (() => void) | null = null
 let unsubscribeMenuCloseChat: (() => void) | null = null
+let unsubscribeSearchAction: (() => void) | null = null
 
 onMounted(async () => {
   // Load initial data
@@ -493,7 +402,23 @@ onMounted(async () => {
   // Initialize theme system (must be after settings load)
   await themeStore.initialize()
 
-  // Don't auto-create new chat - let user choose from existing sessions or create manually
+  // Restore last session from saved app state
+  try {
+    const appState = await window.electronAPI.getAppState()
+    if (appState.currentSessionId) {
+      const sessionExists = sessionsStore.sessions.some(s => s.id === appState.currentSessionId)
+      if (sessionExists) {
+        await sessionsStore.switchSession(appState.currentSessionId)
+      }
+    }
+    if (appState.sidebarCollapsed !== undefined) {
+      sidebarCollapsed.value = appState.sidebarCollapsed
+    }
+  } catch (e) {
+    console.warn('[App] Failed to restore app state:', e)
+  }
+
+  appReady.value = true
 
   // Listen for settings changes from other windows (e.g., settings window)
   unsubscribeSettingsChanged = window.electronAPI.onSettingsChanged((newSettings) => {
@@ -548,6 +473,34 @@ onMounted(async () => {
     }
   })
 
+  // Listen for search action execution from Search Everywhere window
+  unsubscribeSearchAction = window.electronAPI.onSearchAction(async (actionId: string) => {
+    if (actionId.startsWith('switch-session:')) {
+      const sessionId = actionId.replace('switch-session:', '')
+      await sessionsStore.switchSession(sessionId)
+      return
+    }
+    if (actionId.startsWith('open-file:')) {
+      const filePath = actionId.replace('open-file:', '')
+      chatContainerRef.value?.openFileTab?.(filePath)
+      return
+    }
+    switch (actionId) {
+      case 'new-chat': await createNewChat(); break
+      case 'open-settings': openSettingsWindow(); break
+      case 'toggle-sidebar': handleSidebarToggle(); break
+      case 'toggle-inspector': inspectorOpen.value = !inspectorOpen.value; break
+      case 'close-chat': {
+        const id = sessionsStore.currentSessionId
+        if (id) await sessionsStore.deleteSession(id)
+        break
+      }
+      case 'focus-input':
+        chatContainerRef.value?.focusInput?.()
+        break
+    }
+  })
+
 })
 
 onUnmounted(() => {
@@ -559,6 +512,9 @@ onUnmounted(() => {
   }
   if (unsubscribeMenuCloseChat) {
     unsubscribeMenuCloseChat()
+  }
+  if (unsubscribeSearchAction) {
+    unsubscribeSearchAction()
   }
 })
 
@@ -592,27 +548,17 @@ onUnmounted(() => {
 }
 
 .window-drag-strip-top-before-toolbar,
-.window-drag-strip-top-after-toolbar,
 .window-drag-strip-left {
   position: fixed;
   pointer-events: auto;
   -webkit-app-region: drag;
 }
 
-.window-drag-strip-top-before-toolbar,
-.window-drag-strip-top-after-toolbar {
-  top: 0;
-  height: 44px;
-}
-
 .window-drag-strip-top-before-toolbar {
+  top: 0;
   left: 0;
+  height: 44px;
   width: var(--app-toolbar-left, 204px);
-}
-
-.window-drag-strip-top-after-toolbar {
-  left: calc(var(--app-toolbar-left, 204px) + 92px);
-  right: var(--app-drag-right, 132px);
 }
 
 .window-drag-strip-left {
@@ -697,148 +643,6 @@ html[data-theme='light'] .sidebar-floating-backdrop {
 .app-toolbar-btn:hover {
   background: var(--hover);
   color: var(--text);
-}
-
-/* Search Overlay */
-.search-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  display: flex;
-  justify-content: center;
-  padding-top: 100px;
-  z-index: 1000;
-  animation: fadeIn 0.15s ease;
-}
-
-html[data-theme='light'] .search-overlay {
-  background: rgba(0, 0, 0, 0.4);
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.search-modal {
-  width: 520px;
-  max-height: 450px;
-  background: var(--panel);
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  animation: slideDown 0.2s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.search-input-wrapper {
-  display: flex;
-  align-items: center;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
-  gap: 12px;
-}
-
-.search-icon {
-  color: var(--muted);
-  flex-shrink: 0;
-}
-
-.search-input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  font-size: 16px;
-  color: var(--text);
-  outline: none;
-}
-
-.search-input::placeholder {
-  color: var(--muted);
-}
-
-.search-results {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.search-result-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--text);
-  transition: all 0.12s ease;
-}
-
-.search-result-item:hover {
-  background: var(--hover);
-}
-
-.search-result-item.active {
-  background: rgba(59, 130, 246, 0.15);
-  color: var(--accent);
-}
-
-.search-result-item svg {
-  color: var(--muted);
-  flex-shrink: 0;
-}
-
-.search-result-item.active svg {
-  color: var(--accent);
-}
-
-.result-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-}
-
-.no-results {
-  padding: 20px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 14px;
-}
-
-/* Responsive styles */
-@media (max-width: 768px) {
-  .search-overlay {
-    padding-top: 60px;
-  }
-
-  .search-modal {
-    width: 95%;
-    max-height: 70vh;
-  }
-
-  .search-input {
-    font-size: 14px;
-  }
 }
 
 /* Agent Dialog Overlay */

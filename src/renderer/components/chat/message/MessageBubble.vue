@@ -105,6 +105,7 @@
               <StreamingMarkdown
                 :content="firstTextPart.content"
                 :is-user="role === 'user'"
+                :is-streaming="isStreaming"
               />
             </div>
           </Transition>
@@ -135,6 +136,7 @@
                 <StreamingMarkdown
                   :content="part.content"
                   :is-user="role === 'user'"
+                  :is-streaming="isStreaming"
                 />
               </div>
               <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
@@ -183,6 +185,7 @@
           <StreamingMarkdown
             :content="content"
             :is-user="role === 'user'"
+            :is-streaming="isStreaming"
           />
         </div>
       </div>
@@ -719,6 +722,7 @@ html[data-theme='light'] .attachment-file {
 .content {
   display: flow-root;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
   font-family: var(--font-body);
   line-height: var(--message-line-height, 1.6);
   font-size: var(--message-font-size, 15px);
@@ -837,15 +841,30 @@ html[data-theme='light'] .attachment-file {
 .content :deep(h2),
 .content :deep(h3),
 .content :deep(h4) {
-  margin: 0.8em 0 0.2em 0;
+  max-width: 100%;
+  margin: 0.55em 0 0.18em 0;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Chat context: headings are section markers, not page titles */
-.content :deep(h1) { font-size: 1.1em; }
-.content :deep(h2) { font-size: 1.05em; }
+.content :deep(h1) { font-size: 1.08em; }
+.content :deep(h2) { font-size: 1.04em; }
 .content :deep(h3) { font-size: 1em; }
+
+.content :deep(h1 + h1),
+.content :deep(h1 + h2),
+.content :deep(h1 + h3),
+.content :deep(h2 + h1),
+.content :deep(h2 + h2),
+.content :deep(h2 + h3),
+.content :deep(h3 + h1),
+.content :deep(h3 + h2),
+.content :deep(h3 + h3) {
+  margin-top: 0.35em;
+}
 
 /* First heading has no top margin */
 .content :deep(h1:first-child),

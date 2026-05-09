@@ -167,13 +167,16 @@ export function readJsonFile<T>(filePath: string, defaultValue: T): T {
 }
 
 // Helper to write JSON file safely
+// Uses atomic write (tmp + rename) to prevent corruption on crash
 export function writeJsonFile<T>(filePath: string, data: T): void {
   try {
     const dir = path.dirname(filePath)
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true })
     }
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+    const tmpPath = filePath + '.tmp'
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+    fs.renameSync(tmpPath, filePath)
   } catch (error) {
     console.error(`Error writing ${filePath}:`, error)
     throw error
@@ -181,10 +184,13 @@ export function writeJsonFile<T>(filePath: string, data: T): void {
 }
 
 // Async variant — avoids blocking the event loop during streaming writes
+// Uses atomic write (tmp + rename) to prevent corruption on crash
 export async function writeJsonFileAsync<T>(filePath: string, data: T): Promise<void> {
   const dir = path.dirname(filePath)
   await fsp.mkdir(dir, { recursive: true })
-  await fsp.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8')
+  const tmpPath = filePath + '.tmp'
+  await fsp.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+  await fsp.rename(tmpPath, filePath)
 }
 
 // Helper to delete file safely

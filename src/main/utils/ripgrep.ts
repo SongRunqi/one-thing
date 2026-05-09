@@ -221,12 +221,17 @@ export async function* listFiles(options: {
   cwd: string
   glob?: string[]
   hidden?: boolean
+  noIgnore?: boolean
 }): AsyncGenerator<string> {
   const rgPath = await getRipgrepPath()
   const args = ['--files', '--follow']
 
   if (options.hidden !== false) {
     args.push('--hidden')
+  }
+
+  if (options.noIgnore) {
+    args.push('--no-ignore')
   }
 
   // Always exclude .git

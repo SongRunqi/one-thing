@@ -15,7 +15,7 @@
         v-if="messages.length > 0"
         ref="messageListContentRef"
         class="message-list-content"
-        :style="{ height: `${virtualizer.getTotalSize()}px` }"
+        :style="{ height: `${virtualizer.getTotalSize() + VISUAL_FOLLOW_TAIL_SPACE}px` }"
       >
         <div
           v-for="virtualItem in virtualizer.getVirtualItems()"
@@ -161,6 +161,7 @@ import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
 import { buildFontFamily } from '@shared/fonts'
+import { traceEvent } from '@/utils/stream-scroll-trace'
 
 interface BranchInfo {
   id: string
@@ -260,11 +261,91 @@ let navResizeObserver: ResizeObserver | null = null
 const isFollowing = ref(true)
 let suppressed = false
 let allowNextScroll = false  // one-shot bypass for scrollToFn
+const FOLLOW_ANCHOR_GAP = 24
+const VISUAL_FOLLOW_TAIL_SPACE = 64
+
+function getLastElement(selector: string): HTMLElement | null {
+  const root = messageListRef.value
+  if (!root) return null
+  const nodes = root.querySelectorAll<HTMLElement>(selector)
+  return nodes.length > 0 ? nodes[nodes.length - 1] : null
+}
+
+function getFollowAnchor(): { el: HTMLElement; gap: number; kind: string } | null {
+  const streamCaret = getLastElement('[data-stream-caret]')
+  if (streamCaret) return { el: streamCaret, gap: FOLLOW_ANCHOR_GAP, kind: 'stream-caret' }
+
+  const footer = getLastElement('.message.assistant [data-message-footer]')
+  if (footer) return { el: footer, gap: FOLLOW_ANCHOR_GAP, kind: 'assistant-footer' }
+
+  const sentinel = bottomSentinelRef.value
+  if (sentinel) return { el: sentinel, gap: FOLLOW_ANCHOR_GAP, kind: 'bottom-sentinel' }
+
+  return null
+}
+
+function getFollowAnchorDelta(): { delta: number; kind: string } | null {
+  const scroller = messageListRef.value
+  const anchor = getFollowAnchor()
+  if (!scroller || !anchor) return null
+
+  const scrollerRect = scroller.getBoundingClientRect()
+  const anchorRect = anchor.el.getBoundingClientRect()
+  const targetBottom = scrollerRect.bottom - anchor.gap
+  return {
+    delta: anchorRect.bottom - targetBottom,
+    kind: anchor.kind,
+  }
+}
+
+function followVisualAnchor(source = 'followVisualAnchor', force = false) {
+  if (!isFollowing.value || suppressed) return
+
+  const scroller = messageListRef.value
+  if (!scroller) return
+
+  const anchor = getFollowAnchor()
+  if (!anchor) {
+    scroller.scrollTop = scroller.scrollHeight
+    traceEvent(source, () => messageListRef.value, {
+      isFollowing: isFollowing.value,
+      virtualizerTotalSize: virtualizer.value.getTotalSize(),
+      extra: 'fallback=scrollHeight',
+    })
+    return
+  }
+
+  const anchorDelta = getFollowAnchorDelta()
+  if (!anchorDelta) return
+  const delta = anchorDelta.delta
+  const shouldCorrectUp = delta > 1
+  const shouldCorrectDown = delta < -1
+
+  if (force || shouldCorrectUp || shouldCorrectDown) {
+    scroller.scrollTop += delta
+  }
+
+  traceEvent(source, () => messageListRef.value, {
+    isFollowing: isFollowing.value,
+    virtualizerTotalSize: virtualizer.value.getTotalSize(),
+    extra: `anchor=${anchorDelta.kind} gap=${anchor.gap} delta=${Math.round(delta)}`,
+  })
+}
+
+function jumpToVisualAnchor(source = 'jumpToVisualAnchor') {
+  if (props.messages.length > 0) {
+    allowNextScroll = true
+    virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
+  }
+  requestAnimationFrame(() => followVisualAnchor(source, true))
+}
 
 // Virtual scrolling — only render visible messages + overscan
 // Custom scrollToFn: block virtualizer's internal scroll corrections when detached.
-// The virtualizer's resizeItem → _scrollToOffset path calls scrollTo() on every
-// measureElement update, which drags the user back to bottom during streaming.
+// When following, pin directly to scrollHeight — avoid calling followVisualAnchor
+// here because the virtualizer's measurement cycle and getBoundingClientRect
+// reads can create a feedback oscillation (jitter). The pinBottom / ResizeObserver
+// / nextTick paths handle visual anchor adjustments outside the measure loop.
 const virtualizer = useVirtualizer(computed(() => ({
   count: props.messages.length,
   getScrollElement: () => messageListRef.value as HTMLElement | null,
@@ -275,6 +356,11 @@ const virtualizer = useVirtualizer(computed(() => ({
     if (allowNextScroll) {
       allowNextScroll = false
     } else if (!isFollowing.value && !suppressed) {
+      return
+    }
+    if (isFollowing.value && !suppressed) {
+      const el = messageListRef.value
+      if (el) el.scrollTop = el.scrollHeight
       return
     }
     instance.scrollElement?.scrollTo({ top: offset, behavior: options.behavior })
@@ -293,10 +379,8 @@ const virtualizer = useVirtualizer(computed(() => ({
 // pass re-pins the bottom, which is more reliable than guessing frames.
 const effectiveScrollVersion = computed(() => chatStore.getScrollVersion(effectiveSessionId.value))
 
-function pinBottom() {
-  if (!isFollowing.value || suppressed) return
-  const el = messageListRef.value
-  if (el) el.scrollTop = el.scrollHeight
+function pinBottom(source = 'pinBottom') {
+  followVisualAnchor(source)
 }
 
 // User-driven triggers: new message count, store-emitted scroll bumps.
@@ -305,7 +389,7 @@ function pinBottom() {
 // virtualizer's measureElement reporting real heights, etc.).
 watch([effectiveScrollVersion, () => props.messages.length], () => {
   if (!isFollowing.value || suppressed || props.messages.length === 0) return
-  nextTick(pinBottom)
+  nextTick(() => pinBottom('watch:scrollVersion+msgLen'))
 })
 
 // Force-follow when a new user message lands. The user explicitly sent it,
@@ -323,10 +407,10 @@ watch(lastUserMessageId, (newId, oldId) => {
   if (!newId || newId === oldId) return
   isFollowing.value = true
   nextTick(() => {
-    pinBottom()
+    pinBottom('watch:lastUserMsg/tick')
     requestAnimationFrame(() => {
-      pinBottom()
-      requestAnimationFrame(pinBottom)
+      pinBottom('watch:lastUserMsg/raf1')
+      requestAnimationFrame(() => pinBottom('watch:lastUserMsg/raf2'))
     })
   })
 })
@@ -346,7 +430,7 @@ watch(
     }
     if (!el || typeof ResizeObserver === 'undefined') return
     contentResizeObserver = new ResizeObserver(() => {
-      pinBottom()
+      pinBottom('ResizeObserver:content')
       scheduleNavMarkerUpdate()
       updateVisibleUserMessageIndex()
     })
@@ -437,6 +521,7 @@ watch(
 function navigateToUserMessage(navIndex: number) {
   if (navIndex < 0 || navIndex >= userMessageIndices.value.length) return
   hasNavigated.value = true
+  isFollowing.value = false
   currentUserMessageNavIndex.value = navIndex
   scrollToUserMessage(navIndex)
 }
@@ -610,8 +695,14 @@ function updateVisibleUserMessageIndex() {
   currentUserMessageNavIndex.value = activeNavIndex
 }
 
-// Scroll event handler — only for nav marker position tracking
 function handleScroll() {
+  if (!isFollowing.value) {
+    const anchorDelta = getFollowAnchorDelta()
+    if (anchorDelta && anchorDelta.delta <= 2) {
+      isFollowing.value = true
+      requestAnimationFrame(() => followVisualAnchor('scroll:reattach-visual-bottom', true))
+    }
+  }
   scheduleNavMarkerUpdate()
   updateVisibleUserMessageIndex()
 }
@@ -667,20 +758,24 @@ usePermissionShortcuts(
 function scrollToBottomFromButton() {
   isFollowing.value = true
   setNavIndexToLastUserMessage()
-  const el = messageListRef.value
-  if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  jumpToVisualAnchor('button:scrollToBottom')
 }
 
-// Detach on wheel-up, re-attach when user scrolls back to bottom
 function onWheel(e: WheelEvent) {
+  if (e.deltaY > 0 && isFollowing.value) {
+    e.preventDefault()
+    followVisualAnchor('wheel:hold-visual-bottom', true)
+    return
+  }
+
   if (e.deltaY < 0 && isFollowing.value) {
     isFollowing.value = false
+    traceEvent('wheel:detach', () => messageListRef.value, { isFollowing: false })
   } else if (e.deltaY > 0 && !isFollowing.value) {
-    // scrollToFn is blocked when detached, so scrollTop is only
-    // changed by the user — safe to check position for re-attach.
-    const el = messageListRef.value
-    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 50) {
+    const anchorDelta = getFollowAnchorDelta()
+    if (anchorDelta && anchorDelta.delta <= 48) {
       isFollowing.value = true
+      requestAnimationFrame(() => followVisualAnchor('wheel:reattach-visual-bottom', true))
     }
   }
 }
@@ -689,7 +784,7 @@ function onWheel(e: WheelEvent) {
 onMounted(() => {
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
-    messageListRef.value.addEventListener('wheel', onWheel, { passive: true })
+    messageListRef.value.addEventListener('wheel', onWheel, { passive: false })
     if (typeof ResizeObserver !== 'undefined') {
       navResizeObserver = new ResizeObserver(() => scheduleNavMarkerUpdate())
       navResizeObserver.observe(messageListRef.value)
@@ -698,7 +793,7 @@ onMounted(() => {
   // Scroll to bottom on initial mount (messages may be pre-loaded in store)
   nextTick(() => {
     if (props.messages.length > 0 && messageListRef.value) {
-      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
+      jumpToVisualAnchor('mounted:initial')
     }
     scheduleNavMarkerUpdate()
   })
@@ -1161,11 +1256,10 @@ defineExpose({
       if (following && props.messages.length > 0) {
         suppressed = false
         setNavIndexToLastUserMessage()
-        if (messageListRef.value) {
-          messageListRef.value.scrollTop = messageListRef.value.scrollHeight
-        }
+        jumpToVisualAnchor('restoreSnapshot:following')
       } else if (snap.firstVisibleIndex >= 0 && props.messages.length > 0) {
         const idx = Math.min(snap.firstVisibleIndex, props.messages.length - 1)
+        allowNextScroll = true
         virtualizer.value.scrollToIndex(idx, { align: 'start' })
         nextTick(() => {
           if (messageListRef.value && snap.offsetWithinMessage > 0) {
@@ -1182,9 +1276,7 @@ defineExpose({
   scrollToBottom: () => {
     isFollowing.value = true
     setNavIndexToLastUserMessage()
-    if (messageListRef.value) {
-      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
-    }
+    jumpToVisualAnchor('expose:scrollToBottom')
   },
 })
 </script>

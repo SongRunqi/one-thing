@@ -8,6 +8,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, triggerRef } from 'vue'
+import { perfMark, perfMeasure } from '@/utils/perf'
 import type { ChatMessage, MessageAttachment, Step, ContentPart } from '@/types'
 import {
   appendOrMergeText,
@@ -147,8 +148,18 @@ export const useChatStore = defineStore('chat', () => {
     return sessionScrollVersion.value.get(sessionId) ?? 0
   }
 
+  const pendingScrollBump = new Set<string>()
+  const scheduleFrame = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame
+    : (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16)
+
   function bumpScrollVersion(sessionId: string) {
-    sessionScrollVersion.value.set(sessionId, getScrollVersion(sessionId) + 1)
+    if (pendingScrollBump.has(sessionId)) return
+    pendingScrollBump.add(sessionId)
+    scheduleFrame(() => {
+      pendingScrollBump.delete(sessionId)
+      sessionScrollVersion.value.set(sessionId, getScrollVersion(sessionId) + 1)
+    })
   }
 
   // ============ Inspector — request snapshots ring buffer ============
@@ -351,6 +362,7 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
+    perfMark('chunk-start')
     const message = messages[messageIndex]
 
     // Initialize contentParts if not exists
@@ -366,8 +378,13 @@ export const useChatStore = defineStore('chat', () => {
         message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
       } else {
         message.content = (message.content || '') + chunk.content
-        appendOrMergeText(parts, chunk.content)
-        message.contentParts = [...parts]
+        const last = parts[parts.length - 1]
+        if (last && last.type === 'text') {
+          last.content += chunk.content
+        } else {
+          appendOrMergeText(parts, chunk.content)
+          message.contentParts = [...parts]
+        }
       }
     } else if (chunk.type === 'reasoning') {
       message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
@@ -428,9 +445,8 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
 
-    // Increment scroll trigger — lets MessageList scroll without a deep watcher.
-    // No need to spread messages or call triggerRef: sessionMessages is ref() (not
-    // shallowRef), so every mutation via the reactive proxy is tracked surgically.
+    perfMark('chunk-end')
+    perfMeasure('handleStreamChunk', 'chunk-start', 'chunk-end')
     bumpScrollVersion(sessionId)
   }
 

@@ -1,37 +1,39 @@
+import { perfMark, perfMeasure } from '@/utils/perf'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import mathjax3 from 'markdown-it-mathjax3'
 
-// Singleton markdown-it instance with highlight.js and MathJax
-const md = new MarkdownIt({
-  html: true,
-  breaks: true,
-  linkify: true,
-  typographer: true,
-})
+function createMarkdownRenderer(enableMath: boolean) {
+  const instance = new MarkdownIt({
+    html: true,
+    breaks: true,
+    linkify: true,
+    typographer: true,
+  })
 
-// Enable MathJax for LaTeX rendering
-// Supports $...$ for inline math and $$...$$ for block math
-md.use(mathjax3)
-
-// Custom fence (code block) renderer
-md.renderer.rules.fence = (tokens, idx) => {
-  const token = tokens[idx]
-  const code = token.content
-  const lang = token.info.trim() || 'text'
-  let highlighted: string
-  if (lang && hljs.getLanguage(lang)) {
-    try {
-      highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
-    } catch (e) {
-      console.error('Highlight error:', e)
-      highlighted = md.utils.escapeHtml(code)
-    }
-  } else {
-    highlighted = md.utils.escapeHtml(code)
+  if (enableMath) {
+    // Supports $...$ for inline math and $$...$$ for block math.
+    instance.use(mathjax3)
   }
 
-  return `<div class="code-block-container">
+  // Custom fence (code block) renderer
+  instance.renderer.rules.fence = (tokens, idx) => {
+    const token = tokens[idx]
+    const code = token.content
+    const lang = token.info.trim() || 'text'
+    let highlighted: string
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+      } catch (e) {
+        console.error('Highlight error:', e)
+        highlighted = instance.utils.escapeHtml(code)
+      }
+    } else {
+      highlighted = instance.utils.escapeHtml(code)
+    }
+
+    return `<div class="code-block-container">
     <div class="code-block-header">
       <div class="code-block-lang">${lang}</div>
       <button class="code-block-copy" onclick="navigator.clipboard.writeText(decodeURIComponent(this.getAttribute('data-code'))); this.classList.add('copied'); setTimeout(() => this.classList.remove('copied'), 1500)" data-code="${encodeURIComponent(code)}">
@@ -41,13 +43,22 @@ md.renderer.rules.fence = (tokens, idx) => {
     </div>
     <pre><code class="hljs language-${lang}">${highlighted}</code></pre>
   </div>`
+  }
+
+  // Custom inline code renderer
+  instance.renderer.rules.code_inline = (tokens, idx) => {
+    const token = tokens[idx]
+    return `<code class="inline-code">${instance.utils.escapeHtml(token.content)}</code>`
+  }
+
+  return instance
 }
 
-// Custom inline code renderer
-md.renderer.rules.code_inline = (tokens, idx) => {
-  const token = tokens[idx]
-  return `<code class="inline-code">${md.utils.escapeHtml(token.content)}</code>`
-}
+// Singleton markdown-it instances. The streaming renderer avoids MathJax's
+// heavier SVG/layout work while text is still changing; final rendering uses
+// the full renderer so completed messages keep math support.
+const md = createMarkdownRenderer(true)
+const streamingMd = createMarkdownRenderer(false)
 
 /**
  * Escape HTML special characters
@@ -63,11 +74,19 @@ export function escapeHtml(text: string): string {
  * For user messages, escapes HTML and converts newlines to <br>
  * For assistant messages, uses full markdown rendering
  */
-export function renderMarkdown(content: string, isUserMessage: boolean = false): string {
+export function renderMarkdown(
+  content: string,
+  isUserMessage: boolean = false,
+  options: { streaming?: boolean } = {},
+): string {
   if (isUserMessage) {
     return escapeHtml(content).replace(/\n/g, '<br>')
   }
-  return md.render(content)
+  perfMark('md-render-start')
+  const html = (options.streaming ? streamingMd : md).render(content)
+  perfMark('md-render-end')
+  perfMeasure('md.render', 'md-render-start', 'md-render-end')
+  return html
 }
 
 /**

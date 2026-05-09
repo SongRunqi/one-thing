@@ -518,9 +518,11 @@ const electronAPI = {
   listDirs: (options: { basePath: string; query?: string; limit?: number }) =>
     ipcRenderer.invoke(IPC_CHANNELS.DIRS_LIST, options),
 
-  // File content reading (for file preview panel)
+  // File content reading/writing (for file preview panel)
   readFileContent: (filePath: string, maxSize?: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_CONTENT, { path: filePath, maxSize }),
+  saveFileContent: (filePath: string, content: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_SAVE_CONTENT, { path: filePath, content }),
 
   // ── Plugin management ───────────────────────────
   getPlugins: () =>
@@ -534,6 +536,36 @@ const electronAPI = {
 
   refreshPlugins: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REFRESH),
+
+  // ── App State (restore on startup) ─────────────
+  getAppState: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_APP_STATE),
+
+  saveUIState: (uiState: {
+    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; title?: string }>
+    activeTabIndex?: number
+    sidebarCollapsed?: boolean
+  }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SAVE_UI_STATE, uiState),
+
+  // ── Search Everywhere ──────────────────────────
+  toggleSearchWindow: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_TOGGLE),
+
+  closeSearchWindow: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_CLOSE),
+
+  searchQuery: (req: { query: string; category: string; limit?: number }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_QUERY, req),
+
+  searchExecuteAction: (actionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_EXECUTE_ACTION, actionId),
+
+  onSearchAction: (callback: (actionId: string) => void) => {
+    const listener = (_event: any, actionId: string) => callback(actionId)
+    ipcRenderer.on('search:action', listener)
+    return () => ipcRenderer.removeListener('search:action', listener)
+  },
 
 }
 

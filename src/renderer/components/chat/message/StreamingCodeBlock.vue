@@ -43,7 +43,7 @@
         </svg>
       </button>
     </div>
-    <pre><code
+    <pre class="code-block-pre"><code
       ref="codeEl"
       :class="`hljs language-${lang}`"
     /></pre>
@@ -51,13 +51,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import hljs from 'highlight.js'
+import { traceLog } from '@/utils/stream-scroll-trace'
 
 interface Props {
   lang: string
   content: string
   complete: boolean
+  isStreaming?: boolean
 }
 
 const props = defineProps<Props>()
@@ -66,6 +68,27 @@ const codeEl = ref<HTMLElement | null>(null)
 const copied = ref(false)
 
 const displayLang = computed(() => props.lang || 'text')
+const shouldHighlight = computed(() => props.complete && !props.isStreaming)
+const IMMEDIATE_HIGHLIGHT_LIMIT = 5000
+let lastRenderedContent = ''
+let lastRenderedHighlighted = false
+let highlightJob: number | null = null
+
+type IdleDeadline = {
+  didTimeout: boolean
+  timeRemaining: () => number
+}
+
+const scheduleIdle = typeof window !== 'undefined' && 'requestIdleCallback' in window
+  ? (cb: (deadline: IdleDeadline) => void) => (window as any).requestIdleCallback(cb, { timeout: 600 }) as number
+  : (cb: (deadline: IdleDeadline) => void) => window.setTimeout(() => cb({
+    didTimeout: true,
+    timeRemaining: () => 0,
+  }), 80)
+
+const cancelIdle = typeof window !== 'undefined' && 'cancelIdleCallback' in window
+  ? (id: number) => (window as any).cancelIdleCallback(id)
+  : (id: number) => window.clearTimeout(id)
 
 function escapeHtml(s: string): string {
   const d = document.createElement('div')
@@ -79,24 +102,102 @@ function escapeHtml(s: string): string {
  * selection the user holds inside an already-complete block remains
  * intact (we don't touch props.content once `complete` stays true).
  */
-function render() {
-  const el = codeEl.value
-  if (!el) return
-  let html: string
+function renderHighlighted(): string {
   if (props.lang && hljs.getLanguage(props.lang)) {
     try {
-      html = hljs.highlight(props.content, {
+      return hljs.highlight(props.content, {
         language: props.lang,
         ignoreIllegals: true,
       }).value
     } catch (err) {
       console.error('[StreamingCodeBlock] highlight failed', err)
-      html = escapeHtml(props.content)
+    }
+  }
+  return escapeHtml(props.content)
+}
+
+function render() {
+  const el = codeEl.value
+  if (!el) return
+  const highlighted = shouldHighlight.value
+  if (lastRenderedContent === props.content && lastRenderedHighlighted === highlighted) return
+
+  if (highlighted) {
+    scheduleHighlightedRender()
+    return
+  }
+
+  cancelHighlightJob()
+  renderPlainText(el)
+}
+
+function renderPlainText(el: HTMLElement) {
+  if (props.content.startsWith(lastRenderedContent) && !lastRenderedHighlighted) {
+    const delta = props.content.slice(lastRenderedContent.length)
+    if (delta) {
+      const textNode = el.firstChild
+      if (textNode?.nodeType === Node.TEXT_NODE) {
+        textNode.textContent = (textNode.textContent || '') + delta
+      } else {
+        el.textContent = props.content
+      }
     }
   } else {
-    html = escapeHtml(props.content)
+    el.textContent = props.content
   }
-  el.innerHTML = html
+
+  lastRenderedContent = props.content
+  lastRenderedHighlighted = false
+
+  if (import.meta.env.DEV) {
+    const lines = props.content.split('\n').length
+    traceLog(
+      'CodeBlock:render',
+      `lines=${lines} len=${props.content.length} hl=false complete=${props.complete}`,
+    )
+  }
+}
+
+function cancelHighlightJob() {
+  if (highlightJob === null) return
+  cancelIdle(highlightJob)
+  highlightJob = null
+}
+
+function scheduleHighlightedRender() {
+  if (props.content.length <= IMMEDIATE_HIGHLIGHT_LIMIT) {
+    cancelHighlightJob()
+    const el = codeEl.value
+    if (!el) return
+    el.innerHTML = renderHighlighted()
+    lastRenderedContent = props.content
+    lastRenderedHighlighted = true
+    return
+  }
+
+  if (highlightJob !== null) return
+  const expectedContent = props.content
+  const expectedLang = props.lang
+  highlightJob = scheduleIdle(() => {
+    highlightJob = null
+    const el = codeEl.value
+    if (!el) return
+    if (!shouldHighlight.value || props.content !== expectedContent || props.lang !== expectedLang) {
+      render()
+      return
+    }
+
+    el.innerHTML = renderHighlighted()
+    lastRenderedContent = props.content
+    lastRenderedHighlighted = true
+
+    if (import.meta.env.DEV) {
+      traceLog(
+        'CodeBlock:highlight',
+        `lines=${props.content.split('\n').length} len=${props.content.length} lang=${props.lang}`,
+      )
+    }
+  })
 }
 
 async function handleCopy() {
@@ -111,7 +212,46 @@ async function handleCopy() {
   }
 }
 
-watch(() => props.content, render)
+watch(() => props.content, () => {
+  if (shouldHighlight.value) { render(); return }
+  render()
+})
+watch(() => props.complete, (val, old) => {
+  traceLog('CodeBlock:complete', `${old}→${val} lang=${props.lang} lines=${props.content.split('\n').length}`)
+  render()
+})
+watch(() => props.isStreaming, (val, old) => {
+  traceLog('CodeBlock:isStreaming', `${old}→${val} complete=${props.complete}`)
+  render()
+})
 watch(() => props.lang, render)
-onMounted(render)
+onMounted(() => {
+  traceLog('CodeBlock:mount', `lang=${props.lang} complete=${props.complete} lines=${props.content.split('\n').length}`)
+  render()
+})
+onBeforeUnmount(() => {
+  cancelHighlightJob()
+  traceLog('CodeBlock:unmount', `lang=${props.lang} complete=${props.complete} lines=${props.content.split('\n').length}`)
+})
 </script>
+
+<style scoped>
+.code-block-container .code-block-pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  white-space: pre;
+  line-height: 1.5;
+  scrollbar-gutter: stable;
+  tab-size: 2;
+}
+
+.code-block-container code {
+  display: block;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: inherit;
+  white-space: inherit;
+}
+</style>

@@ -154,6 +154,7 @@ export const IPC_CHANNELS = {
 
   // File Preview related (for reading file content)
   FILE_READ_CONTENT: 'file:read-content',
+  FILE_SAVE_CONTENT: 'file:save-content',
 
   // Unified event-driven channels (Phase 4)
   SESSION_EVENT: 'session:event',
@@ -177,4 +178,14 @@ export const IPC_CHANNELS = {
   PLUGINS_ENABLE: 'plugins:enable',
   PLUGINS_DISABLE: 'plugins:disable',
   PLUGINS_REFRESH: 'plugins:refresh',
+
+  // App State (restore on startup)
+  GET_APP_STATE: 'app-state:get',
+  SAVE_UI_STATE: 'app-state:save-ui',
+
+  // Search Everywhere
+  SEARCH_WINDOW_TOGGLE: 'search-window:toggle',
+  SEARCH_WINDOW_CLOSE: 'search-window:close',
+  SEARCH_QUERY: 'search:query',
+  SEARCH_EXECUTE_ACTION: 'search:execute-action',
 } as const
