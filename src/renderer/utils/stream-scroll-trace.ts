@@ -5,18 +5,28 @@
  * Disable: localStorage.removeItem('debug:stream-scroll')
  *
  * When enabled, records per-frame snapshots of scroll geometry, virtualizer
- * state, DOM heights, and the trigger source. On anomaly (isFollowing but
- * distanceToBottom > threshold), dumps the last N frames to console.table.
+ * state, DOM heights, scroll writes, anchor deltas, and the trigger source.
+ * On anomaly (isFollowing but distanceToBottom > threshold), dumps the last
+ * N frames to console.table.
  */
 
 export interface TraceFrame {
   frameId: number
   ts: number
   trigger: string
+  action: string | null
   scrollTop: number
   scrollHeight: number
   clientHeight: number
   distanceToBottom: number
+  beforeScrollTop: number | null
+  afterScrollTop: number | null
+  scrollDelta: number | null
+  targetScrollTop: number | null
+  anchorKind: string | null
+  anchorDelta: number | null
+  isSuppressed: boolean | null
+  virtualizerOffset: number | null
   virtualizerTotalSize: number | null
   lastMessageHeight: number | null
   lastCodeBlockHeight: number | null
@@ -26,8 +36,7 @@ export interface TraceFrame {
   extra?: string
 }
 
-const RING_SIZE = 40
-const ANOMALY_THRESHOLD = 2
+const RING_SIZE = 160
 
 let enabled: boolean | null = null
 let globalFrameId = 0
@@ -37,7 +46,7 @@ let lastRafTs = 0
 const ring: TraceFrame[] = []
 let ringIdx = 0
 
-function isEnabled(): boolean {
+export function isTraceEnabled(): boolean {
   if (enabled === null) {
     try {
       enabled = localStorage.getItem('debug:stream-scroll') === '1'
@@ -83,6 +92,14 @@ export function traceEvent(
   getScrollEl: () => HTMLElement | null,
   opts: {
     isFollowing: boolean
+    action?: string
+    beforeScrollTop?: number | null
+    afterScrollTop?: number | null
+    targetScrollTop?: number | null
+    anchorKind?: string | null
+    anchorDelta?: number | null
+    isSuppressed?: boolean | null
+    virtualizerOffset?: number | null
     virtualizerTotalSize?: number | null
     lastMessageHeight?: number | null
     lastCodeBlockHeight?: number | null
@@ -91,7 +108,7 @@ export function traceEvent(
     extra?: string
   },
 ): void {
-  if (!isEnabled()) return
+  if (!isTraceEnabled()) return
   tickFrame()
 
   const el = getScrollEl()
@@ -99,15 +116,30 @@ export function traceEvent(
   const scrollHeight = el?.scrollHeight ?? 0
   const clientHeight = el?.clientHeight ?? 0
   const distanceToBottom = scrollHeight - scrollTop - clientHeight
+  const beforeScrollTop = opts.beforeScrollTop ?? null
+  const afterScrollTop = opts.afterScrollTop ?? null
+  const scrollDelta =
+    beforeScrollTop !== null && afterScrollTop !== null
+      ? afterScrollTop - beforeScrollTop
+      : null
 
   const frame: TraceFrame = {
     frameId: globalFrameId,
     ts: performance.now(),
     trigger,
+    action: opts.action ?? null,
     scrollTop: Math.round(scrollTop),
     scrollHeight: Math.round(scrollHeight),
     clientHeight: Math.round(clientHeight),
     distanceToBottom: Math.round(distanceToBottom),
+    beforeScrollTop: beforeScrollTop === null ? null : Math.round(beforeScrollTop),
+    afterScrollTop: afterScrollTop === null ? null : Math.round(afterScrollTop),
+    scrollDelta: scrollDelta === null ? null : Math.round(scrollDelta),
+    targetScrollTop: opts.targetScrollTop == null ? null : Math.round(opts.targetScrollTop),
+    anchorKind: opts.anchorKind ?? null,
+    anchorDelta: opts.anchorDelta == null ? null : Math.round(opts.anchorDelta),
+    isSuppressed: opts.isSuppressed ?? null,
+    virtualizerOffset: opts.virtualizerOffset == null ? null : Math.round(opts.virtualizerOffset),
     virtualizerTotalSize: opts.virtualizerTotalSize ?? null,
     lastMessageHeight: opts.lastMessageHeight ?? null,
     lastCodeBlockHeight: opts.lastCodeBlockHeight ?? null,
@@ -119,16 +151,12 @@ export function traceEvent(
 
   pushFrame(frame)
 
-  if (opts.isFollowing && Math.abs(distanceToBottom) > ANOMALY_THRESHOLD) {
-    console.warn(
-      `[stream-scroll] anomaly: distanceToBottom=${Math.round(distanceToBottom)} trigger=${trigger} frame=${globalFrameId}`,
-    )
-    console.table(getOrderedFrames())
-  }
+  // Keep tracing passive. Printing during streaming changes timing enough to
+  // create its own scroll jank, so callers explicitly use printTrace/summary.
 }
 
 export function traceLog(trigger: string, msg: string): void {
-  if (!isEnabled()) return
+  if (!isTraceEnabled()) return
   tickFrame()
   console.log(`[stream-scroll] f${globalFrameId} ${trigger}: ${msg}`)
 }
@@ -137,6 +165,82 @@ export function dumpTrace(): TraceFrame[] {
   return getOrderedFrames()
 }
 
+export interface TraceSummary {
+  frames: number
+  scrollWrites: number
+  totalAbsScrollDelta: number
+  maxAbsScrollDelta: number
+  largeWrites: number
+  largestWrites: TraceFrame[]
+  nudgeWrites: number
+  virtualizerWrites: number
+  followStateChanges: number
+  maxAnchorDelta: number
+  maxCodeBlockHeightStep: number
+}
+
+export function analyzeTrace(frames: TraceFrame[] = getOrderedFrames()): TraceSummary {
+  const writes = frames.filter(frame => frame.scrollDelta !== null && frame.scrollDelta !== 0)
+  const nudgeWrites = writes.filter(frame => frame.action?.includes('nudge-anchor')).length
+  const virtualizerWrites = writes.filter(frame => frame.action?.includes('virtualizer')).length
+  const followStateChanges = frames.filter(frame => frame.action?.startsWith('state:following')).length
+  const largestWrites = [...writes]
+    .sort((a, b) => Math.abs(b.scrollDelta ?? 0) - Math.abs(a.scrollDelta ?? 0))
+    .slice(0, 12)
+
+  let maxCodeBlockHeightStep = 0
+  let previousCodeBlockHeight: number | null = null
+  for (const frame of frames) {
+    if (frame.lastCodeBlockHeight === null) continue
+    if (previousCodeBlockHeight !== null) {
+      maxCodeBlockHeightStep = Math.max(
+        maxCodeBlockHeightStep,
+        Math.abs(frame.lastCodeBlockHeight - previousCodeBlockHeight),
+      )
+    }
+    previousCodeBlockHeight = frame.lastCodeBlockHeight
+  }
+
+  return {
+    frames: frames.length,
+    scrollWrites: writes.length,
+    totalAbsScrollDelta: Math.round(writes.reduce((sum, frame) => sum + Math.abs(frame.scrollDelta ?? 0), 0)),
+    maxAbsScrollDelta: Math.round(Math.max(0, ...writes.map(frame => Math.abs(frame.scrollDelta ?? 0)))),
+    largeWrites: writes.filter(frame => Math.abs(frame.scrollDelta ?? 0) >= 24).length,
+    largestWrites,
+    nudgeWrites,
+    virtualizerWrites,
+    followStateChanges,
+    maxAnchorDelta: Math.round(Math.max(0, ...frames.map(frame => Math.abs(frame.anchorDelta ?? 0)))),
+    maxCodeBlockHeightStep: Math.round(maxCodeBlockHeightStep),
+  }
+}
+
+export function clearTrace(): void {
+  ring.length = 0
+  ringIdx = 0
+}
+
+export function printTrace(): TraceFrame[] {
+  const frames = getOrderedFrames()
+  console.table(frames)
+  return frames
+}
+
+export function printSummary(): TraceSummary {
+  const summary = analyzeTrace()
+  console.table(summary.largestWrites)
+  console.log('[stream-scroll] summary', summary)
+  return summary
+}
+
 if (typeof window !== 'undefined') {
-  ;(window as any).__streamScrollTrace = { dumpTrace, refreshEnabled }
+  ;(window as any).__streamScrollTrace = {
+    dumpTrace,
+    analyzeTrace,
+    printTrace,
+    printSummary,
+    clearTrace,
+    refreshEnabled,
+  }
 }

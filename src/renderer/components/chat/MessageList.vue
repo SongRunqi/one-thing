@@ -10,31 +10,22 @@
         @suggestion="handleSuggestion"
       />
 
-      <!-- Virtual scroll container -->
       <div
         v-if="messages.length > 0"
         ref="messageListContentRef"
         class="message-list-content"
-        :style="{ height: `${virtualizer.getTotalSize() + VISUAL_FOLLOW_TAIL_SPACE}px` }"
       >
         <div
-          v-for="virtualItem in virtualizer.getVirtualItems()"
-          :key="messages[virtualItem.index]?.id || virtualItem.index"
-          :ref="(el) => { if (el) virtualizer.measureElement(el as Element) }"
-          :data-index="virtualItem.index"
-          :style="{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            transform: `translateY(${virtualItem.start}px)`,
-          }"
+          v-for="(message, index) in messages"
+          :key="message.id || index"
+          class="message-list-row"
+          :data-index="index"
         >
           <MessageItem
-            :message="messages[virtualItem.index]"
-            :branches="getBranchesForMessage(messages[virtualItem.index]?.id)"
+            :message="message"
+            :branches="getBranchesForMessage(message.id)"
             :can-branch="canCreateBranch"
-            :is-highlighted="messages[virtualItem.index]?.id === highlightedMessageId"
+            :is-highlighted="message.id === highlightedMessageId"
             @edit="handleEdit"
             @branch="handleBranch"
             @go-to-branch="handleGoToBranch"
@@ -49,15 +40,8 @@
 
         <div
           ref="bottomSentinelRef"
+          class="message-list-bottom-sentinel"
           aria-hidden="true"
-          :style="{
-            position: 'absolute',
-            left: 0,
-            bottom: 0,
-            width: '100%',
-            height: '1px',
-            pointerEvents: 'none',
-          }"
         />
       </div>
     </div>
@@ -71,7 +55,7 @@
 
     <Transition name="scroll-bottom-btn">
       <button
-        v-if="!isFollowing && messages.length > 0"
+        v-if="showScrollToBottomButton && messages.length > 0"
         class="scroll-to-bottom-btn"
         type="button"
         title="Scroll to bottom"
@@ -150,7 +134,6 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw } from 'vue'
-import { useVirtualizer } from '@tanstack/vue-virtual'
 import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
@@ -160,8 +143,12 @@ import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
+import {
+  useFollowScroll,
+  FOLLOW_BOTTOM_GAP,
+  shouldShowScrollToBottomButton,
+} from '@/composables/useFollowScroll'
 import { buildFontFamily } from '@shared/fonts'
-import { traceEvent } from '@/utils/stream-scroll-trace'
 
 interface BranchInfo {
   id: string
@@ -195,6 +182,7 @@ const messageListRef = ref<HTMLElement | null>(null)
 const messageListContentRef = ref<HTMLElement | null>(null)
 const bottomSentinelRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
+const showScrollToBottomButton = ref(false)
 
 // Reject reason dialog state
 const showRejectDialog = ref(false)
@@ -241,6 +229,7 @@ const messageListStyles = computed(() => {
   if (chatFontEn.value || chatFontZh.value) {
     styles['--font-body'] = buildFontFamily(chatFontEn.value, chatFontZh.value)
   }
+  styles['--follow-bottom-gap'] = `${FOLLOW_BOTTOM_GAP}px`
   return Object.keys(styles).length > 0 ? styles : undefined
 })
 
@@ -257,146 +246,58 @@ let navigationCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let navMarkerUpdateFrame: number | null = null
 let navResizeObserver: ResizeObserver | null = null
 
-// Simple scroll state
-const isFollowing = ref(true)
-let suppressed = false
-let allowNextScroll = false  // one-shot bypass for scrollToFn
-const FOLLOW_ANCHOR_GAP = 24
-const VISUAL_FOLLOW_TAIL_SPACE = 64
+const follow = useFollowScroll({
+  scroller: messageListRef,
+  content: messageListContentRef,
+  count: computed(() => props.messages.length),
+})
 
-function getLastElement(selector: string): HTMLElement | null {
-  const root = messageListRef.value
-  if (!root) return null
-  const nodes = root.querySelectorAll<HTMLElement>(selector)
-  return nodes.length > 0 ? nodes[nodes.length - 1] : null
-}
+const { isFollowing } = follow
 
-function getFollowAnchor(): { el: HTMLElement; gap: number; kind: string } | null {
-  const streamCaret = getLastElement('[data-stream-caret]')
-  if (streamCaret) return { el: streamCaret, gap: FOLLOW_ANCHOR_GAP, kind: 'stream-caret' }
+// Auto-scroll: when following, keep the scroller pinned to its natural bottom.
+// The visual composer gap comes from FOLLOW_BOTTOM_GAP tail space below the
+// real list content, so "follow" and the real scrollbar bottom are identical.
+const effectiveScrollVersion = computed(() => chatStore.getScrollVersion(effectiveSessionId.value))
 
-  const footer = getLastElement('.message.assistant [data-message-footer]')
-  if (footer) return { el: footer, gap: FOLLOW_ANCHOR_GAP, kind: 'assistant-footer' }
+let followNudgeFrame: number | null = null
 
-  const sentinel = bottomSentinelRef.value
-  if (sentinel) return { el: sentinel, gap: FOLLOW_ANCHOR_GAP, kind: 'bottom-sentinel' }
-
-  return null
-}
-
-function getFollowAnchorDelta(): { delta: number; kind: string } | null {
-  const scroller = messageListRef.value
-  const anchor = getFollowAnchor()
-  if (!scroller || !anchor) return null
-
-  const scrollerRect = scroller.getBoundingClientRect()
-  const anchorRect = anchor.el.getBoundingClientRect()
-  const targetBottom = scrollerRect.bottom - anchor.gap
-  return {
-    delta: anchorRect.bottom - targetBottom,
-    kind: anchor.kind,
-  }
-}
-
-function followVisualAnchor(source = 'followVisualAnchor', force = false) {
-  if (!isFollowing.value || suppressed) return
-
-  const scroller = messageListRef.value
-  if (!scroller) return
-
-  const anchor = getFollowAnchor()
-  if (!anchor) {
-    scroller.scrollTop = scroller.scrollHeight
-    traceEvent(source, () => messageListRef.value, {
-      isFollowing: isFollowing.value,
-      virtualizerTotalSize: virtualizer.value.getTotalSize(),
-      extra: 'fallback=scrollHeight',
-    })
+function scheduleFollowNudge(source: string) {
+  if (isFollowing.value) {
+    follow.nudgeToAnchor(source)
+    updateScrollToBottomButton()
     return
   }
-
-  const anchorDelta = getFollowAnchorDelta()
-  if (!anchorDelta) return
-  const delta = anchorDelta.delta
-  const shouldCorrectUp = delta > 1
-  const shouldCorrectDown = delta < -1
-
-  if (force || shouldCorrectUp || shouldCorrectDown) {
-    scroller.scrollTop += delta
-  }
-
-  traceEvent(source, () => messageListRef.value, {
-    isFollowing: isFollowing.value,
-    virtualizerTotalSize: virtualizer.value.getTotalSize(),
-    extra: `anchor=${anchorDelta.kind} gap=${anchor.gap} delta=${Math.round(delta)}`,
+  if (followNudgeFrame !== null) return
+  followNudgeFrame = requestAnimationFrame(() => {
+    followNudgeFrame = null
+    follow.nudgeToAnchor(source)
+    updateScrollToBottomButton()
   })
 }
 
-function jumpToVisualAnchor(source = 'jumpToVisualAnchor') {
-  if (props.messages.length > 0) {
-    allowNextScroll = true
-    virtualizer.value.scrollToIndex(props.messages.length - 1, { align: 'end' })
+function updateScrollToBottomButton() {
+  const el = messageListRef.value
+  if (!el) {
+    showScrollToBottomButton.value = false
+    return
   }
-  requestAnimationFrame(() => followVisualAnchor(source, true))
+  showScrollToBottomButton.value = shouldShowScrollToBottomButton(el, isFollowing.value)
 }
 
-// Virtual scrolling — only render visible messages + overscan
-// Custom scrollToFn: block virtualizer's internal scroll corrections when detached.
-// When following, pin directly to scrollHeight — avoid calling followVisualAnchor
-// here because the virtualizer's measurement cycle and getBoundingClientRect
-// reads can create a feedback oscillation (jitter). The pinBottom / ResizeObserver
-// / nextTick paths handle visual anchor adjustments outside the measure loop.
-const virtualizer = useVirtualizer(computed(() => ({
-  count: props.messages.length,
-  getScrollElement: () => messageListRef.value as HTMLElement | null,
-  estimateSize: () => 150,
-  overscan: 5,
-  // eslint-disable-next-line no-undef
-  scrollToFn: (offset: number, options: { behavior?: ScrollBehavior }, instance: any) => {
-    if (allowNextScroll) {
-      allowNextScroll = false
-    } else if (!isFollowing.value && !suppressed) {
-      return
-    }
-    if (isFollowing.value && !suppressed) {
-      const el = messageListRef.value
-      if (el) el.scrollTop = el.scrollHeight
-      return
-    }
-    instance.scrollElement?.scrollTo({ top: offset, behavior: options.behavior })
-  },
-})))
-
-// Auto-scroll: when following, keep the bottom pinned through every layout
-// event that changes the scrollable content height — new message arrival,
-// streaming chunks growing the last bubble, markdown segments rendering,
-// attachments loading, etc.
-//
-// With estimateSize=150 a freshly inserted message starts as a 150px
-// placeholder; only after `measureElement` reports the real height does
-// `virtualizer.getTotalSize()` (and therefore the scroll container's
-// scrollHeight) settle. We track that value reactively so each measure
-// pass re-pins the bottom, which is more reliable than guessing frames.
-const effectiveScrollVersion = computed(() => chatStore.getScrollVersion(effectiveSessionId.value))
-
-function pinBottom(source = 'pinBottom') {
-  followVisualAnchor(source)
-}
-
-// User-driven triggers: new message count, store-emitted scroll bumps.
-// nextTick covers the immediate Vue patch; the ResizeObserver below
-// handles every subsequent layout (markdown segments rendering, the
-// virtualizer's measureElement reporting real heights, etc.).
+// External drift triggers — store-emitted scroll bumps and message count
+// changes. The composable's internal ResizeObserver also covers post-paint
+// layout (markdown rendering, code blocks growing, images loading), but we
+// fire an extra nudge here so a store bump doesn't have to wait for layout.
 watch([effectiveScrollVersion, () => props.messages.length], () => {
-  if (!isFollowing.value || suppressed || props.messages.length === 0) return
-  nextTick(() => pinBottom('watch:scrollVersion+msgLen'))
-})
+  if (props.messages.length === 0) return
+  nextTick(() => scheduleFollowNudge('watch:scrollVersion+msgLen'))
+}, { flush: 'post' })
 
 // Force-follow when a new user message lands. The user explicitly sent it,
 // so they want the new bubble + the response to be visible regardless of
-// whether they were detached. estimateSize=150 means scrollHeight at first
-// nextTick is wrong — re-pin across two rAFs to wait for measureElement to
-// report the real height.
+// whether they were detached. With estimateSize=150 the first scrollHeight
+// can still be wrong before the browser lays out the new row, so schedule
+// one post-paint nudge after the real heights settle.
 const lastUserMessageId = computed(() => {
   for (let i = props.messages.length - 1; i >= 0; i--) {
     if (props.messages[i].role === 'user') return props.messages[i].id
@@ -405,36 +306,27 @@ const lastUserMessageId = computed(() => {
 })
 watch(lastUserMessageId, (newId, oldId) => {
   if (!newId || newId === oldId) return
-  isFollowing.value = true
-  nextTick(() => {
-    pinBottom('watch:lastUserMsg/tick')
-    requestAnimationFrame(() => {
-      pinBottom('watch:lastUserMsg/raf1')
-      requestAnimationFrame(() => pinBottom('watch:lastUserMsg/raf2'))
-    })
-  })
+  follow.snapToBottom('watch:lastUserMsg/snap')
+  nextTick(() => scheduleFollowNudge('watch:lastUserMsg'))
 })
 
-// Layout-driven trigger: ResizeObserver fires after the browser has
-// actually laid out the new heights, so scrollHeight is guaranteed
-// fresh at this point. Reattach when messageListContentRef changes
-// (it's v-if'd off when there are no messages, so the DOM node may
-// be replaced across session swaps / empty states).
-let contentResizeObserver: ResizeObserver | null = null
+// Nav-rail markers + visible-user-msg tracking also depend on content
+// height changes. We add a separate (cheap) ResizeObserver here so the nav
+// concerns stay independent of the follow logic in the composable.
+let navContentResizeObserver: ResizeObserver | null = null
 watch(
   messageListContentRef,
   (el) => {
-    if (contentResizeObserver) {
-      contentResizeObserver.disconnect()
-      contentResizeObserver = null
+    if (navContentResizeObserver) {
+      navContentResizeObserver.disconnect()
+      navContentResizeObserver = null
     }
     if (!el || typeof ResizeObserver === 'undefined') return
-    contentResizeObserver = new ResizeObserver(() => {
-      pinBottom('ResizeObserver:content')
+    navContentResizeObserver = new ResizeObserver(() => {
       scheduleNavMarkerUpdate()
       updateVisibleUserMessageIndex()
     })
-    contentResizeObserver.observe(el)
+    navContentResizeObserver.observe(el)
   },
   { immediate: true },
 )
@@ -487,7 +379,7 @@ watch(
   () => props.messages.length,
   () => {
     // Skip during session switch — snapshot restore will set the correct state
-    if (suppressed) return
+    if (follow.isSwitching()) return
 
     // Reset navigation highlight (don't highlight on new message arrival)
     hasNavigated.value = false
@@ -537,8 +429,11 @@ function scrollToUserMessage(navIndex: number) {
     clearTimeout(navigationCooldownTimer)
   }
 
-  allowNextScroll = true
-  virtualizer.value.scrollToIndex(messageIndex, { align: 'center', behavior: 'smooth' })
+  isFollowing.value = false
+  const row = getMessageRow(messageIndex)
+  if (row) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
 
   // Reset flag after highlight animation completes (2.5s) to prevent index override
   navigationCooldownTimer = setTimeout(() => {
@@ -584,12 +479,18 @@ function updateNavMarkers() {
   })
 }
 
+function getMessageRow(messageIndex: number): HTMLElement | null {
+  return messageListContentRef.value?.querySelector<HTMLElement>(`[data-index="${messageIndex}"]`) ?? null
+}
+
 function getMessageMeasurement(messageIndex: number): { start: number; end: number; size: number } | undefined {
-  virtualizer.value.getTotalSize()
-  const measurements = (virtualizer.value as any).measurementsCache as
-    | Array<{ start: number; end: number; size: number }>
-    | undefined
-  return measurements?.[messageIndex]
+  const row = getMessageRow(messageIndex)
+  if (!row) return undefined
+  return {
+    start: row.offsetTop,
+    end: row.offsetTop + row.offsetHeight,
+    size: row.offsetHeight,
+  }
 }
 
 function getFallbackNavPosition(messageIndex: number): number {
@@ -686,7 +587,7 @@ function updateVisibleUserMessageIndex() {
     const measurement = getMessageMeasurement(msgIdx)
     const start = measurement
       ? measurement.start
-      : getFallbackNavPosition(msgIdx) * virtualizer.value.getTotalSize()
+      : getFallbackNavPosition(msgIdx) * Math.max(1, el.scrollHeight)
 
     if (start <= viewportAnchor) activeNavIndex = i
     else break
@@ -696,13 +597,8 @@ function updateVisibleUserMessageIndex() {
 }
 
 function handleScroll() {
-  if (!isFollowing.value) {
-    const anchorDelta = getFollowAnchorDelta()
-    if (anchorDelta && anchorDelta.delta <= 2) {
-      isFollowing.value = true
-      requestAnimationFrame(() => followVisualAnchor('scroll:reattach-visual-bottom', true))
-    }
-  }
+  follow.checkReattach()
+  updateScrollToBottomButton()
   scheduleNavMarkerUpdate()
   updateVisibleUserMessageIndex()
 }
@@ -756,35 +652,15 @@ usePermissionShortcuts(
 // The store's handlePermissionRequest() updates messages reactively.
 
 function scrollToBottomFromButton() {
-  isFollowing.value = true
   setNavIndexToLastUserMessage()
-  jumpToVisualAnchor('button:scrollToBottom')
-}
-
-function onWheel(e: WheelEvent) {
-  if (e.deltaY > 0 && isFollowing.value) {
-    e.preventDefault()
-    followVisualAnchor('wheel:hold-visual-bottom', true)
-    return
-  }
-
-  if (e.deltaY < 0 && isFollowing.value) {
-    isFollowing.value = false
-    traceEvent('wheel:detach', () => messageListRef.value, { isFollowing: false })
-  } else if (e.deltaY > 0 && !isFollowing.value) {
-    const anchorDelta = getFollowAnchorDelta()
-    if (anchorDelta && anchorDelta.delta <= 48) {
-      isFollowing.value = true
-      requestAnimationFrame(() => followVisualAnchor('wheel:reattach-visual-bottom', true))
-    }
-  }
+  follow.snapToBottom('button:scrollToBottom')
 }
 
 // Setup event listeners
 onMounted(() => {
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
-    messageListRef.value.addEventListener('wheel', onWheel, { passive: false })
+    messageListRef.value.addEventListener('wheel', follow.onWheel, { passive: false })
     if (typeof ResizeObserver !== 'undefined') {
       navResizeObserver = new ResizeObserver(() => scheduleNavMarkerUpdate())
       navResizeObserver.observe(messageListRef.value)
@@ -793,7 +669,7 @@ onMounted(() => {
   // Scroll to bottom on initial mount (messages may be pre-loaded in store)
   nextTick(() => {
     if (props.messages.length > 0 && messageListRef.value) {
-      jumpToVisualAnchor('mounted:initial')
+      follow.snapToBottom('mounted:initial')
     }
     scheduleNavMarkerUpdate()
   })
@@ -802,7 +678,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (messageListRef.value) {
     messageListRef.value.removeEventListener('scroll', handleScroll)
-    messageListRef.value.removeEventListener('wheel', onWheel)
+    messageListRef.value.removeEventListener('wheel', follow.onWheel)
   }
   if (navigationCooldownTimer) {
     clearTimeout(navigationCooldownTimer)
@@ -811,13 +687,17 @@ onUnmounted(() => {
     cancelAnimationFrame(navMarkerUpdateFrame)
     navMarkerUpdateFrame = null
   }
+  if (followNudgeFrame !== null) {
+    cancelAnimationFrame(followNudgeFrame)
+    followNudgeFrame = null
+  }
   if (navResizeObserver) {
     navResizeObserver.disconnect()
     navResizeObserver = null
   }
-  if (contentResizeObserver) {
-    contentResizeObserver.disconnect()
-    contentResizeObserver = null
+  if (navContentResizeObserver) {
+    navContentResizeObserver.disconnect()
+    navContentResizeObserver = null
   }
 })
 
@@ -1229,54 +1109,39 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
 // ============ Snapshot API for session switching ============
 
 defineExpose({
-  getFirstVisibleIndex: () => {
-    const items = virtualizer.value.getVirtualItems()
-    return items.length > 0 ? items[0].index : 0
-  },
-  getOffsetWithinMessage: () => {
-    // How many px of the first visible message are above the viewport top
-    const items = virtualizer.value.getVirtualItems()
-    if (items.length === 0) return 0
-    const firstItem = items[0]
-    const scrollOffset = virtualizer.value.scrollOffset ?? 0
-    return scrollOffset - firstItem.start
-  },
-  getIsFollowing: () => isFollowing.value,
+  getFirstVisibleIndex: () => follow.captureSnapshot().firstVisibleIndex,
+  getOffsetWithinMessage: () => follow.captureSnapshot().offsetWithinMessage,
+  getIsFollowing: () => follow.isFollowing.value,
   getNavIndex: () => currentUserMessageNavIndex.value,
   getHasNavigated: () => hasNavigated.value,
 
-  prepareForSwitch: () => { suppressed = true },
+  prepareForSwitch: follow.prepareForSwitch,
 
-  restoreSnapshot: (snap: { firstVisibleIndex: number; offsetWithinMessage: number; isFollowing?: boolean; userScrolledAway?: boolean; navIndex: number; hasNavigated: boolean }) => {
-    const following = snap.isFollowing ?? (snap.userScrolledAway !== undefined ? !snap.userScrolledAway : true)
-    isFollowing.value = following
+  restoreSnapshot: (snap: {
+    firstVisibleIndex: number
+    offsetWithinMessage: number
+    isFollowing?: boolean
+    userScrolledAway?: boolean
+    navIndex: number
+    hasNavigated: boolean
+  }) => {
+    const following =
+      snap.isFollowing ?? (snap.userScrolledAway !== undefined ? !snap.userScrolledAway : true)
     currentUserMessageNavIndex.value = snap.navIndex
     hasNavigated.value = snap.hasNavigated
-    nextTick(() => {
-      if (following && props.messages.length > 0) {
-        suppressed = false
-        setNavIndexToLastUserMessage()
-        jumpToVisualAnchor('restoreSnapshot:following')
-      } else if (snap.firstVisibleIndex >= 0 && props.messages.length > 0) {
-        const idx = Math.min(snap.firstVisibleIndex, props.messages.length - 1)
-        allowNextScroll = true
-        virtualizer.value.scrollToIndex(idx, { align: 'start' })
-        nextTick(() => {
-          if (messageListRef.value && snap.offsetWithinMessage > 0) {
-            messageListRef.value.scrollTop += snap.offsetWithinMessage
-          }
-          suppressed = false
-        })
-      } else {
-        suppressed = false
-      }
-    })
+    follow.restoreSnapshot(
+      {
+        firstVisibleIndex: snap.firstVisibleIndex,
+        offsetWithinMessage: snap.offsetWithinMessage,
+        isFollowing: following,
+      },
+      () => setNavIndexToLastUserMessage(),
+    )
   },
 
   scrollToBottom: () => {
-    isFollowing.value = true
     setNavIndexToLastUserMessage()
-    jumpToVisualAnchor('expose:scrollToBottom')
+    follow.snapToBottom('expose:scrollToBottom')
   },
 })
 </script>
@@ -1339,8 +1204,8 @@ defineExpose({
   flex: 1;
   overflow-y: auto;
   overflow-anchor: none;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
   padding: 18px;
   background: transparent;
   border-bottom-left-radius: var(--radius-lg);
@@ -1349,13 +1214,41 @@ defineExpose({
 }
 
 .message-list::-webkit-scrollbar {
-  display: none;
+  width: 10px;
+}
+
+.message-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-list::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 34%, transparent);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+.message-list::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted) 52%, transparent);
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 
 .message-list-content {
   position: relative;
   width: min(74%, 860px);
   margin: 0 auto;
+  padding-bottom: var(--follow-bottom-gap, 64px);
+}
+
+.message-list-row {
+  width: 100%;
+}
+
+.message-list-bottom-sentinel {
+  width: 100%;
+  height: 1px;
+  pointer-events: none;
 }
 
 

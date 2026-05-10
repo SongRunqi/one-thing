@@ -10,18 +10,20 @@
     />
     <StreamingCodeBlock
       v-else-if="seg.type === 'code'"
+      :key="seg.key"
       :lang="seg.lang"
       :content="seg.content"
       :complete="seg.complete"
-      :is-streaming="isStreaming"
+      :is-streaming="effectiveStreaming"
     />
     <StreamingTableBlock
       v-else
+      :key="seg.key"
       :content="seg.content"
     />
   </template>
   <span
-    v-if="isStreaming && !isUser"
+    v-if="effectiveStreaming && !isUser"
     class="stream-caret"
     data-stream-caret
     aria-hidden="true"
@@ -32,9 +34,9 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import { parseStreamingMarkdown, type MarkdownSegment } from '@/composables/parseStreamingMarkdown'
+import { advanceSmoothStreamingText } from '@/composables/smoothStreamingText'
 import StreamingCodeBlock from './StreamingCodeBlock.vue'
 import StreamingTableBlock from './StreamingTableBlock.vue'
-import { traceLog } from '@/utils/stream-scroll-trace'
 
 interface Props {
   content: string
@@ -44,6 +46,10 @@ interface Props {
 
 const props = defineProps<Props>()
 const displayedContent = ref(props.content)
+const effectiveStreaming = computed(() =>
+  Boolean(!props.isUser && (props.isStreaming || displayedContent.value !== props.content)),
+)
+const useStableAssistantPipeline = computed(() => !props.isUser)
 
 const raf = typeof requestAnimationFrame === 'function'
   ? requestAnimationFrame
@@ -53,6 +59,7 @@ const caf = typeof cancelAnimationFrame === 'function'
   : (id: number) => clearTimeout(id)
 
 let pendingFrame: number | null = null
+let lastRevealTs = 0
 
 function cancelPendingFrame() {
   if (pendingFrame === null) return
@@ -63,22 +70,36 @@ function cancelPendingFrame() {
 function commitDisplayedContent() {
   cancelPendingFrame()
   displayedContent.value = props.content
-  traceLog('StreamingMd:commit', `len=${props.content.length}`)
+  lastRevealTs = 0
+}
+
+function revealDisplayedContent(ts: number) {
+  pendingFrame = null
+  const elapsed = lastRevealTs > 0 ? ts - lastRevealTs : 16
+  lastRevealTs = ts
+
+  const next = advanceSmoothStreamingText(displayedContent.value, props.content, elapsed)
+  displayedContent.value = next
+
+  if (next !== props.content) {
+    scheduleDisplayedContent()
+  }
 }
 
 function scheduleDisplayedContent() {
   if (pendingFrame !== null) return
-  pendingFrame = raf(() => {
-    pendingFrame = null
-    displayedContent.value = props.content
-    traceLog('StreamingMd:raf', `len=${props.content.length}`)
-  })
+  pendingFrame = raf(revealDisplayedContent)
 }
 
 watch(
   () => props.content,
   () => {
     if (props.isStreaming && !props.isUser) {
+      if (!props.content.startsWith(displayedContent.value)) {
+        displayedContent.value = props.content
+        lastRevealTs = 0
+        return
+      }
       scheduleDisplayedContent()
     } else {
       commitDisplayedContent()
@@ -89,7 +110,13 @@ watch(
 watch(
   () => props.isStreaming,
   (isStreaming) => {
-    if (!isStreaming) commitDisplayedContent()
+    if (!isStreaming) {
+      if (!props.isUser && props.content.startsWith(displayedContent.value)) {
+        scheduleDisplayedContent()
+      } else {
+        commitDisplayedContent()
+      }
+    }
   },
 )
 
@@ -99,25 +126,11 @@ watch(
  * markdown + fenced-code segments; the latter go to StreamingCodeBlock
  * so they get stable DOM across streaming updates.
  */
-let prevSegmentKeys: string[] = []
-
 const segments = computed<MarkdownSegment[]>(() => {
   if (props.isUser) {
     return [{ type: 'markdown', key: 'user-md', content: displayedContent.value, complete: true }]
   }
-  const segs = parseStreamingMarkdown(displayedContent.value, { streaming: props.isStreaming })
-
-  const keys = segs.map(s => s.key)
-  if (prevSegmentKeys.length > 0) {
-    const removed = prevSegmentKeys.filter(k => !keys.includes(k))
-    const added = keys.filter(k => !prevSegmentKeys.includes(k))
-    if (removed.length || added.length) {
-      traceLog('StreamingMd:keys', `removed=[${removed}] added=[${added}] total=${keys.length}`)
-    }
-  }
-  prevSegmentKeys = keys
-
-  return segs
+  return parseStreamingMarkdown(displayedContent.value, { streaming: useStableAssistantPipeline.value })
 })
 
 // ── Segment-level markdown render cache ──
@@ -128,7 +141,7 @@ const MD_CACHE_MAX = 32
 const mdCache = new Map<string, { content: string; streaming: boolean; html: string }>()
 
 function renderMd(key: string, content: string): string {
-  const streaming = props.isStreaming ?? false
+  const streaming = useStableAssistantPipeline.value
   const cached = mdCache.get(key)
   if (cached && cached.content === content && cached.streaming === streaming) return cached.html
 

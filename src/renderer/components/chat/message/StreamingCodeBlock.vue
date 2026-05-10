@@ -45,15 +45,14 @@
     </div>
     <pre class="code-block-pre"><code
       ref="codeEl"
-      :class="`hljs language-${lang}`"
+      :class="`cm-code language-${lang}`"
     /></pre>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
-import hljs from 'highlight.js'
-import { traceLog } from '@/utils/stream-scroll-trace'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { renderTokenSpans } from '@/composables/codeTokenizer'
 
 interface Props {
   lang: string
@@ -64,141 +63,109 @@ interface Props {
 
 const props = defineProps<Props>()
 
-const codeEl = ref<HTMLElement | null>(null)
 const copied = ref(false)
-
 const displayLang = computed(() => props.lang || 'text')
-const shouldHighlight = computed(() => props.complete && !props.isStreaming)
-const IMMEDIATE_HIGHLIGHT_LIMIT = 5000
-let lastRenderedContent = ''
-let lastRenderedHighlighted = false
-let highlightJob: number | null = null
+const codeEl = ref<HTMLElement | null>(null)
 
-type IdleDeadline = {
-  didTimeout: boolean
-  timeRemaining: () => number
+interface LineState {
+  text: string
+  frozen: boolean
+  el: HTMLSpanElement
 }
 
-const scheduleIdle = typeof window !== 'undefined' && 'requestIdleCallback' in window
-  ? (cb: (deadline: IdleDeadline) => void) => (window as any).requestIdleCallback(cb, { timeout: 600 }) as number
-  : (cb: (deadline: IdleDeadline) => void) => window.setTimeout(() => cb({
-    didTimeout: true,
-    timeRemaining: () => 0,
-  }), 80)
+const raf = typeof requestAnimationFrame === 'function'
+  ? requestAnimationFrame
+  : (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16) as unknown as number
+const caf = typeof cancelAnimationFrame === 'function'
+  ? cancelAnimationFrame
+  : (id: number) => clearTimeout(id)
 
-const cancelIdle = typeof window !== 'undefined' && 'cancelIdleCallback' in window
-  ? (id: number) => (window as any).cancelIdleCallback(id)
-  : (id: number) => window.clearTimeout(id)
+let lineStates: LineState[] = []
+let renderFrame: number | null = null
+let renderedLang = props.lang
 
-function escapeHtml(s: string): string {
-  const d = document.createElement('div')
-  d.textContent = s
-  return d.innerHTML
+function createLineEl(): HTMLSpanElement {
+  const el = document.createElement('span')
+  el.className = 'code-line'
+  el.style.display = 'block'
+  el.style.minHeight = '20px'
+  return el
 }
 
-/**
- * Patch the <code> element's innerHTML. The surrounding <pre> is never
- * rebuilt — so its scrollLeft survives across streaming updates, and any
- * selection the user holds inside an already-complete block remains
- * intact (we don't touch props.content once `complete` stays true).
- */
-function renderHighlighted(): string {
-  if (props.lang && hljs.getLanguage(props.lang)) {
-    try {
-      return hljs.highlight(props.content, {
-        language: props.lang,
-        ignoreIllegals: true,
-      }).value
-    } catch (err) {
-      console.error('[StreamingCodeBlock] highlight failed', err)
-    }
+function renderLineEl(lineEl: HTMLElement, text: string) {
+  lineEl.replaceChildren()
+  const source = text || ' '
+  const fragment = document.createDocumentFragment()
+  for (const token of renderTokenSpans(props.lang, source)) {
+    const span = document.createElement('span')
+    if (token.className) span.className = token.className
+    span.textContent = token.text
+    fragment.appendChild(span)
   }
-  return escapeHtml(props.content)
+  lineEl.appendChild(fragment)
 }
 
-function render() {
-  const el = codeEl.value
-  if (!el) return
-  const highlighted = shouldHighlight.value
-  if (lastRenderedContent === props.content && lastRenderedHighlighted === highlighted) return
+function clearRenderedLines() {
+  codeEl.value?.replaceChildren()
+  lineStates = []
+  renderedLang = props.lang
+}
 
-  if (highlighted) {
-    scheduleHighlightedRender()
-    return
+function renderIncrementalCode() {
+  const root = codeEl.value
+  if (!root) return
+
+  if (renderedLang !== props.lang) {
+    // Language changes mean token classes are no longer comparable.
+    clearRenderedLines()
   }
 
-  cancelHighlightJob()
-  renderPlainText(el)
-}
+  const lines = props.content.split('\n')
+  const activeLineIndex = props.complete ? -1 : lines.length - 1
 
-function renderPlainText(el: HTMLElement) {
-  if (props.content.startsWith(lastRenderedContent) && !lastRenderedHighlighted) {
-    const delta = props.content.slice(lastRenderedContent.length)
-    if (delta) {
-      const textNode = el.firstChild
-      if (textNode?.nodeType === Node.TEXT_NODE) {
-        textNode.textContent = (textNode.textContent || '') + delta
-      } else {
-        el.textContent = props.content
-      }
-    }
-  } else {
-    el.textContent = props.content
-  }
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const frozen = i !== activeLineIndex
+    const existing = lineStates[i]
 
-  lastRenderedContent = props.content
-  lastRenderedHighlighted = false
-
-  if (import.meta.env.DEV) {
-    const lines = props.content.split('\n').length
-    traceLog(
-      'CodeBlock:render',
-      `lines=${lines} len=${props.content.length} hl=false complete=${props.complete}`,
-    )
-  }
-}
-
-function cancelHighlightJob() {
-  if (highlightJob === null) return
-  cancelIdle(highlightJob)
-  highlightJob = null
-}
-
-function scheduleHighlightedRender() {
-  if (props.content.length <= IMMEDIATE_HIGHLIGHT_LIMIT) {
-    cancelHighlightJob()
-    const el = codeEl.value
-    if (!el) return
-    el.innerHTML = renderHighlighted()
-    lastRenderedContent = props.content
-    lastRenderedHighlighted = true
-    return
-  }
-
-  if (highlightJob !== null) return
-  const expectedContent = props.content
-  const expectedLang = props.lang
-  highlightJob = scheduleIdle(() => {
-    highlightJob = null
-    const el = codeEl.value
-    if (!el) return
-    if (!shouldHighlight.value || props.content !== expectedContent || props.lang !== expectedLang) {
-      render()
-      return
+    if (existing && existing.text === line) {
+      existing.frozen = existing.frozen || frozen
+      continue
     }
 
-    el.innerHTML = renderHighlighted()
-    lastRenderedContent = props.content
-    lastRenderedHighlighted = true
+    const lineEl = existing?.el ?? createLineEl()
+    renderLineEl(lineEl, line)
+    if (!existing) root.appendChild(lineEl)
+    lineStates[i] = { text: line, frozen, el: lineEl }
+  }
 
-    if (import.meta.env.DEV) {
-      traceLog(
-        'CodeBlock:highlight',
-        `lines=${props.content.split('\n').length} len=${props.content.length} lang=${props.lang}`,
-      )
-    }
+  while (lineStates.length > lines.length) {
+    const removed = lineStates.pop()
+    removed?.el.remove()
+  }
+}
+
+function scheduleRender() {
+  if (renderFrame !== null) return
+  renderFrame = raf(() => {
+    renderFrame = null
+    renderIncrementalCode()
   })
 }
+
+watch(() => [props.content, props.lang, props.complete, props.isStreaming] as const, scheduleRender)
+
+onMounted(() => {
+  nextTick(renderIncrementalCode)
+})
+
+onBeforeUnmount(() => {
+  if (renderFrame !== null) {
+    caf(renderFrame)
+    renderFrame = null
+  }
+  lineStates = []
+})
 
 async function handleCopy() {
   try {
@@ -211,40 +178,22 @@ async function handleCopy() {
     console.error('[StreamingCodeBlock] copy failed', err)
   }
 }
-
-watch(() => props.content, () => {
-  if (shouldHighlight.value) { render(); return }
-  render()
-})
-watch(() => props.complete, (val, old) => {
-  traceLog('CodeBlock:complete', `${old}→${val} lang=${props.lang} lines=${props.content.split('\n').length}`)
-  render()
-})
-watch(() => props.isStreaming, (val, old) => {
-  traceLog('CodeBlock:isStreaming', `${old}→${val} complete=${props.complete}`)
-  render()
-})
-watch(() => props.lang, render)
-onMounted(() => {
-  traceLog('CodeBlock:mount', `lang=${props.lang} complete=${props.complete} lines=${props.content.split('\n').length}`)
-  render()
-})
-onBeforeUnmount(() => {
-  cancelHighlightJob()
-  traceLog('CodeBlock:unmount', `lang=${props.lang} complete=${props.complete} lines=${props.content.split('\n').length}`)
-})
 </script>
 
 <style scoped>
 .code-block-container .code-block-pre {
   margin: 0;
   padding: 12px 14px;
-  overflow-x: scroll;
+  overflow-x: auto;
   overflow-y: hidden;
-  white-space: pre;
-  line-height: 1.5;
-  scrollbar-gutter: stable;
+  line-height: 20px;
+  scrollbar-width: none;
   tab-size: 2;
+}
+
+.code-block-container .code-block-pre::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .code-block-container code {
@@ -252,6 +201,69 @@ onBeforeUnmount(() => {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 13px;
   line-height: inherit;
-  white-space: inherit;
+  white-space: pre;
+}
+
+.code-block-container code :deep(.code-line) {
+  display: block;
+  min-height: 20px;
+}
+
+.code-block-container code :deep(.tok-keyword),
+.code-block-container code :deep(.tok-atom) {
+  color: #c678dd;
+}
+
+.code-block-container code :deep(.tok-number) {
+  color: #d19a66;
+}
+
+.code-block-container code :deep(.tok-string) {
+  color: #98c379;
+}
+
+.code-block-container code :deep(.tok-comment) {
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+  font-style: italic;
+}
+
+.code-block-container code :deep(.tok-definition),
+.code-block-container code :deep(.tok-function) {
+  color: #61afef;
+}
+
+.code-block-container code :deep(.tok-variable),
+.code-block-container code :deep(.tok-property) {
+  color: inherit;
+}
+
+.code-block-container code :deep(.tok-type),
+.code-block-container code :deep(.tok-tag) {
+  color: #e5c07b;
+}
+
+.code-block-container code :deep(.tok-punctuation) {
+  color: color-mix(in srgb, currentColor 70%, transparent);
+}
+
+.code-block-container code :deep(.tok-invalid) {
+  color: #e06c75;
+}
+
+.code-block-container code :deep(.tok-inserted) {
+  color: #98c379;
+}
+
+.code-block-container code :deep(.tok-heading),
+.code-block-container code :deep(.tok-strong) {
+  font-weight: 600;
+}
+
+.code-block-container code :deep(.tok-emphasis) {
+  font-style: italic;
+}
+
+.code-block-container code :deep(.tok-link) {
+  color: var(--accent);
 }
 </style>

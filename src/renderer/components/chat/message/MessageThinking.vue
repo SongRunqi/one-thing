@@ -241,15 +241,12 @@ onUnmounted(() => {
   display: none;
 }
 
-/* Status overlay: always in DOM. Uses grid-template-rows trick to animate
-   height between auto (1fr) and 0 (0fr) when there's nothing to show.
-   Replaces the previous outer Transition + fixed 28px height, which caused
-   a 28px layout jump when Waiting disappeared without a reasoning row to
-   take its place. */
+/* Status overlay: always in DOM. Keep status changes synchronous during
+   streaming; animated height/opacity changes fight the follow scroll model
+   when the first content chunk replaces Waiting. */
 .thinking-status-overlay {
   display: grid;
   grid-template-rows: 1fr;
-  transition: grid-template-rows 0.2s ease;
 }
 
 .thinking-status-overlay.collapsed {
@@ -318,11 +315,11 @@ onUnmounted(() => {
 
 /* Transition: Waiting <-> Thinking/Thought row */
 .thinking-fade-enter-active {
-  animation: thinkingFadeIn 0.25s ease;
+  animation: none;
 }
 
 .thinking-fade-leave-active {
-  animation: thinkingFadeOut 0.15s ease forwards;
+  animation: none;
 }
 
 @keyframes thinkingFadeIn {
@@ -345,11 +342,11 @@ onUnmounted(() => {
 
 /* Transition: Thinking -> Thought text */
 .status-text-fade-enter-active {
-  animation: statusTextEnter 0.3s ease;
+  animation: none;
 }
 
 .status-text-fade-leave-active {
-  animation: statusTextLeave 0.15s ease forwards;
+  animation: none;
 }
 
 @keyframes statusTextEnter {
@@ -373,7 +370,7 @@ onUnmounted(() => {
 /* Transition: Time display fade */
 .time-fade-enter-active,
 .time-fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: none;
 }
 
 .time-fade-enter-from,

@@ -262,6 +262,7 @@ interface Props {
   role: 'user' | 'assistant'
   content: string
   visible: boolean
+  isStreaming?: boolean
   branches?: BranchInfo[]
   usage?: TokenUsage
   model?: string
@@ -489,6 +490,8 @@ onUnmounted(() => {
   gap: 4px;
   opacity: 0;
   transition: opacity 0.15s ease;
+  height: 28px;
+  align-items: center;
 }
 
 .actions.visible {
@@ -498,6 +501,7 @@ onUnmounted(() => {
 .action-btn {
   width: 28px;
   height: 28px;
+  line-height: 28px;
   border-radius: 6px;
   border: none;
   background: transparent;
@@ -523,6 +527,7 @@ onUnmounted(() => {
 .action-btn svg {
   width: 15px;
   height: 15px;
+  display: block;
 }
 
 /* Copy button success state - when showing check icon */

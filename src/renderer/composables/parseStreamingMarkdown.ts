@@ -39,7 +39,7 @@ function trimStreamingCodeTail(codeContent: string, fenceChars: string): string 
   // and immediately shrinks again once ``` is recognized as the terminator.
   return partialClose.test(trailingLine)
     ? codeContent.slice(0, lastNewline)
-    : codeContent.replace(/\n[ \t\n]*$/, '')
+    : codeContent
 }
 
 function trimPartialOpeningFence(markdownContent: string): string {
@@ -169,6 +169,18 @@ export function parseStreamingMarkdown(content: string, options: { streaming?: b
     const fenceRelStart = openMatch.index! + openPrefix.length
     const fenceAbsStart = pos + fenceRelStart
     const afterOpenAbs = pos + openMatch.index! + openMatch[0].length
+    const openingFenceComplete = openMatch[0].endsWith('\n')
+
+    // During streaming, do not materialize a code block for a partial opening
+    // fence at the end of the current chunk (` ``` ` or ` ```go ` before the
+    // newline arrives). Rendering that as a temporary `text` block creates a
+    // visible one-frame flash before the real language/content appears.
+    if ((options.streaming ?? false) && !openingFenceComplete) {
+      if (fenceAbsStart > pos) {
+        emitMarkdownSegments(segments, content.slice(pos, fenceAbsStart), pos, false)
+      }
+      break
+    }
 
     // Emit preceding markdown (including the leading newline so block-level
     // structure is preserved).

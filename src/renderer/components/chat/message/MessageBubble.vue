@@ -97,7 +97,10 @@
         <!-- New contentParts-based rendering -->
         <template v-if="contentParts && contentParts.length > 0">
           <!-- Text 内容 - Waiting 状态由 MessageThinking 组件处理 -->
-          <Transition name="text-fade">
+          <Transition
+            name="text-fade"
+            :css="!isStreaming"
+          >
             <div
               v-if="firstTextPart"
               class="content"
@@ -116,6 +119,7 @@
             name="other-parts"
             tag="div"
             class="other-parts-container"
+            :css="!isStreaming"
           >
             <template
               v-for="(part, index) in otherParts"
@@ -528,6 +532,7 @@ function handleContentClick(event: MouseEvent) {
   border: none;
   background: transparent;
   box-shadow: none;
+  transition: none;
 }
 
 /* User message bubble */
@@ -669,6 +674,11 @@ html[data-theme='light'] .attachment-file {
   position: relative;
   overflow: hidden;
   transition: max-height 0.3s ease;
+}
+
+.bubble.assistant .content-wrapper {
+  overflow: visible;
+  transition: none;
 }
 
 .content-wrapper.collapsed {
