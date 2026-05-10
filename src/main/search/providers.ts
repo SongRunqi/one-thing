@@ -17,42 +17,66 @@ import { listFiles } from '../utils/ripgrep.js'
 export interface ActionDefinition {
   id: string
   name: string
+  keywords?: string[]
   shortcut?: string
 }
 
 const ACTIONS: ActionDefinition[] = [
-  { id: 'new-chat', name: 'New Chat', shortcut: '⌘N' },
-  { id: 'open-settings', name: 'Open Settings', shortcut: '⌘,' },
-  { id: 'toggle-sidebar', name: 'Toggle Sidebar', shortcut: '⌘B' },
-  { id: 'toggle-inspector', name: 'Toggle Inspector' },
-  { id: 'close-chat', name: 'Close Chat' },
-  { id: 'focus-input', name: 'Focus Input' },
+  { id: 'new-chat', name: 'New Chat', keywords: ['chat', 'conversation', 'create'], shortcut: '⌘N' },
+  { id: 'open-settings', name: 'Open Settings', keywords: ['preferences', 'config'], shortcut: '⌘,' },
+  { id: 'toggle-sidebar', name: 'Toggle Sidebar', keywords: ['panel', 'nav'], shortcut: '⌘B' },
+  { id: 'toggle-inspector', name: 'Toggle Inspector', keywords: ['details', 'debug', 'steps'] },
+  { id: 'close-chat', name: 'Close Chat', keywords: ['delete', 'remove'] },
+  { id: 'focus-input', name: 'Focus Input', keywords: ['composer', 'prompt', 'message'] },
 ]
 
 // ---------------------------------------------------------------------------
 // Search functions
 // ---------------------------------------------------------------------------
 
+function normalizeQuery(query: string): string {
+  return query.trim().toLowerCase().replace(/^>/, '').replace(/^\//, '').trim()
+}
+
+function scoreText(text: string | undefined, query: string): number {
+  if (!query) return 1
+  const value = (text || '').toLowerCase()
+  if (!value) return 0
+  if (value === query) return 100
+  if (value.startsWith(query)) return 80
+  const idx = value.indexOf(query)
+  if (idx >= 0) return 60 - Math.min(idx, 40)
+  return 0
+}
+
+function matchRanges(text: string, query: string): Array<{ start: number; end: number }> | undefined {
+  if (!query) return undefined
+  const idx = text.toLowerCase().indexOf(query)
+  return idx >= 0 ? [{ start: idx, end: idx + query.length }] : undefined
+}
+
 function searchChats(query: string, limit: number): SearchResult[] {
   const sessions = getSessionsList()
-  const q = query.toLowerCase()
+  const q = normalizeQuery(query)
 
   const matched = sessions
     .filter(s => !s.isArchived)
-    .filter(s => {
-      if (!q) return true
-      return (s.name || '').toLowerCase().includes(q)
-        || (s.previewText || '').toLowerCase().includes(q)
-    })
+    .map(s => ({
+      session: s,
+      score: Math.max(scoreText(s.name, q), scoreText(s.previewText, q) * 0.8),
+    }))
+    .filter(item => !q || item.score > 0)
+    .sort((a, b) => (b.score - a.score) || (b.session.updatedAt - a.session.updatedAt))
     .slice(0, limit)
 
-  return matched.map(s => ({
+  return matched.map(({ session: s }) => ({
     id: `chat:${s.id}`,
     type: 'chat' as const,
     title: s.name || 'New Chat',
     subtitle: s.previewText,
     sessionId: s.id,
     timestamp: s.updatedAt,
+    matchRanges: matchRanges(s.name || 'New Chat', q),
   }))
 }
 
@@ -60,7 +84,8 @@ function searchMessages(query: string, limit: number): SearchResult[] {
   if (!query.trim()) return []
 
   const sessions = getSessionsList()
-  const q = query.toLowerCase()
+  const q = normalizeQuery(query)
+  if (!q) return []
   const results: SearchResult[] = []
 
   for (const meta of sessions) {
@@ -78,7 +103,8 @@ function searchMessages(query: string, limit: number): SearchResult[] {
       if (idx === -1) continue
 
       const start = Math.max(0, idx - 30)
-      const end = Math.min(content.length, idx + query.length + 50)
+      const end = Math.min(content.length, idx + q.length + 50)
+      const leading = start > 0 ? '...' : ''
       const snippet = (start > 0 ? '...' : '')
         + content.slice(start, end)
         + (end < content.length ? '...' : '')
@@ -88,9 +114,11 @@ function searchMessages(query: string, limit: number): SearchResult[] {
         type: 'message',
         title: snippet,
         subtitle: meta.name || 'New Chat',
+        detail: msg.role === 'user' ? 'User message' : 'Assistant message',
         sessionId: meta.id,
         messageId: msg.id,
         timestamp: msg.timestamp ?? meta.updatedAt,
+        matchRanges: [{ start: leading.length + idx - start, end: leading.length + idx - start + q.length }],
       })
     }
   }
@@ -98,16 +126,23 @@ function searchMessages(query: string, limit: number): SearchResult[] {
 }
 
 function searchActions(query: string, limit: number): SearchResult[] {
-  const q = query.toLowerCase()
+  const q = normalizeQuery(query)
   return ACTIONS
-    .filter(a => !q || a.name.toLowerCase().includes(q))
-    .slice(0, limit)
     .map(a => ({
-      id: `action:${a.id}`,
+      action: a,
+      score: Math.max(scoreText(a.name, q), ...(a.keywords || []).map(k => scoreText(k, q) * 0.75)),
+    }))
+    .filter(item => !q || item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ action }) => ({
+      id: `action:${action.id}`,
       type: 'action' as const,
-      title: a.name,
-      actionId: a.id,
-      shortcut: a.shortcut,
+      title: action.name,
+      subtitle: action.keywords?.slice(0, 3).join(' · '),
+      actionId: action.id,
+      shortcut: action.shortcut,
+      matchRanges: matchRanges(action.name, q),
     }))
 }
 
@@ -153,7 +188,8 @@ async function searchFiles(query: string, limit: number): Promise<SearchResult[]
   const dirs = getSearchDirs()
   if (dirs.length === 0) return []
 
-  const q = query.toLowerCase().trim()
+  const q = normalizeQuery(query)
+  if (!q) return []
   const results: SearchResult[] = []
 
   for (const cwd of dirs) {
@@ -171,7 +207,9 @@ async function searchFiles(query: string, limit: number): Promise<SearchResult[]
           type: 'file',
           title: path.basename(relPath),
           subtitle: `${dirLabel}/${relPath}`,
+          detail: cwd,
           filePath: absPath,
+          matchRanges: matchRanges(path.basename(relPath), q),
         })
       }
     } catch {
@@ -204,9 +242,12 @@ export async function executeSearch(
         Promise.resolve(searchChats(query, 6)),
         Promise.resolve(searchMessages(query, 5)),
         searchFiles(query, 10),
-        Promise.resolve(searchActions(query, 4)),
+        Promise.resolve(searchActions(query, query.trim().startsWith('/') || query.trim().startsWith('>') ? 8 : 4)),
       ])
-      return [...chats, ...files, ...messages, ...actions].slice(0, limit)
+      const ordered = query.trim().startsWith('/') || query.trim().startsWith('>')
+        ? [...actions, ...chats, ...files, ...messages]
+        : [...chats, ...files, ...messages, ...actions]
+      return ordered.slice(0, limit)
     }
   }
 }

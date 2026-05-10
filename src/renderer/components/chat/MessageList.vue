@@ -20,6 +20,7 @@
           :key="message.id || index"
           class="message-list-row"
           :data-index="index"
+          :data-message-id="message.id"
         >
           <MessageItem
             :message="message"
@@ -183,6 +184,8 @@ const messageListContentRef = ref<HTMLElement | null>(null)
 const bottomSentinelRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
 const showScrollToBottomButton = ref(false)
+const searchHighlightedMessageId = ref<string | null>(null)
+let searchHighlightTimer: ReturnType<typeof setTimeout> | null = null
 
 // Reject reason dialog state
 const showRejectDialog = ref(false)
@@ -365,6 +368,7 @@ const displayNavMarkers = computed<NavMarker[]>(() => {
 // Get the currently highlighted message ID for navigation
 // Only returns a value if user has actually navigated (not on session switch)
 const highlightedMessageId = computed(() => {
+  if (searchHighlightedMessageId.value) return searchHighlightedMessageId.value
   if (!hasNavigated.value) return null
   if (currentUserMessageNavIndex.value < 0) return null
   const messageIndex = userMessageIndices.value[currentUserMessageNavIndex.value]
@@ -481,6 +485,32 @@ function updateNavMarkers() {
 
 function getMessageRow(messageIndex: number): HTMLElement | null {
   return messageListContentRef.value?.querySelector<HTMLElement>(`[data-index="${messageIndex}"]`) ?? null
+}
+
+function getMessageRowById(messageId: string): HTMLElement | null {
+  return messageListContentRef.value?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`) ?? null
+}
+
+async function scrollToMessage(messageId: string) {
+  const messageIndex = props.messages.findIndex(message => message.id === messageId)
+  if (messageIndex === -1) return false
+
+  hasNavigated.value = false
+  isFollowing.value = false
+  searchHighlightedMessageId.value = messageId
+
+  await nextTick()
+  const row = getMessageRowById(messageId) || getMessageRow(messageIndex)
+  row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+  if (searchHighlightTimer) clearTimeout(searchHighlightTimer)
+  searchHighlightTimer = setTimeout(() => {
+    if (searchHighlightedMessageId.value === messageId) {
+      searchHighlightedMessageId.value = null
+    }
+  }, 2600)
+
+  return true
 }
 
 function getMessageMeasurement(messageIndex: number): { start: number; end: number; size: number } | undefined {
@@ -682,6 +712,10 @@ onUnmounted(() => {
   }
   if (navigationCooldownTimer) {
     clearTimeout(navigationCooldownTimer)
+  }
+  if (searchHighlightTimer) {
+    clearTimeout(searchHighlightTimer)
+    searchHighlightTimer = null
   }
   if (navMarkerUpdateFrame !== null) {
     cancelAnimationFrame(navMarkerUpdateFrame)
@@ -1143,6 +1177,8 @@ defineExpose({
     setNavIndexToLastUserMessage()
     follow.snapToBottom('expose:scrollToBottom')
   },
+
+  scrollToMessage,
 })
 </script>
 

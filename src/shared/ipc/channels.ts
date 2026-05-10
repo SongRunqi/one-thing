@@ -186,6 +186,7 @@ export const IPC_CHANNELS = {
   // Search Everywhere
   SEARCH_WINDOW_TOGGLE: 'search-window:toggle',
   SEARCH_WINDOW_CLOSE: 'search-window:close',
+  SEARCH_WINDOW_SHOWN: 'search-window:shown',
   SEARCH_QUERY: 'search:query',
   SEARCH_EXECUTE_ACTION: 'search:execute-action',
 } as const

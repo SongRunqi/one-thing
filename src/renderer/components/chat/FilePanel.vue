@@ -1,10 +1,26 @@
 <template>
   <div class="file-panel">
-    <div v-if="loading" class="file-status">Loading...</div>
-    <div v-else-if="error" class="file-status error">{{ error }}</div>
-    <div v-else class="file-content-wrapper">
+    <div
+      v-if="loading"
+      class="file-status"
+    >
+      Loading...
+    </div>
+    <div
+      v-else-if="error"
+      class="file-status error"
+    >
+      {{ error }}
+    </div>
+    <div
+      v-else
+      class="file-content-wrapper"
+    >
       <div class="file-toolbar">
-        <div v-if="truncated" class="file-truncated-badge">
+        <div
+          v-if="truncated"
+          class="file-truncated-badge"
+        >
           First {{ maxSizeKb }}KB of {{ fileSizeDisplay }}
         </div>
         <div class="toolbar-spacer" />
@@ -51,9 +67,18 @@
     </div>
     <div class="file-status-bar">
       <span class="file-path">{{ filePath }}</span>
-      <span v-if="editing && dirty" class="file-dirty">Modified</span>
-      <span v-if="lang" class="file-lang">{{ lang }}</span>
-      <span v-if="fileSize" class="file-size">{{ fileSizeDisplay }}</span>
+      <span
+        v-if="editing && dirty"
+        class="file-dirty"
+      >Modified</span>
+      <span
+        v-if="lang"
+        class="file-lang"
+      >{{ lang }}</span>
+      <span
+        v-if="fileSize"
+        class="file-size"
+      >{{ fileSizeDisplay }}</span>
     </div>
   </div>
 </template>

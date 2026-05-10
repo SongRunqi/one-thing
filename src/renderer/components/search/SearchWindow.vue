@@ -14,22 +14,37 @@
 
     <!-- Search input -->
     <div class="search-input-row">
-      <Search :size="16" class="search-icon" />
+      <Search
+        :size="16"
+        class="search-icon"
+      />
       <input
         ref="inputRef"
         v-model="query"
         type="text"
         class="search-input"
-        placeholder="Type / to see commands"
+        :placeholder="inputPlaceholder"
+        spellcheck="false"
         @keydown="onInputKeydown"
       >
     </div>
 
     <!-- Results -->
-    <div ref="resultsRef" class="search-results">
+    <div
+      ref="resultsRef"
+      class="search-results"
+    >
       <template v-if="groupedResults.length > 0">
-        <template v-for="group in groupedResults" :key="group.type">
-          <div v-if="activeTab === 'all'" class="group-header">{{ group.label }}</div>
+        <template
+          v-for="group in groupedResults"
+          :key="group.type"
+        >
+          <div
+            v-if="activeTab === 'all'"
+            class="group-header"
+          >
+            {{ group.label }}
+          </div>
           <SearchResultItem
             v-for="(item, i) in group.items"
             :key="item.id"
@@ -40,8 +55,23 @@
           />
         </template>
       </template>
-      <div v-else class="no-results">
-        {{ query ? 'No results found' : 'Type to search...' }}
+      <div
+        v-else-if="isLoading"
+        class="search-state"
+      >
+        Searching...
+      </div>
+      <div
+        v-else-if="searchError"
+        class="search-state error"
+      >
+        {{ searchError }}
+      </div>
+      <div
+        v-else
+        class="search-state"
+      >
+        {{ emptyText }}
       </div>
     </div>
 
@@ -76,6 +106,8 @@ const activeTab = ref<SearchCategory>('all')
 const query = ref('')
 const results = ref<SearchResult[]>([])
 const selectedIndex = ref(0)
+const isLoading = ref(false)
+const searchError = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 const resultsRef = ref<HTMLElement | null>(null)
 
@@ -111,6 +143,20 @@ const totalResults = computed(() =>
   groupedResults.value.reduce((sum, g) => sum + g.items.length, 0)
 )
 
+const inputPlaceholder = computed(() => {
+  if (activeTab.value === 'actions') return 'Run a command...'
+  if (activeTab.value === 'files') return 'Search files in current workspace and notes...'
+  if (activeTab.value === 'messages') return 'Search across chat messages...'
+  if (activeTab.value === 'chats') return 'Search chats...'
+  return 'Search chats, files, messages, and commands...'
+})
+
+const emptyText = computed(() => {
+  if (query.value.trim()) return 'No results found'
+  if (activeTab.value === 'files' || activeTab.value === 'messages') return 'Type to search...'
+  return 'Start typing, or use / for commands'
+})
+
 function flatIndex(group: ResultGroup, localIndex: number): number {
   let offset = 0
   for (const g of groupedResults.value) {
@@ -130,16 +176,36 @@ function getResultByFlatIndex(idx: number): SearchResult | undefined {
 
 // ── Search execution (debounced) ──────────────────
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let searchSeq = 0
+let unsubscribeShown: (() => void) | null = null
 
 async function doSearch() {
-  const res = await window.electronAPI.searchQuery({
-    query: query.value,
-    category: activeTab.value,
-    limit: 20,
-  })
-  if (res?.success) {
-    results.value = res.results
-    selectedIndex.value = 0
+  const seq = ++searchSeq
+  isLoading.value = true
+  searchError.value = ''
+  try {
+    const res = await window.electronAPI.searchQuery({
+      query: query.value,
+      category: activeTab.value,
+      limit: 24,
+    })
+    if (seq !== searchSeq) return
+    if (res?.success) {
+      results.value = res.results
+      selectedIndex.value = 0
+      nextTick(() => {
+        if (resultsRef.value) resultsRef.value.scrollTop = 0
+      })
+    } else {
+      results.value = []
+      searchError.value = 'Search failed'
+    }
+  } catch (err) {
+    if (seq !== searchSeq) return
+    results.value = []
+    searchError.value = err instanceof Error ? err.message : 'Search failed'
+  } finally {
+    if (seq === searchSeq) isLoading.value = false
   }
 }
 
@@ -150,15 +216,25 @@ watch([query, activeTab], () => {
 
 // ── Keyboard navigation ──────────────────────────
 function onInputKeydown(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && /^[1-5]$/.test(e.key)) {
+    e.preventDefault()
+    activeTab.value = tabs[Number(e.key) - 1].id
+    return
+  }
+
   switch (e.key) {
     case 'ArrowDown':
       e.preventDefault()
-      selectedIndex.value = Math.min(selectedIndex.value + 1, totalResults.value - 1)
+      if (totalResults.value > 0) {
+        selectedIndex.value = (selectedIndex.value + 1) % totalResults.value
+      }
       scrollSelectedIntoView()
       break
     case 'ArrowUp':
       e.preventDefault()
-      selectedIndex.value = Math.max(selectedIndex.value - 1, 0)
+      if (totalResults.value > 0) {
+        selectedIndex.value = (selectedIndex.value - 1 + totalResults.value) % totalResults.value
+      }
       scrollSelectedIntoView()
       break
     case 'Enter':
@@ -172,6 +248,11 @@ function onInputKeydown(e: KeyboardEvent) {
     case 'Tab':
       e.preventDefault()
       cycleTab(e.shiftKey ? -1 : 1)
+      break
+    case '/':
+      if (!query.value && activeTab.value !== 'actions') {
+        activeTab.value = 'actions'
+      }
       break
   }
 }
@@ -203,6 +284,8 @@ function confirmResult(item: SearchResult) {
     window.electronAPI.searchExecuteAction(item.actionId)
   } else if (item.type === 'file' && item.filePath) {
     window.electronAPI.searchExecuteAction(`open-file:${item.filePath}`)
+  } else if (item.type === 'message' && item.sessionId && item.messageId) {
+    window.electronAPI.searchExecuteAction(`jump-message:${item.sessionId}:${item.messageId}`)
   } else if (item.sessionId) {
     window.electronAPI.searchExecuteAction(`switch-session:${item.sessionId}`)
   }
@@ -250,11 +333,19 @@ onMounted(async () => {
 
   inputRef.value?.focus()
   doSearch()
+  unsubscribeShown = window.electronAPI.onSearchWindowShown?.(() => {
+    query.value = ''
+    activeTab.value = 'all'
+    selectedIndex.value = 0
+    inputRef.value?.focus()
+    doSearch()
+  }) ?? null
   window.addEventListener('keydown', onGlobalKeyDown, true)
   window.addEventListener('keyup', onGlobalKeyUp, true)
 })
 
 onUnmounted(() => {
+  unsubscribeShown?.()
   window.removeEventListener('keydown', onGlobalKeyDown, true)
   window.removeEventListener('keyup', onGlobalKeyUp, true)
   if (debounceTimer) clearTimeout(debounceTimer)
@@ -349,11 +440,15 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
 }
 
-.no-results {
+.search-state {
   padding: 24px 20px;
   text-align: center;
   color: var(--muted);
   font-size: 13px;
+}
+
+.search-state.error {
+  color: var(--danger, #d14);
 }
 
 /* ── Footer ─────────────────────────── */

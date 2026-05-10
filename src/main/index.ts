@@ -15,6 +15,7 @@ import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js
 import { Permission } from './permission/index.js'
 import { bootstrapVariableSystem } from './variables/index.js'
 import { bootstrapProjectDirs } from './project-dirs/index.js'
+import { warmSearchWindow } from './search/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -131,6 +132,12 @@ app.on('ready', async () => {
     mainWindow = null
   })
 
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      warmSearchWindow(mainWindow)
+    }
+  }, 1200)
+
   // Initialize MCP system asynchronously (don't block startup)
   initializeMCP().catch(err => {
     console.error('[MCP] Initialization failed (non-blocking):', err)
@@ -164,6 +171,11 @@ app.on('activate', () => {
       getStreamEngineSafe()?.abortAll()
       mainWindow = null
     })
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        warmSearchWindow(mainWindow)
+      }
+    }, 1200)
   }
 })
 

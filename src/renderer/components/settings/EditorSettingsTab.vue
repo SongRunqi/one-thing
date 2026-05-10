@@ -2,7 +2,9 @@
   <div class="tab-content">
     <!-- Tabs -->
     <section class="settings-section">
-      <h3 class="section-title">Tabs</h3>
+      <h3 class="section-title">
+        Tabs
+      </h3>
       <div class="settings-card">
         <div class="card-row">
           <div class="form-group">
@@ -31,7 +33,9 @@
 
     <!-- File Preview -->
     <section class="settings-section">
-      <h3 class="section-title">File Preview</h3>
+      <h3 class="section-title">
+        File Preview
+      </h3>
       <div class="settings-card">
         <div class="card-row">
           <div class="form-group">

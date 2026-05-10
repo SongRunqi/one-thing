@@ -3,5 +3,5 @@
  */
 
 export { registerSearchHandlers } from './ipc.js'
-export { openSearchWindow, closeSearchWindow, toggleSearchWindow, getSearchWindow } from './window.js'
+export { openSearchWindow, closeSearchWindow, toggleSearchWindow, warmSearchWindow, getSearchWindow } from './window.js'
 export { executeSearch } from './providers.js'

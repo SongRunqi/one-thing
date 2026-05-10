@@ -15,12 +15,14 @@ export interface SearchResult {
   type: 'chat' | 'message' | 'action' | 'file'
   title: string
   subtitle?: string
+  detail?: string
   sessionId?: string
   messageId?: string
   actionId?: string
   filePath?: string
   timestamp?: number
   shortcut?: string
+  matchRanges?: Array<{ start: number; end: number }>
 }
 
 export interface SearchResponse {

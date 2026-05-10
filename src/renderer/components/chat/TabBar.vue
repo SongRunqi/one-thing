@@ -30,7 +30,10 @@
         title="Back to parent chat"
         @click="$emit('goToParent')"
       >
-        <ArrowLeft :size="14" :stroke-width="2" />
+        <ArrowLeft
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
 
       <button
@@ -39,7 +42,10 @@
         title="Split view"
         @click="$emit('split')"
       >
-        <Columns2 :size="14" :stroke-width="2" />
+        <Columns2
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
 
       <button
@@ -48,7 +54,10 @@
         title="Equalize panels"
         @click="$emit('equalize')"
       >
-        <Equal :size="14" :stroke-width="2" />
+        <Equal
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
 
       <button
@@ -56,7 +65,10 @@
         title="Show session lens"
         @click="$emit('toggleInspector')"
       >
-        <Radar :size="14" :stroke-width="2" />
+        <Radar
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
 
       <button
@@ -65,7 +77,10 @@
         title="Close panel"
         @click="$emit('close')"
       >
-        <X :size="14" :stroke-width="2" />
+        <X
+          :size="14"
+          :stroke-width="2"
+        />
       </button>
     </div>
   </header>

@@ -485,6 +485,16 @@ onMounted(async () => {
       chatContainerRef.value?.openFileTab?.(filePath)
       return
     }
+    if (actionId.startsWith('jump-message:')) {
+      const payload = actionId.replace('jump-message:', '')
+      const separatorIndex = payload.indexOf(':')
+      if (separatorIndex >= 0) {
+        const sessionId = payload.slice(0, separatorIndex)
+        const messageId = payload.slice(separatorIndex + 1)
+        await chatContainerRef.value?.jumpToMessage?.(sessionId, messageId)
+      }
+      return
+    }
     switch (actionId) {
       case 'new-chat': await createNewChat(); break
       case 'open-settings': openSettingsWindow(); break

@@ -555,6 +555,12 @@ const electronAPI = {
   closeSearchWindow: () =>
     ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_CLOSE),
 
+  onSearchWindowShown: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on(IPC_CHANNELS.SEARCH_WINDOW_SHOWN, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_WINDOW_SHOWN, listener)
+  },
+
   searchQuery: (req: { query: string; category: string; limit?: number }) =>
     ipcRenderer.invoke(IPC_CHANNELS.SEARCH_QUERY, req),
 

@@ -5,25 +5,61 @@
     @mouseenter="$emit('hover')"
   >
     <div class="result-icon">
-      <MessageSquare v-if="result.type === 'chat'" :size="16" />
-      <File v-else-if="result.type === 'file'" :size="16" />
-      <FileText v-else-if="result.type === 'message'" :size="16" />
-      <Zap v-else-if="result.type === 'action'" :size="16" />
+      <MessageSquare
+        v-if="result.type === 'chat'"
+        :size="16"
+      />
+      <File
+        v-else-if="result.type === 'file'"
+        :size="16"
+      />
+      <FileText
+        v-else-if="result.type === 'message'"
+        :size="16"
+      />
+      <Zap
+        v-else-if="result.type === 'action'"
+        :size="16"
+      />
     </div>
     <div class="result-body">
-      <span class="result-title">{{ result.title }}</span>
-      <span v-if="result.subtitle" class="result-subtitle">{{ result.subtitle }}</span>
+      <span
+        class="result-title"
+      >
+        <template
+          v-for="(segment, index) in titleSegments"
+          :key="index"
+        >
+          <mark v-if="segment.highlight">{{ segment.text }}</mark>
+          <template v-else>{{ segment.text }}</template>
+        </template>
+      </span>
+      <span
+        v-if="result.subtitle"
+        class="result-subtitle"
+      >{{ result.subtitle }}</span>
+      <span
+        v-if="result.detail"
+        class="result-detail"
+      >{{ result.detail }}</span>
     </div>
-    <span v-if="result.shortcut" class="result-shortcut">{{ result.shortcut }}</span>
-    <span v-else-if="result.timestamp" class="result-time">{{ formatTime(result.timestamp) }}</span>
+    <span
+      v-if="result.shortcut"
+      class="result-shortcut"
+    >{{ result.shortcut }}</span>
+    <span
+      v-else-if="result.timestamp"
+      class="result-time"
+    >{{ formatTime(result.timestamp) }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { MessageSquare, File, FileText, Zap } from 'lucide-vue-next'
 import type { SearchResult } from '@shared/ipc/search'
 
-defineProps<{
+const props = defineProps<{
   result: SearchResult
   selected: boolean
 }>()
@@ -32,6 +68,24 @@ defineEmits<{
   select: []
   hover: []
 }>()
+
+const titleSegments = computed(() => {
+  const title = props.result.title
+  const ranges = props.result.matchRanges || []
+  if (ranges.length === 0) return [{ text: title, highlight: false }]
+
+  let cursor = 0
+  const segments: Array<{ text: string; highlight: boolean }> = []
+  for (const range of ranges) {
+    const start = Math.max(0, Math.min(title.length, range.start))
+    const end = Math.max(start, Math.min(title.length, range.end))
+    if (start > cursor) segments.push({ text: title.slice(cursor, start), highlight: false })
+    if (end > start) segments.push({ text: title.slice(start, end), highlight: true })
+    cursor = end
+  }
+  if (cursor < title.length) segments.push({ text: title.slice(cursor), highlight: false })
+  return segments
+})
 
 function formatTime(ts: number): string {
   const diff = Date.now() - ts
@@ -91,6 +145,21 @@ function formatTime(ts: number): string {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.result-detail {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--muted) 78%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-title mark {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
 }
 
 .result-shortcut {

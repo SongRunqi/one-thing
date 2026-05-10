@@ -446,10 +446,25 @@ function openFileTab(filePath: string) {
   }
 }
 
+async function jumpToMessage(sessionId: string, messageId: string) {
+  if (sessionsStore.currentSessionId !== sessionId) {
+    await sessionsStore.switchSession(sessionId)
+    await nextTick()
+  }
+
+  const panel = panels.value.find(item => item.sessionId === sessionId) || panels.value[0]
+  if (!panel) return false
+
+  panel.sessionId = sessionId
+  await nextTick()
+  return panelRefs.value[panel.id]?.scrollToMessage?.(messageId) ?? false
+}
+
 // Expose methods
 defineExpose({
   focusInput,
   openFileTab,
+  jumpToMessage,
 })
 
 onUnmounted(() => {

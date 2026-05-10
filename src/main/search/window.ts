@@ -7,11 +7,13 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { getSettings } from '../stores/settings.js'
 import { getThemeBackgroundColor, } from '../themes/index.js'
+import { IPC_CHANNELS } from '../../shared/ipc.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 let searchWindow: BrowserWindow | null = null
+let shouldShowWhenReady = false
 
 function getEffectiveTheme(): 'light' | 'dark' {
   const settings = getSettings()
@@ -27,9 +29,27 @@ function getEffectiveThemeId(mode: 'dark' | 'light'): string {
   return general?.lightThemeId || general?.themeId || 'flexoki'
 }
 
-export function openSearchWindow(parentWindow: BrowserWindow): BrowserWindow {
+function positionSearchWindow(win: BrowserWindow, parentWindow: BrowserWindow): void {
+  const WIDTH = 640
+  const HEIGHT = 480
+  const parentBounds = parentWindow.getBounds()
+  const x = Math.round(parentBounds.x + (parentBounds.width - WIDTH) / 2)
+  const y = Math.round(parentBounds.y + parentBounds.height * 0.22)
+  win.setBounds({ width: WIDTH, height: HEIGHT, x, y })
+}
+
+function showSearchWindow(parentWindow: BrowserWindow): void {
+  if (!searchWindow || searchWindow.isDestroyed()) return
+  positionSearchWindow(searchWindow, parentWindow)
+  searchWindow.show()
+  searchWindow.focus()
+  searchWindow.webContents.send(IPC_CHANNELS.SEARCH_WINDOW_SHOWN)
+}
+
+function createSearchWindow(parentWindow: BrowserWindow, showOnReady: boolean): BrowserWindow {
+  shouldShowWhenReady = showOnReady
   if (searchWindow && !searchWindow.isDestroyed()) {
-    searchWindow.focus()
+    if (showOnReady) showSearchWindow(parentWindow)
     return searchWindow
   }
 
@@ -41,19 +61,9 @@ export function openSearchWindow(parentWindow: BrowserWindow): BrowserWindow {
   const backgroundColor = getThemeBackgroundColor(themeId, effectiveTheme)
   const colorTheme = getSettings().general?.colorTheme || 'blue'
 
-  const WIDTH = 640
-  const HEIGHT = 480
-
-  // Center horizontally, place at ~22% vertically relative to parent
-  const parentBounds = parentWindow.getBounds()
-  const x = Math.round(parentBounds.x + (parentBounds.width - WIDTH) / 2)
-  const y = Math.round(parentBounds.y + parentBounds.height * 0.22)
-
   searchWindow = new BrowserWindow({
-    width: WIDTH,
-    height: HEIGHT,
-    x,
-    y,
+    width: 640,
+    height: 480,
     frame: false,
     titleBarStyle: 'customButtonsOnHover',
     trafficLightPosition: { x: -20, y: -20 },
@@ -74,12 +84,15 @@ export function openSearchWindow(parentWindow: BrowserWindow): BrowserWindow {
       nodeIntegration: false,
     },
   })
+  positionSearchWindow(searchWindow, parentWindow)
 
   searchWindow.once('ready-to-show', () => {
-    searchWindow?.show()
+    if (shouldShowWhenReady && searchWindow && !searchWindow.isDestroyed()) {
+      showSearchWindow(parentWindow)
+    }
   })
 
-  // Close on blur (IDEA behavior)
+  // Hide on blur (IDEA behavior), but keep the renderer warm for the next open.
   searchWindow.on('blur', () => {
     closeSearchWindow()
   })
@@ -100,15 +113,23 @@ export function openSearchWindow(parentWindow: BrowserWindow): BrowserWindow {
   return searchWindow
 }
 
+export function openSearchWindow(parentWindow: BrowserWindow): BrowserWindow {
+  return createSearchWindow(parentWindow, true)
+}
+
+export function warmSearchWindow(parentWindow: BrowserWindow): BrowserWindow {
+  return createSearchWindow(parentWindow, false)
+}
+
 export function closeSearchWindow(): void {
   if (searchWindow && !searchWindow.isDestroyed()) {
-    searchWindow.close()
+    shouldShowWhenReady = false
+    searchWindow.hide()
   }
-  searchWindow = null
 }
 
 export function toggleSearchWindow(parentWindow: BrowserWindow): void {
-  if (searchWindow && !searchWindow.isDestroyed()) {
+  if (searchWindow && !searchWindow.isDestroyed() && searchWindow.isVisible()) {
     closeSearchWindow()
   } else {
     openSearchWindow(parentWindow)

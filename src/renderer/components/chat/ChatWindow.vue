@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
+import { computed, watch, onMounted, nextTick } from 'vue'
 import { ref } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
@@ -100,7 +100,9 @@ onMounted(async () => {
     if (appState.openTabs && appState.openTabs.length > 0) {
       tabState.restore(appState.openTabs as any, appState.activeTabIndex)
     }
-  } catch {}
+  } catch (err) {
+    console.warn('[ChatWindow] Failed to restore tabs:', err)
+  }
 })
 
 // Sync session changes to the chat tab
@@ -134,9 +136,19 @@ function addFileTab(filePath: string) {
   tabState.addFileTab(filePath, maxTabs.value)
 }
 
+async function scrollToMessage(messageId: string) {
+  const chatTab = tabs.value.find(tab => tab.type === 'chat')
+  if (chatTab && activeTabId.value !== chatTab.id) {
+    tabState.setActiveTab(chatTab.id)
+    await nextTick()
+  }
+  return chatPanelRef.value?.scrollToMessage?.(messageId) ?? false
+}
+
 defineExpose({
   focusInput,
   addFileTab,
+  scrollToMessage,
 })
 </script>
 

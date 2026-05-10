@@ -427,6 +427,7 @@ export interface ElectronAPI {
   // Search Everywhere
   toggleSearchWindow: () => Promise<{ success: boolean }>
   closeSearchWindow: () => Promise<{ success: boolean }>
+  onSearchWindowShown: (callback: () => void) => () => void
   searchQuery: (req: { query: string; category: string; limit?: number }) => Promise<{ success: boolean; results: import('@shared/ipc/search').SearchResult[] }>
   searchExecuteAction: (actionId: string) => Promise<{ success: boolean }>
   onSearchAction: (callback: (actionId: string) => void) => () => void

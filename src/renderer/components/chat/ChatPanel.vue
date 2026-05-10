@@ -138,8 +138,14 @@ function focusInput() {
   inputBoxRef.value?.focus()
 }
 
+async function scrollToMessage(messageId: string) {
+  await nextTick()
+  return messageListRef.value?.scrollToMessage?.(messageId) ?? false
+}
+
 defineExpose({
   focusInput,
+  scrollToMessage,
 })
 </script>
 
