@@ -1,4 +1,5 @@
 import { ensureStoreDirs } from './paths.js'
+import { initializeSessionRepositoryIndex } from './sessions.js'
 
 // Re-export all store modules
 export { ensureStoreDirs, getStorePath } from './paths.js'
@@ -40,6 +41,9 @@ export {
   getSessionsList,
   getSessionDetails,
   getSessionMessages,
+  getSessionMessagesPage,
+  getSessionUserMessageMarkers,
+  initializeSessionRepositoryIndex,
   flushSessionSave,
   flushAllPendingSaves,
 } from './sessions.js'
@@ -47,4 +51,5 @@ export {
 // Ensure all necessary directories exist on startup
 export function initializeStores(): void {
   ensureStoreDirs()
+  initializeSessionRepositoryIndex()
 }

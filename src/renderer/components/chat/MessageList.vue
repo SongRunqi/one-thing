@@ -15,6 +15,16 @@
         ref="messageListContentRef"
         class="message-list-content"
       >
+        <button
+          v-if="pageHistorySummary"
+          class="history-page-summary"
+          type="button"
+          :disabled="pageState?.isLoadingOlder"
+          @click="loadOlderHistoryIfNeeded(true)"
+        >
+          <span>{{ pageHistorySummary }}</span>
+        </button>
+
         <div
           v-for="(message, index) in messages"
           :key="message.id || index"
@@ -48,9 +58,10 @@
     </div>
 
     <UserMessageNavRail
-      v-if="userMessageIndices.length > 1"
+      v-if="displayNavMarkers.length > 1"
       :markers="displayNavMarkers"
       :current-index="currentUserMessageNavIndex"
+      :total-count="displayNavMarkers.length"
       @navigate="navigateToUserMessage"
     />
 
@@ -134,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, onUpdated } from 'vue'
 import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
@@ -220,9 +231,36 @@ const chatFontSize = computed(() => {
 const chatFontEn = computed(() => settingsStore.settings.chat?.chatFontEn)
 const chatFontZh = computed(() => settingsStore.settings.chat?.chatFontZh)
 
+function getDensityFontSize(density: string): number {
+  if (density === 'compact') return 14
+  if (density === 'spacious') return 16
+  return 15
+}
+
+function getDensityLineHeight(density: string): number {
+  if (density === 'compact') return 1.4
+  if (density === 'spacious') return 1.8
+  return 1.6
+}
+
+function getDensityContentSpacing(density: string): number {
+  if (density === 'compact') return 0.4
+  if (density === 'spacious') return 1
+  return 0.75
+}
+
+function px(value: number): string {
+  return `${Math.max(1, Math.round(value))}px`
+}
+
 // Combined styles for message list
 const messageListStyles = computed(() => {
   const styles: Record<string, string> = {}
+  const density = messageListDensity.value
+  const fontSize = Number(chatFontSize.value) || getDensityFontSize(density)
+  const lineHeight = Number(customLineHeight.value) || getDensityLineHeight(density)
+  const contentSpacing = getDensityContentSpacing(density)
+
   if (customLineHeight.value) {
     styles['--message-line-height'] = String(customLineHeight.value)
   }
@@ -232,6 +270,14 @@ const messageListStyles = computed(() => {
   if (chatFontEn.value || chatFontZh.value) {
     styles['--font-body'] = buildFontFamily(chatFontEn.value, chatFontZh.value)
   }
+  styles['--message-line-height-px'] = px(fontSize * lineHeight)
+  styles['--content-spacing-px'] = px(fontSize * contentSpacing)
+  styles['--content-paragraph-gap'] = px(fontSize * 0.5)
+  styles['--content-list-gap'] = px(fontSize * 0.4)
+  styles['--content-list-item-gap'] = px(fontSize * 0.15)
+  styles['--content-heading-top-gap'] = px(fontSize * 0.55)
+  styles['--content-heading-bottom-gap'] = px(fontSize * 0.18)
+  styles['--content-heading-line-height-px'] = px(fontSize * 1.32)
   styles['--follow-bottom-gap'] = `${FOLLOW_BOTTOM_GAP}px`
   return Object.keys(styles).length > 0 ? styles : undefined
 })
@@ -248,6 +294,27 @@ let isActivelyNavigating = false
 let navigationCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let navMarkerUpdateFrame: number | null = null
 let navResizeObserver: ResizeObserver | null = null
+let isPrependingHistory = false
+let renderMeasureStart: number | null = null
+let renderMeasureSessionId = ''
+let renderMeasureMessageCount = 0
+
+interface TopAnchor {
+  messageId: string
+  offsetWithinMessage: number
+}
+
+const pageState = computed(() => chatStore.getSessionPageState(effectiveSessionId.value))
+const loadedMessageCount = computed(() => props.messages.length)
+const totalMessageCount = computed(() => pageState.value?.totalCount ?? panelSession.value?.messageCount ?? loadedMessageCount.value)
+const pageHistorySummary = computed(() => {
+  const state = pageState.value
+  const total = totalMessageCount.value
+  const loaded = loadedMessageCount.value
+  if (!state || !state.hasMoreBefore || total <= loaded) return ''
+  if (state.isLoadingOlder) return `Loading earlier messages... ${loaded}/${total}`
+  return `Load earlier messages · ${loaded}/${total}`
+})
 
 const follow = useFollowScroll({
   scroller: messageListRef,
@@ -293,6 +360,7 @@ function updateScrollToBottomButton() {
 // fire an extra nudge here so a store bump doesn't have to wait for layout.
 watch([effectiveScrollVersion, () => props.messages.length], () => {
   if (props.messages.length === 0) return
+  if (isPrependingHistory) return
   nextTick(() => scheduleFollowNudge('watch:scrollVersion+msgLen'))
 }, { flush: 'post' })
 
@@ -343,6 +411,19 @@ const userMessageIndices = computed(() => {
 })
 
 const displayNavMarkers = computed<NavMarker[]>(() => {
+  const sessionId = effectiveSessionId.value
+  const fullMarkers = sessionId ? chatStore.sessionUserMarkers.get(sessionId) : undefined
+  if (fullMarkers && fullMarkers.length > 0) {
+    return fullMarkers.map((marker, navIndex) => ({
+      navIndex,
+      messageId: marker.id,
+      seq: marker.seq,
+      position: getEvenNavPosition(navIndex, fullMarkers.length),
+      label: `${navIndex + 1}/${fullMarkers.length} ${formatNavTime(marker.timestamp)} - ${marker.preview}`,
+      preview: marker.preview || `${navIndex + 1}/${fullMarkers.length}`,
+    }))
+  }
+
   const total = userMessageIndices.value.length
   if (total === 0) return []
 
@@ -351,6 +432,7 @@ const displayNavMarkers = computed<NavMarker[]>(() => {
     return {
       navIndex,
       messageId: message?.id || `nav-${navIndex}`,
+      seq: message?.seq,
       position: getFallbackNavPosition(messageIndex),
       label: message ? buildNavMarkerLabel(message, navIndex) : `${navIndex + 1}/${total}`,
       preview: message ? buildNavMarkerPreview(message) : `${navIndex + 1}/${total}`,
@@ -371,9 +453,7 @@ const highlightedMessageId = computed(() => {
   if (searchHighlightedMessageId.value) return searchHighlightedMessageId.value
   if (!hasNavigated.value) return null
   if (currentUserMessageNavIndex.value < 0) return null
-  const messageIndex = userMessageIndices.value[currentUserMessageNavIndex.value]
-  if (messageIndex === undefined) return null
-  return props.messages[messageIndex]?.id || null
+  return displayNavMarkers.value[currentUserMessageNavIndex.value]?.messageId ?? null
 })
 
 // Initialize navigation index when messages change
@@ -382,17 +462,18 @@ const highlightedMessageId = computed(() => {
 watch(
   () => props.messages.length,
   () => {
+    renderMeasureStart = performance.now()
+    renderMeasureSessionId = effectiveSessionId.value
+    renderMeasureMessageCount = props.messages.length
     // Skip during session switch — snapshot restore will set the correct state
     if (follow.isSwitching()) return
+    if (isPrependingHistory) return
 
     // Reset navigation highlight (don't highlight on new message arrival)
     hasNavigated.value = false
 
-    // Reset to last user message
-    if (userMessageIndices.value.length > 0) {
-      currentUserMessageNavIndex.value = userMessageIndices.value.length - 1
-    } else {
-      currentUserMessageNavIndex.value = -1
+    if (isFollowing.value) {
+      setNavIndexToLastMarker()
     }
 
     // Schedule marker update after DOM renders
@@ -402,6 +483,48 @@ watch(
   },
   { immediate: true, flush: 'post' }
 )
+
+watch(effectiveSessionId, () => {
+  renderMeasureStart = performance.now()
+  renderMeasureSessionId = effectiveSessionId.value
+  renderMeasureMessageCount = props.messages.length
+}, { flush: 'pre' })
+
+watch(effectiveSessionId, (sessionId) => {
+  if (!sessionId || chatStore.sessionUserMarkers.get(sessionId)) return
+  window.setTimeout(() => {
+    if (effectiveSessionId.value === sessionId && !chatStore.sessionUserMarkers.get(sessionId)) {
+      chatStore.loadUserMessageMarkers(sessionId)
+    }
+  }, 0)
+}, { immediate: true })
+
+watch(
+  () => displayNavMarkers.value.length,
+  () => {
+    if (!isFollowing.value || hasNavigated.value) return
+    setNavIndexToLastMarker()
+  },
+  { flush: 'post' },
+)
+
+onUpdated(() => {
+  if (renderMeasureStart === null) return
+  const start = renderMeasureStart
+  const sessionId = renderMeasureSessionId
+  const messageCount = renderMeasureMessageCount
+  renderMeasureStart = null
+  requestAnimationFrame(() => {
+    const rows = messageListContentRef.value?.querySelectorAll('.message-list-row[data-message-id]').length ?? 0
+    console.info('[Perf][SessionRender][MessageList]', {
+      sessionId,
+      totalToFirstFrameMs: Math.round(performance.now() - start),
+      messageCount,
+      domRows: rows,
+      scrollHeight: messageListRef.value?.scrollHeight ?? 0,
+    })
+  })
+})
 
 // Ensure nav markers are updated when user message count changes
 // This handles the case where messages are loaded asynchronously after app restart
@@ -414,12 +537,44 @@ watch(
   }
 )
 
-function navigateToUserMessage(navIndex: number) {
+async function navigateToUserMessage(navIndex: number) {
+  const marker = displayNavMarkers.value.find(item => item.navIndex === navIndex)
+  if (marker) {
+    const sessionId = effectiveSessionId.value
+    hasNavigated.value = true
+    isFollowing.value = false
+    lockNavigationIndex(navIndex)
+    if (getMessageRowById(marker.messageId)) {
+      scrollToMessage(marker.messageId, { preserveNavigation: true })
+      return
+    }
+    if (!sessionId) return
+    const loaded = await chatStore.loadMessagesAround(sessionId, marker.messageId)
+    if (loaded) {
+      await nextTick()
+      lockNavigationIndex(navIndex)
+      scrollToMessage(marker.messageId, { preserveNavigation: true })
+    }
+    return
+  }
+
   if (navIndex < 0 || navIndex >= userMessageIndices.value.length) return
   hasNavigated.value = true
   isFollowing.value = false
-  currentUserMessageNavIndex.value = navIndex
+  lockNavigationIndex(navIndex)
   scrollToUserMessage(navIndex)
+}
+
+function lockNavigationIndex(navIndex: number) {
+  isActivelyNavigating = true
+  currentUserMessageNavIndex.value = navIndex
+  if (navigationCooldownTimer) {
+    clearTimeout(navigationCooldownTimer)
+  }
+  navigationCooldownTimer = setTimeout(() => {
+    isActivelyNavigating = false
+    updateVisibleUserMessageIndex()
+  }, 2600)
 }
 
 // Scroll to a specific user message by nav index
@@ -427,22 +582,12 @@ function scrollToUserMessage(navIndex: number) {
   const messageIndex = userMessageIndices.value[navIndex]
   if (messageIndex === undefined) return
 
-  // Prevent scroll handler from overriding the navigation index
-  isActivelyNavigating = true
-  if (navigationCooldownTimer) {
-    clearTimeout(navigationCooldownTimer)
-  }
-
+  lockNavigationIndex(navIndex)
   isFollowing.value = false
   const row = getMessageRow(messageIndex)
   if (row) {
     row.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
-
-  // Reset flag after highlight animation completes (2.5s) to prevent index override
-  navigationCooldownTimer = setTimeout(() => {
-    isActivelyNavigating = false
-  }, 2600)
 }
 
 function formatNavTime(timestamp: number): string {
@@ -491,17 +636,99 @@ function getMessageRowById(messageId: string): HTMLElement | null {
   return messageListContentRef.value?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`) ?? null
 }
 
-async function scrollToMessage(messageId: string) {
+function getMessageSeq(message: ChatMessage | undefined): number | null {
+  const seq = message?.seq
+  return typeof seq === 'number' && Number.isFinite(seq) ? seq : null
+}
+
+function getMarkerIndexForMessage(message: ChatMessage | undefined): number {
+  if (!message) return -1
+
+  const exactIndex = displayNavMarkers.value.findIndex(marker => marker.messageId === message.id)
+  if (exactIndex >= 0) return exactIndex
+
+  const seq = getMessageSeq(message)
+  if (seq === null) return -1
+
+  let markerIndex = -1
+  for (let i = 0; i < displayNavMarkers.value.length; i++) {
+    const markerSeq = displayNavMarkers.value[i].seq
+    if (typeof markerSeq !== 'number') continue
+    if (markerSeq <= seq) markerIndex = i
+    else break
+  }
+  return markerIndex
+}
+
+function captureTopAnchor(): TopAnchor | null {
+  const scroller = messageListRef.value
+  const content = messageListContentRef.value
+  if (!scroller || !content) return null
+
+  const rows = Array.from(content.querySelectorAll<HTMLElement>('[data-message-id]'))
+  const viewportTop = scroller.scrollTop
+  const row = rows.find(candidate => candidate.offsetTop + candidate.offsetHeight > viewportTop)
+  if (!row) return null
+
+  const messageId = row.dataset.messageId
+  if (!messageId) return null
+
+  return {
+    messageId,
+    offsetWithinMessage: viewportTop - row.offsetTop,
+  }
+}
+
+function restoreTopAnchor(anchor: TopAnchor | null) {
+  if (!anchor) return
+  const scroller = messageListRef.value
+  const row = getMessageRowById(anchor.messageId)
+  if (!scroller || !row) return
+  scroller.scrollTop = row.offsetTop + anchor.offsetWithinMessage
+}
+
+async function loadOlderHistoryIfNeeded(force = false) {
+  const sessionId = effectiveSessionId.value
+  const scroller = messageListRef.value
+  const state = pageState.value
+  if (follow.isSwitching()) return
+  if (!sessionId || !scroller || !state?.hasMoreBefore || state.isLoadingOlder || isPrependingHistory) return
+  if (!force && scroller.scrollTop > 240) return
+
+  const anchor = captureTopAnchor()
+  isPrependingHistory = true
+  const wasFollowing = isFollowing.value
+  try {
+    const loaded = await chatStore.loadOlderMessages(sessionId)
+    if (loaded) {
+      await nextTick()
+      restoreTopAnchor(anchor)
+      scheduleNavMarkerUpdate()
+      updateVisibleUserMessageIndex()
+    }
+  } finally {
+    isFollowing.value = wasFollowing
+    isPrependingHistory = false
+    updateScrollToBottomButton()
+  }
+}
+
+async function scrollToMessage(
+  messageId: string,
+  options: { preserveNavigation?: boolean; behavior?: ScrollBehavior } = {},
+) {
   const messageIndex = props.messages.findIndex(message => message.id === messageId)
   if (messageIndex === -1) return false
 
-  hasNavigated.value = false
+  if (!options.preserveNavigation) {
+    hasNavigated.value = false
+  }
   isFollowing.value = false
   searchHighlightedMessageId.value = messageId
 
   await nextTick()
   const row = getMessageRowById(messageId) || getMessageRow(messageIndex)
-  row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  row?.scrollIntoView({ behavior: options.behavior ?? 'smooth', block: 'center' })
 
   if (searchHighlightTimer) clearTimeout(searchHighlightTimer)
   searchHighlightTimer = setTimeout(() => {
@@ -533,10 +760,19 @@ function getEvenNavPosition(navIndex: number, total: number): number {
   return (navIndex + 1) / (total + 1)
 }
 
-function setNavIndexToLastUserMessage() {
-  if (userMessageIndices.value.length > 0) {
-    currentUserMessageNavIndex.value = userMessageIndices.value.length - 1
+function setNavIndexToLastMarker() {
+  currentUserMessageNavIndex.value = displayNavMarkers.value.length > 0
+    ? displayNavMarkers.value.length - 1
+    : -1
+}
+
+function setNavIndexToMessage(messageId: string | undefined) {
+  if (!messageId) {
+    setNavIndexToLastMarker()
+    return
   }
+  const index = displayNavMarkers.value.findIndex(marker => marker.messageId === messageId)
+  currentUserMessageNavIndex.value = index >= 0 ? index : currentUserMessageNavIndex.value
 }
 
 function scheduleNavMarkerUpdate() {
@@ -595,14 +831,14 @@ function getBranchesForMessage(messageId: string): BranchInfo[] {
 // Find which user message is currently most visible in the viewport
 function updateVisibleUserMessageIndex() {
   if (isActivelyNavigating) return
-  if (userMessageIndices.value.length === 0) return
+  if (props.messages.length === 0) return
 
   const el = messageListRef.value
   if (!el) return
 
   const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
   if (distanceToBottom < 96 || isFollowing.value) {
-    setNavIndexToLastUserMessage()
+    setNavIndexToLastMarker()
     return
   }
 
@@ -610,20 +846,22 @@ function updateVisibleUserMessageIndex() {
   // most recent user message above the viewport anchor.
   const viewportAnchor = el.scrollTop + el.clientHeight * 0.18
 
-  let activeNavIndex = 0
-
-  for (let i = 0; i < userMessageIndices.value.length; i++) {
-    const msgIdx = userMessageIndices.value[i]
+  let activeMessageIndex = 0
+  for (let msgIdx = 0; msgIdx < props.messages.length; msgIdx++) {
     const measurement = getMessageMeasurement(msgIdx)
     const start = measurement
       ? measurement.start
       : getFallbackNavPosition(msgIdx) * Math.max(1, el.scrollHeight)
 
-    if (start <= viewportAnchor) activeNavIndex = i
+    if (start <= viewportAnchor) activeMessageIndex = msgIdx
     else break
   }
 
-  currentUserMessageNavIndex.value = activeNavIndex
+  const activeMessage = props.messages[activeMessageIndex]
+  const markerIndex = getMarkerIndexForMessage(activeMessage)
+  if (markerIndex >= 0) {
+    currentUserMessageNavIndex.value = markerIndex
+  }
 }
 
 function handleScroll() {
@@ -631,6 +869,7 @@ function handleScroll() {
   updateScrollToBottomButton()
   scheduleNavMarkerUpdate()
   updateVisibleUserMessageIndex()
+  loadOlderHistoryIfNeeded()
 }
 
 // Track permission request cleanup function
@@ -682,7 +921,7 @@ usePermissionShortcuts(
 // The store's handlePermissionRequest() updates messages reactively.
 
 function scrollToBottomFromButton() {
-  setNavIndexToLastUserMessage()
+  setNavIndexToLastMarker()
   follow.snapToBottom('button:scrollToBottom')
 }
 
@@ -1143,38 +1382,44 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
 // ============ Snapshot API for session switching ============
 
 defineExpose({
-  getFirstVisibleIndex: () => follow.captureSnapshot().firstVisibleIndex,
-  getOffsetWithinMessage: () => follow.captureSnapshot().offsetWithinMessage,
   getIsFollowing: () => follow.isFollowing.value,
-  getNavIndex: () => currentUserMessageNavIndex.value,
   getHasNavigated: () => hasNavigated.value,
+  getAnchorMessageId: () => captureTopAnchor()?.messageId ?? null,
+  getAnchorOffset: () => captureTopAnchor()?.offsetWithinMessage ?? 0,
+  getNavMessageId: () => displayNavMarkers.value[currentUserMessageNavIndex.value]?.messageId ?? null,
 
   prepareForSwitch: follow.prepareForSwitch,
 
-  restoreSnapshot: (snap: {
-    firstVisibleIndex: number
-    offsetWithinMessage: number
-    isFollowing?: boolean
-    userScrolledAway?: boolean
-    navIndex: number
+  restoreTail: () => {
+    hasNavigated.value = false
+    setNavIndexToLastMarker()
+    follow.snapToBottom('restore:tail')
+  },
+
+  restoreAnchor: (snap: {
+    anchorMessageId?: string
+    offsetWithinMessage?: number
+    navMessageId?: string
     hasNavigated: boolean
   }) => {
-    const following =
-      snap.isFollowing ?? (snap.userScrolledAway !== undefined ? !snap.userScrolledAway : true)
-    currentUserMessageNavIndex.value = snap.navIndex
     hasNavigated.value = snap.hasNavigated
-    follow.restoreSnapshot(
-      {
-        firstVisibleIndex: snap.firstVisibleIndex,
-        offsetWithinMessage: snap.offsetWithinMessage,
-        isFollowing: following,
-      },
-      () => setNavIndexToLastUserMessage(),
-    )
+    setNavIndexToMessage(snap.navMessageId)
+    follow.isFollowing.value = false
+    nextTick(() => {
+      const row = snap.anchorMessageId ? getMessageRowById(snap.anchorMessageId) : null
+      if (!row || !messageListRef.value) {
+        setNavIndexToLastMarker()
+        follow.snapToBottom('restore:anchor-fallback-tail')
+        return
+      }
+      messageListRef.value.scrollTop = row.offsetTop + Math.max(0, snap.offsetWithinMessage ?? 0)
+      follow.finishSwitch()
+      updateScrollToBottomButton()
+    })
   },
 
   scrollToBottom: () => {
-    setNavIndexToLastUserMessage()
+    setNavIndexToLastMarker()
     follow.snapToBottom('expose:scrollToBottom')
   },
 
@@ -1239,7 +1484,7 @@ defineExpose({
 .message-list {
   flex: 1;
   overflow-y: auto;
-  overflow-anchor: none;
+  overflow-anchor: auto;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
   padding: 18px;
@@ -1277,16 +1522,49 @@ defineExpose({
   padding-bottom: var(--follow-bottom-gap, 64px);
 }
 
+.history-page-summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 28px;
+  margin: 0 auto 14px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-elevated, var(--bg-panel)) 84%, transparent);
+  color: var(--text-muted, var(--muted));
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  overflow-anchor: none;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.history-page-summary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent, #3b82f6) 36%, var(--border));
+  background: color-mix(in srgb, var(--accent, #3b82f6) 8%, var(--bg-elevated, var(--bg-panel)));
+  color: var(--accent, #3b82f6);
+}
+
+.history-page-summary:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
 .message-list-row {
   width: 100%;
+  overflow-anchor: none;
 }
 
 .message-list-bottom-sentinel {
   width: 100%;
   height: 1px;
   pointer-events: none;
+  overflow-anchor: auto;
 }
-
 
 /* Message list density modes */
 .message-list.density-compact {
@@ -1294,8 +1572,16 @@ defineExpose({
   --message-padding: 8px 12px;
   --message-font-size: 14px;
   --message-line-height: 1.4;
+  --message-line-height-px: 20px;
   --avatar-size: 24px;
   --content-spacing: 0.4em;
+  --content-spacing-px: 6px;
+  --content-paragraph-gap: 7px;
+  --content-list-gap: 6px;
+  --content-list-item-gap: 2px;
+  --content-heading-top-gap: 8px;
+  --content-heading-bottom-gap: 3px;
+  --content-heading-line-height-px: 18px;
   gap: 6px;
   padding: 12px;
 }
@@ -1305,8 +1591,16 @@ defineExpose({
   --message-padding: 14px 18px;
   --message-font-size: 15px;
   --message-line-height: 1.6;
+  --message-line-height-px: 24px;
   --avatar-size: 32px;
   --content-spacing: 0.75em;
+  --content-spacing-px: 11px;
+  --content-paragraph-gap: 8px;
+  --content-list-gap: 6px;
+  --content-list-item-gap: 2px;
+  --content-heading-top-gap: 8px;
+  --content-heading-bottom-gap: 3px;
+  --content-heading-line-height-px: 20px;
   gap: 14px;
   padding: 18px;
 }
@@ -1316,8 +1610,16 @@ defineExpose({
   --message-padding: 18px 24px;
   --message-font-size: 16px;
   --message-line-height: 1.8;
+  --message-line-height-px: 29px;
   --avatar-size: 40px;
   --content-spacing: 1em;
+  --content-spacing-px: 16px;
+  --content-paragraph-gap: 8px;
+  --content-list-gap: 6px;
+  --content-list-item-gap: 2px;
+  --content-heading-top-gap: 9px;
+  --content-heading-bottom-gap: 3px;
+  --content-heading-line-height-px: 21px;
   gap: 24px;
   padding: 24px;
 }

@@ -45,6 +45,9 @@ export {
   getSessionsList,
   getSessionDetails,
   getSessionMessages,
+  getSessionMessagesPage,
+  getSessionUserMessageMarkers,
+  initializeSessionRepositoryIndex,
   flushSessionSave,
   flushAllPendingSaves,
 

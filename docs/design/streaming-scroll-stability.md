@@ -25,6 +25,7 @@ The problem was not a single rendering bug. Several small instability sources st
 - Added `useFollowScroll` as the single follow model:
   - follows the browser's natural scroll bottom;
   - uses real tail padding instead of a visual anchor gap;
+  - uses the bottom sentinel as the only browser scroll anchor while rows opt out of anchoring;
   - combines `MutationObserver` and `ResizeObserver` so bottom pinning happens before a visible drift frame;
   - accepts small browser subpixel rounding instead of repeatedly writing `scrollTop`.
 - Split streaming markdown into stable segments via `parseStreamingMarkdown`.
@@ -32,7 +33,10 @@ The problem was not a single rendering bug. Several small instability sources st
 - Rendered code blocks with stable line DOM and CodeMirror/Lezer token spans.
 - Avoided repainting completed code lines when their text did not change.
 - Changed streaming code line height to an integer `20px`.
+- Rounded markdown text line-height and vertical spacing to integer pixel values for each density/custom font size.
+- Deferred markdown hydration for large completed assistant messages so session switching can paint a lightweight text view before expensive markdown parsing/highlighting.
 - Gave message footer, timestamp, and action buttons stable integer dimensions.
+- Gave message action wrappers stable 28px flex dimensions as well, including tooltip/menu wrapper elements.
 - Made message actions and timestamps always visible during investigation, removing hover visibility as a confounding variable.
 
 ## Verification

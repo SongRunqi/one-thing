@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS, AIProvider, MessageAttachment } from '../shared/ipc.js'
-import type { UIMessageStreamData } from '../shared/ipc.js'
+import type { GetSessionMessagesPageRequest, UIMessageStreamData } from '../shared/ipc.js'
 
 const electronAPI = {
   // Stream event listeners
@@ -210,6 +210,14 @@ const electronAPI = {
   // Get session messages (on-demand loading) - only when messages need to be displayed
   getSessionMessages: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_MESSAGES, { sessionId }),
+
+  // Get a cursor-addressed page of session messages
+  getSessionMessagesPage: (request: GetSessionMessagesPageRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_MESSAGES_PAGE, request),
+
+  // Get lightweight user-message markers for navigation
+  getSessionUserMarkers: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_USER_MARKERS, { sessionId }),
 
   // Listen for messages changed event (for real-time sync)
   onSessionMessagesChanged: (callback: (data: { sessionId: string; action: 'added' | 'updated' | 'deleted'; messageId?: string }) => void) => {

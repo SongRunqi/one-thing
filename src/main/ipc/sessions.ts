@@ -97,6 +97,43 @@ export function registerSessionHandlers() {
     }
   })
 
+  // 获取会话消息分页（当前由 JSON 存储切片实现，后续切换为 SQLite cursor 查询）
+  ipcMain.handle(IPC_CHANNELS.GET_SESSION_MESSAGES_PAGE, async (_event, request) => {
+    const start = performance.now()
+    try {
+      const response = store.getSessionMessagesPage(request)
+      console.info('[Perf][SessionPage][ipc]', {
+        sessionId: request.sessionId,
+        totalMs: Math.round(performance.now() - start),
+        messages: response.messages?.length ?? 0,
+        success: response.success,
+      })
+      return response
+    } catch (error: any) {
+      console.error('[Sessions] Failed to get session messages page:', error)
+      console.info('[Perf][SessionPage][ipc]', {
+        sessionId: request.sessionId,
+        totalMs: Math.round(performance.now() - start),
+        failed: true,
+      })
+      return { success: false, error: error.message || 'Failed to get message page' }
+    }
+  })
+
+  // 获取用户消息导航标记（轻量数据，不返回完整消息体）
+  ipcMain.handle(IPC_CHANNELS.GET_SESSION_USER_MARKERS, async (_event, { sessionId }) => {
+    try {
+      const markers = store.getSessionUserMessageMarkers(sessionId)
+      if (!markers) {
+        return { success: false, error: 'Session not found' }
+      }
+      return { success: true, markers }
+    } catch (error: any) {
+      console.error('[Sessions] Failed to get user message markers:', error)
+      return { success: false, error: error.message || 'Failed to get user markers' }
+    }
+  })
+
   // 创建新会话
   ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name }) => {
     const sessionId = uuidv4()

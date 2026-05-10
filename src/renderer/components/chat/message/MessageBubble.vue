@@ -734,7 +734,7 @@ html[data-theme='light'] .attachment-file {
   word-wrap: break-word;
   overflow-wrap: anywhere;
   font-family: var(--font-body);
-  line-height: var(--message-line-height, 1.6);
+  line-height: var(--message-line-height-px, 24px);
   font-size: var(--message-font-size, 15px);
   color: var(--text);
   letter-spacing: 0.01em;
@@ -746,7 +746,7 @@ html[data-theme='light'] .attachment-file {
 }
 
 .bubble.user .content {
-  line-height: var(--message-line-height, 1.6);
+  line-height: var(--message-line-height-px, 24px);
   color: var(--text-user-primary);
 }
 
@@ -830,7 +830,7 @@ html[data-theme='light'] .attachment-file {
 
 /* Markdown content styles — compact for chat context */
 .content :deep(p) {
-  margin: 0 0 0.5em 0;
+  margin: 0 0 var(--content-paragraph-gap, 8px) 0;
 }
 
 .content :deep(p:last-child) {
@@ -839,12 +839,12 @@ html[data-theme='light'] .attachment-file {
 
 .content :deep(ul),
 .content :deep(ol) {
-  margin: 0.4em 0;
+  margin: var(--content-list-gap, 6px) 0;
   padding-left: 1.5em;
 }
 
 .content :deep(li) {
-  margin: 0.15em 0;
+  margin: var(--content-list-item-gap, 2px) 0;
 }
 
 .content :deep(h1),
@@ -852,9 +852,9 @@ html[data-theme='light'] .attachment-file {
 .content :deep(h3),
 .content :deep(h4) {
   max-width: 100%;
-  margin: 0.55em 0 0.18em 0;
+  margin: var(--content-heading-top-gap, 8px) 0 var(--content-heading-bottom-gap, 3px) 0;
   font-weight: 600;
-  line-height: 1.32;
+  line-height: var(--content-heading-line-height-px, 20px);
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -873,7 +873,7 @@ html[data-theme='light'] .attachment-file {
 .content :deep(h3 + h1),
 .content :deep(h3 + h2),
 .content :deep(h3 + h3) {
-  margin-top: 0.35em;
+  margin-top: var(--content-list-gap, 6px);
 }
 
 /* First heading has no top margin */
@@ -884,7 +884,7 @@ html[data-theme='light'] .attachment-file {
 }
 
 .content :deep(blockquote) {
-  margin: 0.5em 0;
+  margin: var(--content-paragraph-gap, 8px) 0;
   padding: 0.3em 0.8em;
   border-left: 2px solid var(--muted);
   color: var(--muted);
@@ -905,7 +905,7 @@ html[data-theme='light'] .attachment-file {
   border: none;
   height: 1px;
   background: var(--border);
-  margin: 0.6em 0;
+  margin: var(--content-spacing-px, 11px) 0;
   opacity: 0.3;
 }
 
@@ -938,7 +938,7 @@ html[data-theme='light'] .content :deep(img:hover) {
 /* Table styles */
 .content :deep(table) {
   border-collapse: collapse;
-  margin: var(--content-spacing, 0.75em) 0;
+  margin: var(--content-spacing-px, 11px) 0;
   width: 100%;
 }
 
@@ -970,7 +970,7 @@ html[data-theme='light'] .content :deep(.inline-code) {
 
 /* Code block container */
 .content :deep(.code-block-container) {
-  margin: var(--content-spacing, 0.75em) 0;
+  margin: var(--content-spacing-px, 11px) 0;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border-code, var(--border));
@@ -988,6 +988,7 @@ html[data-theme='light'] .content :deep(.inline-code) {
 
 .content :deep(.code-block-lang) {
   font-size: 11px;
+  line-height: 20px;
   color: var(--text-secondary);
   text-transform: lowercase;
 }
@@ -1034,7 +1035,7 @@ html[data-theme='light'] .content :deep(.inline-code) {
 .content :deep(code) {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 20px;
 }
 
 /* highlight.js base - syntax colors are handled by global hljs-theme.css */
@@ -1055,7 +1056,7 @@ html[data-theme='light'] .content :deep(.inline-code) {
 .content :deep(mjx-container[display="true"]) {
   display: block;
   text-align: center;
-  margin: var(--content-spacing, 0.75em) 0;
+  margin: var(--content-spacing-px, 11px) 0;
   padding: 8px 0;
 }
 

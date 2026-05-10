@@ -80,6 +80,7 @@ export interface MessageAttachment {
 // Type definitions for IPC messages
 export interface ChatMessage {
   id: string
+  seq?: number  // 1-based sequence in the session timeline when loaded via paged history
   sessionId?: string  // Session ID this message belongs to (for context isolation)
   role: 'user' | 'assistant' | 'error' | 'system'  // 'error' and 'system' are display-only, not saved to backend
   content: string
@@ -324,5 +325,52 @@ export interface ActivateSessionResponse {
 export interface GetSessionMessagesResponse {
   success: boolean
   messages?: ChatMessage[]
+  error?: string
+}
+
+export type SessionMessagesPageDirection = 'older' | 'newer'
+
+export interface SessionMessagesPageAnchor {
+  messageId?: string
+  seq?: number
+  before?: number
+  after?: number
+}
+
+export interface GetSessionMessagesPageRequest {
+  sessionId: string
+  cursor?: string | null
+  limit?: number
+  direction?: SessionMessagesPageDirection
+  anchor?: 'tail' | SessionMessagesPageAnchor
+}
+
+export interface SessionMessagePageCursor {
+  sessionId: string
+  seq: number
+  includeAnchor: boolean
+}
+
+export interface GetSessionMessagesPageResponse {
+  success: boolean
+  messages?: ChatMessage[]
+  nextCursor?: string | null
+  backwardsCursor?: string | null
+  hasMoreBefore?: boolean
+  hasMoreAfter?: boolean
+  totalCount?: number
+  error?: string
+}
+
+export interface UserMessageMarker {
+  id: string
+  seq: number
+  timestamp: number
+  preview: string
+}
+
+export interface GetSessionUserMarkersResponse {
+  success: boolean
+  markers?: UserMessageMarker[]
   error?: string
 }

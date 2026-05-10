@@ -73,31 +73,54 @@ const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 
 // Session switch: save/restore scroll position and input state
 watch(effectiveSessionId, async (newId, oldId) => {
+  const start = performance.now()
+  const oldMessageCount = oldId ? (chatStore.sessionMessages.get(oldId)?.length ?? 0) : 0
+  const newMessageCount = newId ? (chatStore.sessionMessages.get(newId)?.length ?? 0) : 0
   if (oldId && oldId !== newId) {
+    const isFollowing = messageListRef.value?.getIsFollowing() ?? true
+    const anchorMessageId = messageListRef.value?.getAnchorMessageId() ?? undefined
     messageListRef.value?.prepareForSwitch()
     chatStore.saveSnapshot(oldId, {
-      firstVisibleIndex: messageListRef.value?.getFirstVisibleIndex() ?? 0,
-      offsetWithinMessage: messageListRef.value?.getOffsetWithinMessage() ?? 0,
-      isFollowing: messageListRef.value?.getIsFollowing() ?? true,
-      navIndex: messageListRef.value?.getNavIndex() ?? -1,
+      mode: isFollowing || !anchorMessageId ? 'tail' : 'anchor',
+      anchorMessageId: isFollowing ? undefined : anchorMessageId,
+      offsetWithinMessage: isFollowing ? undefined : messageListRef.value?.getAnchorOffset(),
+      navMessageId: isFollowing ? undefined : messageListRef.value?.getNavMessageId(),
       hasNavigated: messageListRef.value?.getHasNavigated() ?? false,
       messageInput: inputBoxRef.value?.getMessageInput() ?? '',
       quotedText: inputBoxRef.value?.getQuotedText() ?? '',
     })
   }
 
+  const beforeTick = performance.now()
   await nextTick()
+  const afterTick = performance.now()
 
   if (newId) {
     const snapshot = chatStore.getSnapshot(newId)
-    if (snapshot) {
-      messageListRef.value?.restoreSnapshot(snapshot)
+    if (snapshot?.mode === 'anchor') {
+      messageListRef.value?.restoreAnchor(snapshot)
       inputBoxRef.value?.restoreSnapshot(snapshot)
     } else {
-      messageListRef.value?.scrollToBottom()
-      inputBoxRef.value?.clearInput()
+      messageListRef.value?.restoreTail()
+      if (snapshot) {
+        inputBoxRef.value?.restoreSnapshot(snapshot)
+      } else {
+        inputBoxRef.value?.clearInput()
+      }
     }
   }
+
+  requestAnimationFrame(() => {
+    console.info('[Perf][SessionRender][ChatPanel]', {
+      sessionId: newId,
+      oldSessionId: oldId,
+      totalToFirstFrameMs: Math.round(performance.now() - start),
+      nextTickMs: Math.round(afterTick - beforeTick),
+      oldMessageCount,
+      newMessageCount,
+      restoredSnapshot: !!(newId && chatStore.getSnapshot(newId)),
+    })
+  })
 })
 
 async function handleSendMessage(message: string, mode: 'send' | 'steer' | 'followup' = 'send') {

@@ -7,6 +7,10 @@ import type {
   GetSessionsListResponse,
   ActivateSessionResponse,
   GetSessionMessagesResponse,
+  GetSessionMessagesPageRequest,
+  GetSessionMessagesPageResponse,
+  UserMessageMarker,
+  GetSessionUserMarkersResponse,
   AISettings,
   AppSettings,
   AIProvider,
@@ -122,6 +126,10 @@ export type {
   GetSessionsListResponse,
   ActivateSessionResponse,
   GetSessionMessagesResponse,
+  GetSessionMessagesPageRequest,
+  GetSessionMessagesPageResponse,
+  UserMessageMarker,
+  GetSessionUserMarkersResponse,
   AISettings,
   AppSettings,
   AIProvider,
@@ -243,6 +251,8 @@ export interface ElectronAPI {
   getSessionsList: () => Promise<GetSessionsListResponse>
   activateSession: (sessionId: string) => Promise<ActivateSessionResponse>
   getSessionMessages: (sessionId: string) => Promise<GetSessionMessagesResponse>
+  getSessionMessagesPage: (request: GetSessionMessagesPageRequest) => Promise<GetSessionMessagesPageResponse>
+  getSessionUserMarkers: (sessionId: string) => Promise<GetSessionUserMarkersResponse>
   onSessionMessagesChanged: (callback: (data: { sessionId: string; action: 'added' | 'updated' | 'deleted'; messageId?: string }) => void) => () => void
   // System message methods (for /files command persistence)
   addSystemMessage: (sessionId: string, message: { id: string; role: string; content: string; timestamp: number }) => Promise<{ success: boolean; error?: string }>

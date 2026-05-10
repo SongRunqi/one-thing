@@ -52,6 +52,8 @@ export const IPC_CHANNELS = {
   GET_SESSIONS_LIST: 'sessions:get-list',           // Returns SessionMeta[] only (no messages)
   ACTIVATE_SESSION: 'sessions:activate',            // Mark session as active, return details
   GET_SESSION_MESSAGES: 'sessions:get-messages',    // Returns ChatMessage[] for a session
+  GET_SESSION_MESSAGES_PAGE: 'sessions:get-messages-page', // Returns a cursor-addressed ChatMessage page
+  GET_SESSION_USER_MARKERS: 'sessions:get-user-markers',   // Returns lightweight user-message nav markers
   SESSION_MESSAGES_CHANGED: 'sessions:messages-changed',  // Event: messages added/updated
 
   // Settings related

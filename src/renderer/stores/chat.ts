@@ -9,7 +9,15 @@
 import { defineStore } from 'pinia'
 import { ref, computed, triggerRef } from 'vue'
 import { perfMark, perfMeasure } from '@/utils/perf'
-import type { ChatMessage, MessageAttachment, Step, ContentPart } from '@/types'
+import type {
+  ChatMessage,
+  GetSessionMessagesPageResponse,
+  GetSessionUserMarkersResponse,
+  MessageAttachment,
+  Step,
+  ContentPart,
+  UserMessageMarker,
+} from '@/types'
 import {
   appendOrMergeText,
   appendToolCallPlaceholder,
@@ -97,6 +105,18 @@ export const useChatStore = defineStore('chat', () => {
 
   // Messages per session
   const sessionMessages = ref<Map<string, ChatMessage[]>>(new Map())
+
+  interface SessionMessagePageState {
+    nextCursor: string | null
+    backwardsCursor: string | null
+    hasMoreBefore: boolean
+    hasMoreAfter: boolean
+    totalCount: number
+    isLoadingOlder: boolean
+  }
+
+  const sessionMessagePages = ref<Map<string, SessionMessagePageState>>(new Map())
+  const sessionUserMarkers = ref<Map<string, UserMessageMarker[]>>(new Map())
 
   // Loading state per session
   const sessionLoading = ref<Map<string, boolean>>(new Map())
@@ -186,14 +206,14 @@ export const useChatStore = defineStore('chat', () => {
 
   // ============ UI State (Per-session) ============
 
-  // Session UI snapshots — index-based scroll position for virtual scrolling.
-  // Saves the message array index instead of pixel values, so position is
-  // independent of component rendering heights.
+  // Session UI snapshots. Tail is a semantic state; only detached sessions keep
+  // an anchor. DOM indexes are local to the loaded window and are not global
+  // conversation positions.
   interface SessionUISnapshot {
-    firstVisibleIndex: number  // index in messages array visible at viewport top
-    offsetWithinMessage: number // px of that message scrolled above viewport (sub-message precision)
-    isFollowing: boolean
-    navIndex: number
+    mode: 'tail' | 'anchor'
+    anchorMessageId?: string
+    offsetWithinMessage?: number
+    navMessageId?: string
     hasNavigated: boolean
     messageInput: string
     quotedText: string
@@ -317,6 +337,50 @@ export const useChatStore = defineStore('chat', () => {
   function setSessionMessages(sessionId: string, messages: ChatMessage[]) {
     sessionMessages.value.set(sessionId, messages)
     triggerRef(sessionMessages)
+  }
+
+  function setSessionPageState(
+    sessionId: string,
+    page: GetSessionMessagesPageResponse,
+    isLoadingOlder = false,
+  ) {
+    sessionMessagePages.value.set(sessionId, {
+      nextCursor: page.nextCursor ?? null,
+      backwardsCursor: page.backwardsCursor ?? null,
+      hasMoreBefore: !!page.hasMoreBefore,
+      hasMoreAfter: !!page.hasMoreAfter,
+      totalCount: page.totalCount ?? page.messages?.length ?? 0,
+      isLoadingOlder,
+    })
+    triggerRef(sessionMessagePages)
+  }
+
+  function updateSessionPageState(sessionId: string, updates: Partial<SessionMessagePageState>) {
+    const current = sessionMessagePages.value.get(sessionId)
+    if (!current) return
+    sessionMessagePages.value.set(sessionId, { ...current, ...updates })
+    triggerRef(sessionMessagePages)
+  }
+
+  function getSessionPageState(sessionId: string): SessionMessagePageState | undefined {
+    return sessionMessagePages.value.get(sessionId)
+  }
+
+  function mergeActiveStreamingMessage(sessionId: string, messages: ChatMessage[]): ChatMessage[] {
+    const activeStreamMessageId = activeStreams.value.get(sessionId)
+    if (!activeStreamMessageId) return messages
+
+    const existingMessages = sessionMessages.value.get(sessionId) || []
+    const streamingMessage = existingMessages.find(m => m.id === activeStreamMessageId)
+    if (!streamingMessage) return messages
+
+    const index = messages.findIndex(m => m.id === activeStreamMessageId)
+    if (index !== -1) {
+      messages[index] = streamingMessage
+    } else {
+      messages.push(streamingMessage)
+    }
+    return messages
   }
 
   /**
@@ -702,6 +766,143 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function loadInitialMessagePage(sessionId: string, limit = 16): Promise<boolean> {
+    sessionLoading.value.set(sessionId, true)
+    triggerRef(sessionLoading)
+    const totalStart = performance.now()
+    let ipcMs = 0
+    let rebuildMs = 0
+    let setStateMs = 0
+    try {
+      const ipcStart = performance.now()
+      const response = await window.electronAPI.getSessionMessagesPage({
+        sessionId,
+        anchor: 'tail',
+        limit,
+      })
+      ipcMs = performance.now() - ipcStart
+      if (!response.success) {
+        console.warn('[Chat Store] Failed to load message page:', response.error)
+        setSessionMessages(sessionId, [])
+        setSessionPageState(sessionId, response)
+        return false
+      }
+
+      const rebuildStart = performance.now()
+      const messages = mergeActiveStreamingMessage(
+        sessionId,
+        (response.messages || []).map(rebuildContentParts),
+      )
+      rebuildMs = performance.now() - rebuildStart
+      const setStateStart = performance.now()
+      setSessionMessages(sessionId, messages)
+      setSessionPageState(sessionId, response)
+      setStateMs = performance.now() - setStateStart
+      console.info('[Perf][SessionPage][renderer]', {
+        sessionId,
+        totalMs: Math.round(performance.now() - totalStart),
+        ipcMs: Math.round(ipcMs),
+        rebuildMs: Math.round(rebuildMs),
+        setStateMs: Math.round(setStateMs),
+        messages: messages.length,
+        hasMoreBefore: !!response.hasMoreBefore,
+        totalCount: response.totalCount,
+      })
+      return true
+    } catch (error) {
+      console.error('[Chat Store] Failed to load initial message page:', error)
+      setSessionMessages(sessionId, [])
+      return false
+    } finally {
+      sessionLoading.value.set(sessionId, false)
+      triggerRef(sessionLoading)
+    }
+  }
+
+  async function loadOlderMessages(sessionId: string, limit = 16): Promise<boolean> {
+    const state = sessionMessagePages.value.get(sessionId)
+    if (!state?.hasMoreBefore || !state.nextCursor || state.isLoadingOlder) return false
+
+    updateSessionPageState(sessionId, { isLoadingOlder: true })
+    try {
+      const response = await window.electronAPI.getSessionMessagesPage({
+        sessionId,
+        cursor: state.nextCursor,
+        direction: 'older',
+        limit,
+      })
+      if (!response.success) {
+        console.warn('[Chat Store] Failed to load older messages:', response.error)
+        return false
+      }
+
+      const existing = sessionMessages.value.get(sessionId) || []
+      const existingIds = new Set(existing.map(message => message.id))
+      const older = (response.messages || [])
+        .map(rebuildContentParts)
+        .filter(message => !existingIds.has(message.id))
+
+      if (older.length > 0) {
+        setSessionMessages(sessionId, [...older, ...existing])
+      }
+      setSessionPageState(sessionId, response)
+      return older.length > 0
+    } catch (error) {
+      console.error('[Chat Store] Failed to load older messages:', error)
+      return false
+    } finally {
+      updateSessionPageState(sessionId, { isLoadingOlder: false })
+    }
+  }
+
+  async function loadMessagesAround(
+    sessionId: string,
+    messageId: string,
+    before = 4,
+    after = 16,
+  ): Promise<boolean> {
+    sessionLoading.value.set(sessionId, true)
+    triggerRef(sessionLoading)
+    try {
+      const response = await window.electronAPI.getSessionMessagesPage({
+        sessionId,
+        anchor: { messageId, before, after },
+      })
+      if (!response.success) {
+        console.warn('[Chat Store] Failed to load message anchor page:', response.error)
+        return false
+      }
+
+      const messages = mergeActiveStreamingMessage(
+        sessionId,
+        (response.messages || []).map(rebuildContentParts),
+      )
+      setSessionMessages(sessionId, messages)
+      setSessionPageState(sessionId, response)
+      return true
+    } catch (error) {
+      console.error('[Chat Store] Failed to load message anchor page:', error)
+      return false
+    } finally {
+      sessionLoading.value.set(sessionId, false)
+      triggerRef(sessionLoading)
+    }
+  }
+
+
+  async function loadUserMessageMarkers(sessionId: string): Promise<UserMessageMarker[]> {
+    try {
+      const response: GetSessionUserMarkersResponse = await window.electronAPI.getSessionUserMarkers(sessionId)
+      const markers = response.success ? (response.markers || []) : []
+      sessionUserMarkers.value.set(sessionId, markers)
+      triggerRef(sessionUserMarkers)
+      return markers
+    } catch (error) {
+      console.error('[Chat Store] Failed to load user message markers:', error)
+      return []
+    }
+  }
+
   /**
    * Set messages for a session directly (without IPC call)
    * Used when messages are already available (e.g., from switchSession response)
@@ -709,26 +910,7 @@ export const useChatStore = defineStore('chat', () => {
    */
   function setMessagesFromSession(sessionId: string, rawMessages: ChatMessage[]) {
     const messages = (rawMessages || []).map(rebuildContentParts)
-
-    // If this session has an active stream, preserve the in-memory streaming message
-    // This prevents losing isStreaming, content, reasoning, steps etc. during session switch
-    const activeStreamMessageId = activeStreams.value.get(sessionId)
-    if (activeStreamMessageId) {
-      const existingMessages = sessionMessages.value.get(sessionId) || []
-      const streamingMessage = existingMessages.find(m => m.id === activeStreamMessageId)
-      if (streamingMessage) {
-        // Replace backend version with in-memory version to preserve full state
-        const index = messages.findIndex(m => m.id === activeStreamMessageId)
-        if (index !== -1) {
-          messages[index] = streamingMessage
-        } else {
-          // Edge case: backend doesn't have this message yet, append it
-          messages.push(streamingMessage)
-        }
-      }
-    }
-
-    setSessionMessages(sessionId, messages)
+    setSessionMessages(sessionId, mergeActiveStreamingMessage(sessionId, messages))
   }
 
   /**
@@ -897,6 +1079,11 @@ export const useChatStore = defineStore('chat', () => {
     sessionMessages.value.set(sessionId, [])
     sessionSnapshots.delete(sessionId)
     triggerRef(sessionMessages)
+  }
+
+  function setSessionLoading(sessionId: string, loading: boolean) {
+    sessionLoading.value.set(sessionId, loading)
+    triggerRef(sessionLoading)
   }
 
   /**
@@ -1076,6 +1263,8 @@ export const useChatStore = defineStore('chat', () => {
   return {
     // Per-session state maps
     sessionMessages,
+    sessionMessagePages,
+    sessionUserMarkers,
     sessionLoading,
     sessionGenerating,
     sessionError,
@@ -1085,6 +1274,7 @@ export const useChatStore = defineStore('chat', () => {
     // Getters
     getSessionState,
     isSessionGenerating,
+    getSessionPageState,
 
     // UI State (per-session)
     isToolCallExpanded,
@@ -1115,7 +1305,12 @@ export const useChatStore = defineStore('chat', () => {
 
     // Actions
     loadMessages,
+    loadInitialMessagePage,
+    loadOlderMessages,
+    loadMessagesAround,
+    loadUserMessageMarkers,
     setMessagesFromSession,
+    setSessionLoading,
     sendMessage,
     steerMessage,
     queueFollowUpMessage,

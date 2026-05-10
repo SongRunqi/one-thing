@@ -42,12 +42,6 @@ export function shouldShowScrollToBottomButton(
   return !isFollowing && getNaturalBottomDistance(geometry) > SHOW_SCROLL_TO_BOTTOM_DISTANCE_PX
 }
 
-export interface FollowSnapshot {
-  firstVisibleIndex: number
-  offsetWithinMessage: number
-  isFollowing: boolean
-}
-
 export interface UseFollowScrollOptions {
   scroller: Ref<HTMLElement | null>
   content: Ref<HTMLElement | null>
@@ -151,6 +145,7 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
     lastUserScrollDirection = 'down'
     cancelScheduledPin()
     followBurstFrames = 4
+    pinToBottom(`${source}:sync`)
     nextTick(() => {
       pinToBottom(`${source}:tick`)
       schedulePinToBottom(source)
@@ -238,71 +233,13 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
     onUnmounted(cleanup)
   }
 
-  function getMessageElements(): HTMLElement[] {
-    const content = opts.content.value
-    if (!content) return []
-    return Array.from(content.querySelectorAll<HTMLElement>('[data-index]'))
-  }
-
-  function captureSnapshot(): FollowSnapshot {
-    const scroller = opts.scroller.value
-    if (!scroller) {
-      return { firstVisibleIndex: 0, offsetWithinMessage: 0, isFollowing: isFollowing.value }
-    }
-
-    const anchor = scroller.scrollTop
-    let firstVisibleIndex = 0
-    let offsetWithinMessage = 0
-    for (const el of getMessageElements()) {
-      const index = Number(el.dataset.index)
-      const top = el.offsetTop
-      const bottom = top + el.offsetHeight
-      if (bottom >= anchor) {
-        firstVisibleIndex = Number.isFinite(index) ? index : 0
-        offsetWithinMessage = Math.max(0, anchor - top)
-        break
-      }
-    }
-    return { firstVisibleIndex, offsetWithinMessage, isFollowing: isFollowing.value }
-  }
-
   function prepareForSwitch() {
     suppressed = true
     cancelScheduledPin()
   }
 
-  function restoreSnapshot(
-    snap: FollowSnapshot,
-    onBeforeFollowingJump?: () => void,
-  ) {
-    isFollowing.value = snap.isFollowing
-    reattachLockedUntil = 0
-    lastUserScrollDirection = snap.isFollowing ? 'down' : null
-    nextTick(() => {
-      const scroller = opts.scroller.value
-      if (!scroller) {
-        suppressed = false
-        return
-      }
-
-      if (snap.isFollowing && opts.count.value > 0) {
-        suppressed = false
-        onBeforeFollowingJump?.()
-        snapToBottom('restoreSnapshot:following')
-        return
-      }
-
-      const target = opts.content.value?.querySelector<HTMLElement>(`[data-index="${snap.firstVisibleIndex}"]`)
-      if (target) {
-        writeScrollTop(
-          scroller,
-          target.offsetTop + Math.max(0, snap.offsetWithinMessage),
-          'restoreSnapshot:offsetWithinMessage',
-          'write:restore-offset',
-        )
-      }
-      suppressed = false
-    })
+  function finishSwitch() {
+    suppressed = false
   }
 
   return {
@@ -315,7 +252,6 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
     onWheel,
     checkReattach,
     prepareForSwitch,
-    restoreSnapshot,
-    captureSnapshot,
+    finishSwitch,
   }
 }

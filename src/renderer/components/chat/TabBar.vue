@@ -6,13 +6,17 @@
         v-if="showSidebarToggle"
         class="traffic-lights-reserved"
       />
-      <div class="tab-list">
+      <div
+        class="tab-list"
+        role="tablist"
+      >
         <TabItem
-          v-for="tab in tabs"
+          v-for="(tab, index) in tabs"
           :key="tab.id"
           :tab="tab"
           :active="tab.id === activeTabId"
           :closable="tab.type === 'file' || chatTabCount > 1"
+          :hide-trailing-divider="tab.id === activeTabId || tabs[index + 1]?.id === activeTabId"
           :session-name="tab.type === 'chat' ? sessionName : undefined"
           @select="$emit('selectTab', tab.id)"
           @close="$emit('closeTab', tab.id)"
@@ -124,12 +128,26 @@ const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').le
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 44px;
-  padding: 0 12px;
+  height: 40px;
+  padding: 0 10px 0 12px;
   user-select: none;
   flex-shrink: 0;
   position: relative;
+  background: color-mix(in srgb, var(--bg-app) 58%, var(--bg-panel));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg-floating) 38%, transparent);
   -webkit-app-region: drag;
+}
+
+.tab-bar::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: var(--border-subtle);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .traffic-lights-reserved {
@@ -140,17 +158,22 @@ const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').le
 /* ── Left: tabs ──────────────────── */
 .tab-bar-left {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   flex: 1;
   min-width: 0;
+  align-self: stretch;
+  position: relative;
+  z-index: 1;
 }
 
 .tab-list {
   display: flex;
-  align-items: center;
-  gap: 2px;
+  align-items: flex-end;
+  gap: 0;
   overflow-x: auto;
   scrollbar-width: none;
+  padding-top: 3px;
+  min-width: 0;
   -webkit-app-region: no-drag;
 }
 
@@ -165,31 +188,39 @@ const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').le
   justify-content: flex-end;
   min-width: 60px;
   flex-shrink: 0;
+  gap: 6px;
+  padding-left: 12px;
+  position: relative;
+  z-index: 1;
   -webkit-app-region: no-drag;
 }
 
 .header-btn {
-  width: 28px;
-  height: 28px;
-  margin-left: 8px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.header-btn:first-child {
-  margin-left: 0;
+  transition:
+    background var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default),
+    transform var(--duration-fast) var(--ease-default);
 }
 
 .header-btn:hover {
-  background: var(--hover, rgba(255, 255, 255, 0.08));
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  border-color: var(--border-subtle);
   color: var(--text);
+}
+
+.header-btn:active {
+  transform: translateY(1px);
 }
 
 .header-btn.back-btn {

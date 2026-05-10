@@ -66,6 +66,13 @@ export type {
   GetSessionsListResponse,
   ActivateSessionResponse,
   GetSessionMessagesResponse,
+  SessionMessagesPageDirection,
+  SessionMessagesPageAnchor,
+  GetSessionMessagesPageRequest,
+  SessionMessagePageCursor,
+  GetSessionMessagesPageResponse,
+  UserMessageMarker,
+  GetSessionUserMarkersResponse,
 } from './chat.js'
 
 // Provider types
@@ -263,4 +270,3 @@ export type {
   SearchResult,
   SearchResponse,
 } from './search.js'
-

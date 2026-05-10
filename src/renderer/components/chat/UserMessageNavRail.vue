@@ -19,6 +19,12 @@
         aria-label="User messages"
         @scroll="updateScrollThumb"
       >
+        <div
+          class="user-nav-count"
+          aria-hidden="true"
+        >
+          {{ totalCount }} turns
+        </div>
         <button
           v-for="marker in sortedMarkers"
           :key="marker.messageId"
@@ -55,6 +61,7 @@ import type { ComponentPublicInstance } from 'vue'
 export interface UserMessageNavMarker {
   navIndex: number
   messageId: string
+  seq?: number
   position: number
   label: string
   preview?: string
@@ -63,7 +70,10 @@ export interface UserMessageNavMarker {
 const props = defineProps<{
   markers: UserMessageNavMarker[]
   currentIndex: number
+  totalCount?: number
 }>()
+
+const totalCount = computed(() => props.totalCount ?? props.markers.length)
 
 const emit = defineEmits<{
   navigate: [navIndex: number]
@@ -235,6 +245,31 @@ watch(
 .user-nav-scroll::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+.user-nav-count {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--user-nav-row-height);
+  margin-bottom: var(--user-nav-row-gap);
+  padding-right: 48px;
+  overflow: hidden;
+  color: var(--text-muted, var(--muted));
+  font-size: 12px;
+  line-height: var(--user-nav-row-height);
+  opacity: 0;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  visibility: hidden;
+  transition:
+    opacity 0.12s ease,
+    visibility 0.12s ease;
+}
+
+.user-nav-card.open .user-nav-count {
+  opacity: 0.7;
+  visibility: visible;
 }
 
 .user-nav-row {
