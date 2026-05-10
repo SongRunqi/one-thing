@@ -10,7 +10,7 @@ import * as path from 'path'
 import * as fs from 'fs/promises'
 import { Tool } from '../core/tool.js'
 import { Ripgrep } from '../../utils/ripgrep.js'
-import { expandPath } from '../core/sandbox.js'
+import { checkFileAccess, expandPath } from '../core/sandbox.js'
 
 // Maximum files to return
 const DEFAULT_LIMIT = 100
@@ -56,6 +56,7 @@ Use this tool when you need to find files by name patterns.`,
   category: 'builtin',
   enabled: true,
   autoExecute: true, // Safe read-only operation
+  permissionGuard: 'sandboxed',
 
   parameters: GlobParameters,
 
@@ -70,6 +71,7 @@ Use this tool when you need to find files by name patterns.`,
     if (!path.isAbsolute(searchPath)) {
       searchPath = path.resolve(workDir, searchPath)
     }
+    searchPath = await checkFileAccess(searchPath, ctx, 'Search directory', 'directory')
 
     // Update metadata with initial state
     ctx.metadata({

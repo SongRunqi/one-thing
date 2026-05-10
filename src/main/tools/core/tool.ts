@@ -127,6 +127,15 @@ export interface ToolInfo<
   enabled?: boolean
   /** Whether tool can be auto-executed without confirmation */
   autoExecute?: boolean
+  /**
+   * Permission safety model used before injecting/auto-executing tools.
+   * - safe: no filesystem/process/network side effects
+   * - sandboxed: read-only or bounded access with sandbox checks
+   * - internal-check: tool classifies each call and asks/denies dangerous operations
+   * - permission-gated: tool must pass Permission.ask before side effects
+   * - external: opaque tool without a local permission guard
+   */
+  permissionGuard?: 'safe' | 'sandboxed' | 'internal-check' | 'permission-gated' | 'external'
   /** Execute the tool with validated arguments */
   execute(args: z.infer<P>, ctx: ToolContext<M>): Promise<ToolResult<M>>
   /** Custom validation error formatter */
@@ -175,6 +184,8 @@ export interface ToolInfoAsync<
   enabled?: boolean
   /** Whether tool can be auto-executed without confirmation */
   autoExecute?: boolean
+  /** Permission safety model used before injecting/auto-executing tools. */
+  permissionGuard?: ToolInfo['permissionGuard']
   /** Async initialization function - called once to get description and parameters */
   init: (ctx?: InitContext) => Promise<ToolInitResult<P, M>>
   /** Cached initialization result (set after first init call) */
@@ -213,11 +224,12 @@ export namespace Tool {
   /**
    * Configuration for async tool definition
    */
-  export interface AsyncConfig<M extends ToolMetadata = ToolMetadata> {
+  export interface AsyncConfig {
     name: string
     category: 'builtin' | 'custom' | 'mcp'
     enabled?: boolean
     autoExecute?: boolean
+    permissionGuard?: ToolInfo['permissionGuard']
   }
 
   /**
@@ -275,14 +287,14 @@ export namespace Tool {
    */
   export function define<P extends z.ZodType, M extends ToolMetadata = ToolMetadata>(
     id: string,
-    config: AsyncConfig<M>,
+    config: AsyncConfig,
     init: (ctx?: InitContext) => Promise<ToolInitResult<P, M>>
   ): ToolInfoAsync<P, M>
 
   // Implementation
   export function define<P extends z.ZodType, M extends ToolMetadata = ToolMetadata>(
     id: string,
-    config: ToolConfig<P, M> | AsyncConfig<M>,
+    config: ToolConfig<P, M> | AsyncConfig,
     init?: (ctx?: InitContext) => Promise<ToolInitResult<P, M>>
   ): ToolInfo<P, M> | ToolInfoAsync<P, M> {
     // Async tool with init function
@@ -293,6 +305,7 @@ export namespace Tool {
         category: config.category,
         enabled: config.enabled ?? true,
         autoExecute: config.autoExecute ?? false,
+        permissionGuard: config.permissionGuard,
         init,
       } as ToolInfoAsync<P, M>
     }

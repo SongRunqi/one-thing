@@ -45,6 +45,12 @@
               @update:settings="handleSettingsUpdate"
             />
 
+            <EditorSettingsTab
+              v-else-if="activeTab === 'editor'"
+              :settings="localSettings"
+              @update:settings="handleSettingsUpdate"
+            />
+
             <AIProviderTab
               v-else-if="activeTab === 'providers'"
               :settings="localSettings"
@@ -77,6 +83,11 @@
               v-else-if="activeTab === 'skills'"
               :settings="localSettings.skills || { enableSkills: true, skills: {} }"
               @update:settings="handleSkillsSettingsUpdate"
+            />
+
+            <PluginsSettingsTab
+              v-else-if="activeTab === 'plugins'"
+              @plugins-changed="loadTools"
             />
           </template>
           <div
@@ -116,11 +127,13 @@ import type { AppSettings, ProviderInfo, CustomProviderConfig, ToolDefinition } 
 
 // Tab Components
 import GeneralSettingsTab from './settings/GeneralSettingsTab.vue'
+import EditorSettingsTab from './settings/EditorSettingsTab.vue'
 import { AIProviderTab } from './settings/provider'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
 import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
+import PluginsSettingsTab from './settings/PluginsSettingsTab.vue'
 
 // Dialogs
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
@@ -148,6 +161,16 @@ const navItems = [
       render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
         h('circle', { cx: 12, cy: 12, r: 3 }),
         h('path', { d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z' }),
+      ])
+    }
+  },
+  {
+    id: 'editor',
+    label: 'Editor',
+    icon: {
+      render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
+        h('path', { d: 'M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z' }),
+        h('polyline', { points: '13 2 13 9 20 9' }),
       ])
     }
   },
@@ -209,6 +232,16 @@ const navItems = [
       ])
     }
   },
+  {
+    id: 'plugins',
+    label: 'Plugins',
+    icon: {
+      render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
+        h('path', { d: 'M12 2l3 6 6.5 1-4.7 4.5 1.2 6.5-6-3.2-6 3.2 1.2-6.5L2.5 9 9 8z' }),
+        h('circle', { cx: 12, cy: 12, r: 2, fill: 'currentColor', opacity: 0.3 }),
+      ])
+    }
+  },
 ]
 
 const currentNavItem = computed(() => navItems.find(item => item.id === activeTab.value))
@@ -223,6 +256,17 @@ const hasUnsavedChanges = computed(() => {
   if (!localSettings.value) return false
   return JSON.stringify(localSettings.value) !== originalSettings.value
 })
+
+async function loadTools() {
+  try {
+    const toolsResponse = await window.electronAPI.getTools()
+    if (toolsResponse.success && toolsResponse.tools) {
+      tools.value = toolsResponse.tools
+    }
+  } catch (err) {
+    console.error('Failed to load tools:', err)
+  }
+}
 
 // Load settings
 async function loadSettings() {

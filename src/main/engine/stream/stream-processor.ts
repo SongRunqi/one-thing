@@ -9,8 +9,10 @@ import type { AppSettings, ProviderConfig, ToolSettings, Step, StepType } from '
 import type { ToolCall } from '../../../shared/ipc.js'
 import { createToolCall } from '../../tools/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '../../mcp/index.js'
+import { resolveAIToolName } from '../../providers/tool-name-alias.js'
 import { type IPCEmitter } from './ipc-emitter.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
+import type { PendingMessageQueue } from './message-queue.js'
 
 // ============================================================
 // Active Streams Registry
@@ -52,17 +54,18 @@ export interface ResolvedTool {
  * @returns Resolved tool identity with full ID and display name
  */
 export function resolveToolIdentity(toolName: string, args: Record<string, any> = {}): ResolvedTool {
-  let toolId = toolName
-  let displayName = toolName
+  const originalToolName = resolveAIToolName(toolName)
+  let toolId = originalToolName
+  let displayName = originalToolName
   let isMcp = false
 
   // Check if it's already a full MCP tool ID
-  if (isMCPTool(toolName)) {
-    toolId = toolName
+  if (isMCPTool(originalToolName)) {
+    toolId = originalToolName
     isMcp = true
   } else {
     // Try to find full MCP tool ID from short name
-    const fullId = findMCPToolIdByShortName(toolName, args)
+    const fullId = findMCPToolIdByShortName(originalToolName, args)
     if (fullId) {
       toolId = fullId
       isMcp = true
@@ -98,6 +101,10 @@ export interface StreamContext {
   accumulatedUsage?: { inputTokens: number; outputTokens: number; totalTokens: number; durationMs?: number }
   // Last turn's token usage (for context size - NOT accumulated)
   lastTurnUsage?: { inputTokens: number; outputTokens: number }
+  /** Steering message queue — messages injected mid-stream (after each turn) */
+  steeringQueue?: PendingMessageQueue
+  /** Follow-up message queue — messages injected only after agent would stop */
+  followUpQueue?: PendingMessageQueue
 }
 
 /**

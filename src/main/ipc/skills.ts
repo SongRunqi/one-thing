@@ -57,15 +57,19 @@ export async function initializeSkills(): Promise<void> {
  */
 export function registerSkillHandlers() {
   // Get all available skills
-  ipcMain.handle(IPC_CHANNELS.SKILLS_GET_ALL, async () => {
+  ipcMain.handle(IPC_CHANNELS.SKILLS_GET_ALL, async (_event, request?: { workingDirectory?: string }) => {
     try {
       if (!isInitialized) {
         await initializeSkills()
       }
+      const workingDirectory = request?.workingDirectory
+      const skills = workingDirectory
+        ? getSkillsForDirectory(workingDirectory, false)
+        : applySkillSettings(skillsCache, false)
 
       return {
         success: true,
-        skills: skillsCache,
+        skills,
       }
     } catch (error: any) {
       console.error('[Skills IPC] Error getting skills:', error)
@@ -252,7 +256,7 @@ export function getLoadedSkills(): SkillDefinition[] {
 /**
  * Apply enabled state from settings to skills (creates a copy to avoid mutating cache)
  */
-function applySkillSettings(skills: SkillDefinition[]): SkillDefinition[] {
+function applySkillSettings(skills: SkillDefinition[], enabledOnly = true): SkillDefinition[] {
   const settings = getSettings()
   // 复制数组避免修改缓存
   const result = skills.map(s => ({ ...s }))
@@ -265,7 +269,7 @@ function applySkillSettings(skills: SkillDefinition[]): SkillDefinition[] {
       }
     }
   }
-  return result.filter(s => s.enabled)
+  return enabledOnly ? result.filter(s => s.enabled) : result
 }
 
 /**
@@ -277,6 +281,9 @@ export function invalidateSkillsCache(workingDirectory?: string): void {
     console.log(`[Skills] Cache invalidated for: ${workingDirectory}`)
   } else {
     skillsCacheByDir.clear()
+    if (isInitialized) {
+      skillsCache = loadAllSkills()
+    }
     console.log('[Skills] All caches invalidated')
   }
 }
@@ -289,12 +296,16 @@ export function invalidateSkillsCache(workingDirectory?: string): void {
  * @returns Array of enabled skills (user + project + plugin)
  */
 export function getSkillsForSession(workingDirectory?: string): SkillDefinition[] {
+  return getSkillsForDirectory(workingDirectory, true)
+}
+
+function getSkillsForDirectory(workingDirectory?: string, enabledOnly = true): SkillDefinition[] {
   const cacheKey = workingDirectory || '__global__'
   const cached = skillsCacheByDir.get(cacheKey)
 
   // 有缓存直接返回（应用设置后）
   if (cached) {
-    return applySkillSettings(cached)
+    return applySkillSettings(cached, enabledOnly)
   }
 
   // 缓存不存在，加载并缓存
@@ -302,5 +313,5 @@ export function getSkillsForSession(workingDirectory?: string): SkillDefinition[
   const allSkills = loadAllSkills(workingDirectory)
   skillsCacheByDir.set(cacheKey, allSkills)
 
-  return applySkillSettings(allSkills)
+  return applySkillSettings(allSkills, enabledOnly)
 }

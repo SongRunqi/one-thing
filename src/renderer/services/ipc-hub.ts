@@ -105,6 +105,10 @@ export function initializeIPCHub() {
         store.handleAssistantCreated({ sessionId, message: (event as any).message })
         break
 
+      case 'message:updated':
+        store.updateSessionMessage(sessionId, (event as any).messageId, (event as any).updates)
+        break
+
       case 'message:deleted':
         store.handleMessageDeleted({ sessionId, messageId: (event as any).messageId })
         break
@@ -129,6 +133,15 @@ export function initializeIPCHub() {
           useSessionsStore().updateSessionTokenStats(sessionId, {
             contextSize: (event as any).contextSize,
             lastInputTokens: (event as any).contextSize,
+          })
+        })
+        break
+
+      case 'session:variables-updated':
+        import('@/stores/sessions').then(({ useSessionsStore }) => {
+          useSessionsStore().updateSessionVariables(sessionId, {
+            workingDirectory: (event as any).workingDirectory,
+            variables: (event as any).variables,
           })
         })
         break

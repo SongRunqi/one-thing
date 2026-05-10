@@ -16,6 +16,10 @@ import { Permission } from '../../permission/index.js'
 // Diff library for generating unified diffs
 import { createTwoFilesPatch, diffLines } from 'diff'
 
+function filePermissionPattern(filePath: string): string {
+  return path.join(path.dirname(filePath), '*')
+}
+
 /**
  * Edit Tool Metadata
  */
@@ -65,6 +69,7 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
   category: 'builtin',
   enabled: true,
   autoExecute: false, // Requires confirmation for file edits
+  permissionGuard: 'permission-gated',
 
   parameters: EditParameters,
 
@@ -125,19 +130,17 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
         },
       })
 
-      // Request permission for file edit (shows diff in UI)
-      // If external, include directory path in pattern for proper permission
+      // Request permission for this directory's file edits (shows diff in UI).
       await Permission.ask({
         type: 'file_edit',
-        pattern: isExternal
-          ? [path.dirname(resolvedPath), resolvedPath]
-          : resolvedPath,
+        pattern: filePermissionPattern(resolvedPath),
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
         callId: ctx.toolCallId,
         title: contentOld === ''
           ? `Create new file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`
           : `Replace entire content: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`,
+        workingDirectory: boundary,
         metadata: {
           filePath: resolvedPath,
           diff,
@@ -223,17 +226,15 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
       },
     })
 
-    // Request permission for file edit (shows diff in UI)
-    // If external, include directory path in pattern for proper permission
+    // Request permission for this directory's file edits (shows diff in UI).
     await Permission.ask({
       type: 'file_edit',
-      pattern: isExternal
-        ? [path.dirname(resolvedPath), resolvedPath]
-        : resolvedPath,
+      pattern: filePermissionPattern(resolvedPath),
       sessionId: ctx.sessionId,
       messageId: ctx.messageId,
       callId: ctx.toolCallId,
       title: `Edit file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`,
+      workingDirectory: boundary,
       metadata: {
         filePath: resolvedPath,
         diff,

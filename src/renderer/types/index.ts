@@ -1,12 +1,16 @@
 import type {
   ChatMessage,
   ChatSession,
+  ContextVariable,
   SessionMeta,
   SessionDetails,
-  CachedProviderConfig,
   GetSessionsListResponse,
   ActivateSessionResponse,
   GetSessionMessagesResponse,
+  GetSessionMessagesPageRequest,
+  GetSessionMessagesPageResponse,
+  UserMessageMarker,
+  GetSessionUserMarkersResponse,
   AISettings,
   AppSettings,
   AIProvider,
@@ -35,8 +39,6 @@ import type {
   GetSettingsResponse,
   SaveSettingsResponse,
   GenerateTitleResponse,
-  FetchModelsResponse,
-  GetCachedModelsResponse,
   GetProvidersResponse,
   GetNetworkInterfacesResponse,
   NetworkInterfaceInfo,
@@ -103,17 +105,31 @@ import type {
   GetThemeResponse,
   ApplyThemeResponse,
   RefreshThemesResponse,
+  // Variables types
+  VariablesListResponse,
+  VariablesSetResponse,
+  VariablesDeleteResponse,
+  // Project directories types (independent module)
+  ProjectDirsListResponse,
+  ProjectDirsGetResponse,
+  ProjectDirsAddResponse,
+  ProjectDirsUpdateResponse,
+  ProjectDirsRemoveResponse,
 } from '../../shared/ipc'
 
 export type {
   ChatMessage,
   ChatSession,
+  ContextVariable,
   SessionMeta,
   SessionDetails,
-  CachedProviderConfig,
   GetSessionsListResponse,
   ActivateSessionResponse,
   GetSessionMessagesResponse,
+  GetSessionMessagesPageRequest,
+  GetSessionMessagesPageResponse,
+  UserMessageMarker,
+  GetSessionUserMarkersResponse,
   AISettings,
   AppSettings,
   AIProvider,
@@ -220,11 +236,23 @@ export interface ElectronAPI {
   updateSessionModel: (sessionId: string, provider: string, model: string) => Promise<{ success: boolean; error?: string }>
   updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) => Promise<{ success: boolean; error?: string }>
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
+  // Variables subsystem (scalar variables)
+  listVariables: (sessionId: string) => Promise<VariablesListResponse>
+  setVariable: (sessionId: string, name: string, value: string, description?: string, scope?: 'global' | 'session') => Promise<VariablesSetResponse>
+  deleteVariable: (sessionId: string, name: string) => Promise<VariablesDeleteResponse>
+  // Project directories — independent module
+  projectDirsList: () => Promise<ProjectDirsListResponse>
+  projectDirsGet: (path: string) => Promise<ProjectDirsGetResponse>
+  projectDirsAdd: (path: string, description?: string) => Promise<ProjectDirsAddResponse>
+  projectDirsUpdate: (path: string, description: string) => Promise<ProjectDirsUpdateResponse>
+  projectDirsRemove: (path: string) => Promise<ProjectDirsRemoveResponse>
   getSessionTokenUsage: (sessionId: string) => Promise<{ success: boolean; usage?: { totalInputTokens: number; totalOutputTokens: number; totalTokens: number; maxTokens: number; lastInputTokens: number; contextSize: number }; error?: string }>
   // Optimized session loading (Phase 4: Metadata Separation)
   getSessionsList: () => Promise<GetSessionsListResponse>
   activateSession: (sessionId: string) => Promise<ActivateSessionResponse>
   getSessionMessages: (sessionId: string) => Promise<GetSessionMessagesResponse>
+  getSessionMessagesPage: (request: GetSessionMessagesPageRequest) => Promise<GetSessionMessagesPageResponse>
+  getSessionUserMarkers: (sessionId: string) => Promise<GetSessionUserMarkersResponse>
   onSessionMessagesChanged: (callback: (data: { sessionId: string; action: 'added' | 'updated' | 'deleted'; messageId?: string }) => void) => () => void
   // System message methods (for /files command persistence)
   addSystemMessage: (sessionId: string, message: { id: string; role: string; content: string; timestamp: number }) => Promise<{ success: boolean; error?: string }>
@@ -248,13 +276,6 @@ export interface ElectronAPI {
   applyTheme: (themeId: string, mode: 'dark' | 'light') => Promise<ApplyThemeResponse>
   refreshThemes: (projectPath?: string) => Promise<RefreshThemesResponse>
   openThemesFolder: () => Promise<{ success: boolean; error?: string }>
-  fetchModels: (
-    provider: AIProvider,
-    apiKey: string,
-    baseUrl?: string,
-    forceRefresh?: boolean
-  ) => Promise<FetchModelsResponse>
-  getCachedModels: (provider: AIProvider) => Promise<GetCachedModelsResponse>
   getProviders: () => Promise<GetProvidersResponse>
   getNetworkInterfaces: () => Promise<GetNetworkInterfacesResponse>
   // New OpenRouter-based model API
@@ -274,7 +295,7 @@ export interface ElectronAPI {
   resumeAfterToolConfirm: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>
 
   // Permission methods
-  respondToPermission: (request: { sessionId: string; permissionId: string; response: 'once' | 'session' | 'workspace' | 'reject' | 'always'; rejectReason?: string }) => Promise<{ success: boolean; error?: string }>
+  respondToPermission: (request: { sessionId: string; permissionId: string; response: 'once' | 'session' | 'workdir' | 'workspace' | 'reject' | 'always'; rejectReason?: string }) => Promise<{ success: boolean; error?: string }>
   clearSessionPermissions: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   getPendingPermissions: (sessionId: string) => Promise<{ success: boolean; pending?: PermissionInfo[]; error?: string }>
   onPermissionRequest: (callback: (info: PermissionInfo) => void) => () => void
@@ -296,7 +317,7 @@ export interface ElectronAPI {
   mcpReadConfigFile: (filePath: string) => Promise<MCPReadConfigFileResponse>
 
   // Skills methods (Official Claude Code Skills)
-  getSkills: () => Promise<GetSkillsResponse>
+  getSkills: (workingDirectory?: string) => Promise<GetSkillsResponse>
   refreshSkills: () => Promise<RefreshSkillsResponse>
   readSkillFile: (skillId: string, fileName: string) => Promise<ReadSkillFileResponse>
   openSkillDirectory: (skillId?: string) => Promise<OpenSkillDirectoryResponse>
@@ -373,8 +394,9 @@ export interface ElectronAPI {
   // Directories listing (for /cd path completion)
   listDirs: (options: { basePath: string; query?: string; limit?: number }) => Promise<{ success: boolean; dirs: string[]; basePath: string; error?: string }>
 
-  // File content reading (for file preview panel)
-  readFileContent: (filePath: string, maxSize?: number) => Promise<{ success: boolean; content?: string; error?: string }>
+  // File content reading/writing (for file preview panel)
+  readFileContent: (filePath: string, maxSize?: number) => Promise<{ success: boolean; content?: string; size?: number; error?: string }>
+  saveFileContent: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>
 
   // Window methods
   setWindowButtonVisibility: (visible: boolean) => Promise<{ success: boolean }>
@@ -386,6 +408,39 @@ export interface ElectronAPI {
 
   // Skill execution
   executeSkill: (skillId: string, options: { sessionId: string; input: string }) => Promise<{ success: boolean; result?: { output: string }; error?: string }>
+
+  // Plugin management
+  getPlugins: () => Promise<{ success: boolean; plugins?: Array<{
+    id: string; name: string; version: string; description: string;
+    author: string; loaded: boolean; enabled: boolean;
+    commands: string[]; error: string; dirPath: string;
+    needsInstall: boolean;
+  }>; error?: string }>
+  enablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
+  disablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
+  refreshPlugins: () => Promise<{ success: boolean; error?: string }>
+
+  // App State
+  getAppState: () => Promise<{
+    currentSessionId: string
+    currentWorkspaceId: string | null
+    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; title?: string }>
+    activeTabIndex?: number
+    sidebarCollapsed?: boolean
+  }>
+  saveUIState: (uiState: {
+    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; title?: string }>
+    activeTabIndex?: number
+    sidebarCollapsed?: boolean
+  }) => Promise<{ success: boolean }>
+
+  // Search Everywhere
+  toggleSearchWindow: () => Promise<{ success: boolean }>
+  closeSearchWindow: () => Promise<{ success: boolean }>
+  onSearchWindowShown: (callback: () => void) => () => void
+  searchQuery: (req: { query: string; category: string; limit?: number }) => Promise<{ success: boolean; results: import('@shared/ipc/search').SearchResult[] }>
+  searchExecuteAction: (actionId: string) => Promise<{ success: boolean }>
+  onSearchAction: (callback: (actionId: string) => void) => () => void
 
 }
 

@@ -33,6 +33,7 @@
     <CommandPicker
       :visible="showCommandPicker"
       :query="commandQuery"
+      :skills="enabledSkills"
       @select="handleCommandSelect"
       @close="handleCommandPickerClose"
     />
@@ -63,11 +64,60 @@
       @close="handlePathPickerClose"
     />
 
-    <!-- Quick Command Bar -->
-    <QuickCommandBar
-      :session-id="effectiveSessionId"
-      @executed="handleQuickCommandExecuted"
-    />
+    <TransitionGroup
+      name="queued-message"
+      tag="div"
+      class="queued-messages"
+    >
+      <div
+        v-for="item in queuedMessages"
+        :key="item.id"
+        class="queued-message-card"
+      >
+        <CornerDownRight
+          class="queued-message-icon"
+          :size="16"
+          :stroke-width="2"
+        />
+        <div class="queued-message-text">
+          {{ item.content }}
+        </div>
+        <button
+          class="queued-message-action"
+          type="button"
+          title="Steer the current tool loop with this message"
+          @click.stop="steerQueuedMessage(item.id)"
+        >
+          <CornerDownRight
+            :size="15"
+            :stroke-width="2"
+          />
+          <span>Steer</span>
+        </button>
+        <button
+          class="queued-message-icon-btn"
+          type="button"
+          title="Remove from queue"
+          @click.stop="removeQueuedMessage(item.id)"
+        >
+          <Trash2
+            :size="16"
+            :stroke-width="2"
+          />
+        </button>
+        <button
+          class="queued-message-icon-btn"
+          type="button"
+          title="More actions"
+          @click.stop
+        >
+          <MoreHorizontal
+            :size="16"
+            :stroke-width="2"
+          />
+        </button>
+      </div>
+    </TransitionGroup>
 
     <div
       class="composer"
@@ -103,27 +153,22 @@
           @click.stop
         >
           <button
-            v-if="isLoading || isSending"
-            class="send-btn stop-btn"
-            title="Stop generation"
-            @click="stopGeneration"
+            class="send-btn"
+            :class="{ 'stop-btn': shouldShowStopAction }"
+            :disabled="isPrimaryActionDisabled"
+            :title="primaryActionTitle"
+            @click="handlePrimaryAction"
           >
+            <Send
+              v-if="!shouldShowStopAction"
+              :size="18"
+              :stroke-width="2"
+            />
             <Square
+              v-else
               :size="16"
               fill="currentColor"
               :stroke-width="0"
-            />
-          </button>
-          <button
-            v-else
-            class="send-btn"
-            :disabled="!canSend"
-            title="Send message"
-            @click="sendMessage"
-          >
-            <Send
-              :size="18"
-              :stroke-width="2"
             />
           </button>
         </div>
@@ -136,16 +181,16 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
+import { useChatStore } from '@/stores/chat'
 // Sub-components
 import QuotedContext from './QuotedContext.vue'
 import SkillPicker from './SkillPicker.vue'
 import CommandPicker from './CommandPicker.vue'
 import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
-import QuickCommandBar from './QuickCommandBar.vue'
 import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
-import { X, Square, Send, Check } from 'lucide-vue-next'
+import { X, Square, Send, Check, CornerDownRight, Trash2, MoreHorizontal } from 'lucide-vue-next'
 import { findCommand } from '@/services/commands'
 
 // Composables
@@ -160,7 +205,7 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'sendMessage', message: string): void
+  (e: 'sendMessage', message: string, mode?: 'send' | 'steer' | 'followup'): void
   (e: 'stopGeneration'): void
 }
 
@@ -172,15 +217,22 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
+const chatStore = useChatStore()
 
 // Core state
 const messageInput = ref('')
 const quotedText = ref('')
 const isFocused = ref(false)
-const isSending = ref(false)
 const isComposing = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const composerWrapperRef = ref<HTMLElement | null>(null)
+
+interface QueuedMessage {
+  id: string
+  content: string
+}
+
+const queuedMessages = ref<QueuedMessage[]>([])
 
 // Get the effective session ID
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
@@ -236,17 +288,37 @@ const { commandFeedback, showCommandFeedback } = useCommandFeedback()
 
 // --- Computed ---
 
+const hasMessageContent = computed(() => messageInput.value.trim().length > 0)
+const hasActiveGeneration = computed(() => {
+  const sessionId = effectiveSessionId.value
+  return !!props.isLoading || (sessionId ? chatStore.isSessionGenerating(sessionId) : false)
+})
+
 const canSend = computed(() => {
-  const hasContent = messageInput.value.trim().length > 0
-  return hasContent && !props.isLoading
+  return hasMessageContent.value
+})
+
+const shouldShowStopAction = computed(() => {
+  return hasActiveGeneration.value && !hasMessageContent.value
+})
+
+const isPrimaryActionDisabled = computed(() => {
+  if (shouldShowStopAction.value) return false
+  return !canSend.value
+})
+
+const primaryActionTitle = computed(() => {
+  if (shouldShowStopAction.value) return 'Stop generation'
+  if (hasActiveGeneration.value) return 'Queue message after current response'
+  return 'Send message'
 })
 
 // --- Watchers ---
 
-// Reset isSending when generation completes
-watch(() => props.isLoading, (loading) => {
-  if (!loading) {
-    isSending.value = false
+// Send the next queued follow-up when the active generation completes.
+watch(hasActiveGeneration, (generating) => {
+  if (!generating) {
+    flushQueuedMessage()
   }
 })
 
@@ -254,9 +326,17 @@ watch(() => props.isLoading, (loading) => {
 
 let composerResizeObserver: ResizeObserver | null = null
 
+function handleDocumentMouseDown(event: MouseEvent) {
+  const wrapper = composerWrapperRef.value
+  if (!wrapper) return
+  if (event.target instanceof Node && wrapper.contains(event.target)) return
+  closeAllPickers()
+}
+
 onMounted(async () => {
   adjustHeight()
   await loadSkills()
+  document.addEventListener('mousedown', handleDocumentMouseDown)
 
   if (composerWrapperRef.value) {
     composerResizeObserver = new ResizeObserver((entries) => {
@@ -268,6 +348,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('mousedown', handleDocumentMouseDown)
+
   if (composerResizeObserver) {
     composerResizeObserver.disconnect()
     composerResizeObserver = null
@@ -326,8 +408,8 @@ function handleKeyDown(e: KeyboardEvent) {
     if (keyMatches && modifiersMatch) {
       e.preventDefault()
       sendMessage()
+      return
     }
-    return
   }
 
   const legacyShortcut = settingsStore.settings?.general?.sendShortcut || 'enter'
@@ -364,23 +446,26 @@ async function sendMessage() {
 
       if (result.success) {
         showCommandFeedback('success', result.message || 'Done')
+        messageInput.value = ''
+        resetHistoryNavigation()
+        closeAllPickers()
+        nextTick(() => {
+          adjustHeight()
+          textareaRef.value?.focus()
+        })
       } else {
         showCommandFeedback('error', result.error || `/${commandId} failed`)
+        closeAllPickers()
+        nextTick(() => {
+          adjustHeight()
+          textareaRef.value?.focus()
+        })
       }
-
-      messageInput.value = ''
-      resetHistoryNavigation()
-      closeAllPickers()
-      nextTick(() => {
-        adjustHeight()
-        textareaRef.value?.focus()
-      })
       return
     }
   }
 
   // Regular message sending
-  isSending.value = true
   let fullMessage = messageInput.value
 
   if (quotedText.value) {
@@ -388,7 +473,16 @@ async function sendMessage() {
     fullMessage = `${quotedLines}\n\n${messageInput.value}`
   }
 
-  emit('sendMessage', fullMessage)
+  if (hasActiveGeneration.value) {
+    queuedMessages.value.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      content: fullMessage,
+    })
+    showCommandFeedback('success', 'Message queued')
+  } else {
+    emit('sendMessage', fullMessage, 'send')
+  }
+
   messageInput.value = ''
   resetHistoryNavigation()
   quotedText.value = ''
@@ -405,25 +499,35 @@ function stopGeneration() {
   emit('stopGeneration')
 }
 
-function focusTextarea() {
-  textareaRef.value?.focus()
+function handlePrimaryAction() {
+  if (shouldShowStopAction.value) {
+    stopGeneration()
+    return
+  }
+  sendMessage()
 }
 
-// --- Quick Command Bar handler ---
+function steerQueuedMessage(id: string) {
+  const item = queuedMessages.value.find(message => message.id === id)
+  if (!item) return
+  queuedMessages.value = queuedMessages.value.filter(message => message.id !== id)
+  emit('sendMessage', item.content, 'steer')
+  showCommandFeedback('success', 'Steering queued')
+}
 
-function handleQuickCommandExecuted(result: {
-  commandId: string
-  success: boolean
-  message?: string
-  error?: string
-}) {
-  if (result.success) {
-    if (result.message) {
-      showCommandFeedback('success', result.message)
-    }
-  } else {
-    showCommandFeedback('error', result.error || 'Command failed')
-  }
+function removeQueuedMessage(id: string) {
+  queuedMessages.value = queuedMessages.value.filter(message => message.id !== id)
+}
+
+function flushQueuedMessage() {
+  if (hasActiveGeneration.value) return
+  const nextMessage = queuedMessages.value.shift()
+  if (!nextMessage) return
+  emit('sendMessage', nextMessage.content, 'send')
+}
+
+function focusTextarea() {
+  textareaRef.value?.focus()
 }
 
 // --- Exposed methods ---
@@ -470,7 +574,7 @@ defineExpose({
 
 <style scoped>
 .composer-wrapper {
-  width: 96%;
+  width: min(74%, 860px);
   margin: 0 auto;
   position: relative;
 }
@@ -513,8 +617,99 @@ defineExpose({
   opacity: 0;
 }
 
+.queued-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: calc(100% - 72px);
+  margin: 0 auto -12px;
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.queued-message-card {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 0.5px solid var(--border);
+  border-radius: 12px 12px 7px 7px;
+  background: rgba(var(--bg-rgb, 30, 30, 35), 0.5);
+  color: var(--text-muted);
+  box-shadow: 0 -1px 12px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(18px) saturate(1.08);
+  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+  pointer-events: auto;
+}
+
+.queued-message-icon {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.queued-message-text {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.queued-message-action,
+.queued-message-icon-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.queued-message-action {
+  gap: 5px;
+  height: 28px;
+  padding: 0 7px;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.queued-message-icon-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.queued-message-action:hover,
+.queued-message-icon-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.queued-message-enter-active,
+.queued-message-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.queued-message-enter-from,
+.queued-message-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
 /* Main composer container */
 .composer {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   border-radius: 16px;
@@ -587,7 +782,7 @@ defineExpose({
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-shrink: 0;
 }
 

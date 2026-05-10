@@ -55,6 +55,19 @@ export interface GeneralSettings {
   quickCommands?: QuickCommandConfig[]  // Quick command buttons shown above InputBox
   // User profile for lightweight context injection
   userProfile?: UserProfileSettings
+  maxTabs?: number           // Maximum open tabs per panel, 3-30, default 15
+  maxFilePreviewKB?: number  // Maximum file preview size in KB, 64-1024, default 256
+  /**
+   * @deprecated Migrated to `variables.json` (variables subsystem). The
+   * field is retained so that older installs can be migrated on first
+   * boot post-upgrade. New code should NOT read this; consult the
+   * variables store via `getVariablesStore().getAiNoteDir()` instead.
+   */
+  aiNoteDir?: string
+  /**
+   * @deprecated See `aiNoteDir`.
+   */
+  userNoteDir?: string
 }
 
 // Lightweight user profile for system prompt injection (low token, high value)

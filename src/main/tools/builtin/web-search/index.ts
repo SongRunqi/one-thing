@@ -60,6 +60,7 @@ Returns a list of search results with titles, URLs, and snippets.`,
   category: 'builtin',
   enabled: true,
   autoExecute: true,  // Safe to auto-execute (read-only)
+  permissionGuard: 'safe',
 
   parameters: WebSearchParameters,
 

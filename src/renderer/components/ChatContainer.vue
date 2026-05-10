@@ -14,7 +14,6 @@
         v-if="!sessionsStore.currentSessionId"
         class="empty-state"
       >
-        <div class="empty-state-drag-region" />
         <div class="empty-state-content">
           <svg
             width="48"
@@ -58,7 +57,8 @@
             :can-close="panels.length > 1"
             :style="{ flex: panel.flex }"
             :show-settings="index === 0 && showSettings"
-            :show-sidebar-toggle="false"
+            :show-sidebar-toggle="sidebarCollapsed && !sidebarFloating"
+            :is-inspector-open="isInspectorOpen"
             @close="closePanel(panel.id)"
             @split="openSessionPicker(panel.id)"
             @equalize="equalizeAllPanels"
@@ -66,6 +66,7 @@
             @close-settings="$emit('close-settings')"
             @open-settings="$emit('open-settings')"
             @toggle-sidebar="$emit('toggle-sidebar')"
+            @toggle-inspector="$emit('toggle-inspector')"
           />
         </template>
       </template>
@@ -225,6 +226,7 @@ const props = defineProps<{
   mediaPanelOpen?: boolean
   showDiffOverlay?: boolean
   diffOverlayData?: DiffOverlayData | null
+  isInspectorOpen?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -234,6 +236,7 @@ const emit = defineEmits<{
   'show-floating-sidebar': []
   'hide-floating-sidebar': []
   'close-diff-overlay': []
+  'toggle-inspector': []
 }>()
 
 const sessionsStore = useSessionsStore()
@@ -435,9 +438,33 @@ function focusInput() {
   }
 }
 
+// Open a file in a new tab in the first panel
+function openFileTab(filePath: string) {
+  const firstPanel = panels.value[0]
+  if (firstPanel && panelRefs.value[firstPanel.id]) {
+    panelRefs.value[firstPanel.id]?.addFileTab(filePath)
+  }
+}
+
+async function jumpToMessage(sessionId: string, messageId: string) {
+  if (sessionsStore.currentSessionId !== sessionId) {
+    await sessionsStore.switchSession(sessionId)
+    await nextTick()
+  }
+
+  const panel = panels.value.find(item => item.sessionId === sessionId) || panels.value[0]
+  if (!panel) return false
+
+  panel.sessionId = sessionId
+  await nextTick()
+  return panelRefs.value[panel.id]?.scrollToMessage?.(messageId) ?? false
+}
+
 // Expose methods
 defineExpose({
-  focusInput
+  focusInput,
+  openFileTab,
+  jumpToMessage,
 })
 
 onUnmounted(() => {
@@ -473,7 +500,6 @@ onUnmounted(() => {
   display: flex;
   height: 100%;
   gap: 8px;
-  -webkit-app-region: no-drag;
   position: relative;
   overflow: hidden;
 }
@@ -702,19 +728,6 @@ onUnmounted(() => {
   position: relative;
 }
 
-.empty-state-drag-region {
-  position: absolute;
-  top: 0;
-  /* Clear of the fixed .app-toolbar (sibling DOM branch). Electron's
-     no-drag doesn't compose across branches, so starting at 0 would
-     swallow clicks on sidebar-toggle / search / new-chat when the
-     sidebar is collapsed (toolbar sits at left:84, width ~90px). */
-  left: 180px;
-  right: 0;
-  height: 40px;
-  -webkit-app-region: drag;
-}
-
 .empty-state-content {
   display: flex;
   flex-direction: column;
@@ -722,6 +735,7 @@ onUnmounted(() => {
   gap: 12px;
   color: var(--muted);
   text-align: center;
+  -webkit-app-region: no-drag;
 }
 
 .empty-state-content svg {
@@ -754,6 +768,7 @@ onUnmounted(() => {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
 }
 
 .new-chat-btn:hover {

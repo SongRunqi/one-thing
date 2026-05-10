@@ -14,7 +14,7 @@ export interface PermissionInfo {
   title: string
   metadata: Record<string, unknown>
   createdAt: number
-  /** Working directory for workspace-level permissions */
+  /** Working directory for persistent directory-level permissions */
   workingDirectory?: string
 }
 
@@ -22,19 +22,18 @@ export interface PermissionInfo {
  * Permission response types:
  * - 'once': Allow this single operation only (本次)
  * - 'session': Allow for the duration of this session (本会话)
- * - 'workspace': Permanently allow in this workspace (本工作区)
+ * - 'workdir': Permanently allow in this working directory (本工作目录)
  * - 'reject': Deny the operation
  */
-export type PermissionResponse = 'once' | 'session' | 'workspace' | 'reject'
+export type PermissionResponse = 'once' | 'session' | 'workdir' | 'reject'
 
 /** Legacy alias for backwards compatibility */
-export type LegacyPermissionResponse = 'once' | 'always' | 'reject'
+export type LegacyPermissionResponse = 'once' | 'always' | 'workspace' | 'reject'
 
 export interface PermissionRespondRequest {
   sessionId: string
   permissionId: string
-  response: PermissionResponse
+  response: PermissionResponse | LegacyPermissionResponse
   /** Optional reason for rejection */
   rejectReason?: string
 }
-

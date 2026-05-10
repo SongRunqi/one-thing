@@ -105,7 +105,10 @@
                 :class="['font-option', { active: currentFontEn === font.id }]"
                 @click="updateFontEn(font.id)"
               >
-                <span class="font-preview" :style="{ fontFamily: font.family }">
+                <span
+                  class="font-preview"
+                  :style="{ fontFamily: font.family }"
+                >
                   {{ font.preview || 'Aa' }}
                 </span>
                 <span class="font-name">{{ font.name }}</span>
@@ -125,7 +128,10 @@
                 :class="['font-option', { active: currentFontZh === font.id }]"
                 @click="updateFontZh(font.id)"
               >
-                <span class="font-preview" :style="{ fontFamily: font.family }">
+                <span
+                  class="font-preview"
+                  :style="{ fontFamily: font.family }"
+                >
                   {{ font.preview || '你好' }}
                 </span>
                 <span class="font-name">{{ font.name }}</span>
@@ -207,6 +213,7 @@ function updateFontZh(fontId: string) {
     },
   })
 }
+
 
 </script>
 

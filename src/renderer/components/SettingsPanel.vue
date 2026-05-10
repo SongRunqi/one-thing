@@ -109,6 +109,23 @@
           AI Provider
         </button>
         <button
+          :class="['tab-btn', { active: activeTab === 'editor' }]"
+          @click="activeTab = 'editor'"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+            <polyline points="13 2 13 9 20 9" />
+          </svg>
+          Editor
+        </button>
+        <button
           :class="['tab-btn', { active: activeTab === 'tools' }]"
           @click="activeTab = 'tools'"
         >
@@ -200,12 +217,42 @@
           </svg>
           Skills
         </button>
+        <button
+          :class="['tab-btn', { active: activeTab === 'plugins' }]"
+          @click="activeTab = 'plugins'"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 2l3 6 6.5 1-4.7 4.5 1.2 6.5-6-3.2-6 3.2 1.2-6.5L2.5 9 9 8z" />
+            <circle
+              cx="12"
+              cy="12"
+              r="2"
+              fill="currentColor"
+              opacity="0.3"
+            />
+          </svg>
+          Plugins
+        </button>
       </div>
 
       <div class="settings-content">
         <!-- General Tab -->
         <GeneralSettingsTab
           v-show="activeTab === 'general'"
+          :settings="localSettings"
+          @update:settings="updateSettings"
+        />
+
+        <!-- Editor Tab -->
+        <EditorSettingsTab
+          v-show="activeTab === 'editor'"
           :settings="localSettings"
           @update:settings="updateSettings"
         />
@@ -256,6 +303,12 @@
             @update:settings="handleSkillsSettingsUpdate"
           />
         </div>
+
+        <!-- Plugins Tab -->
+        <PluginsSettingsTab
+          v-show="activeTab === 'plugins'"
+          @plugins-changed="loadAvailableTools"
+        />
       </div>
 
       <SettingsFooter
@@ -283,10 +336,12 @@ import UnsavedChangesDialog from './settings/UnsavedChangesDialog.vue'
 import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
 import GeneralSettingsTab from './settings/GeneralSettingsTab.vue'
+import EditorSettingsTab from './settings/EditorSettingsTab.vue'
 import { AIProviderTab } from './settings/provider'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
 import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import SettingsFooter from './settings/SettingsFooter.vue'
+import PluginsSettingsTab from './settings/PluginsSettingsTab.vue'
 
 const emit = defineEmits<{
   close: []
@@ -295,7 +350,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 
 // Active tab
-const activeTab = ref<'general' | 'ai' | 'tools' | 'shortcuts' | 'mcp' | 'skills'>('general')
+const activeTab = ref<'general' | 'editor' | 'ai' | 'tools' | 'shortcuts' | 'mcp' | 'skills' | 'plugins'>('general')
 
 // Deep clone settings, ensuring providers object exists
 const localSettings = ref<AppSettings>(

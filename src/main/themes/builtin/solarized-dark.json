@@ -127,7 +127,10 @@
         "number": "magenta",
         "function": "blue",
         "variable": "base1",
-        "operator": "green"
+        "operator": "green",
+        "type": "orange",
+        "property": "yellow",
+        "punctuation": "base0"
       },
       "menu": {
         "item": "base0",

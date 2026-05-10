@@ -100,7 +100,6 @@ export class LRUCache<K, V> {
     }
 
     if (oldestKey !== null) {
-      console.log(`[LRUCache] Evicting oldest entry: ${oldestKey}`)
       this.cache.delete(oldestKey)
     }
   }

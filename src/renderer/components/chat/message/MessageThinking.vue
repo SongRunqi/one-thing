@@ -1,11 +1,12 @@
 <template>
   <div class="thinking-container">
-    <!-- Status overlay: in document flow, shows before message content -->
-    <Transition name="status-fade">
-      <div
-        v-if="shouldShowStatus"
-        class="thinking-status-overlay"
-      >
+    <!-- Status overlay: always in DOM, collapses height to 0 when nothing to show.
+         Inner v-if chain handles row-to-row swap via mode="out-in". -->
+    <div
+      class="thinking-status-overlay"
+      :class="{ collapsed: !shouldShowStatus }"
+    >
+      <div class="thinking-status-overlay-inner">
         <Transition
           name="thinking-fade"
           mode="out-in"
@@ -76,7 +77,7 @@
           </div>
         </Transition>
       </div>
-    </Transition>
+    </div>
 
     <!-- Reasoning expand: in document flow, smooth grid-rows animation -->
     <!-- User-triggered expand, so pushing content down is expected -->
@@ -240,11 +241,23 @@ onUnmounted(() => {
   display: none;
 }
 
-/* Status overlay: in document flow, aligned with message content */
+/* Status overlay: always in DOM. Keep status changes synchronous during
+   streaming; animated height/opacity changes fight the follow scroll model
+   when the first content chunk replaces Waiting. */
 .thinking-status-overlay {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.thinking-status-overlay.collapsed {
+  grid-template-rows: 0fr;
+}
+
+.thinking-status-overlay-inner {
+  overflow: hidden;
+  min-height: 0;
   display: flex;
   align-items: center;
-  height: 28px;
 }
 
 .thinking-status-row {
@@ -300,27 +313,13 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* Status overlay fade: opacity only, no translateY to prevent any positional shift */
-.status-fade-enter-active {
-  transition: opacity 0.2s ease;
-}
-
-.status-fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.status-fade-enter-from,
-.status-fade-leave-to {
-  opacity: 0;
-}
-
 /* Transition: Waiting <-> Thinking/Thought row */
 .thinking-fade-enter-active {
-  animation: thinkingFadeIn 0.25s ease;
+  animation: none;
 }
 
 .thinking-fade-leave-active {
-  animation: thinkingFadeOut 0.15s ease forwards;
+  animation: none;
 }
 
 @keyframes thinkingFadeIn {
@@ -343,11 +342,11 @@ onUnmounted(() => {
 
 /* Transition: Thinking -> Thought text */
 .status-text-fade-enter-active {
-  animation: statusTextEnter 0.3s ease;
+  animation: none;
 }
 
 .status-text-fade-leave-active {
-  animation: statusTextLeave 0.15s ease forwards;
+  animation: none;
 }
 
 @keyframes statusTextEnter {
@@ -371,7 +370,7 @@ onUnmounted(() => {
 /* Transition: Time display fade */
 .time-fade-enter-active,
 .time-fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: none;
 }
 
 .time-fade-enter-from,

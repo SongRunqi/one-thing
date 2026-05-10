@@ -18,6 +18,8 @@ import { GlobTool } from './glob.js'
 import { GrepTool } from './grep.js'
 import { SkillTool } from './skill.js'
 import { FartTool } from './fart.js'
+import { VariableTool } from './variable.js'
+import { ProjectDirsTool } from '../../project-dirs/index.js'
 
 // Web search
 import { WebSearchTool } from './web-search/index.js'
@@ -31,6 +33,8 @@ const builtinTools = [
   WriteTool,
   GlobTool,
   GrepTool,
+  VariableTool,
+  ProjectDirsTool,
   FartTool,
   // Web tools
   WebSearchTool,

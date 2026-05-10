@@ -137,6 +137,48 @@ function extractResult(): { output: string | undefined; metadata: Record<string,
   return { output: undefined, metadata: undefined }
 }
 
+// ---------------------------------------------------------------------------
+// Derived state — declared BEFORE the immediate watch below, since play()
+// (called synchronously by the watch) reads spokenText.value.
+// ---------------------------------------------------------------------------
+
+const currentArt = computed(() => {
+  if (frames.value.length === 0) {
+    const { metadata } = extractResult()
+    const live = metadata?.currentFrame
+    return typeof live === 'string' ? live : ''
+  }
+  return frames.value[frameIndex.value]?.art ?? ''
+})
+
+const spokenText = computed(() => {
+  const args = props.toolCall.arguments as Record<string, unknown> | undefined
+  const t = args?.text
+  return typeof t === 'string' && t.trim() ? t.trim() : ''
+})
+
+const marqueeTitle = computed(() => {
+  const args = (props.toolCall.arguments || {}) as Record<string, unknown>
+  const action = typeof args.action === 'string' ? args.action : 'fart'
+  return `CAT :: ${action.toUpperCase()}`
+})
+
+const statusHud = computed(() => {
+  switch (props.toolCall.status) {
+    case 'executing':
+    case 'input-streaming':
+      return 'WARMUP'
+    case 'failed':
+      return 'ERROR'
+    case 'cancelled':
+      return 'ABORT'
+    case 'completed':
+      return 'READY'
+    default:
+      return '...'
+  }
+})
+
 watch(
   () => props.toolCall.result,
   () => {
@@ -286,47 +328,6 @@ function maybePlayAudio() {
     console.warn('[FartCallItem] Audio synthesis failed:', err)
   }
 }
-
-// ---------------------------------------------------------------------------
-// Derived
-// ---------------------------------------------------------------------------
-
-const currentArt = computed(() => {
-  if (frames.value.length === 0) {
-    const { metadata } = extractResult()
-    const live = metadata?.currentFrame
-    return typeof live === 'string' ? live : ''
-  }
-  return frames.value[frameIndex.value]?.art ?? ''
-})
-
-const spokenText = computed(() => {
-  const args = props.toolCall.arguments as Record<string, unknown> | undefined
-  const t = args?.text
-  return typeof t === 'string' && t.trim() ? t.trim() : ''
-})
-
-const marqueeTitle = computed(() => {
-  const args = (props.toolCall.arguments || {}) as Record<string, unknown>
-  const action = typeof args.action === 'string' ? args.action : 'fart'
-  return `CAT :: ${action.toUpperCase()}`
-})
-
-const statusHud = computed(() => {
-  switch (props.toolCall.status) {
-    case 'executing':
-    case 'input-streaming':
-      return 'WARMUP'
-    case 'failed':
-      return 'ERROR'
-    case 'cancelled':
-      return 'ABORT'
-    case 'completed':
-      return 'READY'
-    default:
-      return '...'
-  }
-})
 
 </script>
 

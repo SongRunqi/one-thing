@@ -29,6 +29,8 @@ export type {
 
 // Chat types
 export type {
+  ContextVariable,
+  VariableLevel,
   ContentPart,
   StepType,
   Step,
@@ -36,7 +38,6 @@ export type {
   MessageAttachment,
   ChatMessage,
   // Session-level optimization (Phase 4: Metadata Separation)
-  CachedProviderConfig,
   SessionMeta,
   SessionDetails,
   ChatSession,
@@ -65,6 +66,13 @@ export type {
   GetSessionsListResponse,
   ActivateSessionResponse,
   GetSessionMessagesResponse,
+  SessionMessagesPageDirection,
+  SessionMessagesPageAnchor,
+  GetSessionMessagesPageRequest,
+  SessionMessagePageCursor,
+  GetSessionMessagesPageResponse,
+  UserMessageMarker,
+  GetSessionUserMarkersResponse,
 } from './chat.js'
 
 // Provider types
@@ -78,13 +86,9 @@ export type {
   ModelCapabilityOverride,
   CustomProviderConfig,
   AISettings,
+  ModelCapabilityEntry,
   ModelType,
   ModelInfo,
-  CachedModels,
-  FetchModelsRequest,
-  FetchModelsResponse,
-  GetCachedModelsRequest,
-  GetCachedModelsResponse,
   GetProvidersResponse,
   NetworkInterfaceInfo,
   GetNetworkInterfacesResponse,
@@ -201,6 +205,31 @@ export type {
   PermissionRespondRequest,
 } from './permissions.js'
 
+// Variable types
+export type {
+  VariablesListRequest,
+  VariablesListResponse,
+  VariablesSetRequest,
+  VariablesSetResponse,
+  VariablesDeleteRequest,
+  VariablesDeleteResponse,
+} from './variables.js'
+
+// Project directories types
+export type {
+  ProjectDirSummary,
+  ProjectDirRecord,
+  ProjectDirsListResponse,
+  ProjectDirsGetRequest,
+  ProjectDirsGetResponse,
+  ProjectDirsAddRequest,
+  ProjectDirsAddResponse,
+  ProjectDirsUpdateRequest,
+  ProjectDirsUpdateResponse,
+  ProjectDirsRemoveRequest,
+  ProjectDirsRemoveResponse,
+} from './project-dirs.js'
+
 // UIMessage types
 export type {
   ToolUIState,
@@ -234,4 +263,10 @@ export {
   getToolName,
 } from './ui-message.js'
 
-
+// Search types
+export type {
+  SearchCategory,
+  SearchRequest,
+  SearchResult,
+  SearchResponse,
+} from './search.js'

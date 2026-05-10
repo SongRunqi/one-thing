@@ -262,6 +262,7 @@ interface Props {
   role: 'user' | 'assistant'
   content: string
   visible: boolean
+  isStreaming?: boolean
   branches?: BranchInfo[]
   usage?: TokenUsage
   model?: string
@@ -489,15 +490,32 @@ onUnmounted(() => {
   gap: 4px;
   opacity: 0;
   transition: opacity 0.15s ease;
+  height: 28px;
+  min-height: 28px;
+  align-items: center;
+  line-height: 0;
 }
 
 .actions.visible {
   opacity: 1;
 }
 
+.actions :deep(.tooltip-wrapper) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  line-height: 0;
+}
+
 .action-btn {
   width: 28px;
   height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  line-height: 0;
   border-radius: 6px;
   border: none;
   background: transparent;
@@ -507,7 +525,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
-  flex-shrink: 0;
+  flex: 0 0 28px;
   position: relative;
 }
 
@@ -523,6 +541,8 @@ onUnmounted(() => {
 .action-btn svg {
   width: 15px;
   height: 15px;
+  display: block;
+  flex: 0 0 15px;
 }
 
 /* Copy button success state - when showing check icon */
@@ -542,6 +562,13 @@ onUnmounted(() => {
 /* Branch button with count */
 .branch-btn-wrapper {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  line-height: 0;
 }
 
 .action-btn.has-branches {
@@ -652,6 +679,13 @@ onUnmounted(() => {
 /* More menu */
 .more-btn-wrapper {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  line-height: 0;
 }
 </style>
 

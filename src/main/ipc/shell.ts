@@ -4,8 +4,9 @@
  * Handles shell-related operations like opening folders in file explorer.
  */
 
-import { ipcMain, shell, app, BrowserWindow } from 'electron'
+import { ipcMain, shell, BrowserWindow } from 'electron'
 import path from 'path'
+import os from 'os'
 
 export function registerShellHandlers() {
   // Open a path in the system file explorer
@@ -15,7 +16,7 @@ export function registerShellHandlers() {
 
   // Get the app data folder path
   ipcMain.handle('app:get-data-path', () => {
-    return path.join(app.getPath('userData'), 'data')
+    return path.join(os.homedir(), '.onething')
   })
 
   // Set window button (traffic lights) visibility (macOS only)

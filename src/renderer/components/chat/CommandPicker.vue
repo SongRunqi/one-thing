@@ -1,55 +1,30 @@
 <template>
   <Transition name="picker-slide">
     <div
-      v-if="visible && filteredCommands.length > 0"
+      v-if="visible && filteredItems.length > 0"
       class="command-picker"
     >
-      <div class="command-picker-header">
-        <span class="title">Commands</span>
-        <span class="count">{{ filteredCommands.length }}</span>
-      </div>
       <div class="command-list">
         <div
-          v-for="(command, index) in filteredCommands"
-          :key="command.id"
+          v-for="(item, index) in filteredItems"
+          :key="item.id"
           :class="['command-item', { selected: index === selectedIndex }]"
-          @click="selectCommand(command)"
+          :title="getItemTooltip(item)"
+          @click="selectItem(item)"
           @mouseenter="selectedIndex = index"
         >
-          <div class="command-icon">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <polyline points="4 17 10 11 4 5" />
-              <line
-                x1="12"
-                y1="19"
-                x2="20"
-                y2="19"
-              />
-            </svg>
-          </div>
           <div class="command-info">
             <div class="command-name">
-              /{{ command.id }}
+              {{ item.title }}
             </div>
             <div class="command-description">
-              {{ command.description }}
+              {{ item.description }}
             </div>
           </div>
           <div class="command-usage">
-            {{ command.usage }}
+            {{ item.usage || item.type }}
           </div>
         </div>
-      </div>
-      <div class="command-picker-hint">
-        <span>Press <kbd>Enter</kbd> to select</span>
-        <span><kbd>Esc</kbd> to close</span>
       </div>
     </div>
   </Transition>
@@ -57,16 +32,18 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import type { CommandDefinition } from '@/types/commands'
-import { filterCommands } from '@/services/commands'
+import type { SkillDefinition } from '@/types'
+import type { PaletteItem } from '@/types/palette'
+import { filterPaletteItems } from '@/services/palette'
 
 interface Props {
   visible: boolean
   query: string
+  skills?: SkillDefinition[]
 }
 
 interface Emits {
-  (e: 'select', command: CommandDefinition): void
+  (e: 'select', item: PaletteItem): void
   (e: 'close'): void
 }
 
@@ -75,14 +52,14 @@ const emit = defineEmits<Emits>()
 
 const selectedIndex = ref(0)
 
-// Filter commands by query
-const filteredCommands = computed(() => {
-  return filterCommands(props.query)
+// Filter commands and skills by query
+const filteredItems = computed(() => {
+  return filterPaletteItems(props.query, props.skills || [])
 })
 
 // Reset selected index when query changes
 watch(
-  () => props.query,
+  () => [props.query, props.visible, filteredItems.value.length],
   () => {
     selectedIndex.value = 0
   }
@@ -99,114 +76,104 @@ function handleKeyDown(e: KeyboardEvent) {
       break
     case 'ArrowDown':
       e.preventDefault()
-      selectedIndex.value = Math.min(filteredCommands.value.length - 1, selectedIndex.value + 1)
+      selectedIndex.value = Math.min(filteredItems.value.length - 1, selectedIndex.value + 1)
       break
     case 'Tab':
     case 'Enter':
-      if (filteredCommands.value.length > 0) {
+      if (filteredItems.value.length > 0) {
         e.preventDefault()
-        selectCommand(filteredCommands.value[selectedIndex.value])
+        e.stopPropagation()
+        selectItem(filteredItems.value[selectedIndex.value])
       }
       break
     case 'Escape':
       e.preventDefault()
+      e.stopPropagation()
       emit('close')
       break
   }
 }
 
-function selectCommand(command: CommandDefinition) {
-  emit('select', command)
+function selectItem(item: PaletteItem) {
+  emit('select', item)
+}
+
+function getItemTooltip(item: PaletteItem) {
+  const usage = item.usage ? `\n${item.usage}` : ''
+  return `${item.title}\n${item.description}${usage}`
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('keydown', handleKeyDown, true)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keydown', handleKeyDown, true)
 })
 </script>
 
 <style scoped>
 .command-picker {
-  margin-bottom: 8px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  position: relative;
+  width: calc(100% - 28px);
+  height: 142px;
+  margin: 0 auto 16px;
+  background: rgba(var(--bg-rgb, 30, 30, 35), 0.58);
+  border: 0.5px solid color-mix(in srgb, rgba(var(--accent-rgb), 0.35) 42%, var(--border));
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.10), 0 0 0 0.5px rgba(var(--accent-rgb), 0.08);
+  backdrop-filter: blur(22px) saturate(1.16);
+  -webkit-backdrop-filter: blur(22px) saturate(1.16);
   overflow: hidden;
-  z-index: var(--z-dropdown);
-}
-
-.command-picker-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.command-picker-header .title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.command-picker-header .count {
-  font-size: 11px;
-  padding: 2px 6px;
-  background: var(--hover);
-  border-radius: 10px;
-  color: var(--muted);
+  z-index: calc(var(--z-dropdown) + 1);
 }
 
 .command-list {
-  max-height: 240px;
+  height: 100%;
+  box-sizing: border-box;
   overflow-y: auto;
-  padding: 6px;
+  padding: 5px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--accent-rgb), 0.32) transparent;
+}
+
+.command-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.command-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.command-list::-webkit-scrollbar-thumb {
+  background: rgba(var(--accent-rgb), 0.28);
+  border-radius: 999px;
 }
 
 .command-item {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.1s ease;
-}
-
-.command-item:hover,
-.command-item.selected {
-  background: var(--hover);
-}
-
-.command-item.selected {
-  background: rgba(59, 130, 246, 0.15);
-}
-
-.command-icon {
-  width: 28px;
-  height: 28px;
-  display: flex;
   align-items: center;
-  justify-content: center;
-  background: var(--hover);
-  border-radius: 6px;
-  color: var(--muted);
-  flex-shrink: 0;
-  margin-top: 2px;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 9px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
 }
 
-.command-item.selected .command-icon {
-  background: rgba(59, 130, 246, 0.2);
-  color: var(--accent);
+.command-item:hover {
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
+.command-item.selected {
+  background: rgba(var(--accent-rgb), 0.11);
 }
 
 .command-info {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
   flex: 1;
   min-width: 0;
 }
@@ -215,50 +182,38 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .command-description {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-  line-height: 1.4;
+  font-size: 11px;
+  color: var(--text-muted, var(--muted));
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.68;
 }
 
 .command-usage {
   font-size: 11px;
-  font-family: 'SF Mono', 'Monaco', monospace;
-  color: var(--muted);
-  padding: 2px 6px;
-  background: var(--hover);
-  border-radius: 4px;
+  font-family: var(--font-sans);
+  color: var(--text-muted, var(--muted));
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-left: 10px;
+  opacity: 0.58;
 }
 
 .command-item.selected .command-usage {
-  background: rgba(59, 130, 246, 0.2);
   color: var(--accent);
-}
-
-.command-picker-hint {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.command-picker-hint kbd {
-  display: inline-block;
-  padding: 2px 5px;
-  background: var(--hover);
-  border-radius: 4px;
-  font-family: 'SF Mono', 'Monaco', monospace;
-  font-size: 10px;
-  margin: 0 2px;
+  opacity: 0.9;
 }
 
 /* Enter/leave transitions */

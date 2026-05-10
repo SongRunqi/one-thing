@@ -8,7 +8,29 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, triggerRef } from 'vue'
-import type { ChatMessage, MessageAttachment, Step, ContentPart } from '@/types'
+import { perfMark, perfMeasure } from '@/utils/perf'
+import type {
+  ChatMessage,
+  GetSessionMessagesPageResponse,
+  GetSessionUserMarkersResponse,
+  MessageAttachment,
+  Step,
+  ContentPart,
+  UserMessageMarker,
+} from '@/types'
+import {
+  appendOrMergeText,
+  appendToolCallPlaceholder,
+  popTrailingTransient,
+  pushDataStepsIfMissing,
+  pushWaiting,
+  removeTransientIndicators,
+  upsertToolCall,
+} from './helpers/content-parts'
+import {
+  linkStepsToToolCalls,
+  upsertMessageToolCall,
+} from './helpers/tool-calls'
 
 // Stream chunk type from IPC
 interface StreamChunk {
@@ -84,6 +106,18 @@ export const useChatStore = defineStore('chat', () => {
   // Messages per session
   const sessionMessages = ref<Map<string, ChatMessage[]>>(new Map())
 
+  interface SessionMessagePageState {
+    nextCursor: string | null
+    backwardsCursor: string | null
+    hasMoreBefore: boolean
+    hasMoreAfter: boolean
+    totalCount: number
+    isLoadingOlder: boolean
+  }
+
+  const sessionMessagePages = ref<Map<string, SessionMessagePageState>>(new Map())
+  const sessionUserMarkers = ref<Map<string, UserMessageMarker[]>>(new Map())
+
   // Loading state per session
   const sessionLoading = ref<Map<string, boolean>>(new Map())
 
@@ -104,6 +138,28 @@ export const useChatStore = defineStore('chat', () => {
     return (messageId && messageId !== '') ? messageId : (activeStreams.value.get(sessionId) || '')
   }
 
+  function resolveStreamingMessage(messages: ChatMessage[], messageId?: string): ChatMessage | undefined {
+    if (messageId) {
+      const byId = messages.find(m => m.id === messageId)
+      if (byId) return byId
+    }
+    return [...messages].reverse().find(m => m.role === 'assistant' && m.isStreaming) ||
+      [...messages].reverse().find(m =>
+        m.role === 'assistant' &&
+        m.contentParts?.some(part => part.type === 'waiting' || part.type === 'loading-memory')
+      )
+  }
+
+  function stopMessageStreaming(message: ChatMessage, usage?: StreamCompleteData['usage']) {
+    if (message.contentParts && removeTransientIndicators(message.contentParts)) {
+      message.contentParts = [...message.contentParts]
+    }
+    message.isStreaming = false
+    if (usage) {
+      message.usage = usage
+    }
+  }
+
   // Scroll trigger per session — incremented on every handleStreamChunk call so MessageList
   // can watch a cheap O(1) counter instead of deep-watching all messages.
   const sessionScrollVersion = ref<Map<string, number>>(new Map())
@@ -112,8 +168,18 @@ export const useChatStore = defineStore('chat', () => {
     return sessionScrollVersion.value.get(sessionId) ?? 0
   }
 
+  const pendingScrollBump = new Set<string>()
+  const scheduleFrame = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame
+    : (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16)
+
   function bumpScrollVersion(sessionId: string) {
-    sessionScrollVersion.value.set(sessionId, getScrollVersion(sessionId) + 1)
+    if (pendingScrollBump.has(sessionId)) return
+    pendingScrollBump.add(sessionId)
+    scheduleFrame(() => {
+      pendingScrollBump.delete(sessionId)
+      sessionScrollVersion.value.set(sessionId, getScrollVersion(sessionId) + 1)
+    })
   }
 
   // ============ Inspector — request snapshots ring buffer ============
@@ -140,14 +206,14 @@ export const useChatStore = defineStore('chat', () => {
 
   // ============ UI State (Per-session) ============
 
-  // Session UI snapshots — index-based scroll position for virtual scrolling.
-  // Saves the message array index instead of pixel values, so position is
-  // independent of component rendering heights.
+  // Session UI snapshots. Tail is a semantic state; only detached sessions keep
+  // an anchor. DOM indexes are local to the loaded window and are not global
+  // conversation positions.
   interface SessionUISnapshot {
-    firstVisibleIndex: number  // index in messages array visible at viewport top
-    offsetWithinMessage: number // px of that message scrolled above viewport (sub-message precision)
-    isFollowing: boolean
-    navIndex: number
+    mode: 'tail' | 'anchor'
+    anchorMessageId?: string
+    offsetWithinMessage?: number
+    navMessageId?: string
     hasNavigated: boolean
     messageInput: string
     quotedText: string
@@ -240,6 +306,12 @@ export const useChatStore = defineStore('chat', () => {
    */
   function rebuildContentParts(message: ChatMessage): ChatMessage {
     if (message.role !== 'assistant') return message
+
+    // Reloaded messages have step.toolCall and message.toolCalls[i] as
+    // independent JSON objects. Relink so mutations from later chunks /
+    // user actions propagate to both consumers.
+    linkStepsToToolCalls(message)
+
     if (message.contentParts && message.contentParts.length > 0) return message
 
     const parts: ChatMessage['contentParts'] = []
@@ -265,6 +337,50 @@ export const useChatStore = defineStore('chat', () => {
   function setSessionMessages(sessionId: string, messages: ChatMessage[]) {
     sessionMessages.value.set(sessionId, messages)
     triggerRef(sessionMessages)
+  }
+
+  function setSessionPageState(
+    sessionId: string,
+    page: GetSessionMessagesPageResponse,
+    isLoadingOlder = false,
+  ) {
+    sessionMessagePages.value.set(sessionId, {
+      nextCursor: page.nextCursor ?? null,
+      backwardsCursor: page.backwardsCursor ?? null,
+      hasMoreBefore: !!page.hasMoreBefore,
+      hasMoreAfter: !!page.hasMoreAfter,
+      totalCount: page.totalCount ?? page.messages?.length ?? 0,
+      isLoadingOlder,
+    })
+    triggerRef(sessionMessagePages)
+  }
+
+  function updateSessionPageState(sessionId: string, updates: Partial<SessionMessagePageState>) {
+    const current = sessionMessagePages.value.get(sessionId)
+    if (!current) return
+    sessionMessagePages.value.set(sessionId, { ...current, ...updates })
+    triggerRef(sessionMessagePages)
+  }
+
+  function getSessionPageState(sessionId: string): SessionMessagePageState | undefined {
+    return sessionMessagePages.value.get(sessionId)
+  }
+
+  function mergeActiveStreamingMessage(sessionId: string, messages: ChatMessage[]): ChatMessage[] {
+    const activeStreamMessageId = activeStreams.value.get(sessionId)
+    if (!activeStreamMessageId) return messages
+
+    const existingMessages = sessionMessages.value.get(sessionId) || []
+    const streamingMessage = existingMessages.find(m => m.id === activeStreamMessageId)
+    if (!streamingMessage) return messages
+
+    const index = messages.findIndex(m => m.id === activeStreamMessageId)
+    if (index !== -1) {
+      messages[index] = streamingMessage
+    } else {
+      messages.push(streamingMessage)
+    }
+    return messages
   }
 
   /**
@@ -310,6 +426,7 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
+    perfMark('chunk-start')
     const message = messages[messageIndex]
 
     // Initialize contentParts if not exists
@@ -317,87 +434,44 @@ export const useChatStore = defineStore('chat', () => {
       message.contentParts = []
     }
 
+    const parts = message.contentParts
+
     if (chunk.type === 'text') {
       if (chunk.replace) {
         message.content = chunk.content
         message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
       } else {
         message.content = (message.content || '') + chunk.content
-
-        const parts = message.contentParts!
-        let lastPart = parts[parts.length - 1]
-
-        if (lastPart && (lastPart.type === 'waiting')) {
-          parts.pop()
-          lastPart = parts[parts.length - 1]
-        }
-
-        if (lastPart && lastPart.type === 'text') {
-          lastPart.content += chunk.content
+        const last = parts[parts.length - 1]
+        if (last && last.type === 'text') {
+          last.content += chunk.content
         } else {
-          console.log('[ContentParts] New text part after:', lastPart?.type, '| parts:', parts.map(p => p.type).join(', '))
-          parts.push({ type: 'text', content: chunk.content })
+          appendOrMergeText(parts, chunk.content)
+          message.contentParts = [...parts]
         }
       }
     } else if (chunk.type === 'reasoning') {
       message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
     } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
       if (chunk.toolCall) {
-        // Update toolCalls array
-        if (!message.toolCalls) {
-          message.toolCalls = []
-        }
-        const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
-        if (existingIndex >= 0) {
-          message.toolCalls[existingIndex] = chunk.toolCall
-        } else {
-          message.toolCalls.push(chunk.toolCall)
-        }
-
-        // Update contentParts
-        const parts = message.contentParts!
-        let lastPart = parts[parts.length - 1]
-
-        // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting')) {
-          parts.pop()
-          lastPart = parts[parts.length - 1]
-        }
-
-        if (lastPart && lastPart.type === 'tool-call') {
-          const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCall.id)
-          if (existingTcIndex >= 0) {
-            lastPart.toolCalls[existingTcIndex] = chunk.toolCall
-          } else {
-            lastPart.toolCalls.push(chunk.toolCall)
-          }
-        } else {
-          console.log('[ContentParts] New tool-call part after:', lastPart?.type, '| parts:', parts.map(p => p.type).join(', '))
-          parts.push({ type: 'tool-call', toolCalls: [chunk.toolCall] })
-        }
+        // Merge into the canonical entry in place so any step.toolCall
+        // referencing the same id sees the update without manual mirror writes.
+        const canonical = upsertMessageToolCall(message, chunk.toolCall)
+        upsertToolCall(parts, canonical)
         message.contentParts = [...parts]
       }
     } else if (chunk.type === 'continuation') {
-      const parts = message.contentParts!
-      console.log('[ContentParts] Continuation | parts before:', parts.map(p => p.type).join(', '))
-      parts.push({ type: 'waiting' })
+      pushWaiting(parts)
       message.contentParts = [...parts]
     } else if (chunk.type === 'replace') {
-      // Replace entire message content
       message.content = chunk.content
       message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
     } else if (chunk.type === 'tool_input_start') {
-      // Streaming tool input start - create a placeholder ToolCall with input-streaming status
-      console.log('[Chat Store] tool_input_start:', chunk.toolCallId, chunk.toolName, 'message:', message.id)
       if (chunk.toolCallId && chunk.toolName) {
-        if (!message.toolCalls) {
-          message.toolCalls = []
-        }
-        // Check if we already have this tool call (shouldn't happen, but be safe)
-        const existingIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
-        if (existingIndex === -1) {
-          // Create a new streaming tool call placeholder
-          message.toolCalls.push({
+        if (!message.toolCalls) message.toolCalls = []
+        let placeholder = message.toolCalls.find(tc => tc.id === chunk.toolCallId)
+        if (!placeholder) {
+          placeholder = {
             id: chunk.toolCallId,
             toolId: chunk.toolName,
             toolName: chunk.toolName,
@@ -405,91 +479,38 @@ export const useChatStore = defineStore('chat', () => {
             status: 'input-streaming',
             timestamp: Date.now(),
             streamingArgs: '',
-          })
-        }
-
-        // Update contentParts
-        const parts = message.contentParts!
-        let lastPart = parts[parts.length - 1]
-
-        // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting')) {
-          parts.pop()
-          lastPart = parts[parts.length - 1]
-        }
-
-        if (lastPart && lastPart.type === 'tool-call') {
-          // Add to existing tool-call part if not already there
-          const existingTcIndex = lastPart.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
-          if (existingTcIndex === -1) {
-            // Create new toolCalls array and new part object to trigger Vue reactivity
-            const newToolCall = message.toolCalls[message.toolCalls.length - 1]
-            const updatedPart = {
-              ...lastPart,
-              toolCalls: [...lastPart.toolCalls, newToolCall]
-            }
-            parts[parts.length - 1] = updatedPart
           }
-        } else {
-          parts.push({ type: 'tool-call', toolCalls: [message.toolCalls[message.toolCalls.length - 1]] })
+          message.toolCalls.push(placeholder)
         }
+        appendToolCallPlaceholder(parts, placeholder)
         message.contentParts = [...parts]
       }
     } else if (chunk.type === 'tool_input_delta') {
-      // Streaming tool input delta - accumulate args text
+      // Streaming tool input delta - accumulate args text in-place. The
+      // toolCall is shared with step.toolCall (relinked by handleStepAdded /
+      // rebuildContentParts), so a single field assignment is enough.
       if (chunk.toolCallId && chunk.argsTextDelta && message.toolCalls) {
-        const toolCallIndex = message.toolCalls.findIndex(tc => tc.id === chunk.toolCallId)
-        if (toolCallIndex >= 0) {
-          const toolCall = message.toolCalls[toolCallIndex]
-          if (toolCall.status === 'input-streaming') {
-            // Mutate in-place — the toolCall object is a reactive proxy shared by
-            // message.toolCalls, contentParts toolCalls, and steps. A single field
-            // assignment triggers only the bindings that read streamingArgs.
-            toolCall.streamingArgs = (toolCall.streamingArgs || '') + chunk.argsTextDelta
-
-            // Update the matching step's toolCall.streamingArgs if present
-            if (message.steps) {
-              const step = message.steps.find(s => s.toolCallId === chunk.toolCallId)
-              if (step?.toolCall) {
-                step.toolCall.streamingArgs = toolCall.streamingArgs
-              }
-            }
-          }
+        const toolCall = message.toolCalls.find(tc => tc.id === chunk.toolCallId)
+        if (toolCall && toolCall.status === 'input-streaming') {
+          toolCall.streamingArgs = (toolCall.streamingArgs || '') + chunk.argsTextDelta
         }
       }
     } else if (chunk.type === 'content_part' && chunk.contentPart) {
-      const parts = message.contentParts!
       const newPart = chunk.contentPart
-      console.log('[ContentParts] content_part:', newPart.type, '| parts before:', parts.map(p => p.type).join(', '))
-
-      // Remove loading-memory or waiting indicator if present
-      const lastPart = parts[parts.length - 1]
-      if (lastPart && (lastPart.type === 'waiting')) {
-        parts.pop()
-      }
-
       if (newPart.type === 'data-steps') {
-        // For data-steps, check if we already have a placeholder for this turn
-        const turnIndex = (newPart as any).turnIndex
-        const hasPlaceholder = parts.some(
-          p => p.type === 'data-steps' && (p as any).turnIndex === turnIndex
-        )
-        if (!hasPlaceholder) {
-          parts.push(newPart as any)
-        }
+        pushDataStepsIfMissing(parts, newPart.turnIndex)
+        message.contentParts = [...parts]
       } else if (newPart.type === 'text') {
-        // For text content_part, this is a finalized text block for the turn
-        // We may already have streaming text, so we need to handle carefully
-        // The streaming text chunks have already built up the text, so we can skip
-        // adding duplicate text here - the content_part is mainly for data-steps ordering
+        // Finalized text block for the turn. Streaming text chunks have already
+        // built up the text, so nothing to add here — the content_part exists
+        // mainly to anchor data-steps ordering.
+        popTrailingTransient(parts)
+        message.contentParts = [...parts]
       }
-
-      message.contentParts = [...parts]
     }
 
-    // Increment scroll trigger — lets MessageList scroll without a deep watcher.
-    // No need to spread messages or call triggerRef: sessionMessages is ref() (not
-    // shallowRef), so every mutation via the reactive proxy is tracked surgically.
+    perfMark('chunk-end')
+    perfMeasure('handleStreamChunk', 'chunk-start', 'chunk-end')
     bumpScrollVersion(sessionId)
   }
 
@@ -508,24 +529,9 @@ export const useChatStore = defineStore('chat', () => {
     // Update message
     const messages = getSessionMessagesRef(sessionId)
     const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
-    const messageIndex = messages.findIndex(m => m.id === resolvedMsgId)
-    if (messageIndex !== -1) {
-      const message = messages[messageIndex]
-
-      // Remove loading-memory or waiting indicator
-      if (message.contentParts) {
-        const lastPart = message.contentParts[message.contentParts.length - 1]
-        if (lastPart && (lastPart.type === 'waiting')) {
-          message.contentParts.pop()
-        }
-
-      }
-
-      // Mark message as not streaming and save usage
-      message.isStreaming = false
-      if (data.usage) {
-        message.usage = data.usage
-      }
+    const message = resolveStreamingMessage(messages, resolvedMsgId)
+    if (message) {
+      stopMessageStreaming(message, data.usage)
       setSessionMessages(sessionId, [...messages])
     }
 
@@ -595,20 +601,10 @@ export const useChatStore = defineStore('chat', () => {
     if (data.preserved) {
       // Message content is preserved in backend — just attach error details and stop streaming
       const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
-      if (resolvedMsgId) {
-        const msg = messages.find(m => m.id === resolvedMsgId)
-        if (msg) {
-          msg.errorDetails = data.errorDetails
-          msg.isStreaming = false
-          // Drop any trailing `waiting` continuation indicator — the next turn
-          // never arrived. Mirrors the cleanup in handleStreamComplete.
-          if (msg.contentParts && msg.contentParts.length > 0) {
-            const lastPart = msg.contentParts[msg.contentParts.length - 1]
-            if (lastPart && lastPart.type === 'waiting') {
-              msg.contentParts.pop()
-            }
-          }
-        }
+      const msg = resolveStreamingMessage(messages, resolvedMsgId)
+      if (msg) {
+        msg.errorDetails = data.errorDetails
+        stopMessageStreaming(msg)
       }
     } else {
       // No preserved content — replace streaming message with error message
@@ -676,24 +672,16 @@ export const useChatStore = defineStore('chat', () => {
       // Add new step
       message.steps.push(step)
     }
+    // Re-point step.toolCall at the canonical message.toolCalls entry so
+    // mutations from the chunk reducer / MessageList handlers propagate to
+    // both consumers without manual mirror writes.
+    linkStepsToToolCalls(message)
     message.steps = [...message.steps]
 
     // Add steps placeholder to contentParts if needed
-    if (message.contentParts) {
-      const stepTurnIndex = step.turnIndex
-      const parts = message.contentParts
-      const hasPlaceholderForTurn = parts.some(
-        p => p.type === 'data-steps' && (p as any).turnIndex === stepTurnIndex
-      )
-
-      if (!hasPlaceholderForTurn) {
-        const lastPart = parts[parts.length - 1]
-        // Remove loading-memory or waiting indicator if present
-        if (lastPart && (lastPart.type === 'waiting')) {
-          parts.pop()
-        }
-        parts.push({ type: 'data-steps', turnIndex: stepTurnIndex } as any)
-        message.contentParts = [...parts]
+    if (message.contentParts && step.turnIndex !== undefined) {
+      if (pushDataStepsIfMissing(message.contentParts, step.turnIndex)) {
+        message.contentParts = [...message.contentParts]
       }
     }
 
@@ -715,6 +703,8 @@ export const useChatStore = defineStore('chat', () => {
     const stepIndex = message.steps.findIndex(s => s.id === stepId)
     if (stepIndex !== -1) {
       message.steps[stepIndex] = { ...message.steps[stepIndex], ...updates }
+      // Re-link in case the update payload included a fresh `toolCall` clone.
+      linkStepsToToolCalls(message)
       message.steps = [...message.steps]
       setSessionMessages(sessionId, [...messages])
       bumpScrollVersion(sessionId)
@@ -776,6 +766,143 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function loadInitialMessagePage(sessionId: string, limit = 16): Promise<boolean> {
+    sessionLoading.value.set(sessionId, true)
+    triggerRef(sessionLoading)
+    const totalStart = performance.now()
+    let ipcMs = 0
+    let rebuildMs = 0
+    let setStateMs = 0
+    try {
+      const ipcStart = performance.now()
+      const response = await window.electronAPI.getSessionMessagesPage({
+        sessionId,
+        anchor: 'tail',
+        limit,
+      })
+      ipcMs = performance.now() - ipcStart
+      if (!response.success) {
+        console.warn('[Chat Store] Failed to load message page:', response.error)
+        setSessionMessages(sessionId, [])
+        setSessionPageState(sessionId, response)
+        return false
+      }
+
+      const rebuildStart = performance.now()
+      const messages = mergeActiveStreamingMessage(
+        sessionId,
+        (response.messages || []).map(rebuildContentParts),
+      )
+      rebuildMs = performance.now() - rebuildStart
+      const setStateStart = performance.now()
+      setSessionMessages(sessionId, messages)
+      setSessionPageState(sessionId, response)
+      setStateMs = performance.now() - setStateStart
+      console.info('[Perf][SessionPage][renderer]', {
+        sessionId,
+        totalMs: Math.round(performance.now() - totalStart),
+        ipcMs: Math.round(ipcMs),
+        rebuildMs: Math.round(rebuildMs),
+        setStateMs: Math.round(setStateMs),
+        messages: messages.length,
+        hasMoreBefore: !!response.hasMoreBefore,
+        totalCount: response.totalCount,
+      })
+      return true
+    } catch (error) {
+      console.error('[Chat Store] Failed to load initial message page:', error)
+      setSessionMessages(sessionId, [])
+      return false
+    } finally {
+      sessionLoading.value.set(sessionId, false)
+      triggerRef(sessionLoading)
+    }
+  }
+
+  async function loadOlderMessages(sessionId: string, limit = 16): Promise<boolean> {
+    const state = sessionMessagePages.value.get(sessionId)
+    if (!state?.hasMoreBefore || !state.nextCursor || state.isLoadingOlder) return false
+
+    updateSessionPageState(sessionId, { isLoadingOlder: true })
+    try {
+      const response = await window.electronAPI.getSessionMessagesPage({
+        sessionId,
+        cursor: state.nextCursor,
+        direction: 'older',
+        limit,
+      })
+      if (!response.success) {
+        console.warn('[Chat Store] Failed to load older messages:', response.error)
+        return false
+      }
+
+      const existing = sessionMessages.value.get(sessionId) || []
+      const existingIds = new Set(existing.map(message => message.id))
+      const older = (response.messages || [])
+        .map(rebuildContentParts)
+        .filter(message => !existingIds.has(message.id))
+
+      if (older.length > 0) {
+        setSessionMessages(sessionId, [...older, ...existing])
+      }
+      setSessionPageState(sessionId, response)
+      return older.length > 0
+    } catch (error) {
+      console.error('[Chat Store] Failed to load older messages:', error)
+      return false
+    } finally {
+      updateSessionPageState(sessionId, { isLoadingOlder: false })
+    }
+  }
+
+  async function loadMessagesAround(
+    sessionId: string,
+    messageId: string,
+    before = 4,
+    after = 16,
+  ): Promise<boolean> {
+    sessionLoading.value.set(sessionId, true)
+    triggerRef(sessionLoading)
+    try {
+      const response = await window.electronAPI.getSessionMessagesPage({
+        sessionId,
+        anchor: { messageId, before, after },
+      })
+      if (!response.success) {
+        console.warn('[Chat Store] Failed to load message anchor page:', response.error)
+        return false
+      }
+
+      const messages = mergeActiveStreamingMessage(
+        sessionId,
+        (response.messages || []).map(rebuildContentParts),
+      )
+      setSessionMessages(sessionId, messages)
+      setSessionPageState(sessionId, response)
+      return true
+    } catch (error) {
+      console.error('[Chat Store] Failed to load message anchor page:', error)
+      return false
+    } finally {
+      sessionLoading.value.set(sessionId, false)
+      triggerRef(sessionLoading)
+    }
+  }
+
+
+  async function loadUserMessageMarkers(sessionId: string): Promise<UserMessageMarker[]> {
+    try {
+      const response: GetSessionUserMarkersResponse = await window.electronAPI.getSessionUserMarkers(sessionId)
+      const markers = response.success ? (response.markers || []) : []
+      sessionUserMarkers.value.set(sessionId, markers)
+      triggerRef(sessionUserMarkers)
+      return markers
+    } catch (error) {
+      console.error('[Chat Store] Failed to load user message markers:', error)
+      return []
+    }
+  }
+
   /**
    * Set messages for a session directly (without IPC call)
    * Used when messages are already available (e.g., from switchSession response)
@@ -783,26 +910,7 @@ export const useChatStore = defineStore('chat', () => {
    */
   function setMessagesFromSession(sessionId: string, rawMessages: ChatMessage[]) {
     const messages = (rawMessages || []).map(rebuildContentParts)
-
-    // If this session has an active stream, preserve the in-memory streaming message
-    // This prevents losing isStreaming, content, reasoning, steps etc. during session switch
-    const activeStreamMessageId = activeStreams.value.get(sessionId)
-    if (activeStreamMessageId) {
-      const existingMessages = sessionMessages.value.get(sessionId) || []
-      const streamingMessage = existingMessages.find(m => m.id === activeStreamMessageId)
-      if (streamingMessage) {
-        // Replace backend version with in-memory version to preserve full state
-        const index = messages.findIndex(m => m.id === activeStreamMessageId)
-        if (index !== -1) {
-          messages[index] = streamingMessage
-        } else {
-          // Edge case: backend doesn't have this message yet, append it
-          messages.push(streamingMessage)
-        }
-      }
-    }
-
-    setSessionMessages(sessionId, messages)
+    setSessionMessages(sessionId, mergeActiveStreamingMessage(sessionId, messages))
   }
 
   /**
@@ -823,6 +931,32 @@ export const useChatStore = defineStore('chat', () => {
       type: 'command:send-message',
       content,
       attachments,
+    })
+    return true
+  }
+
+  /**
+   * Inject guidance into the active tool loop.
+   * The backend persists it as a user message and processes it before the next
+   * LLM call, without aborting the current stream.
+   */
+  async function steerMessage(sessionId: string, content: string) {
+    await window.electronAPI.emitCommand(sessionId, {
+      type: 'command:inject-steering',
+      content,
+      source: 'user',
+    })
+    return true
+  }
+
+  /**
+   * Queue a follow-up message for after the assistant would otherwise stop.
+   */
+  async function queueFollowUpMessage(sessionId: string, content: string) {
+    await window.electronAPI.emitCommand(sessionId, {
+      type: 'command:inject-followup',
+      content,
+      source: 'user',
     })
     return true
   }
@@ -885,16 +1019,15 @@ export const useChatStore = defineStore('chat', () => {
           const messageIndex = messages.findIndex(m => m.id === currentMessageId)
           if (messageIndex !== -1) {
             const message = messages[messageIndex]
-            // Cancel all running steps
+            // Cancel all running steps. Mutate step.toolCall.status in place
+            // so the shared canonical message.toolCalls entry sees the change;
+            // the outer step shallow-spread keeps the toolCall reference.
             let updatedSteps = message.steps
             if (updatedSteps) {
               updatedSteps = updatedSteps.map(step => {
                 if (step.status === 'running') {
-                  return {
-                    ...step,
-                    status: 'cancelled' as const,
-                    toolCall: step.toolCall ? { ...step.toolCall, status: 'cancelled' as const } : undefined
-                  }
+                  if (step.toolCall) step.toolCall.status = 'cancelled'
+                  return { ...step, status: 'cancelled' as const }
                 }
                 return step
               })
@@ -946,6 +1079,11 @@ export const useChatStore = defineStore('chat', () => {
     sessionMessages.value.set(sessionId, [])
     sessionSnapshots.delete(sessionId)
     triggerRef(sessionMessages)
+  }
+
+  function setSessionLoading(sessionId: string, loading: boolean) {
+    sessionLoading.value.set(sessionId, loading)
+    triggerRef(sessionLoading)
   }
 
   /**
@@ -1093,24 +1231,19 @@ export const useChatStore = defineStore('chat', () => {
 
     if (toolCall) {
       // Store permission ID and canRespond flag on tool call
-      ;(toolCall as any).permissionId = data.requestId
-      ;(toolCall as any).canRespond = data.canRespond
+      toolCall.permissionId = data.requestId
+      toolCall.canRespond = data.canRespond
       toolCall.requiresConfirmation = true
       toolCall.status = 'pending'
 
-      // Update corresponding step
+      // Update corresponding step (step-own fields only; the step.toolCall
+      // mirror is the same reference as `toolCall` above).
       const step = message.steps?.find(s => s.toolCallId === toolCall!.id)
       if (step) {
         step.status = 'awaiting-confirmation'
         // Store metadata from permission request (contains diff for edit tool)
         if (data.metadata && (data.metadata.diff || data.metadata.filePath)) {
           step.result = JSON.stringify(data.metadata)
-        }
-        if (step.toolCall) {
-          ;(step.toolCall as any).permissionId = data.requestId
-          ;(step.toolCall as any).canRespond = data.canRespond
-          step.toolCall.requiresConfirmation = true
-          step.toolCall.status = 'pending'
         }
         // Force reactivity
         if (message.steps) {
@@ -1130,6 +1263,8 @@ export const useChatStore = defineStore('chat', () => {
   return {
     // Per-session state maps
     sessionMessages,
+    sessionMessagePages,
+    sessionUserMarkers,
     sessionLoading,
     sessionGenerating,
     sessionError,
@@ -1139,6 +1274,7 @@ export const useChatStore = defineStore('chat', () => {
     // Getters
     getSessionState,
     isSessionGenerating,
+    getSessionPageState,
 
     // UI State (per-session)
     isToolCallExpanded,
@@ -1169,8 +1305,15 @@ export const useChatStore = defineStore('chat', () => {
 
     // Actions
     loadMessages,
+    loadInitialMessagePage,
+    loadOlderMessages,
+    loadMessagesAround,
+    loadUserMessageMarkers,
     setMessagesFromSession,
+    setSessionLoading,
     sendMessage,
+    steerMessage,
+    queueFollowUpMessage,
     editAndResend,
     regenerate,
     stopGeneration,

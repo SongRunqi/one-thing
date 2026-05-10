@@ -31,53 +31,71 @@
     </button>
 
     <!-- 下拉菜单 -->
-    <Transition name="dropdown-fade">
-      <div
-        v-if="showMenu"
-        class="allow-menu"
-        @click.stop
-      >
-        <button
-          class="allow-menu-item"
-          :class="{ 'is-default': true }"
-          @click="handleAction('once')"
+    <Teleport to="body">
+      <Transition name="dropdown-fade">
+        <div
+          v-if="showMenu"
+          ref="menuRef"
+          class="allow-menu"
+          :style="menuStyle"
+          @click.stop
         >
-          <span class="menu-label">本次</span>
-          <kbd>⏎</kbd>
-        </button>
-        <button
-          class="allow-menu-item"
-          @click="handleAction('session')"
-        >
-          <span class="menu-label">本会话</span>
-          <kbd>S</kbd>
-        </button>
-        <button
-          class="allow-menu-item"
-          @click="handleAction('workspace')"
-        >
-          <span class="menu-label">本工作区</span>
-          <kbd>W</kbd>
-        </button>
-      </div>
-    </Transition>
+          <button
+            class="allow-menu-item"
+            :class="{ 'is-default': true }"
+            @click="handleAction('once')"
+          >
+            <span class="menu-label">本次</span>
+            <kbd>⏎</kbd>
+          </button>
+          <button
+            class="allow-menu-item"
+            @click="handleAction('session')"
+          >
+            <span class="menu-label">本会话</span>
+            <kbd>S</kbd>
+          </button>
+          <button
+            class="allow-menu-item"
+            @click="handleAction('workdir')"
+          >
+            <span class="menu-label">本工作目录</span>
+            <kbd>W</kbd>
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
-type PermissionResponse = 'once' | 'session' | 'workspace'
+type PermissionResponse = 'once' | 'session' | 'workdir'
 
 const emit = defineEmits<{
   confirm: [response: PermissionResponse]
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
+const menuRef = ref<HTMLElement | null>(null)
 const showMenu = ref(false)
+const menuPosition = ref({ top: 0, left: 0, width: 140 })
+
+const menuStyle = computed(() => ({
+  top: `${menuPosition.value.top}px`,
+  left: `${menuPosition.value.left}px`,
+  minWidth: `${menuPosition.value.width}px`,
+}))
 
 function toggleMenu() {
-  showMenu.value = !showMenu.value
+  if (showMenu.value) {
+    showMenu.value = false
+    return
+  }
+  updateMenuPosition()
+  showMenu.value = true
+  nextTick(updateMenuPosition)
 }
 
 function handleDefaultAction() {
@@ -89,19 +107,48 @@ function handleAction(response: PermissionResponse) {
   showMenu.value = false
 }
 
+function updateMenuPosition() {
+  if (!containerRef.value) return
+  const rect = containerRef.value.getBoundingClientRect()
+  const menuWidth = Math.max(rect.width, 140)
+  const viewportPadding = 8
+  const left = Math.min(
+    Math.max(rect.left, viewportPadding),
+    window.innerWidth - menuWidth - viewportPadding,
+  )
+  menuPosition.value = {
+    top: rect.bottom + 4,
+    left,
+    width: menuWidth,
+  }
+}
+
 // 点击外部关闭菜单
 function handleClickOutside(event: MouseEvent) {
-  if (containerRef.value && !containerRef.value.contains(event.target as Node)) {
+  const target = event.target as Node
+  if (
+    containerRef.value &&
+    !containerRef.value.contains(target) &&
+    !menuRef.value?.contains(target)
+  ) {
     showMenu.value = false
   }
 }
 
+function handleViewportChange() {
+  if (showMenu.value) updateMenuPosition()
+}
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('scroll', handleViewportChange, true)
+  window.addEventListener('resize', handleViewportChange)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('scroll', handleViewportChange, true)
+  window.removeEventListener('resize', handleViewportChange)
 })
 </script>
 
@@ -109,49 +156,50 @@ onUnmounted(() => {
 .allow-split-button {
   display: inline-flex;
   position: relative;
+  height: 26px;
 }
 
 /* 主按钮 */
 .allow-main-btn {
-  padding: 4px 10px;
-  border-radius: 6px 0 0 6px;
-  font-size: 12px;
-  font-weight: 500;
+  padding: 0 10px;
+  border-radius: var(--radius-sm, 8px) 0 0 var(--radius-sm, 8px);
+  font-size: var(--font-size-sm, 12px);
+  font-weight: var(--font-weight-medium, 500);
   cursor: pointer;
-  border: 1px solid rgba(135, 154, 57, 0.3);
+  border: 1px solid color-mix(in srgb, var(--border-success) 28%, transparent);
   border-right: none;
-  background: rgba(135, 154, 57, 0.08);
-  color: var(--text-success, #879A39);
-  transition: all 0.15s ease;
+  background: color-mix(in srgb, var(--color-success) 9%, transparent);
+  color: var(--text-success);
+  transition: all var(--duration-fast, 0.15s) var(--ease-default, ease);
 }
 
 .allow-main-btn:hover {
-  background: rgba(135, 154, 57, 0.15);
-  border-color: rgba(135, 154, 57, 0.5);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  border-color: color-mix(in srgb, var(--border-success) 42%, transparent);
 }
 
 /* 下拉箭头按钮 */
 .allow-dropdown-btn {
-  padding: 4px 6px;
-  border-radius: 0 6px 6px 0;
-  font-size: 12px;
+  padding: 0 6px;
+  border-radius: 0 var(--radius-sm, 8px) var(--radius-sm, 8px) 0;
+  font-size: var(--font-size-sm, 12px);
   cursor: pointer;
-  border: 1px solid rgba(135, 154, 57, 0.3);
-  background: rgba(135, 154, 57, 0.08);
-  color: var(--text-success, #879A39);
-  transition: all 0.15s ease;
+  border: 1px solid color-mix(in srgb, var(--border-success) 28%, transparent);
+  background: color-mix(in srgb, var(--color-success) 9%, transparent);
+  color: var(--text-success);
+  transition: all var(--duration-fast, 0.15s) var(--ease-default, ease);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .allow-dropdown-btn:hover {
-  background: rgba(135, 154, 57, 0.15);
-  border-color: rgba(135, 154, 57, 0.5);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  border-color: color-mix(in srgb, var(--border-success) 42%, transparent);
 }
 
 .is-open .allow-dropdown-btn {
-  background: rgba(135, 154, 57, 0.2);
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
 }
 
 .allow-dropdown-btn svg {
@@ -164,21 +212,13 @@ onUnmounted(() => {
 
 /* 下拉菜单 */
 .allow-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  min-width: 140px;
-  background: var(--panel, #1a1a1d);
-  border: 1px solid var(--border, #333);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  position: fixed;
+  background: var(--bg-menu);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm, 8px);
+  box-shadow: var(--shadow-md);
   z-index: var(--z-modal);
   overflow: hidden;
-}
-
-html[data-theme='light'] .allow-menu {
-  background: #fff;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
 /* 菜单项 */
@@ -190,27 +230,20 @@ html[data-theme='light'] .allow-menu {
   padding: 8px 12px;
   border: none;
   background: transparent;
-  color: var(--text, #e0e0e0);
-  font-size: 13px;
+  color: var(--text-menu-item);
+  font-size: var(--font-size-base, 13px);
   cursor: pointer;
-  transition: background 0.1s ease;
+  transition: background var(--duration-fast, 0.15s) var(--ease-default, ease);
   text-align: left;
 }
 
 .allow-menu-item:hover {
-  background: var(--hover, rgba(255, 255, 255, 0.05));
-}
-
-html[data-theme='light'] .allow-menu-item {
-  color: var(--text, #333);
-}
-
-html[data-theme='light'] .allow-menu-item:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--bg-menu-item-hover);
+  color: var(--text-menu-item-hover);
 }
 
 .allow-menu-item.is-default {
-  color: var(--text-success, #879A39);
+  color: var(--text-success);
 }
 
 .allow-menu-item.is-default::before {
@@ -225,19 +258,13 @@ html[data-theme='light'] .allow-menu-item:hover {
 
 .allow-menu-item kbd {
   display: inline-block;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
+  background: var(--bg-code-inline);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs, 4px);
   padding: 1px 5px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--muted, #888);
-}
-
-html[data-theme='light'] .allow-menu-item kbd {
-  background: rgba(0, 0, 0, 0.06);
-  border-color: rgba(0, 0, 0, 0.1);
-  color: var(--muted, #666);
+  color: var(--text-muted);
 }
 
 /* 过渡动画 */

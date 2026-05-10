@@ -7,7 +7,6 @@ import * as store from '../../store.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '../../../shared/ipc.js'
 import { requiresOAuth } from '../../providers/index.js'
 import { oauthManager } from '../../providers/auth/oauth-manager.js'
-import { getCachedProviderConfig } from '../../stores/sessions.js'
 
 /**
  * Extract detailed error information from API responses
@@ -161,49 +160,18 @@ export interface ResolvedProviderConfig {
 }
 
 /**
- * Get provider config for a chat request with session-level optimization
+ * Get provider config for a chat request.
  *
- * This function prioritizes:
- * 1. Session cached config (fastest, avoids repeated settings lookups)
- * 2. Session lastProvider/lastModel (backward compatibility)
- * 3. Global settings (fallback)
+ * Resolution order:
+ * 1. Session lastProvider/lastModel (per-session override)
+ * 2. Global settings (fallback)
  *
  * Note: API key is always fetched fresh (handles OAuth token refresh)
- *
- * @param sessionId - The session ID
- * @returns Resolved provider config with API key, or null if credentials unavailable
  */
 export async function getProviderConfigForChat(
   sessionId: string
 ): Promise<ResolvedProviderConfig | null> {
   const settings = store.getSettings()
-
-  // 1. Try session cached config first (fastest path)
-  const cached = getCachedProviderConfig(sessionId)
-  if (cached) {
-    const providerConfig = settings.ai.providers[cached.providerId]
-    const apiKey = await getApiKeyForProvider(cached.providerId, providerConfig)
-
-    if (apiKey) {
-      return {
-        providerId: cached.providerId,
-        model: cached.model,
-        apiKey,
-        // Cache is just a perf optimization, not a source of truth — fall back
-        // to the live providerConfig.baseUrl when the cached snapshot is empty.
-        // This matters for custom providers, where the cache may have been
-        // taken before the user filled in the baseUrl, and would otherwise
-        // hard-fail in createCustomProviderInstance with
-        // "Custom provider requires a base URL".
-        baseUrl: cached.baseUrl ?? providerConfig?.baseUrl,
-        localAddress: cached.localAddress ?? providerConfig?.localAddress,
-        temperature: cached.temperature ?? settings.ai.temperature,
-      }
-    }
-    // If API key is missing, fall through to other methods
-  }
-
-  // 2. Try session lastProvider/lastModel (backward compatibility)
   const session = store.getSession(sessionId)
   if (session?.lastProvider && session?.lastModel) {
     const providerConfig = settings.ai.providers[session.lastProvider]

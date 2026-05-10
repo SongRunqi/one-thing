@@ -7,7 +7,41 @@ import type { CommandDefinition } from '@/types/commands'
 /**
  * All registered commands
  */
-const commands: CommandDefinition[] = []
+const commands: CommandDefinition[] = [
+  {
+    id: 'cd',
+    name: 'Change Directory',
+    description: 'Change the working directory for this session',
+    usage: '/cd <path>',
+    async execute(context) {
+      let nextDirectory = context.rawArgs.trim()
+
+      if (!nextDirectory) {
+        const result = await window.electronAPI.showOpenDialog({
+          properties: ['openDirectory'],
+          title: 'Select Working Directory',
+        })
+
+        if (result.canceled || result.filePaths.length === 0) {
+          return { success: false, error: 'No directory selected' }
+        }
+
+        nextDirectory = result.filePaths[0]
+      }
+
+      const result = await window.electronAPI.updateSessionWorkingDirectory(
+        context.sessionId,
+        nextDirectory
+      )
+
+      if (!result.success) {
+        return { success: false, error: result.error || 'Failed to change directory' }
+      }
+
+      return { success: true, message: `Working directory set to ${nextDirectory}` }
+    },
+  },
+]
 
 /**
  * Get all available commands

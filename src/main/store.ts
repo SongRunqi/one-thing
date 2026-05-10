@@ -10,11 +10,6 @@ export {
   getCurrentSessionId,
   setCurrentSessionId,
 
-  // Models cache
-  getCachedModels,
-  setCachedModels,
-  clearModelsCache,
-
   // Sessions
   getSessions,
   getSession,
@@ -42,6 +37,7 @@ export {
   updateStepsUsageByTurn,
   updateSessionModel,
   updateSessionWorkingDirectory,
+  updateSessionVariables,
   inheritSessionWorkingDirectory,
   updateSessionTokenUsage,
   getSessionTokenUsage,
@@ -49,10 +45,9 @@ export {
   getSessionsList,
   getSessionDetails,
   getSessionMessages,
-  getCachedProviderConfig,
-  cacheSessionProviderConfig,
-
-  // Async throttled save
+  getSessionMessagesPage,
+  getSessionUserMessageMarkers,
+  initializeSessionRepositoryIndex,
   flushSessionSave,
   flushAllPendingSaves,
 

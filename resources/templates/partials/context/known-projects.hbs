@@ -1,0 +1,8 @@
+{{#if knownProjects.hasAny}}
+# Known Projects
+{{#each knownProjects.entries}}
+- {{this.displayPath}}{{#if this.description}} — {{this.description}}{{/if}}
+{{/each}}
+
+If a request clearly belongs to one of these directories, switch to it via the variable tool (`set workdir=<path>`) before any file operation. Use `project_dirs get path=<path>` to see prior context for that project.
+{{/if}}

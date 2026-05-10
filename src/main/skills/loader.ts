@@ -13,8 +13,11 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import crypto from 'crypto'
 import { app } from 'electron'
+import { parse as parseYaml } from 'yaml'
 import type { SkillDefinition, SkillFile, SkillSource } from '../../shared/ipc.js'
+import { listPluginSkillRoots, type PluginSkillRoot } from './plugin-roots.js'
 
 // YAML frontmatter parser (simple implementation)
 interface SkillFrontmatter {
@@ -36,6 +39,28 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter | nu
 
   const yamlContent = match[1]
   const body = match[2]
+
+  try {
+    const parsed = parseYaml(yamlContent) as Record<string, unknown> | null
+    if (parsed && typeof parsed === 'object') {
+      const name = typeof parsed.name === 'string' ? parsed.name : ''
+      const description = typeof parsed.description === 'string' ? parsed.description : ''
+      const allowed = parsed['allowed-tools']
+      const allowedTools = Array.isArray(allowed)
+        ? allowed.filter((item): item is string => typeof item === 'string')
+        : undefined
+      return {
+        frontmatter: {
+          name,
+          description,
+          ...(allowedTools ? { 'allowed-tools': allowedTools } : {}),
+        },
+        body,
+      }
+    }
+  } catch (error) {
+    console.warn('[Skills] YAML frontmatter parser failed, falling back to simple parser:', error)
+  }
 
   // Simple YAML parsing for our specific use case
   const frontmatter: Partial<SkillFrontmatter> = {}
@@ -260,6 +285,9 @@ function scanSkillFiles(skillDir: string): SkillFile[] {
           if (EXCLUDED_DIRECTORIES.has(entry.name)) {
             continue
           }
+          if (fs.existsSync(path.join(fullPath, 'SKILL.md'))) {
+            continue
+          }
           scanDir(fullPath, relPath)
         } else if (entry.isFile() && entry.name !== 'SKILL.md') {
           // Skip excluded files
@@ -285,7 +313,17 @@ function scanSkillFiles(skillDir: string): SkillFile[] {
 /**
  * Load a single skill from a directory
  */
-function loadSkillFromDirectory(skillDir: string, source: SkillSource): SkillDefinition | null {
+function skillIdFor(source: SkillSource, name: string, skillDir: string, ownerId?: string): string {
+  if (source !== 'plugin') return `${source}:${name}`
+  const hash = crypto.createHash('sha1').update(path.resolve(skillDir)).digest('hex').slice(0, 10)
+  return ownerId ? `plugin:${ownerId}:${hash}:${name}` : `plugin:${hash}:${name}`
+}
+
+function loadSkillFromDirectory(
+  skillDir: string,
+  source: SkillSource,
+  options: { ownerId?: string } = {},
+): SkillDefinition | null {
   const skillMdPath = path.join(skillDir, 'SKILL.md')
 
   // Check if SKILL.md exists
@@ -307,14 +345,11 @@ function loadSkillFromDirectory(skillDir: string, source: SkillSource): SkillDef
       console.warn(`[Skills] Invalid skill name "${frontmatter.name}": must be lowercase letters, numbers, and hyphens only`)
     }
 
-    // Generate ID from source and name
-    const id = `${source}:${frontmatter.name}`
-
     // Scan for additional files
     const files = scanSkillFiles(skillDir)
 
     const skill: SkillDefinition = {
-      id,
+      id: skillIdFor(source, frontmatter.name, skillDir, options.ownerId),
       name: frontmatter.name,
       description: frontmatter.description,
       allowedTools: frontmatter['allowed-tools'],
@@ -336,41 +371,62 @@ function loadSkillFromDirectory(skillDir: string, source: SkillSource): SkillDef
 /**
  * Load all skills from a directory
  */
-function loadSkillsFromPath(skillsDir: string, source: SkillSource): SkillDefinition[] {
+function isDirectoryEntry(entryPath: string, entry: fs.Dirent): boolean {
+  if (entry.isDirectory()) return true
+  if (!entry.isSymbolicLink()) return false
+  try {
+    return fs.statSync(entryPath).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function loadSkillsFromPath(
+  skillsDir: string,
+  source: SkillSource,
+  options: { recursive?: boolean; ownerId?: string } = {},
+): SkillDefinition[] {
   const skills: SkillDefinition[] = []
 
   if (!fs.existsSync(skillsDir)) {
     return skills
   }
 
-  try {
-    const entries = fs.readdirSync(skillsDir, { withFileTypes: true })
+  const visited = new Set<string>()
 
-    for (const entry of entries) {
-      const fullPath = path.join(skillsDir, entry.name)
+  function scan(containerDir: string): void {
+    let resolved: string
+    try {
+      resolved = fs.realpathSync(containerDir)
+    } catch {
+      resolved = path.resolve(containerDir)
+    }
+    if (visited.has(resolved)) return
+    visited.add(resolved)
 
-      // Check if it's a directory or a symlink pointing to a directory
-      let isDir = entry.isDirectory()
-      if (!isDir && entry.isSymbolicLink()) {
-        try {
-          const stat = fs.statSync(fullPath) // statSync follows symlinks
-          isDir = stat.isDirectory()
-        } catch {
-          // Symlink target doesn't exist, skip
-          continue
-        }
-      }
+    try {
+      const entries = fs.readdirSync(containerDir, { withFileTypes: true })
 
-      if (isDir) {
-        const skill = loadSkillFromDirectory(fullPath, source)
+      for (const entry of entries) {
+        const fullPath = path.join(containerDir, entry.name)
+        if (!isDirectoryEntry(fullPath, entry)) continue
+        if (EXCLUDED_DIRECTORIES.has(entry.name)) continue
+
+        const skill = loadSkillFromDirectory(fullPath, source, { ownerId: options.ownerId })
         if (skill) {
           skills.push(skill)
         }
+
+        if (options.recursive) {
+          scan(fullPath)
+        }
       }
+    } catch (error) {
+      console.error(`[Skills] Error scanning ${containerDir}:`, error)
     }
-  } catch (error) {
-    console.error(`[Skills] Error scanning ${skillsDir}:`, error)
   }
+
+  scan(skillsDir)
 
   return skills
 }
@@ -389,6 +445,72 @@ function loadBuiltinSkills(): SkillDefinition[] {
   const skills = loadSkillsFromPath(builtinPath, 'builtin')
   console.log(`[Skills] Builtin skills path: ${builtinPath}, found ${skills.length} skills:`, skills.map(s => s.name))
 
+  return skills
+}
+
+function loadPluginRootSkills(root: PluginSkillRoot): SkillDefinition[] {
+  const source = root.source ?? 'plugin'
+  const skills = loadSkillsFromPath(root.path, source, {
+    recursive: root.recursive ?? true,
+    ownerId: root.pluginId,
+  })
+  console.log(`[Skills] Plugin root (${root.pluginId}) path: ${root.path}, found ${skills.length} skills:`, skills.map(s => s.name))
+  return skills
+}
+
+function findClaudePluginSkillPaths(): string[] {
+  const marketplacesDir = path.join(os.homedir(), '.claude', 'plugins', 'marketplaces')
+  if (!fs.existsSync(marketplacesDir)) return []
+
+  const roots: string[] = []
+  const visited = new Set<string>()
+  const maxDepth = 7
+
+  function scan(dir: string, depth: number): void {
+    if (depth > maxDepth) return
+    let resolved: string
+    try {
+      resolved = fs.realpathSync(dir)
+    } catch {
+      resolved = path.resolve(dir)
+    }
+    if (visited.has(resolved)) return
+    visited.add(resolved)
+
+    if (path.basename(dir) === 'skills') {
+      roots.push(dir)
+      return
+    }
+
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || EXCLUDED_DIRECTORIES.has(entry.name)) continue
+      const fullPath = path.join(dir, entry.name)
+      if (isDirectoryEntry(fullPath, entry)) {
+        scan(fullPath, depth + 1)
+      }
+    }
+  }
+
+  scan(marketplacesDir, 0)
+  return roots
+}
+
+function loadClaudePluginSkills(): SkillDefinition[] {
+  const skillPaths = findClaudePluginSkillPaths()
+  const skills = skillPaths.flatMap(skillPath => {
+    const ownerId = `claude:${path.relative(path.join(os.homedir(), '.claude', 'plugins'), skillPath)}`
+    const loaded = loadSkillsFromPath(skillPath, 'plugin', { ownerId })
+    console.log(`[Skills] Claude plugin skills path: ${skillPath}, found ${loaded.length} skills:`, loaded.map(s => s.name))
+    return loaded
+  })
+  console.log(`[Skills] Found ${skillPaths.length} Claude plugin skill directories`)
   return skills
 }
 
@@ -440,9 +562,15 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
     console.log(`[Skills] Loaded ${envSkills.length} skills from ${SKILLS_DIR_ENV}:`, envSkills.map(s => s.name))
   }
 
-  // Priority: project > user > env > builtin
+  // 5. Plugin-provided skill roots
+  const pluginSkills = listPluginSkillRoots().flatMap(loadPluginRootSkills)
+
+  // 6. Claude-compatible plugin marketplace skills
+  const claudePluginSkills = loadClaudePluginSkills()
+
+  // Priority: project > plugin > Claude plugin > user > env > builtin
   // Builtin skills can be overridden by user/project skills with the same name
-  const allSkills = [...projectSkills, ...userSkills, ...envSkills, ...builtinSkills]
+  const allSkills = [...projectSkills, ...pluginSkills, ...claudePluginSkills, ...userSkills, ...envSkills, ...builtinSkills]
 
   // Deduplicate by name (first one wins, so higher priority sources take precedence)
   const seenNames = new Set<string>()
@@ -454,7 +582,7 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
     return true
   })
 
-  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${envSkills.length} env skills`)
+  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${pluginSkills.length} plugin, ${claudePluginSkills.length} Claude plugin, ${envSkills.length} env skills`)
   console.log(`[Skills] Total skills (after dedup): ${dedupedSkills.length}, names:`, dedupedSkills.map(s => s.name))
 
   return dedupedSkills
@@ -532,15 +660,20 @@ function getSkillsDirBySource(source: string): string {
   }
 }
 
+function findLoadedSkillById(skillId: string): SkillDefinition | undefined {
+  return loadAllSkills().find(skill => skill.id === skillId)
+}
+
 /**
  * Delete a skill
  */
 export function deleteSkill(skillId: string): boolean {
-  const [source, name] = skillId.split(':')
-  if (!source || !name) return false
+  const skill = findLoadedSkillById(skillId)
+  if (!skill || (skill.source !== 'user' && skill.source !== 'project')) {
+    return false
+  }
 
-  const skillsDir = getSkillsDirBySource(source)
-  const skillDir = path.join(skillsDir, name)
+  const skillDir = skill.directoryPath
 
   if (!fs.existsSync(skillDir)) {
     return false
@@ -560,14 +693,12 @@ export function deleteSkill(skillId: string): boolean {
  * Read a file from a skill directory
  */
 export function readSkillFile(skillId: string, fileName: string): string | null {
-  const [source, name] = skillId.split(':')
-  if (!source || !name) return null
-
-  const skillsDir = getSkillsDirBySource(source)
-  const filePath = path.join(skillsDir, name, fileName)
+  const skill = findLoadedSkillById(skillId)
+  if (!skill) return null
 
   // Security: ensure the path is within the skill directory
-  const skillDir = path.join(skillsDir, name)
+  const skillDir = skill.directoryPath
+  const filePath = path.join(skillDir, fileName)
   const resolvedPath = path.resolve(filePath)
   if (!resolvedPath.startsWith(path.resolve(skillDir))) {
     console.error(`[Skills] Security: attempted to read file outside skill directory`)

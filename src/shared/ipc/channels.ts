@@ -52,6 +52,8 @@ export const IPC_CHANNELS = {
   GET_SESSIONS_LIST: 'sessions:get-list',           // Returns SessionMeta[] only (no messages)
   ACTIVATE_SESSION: 'sessions:activate',            // Mark session as active, return details
   GET_SESSION_MESSAGES: 'sessions:get-messages',    // Returns ChatMessage[] for a session
+  GET_SESSION_MESSAGES_PAGE: 'sessions:get-messages-page', // Returns a cursor-addressed ChatMessage page
+  GET_SESSION_USER_MARKERS: 'sessions:get-user-markers',   // Returns lightweight user-message nav markers
   SESSION_MESSAGES_CHANGED: 'sessions:messages-changed',  // Event: messages added/updated
 
   // Settings related
@@ -62,10 +64,8 @@ export const IPC_CHANNELS = {
   GET_SYSTEM_THEME: 'settings:get-system-theme',
   SYSTEM_THEME_CHANGED: 'settings:system-theme-changed',
 
-  // Models related
-  FETCH_MODELS: 'models:fetch',
-  GET_CACHED_MODELS: 'models:get-cached',
-  // Model registry (OpenRouter-based with capabilities)
+  // Models related (read from settings.json modelRegistry)
+  // Model registry
   GET_MODELS_WITH_CAPABILITIES: 'models:get-with-capabilities',
   GET_ALL_MODELS: 'models:get-all',
   SEARCH_MODELS: 'models:search',
@@ -156,9 +156,39 @@ export const IPC_CHANNELS = {
 
   // File Preview related (for reading file content)
   FILE_READ_CONTENT: 'file:read-content',
+  FILE_SAVE_CONTENT: 'file:save-content',
 
   // Unified event-driven channels (Phase 4)
   SESSION_EVENT: 'session:event',
   SESSION_STREAM: 'session:stream',
   SESSION_COMMAND: 'session:command',
+
+  // Variables subsystem (scalar-only)
+  VARIABLES_LIST: 'variables:list',
+  VARIABLES_SET: 'variables:set',
+  VARIABLES_DELETE: 'variables:delete',
+
+  // Project directories — independent module
+  PROJECT_DIRS_LIST: 'project-dirs:list',
+  PROJECT_DIRS_GET: 'project-dirs:get',
+  PROJECT_DIRS_ADD: 'project-dirs:add',
+  PROJECT_DIRS_UPDATE: 'project-dirs:update',
+  PROJECT_DIRS_REMOVE: 'project-dirs:remove',
+
+  // Plugin management
+  PLUGINS_LIST: 'plugins:list',
+  PLUGINS_ENABLE: 'plugins:enable',
+  PLUGINS_DISABLE: 'plugins:disable',
+  PLUGINS_REFRESH: 'plugins:refresh',
+
+  // App State (restore on startup)
+  GET_APP_STATE: 'app-state:get',
+  SAVE_UI_STATE: 'app-state:save-ui',
+
+  // Search Everywhere
+  SEARCH_WINDOW_TOGGLE: 'search-window:toggle',
+  SEARCH_WINDOW_CLOSE: 'search-window:close',
+  SEARCH_WINDOW_SHOWN: 'search-window:shown',
+  SEARCH_QUERY: 'search:query',
+  SEARCH_EXECUTE_ACTION: 'search:execute-action',
 } as const

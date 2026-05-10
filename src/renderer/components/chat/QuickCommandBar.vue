@@ -44,7 +44,7 @@ const enabledCommands = computed(() => {
     .filter(qc => qc.enabled)
     .map(qc => qc.commandId)
 
-  return availableCommands.filter(cmd => enabledIds.includes(cmd.id))
+  return availableCommands.filter(cmd => enabledIds.includes(cmd.id) && cmd.id !== 'cd')
 })
 
 // Execute a command directly

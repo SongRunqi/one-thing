@@ -13,9 +13,43 @@ import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } fr
 import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge } from './events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
 import { Permission } from './permission/index.js'
+import { bootstrapVariableSystem } from './variables/index.js'
+import { bootstrapProjectDirs } from './project-dirs/index.js'
+import { warmSearchWindow } from './search/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+/**
+ * Refresh model metadata from models.dev on first startup.
+ * Only runs if no model data exists yet for any configured provider.
+ */
+async function refreshModelsOnFirstStartup(): Promise<void> {
+  const { getSettings } = await import('./stores/settings.js')
+  const settings = getSettings()
+  const providers = settings?.ai?.providers
+  if (!providers) return
+
+  // Check if any provider already has models
+  let hasModels = false
+  for (const pid of Object.keys(providers)) {
+    const cfg = providers[pid] as any
+    if (cfg?.models && Object.keys(cfg.models).length > 0) {
+      hasModels = true
+      break
+    }
+  }
+
+  if (hasModels) {
+    console.log('[Models] Model data already exists, skipping first-startup refresh')
+    return
+  }
+
+  console.log('[Models] First startup detected, refreshing model registry...')
+  const { refreshAllProviders } = await import('./providers/model-registry.js')
+  await refreshAllProviders()
+  console.log('[Models] First-startup refresh complete')
+}
 
 // Suppress security warnings in development mode
 // These warnings are expected because Vite HMR requires 'unsafe-eval'
@@ -60,8 +94,25 @@ app.on('ready', async () => {
   // Start template watcher in development mode (hot reload)
   startTemplateWatcher()
 
+  // Bootstrap variable subsystem (registers built-in providers, bridges
+  // change events to EventBus). Must run after EventBus init and before
+  // tool registry so the variable tool finds a populated registry.
+  bootstrapVariableSystem()
+
+  // Bootstrap project-dirs subsystem (independent storage). Order doesn't
+  // matter relative to variables, but must precede tool registry so the
+  // project_dirs tool finds a warm store.
+  bootstrapProjectDirs()
+
   // Initialize tool registry
   await initializeToolRegistry()
+
+  // Bootstrap plugin system (after EventBus + StreamEngine + ToolRegistry)
+  const { bootstrapPluginSystem } = await import('./plugins/index.js')
+  const { getEventBus } = await import('./events/index.js')
+  bootstrapPluginSystem(getEventBus(), getStreamEngine()).catch(err => {
+    console.error('[Plugins] Bootstrap failed (non-blocking):', err)
+  })
 
   // Initialize IPC handlers
   initializeIPC()
@@ -81,9 +132,20 @@ app.on('ready', async () => {
     mainWindow = null
   })
 
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      warmSearchWindow(mainWindow)
+    }
+  }, 1200)
+
   // Initialize MCP system asynchronously (don't block startup)
   initializeMCP().catch(err => {
     console.error('[MCP] Initialization failed (non-blocking):', err)
+  })
+
+  // Refresh model registry on first startup (non-blocking)
+  refreshModelsOnFirstStartup().catch(err => {
+    console.error('[Models] First-startup refresh failed (non-blocking):', err)
   })
 
   // Initialize skills system asynchronously
@@ -109,6 +171,11 @@ app.on('activate', () => {
       getStreamEngineSafe()?.abortAll()
       mainWindow = null
     })
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        warmSearchWindow(mainWindow)
+      }
+    }, 1200)
   }
 })
 

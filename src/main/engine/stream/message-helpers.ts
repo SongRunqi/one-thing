@@ -5,6 +5,7 @@
 
 import type { ChatMessage } from '../../../shared/ipc.js'
 import type { AIMessageContent } from '../../providers/index.js'
+import { getAIToolName } from '../../providers/tool-name-alias.js'
 import { buildSystemPrompt } from '../prompt/index.js'
 
 /**
@@ -159,7 +160,7 @@ export function buildHistoryMessages(
           if (completedToolCalls && completedToolCalls.length > 0) {
             assistantMsg.toolCalls = completedToolCalls.map(tc => ({
               toolCallId: tc.id,
-              toolName: tc.toolName,
+              toolName: getAIToolName(tc.toolId || tc.toolName),
               args: tc.arguments,
             }))
           }
@@ -173,7 +174,7 @@ export function buildHistoryMessages(
               content: completedToolCalls.map(tc => ({
                 type: 'tool-result' as const,
                 toolCallId: tc.id,
-                toolName: tc.toolName,
+                toolName: getAIToolName(tc.toolId || tc.toolName),
                 result: tc.status === 'completed' ? tc.result : { error: tc.error },
               })),
             })
@@ -222,7 +223,7 @@ export function buildHistoryMessages(
       if (completedToolCalls && completedToolCalls.length > 0) {
         assistantMsg.toolCalls = completedToolCalls.map(tc => ({
           toolCallId: tc.id,
-          toolName: tc.toolName,
+          toolName: getAIToolName(tc.toolId || tc.toolName),
           args: tc.arguments,
         }))
       }
@@ -236,7 +237,7 @@ export function buildHistoryMessages(
           content: completedToolCalls.map(tc => ({
             type: 'tool-result' as const,
             toolCallId: tc.id,
-            toolName: tc.toolName,
+            toolName: getAIToolName(tc.toolId || tc.toolName),
             result: tc.status === 'completed' ? tc.result : { error: tc.error },
           })),
         })

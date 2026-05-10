@@ -13,6 +13,12 @@ import { registerMediaHandlers } from './media.js'
 import { registerPermissionHandlers } from './permission.js'
 import { registerOAuthHandlers, cleanupOAuth } from './oauth.js'
 import { registerThemeHandlers, initializeThemeSystem } from './themes.js'
+import { registerVariableHandlers } from '../variables/ipc.js'
+import { registerProjectDirsHandlers } from '../project-dirs/index.js'
+import { registerPluginHandlers } from './plugins.js'
+import { registerFilesHandlers } from './files.js'
+import { registerSearchHandlers } from '../search/index.js'
+import { registerAppStateHandlers } from './app-state.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -28,6 +34,12 @@ export function initializeIPC() {
   registerPermissionHandlers()
   registerOAuthHandlers()
   registerThemeHandlers()
+  registerVariableHandlers()
+  registerProjectDirsHandlers()
+  registerPluginHandlers()
+  registerFilesHandlers()
+  registerSearchHandlers()
+  registerAppStateHandlers()
   registerCommandHandler()
 }
 

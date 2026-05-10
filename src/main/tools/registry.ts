@@ -106,6 +106,7 @@ function toolInfoToDefinition(tool: ToolInfo): ToolDefinition {
     parameters,
     enabled: tool.enabled ?? true,
     autoExecute: tool.autoExecute ?? false,
+    permissionGuard: tool.permissionGuard,
     category: tool.category === 'mcp' ? 'custom' : tool.category,
   }
 }
@@ -143,8 +144,41 @@ function asyncToolToDefinition(tool: ToolInfoAsync): ToolDefinition | null {
     parameters,
     enabled: tool.enabled ?? true,
     autoExecute: tool.autoExecute ?? false,
+    permissionGuard: tool.permissionGuard,
     category: tool.category === 'mcp' ? 'custom' : tool.category,
   }
+}
+
+type PermissionGuard = NonNullable<ToolInfo['permissionGuard']>
+
+const INJECTABLE_PERMISSION_GUARDS = new Set<PermissionGuard>([
+  'safe',
+  'sandboxed',
+  'internal-check',
+  'permission-gated',
+])
+
+const AUTO_EXECUTE_PERMISSION_GUARDS = new Set<PermissionGuard>([
+  'safe',
+  'sandboxed',
+  'internal-check',
+  'permission-gated',
+])
+
+function hasInjectablePermissionGuard(tool: { permissionGuard?: ToolInfo['permissionGuard']; id: string }): boolean {
+  if (tool.permissionGuard && INJECTABLE_PERMISSION_GUARDS.has(tool.permissionGuard)) {
+    return true
+  }
+  console.warn(`[ToolRegistry] Skipping tool without injectable permission guard: ${tool.id}`)
+  return false
+}
+
+function hasAutoExecutePermissionGuard(tool: { permissionGuard?: ToolInfo['permissionGuard']; id: string }): boolean {
+  if (tool.permissionGuard && AUTO_EXECUTE_PERMISSION_GUARDS.has(tool.permissionGuard)) {
+    return true
+  }
+  console.warn(`[ToolRegistry] Refusing autoExecute for tool without safe permission guard: ${tool.id}`)
+  return false
 }
 
 /**
@@ -185,7 +219,7 @@ export async function getEnabledToolsAsync(
   const allTools = await getAllToolsAsync()
   return allTools.filter(t => {
     const settings = toolSettings?.[t.id]
-    return settings?.enabled ?? t.enabled
+    return (settings?.enabled ?? t.enabled) && hasInjectablePermissionGuard(t)
   })
 }
 
@@ -266,7 +300,7 @@ export async function getToolsForAI(toolSettings?: Record<string, { enabled: boo
     const settings = toolSettings?.[tool.id]
     const isEnabled = settings?.enabled ?? tool.enabled !== false
 
-    if (isEnabled) {
+    if (isEnabled && hasInjectablePermissionGuard(tool)) {
       const jsonSchema = zodToJsonSchema(tool.parameters)
       result[tool.id] = {
         description: tool.description,
@@ -284,7 +318,7 @@ export async function getToolsForAI(toolSettings?: Record<string, { enabled: boo
     const settings = toolSettings?.[tool.id]
     const isEnabled = settings?.enabled ?? tool.enabled !== false
 
-    if (isEnabled) {
+    if (isEnabled && hasInjectablePermissionGuard(tool)) {
       if (!tool._initialized) {
         await Tool.initialize(tool, currentInitContext)
       }
@@ -442,12 +476,14 @@ export function canAutoExecute(
 
   const staticTool = toolRegistry.get(toolId)
   if (staticTool) {
-    return settings?.autoExecute ?? staticTool.autoExecute ?? false
+    const requested = settings?.autoExecute ?? staticTool.autoExecute ?? false
+    return requested && hasAutoExecutePermissionGuard(staticTool)
   }
 
   const asyncTool = toolRegistryAsync.get(toolId)
   if (asyncTool) {
-    return settings?.autoExecute ?? asyncTool.autoExecute ?? false
+    const requested = settings?.autoExecute ?? asyncTool.autoExecute ?? false
+    return requested && hasAutoExecutePermissionGuard(asyncTool)
   }
 
   return false

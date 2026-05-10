@@ -1,0 +1,6 @@
+{
+  "name": "log-monitor",
+  "version": "1.0.0",
+  "description": "Real-time agent event logging with disk persistence, daily rotation, and LLM-searchable logs",
+  "author": "onething"
+}

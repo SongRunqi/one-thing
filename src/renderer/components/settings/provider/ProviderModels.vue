@@ -165,75 +165,85 @@
                   :style="popoverStyle"
                   @click.stop
                 >
-                <div class="model-caps-popover-head">
-                  <span>Edit model</span>
-                  <button
-                    type="button"
-                    class="model-caps-close"
-                    title="Close"
-                    @click="closeCapabilityEditor"
-                  >×</button>
-                </div>
-
-                <label class="model-caps-id-label">Model ID</label>
-                <div class="model-caps-id-row">
-                  <input
-                    v-model.trim="modelIdDraft"
-                    class="model-caps-id-input"
-                    type="text"
-                    spellcheck="false"
-                    autocapitalize="off"
-                    autocorrect="off"
-                    @keydown.enter.prevent="commitRename(model.id)"
-                    @keydown.esc.prevent="closeCapabilityEditor"
-                  >
-                  <button
-                    type="button"
-                    class="model-caps-id-save"
-                    :disabled="!modelIdDraft || modelIdDraft === model.id"
-                    @click="commitRename(model.id)"
-                  >Save</button>
-                </div>
-                <p
-                  v-if="renameError"
-                  class="model-caps-id-error"
-                >{{ renameError }}</p>
-
-                <div class="model-caps-section-label">
-                  <span>Capabilities</span>
-                  <button
-                    v-if="hasCapabilityOverride(model.id)"
-                    type="button"
-                    class="model-caps-reset"
-                    @click="onResetCapabilities(model.id)"
-                  >Reset</button>
-                </div>
-                <div
-                  v-for="cap in CAPABILITY_KEYS"
-                  :key="cap.key"
-                  class="model-caps-row"
-                >
-                  <span class="model-caps-row-label">
-                    <component
-                      :is="cap.icon"
-                      :size="12"
-                    />
-                    {{ cap.label }}
-                  </span>
-                  <div class="model-caps-tristate">
+                  <div class="model-caps-popover-head">
+                    <span>Edit model</span>
                     <button
-                      v-for="opt in TRISTATE_OPTIONS"
-                      :key="opt.value === undefined ? 'auto' : String(opt.value)"
                       type="button"
-                      :class="['tristate-btn', { active: getCapabilityState(model.id, cap.key) === opt.value }]"
-                      :title="opt.title"
-                      @click="onUpdateCapability(model.id, cap.key, opt.value)"
-                    >{{ opt.label }}</button>
+                      class="model-caps-close"
+                      title="Close"
+                      @click="closeCapabilityEditor"
+                    >
+                      ×
+                    </button>
                   </div>
-                </div>
-                <p class="model-caps-popover-hint">
-                  Auto = use the bundled models.dev metadata. Override for hand-added models.
-                </p>
+
+                  <label class="model-caps-id-label">Model ID</label>
+                  <div class="model-caps-id-row">
+                    <input
+                      v-model.trim="modelIdDraft"
+                      class="model-caps-id-input"
+                      type="text"
+                      spellcheck="false"
+                      autocapitalize="off"
+                      autocorrect="off"
+                      @keydown.enter.prevent="commitRename(model.id)"
+                      @keydown.esc.prevent="closeCapabilityEditor"
+                    >
+                    <button
+                      type="button"
+                      class="model-caps-id-save"
+                      :disabled="!modelIdDraft || modelIdDraft === model.id"
+                      @click="commitRename(model.id)"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  <p
+                    v-if="renameError"
+                    class="model-caps-id-error"
+                  >
+                    {{ renameError }}
+                  </p>
+
+                  <div class="model-caps-section-label">
+                    <span>Capabilities</span>
+                    <button
+                      v-if="hasCapabilityOverride(model.id)"
+                      type="button"
+                      class="model-caps-reset"
+                      @click="onResetCapabilities(model.id)"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  <div
+                    v-for="cap in CAPABILITY_KEYS"
+                    :key="cap.key"
+                    class="model-caps-row"
+                  >
+                    <span class="model-caps-row-label">
+                      <component
+                        :is="cap.icon"
+                        :size="12"
+                      />
+                      {{ cap.label }}
+                    </span>
+                    <div class="model-caps-tristate">
+                      <button
+                        v-for="opt in TRISTATE_OPTIONS"
+                        :key="opt.value === undefined ? 'auto' : String(opt.value)"
+                        type="button"
+                        :class="['tristate-btn', { active: getCapabilityState(model.id, cap.key) === opt.value }]"
+                        :title="opt.title"
+                        @click="onUpdateCapability(model.id, cap.key, opt.value)"
+                      >
+                        {{ opt.label }}
+                      </button>
+                    </div>
+                  </div>
+                  <p class="model-caps-popover-hint">
+                    Auto = use the bundled models.dev metadata. Override for hand-added models.
+                  </p>
                 </div>
               </Teleport>
               <span

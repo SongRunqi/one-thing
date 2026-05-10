@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { TokenUsage, SessionTokenUsage } from '../../shared/ipc.js'
 import * as store from '../store.js'
+import { workdirGateway } from '../variables/gateways.js'
 
 /**
  * Update session usage (called from chat.ts when finish chunk is received)
@@ -96,6 +97,43 @@ export function registerSessionHandlers() {
     }
   })
 
+  // 获取会话消息分页（当前由 JSON 存储切片实现，后续切换为 SQLite cursor 查询）
+  ipcMain.handle(IPC_CHANNELS.GET_SESSION_MESSAGES_PAGE, async (_event, request) => {
+    const start = performance.now()
+    try {
+      const response = store.getSessionMessagesPage(request)
+      console.info('[Perf][SessionPage][ipc]', {
+        sessionId: request.sessionId,
+        totalMs: Math.round(performance.now() - start),
+        messages: response.messages?.length ?? 0,
+        success: response.success,
+      })
+      return response
+    } catch (error: any) {
+      console.error('[Sessions] Failed to get session messages page:', error)
+      console.info('[Perf][SessionPage][ipc]', {
+        sessionId: request.sessionId,
+        totalMs: Math.round(performance.now() - start),
+        failed: true,
+      })
+      return { success: false, error: error.message || 'Failed to get message page' }
+    }
+  })
+
+  // 获取用户消息导航标记（轻量数据，不返回完整消息体）
+  ipcMain.handle(IPC_CHANNELS.GET_SESSION_USER_MARKERS, async (_event, { sessionId }) => {
+    try {
+      const markers = store.getSessionUserMessageMarkers(sessionId)
+      if (!markers) {
+        return { success: false, error: 'Session not found' }
+      }
+      return { success: true, markers }
+    } catch (error: any) {
+      console.error('[Sessions] Failed to get user message markers:', error)
+      return { success: false, error: error.message || 'Failed to get user markers' }
+    }
+  })
+
   // 创建新会话
   ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name }) => {
     const sessionId = uuidv4()
@@ -153,9 +191,11 @@ export function registerSessionHandlers() {
 
   // 更新会话工作目录 (sandbox boundary)
   ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY, async (_event, { sessionId, workingDirectory }) => {
-    // 如果是清除目录，直接执行
+    // 如果是清除目录，直接执行（跳过 fs.stat；空字符串清空合法）
     if (workingDirectory === null || workingDirectory === '') {
-      store.updateSessionWorkingDirectory(sessionId, workingDirectory)
+      // Cast: gateway expects a string for the path, but accepts ''
+      // semantics through the underlying store mutator.
+      await workdirGateway.write(sessionId, workingDirectory ?? '')
       return { success: true }
     }
 
@@ -169,7 +209,7 @@ export function registerSessionHandlers() {
       return { success: false, error: `Directory does not exist: ${workingDirectory}` }
     }
 
-    store.updateSessionWorkingDirectory(sessionId, workingDirectory)
+    await workdirGateway.write(sessionId, workingDirectory)
     return { success: true }
   })
 

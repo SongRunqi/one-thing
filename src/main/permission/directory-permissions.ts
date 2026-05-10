@@ -1,9 +1,9 @@
 /**
- * Workspace Permission Storage
+ * Working Directory Permission Storage
  *
- * Handles persistent storage of workspace-level permissions.
+ * Handles persistent storage of working-directory-level permissions.
  * Permissions are stored per working directory, allowing permanent
- * approval of patterns within a specific workspace.
+ * approval of patterns within a specific working directory.
  */
 
 import path from 'path'
@@ -22,43 +22,52 @@ interface StoredPermission {
 }
 
 /**
- * Workspace permissions data structure
+ * Working directory permissions data structure
  */
-interface WorkspacePermissionsData {
+interface WorkingDirectoryPermissionsData {
   workingDirectory: string
   permissions: StoredPermission[]
   updatedAt: number
 }
 
-// In-memory cache of workspace permissions
+// In-memory cache of working directory permissions
 const cache = new Map<string, Map<string, boolean>>()
 
 /**
  * Get a stable hash for a working directory path
  */
-function getWorkspaceHash(workingDirectory: string): string {
+function getWorkingDirectoryHash(workingDirectory: string): string {
   // Normalize path and create hash
   const normalized = path.normalize(workingDirectory).toLowerCase()
   return crypto.createHash('md5').update(normalized).digest('hex').substring(0, 12)
 }
 
 /**
- * Get the storage path for a workspace's permissions
+ * Get the storage path for a working directory's permissions
  */
 function getStoragePath(workingDirectory: string): string {
-  const hash = getWorkspaceHash(workingDirectory)
+  const hash = getWorkingDirectoryHash(workingDirectory)
+  return path.join(getPermissionsDir(), `workdir-${hash}.json`)
+}
+
+function getLegacyStoragePath(workingDirectory: string): string {
+  const hash = getWorkingDirectoryHash(workingDirectory)
   return path.join(getPermissionsDir(), `workspace-${hash}.json`)
 }
 
 /**
- * Load permissions for a workspace from disk
+ * Load permissions for a working directory from disk
  */
-function loadWorkspacePermissions(workingDirectory: string): Map<string, boolean> {
+function loadWorkingDirectoryPermissions(workingDirectory: string): Map<string, boolean> {
   const cached = cache.get(workingDirectory)
   if (cached) return cached
 
   const storagePath = getStoragePath(workingDirectory)
-  const data = readJsonFile<WorkspacePermissionsData | null>(storagePath, null)
+  const legacyStoragePath = getLegacyStoragePath(workingDirectory)
+  const data = readJsonFile<WorkingDirectoryPermissionsData | null>(
+    storagePath,
+    readJsonFile<WorkingDirectoryPermissionsData | null>(legacyStoragePath, null),
+  )
 
   const permissions = new Map<string, boolean>()
   if (data?.permissions) {
@@ -72,9 +81,9 @@ function loadWorkspacePermissions(workingDirectory: string): Map<string, boolean
 }
 
 /**
- * Save permissions for a workspace to disk
+ * Save permissions for a working directory to disk
  */
-function saveWorkspacePermissions(workingDirectory: string, permissions: Map<string, boolean>): void {
+function saveWorkingDirectoryPermissions(workingDirectory: string, permissions: Map<string, boolean>): void {
   ensureDir(getPermissionsDir())
 
   const storedPermissions: StoredPermission[] = []
@@ -86,7 +95,7 @@ function saveWorkspacePermissions(workingDirectory: string, permissions: Map<str
     })
   }
 
-  const data: WorkspacePermissionsData = {
+  const data: WorkingDirectoryPermissionsData = {
     workingDirectory,
     permissions: storedPermissions,
     updatedAt: Date.now(),
@@ -97,12 +106,12 @@ function saveWorkspacePermissions(workingDirectory: string, permissions: Map<str
 }
 
 /**
- * Check if a pattern is approved for a workspace
+ * Check if a pattern is approved for a working directory
  */
-export function isApprovedInWorkspace(workingDirectory: string, pattern: string): boolean {
+export function isApprovedInWorkingDirectory(workingDirectory: string, pattern: string): boolean {
   if (!workingDirectory) return false
 
-  const permissions = loadWorkspacePermissions(workingDirectory)
+  const permissions = loadWorkingDirectoryPermissions(workingDirectory)
 
   // Direct match
   if (permissions.has(pattern)) return true
@@ -116,12 +125,12 @@ export function isApprovedInWorkspace(workingDirectory: string, pattern: string)
 }
 
 /**
- * Check if all patterns are approved for a workspace
+ * Check if all patterns are approved for a working directory
  */
-export function areAllApprovedInWorkspace(workingDirectory: string, patterns: string[]): boolean {
+export function areAllApprovedInWorkingDirectory(workingDirectory: string, patterns: string[]): boolean {
   if (!workingDirectory) return false
 
-  const permissions = loadWorkspacePermissions(workingDirectory)
+  const permissions = loadWorkingDirectoryPermissions(workingDirectory)
 
   return patterns.every(pattern => {
     // Direct match
@@ -137,15 +146,15 @@ export function areAllApprovedInWorkspace(workingDirectory: string, patterns: st
 }
 
 /**
- * Approve a pattern in a workspace
+ * Approve a pattern in a working directory
  */
-export function approveInWorkspace(workingDirectory: string, pattern: string | string[]): void {
+export function approveInWorkingDirectory(workingDirectory: string, pattern: string | string[]): void {
   if (!workingDirectory) {
-    console.warn('[WorkspacePermissions] Cannot approve without workingDirectory')
+    console.warn('[DirectoryPermissions] Cannot approve without workingDirectory')
     return
   }
 
-  const permissions = loadWorkspacePermissions(workingDirectory)
+  const permissions = loadWorkingDirectoryPermissions(workingDirectory)
   const patterns = Array.isArray(pattern) ? pattern : [pattern]
 
   for (const p of patterns) {
@@ -153,54 +162,54 @@ export function approveInWorkspace(workingDirectory: string, pattern: string | s
   }
 
   cache.set(workingDirectory, permissions)
-  saveWorkspacePermissions(workingDirectory, permissions)
+  saveWorkingDirectoryPermissions(workingDirectory, permissions)
 
-  console.log('[WorkspacePermissions] Approved patterns in workspace:', patterns, workingDirectory)
+  console.log('[DirectoryPermissions] Approved patterns in working directory:', patterns, workingDirectory)
 }
 
 /**
- * Remove a pattern approval from a workspace
+ * Remove a pattern approval from a working directory
  */
-export function revokeInWorkspace(workingDirectory: string, pattern: string): void {
+export function revokeInWorkingDirectory(workingDirectory: string, pattern: string): void {
   if (!workingDirectory) return
 
-  const permissions = loadWorkspacePermissions(workingDirectory)
+  const permissions = loadWorkingDirectoryPermissions(workingDirectory)
   permissions.delete(pattern)
 
   cache.set(workingDirectory, permissions)
-  saveWorkspacePermissions(workingDirectory, permissions)
+  saveWorkingDirectoryPermissions(workingDirectory, permissions)
 
-  console.log('[WorkspacePermissions] Revoked pattern in workspace:', pattern, workingDirectory)
+  console.log('[DirectoryPermissions] Revoked pattern in working directory:', pattern, workingDirectory)
 }
 
 /**
- * Get all approved patterns for a workspace
+ * Get all approved patterns for a working directory
  */
 export function getApprovedPatterns(workingDirectory: string): string[] {
   if (!workingDirectory) return []
 
-  const permissions = loadWorkspacePermissions(workingDirectory)
+  const permissions = loadWorkingDirectoryPermissions(workingDirectory)
   return Array.from(permissions.keys())
 }
 
 /**
- * Clear all permissions for a workspace
+ * Clear all permissions for a working directory
  */
-export function clearWorkspacePermissions(workingDirectory: string): void {
+export function clearWorkingDirectoryPermissions(workingDirectory: string): void {
   if (!workingDirectory) return
 
   cache.delete(workingDirectory)
 
   const storagePath = getStoragePath(workingDirectory)
   // Write empty permissions
-  const data: WorkspacePermissionsData = {
+  const data: WorkingDirectoryPermissionsData = {
     workingDirectory,
     permissions: [],
     updatedAt: Date.now(),
   }
   writeJsonFile(storagePath, data)
 
-  console.log('[WorkspacePermissions] Cleared all permissions for workspace:', workingDirectory)
+  console.log('[DirectoryPermissions] Cleared all permissions for working directory:', workingDirectory)
 }
 
 /**
@@ -218,6 +227,14 @@ function matchWildcard(text: string, pattern: string): boolean {
   if (pattern.endsWith('*')) {
     const prefix = pattern.slice(0, -1)
     return text.startsWith(prefix)
+  }
+  // Compatibility: older file-edit/write approvals were persisted as the
+  // concrete file path. New requests use the containing directory wildcard
+  // ("/dir/*"), so treat an old approved file in that directory as approval
+  // for the upgraded directory-scoped request.
+  if (text.endsWith('*') && path.isAbsolute(text) && path.isAbsolute(pattern)) {
+    const dir = text.slice(0, -1).replace(/[\\/]$/, '')
+    return path.dirname(pattern) === dir
   }
   return false
 }

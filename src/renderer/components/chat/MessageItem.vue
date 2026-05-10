@@ -38,8 +38,6 @@
     >
       <div
         class="message-content-wrapper"
-        @mouseenter="showActions = true"
-        @mouseleave="handleMouseLeave"
       >
         <!-- Thinking/Waiting status -->
         <MessageThinking
@@ -120,9 +118,11 @@
         />
 
         <!-- Message footer -->
-        <div class="message-footer">
+        <div
+          class="message-footer"
+          data-message-footer
+        >
           <div
-            v-if="message.role !== 'user'"
             class="meta"
           >
             {{ formatTime(message.timestamp) }}
@@ -130,7 +130,8 @@
           <MessageActions
             :role="message.role"
             :content="message.content"
-            :visible="showActions"
+            :visible="true"
+            :is-streaming="message.isStreaming || false"
             :branches="branches"
             :usage="message.usage"
             :model="message.model"
@@ -139,7 +140,6 @@
             @regenerate="handleRegenerate"
             @branch="handleBranch"
             @go-to-branch="handleGoToBranch"
-            @menu-open="handleMenuOpen"
           />
         </div>
       </div>
@@ -188,37 +188,14 @@ const emit = defineEmits<{
   goToBranch: [sessionId: string]
   quote: [quotedText: string]
   executeTool: [toolCall: ToolCall]
-  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always']
+  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
   rejectTool: [toolCall: ToolCall]
   updateThinkingTime: [messageId: string, thinkingTime: number]
 }>()
 
 // UI State
-const showActions = ref(false)
-const menuIsOpen = ref(false)  // Track if a dropdown menu is open
 const isEditing = ref(false)
 const editContent = ref('')
-
-// Handle mouse leave - don't hide actions if a menu is open
-function handleMouseLeave(event: MouseEvent) {
-  // Don't hide actions if a menu is currently open
-  if (menuIsOpen.value) return
-
-  const relatedTarget = event.relatedTarget as HTMLElement | null
-  // Check if mouse is moving to a teleported menu (more-menu or branch-menu)
-  if (relatedTarget?.closest('.more-menu') || relatedTarget?.closest('.branch-menu')) {
-    return // Don't hide actions
-  }
-  showActions.value = false
-}
-
-// Handle menu open/close events from MessageActions
-function handleMenuOpen(isOpen: boolean) {
-  menuIsOpen.value = isOpen
-  if (isOpen) {
-    showActions.value = true
-  }
-}
 
 // Image preview state
 const previewVisible = ref(false)
@@ -235,7 +212,7 @@ const isHighlighted = computed(() => props.isHighlighted || false)
 // Check if message is loading memory (has loading-memory contentPart)
 const isLoadingMemory = computed(() => {
   if (!props.message.contentParts) return false
-  return props.message.contentParts.some(part => (part.type as string) === 'loading-memory')
+  return props.message.contentParts.some(part => part.type === 'loading-memory')
 })
 
 // Format time
@@ -315,7 +292,7 @@ function handleToolExecute(toolCall: ToolCall) {
   emit('executeTool', toolCall)
 }
 
-function handleToolConfirm(toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always') {
+function handleToolConfirm(toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always') {
   emit('confirmTool', toolCall, response)
 }
 
@@ -364,8 +341,7 @@ onUnmounted(() => {
 <style scoped>
 /* Wrapper for TransitionGroup compatibility */
 .message-item-wrapper {
-  width: 91%;
-  margin: 0 auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -432,6 +408,7 @@ onUnmounted(() => {
   align-items: center;
   margin-top: 6px;
   padding: 0 4px;
+  min-height: 28px;
 }
 
 /* User messages: position actions at bottom-right */
@@ -452,8 +429,10 @@ onUnmounted(() => {
 
 .meta {
   font-size: 12px;
+  line-height: 28px;
   color: var(--muted);
   user-select: none;
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes fadeIn {

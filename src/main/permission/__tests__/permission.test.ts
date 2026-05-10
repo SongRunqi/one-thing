@@ -6,14 +6,14 @@ vi.mock('uuid', () => ({
   v4: vi.fn(() => `test-uuid-${++uuidCounter}`),
 }))
 
-// Mock workspace permissions
+// Mock working directory permissions
 vi.mock('../directory-permissions.js', () => ({
-  areAllApprovedInWorkspace: vi.fn(() => false),
-  approveInWorkspace: vi.fn(),
+  areAllApprovedInWorkingDirectory: vi.fn(() => false),
+  approveInWorkingDirectory: vi.fn(),
 }))
 
 import { Permission } from '../index'
-import * as WorkspacePermissions from '../directory-permissions.js'
+import * as DirectoryPermissions from '../directory-permissions.js'
 
 describe('Permission', () => {
   beforeEach(async () => {
@@ -59,8 +59,8 @@ describe('Permission', () => {
   // ─── ask() ─────────────────────────────────────────────────────────
 
   describe('ask()', () => {
-    it('should auto-approve when workspace-level permission exists', async () => {
-      vi.mocked(WorkspacePermissions.areAllApprovedInWorkspace).mockReturnValueOnce(true)
+    it('should auto-approve when working-directory permission exists', async () => {
+      vi.mocked(DirectoryPermissions.areAllApprovedInWorkingDirectory).mockReturnValueOnce(true)
 
       await Permission.ask({
         type: 'bash',
@@ -322,8 +322,11 @@ describe('Permission', () => {
       expect(Permission.getPending('session-level-session')).toHaveLength(0)
     })
 
-    it('should handle workspace-level permission and auto-approve matching', async () => {
-      vi.mocked(WorkspacePermissions.areAllApprovedInWorkspace).mockReturnValue(true)
+    it('should handle working-directory permission and auto-approve matching', async () => {
+      vi.mocked(DirectoryPermissions.areAllApprovedInWorkingDirectory)
+        .mockReturnValueOnce(false)
+        .mockReturnValueOnce(false)
+        .mockReturnValue(true)
 
       const ask1 = Permission.ask({
         type: 'bash',
@@ -345,8 +348,20 @@ describe('Permission', () => {
         workingDirectory: '/workspace',
       })
 
+      const pending = Permission.getPending('ws-level-session')
+      expect(pending).toHaveLength(2)
+
+      Permission.respond({
+        sessionId: 'ws-level-session',
+        permissionId: pending[0].id,
+        response: 'workdir',
+      })
+
       await ask1
       await ask2
+
+      expect(DirectoryPermissions.approveInWorkingDirectory).toHaveBeenCalledWith('/workspace', ['bash:run'])
+      expect(Permission.getPending('ws-level-session')).toHaveLength(0)
     })
 
     it('should normalize legacy "always" response to "session"', async () => {

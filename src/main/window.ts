@@ -338,8 +338,9 @@ export function createWindow() {
     show: false,
     transparent: isMac,
     backgroundColor: isMac ? undefined : backgroundColor,
-    // Use hidden title bar on macOS to keep traffic lights
-    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    // Use a full-size content view so renderer drag regions work around
+    // the traffic lights and toolbar buttons.
+    titleBarStyle: isMac ? 'hidden' : 'default',
     // Position traffic lights - in sidebar header area
     trafficLightPosition: isMac ? { x: 16, y: 17 } : undefined,
     webPreferences: {

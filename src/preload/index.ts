@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS, AIProvider, MessageAttachment } from '../shared/ipc.js'
-import type { UIMessageStreamData } from '../shared/ipc.js'
+import type { GetSessionMessagesPageRequest, UIMessageStreamData } from '../shared/ipc.js'
 
 const electronAPI = {
   // Stream event listeners
@@ -16,6 +16,7 @@ const electronAPI = {
     argsTextDelta?: string;
   }) => void) => {
     const listener = (_event: any, chunk: any) => callback(chunk)
+    // ipcRenderer.on 接收main进程的消息
     ipcRenderer.on(IPC_CHANNELS.STREAM_CHUNK, listener)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.STREAM_CHUNK, listener)
   },
@@ -89,6 +90,7 @@ const electronAPI = {
   },
 
   emitCommand: (sessionId: string, command: any) =>
+      // 给main线程发送消息
     ipcRenderer.invoke(IPC_CHANNELS.SESSION_COMMAND, { sessionId, command }),
 
   // ── Legacy streaming methods ────────────────────
@@ -141,6 +143,34 @@ const electronAPI = {
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY, { sessionId, workingDirectory }),
 
+  // ── Variables subsystem ─────────────────────────────────────
+  // Live updates arrive through the existing session:variables-updated
+  // event; these RPCs are for explicit fetches and writes.
+  listVariables: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_LIST, { sessionId }),
+
+  setVariable: (sessionId: string, name: string, value: string, description?: string, scope?: 'global' | 'session') =>
+    ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_SET, { sessionId, name, value, description, scope }),
+
+  deleteVariable: (sessionId: string, name: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_DELETE, { sessionId, name }),
+
+  // Project directories — independent module
+  projectDirsList: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_LIST),
+
+  projectDirsGet: (path: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_GET, { path }),
+
+  projectDirsAdd: (path: string, description?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_ADD, { path, description }),
+
+  projectDirsUpdate: (path: string, description: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_UPDATE, { path, description }),
+
+  projectDirsRemove: (path: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_REMOVE, { path }),
+
   getSessionTokenUsage: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, sessionId),
 
@@ -180,6 +210,14 @@ const electronAPI = {
   // Get session messages (on-demand loading) - only when messages need to be displayed
   getSessionMessages: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_MESSAGES, { sessionId }),
+
+  // Get a cursor-addressed page of session messages
+  getSessionMessagesPage: (request: GetSessionMessagesPageRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_MESSAGES_PAGE, request),
+
+  // Get lightweight user-message markers for navigation
+  getSessionUserMarkers: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_USER_MARKERS, { sessionId }),
 
   // Listen for messages changed event (for real-time sync)
   onSessionMessagesChanged: (callback: (data: { sessionId: string; action: 'added' | 'updated' | 'deleted'; messageId?: string }) => void) => {
@@ -243,14 +281,7 @@ const electronAPI = {
   openThemesFolder: () =>
     ipcRenderer.invoke(IPC_CHANNELS.THEME_OPEN_FOLDER),
 
-  // Models methods (legacy)
-  fetchModels: (provider: AIProvider, apiKey: string, baseUrl?: string, forceRefresh?: boolean) =>
-    ipcRenderer.invoke(IPC_CHANNELS.FETCH_MODELS, { provider, apiKey, baseUrl, forceRefresh }),
-
-  getCachedModels: (provider: AIProvider) =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_CACHED_MODELS, { provider }),
-
-  // Model registry methods (OpenRouter-based with capabilities)
+  // Model registry methods (reads from settings.json modelRegistry)
   getModelsWithCapabilities: (providerId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_MODELS_WITH_CAPABILITIES, { providerId }),
 
@@ -333,8 +364,8 @@ const electronAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.MCP_READ_CONFIG_FILE, { filePath }),
 
   // Skills methods (Official Claude Code Skills)
-  getSkills: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_GET_ALL),
+  getSkills: (workingDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SKILLS_GET_ALL, { workingDirectory }),
 
   refreshSkills: () =>
     ipcRenderer.invoke(IPC_CHANNELS.SKILLS_REFRESH),
@@ -424,7 +455,7 @@ const electronAPI = {
   respondToPermission: (request: {
     sessionId: string
     permissionId: string
-    response: 'once' | 'session' | 'workspace' | 'reject' | 'always'
+    response: 'once' | 'session' | 'workdir' | 'workspace' | 'reject' | 'always'
     rejectReason?: string
   }) => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_RESPOND, request),
 
@@ -495,9 +526,60 @@ const electronAPI = {
   listDirs: (options: { basePath: string; query?: string; limit?: number }) =>
     ipcRenderer.invoke(IPC_CHANNELS.DIRS_LIST, options),
 
-  // File content reading (for file preview panel)
+  // File content reading/writing (for file preview panel)
   readFileContent: (filePath: string, maxSize?: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_CONTENT, { path: filePath, maxSize }),
+  saveFileContent: (filePath: string, content: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_SAVE_CONTENT, { path: filePath, content }),
+
+  // ── Plugin management ───────────────────────────
+  getPlugins: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_LIST),
+
+  enablePlugin: (pluginId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_ENABLE, { pluginId }),
+
+  disablePlugin: (pluginId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_DISABLE, { pluginId }),
+
+  refreshPlugins: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REFRESH),
+
+  // ── App State (restore on startup) ─────────────
+  getAppState: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_APP_STATE),
+
+  saveUIState: (uiState: {
+    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; title?: string }>
+    activeTabIndex?: number
+    sidebarCollapsed?: boolean
+  }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SAVE_UI_STATE, uiState),
+
+  // ── Search Everywhere ──────────────────────────
+  toggleSearchWindow: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_TOGGLE),
+
+  closeSearchWindow: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_CLOSE),
+
+  onSearchWindowShown: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on(IPC_CHANNELS.SEARCH_WINDOW_SHOWN, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_WINDOW_SHOWN, listener)
+  },
+
+  searchQuery: (req: { query: string; category: string; limit?: number }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_QUERY, req),
+
+  searchExecuteAction: (actionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH_EXECUTE_ACTION, actionId),
+
+  onSearchAction: (callback: (actionId: string) => void) => {
+    const listener = (_event: any, actionId: string) => callback(actionId)
+    ipcRenderer.on('search:action', listener)
+    return () => ipcRenderer.removeListener('search:action', listener)
+  },
 
 }
 

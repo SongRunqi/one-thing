@@ -1,4 +1,4 @@
-# 0neThing
+# onething
 
 > A powerful AI chat desktop app with multi-provider support, built-in tools, and intelligent memory.
 
@@ -7,9 +7,9 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-## What is 0neThing?
+## What is onething?
 
-0neThing is an Electron-based desktop application that brings together multiple AI providers (OpenAI, Claude, DeepSeek, Gemini, etc.) with a powerful tool execution system and semantic memory. Think of it as a local AI assistant that can remember context, execute commands, and work with your filesystem—all within a clean, customizable interface.
+onething is an Electron-based desktop application that brings together multiple AI providers (OpenAI, Claude, DeepSeek, Gemini, etc.) with a powerful tool execution system and semantic memory. Think of it as a local AI assistant that can remember context, execute commands, and work with your filesystem—all within a clean, customizable interface.
 
 ## Key Features
 
@@ -82,7 +82,7 @@ The GitHub Actions workflow will automatically build and create a draft release.
 
 ## Architecture
 
-0neThing follows Electron's three-process model:
+onething follows Electron's three-process model:
 
 - **Main Process** - Node.js backend with SQLite storage, AI providers, tool execution, and memory management
 - **Renderer Process** - Vue 3 frontend with Pinia state management

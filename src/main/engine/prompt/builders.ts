@@ -14,6 +14,7 @@ import type {
   SystemPromptVariables,
   SkillsVariables,
   TemplateSkill,
+  PromptSegment,
 } from './types.js'
 
 /**
@@ -41,7 +42,10 @@ export function buildSystemPrompt(options: {
   skills: SkillDefinition[]
   workspaceSystemPrompt?: string
   workingDirectory?: string
-}): string {
+  contextVariables?: string
+  activeProject?: import('./types.js').PromptActiveProject
+  knownProjects?: import('./types.js').PromptKnownProjects
+}): { text: string; segments: PromptSegment[] } {
   const pm = getPromptManager()
   const baseDir = os.homedir()
 
@@ -67,12 +71,15 @@ export function buildSystemPrompt(options: {
     displayPath,
     baseDirectory: baseDir,
     osType,
+    contextVariables: options.contextVariables?.trim(),
+    activeProject: options.activeProject ?? { hasActive: false },
+    knownProjects: options.knownProjects ?? { hasAny: false, entries: [] },
     skills: transformSkills(options.skills),
     macosAutomationDocsPath,
     toolUsageDocsPath,
   }
 
-  return pm.render('main/system-prompt', variables)
+  return pm.renderWithSegments('main/system-prompt', variables)
 }
 
 /**

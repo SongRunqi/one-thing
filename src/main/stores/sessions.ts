@@ -6,6 +6,10 @@ import type {
   ContentPart,
   SessionMeta,
   SessionDetails,
+  ContextVariable,
+  GetSessionMessagesPageRequest,
+  GetSessionMessagesPageResponse,
+  UserMessageMarker,
 } from '../../shared/ipc.js'
 import {
   getSessionsDir,
@@ -19,6 +23,24 @@ import { getCurrentSessionId, setCurrentSessionId } from './app-state.js'
 import { getSettings } from './settings.js'
 import { expandPath } from '../tools/core/sandbox.js'
 import { LRUCache } from './lru-cache.js'
+import {
+  getMessagesPageFromArray,
+  getUserMessageMarkersFromArray,
+} from './session-repository/pagination.js'
+import { getMessagesPageFromJsonFile } from './session-repository/json-message-page.js'
+import {
+  deleteSqliteSessions,
+  getSqliteMessagesPage,
+  getSqliteUserMessageMarkers,
+  importSessionIndexToSqlite,
+  isSqliteSessionReady,
+  scheduleSessionSqliteMigration,
+  syncFullSessionToSqlite,
+  syncSqliteMessage,
+  syncSqliteSessionMetadata,
+  syncSqliteSessionUsage,
+  syncSqliteSessionVariables,
+} from './session-repository/sqlite-repository.js'
 
 // ============ Session 内存缓存 (LRU) ============
 // Keep only the 10 most recently accessed sessions in memory
@@ -298,20 +320,24 @@ export function getSessionsList(): SessionMeta[] {
   return loadSessionsIndex()
 }
 
+export function initializeSessionRepositoryIndex(): void {
+  importSessionIndexToSqlite(loadSessionsIndex())
+}
+
 /**
  * Get session details without messages
  * Used for session activation before loading messages
  */
 export function getSessionDetails(sessionId: string): SessionDetails | undefined {
+  const meta = loadSessionsIndex().find(session => session.id === sessionId)
+  if (meta) return meta
+
+  // Fallback for a missing/stale index entry. This path may read the full
+  // legacy JSON file, but normal session switching stays metadata-only.
   const session = getSession(sessionId)
   if (!session) return undefined
-
-  // Extract details (everything except messages)
   const { messages, ...details } = session
-  return {
-    ...details,
-    messageCount: messages.length,
-  }
+  return { ...details, messageCount: messages.length }
 }
 
 /**
@@ -321,6 +347,68 @@ export function getSessionDetails(sessionId: string): SessionDetails | undefined
 export function getSessionMessages(sessionId: string): ChatMessage[] | undefined {
   const session = getSession(sessionId)
   return session?.messages
+}
+
+/**
+ * Get a cursor-addressed page of session messages.
+ *
+ * This JSON-backed implementation intentionally preserves the existing storage
+ * path while establishing the page contract that SQLite will implement
+ * directly. It still reads the full legacy session file internally.
+ */
+export function getSessionMessagesPage(
+  request: GetSessionMessagesPageRequest
+): GetSessionMessagesPageResponse {
+  const start = performance.now()
+  const sqlitePage = getSqliteMessagesPage(request)
+  if (sqlitePage) {
+    console.info('[Perf][SessionPage][main]', {
+      sessionId: request.sessionId,
+      source: 'sqlite',
+      totalMs: Math.round(performance.now() - start),
+      messages: sqlitePage.messages?.length ?? 0,
+      success: sqlitePage.success,
+    })
+    return sqlitePage
+  }
+
+  const fastPage = getMessagesPageFromJsonFile(request)
+  if (fastPage) {
+    scheduleSessionSqliteMigration(request.sessionId)
+    console.info('[Perf][SessionPage][main]', {
+      sessionId: request.sessionId,
+      source: 'json-byte-scan',
+      totalMs: Math.round(performance.now() - start),
+      messages: fastPage.messages?.length ?? 0,
+      success: fastPage.success,
+    })
+    return fastPage
+  }
+
+  const session = getSession(request.sessionId)
+  if (!session) {
+    return { success: false, error: 'Session not found' }
+  }
+  scheduleSessionSqliteMigration(request.sessionId)
+  const response = getMessagesPageFromArray(session.messages, request)
+  console.info('[Perf][SessionPage][main]', {
+    sessionId: request.sessionId,
+    source: 'json-full-fallback',
+    totalMs: Math.round(performance.now() - start),
+    messages: response.messages?.length ?? 0,
+    success: response.success,
+  })
+  return response
+}
+
+export function getSessionUserMessageMarkers(sessionId: string): UserMessageMarker[] | undefined {
+  const sqliteMarkers = getSqliteUserMessageMarkers(sessionId)
+  if (sqliteMarkers) return sqliteMarkers
+
+  const session = getSession(sessionId)
+  if (!session) return undefined
+  scheduleSessionSqliteMigration(sessionId)
+  return getUserMessageMarkersFromArray(session.messages)
 }
 
 /**
@@ -347,6 +435,15 @@ function extractSessionMeta(session: ChatSession): SessionMeta {
     messageCount: session.messages.length,
     previewText,
   }
+}
+
+/**
+ * Read a session from disk without inserting into the LRU cache.
+ * Use for bulk read-only operations like search that scan many sessions.
+ */
+export function getSessionRaw(sessionId: string): ChatSession | undefined {
+  const sessionPath = getSessionPath(sessionId)
+  return readJsonFile<ChatSession | null>(sessionPath, null) ?? undefined
 }
 
 // Get a single session by ID
@@ -376,6 +473,45 @@ export function getSession(sessionId: string): ChatSession | undefined {
   return sanitized
 }
 
+function syncSessionToSqliteIfReady(session: ChatSession): void {
+  try {
+    if (isSqliteSessionReady(session.id)) {
+      syncFullSessionToSqlite(session)
+    } else {
+      scheduleSessionSqliteMigration(session.id)
+    }
+  } catch (error) {
+    console.error('[Sessions] Failed to sync session to SQLite:', error)
+  }
+}
+
+function syncMessageToSqliteIfReady(session: ChatSession, message: ChatMessage): void {
+  try {
+    const seq = session.messages.findIndex(item => item.id === message.id) + 1
+    if (seq <= 0) return
+    if (isSqliteSessionReady(session.id)) {
+      syncSqliteMessage(session.id, message, seq)
+      syncSqliteSessionMetadata(session)
+    } else {
+      scheduleSessionSqliteMigration(session.id)
+    }
+  } catch (error) {
+    console.error('[Sessions] Failed to sync message to SQLite:', error)
+  }
+}
+
+function syncSessionMetadataToSqlite(session: ChatSession): void {
+  try {
+    if (isSqliteSessionReady(session.id)) {
+      syncSqliteSessionMetadata(session)
+    } else {
+      scheduleSessionSqliteMigration(session.id)
+    }
+  } catch (error) {
+    console.error('[Sessions] Failed to sync session metadata to SQLite:', error)
+  }
+}
+
 // Create a new session
 export function createSession(sessionId: string, name: string): ChatSession {
   // Use defaultWorkingDirectory from settings if available
@@ -397,6 +533,8 @@ export function createSession(sessionId: string, name: string): ChatSession {
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
+  syncFullSessionToSqlite(session)
 
   // Update index
   const index = loadSessionsIndex()
@@ -466,6 +604,8 @@ export function createBranchSession(
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
+  syncFullSessionToSqlite(session)
 
   // Update index
   const index = loadSessionsIndex()
@@ -518,6 +658,7 @@ export function deleteSession(sessionId: string): DeleteSessionResult {
     deleteJsonFile(getSessionPath(id))
     sessionCache.delete(id)  // 清除缓存
   }
+  deleteSqliteSessions(allIdsToDelete)
 
   // Update index - remove all deleted sessions
   let index = loadSessionsIndex()
@@ -548,6 +689,8 @@ export function renameSession(sessionId: string, newName: string): void {
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
+  syncSessionMetadataToSqlite(session)
 
   // Update index (only name, not updatedAt)
   const index = loadSessionsIndex()
@@ -567,6 +710,8 @@ export function updateSessionPin(sessionId: string, isPinned: boolean): void {
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
+  syncSessionMetadataToSqlite(session)
 
   // Update index
   const index = loadSessionsIndex()
@@ -591,6 +736,8 @@ export function updateSessionArchived(sessionId: string, isArchived: boolean, ar
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
+  syncSessionMetadataToSqlite(session)
 
   // Update index
   const index = loadSessionsIndex()
@@ -620,94 +767,27 @@ export function updateSessionWorkingDirectory(sessionId: string, workingDirector
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
+  syncSessionMetadataToSqlite(session)
 }
 
-// ============================================================================
-// Provider Configuration Caching
-// ============================================================================
-
-/**
- * Cache provider configuration for a session
- * This is called when user selects a model, avoiding repeated settings lookups during chat
- *
- * @param sessionId - The session to cache config for
- * @param providerId - The provider ID
- * @param model - The model ID
- */
-export function cacheSessionProviderConfig(
-  sessionId: string,
-  providerId: string,
-  model: string
-): void {
+export function updateSessionVariables(sessionId: string, variables: ContextVariable[]): void {
   const session = getSession(sessionId)
   if (!session) return
 
-  const settings = getSettings()
-  const providerConfig = settings.ai.providers[providerId]
+  session.variables = variables.map(v => ({
+    name: v.name,
+    value: v.value,
+    description: v.description,
+    updatedAt: v.updatedAt ?? Date.now(),
+  }))
 
-  // Cache the provider config (excluding sensitive data like API key).
-  // Temperature precedence: per-model > per-provider > global default.
-  session.cachedProviderConfig = {
-    providerId,
-    model,
-    baseUrl: providerConfig?.baseUrl,
-    localAddress: providerConfig?.localAddress,
-    temperature:
-      providerConfig?.temperatureByModel?.[model]
-      ?? providerConfig?.temperature
-      ?? settings.ai.temperature,
-    cachedAt: Date.now(),
-  }
-
-  // Also update lastProvider and lastModel for backward compatibility
-  session.lastProvider = providerId
-  session.lastModel = model
-
-  // Save session file (does not update updatedAt to avoid reordering)
   saveSessionToFile(sessionId, session)
-
-  // Update index with provider/model info
-  const index = loadSessionsIndex()
-  const meta = index.find((s) => s.id === sessionId)
-  if (meta) {
-    meta.lastProvider = providerId
-    meta.lastModel = model
-    saveSessionsIndex(index)
-  }
-}
-
-/**
- * Get cached provider config for a session
- * Returns undefined if no config is cached
- */
-export function getCachedProviderConfig(sessionId: string) {
-  const session = getSession(sessionId)
-  return session?.cachedProviderConfig
-}
-
-/**
- * Invalidate cached provider config for a session
- * Call this when settings change that affect the cached config
- */
-export function invalidateCachedProviderConfig(sessionId: string): void {
-  const session = getSession(sessionId)
-  if (!session) return
-
-  delete session.cachedProviderConfig
-  saveSessionToFile(sessionId, session)
-}
-
-/**
- * Invalidate cached provider config for every session.
- * Used when global settings change (e.g. user edits a provider's baseUrl /
- * apiKey / localAddress in Settings) — the per-session snapshot taken at
- * model-select time would otherwise mask the new config until the user
- * re-picks the model in the InputBox.
- */
-export function invalidateAllCachedProviderConfigs(): void {
-  const index = loadSessionsIndex()
-  for (const meta of index) {
-    invalidateCachedProviderConfig(meta.id)
+  try {
+    if (isSqliteSessionReady(sessionId)) syncSqliteSessionVariables(session)
+    else scheduleSessionSqliteMigration(sessionId)
+  } catch (error) {
+    console.error('[Sessions] Failed to sync variables to SQLite:', error)
   }
 }
 
@@ -721,6 +801,7 @@ export function inheritSessionWorkingDirectory(sessionId: string, workingDirecto
 
   // Save session file without updating timestamp
   saveSessionToFile(sessionId, session)
+  syncSessionMetadataToSqlite(session)
 }
 
 // Update session token usage (does not affect sort order)
@@ -745,6 +826,13 @@ export function updateSessionTokenUsage(
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
+  try {
+    if (isSqliteSessionReady(sessionId)) syncSqliteSessionUsage(session)
+    else scheduleSessionSqliteMigration(sessionId)
+  } catch (error) {
+    console.error('[Sessions] Failed to sync usage to SQLite:', error)
+  }
 }
 
 // Get session token usage
@@ -780,6 +868,7 @@ export function addMessage(sessionId: string, message: ChatMessage): void {
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
 
   // Update index timestamp
   const index = loadSessionsIndex()
@@ -810,6 +899,7 @@ export function insertMessageAfter(sessionId: string, afterMessageId: string, me
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
 
   return true
 }
@@ -827,6 +917,7 @@ export function deleteMessage(sessionId: string, messageId: string): boolean {
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
 
   return true
 }
@@ -877,6 +968,7 @@ export function updateMessageAndTruncate(
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
 
   // Update index timestamp
   const index = loadSessionsIndex()
@@ -901,6 +993,7 @@ export function updateMessageContent(sessionId: string, messageId: string, newCo
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -917,6 +1010,7 @@ export function updateMessageReasoning(sessionId: string, messageId: string, rea
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -933,6 +1027,7 @@ export function updateMessageStreaming(sessionId: string, messageId: string, isS
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -953,6 +1048,7 @@ export function updateMessageUsage(
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -969,6 +1065,7 @@ export function updateMessageToolCalls(sessionId: string, messageId: string, too
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -985,6 +1082,7 @@ export function updateMessageContentParts(sessionId: string, messageId: string, 
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -1006,6 +1104,7 @@ export function addMessageContentPart(sessionId: string, messageId: string, part
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -1022,6 +1121,7 @@ export function updateMessageThinkingTime(sessionId: string, messageId: string, 
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -1038,6 +1138,7 @@ export function updateMessageSkill(sessionId: string, messageId: string, skillUs
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -1054,6 +1155,7 @@ export function updateMessageError(sessionId: string, messageId: string, errorDe
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -1090,6 +1192,7 @@ export function addMessageStep(sessionId: string, messageId: string, step: Step)
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -1111,6 +1214,7 @@ export function updateMessageStep(sessionId: string, messageId: string, stepId: 
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
 
   return true
 }
@@ -1140,6 +1244,7 @@ export function updateStepsUsageByTurn(
   if (updatedStepIds.length > 0) {
     // Save session file
     saveSessionToFile(sessionId, session)
+    syncMessageToSqliteIfReady(session, message)
   }
 
   return updatedStepIds
@@ -1161,6 +1266,7 @@ export function updateSessionSummary(
 
   // Save session file
   saveSessionToFile(sessionId, session)
+  syncSessionMetadataToSqlite(session)
 
   // Update index timestamp
   const index = loadSessionsIndex()
@@ -1177,8 +1283,19 @@ export function updateSessionModel(sessionId: string, provider: string, model: s
   const session = getSession(sessionId)
   if (!session) return false
 
-  // Use cacheSessionProviderConfig to update both cache and lastProvider/lastModel
-  cacheSessionProviderConfig(sessionId, provider, model)
+  session.lastProvider = provider
+  session.lastModel = model
+
+  saveSessionToFile(sessionId, session)
+  syncSessionMetadataToSqlite(session)
+
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.lastProvider = provider
+    meta.lastModel = model
+    saveSessionsIndex(index)
+  }
 
   return true
 }

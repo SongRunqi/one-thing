@@ -97,15 +97,18 @@
         <!-- New contentParts-based rendering -->
         <template v-if="contentParts && contentParts.length > 0">
           <!-- Text 内容 - Waiting 状态由 MessageThinking 组件处理 -->
-          <Transition name="text-fade">
+          <Transition
+            name="text-fade"
+            :css="!isStreaming"
+          >
             <div
               v-if="firstTextPart"
               class="content"
-              :class="{ typing: isTyping }"
             >
               <StreamingMarkdown
                 :content="firstTextPart.content"
                 :is-user="role === 'user'"
+                :is-streaming="isStreaming"
               />
             </div>
           </Transition>
@@ -116,6 +119,7 @@
             name="other-parts"
             tag="div"
             class="other-parts-container"
+            :css="!isStreaming"
           >
             <template
               v-for="(part, index) in otherParts"
@@ -136,6 +140,7 @@
                 <StreamingMarkdown
                   :content="part.content"
                   :is-user="role === 'user'"
+                  :is-streaming="isStreaming"
                 />
               </div>
               <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
@@ -146,9 +151,8 @@
                     v-for="tc in part.toolCalls"
                     :key="tc.id"
                     :tool-call="tc"
-                    @execute="(tc) => emit('executeTool', tc)"
-                    @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                    @reject="(tc) => emit('rejectTool', tc)"
+                    @confirm="(toolCall, r) => emit('confirmTool', toolCall, r)"
+                    @reject="(toolCall) => emit('rejectTool', toolCall)"
                   />
                 </template>
                 <template v-else>
@@ -157,9 +161,8 @@
                     v-for="tc in getToolCallsWithoutSteps(part.toolCalls)"
                     :key="tc.id"
                     :tool-call="tc"
-                    @execute="(tc) => emit('executeTool', tc)"
-                    @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                    @reject="(tc) => emit('rejectTool', tc)"
+                    @confirm="(toolCall, r) => emit('confirmTool', toolCall, r)"
+                    @reject="(toolCall) => emit('rejectTool', toolCall)"
                   />
                 </template>
               </template>
@@ -175,38 +178,20 @@
           </TransitionGroup>
         </template>
 
-        <!-- Fallback: legacy content display (no contentParts) -->
-        <template v-else>
-          <!-- Tool calls if no steps OR if streaming input without step -->
-          <template v-if="toolCalls && toolCalls.length > 0 && (!hasSteps || hasInputStreamingToolCalls(toolCalls))">
-            <template v-if="!hasSteps">
-              <ToolCallItem
-                v-for="tc in toolCalls"
-                :key="tc.id"
-                :tool-call="tc"
-                @execute="(tc) => emit('executeTool', tc)"
-                @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                @reject="(tc) => emit('rejectTool', tc)"
-              />
-            </template>
-            <template v-else>
-              <ToolCallItem
-                v-for="tc in getToolCallsWithoutSteps(toolCalls)"
-                :key="tc.id"
-                :tool-call="tc"
-                @execute="(tc) => emit('executeTool', tc)"
-                @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                @reject="(tc) => emit('rejectTool', tc)"
-              />
-            </template>
-          </template>
-          <div :class="['content', { typing: isTyping }]">
-            <StreamingMarkdown
-              :content="isTyping ? displayedContent : content"
-              :is-user="role === 'user'"
-            />
-          </div>
-        </template>
+        <!-- Fallback for messages without contentParts (user messages and
+             empty edge cases). Assistant messages always have contentParts
+             populated by rebuildContentParts before reaching here, so no
+             tool-call rendering is needed in this branch. -->
+        <div
+          v-else
+          class="content"
+        >
+          <StreamingMarkdown
+            :content="content"
+            :is-user="role === 'user'"
+            :is-streaming="isStreaming"
+          />
+        </div>
       </div>
 
       <!-- Collapse/Expand button (only for user messages) -->
@@ -264,7 +249,7 @@ const emit = defineEmits<{
   contentClick: [event: MouseEvent]
   textSelection: [text: string, position: { top: number; left: number }]
   executeTool: [toolCall: ToolCall]
-  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workspace' | 'always']
+  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
   rejectTool: [toolCall: ToolCall]
 }>()
 
@@ -279,11 +264,6 @@ const MAX_COLLAPSED_HEIGHT = 300 // 最大折叠高度（像素）
 const isCollapsed = ref(true) // 默认折叠
 const isOverflowing = ref(false) // 内容是否超出最大高度
 let resizeObserver: ResizeObserver | null = null
-
-// Typewriter effect
-const displayedContent = ref('')
-const isTyping = ref(false)
-let typewriterInterval: ReturnType<typeof setInterval> | null = null
 
 // ============ New overlay-based transition system ============
 
@@ -305,7 +285,7 @@ const otherParts = computed(() => {
   let skippedFirstWaiting = false
 
   return props.contentParts.filter(p => {
-    if ((p.type as string) === 'loading-memory') {
+    if (p.type === 'loading-memory') {
       return false
     }
 
@@ -330,7 +310,7 @@ const otherParts = computed(() => {
 // Generate stable keys for other parts TransitionGroup
 function getOtherPartKey(part: ContentPart, index: number): string {
   if (part.type === 'text') return `text-other-${index}`
-  if (part.type === 'tool-call') return `tool-call-${index}`
+  if (part.type === 'tool-call') return `tool-call-${part.toolCalls.map(tc => tc.id).join('-') || index}`
   if (part.type === 'data-steps') return `steps-${part.turnIndex ?? index}`
   if (part.type === 'waiting') return `waiting-${index}`
   return `part-${index}`
@@ -410,63 +390,23 @@ function handleEditKeyDown(e: KeyboardEvent) {
   }
 }
 
-// Typewriter effect
-function startTypewriter() {
-  if (props.role !== 'assistant' || !props.isStreaming) {
-    displayedContent.value = props.content
-    return
-  }
-
-  isTyping.value = true
-  displayedContent.value = ''
-  let currentIndex = 0
-  const content = props.content
-  const charsPerTick = 3
-  const tickInterval = 20
-
-  typewriterInterval = setInterval(() => {
-    if (currentIndex < content.length) {
-      currentIndex = Math.min(currentIndex + charsPerTick, content.length)
-      displayedContent.value = content.slice(0, currentIndex)
-    } else {
-      stopTypewriter()
-    }
-  }, tickInterval)
-}
-
-function stopTypewriter() {
-  if (typewriterInterval) {
-    clearInterval(typewriterInterval)
-    typewriterInterval = null
-  }
-  isTyping.value = false
-  displayedContent.value = props.content
-}
-
+// Reset collapse state when streaming ends so long user messages re-collapse
 watch(
   () => props.isStreaming,
   (newVal, oldVal) => {
-    if (newVal && !oldVal) {
-      startTypewriter()
-    } else if (!newVal && oldVal) {
-      stopTypewriter()
-      // 流式结束后检测溢出并默认折叠
+    if (!newVal && oldVal) {
       nextTick(() => {
         checkOverflow()
-        isCollapsed.value = true // 流式结束后重置为折叠状态
+        isCollapsed.value = true
       })
     }
-  },
-  { immediate: true }
+  }
 )
 
+// Re-check overflow when content changes (streaming chunks, edits, etc.)
 watch(
   () => props.content,
   () => {
-    if (!props.isStreaming && !isTyping.value) {
-      displayedContent.value = props.content
-    }
-    // 内容变化后重新检测溢出
     nextTick(() => checkOverflow())
   }
 )
@@ -505,18 +445,11 @@ function cleanupResizeObserver() {
 }
 
 onMounted(() => {
-  if (props.isStreaming) {
-    startTypewriter()
-  } else {
-    displayedContent.value = props.content
-  }
-
   // 设置内容溢出检测
   nextTick(() => setupResizeObserver())
 })
 
 onUnmounted(() => {
-  stopTypewriter()
   cleanupResizeObserver()
 })
 
@@ -599,6 +532,7 @@ function handleContentClick(event: MouseEvent) {
   border: none;
   background: transparent;
   box-shadow: none;
+  transition: none;
 }
 
 /* User message bubble */
@@ -742,6 +676,11 @@ html[data-theme='light'] .attachment-file {
   transition: max-height 0.3s ease;
 }
 
+.bubble.assistant .content-wrapper {
+  overflow: visible;
+  transition: none;
+}
+
 .content-wrapper.collapsed {
   /* Gradient mask at bottom when collapsed */
 }
@@ -793,8 +732,9 @@ html[data-theme='light'] .attachment-file {
 .content {
   display: flow-root;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
   font-family: var(--font-body);
-  line-height: var(--message-line-height, 1.6);
+  line-height: var(--message-line-height-px, 24px);
   font-size: var(--message-font-size, 15px);
   color: var(--text);
   letter-spacing: 0.01em;
@@ -806,21 +746,8 @@ html[data-theme='light'] .attachment-file {
 }
 
 .bubble.user .content {
-  line-height: var(--message-line-height, 1.6);
+  line-height: var(--message-line-height-px, 24px);
   color: var(--text-user-primary);
-}
-
-.content.typing::after {
-  content: '|';
-  animation: blink 0.7s infinite;
-  color: var(--accent);
-  font-weight: 300;
-  margin-left: 2px;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
 }
 
 /* ============ Text 淡入动画 ============ */
@@ -903,7 +830,7 @@ html[data-theme='light'] .attachment-file {
 
 /* Markdown content styles — compact for chat context */
 .content :deep(p) {
-  margin: 0 0 0.5em 0;
+  margin: 0 0 var(--content-paragraph-gap, 8px) 0;
 }
 
 .content :deep(p:last-child) {
@@ -912,27 +839,42 @@ html[data-theme='light'] .attachment-file {
 
 .content :deep(ul),
 .content :deep(ol) {
-  margin: 0.4em 0;
+  margin: var(--content-list-gap, 6px) 0;
   padding-left: 1.5em;
 }
 
 .content :deep(li) {
-  margin: 0.15em 0;
+  margin: var(--content-list-item-gap, 2px) 0;
 }
 
 .content :deep(h1),
 .content :deep(h2),
 .content :deep(h3),
 .content :deep(h4) {
-  margin: 0.8em 0 0.2em 0;
+  max-width: 100%;
+  margin: var(--content-heading-top-gap, 8px) 0 var(--content-heading-bottom-gap, 3px) 0;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: var(--content-heading-line-height-px, 20px);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Chat context: headings are section markers, not page titles */
-.content :deep(h1) { font-size: 1.1em; }
-.content :deep(h2) { font-size: 1.05em; }
+.content :deep(h1) { font-size: 1.08em; }
+.content :deep(h2) { font-size: 1.04em; }
 .content :deep(h3) { font-size: 1em; }
+
+.content :deep(h1 + h1),
+.content :deep(h1 + h2),
+.content :deep(h1 + h3),
+.content :deep(h2 + h1),
+.content :deep(h2 + h2),
+.content :deep(h2 + h3),
+.content :deep(h3 + h1),
+.content :deep(h3 + h2),
+.content :deep(h3 + h3) {
+  margin-top: var(--content-list-gap, 6px);
+}
 
 /* First heading has no top margin */
 .content :deep(h1:first-child),
@@ -942,7 +884,7 @@ html[data-theme='light'] .attachment-file {
 }
 
 .content :deep(blockquote) {
-  margin: 0.5em 0;
+  margin: var(--content-paragraph-gap, 8px) 0;
   padding: 0.3em 0.8em;
   border-left: 2px solid var(--muted);
   color: var(--muted);
@@ -963,7 +905,7 @@ html[data-theme='light'] .attachment-file {
   border: none;
   height: 1px;
   background: var(--border);
-  margin: 0.6em 0;
+  margin: var(--content-spacing-px, 11px) 0;
   opacity: 0.3;
 }
 
@@ -996,7 +938,7 @@ html[data-theme='light'] .content :deep(img:hover) {
 /* Table styles */
 .content :deep(table) {
   border-collapse: collapse;
-  margin: var(--content-spacing, 0.75em) 0;
+  margin: var(--content-spacing-px, 11px) 0;
   width: 100%;
 }
 
@@ -1028,7 +970,7 @@ html[data-theme='light'] .content :deep(.inline-code) {
 
 /* Code block container */
 .content :deep(.code-block-container) {
-  margin: var(--content-spacing, 0.75em) 0;
+  margin: var(--content-spacing-px, 11px) 0;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border-code, var(--border));
@@ -1040,13 +982,14 @@ html[data-theme='light'] .content :deep(.inline-code) {
   justify-content: space-between;
   align-items: center;
   padding: 2px 10px;
-  background: var(--bg-code-header, rgba(255, 255, 255, 0.05));
+  background: var(--bg-code-block, rgba(0, 0, 0, 0.3));
   border-bottom: 1px solid var(--border-code, var(--border));
 }
 
 .content :deep(.code-block-lang) {
   font-size: 11px;
-  color: var(--muted);
+  line-height: 20px;
+  color: var(--text-secondary);
   text-transform: lowercase;
 }
 
@@ -1060,14 +1003,14 @@ html[data-theme='light'] .content :deep(.inline-code) {
   border-radius: 6px;
   background: transparent;
   border: none;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .content :deep(.code-block-copy:hover) {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .content :deep(.code-block-copy .check-icon) {
@@ -1092,7 +1035,7 @@ html[data-theme='light'] .content :deep(.inline-code) {
 .content :deep(code) {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 20px;
 }
 
 /* highlight.js base - syntax colors are handled by global hljs-theme.css */
@@ -1113,7 +1056,7 @@ html[data-theme='light'] .content :deep(.inline-code) {
 .content :deep(mjx-container[display="true"]) {
   display: block;
   text-align: center;
-  margin: var(--content-spacing, 0.75em) 0;
+  margin: var(--content-spacing-px, 11px) 0;
   padding: 8px 0;
 }
 

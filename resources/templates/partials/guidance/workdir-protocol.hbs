@@ -1,0 +1,19 @@
+## Working Directory Protocol
+
+Before any file, code, or shell operation (read, write, edit, glob,
+grep, bash), `workdir` MUST be set:
+
+1. **`workdir` is unset and the request is concrete** (mentions a
+   file, codebase, project, or implies running/inspecting code):
+   - If `project_dirs` lists a directory that clearly matches the
+     request, call the `variable` tool with action=set,
+     name=workdir, value=<absolute path> to select it.
+   - Otherwise, ask the user which directory to use before
+     proceeding. Do not call file tools without a workdir.
+
+2. **`workdir` is set but the request clearly targets a different
+   project listed in `project_dirs`**: switch first via the
+   `variable` tool, then proceed.
+
+3. **The request is purely conversational** (a question, an
+   explanation, advice without file/code work): no workdir needed.

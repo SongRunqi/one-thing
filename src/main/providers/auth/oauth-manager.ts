@@ -5,10 +5,11 @@
  * Uses Electron's safeStorage API for secure token encryption.
  */
 
-import { app, safeStorage, net } from 'electron'
+import { safeStorage, net } from 'electron'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
+import os from 'os'
 import crypto from 'crypto'
 import type { OAuthToken } from '../../../shared/ipc.js'
 
@@ -78,8 +79,7 @@ class OAuthManager {
   private deviceCodes: Map<string, { deviceCode: string; expiresAt: number }> = new Map()
 
   constructor() {
-    const userDataPath = app.getPath('userData')
-    this.tokenFilePath = path.join(userDataPath, 'oauth-tokens.json')
+    this.tokenFilePath = path.join(os.homedir(), '.onething', 'oauth-tokens.json')
   }
 
   /**

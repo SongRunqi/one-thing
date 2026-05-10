@@ -62,7 +62,8 @@ export function mcpToolToToolDefinition(mcpTool: MCPToolInfo): ToolDefinition {
     description: mcpTool.description || `MCP tool: ${mcpTool.name}`,
     parameters,
     enabled: true,
-    autoExecute: true, // MCP tools are auto-executed by default
+    autoExecute: false, // MCP tools are opaque; execution asks for permission.
+    permissionGuard: 'permission-gated',
     category: 'custom', // MCP tools are treated as custom tools
     icon: 'mcp',
   }
@@ -411,7 +412,8 @@ export async function registerMCPTools(): Promise<void> {
       description: mcpTool.description || `MCP tool: ${mcpTool.name}`,
       parameters: z.record(z.string(), z.any()),  // MCP handles its own validation
       enabled: true,
-      autoExecute: true,
+      autoExecute: false,
+      permissionGuard: 'permission-gated' as const,
       category: 'custom' as const,
       async execute(args: Record<string, any>) {
         const result = await MCPManager.callTool(mcpTool.serverId, mcpTool.name, args)

@@ -126,6 +126,8 @@ export async function executeMessageStream(
         providerConfig: configWithApiKey,
         providerId,
         toolSettings,
+        steeringQueue: engine.getSteeringQueue(sessionId),
+        followUpQueue: engine.getFollowUpQueue(sessionId),
       }
 
       const result: StreamGenerationResult = await executeStreamGeneration(

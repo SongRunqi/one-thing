@@ -1,0 +1,474 @@
+<template>
+  <div class="search-window">
+    <!-- Tabs row (IDEA style: tabs on top) -->
+    <div class="search-tabs">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        :class="['tab', { active: activeTab === tab.id }]"
+        @click="activeTab = tab.id"
+      >
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <!-- Search input -->
+    <div class="search-input-row">
+      <Search
+        :size="16"
+        class="search-icon"
+      />
+      <input
+        ref="inputRef"
+        v-model="query"
+        type="text"
+        class="search-input"
+        :placeholder="inputPlaceholder"
+        spellcheck="false"
+        @keydown="onInputKeydown"
+      >
+    </div>
+
+    <!-- Results -->
+    <div
+      ref="resultsRef"
+      class="search-results"
+    >
+      <template v-if="groupedResults.length > 0">
+        <template
+          v-for="group in groupedResults"
+          :key="group.type"
+        >
+          <div
+            v-if="activeTab === 'all'"
+            class="group-header"
+          >
+            {{ group.label }}
+          </div>
+          <SearchResultItem
+            v-for="(item, i) in group.items"
+            :key="item.id"
+            :result="item"
+            :selected="flatIndex(group, i) === selectedIndex"
+            @select="confirmResult(item)"
+            @hover="selectedIndex = flatIndex(group, i)"
+          />
+        </template>
+      </template>
+      <div
+        v-else-if="isLoading"
+        class="search-state"
+      >
+        Searching...
+      </div>
+      <div
+        v-else-if="searchError"
+        class="search-state error"
+      >
+        {{ searchError }}
+      </div>
+      <div
+        v-else
+        class="search-state"
+      >
+        {{ emptyText }}
+      </div>
+    </div>
+
+    <!-- Footer hints -->
+    <div class="search-footer">
+      <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> Navigate</span>
+      <span><kbd>&crarr;</kbd> Open</span>
+      <span><kbd>Tab</kbd> Switch tab</span>
+      <span><kbd>Esc</kbd> Close</span>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { Search } from 'lucide-vue-next'
+import { useSettingsStore } from '@/stores/settings'
+import { useThemeStore } from '@/stores/themes'
+import SearchResultItem from './SearchResultItem.vue'
+import type { SearchResult, SearchCategory } from '@shared/ipc/search'
+
+// ── Tabs ──────────────────────────────────────────
+const tabs: { id: SearchCategory; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'chats', label: 'Chats' },
+  { id: 'files', label: 'Files' },
+  { id: 'messages', label: 'Messages' },
+  { id: 'actions', label: 'Actions' },
+]
+
+const activeTab = ref<SearchCategory>('all')
+const query = ref('')
+const results = ref<SearchResult[]>([])
+const selectedIndex = ref(0)
+const isLoading = ref(false)
+const searchError = ref('')
+const inputRef = ref<HTMLInputElement | null>(null)
+const resultsRef = ref<HTMLElement | null>(null)
+
+// ── Grouped results for "All" tab ─────────────────
+interface ResultGroup {
+  type: string
+  label: string
+  items: SearchResult[]
+}
+
+const groupedResults = computed<ResultGroup[]>(() => {
+  if (results.value.length === 0) return []
+
+  if (activeTab.value !== 'all') {
+    return [{ type: activeTab.value, label: '', items: results.value }]
+  }
+
+  const groups: ResultGroup[] = []
+  const chats = results.value.filter(r => r.type === 'chat')
+  const files = results.value.filter(r => r.type === 'file')
+  const messages = results.value.filter(r => r.type === 'message')
+  const actions = results.value.filter(r => r.type === 'action')
+
+  if (chats.length) groups.push({ type: 'chat', label: 'Chats', items: chats })
+  if (files.length) groups.push({ type: 'file', label: 'Files', items: files })
+  if (messages.length) groups.push({ type: 'message', label: 'Messages', items: messages })
+  if (actions.length) groups.push({ type: 'action', label: 'Actions', items: actions })
+
+  return groups
+})
+
+const totalResults = computed(() =>
+  groupedResults.value.reduce((sum, g) => sum + g.items.length, 0)
+)
+
+const inputPlaceholder = computed(() => {
+  if (activeTab.value === 'actions') return 'Run a command...'
+  if (activeTab.value === 'files') return 'Search files in current workspace and notes...'
+  if (activeTab.value === 'messages') return 'Search across chat messages...'
+  if (activeTab.value === 'chats') return 'Search chats...'
+  return 'Search chats, files, messages, and commands...'
+})
+
+const emptyText = computed(() => {
+  if (query.value.trim()) return 'No results found'
+  if (activeTab.value === 'files' || activeTab.value === 'messages') return 'Type to search...'
+  return 'Start typing, or use / for commands'
+})
+
+function flatIndex(group: ResultGroup, localIndex: number): number {
+  let offset = 0
+  for (const g of groupedResults.value) {
+    if (g === group) return offset + localIndex
+    offset += g.items.length
+  }
+  return offset + localIndex
+}
+
+function getResultByFlatIndex(idx: number): SearchResult | undefined {
+  let offset = 0
+  for (const g of groupedResults.value) {
+    if (idx < offset + g.items.length) return g.items[idx - offset]
+    offset += g.items.length
+  }
+}
+
+// ── Search execution (debounced) ──────────────────
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let searchSeq = 0
+let unsubscribeShown: (() => void) | null = null
+
+async function doSearch() {
+  const seq = ++searchSeq
+  isLoading.value = true
+  searchError.value = ''
+  try {
+    const res = await window.electronAPI.searchQuery({
+      query: query.value,
+      category: activeTab.value,
+      limit: 24,
+    })
+    if (seq !== searchSeq) return
+    if (res?.success) {
+      results.value = res.results
+      selectedIndex.value = 0
+      nextTick(() => {
+        if (resultsRef.value) resultsRef.value.scrollTop = 0
+      })
+    } else {
+      results.value = []
+      searchError.value = 'Search failed'
+    }
+  } catch (err) {
+    if (seq !== searchSeq) return
+    results.value = []
+    searchError.value = err instanceof Error ? err.message : 'Search failed'
+  } finally {
+    if (seq === searchSeq) isLoading.value = false
+  }
+}
+
+watch([query, activeTab], () => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(doSearch, query.value ? 150 : 0)
+})
+
+// ── Keyboard navigation ──────────────────────────
+function onInputKeydown(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && /^[1-5]$/.test(e.key)) {
+    e.preventDefault()
+    activeTab.value = tabs[Number(e.key) - 1].id
+    return
+  }
+
+  switch (e.key) {
+    case 'ArrowDown':
+      e.preventDefault()
+      if (totalResults.value > 0) {
+        selectedIndex.value = (selectedIndex.value + 1) % totalResults.value
+      }
+      scrollSelectedIntoView()
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      if (totalResults.value > 0) {
+        selectedIndex.value = (selectedIndex.value - 1 + totalResults.value) % totalResults.value
+      }
+      scrollSelectedIntoView()
+      break
+    case 'Enter':
+      e.preventDefault()
+      confirmSelected()
+      break
+    case 'Escape':
+      e.preventDefault()
+      window.electronAPI.closeSearchWindow()
+      break
+    case 'Tab':
+      e.preventDefault()
+      cycleTab(e.shiftKey ? -1 : 1)
+      break
+    case '/':
+      if (!query.value && activeTab.value !== 'actions') {
+        activeTab.value = 'actions'
+      }
+      break
+  }
+}
+
+function cycleTab(dir: number) {
+  const idx = tabs.findIndex(t => t.id === activeTab.value)
+  const next = (idx + dir + tabs.length) % tabs.length
+  activeTab.value = tabs[next].id
+}
+
+function scrollSelectedIntoView() {
+  nextTick(() => {
+    const container = resultsRef.value
+    if (!container) return
+    const items = container.querySelectorAll('.search-result-item')
+    const el = items[selectedIndex.value] as HTMLElement | undefined
+    el?.scrollIntoView({ block: 'nearest' })
+  })
+}
+
+// ── Confirm ──────────────────────────────────────
+function confirmSelected() {
+  const item = getResultByFlatIndex(selectedIndex.value)
+  if (item) confirmResult(item)
+}
+
+function confirmResult(item: SearchResult) {
+  if (item.type === 'action' && item.actionId) {
+    window.electronAPI.searchExecuteAction(item.actionId)
+  } else if (item.type === 'file' && item.filePath) {
+    window.electronAPI.searchExecuteAction(`open-file:${item.filePath}`)
+  } else if (item.type === 'message' && item.sessionId && item.messageId) {
+    window.electronAPI.searchExecuteAction(`jump-message:${item.sessionId}:${item.messageId}`)
+  } else if (item.sessionId) {
+    window.electronAPI.searchExecuteAction(`switch-session:${item.sessionId}`)
+  }
+}
+
+// ── Double Shift to close from within search window ──
+let lastShiftUp = 0
+let shiftClean = false
+
+function onGlobalKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    window.electronAPI.closeSearchWindow()
+    return
+  }
+  if (e.key === 'Shift' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    shiftClean = true
+  } else {
+    shiftClean = false
+  }
+}
+
+function onGlobalKeyUp(e: KeyboardEvent) {
+  if (e.key !== 'Shift' || !shiftClean) {
+    shiftClean = false
+    return
+  }
+  const now = Date.now()
+  if (now - lastShiftUp < 300) {
+    lastShiftUp = 0
+    window.electronAPI.closeSearchWindow()
+  } else {
+    lastShiftUp = now
+  }
+  shiftClean = false
+}
+
+// ── Lifecycle ────────────────────────────────────
+onMounted(async () => {
+  // Initialize theme for this window
+  const settingsStore = useSettingsStore()
+  const themeStore = useThemeStore()
+  await settingsStore.loadSettings()
+  await themeStore.initialize()
+
+  inputRef.value?.focus()
+  doSearch()
+  unsubscribeShown = window.electronAPI.onSearchWindowShown?.(() => {
+    query.value = ''
+    activeTab.value = 'all'
+    selectedIndex.value = 0
+    inputRef.value?.focus()
+    doSearch()
+  }) ?? null
+  window.addEventListener('keydown', onGlobalKeyDown, true)
+  window.addEventListener('keyup', onGlobalKeyUp, true)
+})
+
+onUnmounted(() => {
+  unsubscribeShown?.()
+  window.removeEventListener('keydown', onGlobalKeyDown, true)
+  window.removeEventListener('keyup', onGlobalKeyUp, true)
+  if (debounceTimer) clearTimeout(debounceTimer)
+})
+</script>
+
+<style scoped>
+.search-window {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 0 0 0.5px var(--border);
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, sans-serif);
+  user-select: none;
+}
+
+/* ── Tabs ───────────────────────────── */
+.search-tabs {
+  display: flex;
+  gap: 0;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+
+.tab {
+  -webkit-app-region: no-drag;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 6px 14px 8px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Input ──────────────────────────── */
+.search-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-icon {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.search-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  color: var(--text);
+  font-family: inherit;
+}
+
+.search-input::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+/* ── Results ────────────────────────── */
+.search-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.group-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 8px 20px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.search-state {
+  padding: 24px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.search-state.error {
+  color: var(--danger, #d14);
+}
+
+/* ── Footer ─────────────────────────── */
+.search-footer {
+  display: flex;
+  gap: 16px;
+  padding: 6px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.search-footer kbd {
+  display: inline-block;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: inherit;
+  line-height: 1.6;
+  margin-right: 2px;
+}
+</style>

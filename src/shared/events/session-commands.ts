@@ -46,7 +46,7 @@ export interface PermissionRespondCommand {
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   requestId: string
-  decision: 'once' | 'session' | 'workspace' | 'always' | 'reject'
+  decision: 'once' | 'session' | 'workdir' | 'workspace' | 'always' | 'reject'
   /** Optional reason for rejection */
   rejectReason?: string
 }
@@ -54,6 +54,20 @@ export interface PermissionRespondCommand {
 export interface RetryMessageCommand {
   type: 'command:retry-message'
   messageId: string
+}
+
+/** Inject a steering message mid-stream (after current turn ends) */
+export interface InjectSteeringCommand {
+  type: 'command:inject-steering'
+  content: string
+  source?: string
+}
+
+/** Inject a follow-up message (only after agent would stop) */
+export interface InjectFollowUpCommand {
+  type: 'command:inject-followup'
+  content: string
+  source?: string
 }
 
 export type SessionCommand =
@@ -64,3 +78,5 @@ export type SessionCommand =
   | ResumeAfterConfirmCommand
   | PermissionRespondCommand
   | RetryMessageCommand
+  | InjectSteeringCommand
+  | InjectFollowUpCommand

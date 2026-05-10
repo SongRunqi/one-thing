@@ -1,8 +1,18 @@
 import { getAppStatePath, readJsonFile, writeJsonFile } from './paths.js'
 
-interface AppState {
+export interface SerializedTab {
+  type: 'chat' | 'file'
+  sessionId?: string
+  filePath?: string
+  title?: string
+}
+
+export interface AppState {
   currentSessionId: string
   currentWorkspaceId: string | null  // null = default mode (no workspace)
+  openTabs?: SerializedTab[]
+  activeTabIndex?: number
+  sidebarCollapsed?: boolean
 }
 
 const defaultAppState: AppState = {

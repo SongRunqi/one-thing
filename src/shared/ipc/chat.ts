@@ -5,12 +5,36 @@
 
 import type { ToolCall } from './tools.js'
 
+/**
+ * @deprecated Kept as a type alias for one version so old persisted
+ * session data with a `level` field still parses. New code does not
+ * read or write this field.
+ */
+export type VariableLevel = 'system' | 'session'
+
+export interface ContextVariable {
+  name: string
+  value: string
+  scope?: 'global' | 'session'
+  description?: string
+  readonly?: boolean
+  updatedAt?: number
+}
+
 // Content part types for sequential display
 export type ContentPart =
   | { type: 'text'; content: string }
   | { type: 'tool-call'; toolCalls: ToolCall[] }
-  | { type: 'waiting' }  // Waiting for AI continuation after tool call
+  | { type: 'waiting' }                          // Waiting for AI continuation after tool call
+  | { type: 'loading-memory' }                   // Loading memory before generation begins
   | { type: 'data-steps'; turnIndex: number }    // Placeholder for steps panel (rendered inline)
+
+// Helper: parts whose presence/absence affects subsequent content layout.
+// Used by the chunk reducer to pop trailing transient indicators when real
+// content arrives.
+export function isTransientPart(part: ContentPart): boolean {
+  return part.type === 'waiting' || part.type === 'loading-memory'
+}
 
 // Step types for showing AI reasoning process
 export type StepType = 'skill-read' | 'tool-call' | 'thinking' | 'file-read' | 'file-write' | 'command'
@@ -56,6 +80,7 @@ export interface MessageAttachment {
 // Type definitions for IPC messages
 export interface ChatMessage {
   id: string
+  seq?: number  // 1-based sequence in the session timeline when loaded via paged history
   sessionId?: string  // Session ID this message belongs to (for context isolation)
   role: 'user' | 'assistant' | 'error' | 'system'  // 'error' and 'system' are display-only, not saved to backend
   content: string
@@ -78,16 +103,6 @@ export interface ChatMessage {
     outputTokens: number
     totalTokens: number
   }
-}
-
-// Cached provider configuration for session-level optimization
-export interface CachedProviderConfig {
-  providerId: string
-  model: string
-  baseUrl?: string
-  temperature?: number
-  localAddress?: string
-  cachedAt: number  // Timestamp when this config was cached
 }
 
 // ============================================================================
@@ -121,6 +136,7 @@ export interface SessionMeta {
  */
 export interface SessionDetails extends SessionMeta {
   workingDirectory?: string
+  variables?: ContextVariable[]
   summary?: string
   summaryUpToMessageId?: string
   summaryCreatedAt?: number
@@ -129,7 +145,6 @@ export interface SessionDetails extends SessionMeta {
   totalTokens?: number
   lastInputTokens?: number
   contextSize?: number
-  cachedProviderConfig?: CachedProviderConfig
 }
 
 // ============================================================================
@@ -151,6 +166,7 @@ export interface ChatSession {
   archivedAt?: number   // Timestamp when session was archived
   // Sandbox boundary - tools restrict file access to this directory
   workingDirectory?: string  // Project directory for this session (sandbox boundary)
+  variables?: ContextVariable[] // Session-scoped context variables
   // Context compacting fields
   summary?: string              // Conversation summary for context window management
   summaryUpToMessageId?: string // ID of the last message included in the summary
@@ -161,9 +177,6 @@ export interface ChatSession {
   totalTokens?: number          // Accumulated total tokens for this session
   lastInputTokens?: number      // Last request's input tokens
   contextSize?: number          // Current context window size (last turn's input tokens)
-  // Cached provider configuration (for session-level optimization)
-  // Set when user selects a model, used during chat to avoid repeated settings lookups
-  cachedProviderConfig?: CachedProviderConfig
 }
 
 // IPC Request/Response types
@@ -312,5 +325,52 @@ export interface ActivateSessionResponse {
 export interface GetSessionMessagesResponse {
   success: boolean
   messages?: ChatMessage[]
+  error?: string
+}
+
+export type SessionMessagesPageDirection = 'older' | 'newer'
+
+export interface SessionMessagesPageAnchor {
+  messageId?: string
+  seq?: number
+  before?: number
+  after?: number
+}
+
+export interface GetSessionMessagesPageRequest {
+  sessionId: string
+  cursor?: string | null
+  limit?: number
+  direction?: SessionMessagesPageDirection
+  anchor?: 'tail' | SessionMessagesPageAnchor
+}
+
+export interface SessionMessagePageCursor {
+  sessionId: string
+  seq: number
+  includeAnchor: boolean
+}
+
+export interface GetSessionMessagesPageResponse {
+  success: boolean
+  messages?: ChatMessage[]
+  nextCursor?: string | null
+  backwardsCursor?: string | null
+  hasMoreBefore?: boolean
+  hasMoreAfter?: boolean
+  totalCount?: number
+  error?: string
+}
+
+export interface UserMessageMarker {
+  id: string
+  seq: number
+  timestamp: number
+  preview: string
+}
+
+export interface GetSessionUserMarkersResponse {
+  success: boolean
+  markers?: UserMessageMarker[]
   error?: string
 }

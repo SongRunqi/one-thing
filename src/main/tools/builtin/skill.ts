@@ -55,6 +55,7 @@ export const SkillTool = Tool.define(
     name: 'Skill',
     category: 'builtin',
     autoExecute: true, // Skills are read-only, safe to auto-execute
+    permissionGuard: 'safe',
   },
   async (ctx?: InitContext) => {
     const skills = (ctx?.skills ?? []) as SkillDefinition[]

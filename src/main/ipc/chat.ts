@@ -27,6 +27,8 @@ import { triggerManager } from '../engine/triggers/index.js'
 import { Permission } from '../permission/index.js'
 import { saveMediaImage } from './media.js'
 import * as modelRegistry from '../providers/model-registry.js'
+import { buildContextVariablesPromptText } from '../variables/index.js'
+import { buildProjectDirsPromptVars } from '../project-dirs/index.js'
 
 // Import from chat sub-modules
 import {
@@ -775,10 +777,14 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
 
     const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
 
-    const systemPrompt = buildSystemPrompt({
+    const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
+    const { text: systemPrompt } = buildSystemPrompt({
       hasTools,
       skills: enabledSkills,
       workingDirectory: session.workingDirectory,
+      contextVariables: await buildContextVariablesPromptText(sessionId),
+      activeProject: projectVars.active,
+      knownProjects: projectVars.known,
     })
 
     conversationMessages.push({ role: 'system', content: systemPrompt })
