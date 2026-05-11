@@ -12,6 +12,10 @@ import { IPC_CHANNELS } from '../../shared/ipc.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+function getRendererDevUrl(): string {
+  return process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:5173'
+}
+
 let searchWindow: BrowserWindow | null = null
 let shouldShowWhenReady = false
 
@@ -103,7 +107,7 @@ function createSearchWindow(parentWindow: BrowserWindow, showOnReady: boolean): 
 
   const themeParams = `theme=${effectiveTheme}&colorTheme=${colorTheme}`
   if (isDev) {
-    searchWindow.loadURL(`http://127.0.0.1:5173/#/search?${themeParams}`)
+    searchWindow.loadURL(`${getRendererDevUrl()}/#/search?${themeParams}`)
   } else {
     searchWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
       hash: `/search?${themeParams}`,

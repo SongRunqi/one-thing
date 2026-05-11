@@ -211,16 +211,17 @@ async function refreshThemes() {
 .tab-bar {
   display: flex;
   gap: 4px;
-  background: var(--bg-input, rgba(255, 255, 255, 0.05));
-  padding: 4px;
-  border-radius: 10px;
+  border: 1px solid var(--settings-rule, transparent);
+  background: var(--settings-paper-2, var(--bg-input, var(--bg-hover)));
+  padding: 3px;
+  border-radius: 999px;
   width: fit-content;
 }
 
 .tab-btn {
-  padding: 8px 20px;
+  padding: 6px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: 999px;
   background: transparent;
   color: var(--text-muted);
   font-size: 13px;
@@ -231,30 +232,30 @@ async function refreshThemes() {
 
 .tab-btn:hover:not(.active) {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--settings-paper, var(--bg-hover));
 }
 
 .tab-btn.active {
-  background: var(--accent);
-  color: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: var(--settings-ink, var(--accent));
+  color: var(--settings-paper, var(--bg));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 /* Theme Grid */
 .theme-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 12px;
 }
 
 .theme-item {
   position: relative;
-  border: 1px solid var(--border);
+  border: 1px solid var(--settings-rule, var(--border));
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
   transition: all 0.15s ease;
-  background: var(--bg-panel, var(--panel));
+  background: var(--settings-paper, var(--bg-panel, var(--panel)));
 }
 
 .theme-item:hover {
@@ -264,17 +265,17 @@ async function refreshThemes() {
 }
 
 .theme-item.active {
-  border-color: var(--accent);
-  border-width: 2px;
-  background: rgba(var(--accent-rgb, 67, 133, 190), 0.05);
+  border-color: var(--settings-accent, var(--accent));
+  background: color-mix(in srgb, var(--settings-accent, var(--accent)) 6%, transparent);
+  box-shadow: 0 0 0 3px var(--settings-accent-soft, rgba(var(--accent-rgb, 67, 133, 190), 0.14));
 }
 
 /* Theme Preview */
 .theme-preview {
-  height: 72px;
+  height: 92px;
   display: flex;
   background: var(--preview-bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--settings-rule-soft, var(--border));
 }
 
 .preview-sidebar {
@@ -338,7 +339,7 @@ async function refreshThemes() {
   height: 20px;
   border-radius: 50%;
   background: var(--accent);
-  color: white;
+  color: var(--text-btn-primary, var(--settings-paper));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -350,7 +351,7 @@ async function refreshThemes() {
   display: flex;
   gap: 10px;
   padding-top: 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--settings-rule-soft, var(--border));
 }
 
 .action-btn {
@@ -358,9 +359,9 @@ async function refreshThemes() {
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--settings-rule, var(--border));
   border-radius: 8px;
-  background: transparent;
+  background: var(--settings-paper, transparent);
   color: var(--text-primary);
   font-size: 13px;
   cursor: pointer;
@@ -368,8 +369,8 @@ async function refreshThemes() {
 }
 
 .action-btn:hover:not(:disabled) {
-  background: var(--bg-hover, var(--hover));
-  border-color: var(--accent);
+  background: var(--settings-paper-2, var(--bg-hover, var(--hover)));
+  border-color: var(--settings-accent, var(--accent));
 }
 
 .action-btn:disabled {
@@ -390,9 +391,9 @@ async function refreshThemes() {
 .error-message {
   padding: 10px 14px;
   border-radius: 8px;
-  background: rgba(220, 38, 38, 0.1);
-  border: 1px solid rgba(220, 38, 38, 0.3);
-  color: #ef4444;
+  background: color-mix(in srgb, var(--text-error, var(--color-danger)) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-error, var(--color-danger)) 30%, transparent);
+  color: var(--text-error, var(--color-danger));
   font-size: 13px;
 }
 

@@ -66,17 +66,29 @@ defineEmits<Emits>()
 }
 
 .section-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--settings-ink-4, var(--muted));
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0 0 8px 2px;
+  letter-spacing: 0.08em;
+  margin: 0 0 12px 2px;
+}
+
+.section-label::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--settings-rule-soft, rgba(128, 128, 128, 0.1));
 }
 
 .settings-group {
-  background: rgba(128, 128, 128, 0.06);
-  border-radius: 10px;
+  border: 1px solid var(--settings-rule, rgba(128, 128, 128, 0.1));
+  background: var(--settings-paper, color-mix(in srgb, var(--settings-paper-2, transparent) 44%, transparent));
+  border-radius: 12px;
   overflow: hidden;
 }
 
@@ -84,9 +96,10 @@ defineEmits<Emits>()
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 40px;
-  padding: 0 14px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+  min-height: 54px;
+  gap: 24px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.1));
 }
 
 .settings-row:last-child {
@@ -94,27 +107,33 @@ defineEmits<Emits>()
 }
 
 .row-label {
-  font-size: 13px;
-  color: var(--text);
+  font-size: 14px;
+  color: var(--settings-ink-2, var(--text));
+  font-weight: 520;
 }
 
 .row-select {
-  padding: 5px 24px 5px 8px;
+  min-width: 220px;
+  max-width: min(100%, 520px);
+  padding: 7px 28px 7px 10px;
   border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
+  border-radius: 7px;
+  background-color: transparent;
+  color: var(--settings-ink, var(--muted));
   font-size: 13px;
   cursor: pointer;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 4px center;
+  background-position: right 10px center;
   text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .row-select:hover {
-  color: var(--text);
+  color: var(--settings-ink, var(--text));
 }
 
 .row-select:focus {
@@ -122,8 +141,8 @@ defineEmits<Emits>()
 }
 
 .row-select option {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--settings-paper, var(--bg));
+  color: var(--settings-ink, var(--text));
   text-align: left;
 }
 </style>

@@ -94,13 +94,22 @@ import SearchResultItem from './SearchResultItem.vue'
 import type { SearchResult, SearchCategory } from '@shared/ipc/search'
 
 // ── Tabs ──────────────────────────────────────────
-const tabs: { id: SearchCategory; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'chats', label: 'Chats' },
-  { id: 'files', label: 'Files' },
-  { id: 'messages', label: 'Messages' },
-  { id: 'actions', label: 'Actions' },
-]
+const settingsStore = useSettingsStore()
+const tabs = computed<{ id: SearchCategory; label: string }[]>(() => {
+  const items: { id: SearchCategory; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'chats', label: 'Chats' },
+  ]
+  if (settingsStore.settings.general.dailyNotes?.enabled !== false) {
+    items.push({ id: 'daily', label: 'Daily' })
+  }
+  items.push(
+    { id: 'files', label: 'Files' },
+    { id: 'messages', label: 'Messages' },
+    { id: 'actions', label: 'Actions' },
+  )
+  return items
+})
 
 const activeTab = ref<SearchCategory>('all')
 const query = ref('')
@@ -127,11 +136,13 @@ const groupedResults = computed<ResultGroup[]>(() => {
 
   const groups: ResultGroup[] = []
   const chats = results.value.filter(r => r.type === 'chat')
+  const daily = results.value.filter(r => r.type === 'daily')
   const files = results.value.filter(r => r.type === 'file')
   const messages = results.value.filter(r => r.type === 'message')
   const actions = results.value.filter(r => r.type === 'action')
 
   if (chats.length) groups.push({ type: 'chat', label: 'Chats', items: chats })
+  if (daily.length) groups.push({ type: 'daily', label: 'Daily Notes', items: daily })
   if (files.length) groups.push({ type: 'file', label: 'Files', items: files })
   if (messages.length) groups.push({ type: 'message', label: 'Messages', items: messages })
   if (actions.length) groups.push({ type: 'action', label: 'Actions', items: actions })
@@ -145,14 +156,16 @@ const totalResults = computed(() =>
 
 const inputPlaceholder = computed(() => {
   if (activeTab.value === 'actions') return 'Run a command...'
+  if (activeTab.value === 'daily') return 'Find daily notes, or open today...'
   if (activeTab.value === 'files') return 'Search files in current workspace and notes...'
   if (activeTab.value === 'messages') return 'Search across chat messages...'
   if (activeTab.value === 'chats') return 'Search chats...'
-  return 'Search chats, files, messages, and commands...'
+  return 'Search chats, daily notes, files, messages, and commands...'
 })
 
 const emptyText = computed(() => {
   if (query.value.trim()) return 'No results found'
+  if (activeTab.value === 'daily') return 'No daily notes directory found'
   if (activeTab.value === 'files' || activeTab.value === 'messages') return 'Type to search...'
   return 'Start typing, or use / for commands'
 })
@@ -216,9 +229,10 @@ watch([query, activeTab], () => {
 
 // ── Keyboard navigation ──────────────────────────
 function onInputKeydown(e: KeyboardEvent) {
-  if ((e.metaKey || e.ctrlKey) && /^[1-5]$/.test(e.key)) {
+  if ((e.metaKey || e.ctrlKey) && /^[1-6]$/.test(e.key)) {
     e.preventDefault()
-    activeTab.value = tabs[Number(e.key) - 1].id
+    const tab = tabs.value[Number(e.key) - 1]
+    if (tab) activeTab.value = tab.id
     return
   }
 
@@ -258,9 +272,9 @@ function onInputKeydown(e: KeyboardEvent) {
 }
 
 function cycleTab(dir: number) {
-  const idx = tabs.findIndex(t => t.id === activeTab.value)
-  const next = (idx + dir + tabs.length) % tabs.length
-  activeTab.value = tabs[next].id
+  const idx = tabs.value.findIndex(t => t.id === activeTab.value)
+  const next = (idx + dir + tabs.value.length) % tabs.value.length
+  activeTab.value = tabs.value[next].id
 }
 
 function scrollSelectedIntoView() {
@@ -282,7 +296,11 @@ function confirmSelected() {
 function confirmResult(item: SearchResult) {
   if (item.type === 'action' && item.actionId) {
     window.electronAPI.searchExecuteAction(item.actionId)
+  } else if (item.type === 'daily' && item.actionId) {
+    window.electronAPI.searchExecuteAction(item.actionId)
   } else if (item.type === 'file' && item.filePath) {
+    window.electronAPI.searchExecuteAction(`open-file:${item.filePath}`)
+  } else if (item.type === 'daily' && item.filePath) {
     window.electronAPI.searchExecuteAction(`open-file:${item.filePath}`)
   } else if (item.type === 'message' && item.sessionId && item.messageId) {
     window.electronAPI.searchExecuteAction(`jump-message:${item.sessionId}:${item.messageId}`)
@@ -326,7 +344,6 @@ function onGlobalKeyUp(e: KeyboardEvent) {
 // ── Lifecycle ────────────────────────────────────
 onMounted(async () => {
   // Initialize theme for this window
-  const settingsStore = useSettingsStore()
   const themeStore = useThemeStore()
   await settingsStore.loadSettings()
   await themeStore.initialize()

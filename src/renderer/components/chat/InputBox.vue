@@ -574,7 +574,7 @@ defineExpose({
 
 <style scoped>
 .composer-wrapper {
-  width: min(74%, 860px);
+  width: var(--chat-content-width, min(70%, 800px));
   margin: 0 auto;
   position: relative;
 }
@@ -873,7 +873,6 @@ defineExpose({
 
 /* Responsive styles */
 @media (max-width: 768px) {
-  .composer-wrapper { max-width: 100%; width: 95%; }
   .composer { border-radius: 14px; }
   .composer-input { font-size: 15px; }
   .toolbar-btn { width: 32px; height: 32px; }
@@ -881,7 +880,6 @@ defineExpose({
 }
 
 @media (max-width: 600px) {
-  .composer-wrapper { width: 100%; }
   .toolbar-left { gap: 2px; }
   .toolbar-btn { width: 30px; height: 30px; }
 }

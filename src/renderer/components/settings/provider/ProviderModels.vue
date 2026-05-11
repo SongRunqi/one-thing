@@ -680,15 +680,17 @@ watch(() => props.filteredModels.length, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  gap: 14px;
+  margin-bottom: 12px;
 }
 
 .section-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--settings-ink-4, var(--muted));
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.08em;
   margin: 0 0 0 2px;
   display: flex;
   align-items: center;
@@ -697,8 +699,8 @@ watch(() => props.filteredModels.length, () => {
 
 .count-badge {
   font-size: 11px;
-  font-weight: 500;
-  color: var(--accent);
+  font-weight: 560;
+  color: var(--settings-accent, var(--accent));
   text-transform: none;
   letter-spacing: 0;
 }
@@ -707,18 +709,19 @@ watch(() => props.filteredModels.length, () => {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
+  padding: 5px 9px;
+  border: 1px solid var(--settings-rule-soft, transparent);
+  border-radius: 7px;
+  background: var(--settings-paper, transparent);
   font-size: 11px;
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
   cursor: pointer;
   transition: color 0.1s ease;
 }
 
 .refresh-btn:hover:not(:disabled) {
-  color: var(--text);
+  color: var(--settings-ink, var(--text));
+  border-color: var(--settings-rule, transparent);
 }
 
 .refresh-btn:disabled {
@@ -737,8 +740,9 @@ watch(() => props.filteredModels.length, () => {
 
 /* ── Group container ── */
 .settings-group {
-  background: rgba(128, 128, 128, 0.06);
-  border-radius: 10px;
+  border: 1px solid var(--settings-rule, rgba(128, 128, 128, 0.1));
+  background: var(--settings-paper, color-mix(in srgb, var(--settings-paper-2, transparent) 44%, transparent));
+  border-radius: 12px;
   overflow: hidden;
 }
 
@@ -747,12 +751,13 @@ watch(() => props.filteredModels.length, () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+  min-height: 52px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.1));
 }
 
 .search-icon {
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
   flex-shrink: 0;
 }
 
@@ -760,13 +765,13 @@ watch(() => props.filteredModels.length, () => {
   flex: 1;
   border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--settings-ink, var(--text));
   font-size: 13px;
   outline: none;
 }
 
 .search-input::placeholder {
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
 }
 
 .search-clear {
@@ -775,7 +780,7 @@ watch(() => props.filteredModels.length, () => {
   border: none;
   background: transparent;
   border-radius: 3px;
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -783,30 +788,35 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .search-clear:hover {
-  color: var(--text);
+  color: var(--settings-ink, var(--text));
 }
 
 /* ── Model list (virtual scroll container) ── */
 .model-list {
-  height: 240px;
+  height: 300px;
   overflow-y: auto;
 }
 
-.model-list::-webkit-scrollbar { width: 4px; }
+.model-list::-webkit-scrollbar { width: 8px; }
 .model-list::-webkit-scrollbar-track { background: transparent; }
-.model-list::-webkit-scrollbar-thumb { background: transparent; border-radius: 2px; }
-.model-list:hover::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); }
+.model-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--settings-ink, #000) 16%, transparent);
+  background-clip: padding-box;
+}
 
 .model-row {
   position: relative;
   display: flex;
   align-items: center;
-  padding: 7px 12px;
-  gap: 8px;
-  font-size: 13px;
-  height: 34px;
+  min-width: 0;
+  padding: 0 16px;
+  gap: 10px;
+  font-size: 14px;
+  height: 44px;
   box-sizing: border-box;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.06);
+  border-bottom: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.06));
   transition: background 0.08s ease;
   cursor: pointer;
 }
@@ -816,13 +826,13 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-row:hover {
-  background: rgba(128, 128, 128, 0.04);
+  background: var(--settings-paper-2, color-mix(in srgb, var(--settings-paper, transparent) 68%, transparent));
 }
 
 /* Active model: the one whose temperature / max-output the sliders below
    are configuring. Marked with a left accent stripe + light tint. */
 .model-row.is-active {
-  background: rgba(var(--accent-rgb, 59, 130, 246), 0.06);
+  background: var(--settings-accent-tint, color-mix(in srgb, var(--settings-accent, var(--accent)) 8%, transparent));
 }
 
 .model-row.is-active::before {
@@ -833,15 +843,15 @@ watch(() => props.filteredModels.length, () => {
   bottom: 4px;
   width: 2px;
   border-radius: 2px;
-  background: var(--accent);
+  background: var(--settings-accent, var(--accent));
 }
 
 .model-row.is-active:hover {
-  background: rgba(var(--accent-rgb, 59, 130, 246), 0.1);
+  background: color-mix(in srgb, var(--settings-accent, var(--accent)) 11%, transparent);
 }
 
 .model-row.is-active .model-name {
-  color: var(--accent);
+  color: var(--settings-accent, var(--accent));
   font-weight: 600;
 }
 
@@ -853,8 +863,8 @@ watch(() => props.filteredModels.length, () => {
   height: 14px;
   padding: 4px;
   margin: -4px;
-  border: 1.5px solid var(--border);
-  border-radius: 3px;
+  border: 1.5px solid var(--settings-rule, var(--border));
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -865,24 +875,24 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-check:hover {
-  border-color: var(--accent);
+  border-color: var(--settings-accent, var(--accent));
 }
 
 .model-check:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--settings-accent, var(--accent));
   outline-offset: 2px;
 }
 
 .model-check.checked {
-  background: var(--accent) content-box;
-  border-color: var(--accent);
-  color: white;
+  background: var(--settings-accent, var(--accent)) content-box;
+  border-color: var(--settings-accent, var(--accent));
+  color: var(--text-btn-primary, var(--settings-paper));
 }
 
 .model-name {
   flex: 1;
   font-weight: 450;
-  color: var(--text);
+  color: var(--settings-ink, var(--text));
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -893,14 +903,14 @@ watch(() => props.filteredModels.length, () => {
   display: flex;
   gap: 2px;
   flex-shrink: 0;
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
 }
 
 .model-ctx {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   min-width: 36px;
@@ -919,36 +929,36 @@ watch(() => props.filteredModels.length, () => {
   gap: 2px;
   height: 22px;
   padding: 0 4px 0 6px;
-  border: 1px solid rgba(128, 128, 128, 0.18);
-  border-radius: 5px;
-  background: rgba(128, 128, 128, 0.04);
+  border: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.18));
+  border-radius: 6px;
+  background: var(--settings-paper, rgba(128, 128, 128, 0.04));
   flex-shrink: 0;
   transition: border-color 0.12s ease, background 0.12s ease;
 }
 
 .model-out-wrap:hover {
-  border-color: rgba(128, 128, 128, 0.4);
-  background: rgba(128, 128, 128, 0.08);
+  border-color: var(--settings-rule, rgba(128, 128, 128, 0.4));
+  background: var(--settings-paper-2, rgba(128, 128, 128, 0.08));
 }
 
 .model-out-wrap:focus-within {
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb, 59, 130, 246), 0.06);
+  border-color: var(--settings-accent, var(--accent));
+  background: color-mix(in srgb, var(--settings-accent, var(--accent)) 7%, transparent);
 }
 
 .model-out-wrap.overridden {
-  border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.45);
-  background: rgba(var(--accent-rgb, 59, 130, 246), 0.08);
+  border-color: color-mix(in srgb, var(--settings-accent, var(--accent)) 45%, transparent);
+  background: color-mix(in srgb, var(--settings-accent, var(--accent)) 8%, transparent);
 }
 
 .out-icon {
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
   opacity: 0.7;
   flex-shrink: 0;
 }
 
 .model-out-wrap.overridden .out-icon {
-  color: var(--accent);
+  color: var(--settings-accent, var(--accent));
   opacity: 1;
 }
 
@@ -957,7 +967,7 @@ watch(() => props.filteredModels.length, () => {
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--settings-ink, var(--text));
   font-size: 11px;
   font-family: var(--font-mono, 'SF Mono', monospace);
   font-variant-numeric: tabular-nums;
@@ -975,13 +985,13 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-out-input::placeholder {
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
   opacity: 0.55;
   font-style: italic;
 }
 
 .model-out-wrap.overridden .model-out-input {
-  color: var(--accent);
+  color: var(--settings-accent, var(--accent));
   font-weight: 600;
   font-style: normal;
 }
@@ -994,7 +1004,7 @@ watch(() => props.filteredModels.length, () => {
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
@@ -1006,22 +1016,22 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-out-clear:hover {
-  background: rgba(239, 68, 68, 0.18);
-  color: #ef4444;
+  background: color-mix(in srgb, var(--text-error, var(--color-danger)) 18%, transparent);
+  color: var(--text-error, var(--color-danger));
 }
 
 .empty-row {
   padding: 20px;
   text-align: center;
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
   font-size: 13px;
 }
 
 .error-message {
   padding: 8px 12px;
-  background: rgba(239, 68, 68, 0.08);
+  background: color-mix(in srgb, var(--text-error, var(--color-danger)) 8%, transparent);
   border-radius: 8px;
-  color: #ef4444;
+  color: var(--text-error, var(--color-danger));
   font-size: 12px;
   margin-bottom: 8px;
 }
@@ -1041,10 +1051,10 @@ watch(() => props.filteredModels.length, () => {
 
 .fetch-btn {
   padding: 6px 16px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text);
+  border: 1px solid var(--settings-rule, var(--border));
+  border-radius: 7px;
+  background: var(--settings-paper, transparent);
+  color: var(--settings-ink, var(--text));
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -1052,7 +1062,7 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .fetch-btn:hover:not(:disabled) {
-  background: rgba(128, 128, 128, 0.1);
+  background: var(--settings-paper-2, rgba(128, 128, 128, 0.1));
 }
 
 .fetch-btn:disabled {
@@ -1064,7 +1074,10 @@ watch(() => props.filteredModels.length, () => {
 .add-model-row {
   display: flex;
   gap: 8px;
-  padding: 8px 12px;
+  min-width: 0;
+  min-height: 52px;
+  padding: 0 16px;
+  border-top: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.08));
 }
 
 .add-model-input {
@@ -1072,21 +1085,22 @@ watch(() => props.filteredModels.length, () => {
   padding: 6px 8px;
   border: none;
   background: transparent;
-  color: var(--text);
+  min-width: 0;
+  color: var(--settings-ink, var(--text));
   font-size: 13px;
   outline: none;
 }
 
 .add-model-input::placeholder {
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
 }
 
 .add-model-btn {
   padding: 4px 12px;
   border: none;
-  border-radius: 6px;
-  background: var(--accent);
-  color: white;
+  border-radius: 7px;
+  background: var(--settings-accent, var(--accent));
+  color: var(--text-btn-primary, var(--settings-paper));
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -1109,17 +1123,17 @@ watch(() => props.filteredModels.length, () => {
   border: 1px solid transparent;
   background: transparent;
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--settings-ink-4, var(--muted));
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .model-caps-edit:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--settings-paper-2, var(--hover));
+  color: var(--settings-ink, var(--text));
 }
 .model-caps-edit.has-override {
-  border-color: rgba(168, 85, 247, 0.4);
-  color: var(--accent, #a855f7);
+  border-color: color-mix(in srgb, var(--settings-accent, var(--accent)) 40%, transparent);
+  color: var(--settings-accent, var(--accent));
 }
 </style>
 
@@ -1158,7 +1172,7 @@ watch(() => props.filteredModels.length, () => {
 .model-caps-reset {
   border: none;
   background: transparent;
-  color: var(--accent, #a855f7);
+  color: var(--accent);
   font-size: 11px;
   cursor: pointer;
   padding: 0;
@@ -1208,8 +1222,8 @@ watch(() => props.filteredModels.length, () => {
   color: var(--text);
 }
 .tristate-btn.active {
-  background: rgba(168, 85, 247, 0.15);
-  color: var(--accent, #a855f7);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
 }
 
 .model-caps-popover-hint {
@@ -1268,22 +1282,22 @@ watch(() => props.filteredModels.length, () => {
   outline: none;
 }
 .model-caps-id-input:focus {
-  border-color: var(--accent, #a855f7);
+  border-color: var(--accent);
 }
 
 .model-caps-id-save {
   height: 26px;
   padding: 0 10px;
   border: 1px solid transparent;
-  background: rgba(168, 85, 247, 0.18);
-  color: var(--accent, #a855f7);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
 }
 .model-caps-id-save:hover {
-  background: rgba(168, 85, 247, 0.28);
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 .model-caps-id-save:disabled {
   opacity: 0.4;
@@ -1293,7 +1307,7 @@ watch(() => props.filteredModels.length, () => {
 .model-caps-id-error {
   margin: 4px 4px 0;
   font-size: 11px;
-  color: #ef4444;
+  color: var(--text-error, var(--color-danger));
   line-height: 1.3;
 }
 

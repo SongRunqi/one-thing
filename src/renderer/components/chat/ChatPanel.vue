@@ -70,6 +70,27 @@ const panelMessages = computed(() => messages.value)
 
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
+const TAIL_SNAPSHOT_DISTANCE_PX = 4
+const RESTORE_WAIT_FRAME_LIMIT = 120
+
+function nextFrame(): Promise<void> {
+  return new Promise(resolve => requestAnimationFrame(() => resolve()))
+}
+
+async function waitForRestorePage(sessionId: string, anchorMessageId?: string) {
+  for (let frame = 0; frame < RESTORE_WAIT_FRAME_LIMIT; frame += 1) {
+    if (effectiveSessionId.value !== sessionId) return false
+    const messages = chatStore.sessionMessages.get(sessionId) ?? []
+    const hasRestoreMessages = messages.length > 0
+    const hasAnchor = !anchorMessageId || messages.some(message => message.id === anchorMessageId)
+    if (!isLoading.value && hasRestoreMessages && hasAnchor) {
+      await nextTick()
+      return true
+    }
+    await nextFrame()
+  }
+  return effectiveSessionId.value === sessionId
+}
 
 // Session switch: save/restore scroll position and input state
 watch(effectiveSessionId, async (newId, oldId) => {
@@ -77,17 +98,26 @@ watch(effectiveSessionId, async (newId, oldId) => {
   const oldMessageCount = oldId ? (chatStore.sessionMessages.get(oldId)?.length ?? 0) : 0
   const newMessageCount = newId ? (chatStore.sessionMessages.get(newId)?.length ?? 0) : 0
   if (oldId && oldId !== newId) {
-    const isFollowing = messageListRef.value?.getIsFollowing() ?? true
+    // Capture every viewport-derived value BEFORE prepareForSwitch — it zeroes
+    // scrollTop, which would otherwise make the second/third captureTopAnchor()
+    // call read a fresh (and wrong) anchor at the top of the list.
+    const distanceToBottom = messageListRef.value?.getDistanceToBottom() ?? 0
+    const isAtTail = distanceToBottom <= TAIL_SNAPSHOT_DISTANCE_PX
     const anchorMessageId = messageListRef.value?.getAnchorMessageId() ?? undefined
+    const anchorOffset = messageListRef.value?.getAnchorOffset() ?? 0
+    const navMessageId = messageListRef.value?.getNavMessageId() ?? undefined
+    const hasNavigated = messageListRef.value?.getHasNavigated() ?? false
+    const messageInput = inputBoxRef.value?.getMessageInput() ?? ''
+    const quotedText = inputBoxRef.value?.getQuotedText() ?? ''
     messageListRef.value?.prepareForSwitch()
     chatStore.saveSnapshot(oldId, {
-      mode: isFollowing || !anchorMessageId ? 'tail' : 'anchor',
-      anchorMessageId: isFollowing ? undefined : anchorMessageId,
-      offsetWithinMessage: isFollowing ? undefined : messageListRef.value?.getAnchorOffset(),
-      navMessageId: isFollowing ? undefined : messageListRef.value?.getNavMessageId(),
-      hasNavigated: messageListRef.value?.getHasNavigated() ?? false,
-      messageInput: inputBoxRef.value?.getMessageInput() ?? '',
-      quotedText: inputBoxRef.value?.getQuotedText() ?? '',
+      mode: isAtTail || !anchorMessageId ? 'tail' : 'anchor',
+      anchorMessageId: isAtTail ? undefined : anchorMessageId,
+      offsetWithinMessage: isAtTail ? undefined : anchorOffset,
+      navMessageId: isAtTail ? undefined : navMessageId,
+      hasNavigated,
+      messageInput,
+      quotedText,
     })
   }
 
@@ -98,15 +128,20 @@ watch(effectiveSessionId, async (newId, oldId) => {
   if (newId) {
     const snapshot = chatStore.getSnapshot(newId)
     if (snapshot?.mode === 'anchor') {
+      await waitForRestorePage(newId, snapshot.anchorMessageId)
+    }
+    if (effectiveSessionId.value !== newId) return
+    if (snapshot?.mode === 'anchor') {
       messageListRef.value?.restoreAnchor(snapshot)
-      inputBoxRef.value?.restoreSnapshot(snapshot)
     } else {
       messageListRef.value?.restoreTail()
-      if (snapshot) {
-        inputBoxRef.value?.restoreSnapshot(snapshot)
-      } else {
-        inputBoxRef.value?.clearInput()
-      }
+    }
+
+    if (effectiveSessionId.value !== newId) return
+    if (snapshot) {
+      inputBoxRef.value?.restoreSnapshot(snapshot)
+    } else {
+      inputBoxRef.value?.clearInput()
     }
   }
 
@@ -174,6 +209,8 @@ defineExpose({
 
 <style scoped>
 .chat-panel {
+  --chat-content-width: min(720px, max(64%, calc(100% - 96px)));
+
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -188,5 +225,17 @@ defineExpose({
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+@media (max-width: 768px) {
+  .chat-panel {
+    --chat-content-width: calc(100% - 48px);
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-panel {
+    --chat-content-width: calc(100% - 24px);
+  }
 }
 </style>

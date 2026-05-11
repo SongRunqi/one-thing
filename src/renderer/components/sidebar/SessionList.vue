@@ -6,6 +6,7 @@
     <div
       ref="listRef"
       class="sessions-list"
+      :data-suppress-anim="suppressAnim ? '' : null"
       role="list"
       @scroll="checkOverflow"
     >
@@ -69,6 +70,10 @@ const emit = defineEmits<Emits>()
 const listRef = ref<HTMLElement | null>(null)
 const isOverflowing = ref(false)
 const hasContentBelow = ref(false)
+// Suppress CSS transitions on initial mount so collapsed branches don't visibly
+// animate as the organizer settles its hierarchy / active-session expansion.
+const suppressAnim = ref(true)
+let suppressAnimFrame: number | null = null
 
 let mutationObserver: MutationObserver | null = null
 let resizeObserver: ResizeObserver | null = null
@@ -152,6 +157,15 @@ onMounted(() => {
     // Initial check
     checkOverflowDelayed()
   }
+  // Re-enable transitions after the layout has fully settled on first paint.
+  // Two RAFs is enough for the initial collapse-state pass + active-session
+  // ancestor expansion to commit without animating.
+  suppressAnimFrame = requestAnimationFrame(() => {
+    suppressAnimFrame = requestAnimationFrame(() => {
+      suppressAnimFrame = null
+      suppressAnim.value = false
+    })
+  })
 })
 
 onUnmounted(() => {
@@ -162,6 +176,10 @@ onUnmounted(() => {
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
+  }
+  if (suppressAnimFrame !== null) {
+    cancelAnimationFrame(suppressAnimFrame)
+    suppressAnimFrame = null
   }
 })
 </script>
@@ -204,6 +222,15 @@ onUnmounted(() => {
   scrollbar-gutter: stable;
   contain: strict;
   content-visibility: auto;
+}
+
+/* Kill child transitions while initial state settles to avoid the
+   collapsed-branch flicker users see when the active session's ancestors
+   are expanded a frame after mount. */
+.sessions-list[data-suppress-anim] :deep(.session-item),
+.sessions-list[data-suppress-anim] :deep(.session-item *) {
+  transition: none !important;
+  animation: none !important;
 }
 
 /* New Chat item - always at top of session list */

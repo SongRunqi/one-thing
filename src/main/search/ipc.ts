@@ -6,7 +6,7 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { SearchRequest, SearchResponse } from '../../shared/ipc/search.js'
 import { toggleSearchWindow, closeSearchWindow } from './window.js'
-import { executeSearch } from './providers.js'
+import { createDailyNote, executeSearch } from './providers.js'
 
 export function registerSearchHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SEARCH_WINDOW_TOGGLE, async () => {
@@ -31,6 +31,14 @@ export function registerSearchHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SEARCH_EXECUTE_ACTION, async (_event, actionId: string) => {
     closeSearchWindow()
 
+    let resolvedActionId = actionId
+    if (actionId.startsWith('create-daily-note:')) {
+      const encodedPath = actionId.slice('create-daily-note:'.length)
+      const filePath = decodeURIComponent(encodedPath)
+      await createDailyNote(filePath)
+      resolvedActionId = `open-file:${filePath}`
+    }
+
     const mainWindow = BrowserWindow.getAllWindows().find(w => {
       // Main window is the one that is NOT the search window, settings window, etc.
       // It's the largest / first one that has no parent
@@ -38,7 +46,7 @@ export function registerSearchHandlers(): void {
     })
 
     if (mainWindow) {
-      mainWindow.webContents.send('search:action', actionId)
+      mainWindow.webContents.send('search:action', resolvedActionId)
       mainWindow.focus()
     }
     return { success: true }

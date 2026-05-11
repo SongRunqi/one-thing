@@ -152,6 +152,7 @@ import ChatInspectorPanel from '@/components/chat/ChatInspectorPanel.vue'
 import SearchWindow from '@/components/search/SearchWindow.vue'
 import { PanelLeftClose, PanelLeftOpen, Search, SquarePen } from 'lucide-vue-next'
 import { useDoubleShift } from '@/composables/useDoubleShift'
+import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 
 
 // Type for diff overlay data
@@ -162,10 +163,16 @@ interface DiffOverlayData {
   isStaged: boolean
 }
 
-// Detect if this is the settings window or image preview window
-const isSettingsWindow = window.location.hash.startsWith('#/settings')
-const isImagePreviewWindow = window.location.hash.startsWith('#/image-preview')
-const isSearchWindow = window.location.hash.startsWith('#/search')
+// Detect auxiliary windows from the hash. Keep it reactive because dev HMR
+// and BrowserWindow reuse can change the hash after App has already mounted.
+const currentHash = ref(window.location.hash)
+const isSettingsWindow = computed(() => currentHash.value.startsWith('#/settings'))
+const isImagePreviewWindow = computed(() => currentHash.value.startsWith('#/image-preview'))
+const isSearchWindow = computed(() => currentHash.value.startsWith('#/search'))
+
+function syncCurrentHash() {
+  currentHash.value = window.location.hash
+}
 
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
@@ -352,7 +359,7 @@ watch(sidebarCollapsed, (collapsed) => {
 watch([sidebarCollapsed, sidebarFloating, showMediaPanel], ([collapsed]) => {
   localStorage.setItem('sidebarCollapsed', String(collapsed))
   // Skip traffic light control for settings/preview windows - always show there
-  if (isSettingsWindow || isImagePreviewWindow) return
+  if (isSettingsWindow.value || isImagePreviewWindow.value) return
   // Always show traffic lights since sidebar strip is always visible
   window.electronAPI?.setWindowButtonVisibility?.(true).catch(() => {
     // Handler may not be registered yet during initial load
@@ -366,7 +373,7 @@ function openSearch() {
 }
 
 // Double Shift to open search (only in main window)
-if (!isSettingsWindow && !isImagePreviewWindow && !isSearchWindow) {
+if (!isSettingsWindow.value && !isImagePreviewWindow.value && !isSearchWindow.value) {
   useDoubleShift(() => openSearch())
 }
 
@@ -395,6 +402,12 @@ let unsubscribeMenuCloseChat: (() => void) | null = null
 let unsubscribeSearchAction: (() => void) | null = null
 
 onMounted(async () => {
+  window.addEventListener('hashchange', syncCurrentHash)
+
+  // Fonts are already preloaded in main.ts before mount, so the markdown cache
+  // is the only async dep we still need to gate `appReady` on.
+  const markdownCacheReady = ensureMarkdownCacheReady()
+
   // Load initial data
   await sessionsStore.loadSessions()
   await settingsStore.loadSettings()
@@ -416,6 +429,14 @@ onMounted(async () => {
     }
   } catch (e) {
     console.warn('[App] Failed to restore app state:', e)
+  }
+
+  // Make sure the disk-restored markdown cache is in memory before MessageList
+  // mounts; otherwise the first render misses every entry.
+  try {
+    await markdownCacheReady
+  } catch (e) {
+    console.warn('[App] markdown cache init failed', e)
   }
 
   appReady.value = true
@@ -514,6 +535,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('hashchange', syncCurrentHash)
+
   if (unsubscribeSettingsChanged) {
     unsubscribeSettingsChanged()
   }

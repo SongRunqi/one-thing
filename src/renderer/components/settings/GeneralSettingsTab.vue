@@ -141,12 +141,103 @@
         </div>
       </div>
     </section>
+
+    <section class="settings-section">
+      <h3 class="section-title">
+        Daily Notes
+      </h3>
+      <div class="settings-card">
+        <div class="card-row">
+          <label class="toggle-row">
+            <span>
+              <span class="toggle-title">Enable Search Everywhere daily notes</span>
+              <span class="toggle-desc">Adds the Daily tab and today shortcut.</span>
+            </span>
+            <input
+              type="checkbox"
+              :checked="dailyNotes.enabled !== false"
+              @change="updateDailyNotes({ enabled: ($event.target as HTMLInputElement).checked })"
+            >
+          </label>
+        </div>
+
+        <div class="card-row">
+          <div class="form-group">
+            <label class="form-label">Source Directory</label>
+            <div class="segmented-control">
+              <button
+                :class="['segment-btn', { active: (dailyNotes.directoryMode || 'personal') === 'personal' }]"
+                type="button"
+                @click="updateDailyNotes({ directoryMode: 'personal' })"
+              >
+                Personal note dir
+              </button>
+              <button
+                :class="['segment-btn', { active: dailyNotes.directoryMode === 'custom' }]"
+                type="button"
+                @click="updateDailyNotes({ directoryMode: 'custom' })"
+              >
+                Custom directory
+              </button>
+            </div>
+          </div>
+
+          <div
+            v-if="dailyNotes.directoryMode === 'custom'"
+            class="directory-field"
+          >
+            <input
+              class="form-input"
+              :value="dailyNotes.customDirectory || ''"
+              placeholder="/path/to/daily-notes"
+              spellcheck="false"
+              @input="updateDailyNotes({ customDirectory: ($event.target as HTMLInputElement).value })"
+            >
+            <button
+              class="secondary-btn"
+              type="button"
+              @click="chooseDailyNoteDirectory"
+            >
+              Choose
+            </button>
+          </div>
+        </div>
+
+        <div class="card-row">
+          <label class="toggle-row">
+            <span>
+              <span class="toggle-title">Use Obsidian Daily Notes config</span>
+              <span class="toggle-desc">Reads .obsidian/daily-notes.json when available.</span>
+            </span>
+            <input
+              type="checkbox"
+              :checked="dailyNotes.useObsidianConfig !== false"
+              @change="updateDailyNotes({ useObsidianConfig: ($event.target as HTMLInputElement).checked })"
+            >
+          </label>
+        </div>
+
+        <div class="card-row">
+          <div class="form-group">
+            <label class="form-label">Fallback Date Format</label>
+            <input
+              class="form-input"
+              :value="dailyNotes.format || 'YYYY-MM-DD'"
+              placeholder="YYYY-MM-DD"
+              spellcheck="false"
+              @input="updateDailyNotes({ format: ($event.target as HTMLInputElement).value })"
+            >
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AppSettings } from '@/types'
+import type { DailyNoteSettings } from '@shared/ipc/settings'
 import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
 import { getFontsByLang, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '@shared/fonts'
 
@@ -166,6 +257,14 @@ const zhFonts = getFontsByLang('zh')
 const currentFontSize = computed(() => props.settings.chat?.chatFontSize ?? 14)
 const currentFontEn = computed(() => props.settings.chat?.chatFontEn ?? DEFAULT_FONT_EN)
 const currentFontZh = computed(() => props.settings.chat?.chatFontZh ?? DEFAULT_FONT_ZH)
+const dailyNotes = computed<DailyNoteSettings>(() => ({
+  enabled: true,
+  directoryMode: 'personal',
+  customDirectory: '',
+  useObsidianConfig: true,
+  format: 'YYYY-MM-DD',
+  ...props.settings.general.dailyNotes,
+}))
 
 function updateTheme(theme: 'light' | 'dark' | 'system') {
   emit('update:settings', { ...props.settings, theme })
@@ -214,6 +313,33 @@ function updateFontZh(fontId: string) {
   })
 }
 
+function updateDailyNotes(patch: Partial<DailyNoteSettings>) {
+  emit('update:settings', {
+    ...props.settings,
+    general: {
+      ...props.settings.general,
+      dailyNotes: {
+        ...dailyNotes.value,
+        ...patch,
+      },
+    },
+  })
+}
+
+async function chooseDailyNoteDirectory() {
+  const result = await window.electronAPI.showOpenDialog({
+    title: 'Choose Daily Notes Directory',
+    properties: ['openDirectory'],
+    defaultPath: dailyNotes.value.customDirectory || undefined,
+  })
+  if (!result.canceled && result.filePaths[0]) {
+    updateDailyNotes({
+      directoryMode: 'custom',
+      customDirectory: result.filePaths[0],
+    })
+  }
+}
+
 
 </script>
 
@@ -233,14 +359,15 @@ function updateFontZh(fontId: string) {
 
 /* macOS-style card group */
 .settings-card {
-  background: rgba(128, 128, 128, 0.06);
-  border-radius: 10px;
+  border: 1px solid var(--settings-rule, var(--border));
+  background: var(--settings-paper, var(--bg-panel));
+  border-radius: 12px;
   overflow: hidden;
 }
 
 .card-row {
   padding: 12px 14px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.08);
+  border-bottom: 1px solid var(--settings-rule-soft, var(--border-subtle));
 }
 
 .card-row:last-child {
@@ -282,6 +409,117 @@ function updateFontZh(fontId: string) {
   margin-bottom: 8px;
 }
 
+.form-input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border-radius: 8px;
+  background: var(--settings-paper-2, var(--bg));
+  color: var(--text-primary);
+  font-size: var(--type-body-size);
+  padding: 7px 10px;
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: var(--settings-accent, var(--accent));
+  box-shadow: 0 0 0 2px var(--settings-accent-soft, rgba(var(--accent-rgb), 0.12));
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border-radius: 8px;
+  background: var(--settings-paper-2, var(--bg));
+}
+
+.segment-btn {
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--type-label-size);
+  cursor: pointer;
+}
+
+.segment-btn:hover {
+  color: var(--text-primary);
+  background: var(--hover);
+}
+
+.segment-btn.active {
+  color: var(--text-primary);
+  background: var(--settings-paper, var(--bg-panel));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.segment-btn:focus-visible {
+  outline: 2px solid var(--settings-accent, var(--accent));
+  outline-offset: 2px;
+}
+
+.directory-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.directory-field .form-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.secondary-btn {
+  flex-shrink: 0;
+  min-height: 34px;
+  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border-radius: 8px;
+  background: var(--settings-paper, transparent);
+  color: var(--text-primary);
+  padding: 0 12px;
+  font-size: var(--type-label-size);
+  cursor: pointer;
+}
+
+.secondary-btn:hover {
+  border-color: var(--settings-accent, var(--accent));
+  background: var(--settings-paper-2, var(--hover));
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.toggle-title,
+.toggle-desc {
+  display: block;
+}
+
+.toggle-title {
+  font-size: var(--type-body-size);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.toggle-desc {
+  margin-top: 2px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.toggle-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
 .label-value {
   margin-left: auto;
   color: var(--accent);
@@ -290,35 +528,47 @@ function updateFontZh(fontId: string) {
 
 /* Theme Cards */
 .theme-cards {
-  display: flex;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  overflow: visible;
 }
 
 .theme-card {
-  flex: 1;
-  padding: 12px;
+  border: 1px solid var(--settings-rule, var(--border));
+  border-radius: 12px;
+  background: var(--settings-paper, transparent);
+  padding: 0;
   cursor: pointer;
   transition: all 0.15s ease;
-  text-align: center;
+  text-align: left;
+  overflow: hidden;
 }
 
 .theme-card:hover {
-  background: var(--hover);
+  border-color: var(--settings-accent, var(--accent));
+  transform: translateY(-1px);
 }
 
 .theme-card.active {
-  background: rgba(var(--accent-rgb), 0.08);
+  border-color: var(--settings-accent, var(--accent));
+  box-shadow: 0 0 0 3px var(--settings-accent-soft, rgba(var(--accent-rgb), 0.14));
 }
 
 .theme-card span {
+  display: block;
+  padding: 10px 12px 11px;
+  border-top: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.08));
   font-size: var(--type-label-size);
   font-weight: var(--type-label-weight);
 }
 
 .theme-preview {
-  height: 60px;
-  border-radius: 8px;
-  margin-bottom: 10px;
+  height: 104px;
+  border-radius: 0;
+  margin-bottom: 0;
   display: flex;
   overflow: hidden;
 }
@@ -404,7 +654,7 @@ function updateFontZh(fontId: string) {
   align-items: center;
   gap: 10px;
   padding: 14px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--settings-rule, var(--border));
   border-radius: 12px;
   background: transparent;
   cursor: pointer;
@@ -413,12 +663,12 @@ function updateFontZh(fontId: string) {
 
 .color-theme-btn:hover {
   border-color: var(--theme-main);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--settings-paper-2, var(--bg-hover));
 }
 
 .color-theme-btn.active {
   border-color: var(--theme-main);
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--theme-main) 10%, var(--settings-paper));
 }
 
 .color-dots {
@@ -449,7 +699,7 @@ function updateFontZh(fontId: string) {
 }
 
 .color-theme-btn.active .color-dot.main {
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--settings-paper) 72%, transparent), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .color-name {
@@ -535,6 +785,10 @@ function updateFontZh(fontId: string) {
 
 /* Responsive */
 @media (max-width: 480px) {
+  .theme-cards {
+    grid-template-columns: 1fr;
+  }
+
   .color-theme-grid {
     grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
   }
@@ -551,9 +805,9 @@ function updateFontZh(fontId: string) {
 
 /* Font Options */
 .font-options {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+  gap: 10px;
 }
 
 .font-option {
@@ -561,22 +815,22 @@ function updateFontZh(fontId: string) {
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: transparent;
+  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border-radius: 9px;
+  background: var(--settings-paper, transparent);
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: left;
 }
 
 .font-option:hover {
-  background: var(--hover);
-  border-color: var(--border-default);
+  background: var(--settings-paper-2, var(--hover));
+  border-color: var(--settings-accent, var(--border-default));
 }
 
 .font-option.active {
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.06);
+  border-color: var(--settings-accent, var(--accent));
+  background: color-mix(in srgb, var(--settings-accent, var(--accent)) 8%, transparent);
 }
 
 .font-preview {
@@ -598,7 +852,7 @@ function updateFontZh(fontId: string) {
   font-size: 10px;
   font-weight: var(--font-weight-semibold);
   color: var(--text-faint);
-  background: rgba(128, 128, 128, 0.1);
+  background: var(--settings-paper-2, var(--bg-hover));
   padding: 2px 6px;
   border-radius: 4px;
   white-space: nowrap;

@@ -46,6 +46,7 @@ export interface UseFollowScrollOptions {
   scroller: Ref<HTMLElement | null>
   content: Ref<HTMLElement | null>
   count: ComputedRef<number>
+  maintainOnLayout?: boolean
 }
 
 export function useFollowScroll(opts: UseFollowScrollOptions) {
@@ -166,6 +167,7 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
 
     const distance = getNaturalBottomDistance(el)
     if (isFollowing.value) {
+      if (opts.maintainOnLayout === false) return
       if (distance > BOTTOM_EPSILON_PX && !suppressed) {
         schedulePinToBottom('scroll:follow-drift')
       }
@@ -180,6 +182,7 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
     if (canAutoReattach) {
       isFollowing.value = true
       reattachLockedUntil = 0
+      if (opts.maintainOnLayout === false) return
       schedulePinToBottom('scroll:reattach-natural-bottom')
     }
   }
@@ -205,6 +208,7 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
       contentResizeObserver = null
       contentMutationObserver?.disconnect()
       contentMutationObserver = null
+      if (opts.maintainOnLayout === false) return
       if (!el || typeof ResizeObserver === 'undefined') return
       lastObservedScrollHeight = opts.scroller.value?.scrollHeight ?? 0
       contentResizeObserver = new ResizeObserver(() => pinToBottomThroughLayout('ResizeObserver:content'))

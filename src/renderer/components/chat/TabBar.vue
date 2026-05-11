@@ -16,6 +16,7 @@
           :tab="tab"
           :active="tab.id === activeTabId"
           :closable="tab.type === 'file' || chatTabCount > 1"
+          :is-first="index === 0"
           :hide-trailing-divider="tab.id === activeTabId || tabs[index + 1]?.id === activeTabId"
           :session-name="tab.type === 'chat' ? sessionName : undefined"
           @select="$emit('selectTab', tab.id)"
@@ -128,13 +129,15 @@ const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').le
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 40px;
-  padding: 0 10px 0 12px;
+  height: 38px;
+  padding: 0 10px 0 0;
   user-select: none;
   flex-shrink: 0;
   position: relative;
-  background: color-mix(in srgb, var(--bg-app) 58%, var(--bg-panel));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg-floating) 38%, transparent);
+  background:
+    linear-gradient(rgba(var(--accent-rgb), 0.04), rgba(var(--accent-rgb), 0.04)),
+    var(--bg-app);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg-floating) 20%, transparent);
   -webkit-app-region: drag;
 }
 
@@ -145,13 +148,13 @@ const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').le
   bottom: 0;
   left: 0;
   height: 1px;
-  background: var(--border-subtle);
+  background: color-mix(in srgb, var(--border-subtle) 62%, transparent);
   pointer-events: none;
   z-index: 0;
 }
 
 .traffic-lights-reserved {
-  width: 170px;
+  width: 164px;
   flex-shrink: 0;
 }
 
@@ -167,12 +170,14 @@ const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').le
 }
 
 .tab-list {
+  --tab-corner-size: 12px;
   display: flex;
   align-items: flex-end;
   gap: 0;
   overflow-x: auto;
+  overflow-y: visible;
   scrollbar-width: none;
-  padding-top: 3px;
+  padding: 2px var(--tab-corner-size) 0 calc(var(--tab-corner-size) + 4px);
   min-width: 0;
   -webkit-app-region: no-drag;
 }

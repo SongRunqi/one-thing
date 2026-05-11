@@ -106,20 +106,26 @@
               class="content"
             >
               <StreamingMarkdown
+                v-if="isStreaming"
                 :content="firstTextPart.content"
                 :is-user="role === 'user'"
-                :is-streaming="isStreaming"
+                :is-streaming="true"
+              />
+              <StaticMarkdown
+                v-else
+                :content="firstTextPart.content"
+                :is-user="role === 'user'"
               />
             </div>
           </Transition>
 
-          <!-- Other parts: tool-call, steps, additional text (with TransitionGroup) -->
-          <TransitionGroup
+          <!-- Other parts: tool-call, steps, additional text -->
+          <!-- Streaming path keeps TransitionGroup for enter/leave animation.
+               Static path uses a plain <div> to skip TransitionGroup bookkeeping. -->
+          <component
+            :is="otherPartsTag"
             v-if="otherParts && otherParts.length > 0"
-            name="other-parts"
-            tag="div"
-            class="other-parts-container"
-            :css="!isStreaming"
+            v-bind="otherPartsWrapperProps"
           >
             <template
               v-for="(part, index) in otherParts"
@@ -138,9 +144,15 @@
                 class="content"
               >
                 <StreamingMarkdown
+                  v-if="isStreaming"
                   :content="part.content"
                   :is-user="role === 'user'"
-                  :is-streaming="isStreaming"
+                  :is-streaming="true"
+                />
+                <StaticMarkdown
+                  v-else
+                  :content="part.content"
+                  :is-user="role === 'user'"
                 />
               </div>
               <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
@@ -175,7 +187,7 @@
                 @reject="(tc) => emit('rejectTool', tc)"
               />
             </template>
-          </TransitionGroup>
+          </component>
         </template>
 
         <!-- Fallback for messages without contentParts (user messages and
@@ -187,9 +199,15 @@
           class="content"
         >
           <StreamingMarkdown
+            v-if="isStreaming"
             :content="content"
             :is-user="role === 'user'"
-            :is-streaming="isStreaming"
+            :is-streaming="true"
+          />
+          <StaticMarkdown
+            v-else
+            :content="content"
+            :is-user="role === 'user'"
           />
         </div>
       </div>
@@ -220,10 +238,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, TransitionGroup } from 'vue'
 import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
 import StreamingMarkdown from './StreamingMarkdown.vue'
+import StaticMarkdown from './StaticMarkdown.vue'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
 
 interface Props {
@@ -306,6 +325,17 @@ const otherParts = computed(() => {
     return true
   })
 })
+
+// Streaming path keeps TransitionGroup (with css=false, matching the original
+// `:css="!isStreaming"`) so keyed-children move-tracking still works while
+// parts arrive. Static path uses a plain <div> — no enter/leave/move tracking,
+// no per-child animation slots, just normal DOM diffing.
+const otherPartsTag = computed(() => props.isStreaming ? TransitionGroup : 'div')
+const otherPartsWrapperProps = computed(() =>
+  props.isStreaming
+    ? { name: 'other-parts', tag: 'div', class: 'other-parts-container', css: false }
+    : { class: 'other-parts-container' }
+)
 
 // Generate stable keys for other parts TransitionGroup
 function getOtherPartKey(part: ContentPart, index: number): string {

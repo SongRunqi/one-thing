@@ -1,8 +1,5 @@
 <template>
   <div class="settings-page">
-    <!-- macOS-style titlebar drag region -->
-    <div class="titlebar-drag-region" />
-
     <!-- Loading State -->
     <div
       v-if="isLoading"
@@ -14,91 +11,162 @@
 
     <div
       v-else
-      class="settings-layout"
+      class="settings-window"
     >
-      <!-- Sidebar navigation -->
-      <aside class="settings-sidebar">
-        <div class="sidebar-spacer" />
-        <nav class="sidebar-nav">
-          <button
-            v-for="item in navItems"
-            :key="item.id"
-            :class="['sidebar-item', { active: activeTab === item.id }]"
-            @click="activeTab = item.id"
-          >
-            <component
-              :is="item.icon"
-              class="sidebar-icon"
-            />
-            <span class="sidebar-label">{{ item.label }}</span>
-          </button>
-        </nav>
-      </aside>
-
-      <!-- Content Area -->
-      <main class="settings-content">
-        <div class="content-body">
-          <template v-if="localSettings">
-            <GeneralSettingsTab
-              v-if="activeTab === 'general'"
-              :settings="localSettings"
-              @update:settings="handleSettingsUpdate"
-            />
-
-            <EditorSettingsTab
-              v-else-if="activeTab === 'editor'"
-              :settings="localSettings"
-              @update:settings="handleSettingsUpdate"
-            />
-
-            <AIProviderTab
-              v-else-if="activeTab === 'providers'"
-              :settings="localSettings"
-              :providers="allProviders"
-              @update:settings="handleSettingsUpdate"
-              @add-custom-provider="showCustomProviderDialog = true"
-              @edit-custom-provider="editCustomProvider"
-            />
-
-            <ToolsSettingsTab
-              v-else-if="activeTab === 'tools'"
-              :settings="localSettings"
-              :tools="tools"
-              @update:settings="handleSettingsUpdate"
-            />
-
-            <ShortcutsSettingsTab
-              v-else-if="activeTab === 'shortcuts'"
-              :settings="localSettings"
-              @update:settings="handleSettingsUpdate"
-            />
-
-            <MCPSettingsPanel
-              v-else-if="activeTab === 'mcp'"
-              :settings="localSettings.mcp || { enabled: true, servers: [] }"
-              @update:settings="handleMCPSettingsUpdate"
-            />
-
-            <SkillsSettingsPanel
-              v-else-if="activeTab === 'skills'"
-              :settings="localSettings.skills || { enableSkills: true, skills: {} }"
-              @update:settings="handleSkillsSettingsUpdate"
-            />
-
-            <PluginsSettingsTab
-              v-else-if="activeTab === 'plugins'"
-              @plugins-changed="loadTools"
-            />
-          </template>
-          <div
-            v-else
-            class="loading-content"
-          >
-            Loading...
-          </div>
+      <header class="settings-titlebar">
+        <div class="titlebar-title">
+          <span class="titlebar-mark">o</span>
+          <span>onething · Settings</span>
         </div>
-      </main>
+      </header>
+
+      <div class="settings-layout">
+        <!-- Sidebar navigation -->
+        <aside class="settings-sidebar">
+          <div class="sidebar-identity">
+            <div class="brand-mark">
+              o
+            </div>
+            <div class="brand-copy">
+              <div class="brand-name">
+                onething
+              </div>
+              <div class="brand-subtitle">
+                Settings
+              </div>
+            </div>
+          </div>
+
+          <label class="settings-search">
+            <Search class="search-icon" />
+            <input
+              v-model="searchQuery"
+              placeholder="Search settings"
+              type="search"
+            >
+            <span
+              v-if="!searchQuery"
+              class="search-kbd"
+            >/</span>
+          </label>
+
+          <div class="sidebar-group-label">
+            Workspace
+          </div>
+
+          <nav class="sidebar-nav">
+            <button
+              v-for="(item, index) in filteredNavItems"
+              :key="item.id"
+              :class="['sidebar-item', { active: activeTab === item.id }]"
+              @click="activeTab = item.id"
+            >
+              <span class="sidebar-index">{{ String(index + 1).padStart(2, '0') }}</span>
+              <component
+                :is="item.icon"
+                class="sidebar-icon"
+              />
+              <span class="sidebar-copy">
+                <span class="sidebar-label">{{ item.label }}</span>
+                <span class="sidebar-hint">{{ item.hint }}</span>
+              </span>
+            </button>
+          </nav>
+        </aside>
+
+        <!-- Content Area -->
+        <main class="settings-content">
+          <div class="content-strip">
+            <span class="breadcrumb">Settings / {{ currentNavItem?.label }}</span>
+            <span
+              v-if="hasUnsavedChanges"
+              class="save-state"
+            >Saving changes…</span>
+            <span
+              v-else
+              class="save-state"
+            >Changes save automatically</span>
+          </div>
+
+          <div class="content-body">
+            <div
+              class="content-inner"
+              :class="{ 'content-inner-wide': activeTab === 'providers' }"
+            >
+              <header class="section-hero">
+                <div class="section-eyebrow">
+                  {{ currentSectionNumber }} ──
+                </div>
+                <div>
+                  <h1>{{ currentNavItem?.label }}</h1>
+                  <p>{{ currentNavItem?.hint }}</p>
+                </div>
+              </header>
+
+              <template v-if="localSettings">
+                <GeneralSettingsTab
+                  v-if="activeTab === 'general'"
+                  :settings="localSettings"
+                  @update:settings="handleSettingsUpdate"
+                />
+
+                <EditorSettingsTab
+                  v-else-if="activeTab === 'editor'"
+                  :settings="localSettings"
+                  @update:settings="handleSettingsUpdate"
+                />
+
+                <AIProviderTab
+                  v-else-if="activeTab === 'providers'"
+                  :settings="localSettings"
+                  :providers="allProviders"
+                  @update:settings="handleSettingsUpdate"
+                  @add-custom-provider="showCustomProviderDialog = true"
+                  @edit-custom-provider="editCustomProvider"
+                />
+
+                <ToolsSettingsTab
+                  v-else-if="activeTab === 'tools'"
+                  :settings="localSettings"
+                  :tools="tools"
+                  @update:settings="handleSettingsUpdate"
+                />
+
+                <ShortcutsSettingsTab
+                  v-else-if="activeTab === 'shortcuts'"
+                  :settings="localSettings"
+                  @update:settings="handleSettingsUpdate"
+                />
+
+                <MCPSettingsPanel
+                  v-else-if="activeTab === 'mcp'"
+                  :settings="localSettings.mcp || { enabled: true, servers: [] }"
+                  @update:settings="handleMCPSettingsUpdate"
+                />
+
+                <SkillsSettingsPanel
+                  v-else-if="activeTab === 'skills'"
+                  :settings="localSettings.skills || { enableSkills: true, skills: {} }"
+                  @update:settings="handleSkillsSettingsUpdate"
+                />
+
+                <PluginsSettingsTab
+                  v-else-if="activeTab === 'plugins'"
+                  @plugins-changed="loadTools"
+                />
+              </template>
+              <div
+                v-else
+                class="loading-content"
+              >
+                Loading...
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
+    <div class="settings-page-grain" />
 
     <!-- Custom Provider Dialog -->
     <CustomProviderDialog
@@ -120,7 +188,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, h } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import {
+  Boxes,
+  Code2,
+  Keyboard,
+  Plug,
+  Search,
+  Server,
+  Settings,
+  Sparkles,
+  Wrench,
+} from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
 import { matchShortcut } from '@/composables/useShortcuts'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'
@@ -152,99 +231,71 @@ const showUnsavedDialog = ref(false)
 const tools = ref<ToolDefinition[]>([])
 const isInitialLoad = ref(true) // Prevent auto-save during initial load
 
-// Navigation items with inline SVG icons
 const navItems = [
   {
     id: 'general',
     label: 'General',
-    icon: {
-      render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
-        h('circle', { cx: 12, cy: 12, r: 3 }),
-        h('path', { d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z' }),
-      ])
-    }
+    hint: 'Appearance, themes, and typography',
+    icon: Settings,
   },
   {
     id: 'editor',
     label: 'Editor',
-    icon: {
-      render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
-        h('path', { d: 'M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z' }),
-        h('polyline', { points: '13 2 13 9 20 9' }),
-      ])
-    }
+    hint: 'Tabs and file preview limits',
+    icon: Code2,
   },
   {
     id: 'providers',
     label: 'Providers',
-    icon: {
-      render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
-        h('path', { d: 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z' }),
-        h('polyline', { points: '3.27 6.96 12 12.01 20.73 6.96' }),
-        h('line', { x1: 12, y1: 22.08, x2: 12, y2: 12 }),
-      ])
-    }
+    hint: 'Models, API keys, and defaults',
+    icon: Boxes,
   },
   {
     id: 'tools',
     label: 'Tools',
-    icon: {
-      render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
-        h('path', { d: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z' }),
-      ])
-    }
+    hint: 'Built-in capabilities and search keys',
+    icon: Wrench,
   },
   {
     id: 'shortcuts',
     label: 'Shortcuts',
-    icon: {
-      render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
-        h('rect', { x: 2, y: 4, width: 20, height: 16, rx: 2 }),
-        h('path', { d: 'M6 8h.01' }),
-        h('path', { d: 'M10 8h.01' }),
-        h('path', { d: 'M14 8h.01' }),
-        h('path', { d: 'M18 8h.01' }),
-        h('path', { d: 'M8 12h.01' }),
-        h('path', { d: 'M12 12h.01' }),
-        h('path', { d: 'M16 12h.01' }),
-        h('path', { d: 'M7 16h10' }),
-      ])
-    }
+    hint: 'Keyboard bindings',
+    icon: Keyboard,
   },
   {
     id: 'mcp',
     label: 'MCP Servers',
-    icon: {
-      render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
-        h('rect', { x: 2, y: 2, width: 20, height: 8, rx: 2 }),
-        h('rect', { x: 2, y: 14, width: 20, height: 8, rx: 2 }),
-        h('circle', { cx: 6, cy: 6, r: 1, fill: 'currentColor' }),
-        h('circle', { cx: 6, cy: 18, r: 1, fill: 'currentColor' }),
-      ])
-    }
+    hint: 'External context servers',
+    icon: Server,
   },
   {
     id: 'skills',
     label: 'Skills',
-    icon: {
-      render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
-        h('polygon', { points: '12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' }),
-      ])
-    }
+    hint: 'Reusable agent workflows',
+    icon: Sparkles,
   },
   {
     id: 'plugins',
     label: 'Plugins',
-    icon: {
-      render: () => h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }, [
-        h('path', { d: 'M12 2l3 6 6.5 1-4.7 4.5 1.2 6.5-6-3.2-6 3.2 1.2-6.5L2.5 9 9 8z' }),
-        h('circle', { cx: 12, cy: 12, r: 2, fill: 'currentColor', opacity: 0.3 }),
-      ])
-    }
+    hint: 'Installed extensions',
+    icon: Plug,
   },
 ]
 
 const currentNavItem = computed(() => navItems.find(item => item.id === activeTab.value))
+const currentSectionNumber = computed(() => {
+  const index = navItems.findIndex(item => item.id === activeTab.value)
+  return String(index + 1).padStart(2, '0')
+})
+const searchQuery = ref('')
+const filteredNavItems = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) return navItems
+
+  return navItems.filter(item =>
+    `${item.label} ${item.hint}`.toLowerCase().includes(query)
+  )
+})
 
 // Providers list
 const allProviders = computed<ProviderInfo[]>(() => {
@@ -271,20 +322,13 @@ async function loadTools() {
 // Load settings
 async function loadSettings() {
   try {
-    // Load settings, providers and tools in parallel
-    const [, , toolsResponse] = await Promise.all([
-      settingsStore.loadSettings(),
-      settingsStore.loadProviders(),
-      window.electronAPI.getTools()
-    ])
+    await settingsStore.loadSettings()
+    await settingsStore.loadProviders()
 
     localSettings.value = JSON.parse(JSON.stringify(settingsStore.settings))
     originalSettings.value = JSON.stringify(localSettings.value)
 
-    // Load tools
-    if (toolsResponse.success && toolsResponse.tools) {
-      tools.value = toolsResponse.tools
-    }
+    loadTools()
   } catch (err) {
     console.error('Failed to load settings:', err)
   } finally {
@@ -452,25 +496,85 @@ onUnmounted(() => {
 
 <style scoped>
 .settings-page {
+  --settings-paper: var(--bg-app, var(--bg));
+  --settings-paper-2: var(--bg-sidebar, var(--panel-2));
+  --settings-paper-3: var(--bg-elevated, var(--panel));
+  --settings-rule: var(--border-default, var(--border));
+  --settings-rule-soft: var(--border-subtle, var(--border));
+  --settings-ink: var(--text-primary, var(--text));
+  --settings-ink-2: var(--text-secondary, var(--text));
+  --settings-ink-3: var(--text-muted, var(--muted));
+  --settings-ink-4: var(--text-faint, var(--muted));
+  --settings-ink-5: color-mix(in srgb, var(--text-faint, var(--muted)) 66%, transparent);
+  --settings-accent: var(--accent);
+  --settings-accent-soft: rgba(var(--accent-rgb), 0.16);
+  --settings-accent-tint: color-mix(in srgb, var(--settings-accent) 12%, var(--settings-paper));
+  --settings-shadow: 0 30px 80px -34px rgba(0, 0, 0, 0.42), 0 10px 28px -18px rgba(0, 0, 0, 0.28);
+
   height: 100vh;
   width: 100vw;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--settings-paper-2);
+  color: var(--settings-ink);
   overflow: hidden;
   user-select: none;
+  position: relative;
 }
 
-/* Titlebar drag region */
-.titlebar-drag-region {
-  height: 38px;
-  width: 100%;
+.settings-page-grain {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.08;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.08 0 0 0 0 0.04 0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  mix-blend-mode: multiply;
+}
+
+.settings-window {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: var(--settings-paper);
+  box-shadow: none;
+}
+
+.settings-titlebar {
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--settings-rule);
+  background: var(--settings-paper-2);
+  position: relative;
   -webkit-app-region: drag;
-  z-index: 10;
+}
+
+.titlebar-title {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--settings-ink-3);
+  font-size: 12.5px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.titlebar-mark,
+.brand-mark {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
 }
 
 .settings-layout {
@@ -479,89 +583,286 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-/* ── Sidebar ── */
 .settings-sidebar {
-  width: 200px;
+  width: 260px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
-  -webkit-app-region: drag;
+  padding: 16px 12px 12px;
+  border-right: 1px solid var(--settings-rule);
+  background: var(--settings-paper-2);
+  -webkit-app-region: no-drag;
 }
 
-.sidebar-spacer {
-  height: 38px;
+.sidebar-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 14px;
+}
+
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--settings-ink);
+  color: var(--settings-paper);
+  font-size: 19px;
+  line-height: 1;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
+.brand-name {
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.brand-subtitle {
+  margin-top: 2px;
+  color: var(--settings-ink-4);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+}
+
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--settings-rule);
+  border-radius: 8px;
+  background: var(--settings-paper);
+  color: var(--settings-ink-3);
+  -webkit-app-region: no-drag;
+}
+
+.search-icon {
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
+}
+
+.settings-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--settings-ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.settings-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-kbd {
+  min-width: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--settings-rule);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--settings-paper-2);
+  color: var(--settings-ink-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.sidebar-group-label {
+  padding: 6px 0 4px 8px;
+  color: var(--settings-ink-4);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .sidebar-nav {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 8px;
-  -webkit-app-region: no-drag;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .sidebar-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border: none;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
   background: transparent;
-  border-radius: 6px;
-  color: var(--text-secondary, var(--muted));
+  border-radius: 8px;
+  color: var(--settings-ink-3);
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 400;
   text-align: left;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
 .sidebar-item:hover {
-  background: rgba(128, 128, 128, 0.08);
-  color: var(--text);
+  background: color-mix(in srgb, var(--settings-paper) 72%, transparent);
+  color: var(--settings-ink);
 }
 
 .sidebar-item.active {
-  background: var(--accent);
-  color: white;
+  border-color: var(--settings-rule);
+  background: var(--settings-paper);
+  color: var(--settings-ink);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--settings-ink) 8%, transparent), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.sidebar-item.active::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--settings-accent);
+}
+
+.sidebar-index {
+  width: 18px;
+  flex-shrink: 0;
+  color: var(--settings-ink-4);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
 }
 
 .sidebar-icon {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
-  opacity: 0.7;
+  color: var(--settings-ink-3);
 }
 
 .sidebar-item.active .sidebar-icon {
-  opacity: 1;
+  color: var(--settings-accent);
+}
+
+.sidebar-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
 .sidebar-label {
-  line-height: 1;
+  color: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.15;
 }
 
-/* ── Content ── */
+.sidebar-hint {
+  overflow: hidden;
+  color: var(--settings-ink-4);
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  background: var(--settings-paper);
+}
+
+.content-strip {
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--settings-rule-soft);
+  color: var(--settings-ink-4);
+}
+
+.breadcrumb,
+.save-state {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.save-state {
+  margin-left: auto;
 }
 
 .content-body {
   flex: 1;
   overflow-y: auto;
-  padding: 38px 16px 16px;
+  padding: 32px 40px 60px;
 }
 
-/* Scrollbar */
+.content-inner {
+  width: min(100%, 900px);
+  margin: 0 auto;
+}
+
+.content-inner-wide {
+  width: min(100%, 900px);
+}
+
+.section-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 26px;
+}
+
+.section-eyebrow {
+  flex-shrink: 0;
+  color: var(--settings-ink-4);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.section-hero h1 {
+  margin: 0;
+  color: var(--settings-ink);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 30px;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.section-hero p {
+  max-width: 580px;
+  margin: 8px 0 0;
+  color: var(--settings-ink-3);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
 .content-body::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
 }
 
 .content-body::-webkit-scrollbar-track {
@@ -569,19 +870,17 @@ onUnmounted(() => {
 }
 
 .content-body::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 3px;
-}
-
-.content-body:hover::-webkit-scrollbar-thumb {
-  background: rgba(128, 128, 128, 0.3);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--settings-ink) 16%, transparent);
+  background-clip: padding-box;
 }
 
 .content-body::-webkit-scrollbar-thumb:hover {
-  background: rgba(128, 128, 128, 0.5);
+  background: color-mix(in srgb, var(--settings-ink) 28%, transparent);
+  background-clip: padding-box;
 }
 
-/* ── Loading ── */
 .loading-state {
   flex: 1;
   display: flex;
@@ -589,20 +888,196 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: var(--muted);
+  color: var(--settings-ink-4);
   font-size: 13px;
 }
 
 .loading-spinner {
   width: 24px;
   height: 24px;
-  border: 2px solid rgba(128, 128, 128, 0.2);
-  border-top-color: var(--accent);
+  border: 2px solid color-mix(in srgb, var(--settings-ink-4) 24%, transparent);
+  border-top-color: var(--settings-accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+:deep(.tab-content) {
+  animation: settingsFade 160ms ease;
+}
+
+:deep(.settings-section),
+:deep(.detail-section) {
+  margin-bottom: 30px;
+}
+
+:deep(.section-title),
+:deep(.section-label) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  color: var(--settings-ink-4);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:deep(.section-title::after),
+:deep(.section-label::after) {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--settings-rule-soft);
+}
+
+:deep(.section-desc),
+:deep(.form-hint) {
+  color: var(--settings-ink-4);
+}
+
+:deep(.settings-card),
+:deep(.settings-group) {
+  border: 1px solid var(--settings-rule-soft);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--settings-paper-2) 44%, transparent);
+  overflow: hidden;
+}
+
+:deep(.provider-tab-wrapper),
+:deep(.provider-tab),
+:deep(.provider-detail),
+:deep(.detail-section),
+:deep(.settings-group) {
+  min-width: 0;
+}
+
+:deep(.content-inner-wide .provider-tab-wrapper) {
+  width: min(1120px, 100%);
+  max-width: 100%;
+}
+
+:deep(.provider-tab) {
+  overflow: hidden;
+}
+
+:deep(.provider-list) {
+  padding-left: 0;
+}
+
+:deep(.provider-detail) {
+  overflow: hidden;
+}
+
+:deep(.provider-detail .row-input),
+:deep(.provider-detail .row-select),
+:deep(.default-model-section .row-select) {
+  max-width: min(100%, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:deep(.model-row) {
+  min-width: 0;
+}
+
+:deep(.model-name) {
+  min-width: 0;
+}
+
+:deep(.model-caps) {
+  max-width: 76px;
+  overflow: hidden;
+}
+
+:deep(.model-out-wrap) {
+  max-width: 56px;
+}
+
+:deep(.model-out-input) {
+  width: 34px;
+}
+
+:deep(.card-row),
+:deep(.settings-row),
+:deep(.shortcut-row) {
+  border-bottom-color: var(--settings-rule-soft);
+}
+
+:deep(.form-label),
+:deep(.row-label),
+:deep(.shortcut-name) {
+  color: var(--settings-ink-2);
+}
+
+:deep(.form-slider),
+:deep(.row-input),
+:deep(.form-input),
+:deep(.form-textarea),
+:deep(.row-select) {
+  border-color: var(--settings-rule);
+  background-color: var(--settings-paper);
+  color: var(--settings-ink);
+}
+
+:deep(.form-slider::-webkit-slider-thumb) {
+  background: var(--settings-accent);
+}
+
+:deep(.theme-card.active),
+:deep(.theme-item.active),
+:deep(.font-option.active) {
+  border-color: var(--settings-accent);
+  box-shadow: 0 0 0 3px var(--settings-accent-soft);
+}
+
+:deep(button:focus-visible),
+:deep(input:focus-visible),
+:deep(select:focus-visible),
+:deep(textarea:focus-visible) {
+  outline: 2px solid var(--settings-accent);
+  outline-offset: 2px;
+}
+
+@keyframes settingsFade {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 860px) {
+  .settings-page {
+    padding: 0;
+  }
+
+  .settings-window {
+    height: 100%;
+    min-height: 0;
+    border-radius: 0;
+  }
+
+  .settings-sidebar {
+    width: 220px;
+  }
+
+  .sidebar-hint,
+  .sidebar-index {
+    display: none;
+  }
+
+  .content-body {
+    padding: 24px 22px 44px;
+  }
+
+  .section-hero {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
 }
 </style>

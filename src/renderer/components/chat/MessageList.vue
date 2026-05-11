@@ -160,6 +160,7 @@ import {
   FOLLOW_BOTTOM_GAP,
   shouldShowScrollToBottomButton,
 } from '@/composables/useFollowScroll'
+import { useMessageScrollCoordinator } from '@/composables/useMessageScrollCoordinator'
 import { buildFontFamily } from '@shared/fonts'
 
 interface BranchInfo {
@@ -304,6 +305,10 @@ interface TopAnchor {
   offsetWithinMessage: number
 }
 
+const NAV_VIEWPORT_OFFSET_RATIO = 0.18
+const SCROLL_ANCHOR_LOCK_MS = 2400
+const SESSION_RESTORE_ANCHOR_LOCK_MS = 120_000
+
 const pageState = computed(() => chatStore.getSessionPageState(effectiveSessionId.value))
 const loadedMessageCount = computed(() => props.messages.length)
 const totalMessageCount = computed(() => pageState.value?.totalCount ?? panelSession.value?.messageCount ?? loadedMessageCount.value)
@@ -320,9 +325,16 @@ const follow = useFollowScroll({
   scroller: messageListRef,
   content: messageListContentRef,
   count: computed(() => props.messages.length),
+  maintainOnLayout: false,
 })
 
 const { isFollowing } = follow
+const scrollCoordinator = useMessageScrollCoordinator({
+  scroller: messageListRef,
+  getSessionId: () => effectiveSessionId.value,
+  getMessageRowById,
+  onStateChange: updateScrollToBottomButton,
+})
 
 // Auto-scroll: when following, keep the scroller pinned to its natural bottom.
 // The visual composer gap comes from FOLLOW_BOTTOM_GAP tail space below the
@@ -332,15 +344,16 @@ const effectiveScrollVersion = computed(() => chatStore.getScrollVersion(effecti
 let followNudgeFrame: number | null = null
 
 function scheduleFollowNudge(source: string) {
+  void source
   if (isFollowing.value) {
-    follow.nudgeToAnchor(source)
+    scrollCoordinator.onLayoutChange()
     updateScrollToBottomButton()
     return
   }
   if (followNudgeFrame !== null) return
   followNudgeFrame = requestAnimationFrame(() => {
     followNudgeFrame = null
-    follow.nudgeToAnchor(source)
+    scrollCoordinator.onLayoutChange()
     updateScrollToBottomButton()
   })
 }
@@ -375,9 +388,13 @@ const lastUserMessageId = computed(() => {
   }
   return null
 })
-watch(lastUserMessageId, (newId, oldId) => {
+watch([effectiveSessionId, lastUserMessageId, () => props.messages.length], ([sessionId, newId, messageCount], [oldSessionId, oldId, oldMessageCount]) => {
   if (!newId || newId === oldId) return
-  follow.snapToBottom('watch:lastUserMsg/snap')
+  if (sessionId !== oldSessionId) return
+  if (messageCount <= oldMessageCount) return
+  if (follow.isSwitching()) return
+  follow.isFollowing.value = true
+  scrollCoordinator.setTail()
   nextTick(() => scheduleFollowNudge('watch:lastUserMsg'))
 })
 
@@ -395,7 +412,13 @@ watch(
     if (!el || typeof ResizeObserver === 'undefined') return
     navContentResizeObserver = new ResizeObserver(() => {
       scheduleNavMarkerUpdate()
-      updateVisibleUserMessageIndex()
+      // Always notify the coordinator — it routes itself based on tail / anchor / idle.
+      // Tail mode used to be skipped here, which let markdown hydration / code-block
+      // highlighting drift the viewport away from the bottom.
+      scrollCoordinator.onLayoutChange()
+      if (!scrollCoordinator.isAnchored()) {
+        updateVisibleUserMessageIndex()
+      }
     })
     navContentResizeObserver.observe(el)
   },
@@ -545,7 +568,12 @@ async function navigateToUserMessage(navIndex: number) {
     isFollowing.value = false
     lockNavigationIndex(navIndex)
     if (getMessageRowById(marker.messageId)) {
-      scrollToMessage(marker.messageId, { preserveNavigation: true })
+      scrollToMessage(marker.messageId, {
+        preserveNavigation: true,
+        behavior: 'auto',
+        viewportOffsetRatio: NAV_VIEWPORT_OFFSET_RATIO,
+        lockDurationMs: SCROLL_ANCHOR_LOCK_MS,
+      })
       return
     }
     if (!sessionId) return
@@ -553,7 +581,12 @@ async function navigateToUserMessage(navIndex: number) {
     if (loaded) {
       await nextTick()
       lockNavigationIndex(navIndex)
-      scrollToMessage(marker.messageId, { preserveNavigation: true })
+      scrollToMessage(marker.messageId, {
+        preserveNavigation: true,
+        behavior: 'auto',
+        viewportOffsetRatio: NAV_VIEWPORT_OFFSET_RATIO,
+        lockDurationMs: SCROLL_ANCHOR_LOCK_MS,
+      })
     }
     return
   }
@@ -584,10 +617,14 @@ function scrollToUserMessage(navIndex: number) {
 
   lockNavigationIndex(navIndex)
   isFollowing.value = false
-  const row = getMessageRow(messageIndex)
-  if (row) {
-    row.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
+  const messageId = props.messages[messageIndex]?.id
+  if (!messageId) return
+  scrollToMessage(messageId, {
+    preserveNavigation: true,
+    behavior: 'auto',
+    viewportOffsetRatio: NAV_VIEWPORT_OFFSET_RATIO,
+    lockDurationMs: SCROLL_ANCHOR_LOCK_MS,
+  })
 }
 
 function formatNavTime(timestamp: number): string {
@@ -621,6 +658,7 @@ function updateNavMarkers() {
     return {
       navIndex,
       messageId: message?.id || `nav-${navIndex}`,
+      seq: message?.seq,
       position: getEvenNavPosition(navIndex, total),
       label: message ? buildNavMarkerLabel(message, navIndex) : `${navIndex + 1}/${total}`,
       preview: message ? buildNavMarkerPreview(message) : `${navIndex + 1}/${total}`,
@@ -684,7 +722,7 @@ function restoreTopAnchor(anchor: TopAnchor | null) {
   const scroller = messageListRef.value
   const row = getMessageRowById(anchor.messageId)
   if (!scroller || !row) return
-  scroller.scrollTop = row.offsetTop + anchor.offsetWithinMessage
+  scrollCoordinator.writeScrollTop(row.offsetTop + anchor.offsetWithinMessage)
 }
 
 async function loadOlderHistoryIfNeeded(force = false) {
@@ -715,7 +753,12 @@ async function loadOlderHistoryIfNeeded(force = false) {
 
 async function scrollToMessage(
   messageId: string,
-  options: { preserveNavigation?: boolean; behavior?: ScrollBehavior } = {},
+  options: {
+    preserveNavigation?: boolean
+    behavior?: ScrollBehavior
+    viewportOffsetRatio?: number
+    lockDurationMs?: number
+  } = {},
 ) {
   const messageIndex = props.messages.findIndex(message => message.id === messageId)
   if (messageIndex === -1) return false
@@ -728,7 +771,18 @@ async function scrollToMessage(
 
   await nextTick()
   const row = getMessageRowById(messageId) || getMessageRow(messageIndex)
-  row?.scrollIntoView({ behavior: options.behavior ?? 'smooth', block: 'center' })
+  const scroller = messageListRef.value
+  if (row && scroller && typeof options.viewportOffsetRatio === 'number') {
+    const offsetWithinMessage = -Math.round(scroller.clientHeight * options.viewportOffsetRatio)
+    scrollCoordinator.writeScrollTop(row.offsetTop + offsetWithinMessage)
+    scrollCoordinator.setAnchor(messageId, offsetWithinMessage, options.lockDurationMs)
+  } else if (row && scroller) {
+    const offsetWithinMessage = -Math.round((scroller.clientHeight - row.offsetHeight) / 2)
+    scrollCoordinator.writeScrollTop(row.offsetTop + offsetWithinMessage)
+    if (options.behavior !== 'smooth') {
+      scrollCoordinator.setAnchor(messageId, offsetWithinMessage, options.lockDurationMs)
+    }
+  }
 
   if (searchHighlightTimer) clearTimeout(searchHighlightTimer)
   searchHighlightTimer = setTimeout(() => {
@@ -764,6 +818,10 @@ function setNavIndexToLastMarker() {
   currentUserMessageNavIndex.value = displayNavMarkers.value.length > 0
     ? displayNavMarkers.value.length - 1
     : -1
+}
+
+function setNavIndexToFirstMarker() {
+  currentUserMessageNavIndex.value = displayNavMarkers.value.length > 0 ? 0 : -1
 }
 
 function setNavIndexToMessage(messageId: string | undefined) {
@@ -831,10 +889,16 @@ function getBranchesForMessage(messageId: string): BranchInfo[] {
 // Find which user message is currently most visible in the viewport
 function updateVisibleUserMessageIndex() {
   if (isActivelyNavigating) return
+  if (scrollCoordinator.isAnchored()) return
   if (props.messages.length === 0) return
 
   const el = messageListRef.value
   if (!el) return
+
+  if (el.scrollTop <= 24) {
+    setNavIndexToFirstMarker()
+    return
+  }
 
   const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
   if (distanceToBottom < 96 || isFollowing.value) {
@@ -866,10 +930,23 @@ function updateVisibleUserMessageIndex() {
 
 function handleScroll() {
   follow.checkReattach()
+  const el = messageListRef.value
+  if (el && isFollowing.value && el.scrollHeight - el.scrollTop - el.clientHeight <= 2) {
+    scrollCoordinator.setTail()
+  }
   updateScrollToBottomButton()
   scheduleNavMarkerUpdate()
   updateVisibleUserMessageIndex()
   loadOlderHistoryIfNeeded()
+}
+
+function handleWheel(event: WheelEvent) {
+  scrollCoordinator.clear()
+  follow.onWheel(event)
+}
+
+function handlePointerDown() {
+  scrollCoordinator.clear()
 }
 
 // Track permission request cleanup function
@@ -922,14 +999,16 @@ usePermissionShortcuts(
 
 function scrollToBottomFromButton() {
   setNavIndexToLastMarker()
-  follow.snapToBottom('button:scrollToBottom')
+  follow.isFollowing.value = true
+  scrollCoordinator.setTail()
 }
 
 // Setup event listeners
 onMounted(() => {
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
-    messageListRef.value.addEventListener('wheel', follow.onWheel, { passive: false })
+    messageListRef.value.addEventListener('wheel', handleWheel, { passive: false })
+    messageListRef.value.addEventListener('pointerdown', handlePointerDown)
     if (typeof ResizeObserver !== 'undefined') {
       navResizeObserver = new ResizeObserver(() => scheduleNavMarkerUpdate())
       navResizeObserver.observe(messageListRef.value)
@@ -937,8 +1016,9 @@ onMounted(() => {
   }
   // Scroll to bottom on initial mount (messages may be pre-loaded in store)
   nextTick(() => {
-    if (props.messages.length > 0 && messageListRef.value) {
-      follow.snapToBottom('mounted:initial')
+    const snapshot = effectiveSessionId.value ? chatStore.getSnapshot(effectiveSessionId.value) : null
+    if (props.messages.length > 0 && messageListRef.value && snapshot?.mode !== 'anchor') {
+      scrollCoordinator.setTail()
     }
     scheduleNavMarkerUpdate()
   })
@@ -947,7 +1027,8 @@ onMounted(() => {
 onUnmounted(() => {
   if (messageListRef.value) {
     messageListRef.value.removeEventListener('scroll', handleScroll)
-    messageListRef.value.removeEventListener('wheel', follow.onWheel)
+    messageListRef.value.removeEventListener('wheel', handleWheel)
+    messageListRef.value.removeEventListener('pointerdown', handlePointerDown)
   }
   if (navigationCooldownTimer) {
     clearTimeout(navigationCooldownTimer)
@@ -964,6 +1045,7 @@ onUnmounted(() => {
     cancelAnimationFrame(followNudgeFrame)
     followNudgeFrame = null
   }
+  scrollCoordinator.clear()
   if (navResizeObserver) {
     navResizeObserver.disconnect()
     navResizeObserver = null
@@ -1381,19 +1463,47 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
 
 // ============ Snapshot API for session switching ============
 
+function finishSessionSwitchFromViewport() {
+  follow.finishSwitch()
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      const el = messageListRef.value
+      if (!el) return
+      isFollowing.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 2
+      updateVisibleUserMessageIndex()
+      scheduleNavMarkerUpdate()
+      updateScrollToBottomButton()
+    })
+  })
+}
+
 defineExpose({
   getIsFollowing: () => follow.isFollowing.value,
+  getDistanceToBottom: () => {
+    const el = messageListRef.value
+    if (!el) return 0
+    return Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight)
+  },
   getHasNavigated: () => hasNavigated.value,
   getAnchorMessageId: () => captureTopAnchor()?.messageId ?? null,
   getAnchorOffset: () => captureTopAnchor()?.offsetWithinMessage ?? 0,
   getNavMessageId: () => displayNavMarkers.value[currentUserMessageNavIndex.value]?.messageId ?? null,
 
-  prepareForSwitch: follow.prepareForSwitch,
+  prepareForSwitch: () => {
+    scrollCoordinator.clear()
+    scrollCoordinator.writeScrollTop(0)
+    follow.prepareForSwitch()
+  },
+
+  finishSwitch: finishSessionSwitchFromViewport,
 
   restoreTail: () => {
+    scrollCoordinator.clear()
     hasNavigated.value = false
     setNavIndexToLastMarker()
-    follow.snapToBottom('restore:tail')
+    follow.isFollowing.value = true
+    scrollCoordinator.setTail()
+    follow.finishSwitch()
   },
 
   restoreAnchor: (snap: {
@@ -1405,14 +1515,27 @@ defineExpose({
     hasNavigated.value = snap.hasNavigated
     setNavIndexToMessage(snap.navMessageId)
     follow.isFollowing.value = false
-    nextTick(() => {
-      const row = snap.anchorMessageId ? getMessageRowById(snap.anchorMessageId) : null
-      if (!row || !messageListRef.value) {
-        setNavIndexToLastMarker()
-        follow.snapToBottom('restore:anchor-fallback-tail')
+    const restoreSessionId = effectiveSessionId.value
+    nextTick(async () => {
+      if (!restoreSessionId || effectiveSessionId.value !== restoreSessionId) {
+        follow.finishSwitch()
         return
       }
-      messageListRef.value.scrollTop = row.offsetTop + Math.max(0, snap.offsetWithinMessage ?? 0)
+      const row = snap.anchorMessageId ? getMessageRowById(snap.anchorMessageId) : null
+      if (!row || !messageListRef.value) {
+        scrollCoordinator.clear()
+        hasNavigated.value = false
+        setNavIndexToLastMarker()
+        follow.isFollowing.value = true
+        scrollCoordinator.setTail()
+        follow.finishSwitch()
+        return
+      }
+      const offsetWithinMessage = Math.max(0, snap.offsetWithinMessage ?? 0)
+      scrollCoordinator.writeScrollTop(row.offsetTop + offsetWithinMessage)
+      if (snap.anchorMessageId) {
+        scrollCoordinator.setAnchor(snap.anchorMessageId, offsetWithinMessage, SESSION_RESTORE_ANCHOR_LOCK_MS)
+      }
       follow.finishSwitch()
       updateScrollToBottomButton()
     })
@@ -1420,7 +1543,8 @@ defineExpose({
 
   scrollToBottom: () => {
     setNavIndexToLastMarker()
-    follow.snapToBottom('expose:scrollToBottom')
+    follow.isFollowing.value = true
+    scrollCoordinator.setTail()
   },
 
   scrollToMessage,
@@ -1517,7 +1641,7 @@ defineExpose({
 
 .message-list-content {
   position: relative;
-  width: min(74%, 860px);
+  width: var(--chat-content-width, min(70%, 800px));
   margin: 0 auto;
   padding-bottom: var(--follow-bottom-gap, 64px);
 }
@@ -1630,10 +1754,6 @@ defineExpose({
     gap: 12px;
   }
 
-  .message-list-content {
-    width: 94%;
-  }
-
   .thinking-indicator {
     padding: 14px 16px;
     border-radius: 14px;
@@ -1645,10 +1765,6 @@ defineExpose({
   .message-list {
     padding: 10px 8px;
     gap: 10px;
-  }
-
-  .message-list-content {
-    width: 100%;
   }
 
   .empty-title {

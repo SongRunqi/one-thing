@@ -13,6 +13,10 @@
         v-else-if="result.type === 'file'"
         :size="16"
       />
+      <CalendarDays
+        v-else-if="result.type === 'daily'"
+        :size="16"
+      />
       <FileText
         v-else-if="result.type === 'message'"
         :size="16"
@@ -56,7 +60,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { MessageSquare, File, FileText, Zap } from 'lucide-vue-next'
+import { MessageSquare, File, FileText, Zap, CalendarDays } from 'lucide-vue-next'
 import type { SearchResult } from '@shared/ipc/search'
 
 const props = defineProps<{

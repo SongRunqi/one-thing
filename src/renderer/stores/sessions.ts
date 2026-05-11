@@ -156,6 +156,14 @@ export const useSessionsStore = defineStore('sessions', () => {
       const chatStore = useChatStore()
       const settingsStore = useSettingsStore()
       const existingMessages = chatStore.sessionMessages.get(sessionId)
+      const targetSnapshot = chatStore.getSnapshot(sessionId)
+      const anchorMessageId = targetSnapshot?.mode === 'anchor'
+        ? targetSnapshot.anchorMessageId
+        : undefined
+      const existingHasAnchor = Boolean(
+        anchorMessageId &&
+        existingMessages?.some(message => message.id === anchorMessageId),
+      )
 
       // Optimistic visible switch: make sidebar/header respond in the same
       // event turn as the click. Backend activation and message paging fill in
@@ -197,18 +205,29 @@ export const useSessionsStore = defineStore('sessions', () => {
         settingsStore.updateModel(sessionDetails.lastModel, sessionDetails.lastProvider as any)
       }
 
-      // Step 2: Load only the tail page. MessageList receives isLoading for an
-      // empty uncached target, so the panel can switch immediately without an
-      // empty-state flash.
+      // Step 2: Load the page needed by the UI state. Sessions without a saved
+      // detached anchor open at the tail, while revisits load around the saved
+      // anchor so the renderer can restore the exact viewport.
       if (!existingMessages || existingMessages.length === 0) {
         const pageStart = performance.now()
-        await chatStore.loadInitialMessagePage(sessionId, SWITCH_INITIAL_MESSAGE_LIMIT)
+        if (anchorMessageId) {
+          await chatStore.loadMessagesAround(sessionId, anchorMessageId)
+        } else {
+          await chatStore.loadInitialMessagePage(sessionId, SWITCH_INITIAL_MESSAGE_LIMIT)
+        }
         if (generation !== switchGeneration) return
         pageMs = performance.now() - pageStart
-        scheduleTailPageBackfill(sessionId)
+        if (!anchorMessageId) {
+          scheduleTailPageBackfill(sessionId)
+        }
       } else {
         reusedCachedMessages = true
-        if (existingMessages.length < SWITCH_TARGET_MESSAGE_LIMIT) {
+        if (anchorMessageId && !existingHasAnchor) {
+          const pageStart = performance.now()
+          await chatStore.loadMessagesAround(sessionId, anchorMessageId)
+          if (generation !== switchGeneration) return
+          pageMs = performance.now() - pageStart
+        } else if (!anchorMessageId && existingMessages.length < SWITCH_TARGET_MESSAGE_LIMIT) {
           scheduleTailPageBackfill(sessionId)
         }
       }

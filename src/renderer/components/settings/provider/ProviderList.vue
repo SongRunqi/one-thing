@@ -80,47 +80,71 @@ defineEmits<Emits>()
 <style scoped>
 /* Left: Provider List */
 .provider-list {
-  width: 160px;
-  min-width: 160px;
-  padding: 8px;
+  width: 240px;
+  min-width: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  border-right: 1px solid var(--border);
+  gap: 0;
+  border: 1px solid var(--settings-rule, var(--border));
+  border-radius: 12px;
+  background: var(--settings-paper, var(--bg));
+  overflow: hidden;
   position: sticky;
   top: 0;
   align-self: flex-start;
 }
 
 .provider-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 6px;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.08));
+  border-radius: 0;
+  background: transparent;
   cursor: pointer;
-  font-size: 12px;
-  color: var(--text-primary);
-  transition: all 0.15s ease;
-  position: relative;
+  font-size: 14px;
+  color: var(--settings-ink-2, var(--text-primary));
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.provider-item:last-of-type {
+  border-bottom: 0;
 }
 
 .provider-item:hover {
-  background: var(--hover);
+  background: var(--settings-paper-2, var(--hover));
 }
 
 .provider-item.active {
-  background: var(--accent);
-  color: white;
+  border-color: transparent;
+  background: var(--settings-accent-tint, var(--settings-paper-2));
+  color: var(--settings-accent, var(--accent));
+  box-shadow: none;
+}
+
+.provider-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--settings-accent, var(--accent));
 }
 
 .provider-item.active .provider-edit-btn {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--settings-ink-4, var(--text-muted));
 }
 
 .provider-item.active .provider-edit-btn:hover {
-  color: white;
-  background: rgba(255, 255, 255, 0.15);
+  color: var(--settings-accent, var(--accent));
+  background: var(--settings-paper-2, var(--bg-hover));
 }
 
 .provider-name {
@@ -128,19 +152,19 @@ defineEmits<Emits>()
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .enabled-indicator {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--settings-accent, var(--accent));
   flex-shrink: 0;
 }
 
 .provider-item.active .enabled-indicator {
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--settings-accent, var(--accent));
 }
 
 .provider-edit-btn {
@@ -149,7 +173,7 @@ defineEmits<Emits>()
   border: none;
   background: transparent;
   border-radius: 4px;
-  color: var(--text-muted);
+  color: var(--settings-ink-4, var(--text-muted));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -163,32 +187,33 @@ defineEmits<Emits>()
 }
 
 .provider-edit-btn:hover {
-  background: var(--hover);
-  color: var(--accent);
+  background: var(--settings-paper-2, var(--hover));
+  color: var(--settings-accent, var(--accent));
 }
 
 .provider-list-divider {
   height: 1px;
-  background: var(--border);
-  margin: 8px 0;
+  background: var(--settings-rule-soft, var(--border));
+  margin: 0;
 }
 
 .add-provider-btn {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  border: none;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 0;
   background: transparent;
-  border-radius: 8px;
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 500;
+  border-radius: 0;
+  color: var(--settings-accent, var(--accent));
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .add-provider-btn:hover {
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--settings-paper-2, rgba(59, 130, 246, 0.1));
 }
 </style>

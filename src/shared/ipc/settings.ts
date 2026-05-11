@@ -41,6 +41,14 @@ export interface QuickCommandConfig {
   enabled: boolean     // Whether to show this button
 }
 
+export interface DailyNoteSettings {
+  enabled?: boolean
+  directoryMode?: 'personal' | 'custom'
+  customDirectory?: string
+  useObsidianConfig?: boolean
+  format?: string
+}
+
 export interface GeneralSettings {
   animationSpeed: number  // 0.1 - 0.5 seconds, default 0.25
   sendShortcut: 'enter' | 'ctrl-enter' | 'cmd-enter'  // Legacy, kept for compatibility
@@ -53,6 +61,7 @@ export interface GeneralSettings {
   messageListDensity?: MessageListDensity  // Message list display density, default 'comfortable'
   messageLineHeight?: number  // Message line height, 1.2-2.2, default 1.6
   quickCommands?: QuickCommandConfig[]  // Quick command buttons shown above InputBox
+  dailyNotes?: DailyNoteSettings
   // User profile for lightweight context injection
   userProfile?: UserProfileSettings
   maxTabs?: number           // Maximum open tabs per panel, 3-30, default 15

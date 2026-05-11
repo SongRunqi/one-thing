@@ -13,36 +13,38 @@
       @click.stop
     >
       <div
-        ref="scrollRef"
         class="user-nav-scroll"
         role="listbox"
         aria-label="User messages"
-        @scroll="updateScrollThumb"
+        @wheel.prevent="handlePageWheel"
       >
-        <div
-          class="user-nav-count"
-          aria-hidden="true"
+        <Transition
+          :name="pageTransitionName"
+          mode="out-in"
         >
-          {{ totalCount }} turns
-        </div>
-        <button
-          v-for="marker in sortedMarkers"
-          :key="marker.messageId"
-          :ref="el => setItemRef(el, marker.navIndex)"
-          type="button"
-          class="user-nav-row"
-          :class="{ active: marker.navIndex === currentIndex }"
-          :aria-label="marker.label"
-          :aria-current="marker.navIndex === currentIndex ? 'step' : undefined"
-          :aria-selected="marker.navIndex === currentIndex"
-          role="option"
-          @mouseenter="openPanel"
-          @focus="openPanel"
-          @click.stop="handleNavigate(marker.navIndex)"
-        >
-          <span class="user-nav-label">{{ marker.preview || marker.label }}</span>
-          <span class="user-nav-marker" />
-        </button>
+          <div
+            :key="pageStartIndex"
+            class="user-nav-page"
+          >
+            <button
+              v-for="marker in visibleMarkers"
+              :key="marker.messageId"
+              type="button"
+              class="user-nav-row"
+              :class="{ active: marker.navIndex === currentIndex }"
+              :aria-label="marker.label"
+              :aria-current="marker.navIndex === currentIndex ? 'step' : undefined"
+              :aria-selected="marker.navIndex === currentIndex"
+              role="option"
+              @mouseenter="openPanel"
+              @focus="openPanel"
+              @click.stop="handleNavigate(marker.navIndex)"
+            >
+              <span class="user-nav-label">{{ marker.preview || marker.label }}</span>
+              <span class="user-nav-marker" />
+            </button>
+          </div>
+        </Transition>
       </div>
       <span
         v-if="showScrollThumb"
@@ -50,13 +52,32 @@
         :style="scrollThumbStyle"
         aria-hidden="true"
       />
+      <button
+        v-if="hasPreviousPage"
+        type="button"
+        class="user-nav-page-cue user-nav-page-cue-top"
+        aria-label="Previous navigation page"
+        title="Previous page"
+        @click.stop="goToPreviousPage"
+      >
+        <span class="user-nav-page-cue-icon" />
+      </button>
+      <button
+        v-if="hasNextPage"
+        type="button"
+        class="user-nav-page-cue user-nav-page-cue-bottom"
+        aria-label="Next navigation page"
+        title="Next page"
+        @click.stop="goToNextPage"
+      >
+        <span class="user-nav-page-cue-icon" />
+      </button>
     </div>
   </nav>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUpdate, onMounted, ref, watch } from 'vue'
-import type { ComponentPublicInstance } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 
 export interface UserMessageNavMarker {
   navIndex: number
@@ -73,103 +94,126 @@ const props = defineProps<{
   totalCount?: number
 }>()
 
-const totalCount = computed(() => props.totalCount ?? props.markers.length)
-
 const emit = defineEmits<{
   navigate: [navIndex: number]
 }>()
 
 const sortedMarkers = computed(() => [...props.markers].sort((a, b) => a.navIndex - b.navIndex))
-
-const scrollRef = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
-const scrollTop = ref(0)
-const scrollHeight = ref(0)
-const clientHeight = ref(0)
-const itemRefs = new Map<number, HTMLElement>()
+const pageStartIndex = ref(0)
+const pageDirection = ref<1 | -1>(1)
+let pageWheelLockTimer: ReturnType<typeof setTimeout> | null = null
 
-const showScrollThumb = computed(() => scrollHeight.value > clientHeight.value + 1)
+const pageSize = 6
+const maxPageStartIndex = computed(() => {
+  const total = sortedMarkers.value.length
+  if (total <= pageSize) return 0
+  return Math.floor((total - 1) / pageSize) * pageSize
+})
+
+const visibleMarkers = computed(() => {
+  return sortedMarkers.value.slice(pageStartIndex.value, pageStartIndex.value + pageSize)
+})
+
+const hasPreviousPage = computed(() => pageStartIndex.value > 0)
+const hasNextPage = computed(() => pageStartIndex.value + pageSize < sortedMarkers.value.length)
+const showScrollThumb = computed(() => sortedMarkers.value.length > pageSize)
 
 const scrollThumbStyle = computed(() => {
   if (!showScrollThumb.value) return undefined
   const trackPadding = 8
-  const trackHeight = Math.max(1, clientHeight.value - trackPadding * 2)
-  const ratio = clientHeight.value / scrollHeight.value
-  const thumbHeight = Math.max(28, Math.round(trackHeight * ratio))
+  const trackHeight = 100 - trackPadding * 2
+  const ratio = pageSize / Math.max(pageSize, sortedMarkers.value.length)
+  const thumbHeight = Math.max(18, Math.round(trackHeight * ratio))
   const maxTop = trackHeight - thumbHeight
-  const scrollable = Math.max(1, scrollHeight.value - clientHeight.value)
-  const thumbTop = trackPadding + Math.round((scrollTop.value / scrollable) * maxTop)
+  const progress = maxPageStartIndex.value === 0
+    ? 0
+    : pageStartIndex.value / maxPageStartIndex.value
+  const thumbTop = trackPadding + Math.round(progress * maxTop)
   return {
-    height: `${thumbHeight}px`,
-    transform: `translateY(${thumbTop}px)`,
+    height: `${thumbHeight}%`,
+    top: `${thumbTop}%`,
   }
 })
 
-function updateScrollThumb() {
-  const el = scrollRef.value
-  if (!el) return
-  scrollTop.value = el.scrollTop
-  scrollHeight.value = el.scrollHeight
-  clientHeight.value = el.clientHeight
-}
+const pageTransitionName = computed(() => pageDirection.value > 0 ? 'nav-page-next' : 'nav-page-prev')
 
 function openPanel() {
   isOpen.value = true
-  nextTick(updateScrollThumb)
 }
 
 function closePanel() {
   isOpen.value = false
-  nextTick(updateScrollThumb)
 }
 
-function setItemRef(el: Element | ComponentPublicInstance | null, navIndex: number) {
-  if (el instanceof HTMLElement) {
-    itemRefs.set(navIndex, el)
-  } else {
-    itemRefs.delete(navIndex)
-  }
+function getPageStartForIndex(navIndex: number): number {
+  if (navIndex < 0) return 0
+  return Math.min(maxPageStartIndex.value, Math.floor(navIndex / pageSize) * pageSize)
 }
 
-function scrollCurrentIntoView() {
-  scrollMarkerIntoView(props.currentIndex)
+function setPageStart(nextStart: number, direction: 1 | -1) {
+  const bounded = Math.max(0, Math.min(maxPageStartIndex.value, nextStart))
+  if (bounded === pageStartIndex.value) return
+  pageDirection.value = direction
+  pageStartIndex.value = bounded
 }
 
-function scrollMarkerIntoView(navIndex: number) {
-  nextTick(() => {
-    const item = itemRefs.get(navIndex)
-    item?.scrollIntoView({ block: 'center' })
-    updateScrollThumb()
-  })
+function handlePageWheel(event: WheelEvent) {
+  if (Math.abs(event.deltaY) < 8) return
+  if (pageWheelLockTimer) return
+
+  const direction: 1 | -1 = event.deltaY > 0 ? 1 : -1
+  setPageStart(pageStartIndex.value + direction * pageSize, direction)
+  pageWheelLockTimer = setTimeout(() => {
+    pageWheelLockTimer = null
+  }, 260)
+}
+
+function goToPreviousPage() {
+  openPanel()
+  setPageStart(pageStartIndex.value - pageSize, -1)
+}
+
+function goToNextPage() {
+  openPanel()
+  setPageStart(pageStartIndex.value + pageSize, 1)
 }
 
 function handleNavigate(navIndex: number) {
   emit('navigate', navIndex)
 }
 
-onBeforeUpdate(() => itemRefs.clear())
-
-onMounted(() => {
-  nextTick(updateScrollThumb)
-})
-
 watch(
   [() => props.currentIndex, () => props.markers.length],
   () => {
     if (!isOpen.value) {
-      scrollCurrentIntoView()
+      const nextStart = getPageStartForIndex(props.currentIndex)
+      const direction = nextStart >= pageStartIndex.value ? 1 : -1
+      setPageStart(nextStart, direction)
     }
-    nextTick(updateScrollThumb)
   },
   { immediate: true, flush: 'post' },
 )
+
+watch(maxPageStartIndex, maxStart => {
+  if (pageStartIndex.value > maxStart) {
+    pageStartIndex.value = maxStart
+  }
+})
+
+onUnmounted(() => {
+  if (pageWheelLockTimer) {
+    clearTimeout(pageWheelLockTimer)
+    pageWheelLockTimer = null
+  }
+})
 </script>
 
 <style scoped>
 .user-nav-rail {
   --user-nav-row-height: 18px;
   --user-nav-row-gap: 8px;
-  --user-nav-visible-count: 9;
+  --user-nav-visible-count: 6;
   --user-nav-vertical-padding: 22px;
   --user-nav-collapsed-width: 34px;
   --user-nav-expanded-width: min(286px, calc(100vw - 64px));
@@ -199,7 +243,7 @@ watch(
   padding: 0;
   overflow: visible;
   border: 1px solid transparent;
-  border-radius: 24px;
+  border-radius: 18px;
   background: transparent;
   box-shadow: none;
   pointer-events: none;
@@ -234,42 +278,19 @@ watch(
   overscroll-behavior: contain;
   pointer-events: none;
   scroll-padding-block: 0;
-  scrollbar-width: none;
 }
 
 .user-nav-card.open .user-nav-scroll {
-  overflow-y: auto;
   pointer-events: auto;
 }
 
-.user-nav-scroll::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
-
-.user-nav-count {
-  box-sizing: border-box;
+.user-nav-page {
+  display: grid;
+  grid-template-rows: repeat(var(--user-nav-visible-count), var(--user-nav-row-height));
+  align-content: space-between;
   width: 100%;
-  height: var(--user-nav-row-height);
-  margin-bottom: var(--user-nav-row-gap);
-  padding-right: 48px;
-  overflow: hidden;
-  color: var(--text-muted, var(--muted));
-  font-size: 12px;
-  line-height: var(--user-nav-row-height);
-  opacity: 0;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  visibility: hidden;
-  transition:
-    opacity 0.12s ease,
-    visibility 0.12s ease;
-}
-
-.user-nav-card.open .user-nav-count {
-  opacity: 0.7;
-  visibility: visible;
+  height: 100%;
+  will-change: opacity, transform, filter;
 }
 
 .user-nav-row {
@@ -293,10 +314,6 @@ watch(
 
 .user-nav-card.open .user-nav-row {
   width: 100%;
-}
-
-.user-nav-row + .user-nav-row {
-  margin-top: var(--user-nav-row-gap);
 }
 
 .user-nav-label {
@@ -386,6 +403,114 @@ watch(
 
 .user-nav-card.open .user-nav-scroll-thumb {
   display: block;
+}
+
+.user-nav-page-cue {
+  position: absolute;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: var(--user-nav-collapsed-width);
+  height: 18px;
+  padding: 0 10px 0 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-muted, var(--muted)) 58%, transparent);
+  cursor: pointer;
+  opacity: 0.42;
+  pointer-events: auto;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.user-nav-card.open .user-nav-page-cue {
+  opacity: 0.55;
+}
+
+.user-nav-page-cue:hover,
+.user-nav-page-cue:focus-visible {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent);
+  color: var(--accent, #3b82f6);
+  opacity: 0.9;
+  outline: none;
+}
+
+.user-nav-page-cue-icon {
+  width: 7px;
+  height: 7px;
+  border-top: 1.5px solid currentColor;
+  border-left: 1.5px solid currentColor;
+}
+
+.user-nav-page-cue-top {
+  top: 5px;
+}
+
+.user-nav-page-cue-top .user-nav-page-cue-icon {
+  transform: rotate(45deg);
+}
+
+.user-nav-page-cue-bottom {
+  bottom: 5px;
+}
+
+.user-nav-page-cue-bottom .user-nav-page-cue-icon {
+  transform: rotate(225deg);
+}
+
+.nav-page-next-enter-active,
+.nav-page-next-leave-active,
+.nav-page-prev-enter-active,
+.nav-page-prev-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+    filter 0.18s ease;
+}
+
+.nav-page-next-enter-from {
+  opacity: 0;
+  filter: blur(3px);
+  transform: translateY(14px) scale(0.985);
+}
+
+.nav-page-next-leave-to {
+  opacity: 0;
+  filter: blur(3px);
+  transform: translateY(-14px) scale(0.985);
+}
+
+.nav-page-prev-enter-from {
+  opacity: 0;
+  filter: blur(3px);
+  transform: translateY(-14px) scale(0.985);
+}
+
+.nav-page-prev-leave-to {
+  opacity: 0;
+  filter: blur(3px);
+  transform: translateY(14px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-page-next-enter-active,
+  .nav-page-next-leave-active,
+  .nav-page-prev-enter-active,
+  .nav-page-prev-leave-active {
+    transition: opacity 0.08s ease;
+  }
+
+  .nav-page-next-enter-from,
+  .nav-page-next-leave-to,
+  .nav-page-prev-enter-from,
+  .nav-page-prev-leave-to {
+    filter: none;
+    transform: none;
+  }
 }
 
 @media (max-width: 768px) {

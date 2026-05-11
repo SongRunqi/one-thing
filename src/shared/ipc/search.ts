@@ -2,7 +2,7 @@
  * Search Everywhere — shared types
  */
 
-export type SearchCategory = 'all' | 'chats' | 'messages' | 'actions' | 'files'
+export type SearchCategory = 'all' | 'chats' | 'messages' | 'actions' | 'files' | 'daily'
 
 export interface SearchRequest {
   query: string
@@ -12,7 +12,7 @@ export interface SearchRequest {
 
 export interface SearchResult {
   id: string
-  type: 'chat' | 'message' | 'action' | 'file'
+  type: 'chat' | 'message' | 'action' | 'file' | 'daily'
   title: string
   subtitle?: string
   detail?: string

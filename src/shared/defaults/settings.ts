@@ -124,6 +124,13 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     { commandId: 'git', enabled: true },
     { commandId: 'files', enabled: true },
   ],
+  dailyNotes: {
+    enabled: true,
+    directoryMode: 'personal',
+    customDirectory: '',
+    useObsidianConfig: true,
+    format: 'YYYY-MM-DD',
+  },
 }
 
 // ============================================================================
@@ -204,6 +211,10 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         ...settings.general?.shortcuts,
       },
       quickCommands: settings.general?.quickCommands ?? defaults.general.quickCommands,
+      dailyNotes: {
+        ...defaults.general.dailyNotes,
+        ...settings.general?.dailyNotes,
+      },
     },
     chat: {
       ...defaults.chat,

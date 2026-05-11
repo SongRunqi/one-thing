@@ -27,6 +27,34 @@ if (!html.getAttribute('data-base-theme')) {
   html.setAttribute('data-base-theme', 'obsidian')
 }
 
+// Preload @fontsource variable fonts BEFORE Vue mounts. The default
+// `font-display: swap` would otherwise paint with system fallbacks (PingFang
+// SC on macOS) and re-flow once Noto Sans SC arrives — visible as a vertical
+// shift in the sidebar list a few hundred ms after launch.
+//
+// document.fonts.load() returns a promise that resolves once the font is in
+// the FontFaceSet. By awaiting it before createApp().mount() we guarantee the
+// very first Vue paint is already on the intended font.
+async function preloadCriticalFonts(): Promise<void> {
+  if (typeof document === 'undefined' || !document.fonts) return
+  const loads: Array<[string, string]> = [
+    ['400 14px "Public Sans Variable"', 'The quick brown fox'],
+    ['500 14px "Public Sans Variable"', 'The quick brown fox'],
+    ['600 14px "Public Sans Variable"', 'The quick brown fox'],
+    ['400 14px "Noto Sans SC Variable"', '启动会话列表服务器抓包进入笔记目录'],
+    ['500 14px "Noto Sans SC Variable"', '启动会话列表服务器抓包进入笔记目录'],
+    ['600 14px "Noto Sans SC Variable"', '启动会话列表服务器抓包进入笔记目录'],
+  ]
+  await Promise.all(loads.map(([spec, text]) => document.fonts.load(spec, text).catch(() => null)))
+}
+
+// 1.5s cap: cold-start loading of local woff2 from disk is ~100-400ms, but if
+// something's wrong (corrupt asset, FS error) we don't want to wedge mount.
+await Promise.race([
+  preloadCriticalFonts(),
+  new Promise<void>(resolve => setTimeout(resolve, 1500)),
+])
+
 const app = createApp(App)
 const pinia = createPinia()
 

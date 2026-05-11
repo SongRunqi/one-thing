@@ -309,6 +309,9 @@ onUnmounted(() => {
 
 <style scoped>
 .sidebar {
+  --sidebar-bg:
+    linear-gradient(rgba(var(--accent-rgb), 0.06), rgba(var(--accent-rgb), 0.06)),
+    var(--bg-app);
   position: relative;
   flex-shrink: 0;
   display: flex;
@@ -319,8 +322,7 @@ onUnmounted(() => {
     max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     opacity 0.2s ease;
   overflow: hidden;
-  /* Match container's darker base for consistent "surface" */
-  background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
+  background: var(--sidebar-bg);
   padding: 0;
   contain: layout style;
 }
@@ -390,8 +392,7 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   margin-top: 12px;
-  /* Match container's darker base */
-  background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
+  background: var(--sidebar-bg);
   overflow: hidden;
   contain: layout style paint;
   transition: opacity 0.15s ease;

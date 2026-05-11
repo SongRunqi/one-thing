@@ -8,10 +8,10 @@
  * - This composable is only responsible for:
  *   1. Returning reactive state for a specific session
  *   2. Delegating actions to the store
- *   3. Triggering message loading when sessionId changes
+ *   3. Message loading is owned by the session switch/page-loading flow
  */
 
-import { computed, watch, toValue, type MaybeRef } from 'vue'
+import { computed, toValue, type MaybeRef } from 'vue'
 import type { ChatMessage, MessageAttachment } from '@/types'
 import { useChatStore } from '@/stores/chat'
 
@@ -37,17 +37,6 @@ export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
   const messageCount = computed(() => messages.value.length)
   const userMessages = computed(() => messages.value.filter(m => m.role === 'user'))
   const assistantMessages = computed(() => messages.value.filter(m => m.role === 'assistant'))
-
-  // Watch for session changes and load messages
-  watch(sessionId, async (newSessionId, oldSessionId) => {
-    if (newSessionId && newSessionId !== oldSessionId) {
-      // Check if messages already loaded
-      const existingMessages = chatStore.sessionMessages.get(newSessionId)
-      if (!existingMessages || existingMessages.length === 0) {
-        await chatStore.loadMessages(newSessionId)
-      }
-    }
-  }, { immediate: true })
 
   // ============ Actions (delegate to store) ============
 

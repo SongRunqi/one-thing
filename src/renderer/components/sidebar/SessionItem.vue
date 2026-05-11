@@ -223,8 +223,8 @@ function cancelRename() {
     opacity 0.2s ease;
 }
 
-.session-item:hover {
-  background: var(--bg-hover);
+.session-item:not(.active):hover {
+  background: rgba(var(--accent-rgb), 0.13);
 }
 
 .session-item.active {
@@ -399,6 +399,7 @@ function cancelRename() {
   min-width: 0;
   font-size: var(--type-body-size);
   font-weight: var(--type-body-weight);
+  line-height: 20px;
   letter-spacing: -0.01em;
   color: var(--text-sidebar-item);
   white-space: nowrap;
@@ -425,6 +426,7 @@ function cancelRename() {
   background: transparent;
   font-size: var(--type-body-size);
   font-weight: var(--type-body-weight);
+  line-height: 20px;
   color: var(--text);
   outline: none;
 }

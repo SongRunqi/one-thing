@@ -95,6 +95,10 @@ function setupContentSecurityPolicy() {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+function getRendererDevUrl(): string {
+  return process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:5173'
+}
+
 /**
  * Setup application menu with keyboard shortcuts
  */
@@ -289,7 +293,7 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
   console.log('[Settings] isDevelopment:', isDevelopment)
 
   if (isDevelopment) {
-    const url = `http://127.0.0.1:5173/#/settings?${themeParams}`
+    const url = `${getRendererDevUrl()}/#/settings?${themeParams}`
     console.log('[Settings] Loading URL:', url)
     settingsWindow.loadURL(url)
   } else {
@@ -367,7 +371,7 @@ export function createWindow() {
 
   // Handle external links - open in system browser instead of navigating away
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    const appUrl = isDevelopment ? 'http://127.0.0.1:5173' : 'file://'
+    const appUrl = isDevelopment ? getRendererDevUrl() : 'file://'
     // Allow navigation within the app, block external navigation
     if (!url.startsWith(appUrl)) {
       event.preventDefault()
@@ -383,7 +387,7 @@ export function createWindow() {
 
   if (isDevelopment) {
     // Load from Vite dev server with theme parameter
-    mainWindow.loadURL(`http://127.0.0.1:5173#theme=${effectiveTheme}`)
+    mainWindow.loadURL(`${getRendererDevUrl()}#theme=${effectiveTheme}`)
     mainWindow.webContents.openDevTools()
   } else {
     // Load from built files with theme parameter
@@ -433,7 +437,7 @@ export function openImagePreviewWindow(data: ImagePreviewData) {
     } else {
       // Gallery mode: reload with new mediaId in URL
       if (isDevelopment) {
-        imagePreviewWindow.loadURL(`http://127.0.0.1:5173/#/image-preview?${urlParams}`)
+        imagePreviewWindow.loadURL(`${getRendererDevUrl()}/#/image-preview?${urlParams}`)
       } else {
         imagePreviewWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
           hash: `/image-preview?${urlParams}`
@@ -495,7 +499,7 @@ export function openImagePreviewWindow(data: ImagePreviewData) {
   // Load image preview page with params in URL
   if (isDevelopment) {
     console.log('[Window] Loading preview URL (dev):', urlParams)
-    imagePreviewWindow.loadURL(`http://127.0.0.1:5173/#/image-preview?${urlParams}`)
+    imagePreviewWindow.loadURL(`${getRendererDevUrl()}/#/image-preview?${urlParams}`)
   } else {
     console.log('[Window] Loading preview file (prod):', urlParams)
     imagePreviewWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {

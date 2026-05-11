@@ -114,12 +114,24 @@ function scheduleDisplayedContent() {
   pendingFrame = raf(revealDisplayedContent)
 }
 
+function isContentFullyCached(): boolean {
+  const streaming = useStableAssistantPipeline.value
+  const segKey = `${streaming ? '1' : '0'}:${contentCacheKey(displayedContent.value)}`
+  const cachedSegments = getCachedSegments(segKey)
+  if (!cachedSegments) return false
+  for (const seg of cachedSegments) {
+    if (seg.type !== 'markdown') continue
+    const mdKey = `${props.isUser ? 'user' : 'assistant'}:${streaming ? '1' : '0'}:${seg.key}:${contentCacheKey(seg.content)}`
+    if (getCachedMarkdownHtml(mdKey) === undefined) return false
+  }
+  return true
+}
+
 function shouldDeferMarkdown(): boolean {
-  return Boolean(
-    !props.isUser &&
-    !props.isStreaming &&
-    props.content.length > DEFER_MARKDOWN_CHAR_THRESHOLD,
-  )
+  if (props.isUser || props.isStreaming) return false
+  if (props.content.length <= DEFER_MARKDOWN_CHAR_THRESHOLD) return false
+  // Cache hit means render cost is ~free — skip the deferral so revisits don't flash raw text.
+  return !isContentFullyCached()
 }
 
 function scheduleDeferredMarkdownHydration() {

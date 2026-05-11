@@ -1,6 +1,6 @@
 <template>
   <div
-    :class="['tab-item', { active, closable, 'hide-divider': hideTrailingDivider, 'drag-over': dragOver }]"
+    :class="['tab-item', { active, closable, first: isFirst, 'hide-divider': hideTrailingDivider, 'drag-over': dragOver }]"
     :title="tooltip"
     draggable="true"
     role="tab"
@@ -49,6 +49,7 @@ const props = defineProps<{
   closable: boolean
   hideTrailingDivider?: boolean
   sessionName?: string
+  isFirst?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -102,21 +103,20 @@ function onDrop(e: DragEvent) {
 <style scoped>
 .tab-item {
   --tab-active-bg: var(--bg-panel);
-  --tab-radius: 17px;
-  --tab-corner-size: 11px;
-  --tab-height: 33px;
+  --tab-radius: 13px;
+  --tab-corner-size: 12px;
+  --tab-height: 32px;
+  --tab-width: 156px;
   position: relative;
-  flex: 0 1 auto;
-  width: max-content;
-  min-width: 104px;
-  max-width: 240px;
+  flex: 0 0 var(--tab-width);
+  width: var(--tab-width);
   height: var(--tab-height);
   margin-bottom: -1px;
   box-sizing: border-box;
   cursor: pointer;
   white-space: nowrap;
   font-family: var(--type-label-font);
-  font-size: var(--type-label-size);
+  font-size: 13px;
   font-weight: var(--font-weight-medium);
   line-height: 1;
   color: var(--muted);
@@ -135,9 +135,9 @@ function onDrop(e: DragEvent) {
   right: 0;
   top: 9px;
   width: 1px;
-  height: 15px;
-  background: color-mix(in srgb, var(--border-subtle) 76%, transparent);
-  opacity: 0.7;
+  height: 14px;
+  background: rgba(var(--accent-rgb), 0.36);
+  opacity: 0.62;
 }
 
 .tab-surface {
@@ -147,14 +147,13 @@ function onDrop(e: DragEvent) {
   grid-template-columns: 14px minmax(0, 1fr) 18px;
   align-items: center;
   gap: 7px;
-  width: max-content;
-  max-width: 100%;
+  width: 100%;
   height: 100%;
   padding: 0 10px;
   box-sizing: border-box;
   border: 1px solid transparent;
   border-bottom-color: transparent;
-  border-radius: 11px;
+  border-radius: 10px;
   background: transparent;
   transition:
     background var(--duration-fast) var(--ease-default),
@@ -179,7 +178,7 @@ function onDrop(e: DragEvent) {
 }
 
 .tab-item:hover .tab-surface {
-  background: color-mix(in srgb, var(--bg-elevated) 48%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 32%, transparent);
   color: var(--text);
 }
 
@@ -195,12 +194,10 @@ function onDrop(e: DragEvent) {
 
 .tab-item.active .tab-surface {
   background: var(--tab-active-bg);
-  border-color: var(--border-subtle);
+  border-color: color-mix(in srgb, var(--border-subtle) 58%, transparent);
   border-bottom-color: transparent;
   border-radius: var(--tab-radius) var(--tab-radius) 0 0;
-  box-shadow:
-    0 -1px 0 color-mix(in srgb, var(--bg-floating) 42%, transparent),
-    0 8px 18px color-mix(in srgb, var(--shadow-color, #000) 8%, transparent);
+  box-shadow: 0 -0.5px 0 color-mix(in srgb, var(--bg-floating) 20%, transparent);
 }
 
 .tab-item.active .tab-surface::before,
@@ -213,8 +210,8 @@ function onDrop(e: DragEvent) {
   background:
     radial-gradient(
       circle at 0 0,
-      transparent 0 calc(var(--tab-corner-size) - 1px),
-      var(--border-subtle) calc(var(--tab-corner-size) - 1px) var(--tab-corner-size),
+      transparent 0 calc(var(--tab-corner-size) - 0.75px),
+      color-mix(in srgb, var(--border-subtle) 58%, transparent) calc(var(--tab-corner-size) - 0.75px) var(--tab-corner-size),
       var(--tab-active-bg) var(--tab-corner-size)
     );
 }
@@ -224,8 +221,8 @@ function onDrop(e: DragEvent) {
   background:
     radial-gradient(
       circle at 100% 0,
-      transparent 0 calc(var(--tab-corner-size) - 1px),
-      var(--border-subtle) calc(var(--tab-corner-size) - 1px) var(--tab-corner-size),
+      transparent 0 calc(var(--tab-corner-size) - 0.75px),
+      color-mix(in srgb, var(--border-subtle) 58%, transparent) calc(var(--tab-corner-size) - 0.75px) var(--tab-corner-size),
       var(--tab-active-bg) var(--tab-corner-size)
     );
 }
@@ -241,7 +238,7 @@ function onDrop(e: DragEvent) {
 .tab-icon {
   flex-shrink: 0;
   justify-self: center;
-  color: color-mix(in srgb, currentColor 72%, var(--accent));
+  color: color-mix(in srgb, currentColor 64%, var(--accent));
 }
 
 .tab-title {
