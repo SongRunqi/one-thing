@@ -49,8 +49,18 @@
 
       <span class="tool-copy">
         <span class="tool-name">{{ view.displayName }}</span>
+        <button
+          v-if="view.preview && canOpenFile"
+          class="tool-preview"
+          type="button"
+          :title="view.filePath"
+          @click.stop="emit('open-file', view.filePath)"
+          @keydown.stop
+        >
+          {{ view.preview }}
+        </button>
         <span
-          v-if="view.preview"
+          v-else-if="view.preview"
           class="tool-preview"
         >{{ view.preview }}</span>
       </span>
@@ -93,7 +103,10 @@
       v-show="expanded"
       class="tool-step-details"
     >
-      <ToolStepDetails :view="view" />
+      <ToolStepDetails
+        :view="view"
+        @open-file="(filePath) => emit('open-file', filePath)"
+      />
     </div>
   </div>
 </template>
@@ -114,8 +127,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   confirm: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
   reject: [toolCall: ToolCall]
+  'open-file': [filePath: string]
   'toggle-expand': []
 }>()
+
+const canOpenFile = computed(() =>
+  !!props.view.filePath && ['read', 'write', 'edit'].includes(props.view.toolName),
+)
 
 function onMainClick() {
   if (props.view.hasDetails) emit('toggle-expand')
@@ -269,6 +287,19 @@ const statusTitle = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 0.9;
+}
+
+button.tool-preview {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.tool-preview:hover {
+  color: var(--text-link);
+  text-decoration: underline;
 }
 
 .spacer {

@@ -72,10 +72,12 @@ function handleKeyDown(e: KeyboardEvent) {
   switch (e.key) {
     case 'ArrowUp':
       e.preventDefault()
+      e.stopPropagation()
       selectedIndex.value = Math.max(0, selectedIndex.value - 1)
       break
     case 'ArrowDown':
       e.preventDefault()
+      e.stopPropagation()
       selectedIndex.value = Math.min(filteredItems.value.length - 1, selectedIndex.value + 1)
       break
     case 'Tab':

@@ -11,7 +11,7 @@ import { z } from 'zod'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Tool } from '../core/tool.js'
-import { getSandboxBoundary, isPathContained } from '../core/sandbox.js'
+import { getSandboxBoundary, isPathContained, resolveToolPath } from '../core/sandbox.js'
 import { Permission } from '../../permission/index.js'
 import { createTwoFilesPatch, diffLines } from 'diff'
 
@@ -69,9 +69,7 @@ Usage:
     const { file_path, content } = args
 
     // Resolve path (don't request permission yet - will do after generating diff)
-    const resolvedPath = path.isAbsolute(file_path)
-      ? file_path
-      : path.resolve(getSandboxBoundary(ctx.workingDirectory), file_path)
+    const resolvedPath = resolveToolPath(file_path, ctx.workingDirectory)
 
     // Check if path is outside sandbox boundary
     const boundary = getSandboxBoundary(ctx.workingDirectory)
@@ -145,6 +143,8 @@ Usage:
         boundary: isExternal ? boundary : undefined,
       },
     })
+
+    await ctx.beforeSideEffect?.()
 
     // User approved - ensure parent directory exists
     const parentDir = path.dirname(resolvedPath)

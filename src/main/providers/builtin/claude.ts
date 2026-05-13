@@ -21,11 +21,11 @@ const claudeProvider: ProviderDefinition = {
     // Models fetched dynamically from OpenRouter API
   },
 
-  create: ({ apiKey, baseUrl, localAddress }) => {
+  create: ({ apiKey, baseUrl }) => {
     const provider = createAnthropic({
       apiKey,
       baseURL: baseUrl || 'https://api.anthropic.com/v1',
-      fetch: createBoundFetch(localAddress),
+      fetch: createBoundFetch(),
     })
     return {
       createModel: (modelId: string) => provider(modelId),

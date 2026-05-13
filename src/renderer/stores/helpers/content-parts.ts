@@ -8,6 +8,8 @@
 import type { ContentPart, ToolCall } from '@/types'
 import { mergeToolCall } from './tool-calls'
 
+type TurnTextPart = Extract<ContentPart, { type: 'text' | 'reasoning' }>
+
 /** Transient indicators that should be popped when real content arrives. */
 function isTransient(part: ContentPart): boolean {
   return part.type === 'waiting' || part.type === 'loading-memory'
@@ -32,15 +34,52 @@ export function removeTransientIndicators(parts: ContentPart[]): boolean {
   return parts.length !== originalLength
 }
 
-/** Append text, merging into the trailing text part if one exists. */
-export function appendOrMergeText(parts: ContentPart[], content: string): void {
+function isTurnTextPart(part: ContentPart): part is TurnTextPart {
+  return part.type === 'text' || part.type === 'reasoning'
+}
+
+function sameTurn(a: { turnIndex?: number }, b: { turnIndex?: number }): boolean {
+  return a.turnIndex === b.turnIndex
+}
+
+function appendOrMergeTurnTextPart(parts: ContentPart[], part: TurnTextPart): void {
   popTrailingTransient(parts)
+
   const last = parts[parts.length - 1]
-  if (last && last.type === 'text') {
-    last.content += content
+  if (last && last.type === part.type && sameTurn(last, part)) {
+    last.content += part.content
   } else {
-    parts.push({ type: 'text', content })
+    parts.push(part)
   }
+}
+
+/** Append text, merging into the trailing text part if one exists. */
+export function appendOrMergeText(parts: ContentPart[], content: string, turnIndex?: number): void {
+  appendOrMergeTurnTextPart(parts, {
+    type: 'text',
+    content,
+    ...(turnIndex !== undefined ? { turnIndex } : {}),
+  })
+}
+
+/** Append reasoning, merging into the trailing reasoning part if one exists. */
+export function appendOrMergeReasoning(parts: ContentPart[], content: string, turnIndex?: number): void {
+  appendOrMergeTurnTextPart(parts, {
+    type: 'reasoning',
+    content,
+    ...(turnIndex !== undefined ? { turnIndex } : {}),
+  })
+}
+
+/** Append a finalized reasoning part only if the same block is not already present. */
+export function appendReasoningIfMissing(parts: ContentPart[], content: string): boolean {
+  if (!content) return false
+  if (parts.some(part => part.type === 'reasoning' && part.content === content)) {
+    popTrailingTransient(parts)
+    return false
+  }
+  appendOrMergeReasoning(parts, content)
+  return true
 }
 
 /**

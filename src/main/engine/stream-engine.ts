@@ -14,8 +14,8 @@
 
 import type { WebContents } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
-import type { ChatMessage, MessageAttachment } from '../../shared/ipc.js'
-import type { SendMessageCommand, EditAndResendCommand, ResumeAfterConfirmCommand, RetryMessageCommand, InjectSteeringCommand, InjectFollowUpCommand } from '../../shared/events/session-commands.js'
+import type { AppSettings, ChatMessage, MessageAttachment } from '../../shared/ipc.js'
+import type { SendMessageCommand, EditAndResendCommand, ResumeAfterConfirmCommand, RetryMessageCommand, InjectSteeringCommand, InjectFollowUpCommand, CompactContextCommand } from '../../shared/events/session-commands.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { ToolChatMessage } from '../providers/index.js'
 import { Permission } from '../permission/index.js'
@@ -38,6 +38,7 @@ import { buildContextVariablesPromptText } from '../variables/index.js'
 import { buildProjectDirsPromptVars } from '../project-dirs/index.js'
 import { getAIToolName } from '../providers/tool-name-alias.js'
 import { PendingMessageQueue, type PendingMessage } from './stream/message-queue.js'
+import { compactSessionContext, getContextCompactReason } from './context-compact.js'
 
 /**
  * Generate a short title from user message content
@@ -131,6 +132,10 @@ export class StreamEngine {
         this.handleRetryMessage(envelope.sessionId, envelope.event as RetryMessageCommand, this.sender)
           .catch(err => console.error('[StreamEngine] command:retry-message error:', err))
       }, 'StreamEngine'),
+      eventBus.onAnySession('command:compact-context', (envelope) => {
+        this.handleCompactContext(envelope.sessionId, envelope.event as CompactContextCommand)
+          .catch(err => console.error('[StreamEngine] command:compact-context error:', err))
+      }, 'StreamEngine'),
       eventBus.onAnySession('command:resume-after-confirm', (envelope) => {
         if (!this.sender) return
         this.handleResumeAfterConfirm(envelope.sessionId, envelope.event as ResumeAfterConfirmCommand, this.sender)
@@ -198,6 +203,8 @@ export class StreamEngine {
       if (!resolved) return
       const { configWithApiKey, providerId, settings } = resolved
 
+      if (!await this.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
+
       // 4. Create and persist assistant message
       const assistantMessageId = uuidv4()
       const assistantMessage: ChatMessage = {
@@ -236,6 +243,55 @@ export class StreamEngine {
     }
   }
 
+  async handleCompactContext(
+    sessionId: string,
+    cmd: CompactContextCommand,
+  ): Promise<void> {
+    if (this.activeStreams.has(sessionId)) {
+      await this.eventBus?.emit(sessionId, {
+        type: 'context:compact-completed',
+        requestId: cmd.requestId,
+        success: false,
+        error: 'Cannot compact while a response is streaming.',
+      })
+      return
+    }
+
+    const resolved = await this.resolveProvider(sessionId)
+    if (!resolved) {
+      await this.eventBus?.emit(sessionId, {
+        type: 'context:compact-completed',
+        requestId: cmd.requestId,
+        success: false,
+        error: 'Provider is not configured.',
+      })
+      return
+    }
+
+    const result = await compactSessionContext({
+      sessionId,
+      providerId: resolved.providerId,
+      configWithApiKey: resolved.configWithApiKey,
+      settings: resolved.settings,
+      keepRecentTurns: resolved.settings.chat?.contextCompactKeepRecentTurns ?? 6,
+      onMessageCreated: message => this.emitMessageCreated(sessionId, message),
+      onMessageUpdated: (messageId, updates) => this.emitMessageUpdated(sessionId, messageId, updates),
+    })
+
+    await this.eventBus?.emit(sessionId, {
+      type: 'context:compact-completed',
+      requestId: cmd.requestId,
+      success: result.success,
+      skipped: result.skipped,
+      summary: result.summary,
+      error: result.error,
+    })
+
+    if (result.success && !result.skipped) {
+      this.emitContextSizeReset(sessionId)
+    }
+  }
+
   /**
    * Handle edit-and-resend command.
    * Truncates history, creates new assistant message, starts streaming.
@@ -267,6 +323,8 @@ export class StreamEngine {
       const resolved = await this.resolveProvider(sessionId)
       if (!resolved) return
       const { configWithApiKey, providerId, settings } = resolved
+
+      if (!await this.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
 
       // 3. Create and persist new assistant message
       const assistantMessageId = uuidv4()
@@ -329,6 +387,8 @@ export class StreamEngine {
       const resolved = await this.resolveProvider(sessionId)
       if (!resolved) return
       const { configWithApiKey, providerId, settings } = resolved
+
+      if (!await this.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
 
       // 3. Create new assistant message
       const assistantMessageId = uuidv4()
@@ -635,6 +695,115 @@ export class StreamEngine {
     return { configWithApiKey, providerId, settings }
   }
 
+  private async maybeCompactBeforeSend(
+    sessionId: string,
+    providerId: string,
+    configWithApiKey: ProviderConfigWithKey,
+    settings: AppSettings,
+  ): Promise<boolean> {
+    const compactSettings = settings.chat
+    if (compactSettings?.contextCompactEnabled === false) return true
+
+    let modelContextLength = 128000
+    let reservedOutputTokens = settings.chat?.maxTokens || 4096
+    try {
+      const modelInfo = await modelRegistry.getModelById(configWithApiKey.model)
+      modelContextLength = modelInfo?.context_length || modelInfo?.top_provider?.context_length || modelContextLength
+      const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(configWithApiKey.model)
+      const perModelOverride = configWithApiKey.maxOutputByModel?.[configWithApiKey.model]
+      const halfDefault = modelMaxOutputTokens > 0 ? Math.max(1, Math.floor(modelMaxOutputTokens / 2)) : 0
+      const requested = perModelOverride ?? (halfDefault > 0 ? halfDefault : reservedOutputTokens)
+      reservedOutputTokens = modelMaxOutputTokens > 0 ? Math.min(requested, modelMaxOutputTokens) : requested
+    } catch (error) {
+      console.warn('[StreamEngine] Failed to resolve model context length for compact:', error)
+    }
+
+    const configuredKeepTurns = compactSettings?.contextCompactKeepRecentTurns ?? 6
+    let keepRecentTurns = configuredKeepTurns
+
+    for (let pass = 1; pass <= configuredKeepTurns; pass++) {
+      const latestSession = store.getSession(sessionId)
+      if (!latestSession) return true
+
+      const reason = getContextCompactReason({
+        session: latestSession,
+        modelContextLength,
+        thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
+        reservedOutputTokens,
+      })
+      if (!reason) return true
+
+      console.log('[StreamEngine] Auto compact triggered before send', {
+        sessionId,
+        model: configWithApiKey.model,
+        modelContextLength,
+        reservedOutputTokens,
+        threshold: compactSettings?.contextCompactThreshold ?? 85,
+        keepRecentTurns,
+        pass,
+        reason,
+      })
+
+      const result = await compactSessionContext({
+        sessionId,
+        providerId,
+        configWithApiKey,
+        settings,
+        keepRecentTurns,
+        onMessageCreated: message => this.emitMessageCreated(sessionId, message),
+        onMessageUpdated: (messageId, updates) => this.emitMessageUpdated(sessionId, messageId, updates),
+      })
+
+      await this.eventBus?.emit(sessionId, {
+        type: 'context:compact-completed',
+        success: result.success,
+        skipped: result.skipped,
+        summary: result.summary,
+        error: result.error,
+      })
+
+      if (result.success && !result.skipped) {
+        this.emitContextSizeReset(sessionId)
+      }
+
+      if (!result.success) {
+        console.warn('[StreamEngine] Auto compact failed; continuing send:', result.error)
+        return true
+      }
+
+      if (result.skipped) {
+        keepRecentTurns--
+        if (keepRecentTurns <= 0) break
+      } else if (reason === 'hard-limit') {
+        keepRecentTurns--
+        if (keepRecentTurns <= 0) break
+      } else {
+        return true
+      }
+    }
+
+    const latestSession = store.getSession(sessionId)
+    if (!latestSession) return true
+    const finalReason = getContextCompactReason({
+      session: latestSession,
+      modelContextLength,
+      thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
+      reservedOutputTokens,
+    })
+    if (finalReason === 'hard-limit') {
+      const lastKnownInputTokens = latestSession.contextSize || latestSession.lastInputTokens || 0
+      const message = [
+        'Context is still too large after compacting down to the latest turn.',
+        `Last known provider input ${lastKnownInputTokens.toLocaleString()} + reserved output ${reservedOutputTokens.toLocaleString()} exceeds model context ${modelContextLength.toLocaleString()}.`,
+        'Reduce the latest message/tool context or lower max output tokens before retrying.',
+      ].join(' ')
+      this.emitStreamError(sessionId, message)
+      return false
+    }
+
+    return true
+  }
+
   private emitStreamError(sessionId: string, error: string): void {
     if (this.eventBus) {
       this.eventBus.emit(sessionId, {
@@ -642,5 +811,31 @@ export class StreamEngine {
         data: { error },
       }).catch(err => console.error('[StreamEngine] stream:error emit failed:', err))
     }
+  }
+
+  private async emitMessageCreated(sessionId: string, message: ChatMessage): Promise<void> {
+    await this.eventBus?.emit(sessionId, {
+      type: 'message:user-created',
+      message,
+    })
+  }
+
+  private async emitMessageUpdated(
+    sessionId: string,
+    messageId: string,
+    updates: Partial<ChatMessage>,
+  ): Promise<void> {
+    await this.eventBus?.emit(sessionId, {
+      type: 'message:updated',
+      messageId,
+      updates,
+    })
+  }
+
+  private emitContextSizeReset(sessionId: string): void {
+    this.eventBus?.emit(sessionId, {
+      type: 'context:size-updated',
+      contextSize: 0,
+    }).catch(err => console.error('[StreamEngine] context:size-updated emit failed:', err))
   }
 }

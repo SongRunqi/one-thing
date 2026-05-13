@@ -83,6 +83,7 @@ interface Props {
   visible: boolean
   query: string
   cwd: string
+  sessionId?: string
 }
 
 interface Emits {
@@ -96,22 +97,75 @@ const emit = defineEmits<Emits>()
 const files = ref<string[]>([])
 const selectedIndex = ref(0)
 const isLoading = ref(false)
+const variableWorkdir = ref('')
+const noteRoots = ref<Array<{ path: string; label: string }>>([])
 
 // Debounce timer
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
+function normalizePath(filePath: string): string {
+  return filePath.replace(/\/+$/, '')
+}
+
+function basename(filePath: string): string {
+  return normalizePath(filePath).split('/').filter(Boolean).pop() || filePath
+}
+
+function isPathInsideRoot(filePath: string, root: string): boolean {
+  const normalizedRoot = normalizePath(root)
+  return filePath === normalizedRoot || filePath.startsWith(`${normalizedRoot}/`)
+}
+
+function makeNoteLabel(value: string, name: string): string {
+  const dirName = basename(value)
+  if (dirName && dirName !== '/') return `notes/${dirName}`
+  if (name === 'ai_note_dir') return 'notes/ai'
+  if (name === 'work_note_dir') return 'notes/work'
+  return 'notes/personal'
+}
+
+async function loadNoteRoots() {
+  try {
+    const result = await window.electronAPI.listVariables(props.sessionId || '')
+    if (!result.success || !result.variables) {
+      variableWorkdir.value = ''
+      noteRoots.value = []
+      return
+    }
+
+    const noteNames = new Set(['ai_note_dir', 'user_note_dir', 'work_note_dir'])
+    const seen = new Set<string>()
+    variableWorkdir.value = result.variables.find(variable => variable.name === 'workdir')?.value || ''
+    noteRoots.value = result.variables
+      .filter(variable => noteNames.has(variable.name) && variable.value)
+      .map(variable => ({
+        path: normalizePath(variable.value),
+        label: makeNoteLabel(variable.value, variable.name),
+      }))
+      .filter(root => {
+        if (seen.has(root.path)) return false
+        seen.add(root.path)
+        return true
+      })
+      .sort((a, b) => b.path.length - a.path.length)
+  } catch (error) {
+    console.error('[FilePicker] Failed to load note roots:', error)
+    variableWorkdir.value = ''
+    noteRoots.value = []
+  }
+}
+
 // Fetch files with debounce
 async function fetchFiles() {
-  if (!props.cwd) {
-    files.value = []
-    return
-  }
-
   isLoading.value = true
 
   try {
+    if (props.sessionId && !variableWorkdir.value) {
+      await loadNoteRoots()
+    }
+
     const result = await window.electronAPI.listFiles({
-      cwd: props.cwd,
+      cwd: variableWorkdir.value || props.cwd,
       query: props.query,
       limit: 50,
     })
@@ -153,6 +207,16 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => [props.visible, props.sessionId] as const,
+  ([_visible, _sessionId]) => {
+    if (props.visible) {
+      loadNoteRoots()
+    }
+  },
+  { immediate: true }
+)
+
 // Handle keyboard navigation
 function handleKeyDown(e: KeyboardEvent) {
   if (!props.visible) return
@@ -160,11 +224,13 @@ function handleKeyDown(e: KeyboardEvent) {
   switch (e.key) {
     case 'ArrowUp':
       e.preventDefault()
+      e.stopPropagation()
       selectedIndex.value = Math.max(0, selectedIndex.value - 1)
       scrollToSelected()
       break
     case 'ArrowDown':
       e.preventDefault()
+      e.stopPropagation()
       selectedIndex.value = Math.min(files.value.length - 1, selectedIndex.value + 1)
       scrollToSelected()
       break
@@ -172,11 +238,13 @@ function handleKeyDown(e: KeyboardEvent) {
     case 'Enter':
       if (files.value.length > 0) {
         e.preventDefault()
+        e.stopPropagation()
         selectFile(files.value[selectedIndex.value])
       }
       break
     case 'Escape':
       e.preventDefault()
+      e.stopPropagation()
       emit('close')
       break
   }
@@ -196,23 +264,34 @@ function selectFile(filePath: string) {
 
 // Get relative path for display (keeps full path for selection)
 function getRelativePath(absolutePath: string): string {
-  if (props.cwd && absolutePath.startsWith(props.cwd)) {
-    let relativePath = absolutePath.slice(props.cwd.length)
+  const workdir = variableWorkdir.value || props.cwd
+  if (workdir && absolutePath.startsWith(workdir)) {
+    let relativePath = absolutePath.slice(workdir.length)
     // Remove leading slash
     if (relativePath.startsWith('/')) {
       relativePath = relativePath.slice(1)
     }
     return relativePath || absolutePath
   }
+
+  const noteRoot = noteRoots.value.find(root => isPathInsideRoot(absolutePath, root.path))
+  if (noteRoot) {
+    let relativePath = absolutePath.slice(noteRoot.path.length)
+    if (relativePath.startsWith('/')) {
+      relativePath = relativePath.slice(1)
+    }
+    return relativePath ? `${noteRoot.label}/${relativePath}` : noteRoot.label
+  }
+
   return absolutePath
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('keydown', handleKeyDown, true)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keydown', handleKeyDown, true)
   if (debounceTimer) {
     clearTimeout(debounceTimer)
   }

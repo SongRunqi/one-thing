@@ -114,8 +114,8 @@ export interface StreamProcessor {
   accumulatedContent: string
   accumulatedReasoning: string
   toolCalls: ToolCall[]
-  handleTextChunk(text: string, turnContent?: { value: string }): void
-  handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }): void
+  handleTextChunk(text: string, turnContent?: { value: string }, turnIndex?: number): void
+  handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }, turnIndex?: number): void
   handleToolCallChunk(toolCallData: {
     toolCallId: string
     toolName: string
@@ -151,18 +151,18 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
     get accumulatedReasoning() { return accumulatedReasoning },
     get toolCalls() { return toolCalls },
 
-    handleTextChunk(text: string, turnContent?: { value: string }) {
+    handleTextChunk(text: string, turnContent?: { value: string }, turnIndex?: number) {
       accumulatedContent += text
       if (turnContent) turnContent.value += text
       store.updateMessageContent(ctx.sessionId, ctx.assistantMessageId, accumulatedContent)
-      emitter.sendTextChunk(text)
+      emitter.sendTextChunk(text, turnIndex)
     },
 
-    handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }) {
+    handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }, turnIndex?: number) {
       accumulatedReasoning += reasoning
       if (turnReasoning) turnReasoning.value += reasoning
       store.updateMessageReasoning(ctx.sessionId, ctx.assistantMessageId, accumulatedReasoning)
-      emitter.sendReasoningChunk(reasoning)
+      emitter.sendReasoningChunk(reasoning, turnIndex)
     },
 
     handleToolCallChunk(toolCallData: {
@@ -259,30 +259,11 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       if (buffer) {
         buffer.argsText += argsTextDelta
 
-        // Update the placeholder ToolCall's streamingArgs
-        const toolCallIndex = toolCalls.findIndex(tc => tc.id === toolCallId)
-        if (toolCallIndex >= 0) {
-          toolCalls[toolCallIndex].streamingArgs = buffer.argsText
-          store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
-        }
-
-        // Update the Step's toolCall.streamingArgs
-        if (buffer.stepId) {
-          const stepUpdates: Partial<Step> = {
-            toolCall: {
-              id: toolCallId,
-              toolId: toolCalls[toolCallIndex]?.toolId || '',
-              toolName: toolCalls[toolCallIndex]?.toolName || buffer.toolName,
-              arguments: {},
-              status: 'input-streaming' as const,
-              streamingArgs: buffer.argsText,
-              timestamp: toolCalls[toolCallIndex]?.timestamp || Date.now(),
-            }
-          }
-          emitter.sendStepUpdated(buffer.stepId, stepUpdates)
-        }
-
-        // Send IPC delta to frontend for real-time display
+        // Keep the complete argument string in the local buffer only. Writing
+        // it back to the session store / EventBus on every delta creates a
+        // growing-string copy on the main thread and can freeze the app during
+        // large write/edit tool inputs. The renderer already has the placeholder
+        // from tool-input-start and applies these deltas locally for live UI.
         emitter.sendToolInputDelta(toolCallId, argsTextDelta)
       }
     },

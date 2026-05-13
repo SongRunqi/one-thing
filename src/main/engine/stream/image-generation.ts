@@ -6,6 +6,7 @@
 import { experimental_generateImage as aiGenerateImage, generateText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { createAppFetch } from '../../providers/bound-fetch.js'
 
 /**
  * Normalize model ID for API call (for OpenAI image models)
@@ -46,6 +47,7 @@ export async function generateImage(
     const openai = createOpenAI({
       apiKey,
       baseURL: baseUrl || 'https://api.openai.com/v1',
+      fetch: createAppFetch(),
     })
 
     // Build provider options based on model
@@ -97,7 +99,7 @@ export async function generateGeminiImage(
 ): Promise<ImageGenerationResult> {
   try {
     console.log(`[Gemini Image] Generating image with model: ${model}`)
-    const google = createGoogleGenerativeAI({ apiKey })
+    const google = createGoogleGenerativeAI({ apiKey, fetch: createAppFetch() })
 
     const result = await generateText({
       model: google(model),

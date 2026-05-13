@@ -119,21 +119,25 @@ function handleKeyDown(e: KeyboardEvent) {
   switch (e.key) {
     case 'ArrowUp':
       e.preventDefault()
+      e.stopPropagation()
       selectedIndex.value = Math.max(0, selectedIndex.value - 1)
       break
     case 'ArrowDown':
       e.preventDefault()
+      e.stopPropagation()
       selectedIndex.value = Math.min(filteredSkills.value.length - 1, selectedIndex.value + 1)
       break
     case 'Tab':
     case 'Enter':
       if (filteredSkills.value.length > 0) {
         e.preventDefault()
+        e.stopPropagation()
         selectSkill(filteredSkills.value[selectedIndex.value])
       }
       break
     case 'Escape':
       e.preventDefault()
+      e.stopPropagation()
       emit('close')
       break
   }
@@ -144,11 +148,11 @@ function selectSkill(skill: SkillDefinition) {
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('keydown', handleKeyDown, true)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keydown', handleKeyDown, true)
 })
 </script>
 

@@ -235,6 +235,8 @@ function saveWindowState(window: BrowserWindow): void {
 
 // Keep track of the settings window
 let settingsWindow: BrowserWindow | null = null
+let todoPlanWindow: BrowserWindow | null = null
+let todoPlanPinned = false
 
 /**
  * Create or focus the settings window
@@ -308,6 +310,81 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
   })
 
   return settingsWindow
+}
+
+export function openTodoPlanWindow() {
+  if (todoPlanWindow && !todoPlanWindow.isDestroyed()) {
+    if (todoPlanWindow.isMinimized()) todoPlanWindow.restore()
+    todoPlanWindow.show()
+    todoPlanWindow.focus()
+    return todoPlanWindow
+  }
+
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  const isMac = process.platform === 'darwin'
+  const effectiveTheme = getEffectiveTheme()
+  const themeId = getEffectiveThemeId(effectiveTheme)
+  const backgroundColor = getThemeBackgroundColor(themeId, effectiveTheme)
+
+  todoPlanWindow = new BrowserWindow({
+    width: 460,
+    height: 640,
+    minWidth: 320,
+    minHeight: 360,
+    show: false,
+    transparent: isMac,
+    backgroundColor: isMac ? undefined : backgroundColor,
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
+    resizable: true,
+    alwaysOnTop: false,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+
+  todoPlanWindow.once('ready-to-show', () => {
+    todoPlanWindow?.show()
+    todoPlanWindow?.focus()
+  })
+
+  todoPlanWindow.on('closed', () => {
+    todoPlanWindow = null
+  })
+
+  todoPlanWindow.on('blur', () => {
+    if (!todoPlanPinned && todoPlanWindow && !todoPlanWindow.isDestroyed()) {
+      todoPlanWindow.hide()
+    }
+  })
+
+  const themeParams = `theme=${effectiveTheme}`
+  if (isDevelopment) {
+    todoPlanWindow.loadURL(`${getRendererDevUrl()}/#/todo-plan?${themeParams}`)
+  } else {
+    todoPlanWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      hash: `/todo-plan?${themeParams}`
+    })
+  }
+
+  return todoPlanWindow
+}
+
+export function toggleTodoPlanWindow() {
+  if (todoPlanWindow && !todoPlanWindow.isDestroyed() && todoPlanWindow.isVisible() && todoPlanWindow.isFocused()) {
+    todoPlanWindow.hide()
+    return null
+  }
+  return openTodoPlanWindow()
+}
+
+export function setTodoPlanWindowPinned(pinned: boolean): boolean {
+  todoPlanPinned = pinned
+  if (!todoPlanWindow || todoPlanWindow.isDestroyed()) return todoPlanPinned
+  todoPlanWindow.setAlwaysOnTop(pinned, pinned ? 'floating' : 'normal')
+  return todoPlanWindow.isAlwaysOnTop()
 }
 
 export function createWindow() {

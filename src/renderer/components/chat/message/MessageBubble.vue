@@ -67,14 +67,19 @@
       class="edit-container"
       @click.stop
     >
-      <textarea
-        ref="editTextarea"
+      <TextEditor
+        ref="editEditor"
         v-model="localEditContent"
         class="edit-textarea"
+        profile="inline-message"
+        language="markdown"
+        :min-height="60"
+        :max-height="280"
+        :select-on-focus="true"
         @keydown="handleEditKeyDown"
         @compositionstart="isEditComposing = true"
         @compositionend="isEditComposing = false"
-        @input="adjustEditTextareaHeight"
+        @height-change="adjustEditTextareaHeight"
       />
     </div>
 
@@ -155,6 +160,51 @@
                   :is-user="role === 'user'"
                 />
               </div>
+              <!-- Inline reasoning parts that arrive after answer text -->
+              <div
+                v-else-if="part.type === 'reasoning'"
+                class="inline-reasoning"
+                :class="{ expanded: isInlineReasoningExpanded(part, index) }"
+              >
+                <button
+                  class="inline-reasoning-header"
+                  @click="toggleInlineReasoning(part, index)"
+                >
+                  <span class="inline-reasoning-label">Thought</span>
+                  <svg
+                    class="inline-reasoning-icon"
+                    :class="{ expanded: isInlineReasoningExpanded(part, index) }"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                <div
+                  v-if="isInlineReasoningExpanded(part, index)"
+                  class="inline-reasoning-body"
+                >
+                  <div
+                    class="inline-reasoning-content"
+                  >
+                    <StreamingMarkdown
+                      v-if="isStreaming"
+                      :content="cleanReasoningContent(part.content)"
+                      :is-user="false"
+                      :is-streaming="true"
+                    />
+                    <StaticMarkdown
+                      v-else
+                      :content="cleanReasoningContent(part.content)"
+                      :is-user="false"
+                    />
+                  </div>
+                </div>
+              </div>
               <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
               <template v-else-if="part.type === 'tool-call' && (!hasSteps || hasInputStreamingToolCalls(part.toolCalls))">
                 <template v-if="!hasSteps">
@@ -165,6 +215,7 @@
                     :tool-call="tc"
                     @confirm="(toolCall, r) => emit('confirmTool', toolCall, r)"
                     @reject="(toolCall) => emit('rejectTool', toolCall)"
+                    @open-file="(filePath) => emit('openFile', filePath)"
                   />
                 </template>
                 <template v-else>
@@ -175,6 +226,7 @@
                     :tool-call="tc"
                     @confirm="(toolCall, r) => emit('confirmTool', toolCall, r)"
                     @reject="(toolCall) => emit('rejectTool', toolCall)"
+                    @open-file="(filePath) => emit('openFile', filePath)"
                   />
                 </template>
               </template>
@@ -185,6 +237,7 @@
                 :session-id="sessionId"
                 @confirm="(tc, r) => emit('confirmTool', tc, r)"
                 @reject="(tc) => emit('rejectTool', tc)"
+                @open-file="(filePath) => emit('openFile', filePath)"
               />
             </template>
           </component>
@@ -244,6 +297,9 @@ import StepsPanel from '../StepsPanel.vue'
 import StreamingMarkdown from './StreamingMarkdown.vue'
 import StaticMarkdown from './StaticMarkdown.vue'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
+import { cleanReasoningContent } from '@/composables/useMarkdownRenderer'
+import TextEditor from '@/editor/TextEditor.vue'
+import type { EditorHandle } from '@/editor'
 
 interface Props {
   role: 'user' | 'assistant'
@@ -270,13 +326,15 @@ const emit = defineEmits<{
   executeTool: [toolCall: ToolCall]
   confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
   rejectTool: [toolCall: ToolCall]
+  openFile: [filePath: string]
 }>()
 
 const bubbleRef = ref<HTMLElement | null>(null)
 const contentRef = ref<HTMLElement | null>(null)
-const editTextarea = ref<HTMLTextAreaElement | null>(null)
+const editEditor = ref<EditorHandle | null>(null)
 const localEditContent = ref('')
 const isEditComposing = ref(false)
+const expandedInlineReasoning = ref<Set<string>>(new Set())
 
 // Collapsible content
 const MAX_COLLAPSED_HEIGHT = 300 // 最大折叠高度（像素）
@@ -305,6 +363,10 @@ const otherParts = computed(() => {
 
   return props.contentParts.filter(p => {
     if (p.type === 'loading-memory') {
+      return false
+    }
+
+    if (p.type === 'reasoning' && !hasVisibleReasoningContent(p.content)) {
       return false
     }
 
@@ -340,10 +402,45 @@ const otherPartsWrapperProps = computed(() =>
 // Generate stable keys for other parts TransitionGroup
 function getOtherPartKey(part: ContentPart, index: number): string {
   if (part.type === 'text') return `text-other-${index}`
+  if (part.type === 'reasoning') return inlineReasoningKey(part, index)
   if (part.type === 'tool-call') return `tool-call-${part.toolCalls.map(tc => tc.id).join('-') || index}`
   if (part.type === 'data-steps') return `steps-${part.turnIndex ?? index}`
   if (part.type === 'waiting') return `waiting-${index}`
   return `part-${index}`
+}
+
+function contentFingerprint(content: string): string {
+  let hash = 2166136261
+  for (let i = 0; i < content.length; i += 1) {
+    hash ^= content.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `${content.length}:${hash >>> 0}`
+}
+
+function inlineReasoningKey(part: Extract<ContentPart, { type: 'reasoning' }>, index: number): string {
+  return `reasoning-${index}-${contentFingerprint(part.content)}`
+}
+
+function hasVisibleReasoningContent(content: string): boolean {
+  const cleaned = cleanReasoningContent(content)
+  if (!cleaned) return false
+  return /[\p{L}\p{N}\p{Script=Han}]/u.test(cleaned)
+}
+
+function isInlineReasoningExpanded(part: Extract<ContentPart, { type: 'reasoning' }>, index: number): boolean {
+  return expandedInlineReasoning.value.has(inlineReasoningKey(part, index))
+}
+
+function toggleInlineReasoning(part: Extract<ContentPart, { type: 'reasoning' }>, index: number) {
+  const next = new Set(expandedInlineReasoning.value)
+  const key = inlineReasoningKey(part, index)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  expandedInlineReasoning.value = next
 }
 
 // Computed
@@ -388,26 +485,19 @@ watch(
     if (newVal) {
       localEditContent.value = props.editContent || props.content
       nextTick(() => {
-        if (editTextarea.value) {
-          editTextarea.value.style.height = 'auto'
-          editTextarea.value.style.height = editTextarea.value.scrollHeight + 'px'
-          editTextarea.value.focus()
-          editTextarea.value.select()
-        }
+        editEditor.value?.focus()
+        editEditor.value?.setSelection(0, localEditContent.value.length)
       })
     }
   }
 )
 
 function adjustEditTextareaHeight() {
-  if (editTextarea.value) {
-    editTextarea.value.style.height = 'auto'
-    editTextarea.value.style.height = editTextarea.value.scrollHeight + 'px'
-  }
+  // CodeMirror handles inline editor sizing.
 }
 
 function handleEditKeyDown(e: KeyboardEvent) {
-  if (isEditComposing.value) return
+  if (isEditComposing.value || e.isComposing) return
 
   if (e.key === 'Escape') {
     emit('cancelEdit')
@@ -682,16 +772,9 @@ html[data-theme='light'] .attachment-file {
 
 .edit-textarea {
   width: 100%;
+  --editor-font-size: var(--message-font-size, 15px);
   min-height: 60px;
   padding: 12px;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  font-size: var(--message-font-size, 15px);
-  font-family: inherit;
-  line-height: 1.5;
-  resize: none;
-  outline: none;
 }
 
 /* Content display */
@@ -811,6 +894,64 @@ html[data-theme='light'] .attachment-file {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: flowingGradient 2s linear infinite;
+}
+
+.inline-reasoning {
+  margin: 2px 0;
+  color: var(--text-ai-thinking, var(--muted));
+}
+
+.inline-reasoning-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: color-mix(in srgb, var(--text-ai-thinking, var(--muted)) 78%, transparent);
+  cursor: pointer;
+  font: inherit;
+  line-height: 18px;
+}
+
+.inline-reasoning-header:hover {
+  color: var(--text-ai-thinking, var(--muted));
+}
+
+.inline-reasoning-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.inline-reasoning-icon {
+  color: currentColor;
+  transition: transform 0.2s ease;
+}
+
+.inline-reasoning-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.inline-reasoning-body {
+  margin-top: 3px;
+}
+
+.inline-reasoning-content {
+  min-height: 0;
+  overflow: hidden;
+  padding-left: 8px;
+  border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.inline-reasoning-content :deep(p) {
+  margin: 0 0 5px 0;
+}
+
+.inline-reasoning-content :deep(p:last-child) {
+  margin-bottom: 0;
 }
 
 @keyframes flowingGradient {

@@ -19,7 +19,7 @@ import type {
   LanguageModelV2FunctionTool,
 } from '@ai-sdk/provider'
 import type { ProviderDefinition } from '../types.js'
-import { createBoundFetch } from '../bound-fetch.js'
+import { createRequiredAppFetch } from '../bound-fetch.js'
 
 type FetchFn = typeof globalThis.fetch
 
@@ -565,9 +565,9 @@ const deepseekProvider: ProviderDefinition = {
     requiresApiKey: true,
   },
 
-  create: ({ apiKey, baseUrl, localAddress }) => {
+  create: ({ apiKey, baseUrl }) => {
     const finalBaseUrl = (baseUrl || 'https://api.deepseek.com').replace(/\/$/, '')
-    const fetchImpl = createBoundFetch(localAddress) ?? fetch
+    const fetchImpl = createRequiredAppFetch()
     return {
       createModel: (modelId: string) =>
         createDeepSeekModel(modelId, apiKey ?? '', finalBaseUrl, fetchImpl) as any,

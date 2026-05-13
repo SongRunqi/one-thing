@@ -15,6 +15,7 @@
 export interface TextDeltaChunk {
   type: 'text-delta'
   text: string
+  turnIndex?: number
 }
 
 // ── Reasoning delta ─────────────────────────────
@@ -22,6 +23,7 @@ export interface TextDeltaChunk {
 export interface ReasoningDeltaChunk {
   type: 'reasoning-delta'
   reasoning: string
+  turnIndex?: number
 }
 
 // ── Tool input delta ────────────────────────────

@@ -363,6 +363,7 @@ The sandbox restricts file access to allowed directories only.`,
         pattern: [workingDir, path.join(workingDir, '*')],
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
+        callId: ctx.toolCallId,
         title: `Access directory outside project: ${workingDir}`,
         workingDirectory: sandboxBoundary,
         metadata: {
@@ -381,6 +382,7 @@ The sandbox restricts file access to allowed directories only.`,
         pattern: [pattern],
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
+        callId: ctx.toolCallId,
         title: command,
         workingDirectory: sandboxBoundary,
         metadata: {
@@ -397,6 +399,8 @@ The sandbox restricts file access to allowed directories only.`,
     if (ctx.abortSignal?.aborted) {
       throw new Error('Command execution aborted')
     }
+
+    await ctx.beforeSideEffect?.()
 
     const proc = execa(command, {
       shell: true,

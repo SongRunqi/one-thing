@@ -4,241 +4,302 @@
     class="steps-panel"
     :data-depth="depth"
   >
-    <FartCallItem
-      v-for="view in fartViews"
-      :key="view.id"
-      :tool-call="view.toolCall"
-    />
-
-    <section
-      v-if="editedViews.length > 0"
-      class="activity"
-      :class="{ open: isEditedOpen }"
+    <template
+      v-for="run in displayRuns"
+      :key="run.id"
     >
-      <button
-        class="activity-summary"
-        type="button"
-        @click="toggleEdited"
-      >
-        <Pencil
-          class="activity-icon"
-          :size="18"
-          :stroke-width="1.8"
-        />
-        <span
-          class="activity-title"
-          :class="{ flowing: isEditing }"
-        >{{ editedTitle }}</span>
-        <ChevronDown
-          class="activity-chevron"
-          :class="{ open: isEditedOpen }"
-          :size="18"
-          :stroke-width="1.8"
-        />
-      </button>
+      <FartCallItem
+        v-if="run.kind === 'fart'"
+        :tool-call="run.views[0].toolCall"
+      />
 
-      <div
-        v-if="isEditedOpen"
-        class="activity-body"
+      <section
+        v-else-if="run.kind === 'edited'"
+        class="activity"
+        :class="{ open: isEditedRunOpen(run) }"
       >
+        <button
+          class="activity-summary"
+          type="button"
+          @click="toggleEdited(run.id)"
+        >
+          <Pencil
+            class="activity-icon"
+            :size="18"
+            :stroke-width="1.8"
+          />
+          <span
+            class="activity-title"
+            :class="{ flowing: isRunFlowing(run) }"
+          >{{ editedRunTitle(run) }}</span>
+          <ChevronDown
+            class="activity-chevron"
+            :class="{ open: isEditedRunOpen(run) }"
+            :size="18"
+            :stroke-width="1.8"
+          />
+        </button>
+
         <div
-          v-if="editedViews.length > 1"
-          class="edited-list"
+          v-if="isEditedRunOpen(run)"
+          class="activity-body"
         >
           <div
-            v-for="view in editedViews"
-            :key="view.id"
-            class="edited-item"
+            v-if="run.views.length > 1"
+            class="edited-list"
           >
-            <button
-              class="edited-row"
-              type="button"
-              :aria-expanded="isEditedExpanded(view)"
-              @click="selectEdited(view.id)"
-            >
-              <span class="edited-action">Edited</span>
-              <span class="edited-file">{{ fileLabel(view) }}</span>
-              <span
-                v-if="editStats(view)"
-                class="edited-stats"
-              >
-                <span class="stat-add">+{{ editStats(view)!.additions }}</span>
-                <span class="stat-del">-{{ editStats(view)!.deletions }}</span>
-              </span>
-              <ChevronDown
-                class="row-chevron"
-                :class="{ open: isEditedExpanded(view) }"
-                :size="15"
-                :stroke-width="1.9"
-              />
-            </button>
-
             <div
-              v-if="isEditedExpanded(view)"
-              class="active-edit nested"
+              v-for="view in run.views"
+              :key="view.id"
+              class="edited-item"
             >
-              <div class="diff-shell">
-                <div class="diff-shell-header">
-                  <span class="diff-file">{{ fileLabel(view) }}</span>
-                  <span
-                    v-if="editStats(view)"
-                    class="edited-stats"
-                  >
-                    <span class="stat-add">+{{ editStats(view)!.additions }}</span>
-                    <span class="stat-del">-{{ editStats(view)!.deletions }}</span>
-                  </span>
-                  <span class="diff-spacer" />
-                  <span
-                    v-if="view.isAwaitingConfirmation"
-                    class="row-confirm"
-                  >
-                    <AllowSplitButton @confirm="(response) => confirmEdited(view, response)" />
+              <div
+                class="edited-row"
+                role="button"
+                tabindex="0"
+                :aria-expanded="isEditedExpanded(view)"
+                @click="selectEdited(view.id)"
+                @keydown.enter.prevent="selectEdited(view.id)"
+                @keydown.space.prevent="selectEdited(view.id)"
+              >
+                <span class="edited-action">Edited</span>
+                <button
+                  v-if="canOpenFile(view)"
+                  class="edited-file file-link"
+                  type="button"
+                  :title="view.filePath"
+                  @click.stop="openFile(view)"
+                  @keydown.stop
+                >
+                  {{ fileLabel(view) }}
+                </button>
+                <span
+                  v-else
+                  class="edited-file"
+                >{{ fileLabel(view) }}</span>
+                <span
+                  v-if="editStats(view)"
+                  class="edited-stats"
+                >
+                  <span class="stat-add">+{{ editStats(view)!.additions }}</span>
+                  <span class="stat-del">-{{ editStats(view)!.deletions }}</span>
+                </span>
+                <ChevronDown
+                  class="row-chevron"
+                  :class="{ open: isEditedExpanded(view) }"
+                  :size="15"
+                  :stroke-width="1.9"
+                />
+              </div>
+
+              <div
+                v-if="isEditedExpanded(view)"
+                class="active-edit nested"
+              >
+                <div class="diff-shell">
+                  <div class="diff-shell-header">
                     <button
-                      class="btn-reject"
+                      v-if="canOpenFile(view)"
+                      class="diff-file file-link"
                       type="button"
-                      @click="rejectEdited(view)"
+                      :title="view.filePath"
+                      @click.stop="openFile(view)"
+                      @keydown.stop
                     >
-                      Reject
+                      {{ fileLabel(view) }}
                     </button>
-                  </span>
-                  <Copy
+                    <span
+                      v-else
+                      class="diff-file"
+                    >{{ fileLabel(view) }}</span>
+                    <span
+                      v-if="editStats(view)"
+                      class="edited-stats"
+                    >
+                      <span class="stat-add">+{{ editStats(view)!.additions }}</span>
+                      <span class="stat-del">-{{ editStats(view)!.deletions }}</span>
+                    </span>
+                    <span class="diff-spacer" />
+                    <span
+                      v-if="view.isAwaitingConfirmation"
+                      class="row-confirm"
+                    >
+                      <AllowSplitButton @confirm="(response) => confirmEdited(view, response)" />
+                      <button
+                        class="btn-reject"
+                        type="button"
+                        @click="rejectEdited(view)"
+                      >
+                        Reject
+                      </button>
+                    </span>
+                    <Copy
+                      v-else
+                      class="diff-copy"
+                      :size="17"
+                      :stroke-width="1.8"
+                    />
+                  </div>
+                  <ToolDiffPreview
+                    v-if="activeDiff(view)"
+                    class="embedded-diff"
+                    :diff="activeDiff(view)!"
+                    :lines="activeDiffLines(view)"
+                    :status="view.status"
+                    :hide-header="true"
+                    @open-file="(filePath) => emit('open-file', filePath)"
+                  />
+                  <ToolStepDetails
                     v-else
-                    class="diff-copy"
-                    :size="17"
-                    :stroke-width="1.8"
+                    class="embedded-details"
+                    :view="view"
                   />
                 </div>
-                <ToolDiffPreview
-                  v-if="activeDiff(view)"
-                  class="embedded-diff"
-                  :diff="activeDiff(view)!"
-                  :lines="activeDiffLines(view)"
-                  :status="view.status"
-                  :hide-header="true"
-                />
-                <ToolStepDetails
-                  v-else
-                  class="embedded-details"
-                  :view="view"
-                />
               </div>
             </div>
           </div>
-        </div>
 
-        <div
-          v-if="activeEditedView && editedViews.length === 1"
-          class="active-edit"
-        >
-          <div class="diff-shell">
-            <div class="diff-shell-header">
-              <span class="diff-file">{{ fileLabel(activeEditedView) }}</span>
-              <span
-                v-if="editStats(activeEditedView)"
-                class="edited-stats"
-              >
-                <span class="stat-add">+{{ editStats(activeEditedView)!.additions }}</span>
-                <span class="stat-del">-{{ editStats(activeEditedView)!.deletions }}</span>
-              </span>
-              <span class="diff-spacer" />
-              <span
-                v-if="activeEditedView.isAwaitingConfirmation"
-                class="row-confirm"
-              >
-                <AllowSplitButton @confirm="confirmActiveEdited" />
+          <div
+            v-if="activeEditedViewFor(run) && run.views.length === 1"
+            class="active-edit"
+          >
+            <div class="diff-shell">
+              <div class="diff-shell-header">
                 <button
-                  class="btn-reject"
+                  v-if="canOpenFile(activeEditedViewFor(run)!)"
+                  class="diff-file file-link"
                   type="button"
-                  @click="rejectActiveEdited"
+                  :title="activeEditedViewFor(run)!.filePath"
+                  @click.stop="openFile(activeEditedViewFor(run)!)"
+                  @keydown.stop
                 >
-                  Reject
+                  {{ fileLabel(activeEditedViewFor(run)!) }}
                 </button>
-              </span>
-              <Copy
+                <span
+                  v-else
+                  class="diff-file"
+                >{{ fileLabel(activeEditedViewFor(run)!) }}</span>
+                <span
+                  v-if="editStats(activeEditedViewFor(run)!)"
+                  class="edited-stats"
+                >
+                  <span class="stat-add">+{{ editStats(activeEditedViewFor(run)!)!.additions }}</span>
+                  <span class="stat-del">-{{ editStats(activeEditedViewFor(run)!)!.deletions }}</span>
+                </span>
+                <span class="diff-spacer" />
+                <span
+                  v-if="activeEditedViewFor(run)!.isAwaitingConfirmation"
+                  class="row-confirm"
+                >
+                  <AllowSplitButton @confirm="(response) => confirmEdited(activeEditedViewFor(run)!, response)" />
+                  <button
+                    class="btn-reject"
+                    type="button"
+                    @click="rejectEdited(activeEditedViewFor(run)!)"
+                  >
+                    Reject
+                  </button>
+                </span>
+                <Copy
+                  v-else
+                  class="diff-copy"
+                  :size="17"
+                  :stroke-width="1.8"
+                />
+              </div>
+              <ToolDiffPreview
+                v-if="activeDiff(activeEditedViewFor(run)!)"
+                class="embedded-diff"
+                :diff="activeDiff(activeEditedViewFor(run)!)!"
+                :lines="activeDiffLines(activeEditedViewFor(run)!)"
+                :status="activeEditedViewFor(run)!.status"
+                :hide-header="true"
+                @open-file="(filePath) => emit('open-file', filePath)"
+              />
+              <ToolStepDetails
                 v-else
-                class="diff-copy"
-                :size="17"
-                :stroke-width="1.8"
+                class="embedded-details"
+                :view="activeEditedViewFor(run)!"
               />
             </div>
-            <ToolDiffPreview
-              v-if="activeDiff(activeEditedView)"
-              class="embedded-diff"
-              :diff="activeDiff(activeEditedView)!"
-              :lines="activeDiffLines(activeEditedView)"
-              :status="activeEditedView.status"
-              :hide-header="true"
-            />
-            <ToolStepDetails
-              v-else
-              class="embedded-details"
-              :view="activeEditedView"
-            />
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section
-      v-if="exploreViews.length > 0 || commandViews.length > 0"
-      class="activity muted"
-      :class="{ attention: utilityNeedsConfirmation }"
-    >
-      <button
-        class="activity-summary"
-        type="button"
-        @click="toggleExplore"
+      <section
+        v-else-if="run.kind === 'utility'"
+        class="activity muted"
+        :class="{ attention: runNeedsConfirmation(run) }"
       >
-        <SquareTerminal
-          class="activity-icon"
-          :size="18"
-          :stroke-width="1.8"
-        />
-        <span
-          class="activity-title"
-          :class="{ flowing: isUtilityFlowing }"
-        >{{ exploreTitle }}</span>
-      </button>
-      <div
-        v-if="isExploreOpen"
-        class="activity-body compact-list"
-      >
-        <div
-          v-for="view in utilityViews"
-          :key="view.id"
-          class="compact-row"
-          :class="{ awaiting: view.isAwaitingConfirmation }"
+        <button
+          class="activity-summary"
+          type="button"
+          @click="toggleExplore(run.id)"
         >
-          <span>{{ compactVerb(view) }}</span>
-          <span class="compact-value">{{ compactValue(view) }}</span>
-          <span class="compact-spacer" />
+          <SquareTerminal
+            class="activity-icon"
+            :size="18"
+            :stroke-width="1.8"
+          />
           <span
-            v-if="view.isAwaitingConfirmation"
-            class="row-confirm"
-            @click.stop
+            class="activity-title"
+            :class="{ flowing: isRunFlowing(run) }"
+          >{{ utilityRunTitle(run) }}</span>
+        </button>
+        <div
+          v-if="isUtilityRunOpen(run)"
+          class="activity-body compact-list"
+        >
+          <div
+            v-for="view in run.views"
+            :key="view.id"
+            class="compact-row"
+            :class="{ awaiting: view.isAwaitingConfirmation }"
           >
-            <AllowSplitButton @confirm="(response) => emit('confirm', view.toolCall, response)" />
+            <span>{{ compactVerb(view) }}</span>
             <button
-              class="btn-reject"
+              v-if="canOpenFile(view)"
+              class="compact-value file-link"
               type="button"
-              @click="emit('reject', view.toolCall)"
+              :title="view.filePath"
+              @click.stop="openFile(view)"
+              @keydown.stop
             >
-              Reject
+              {{ compactValue(view) }}
             </button>
-          </span>
+            <span
+              v-else
+              class="compact-value"
+            >{{ compactValue(view) }}</span>
+            <span class="compact-spacer" />
+            <span
+              v-if="view.isAwaitingConfirmation"
+              class="row-confirm"
+              @click.stop
+            >
+              <AllowSplitButton @confirm="(response) => emit('confirm', view.toolCall, response)" />
+              <button
+                class="btn-reject"
+                type="button"
+                @click="emit('reject', view.toolCall)"
+              >
+                Reject
+              </button>
+            </span>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <ToolStepItem
-      v-for="view in miscViews"
-      :key="view.id"
-      :view="view"
-      :expanded="isExpanded(view)"
-      @toggle-expand="toggleExpand(view.id)"
-      @confirm="(toolCall, response) => emit('confirm', toolCall, response)"
-      @reject="(toolCall) => emit('reject', toolCall)"
-    />
+      <ToolStepItem
+        v-else
+        :view="run.views[0]"
+        :expanded="isExpanded(run.views[0])"
+        @toggle-expand="toggleExpand(run.views[0].id)"
+        @confirm="(toolCall, response) => emit('confirm', toolCall, response)"
+        @reject="(toolCall) => emit('reject', toolCall)"
+        @open-file="(filePath) => emit('open-file', filePath)"
+      />
+    </template>
   </div>
 </template>
 
@@ -247,6 +308,13 @@ import { computed, ref, watch } from 'vue'
 import { ChevronDown, Copy, Pencil, SquareTerminal } from 'lucide-vue-next'
 import type { Step, ToolCall } from '@/types'
 import { buildToolStepView, type ToolDiffData, type ToolDiffLine, type ToolStepView } from '@/stores/helpers/tool-step-view'
+import {
+  buildStepActivityRuns,
+  isEditedStepView,
+  isExploreStepView,
+  shouldFlowStepActivityTitle,
+  type StepActivityRun,
+} from '@/stores/helpers/steps-panel-runs'
 import { useSessionsStore } from '@/stores/sessions'
 import AllowSplitButton from '../common/AllowSplitButton.vue'
 import FartCallItem from './FartCallItem.vue'
@@ -268,120 +336,38 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   confirm: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
   reject: [toolCall: ToolCall]
+  'open-file': [filePath: string]
 }>()
 
 const sessionsStore = useSessionsStore()
 const userExpandedSteps = ref<Set<string>>(new Set())
 const userCollapsedSteps = ref<Set<string>>(new Set())
-const editedOpen = ref<boolean | null>(null)
-const exploreOpen = ref<boolean | null>(null)
+const editedOpen = ref<Map<string, boolean>>(new Map())
+const exploreOpen = ref<Map<string, boolean>>(new Map())
 const selectedEditedIds = ref<Set<string>>(new Set())
 
 const views = computed(() => props.steps.map(step => buildToolStepView(step)))
 const workingDirectory = computed(() =>
   sessionsStore.sessions.find(session => session.id === props.sessionId)?.workingDirectory || '',
 )
-const fartViews = computed(() => views.value.filter(view => view.toolName === 'fart'))
-const editedViews = computed(() => views.value.filter(isEditedView))
-const exploreViews = computed(() => views.value.filter(isExploreView))
-const commandViews = computed(() => views.value.filter(view => view.toolName === 'bash'))
-const utilityViews = computed(() => [...exploreViews.value, ...commandViews.value])
-const miscViews = computed(() => views.value.filter(view =>
-  view.toolName !== 'fart' &&
-  !isEditedView(view) &&
-  !isExploreView(view) &&
-  view.toolName !== 'bash',
-))
-
-const isEditedOpen = computed(() => {
-  if (editedViews.value.some(view => view.isAwaitingConfirmation || view.status === 'streaming-input')) {
-    return true
-  }
-  return editedOpen.value ?? editedViews.value.length === 1
-})
-
-const isEditing = computed(() =>
-  editedViews.value.some(isViewFlowing),
-)
-
-const activeEditedActivityView = computed(() =>
-  [...editedViews.value].reverse().find(isViewInProgress) ||
-  editedViews.value[editedViews.value.length - 1] ||
-  null,
-)
-
-const utilityNeedsConfirmation = computed(() =>
-  utilityViews.value.some(view => view.isAwaitingConfirmation),
-)
-
-const isUtilityActive = computed(() =>
-  utilityViews.value.some(isViewInProgress),
-)
-
-const isUtilityFlowing = computed(() =>
-  utilityViews.value.some(isViewFlowing),
-)
-
-const activeUtilityView = computed(() =>
-  [...views.value].reverse().find(view =>
-    (isExploreView(view) || view.toolName === 'bash') && isViewInProgress(view),
-  ) ||
-  utilityViews.value[utilityViews.value.length - 1] ||
-  null,
-)
-
-const isExploreOpen = computed(() =>
-  utilityNeedsConfirmation.value || exploreOpen.value === true,
-)
-
-const activeEditedView = computed(() => {
-  if (!isEditedOpen.value) return null
-  if (editedViews.value.length === 1) return editedViews.value[0]
-  return null
-})
-
-const editedTitle = computed(() => {
-  if (isEditing.value && activeEditedActivityView.value) {
-    return `${editingVerb(activeEditedActivityView.value)} ${fileLabel(activeEditedActivityView.value)}`
-  }
-  if (editedViews.value.length !== 1) return `Edited ${editedViews.value.length} files`
-  const view = editedViews.value[0]
-  const stats = editStats(view)
-  const suffix = stats ? ` +${stats.additions} -${stats.deletions}` : ''
-  return `Edited ${fileLabel(view)}${suffix}`
-})
-
-const exploreTitle = computed(() => {
-  if (isUtilityActive.value && activeUtilityView.value) {
-    return utilityActiveTitle(activeUtilityView.value)
-  }
-
-  const parts: string[] = []
-  if (exploreViews.value.length > 0) {
-    parts.push(`Explored ${exploreViews.value.length} ${exploreViews.value.length === 1 ? 'file' : 'files'}`)
-  }
-  if (commandViews.value.length > 0) {
-    parts.push(`Ran ${commandViews.value.length} ${commandViews.value.length === 1 ? 'command' : 'commands'}`)
-  }
-  return parts.join(', ')
-})
+const displayRuns = computed(() => buildStepActivityRuns(views.value))
 
 watch(() => props.parentCollapsed, (collapsed) => {
   if (collapsed) {
     userExpandedSteps.value = new Set()
     userCollapsedSteps.value = new Set()
-    editedOpen.value = null
-    exploreOpen.value = null
+    editedOpen.value = new Map()
+    exploreOpen.value = new Map()
     selectedEditedIds.value = new Set()
   }
 })
 
 function isEditedView(view: ToolStepView): boolean {
-  return view.toolName === 'write' || view.toolName === 'edit' || !!view.diff || !!view.streamingContent
+  return isEditedStepView(view)
 }
 
 function isExploreView(view: ToolStepView): boolean {
-  return ['read', 'grep', 'glob'].includes(view.toolName)
+  return isExploreStepView(view)
 }
 
 function isViewInProgress(view: ToolStepView): boolean {
@@ -389,12 +375,76 @@ function isViewInProgress(view: ToolStepView): boolean {
 }
 
 function isViewFlowing(view: ToolStepView): boolean {
-  return ['pending', 'streaming-input', 'executing'].includes(view.status)
+  return shouldFlowStepActivityTitle(view)
 }
 
-function toggleEdited() {
-  editedOpen.value = !isEditedOpen.value
-  if (!editedOpen.value) selectedEditedIds.value = new Set()
+function runNeedsConfirmation(run: StepActivityRun): boolean {
+  return run.views.some(view => view.isAwaitingConfirmation)
+}
+
+function isRunFlowing(run: StepActivityRun): boolean {
+  return run.views.some(isViewFlowing)
+}
+
+function activeRunView(run: StepActivityRun): ToolStepView | null {
+  return [...run.views].reverse().find(isViewInProgress) ||
+    run.views[run.views.length - 1] ||
+    null
+}
+
+function isEditedRunOpen(run: StepActivityRun): boolean {
+  if (run.views.some(view => view.isAwaitingConfirmation || view.status === 'streaming-input')) {
+    return true
+  }
+  return editedOpen.value.get(run.id) ?? run.views.length === 1
+}
+
+function activeEditedViewFor(run: StepActivityRun): ToolStepView | null {
+  if (!isEditedRunOpen(run) || run.views.length !== 1) return null
+  return run.views[0]
+}
+
+function editedRunTitle(run: StepActivityRun): string {
+  const activeView = activeRunView(run)
+  if (run.views.some(isViewInProgress) && activeView) {
+    return `${editingVerb(activeView)} ${fileLabel(activeView)}`
+  }
+  if (run.views.length !== 1) return `Edited ${run.views.length} files`
+  const view = run.views[0]
+  const stats = editStats(view)
+  const suffix = stats ? ` +${stats.additions} -${stats.deletions}` : ''
+  return `Edited ${fileLabel(view)}${suffix}`
+}
+
+function isUtilityRunOpen(run: StepActivityRun): boolean {
+  return runNeedsConfirmation(run) || exploreOpen.value.get(run.id) === true
+}
+
+function utilityRunTitle(run: StepActivityRun): string {
+  const activeView = activeRunView(run)
+  if (run.views.some(isViewInProgress) && activeView) {
+    return utilityActiveTitle(activeView)
+  }
+
+  const exploreCount = run.views.filter(isExploreView).length
+  const commandCount = run.views.filter(view => view.toolName === 'bash').length
+  const parts: string[] = []
+  if (exploreCount > 0) {
+    parts.push(`Explored ${exploreCount} ${exploreCount === 1 ? 'file' : 'files'}`)
+  }
+  if (commandCount > 0) {
+    parts.push(`Ran ${commandCount} ${commandCount === 1 ? 'command' : 'commands'}`)
+  }
+  return parts.join(', ')
+}
+
+function toggleEdited(runId: string) {
+  const next = new Map(editedOpen.value)
+  const run = displayRuns.value.find(item => item.id === runId)
+  const currentlyOpen = run ? isEditedRunOpen(run) : next.get(runId) === true
+  next.set(runId, !currentlyOpen)
+  editedOpen.value = next
+  if (currentlyOpen) selectedEditedIds.value = new Set()
 }
 
 function selectEdited(stepId: string) {
@@ -418,16 +468,12 @@ function rejectEdited(view: ToolStepView) {
   emit('reject', view.toolCall)
 }
 
-function toggleExplore() {
-  exploreOpen.value = !isExploreOpen.value
-}
-
-function confirmActiveEdited(response: 'once' | 'session' | 'workdir' | 'always') {
-  if (activeEditedView.value) emit('confirm', activeEditedView.value.toolCall, response)
-}
-
-function rejectActiveEdited() {
-  if (activeEditedView.value) emit('reject', activeEditedView.value.toolCall)
+function toggleExplore(runId: string) {
+  const next = new Map(exploreOpen.value)
+  const run = displayRuns.value.find(item => item.id === runId)
+  const currentlyOpen = run ? isUtilityRunOpen(run) : next.get(runId) === true
+  next.set(runId, !currentlyOpen)
+  exploreOpen.value = next
 }
 
 function activeDiff(view: ToolStepView): ToolDiffData | null {
@@ -439,16 +485,15 @@ function activeDiffLines(view: ToolStepView): ToolDiffLine[] {
 }
 
 function fileLabel(view: ToolStepView): string {
-  const path = view.diff?.filePath ||
-    view.streamingContent?.filePath ||
-    String(view.toolCall.arguments?.file_path || view.toolCall.arguments?.path || '')
+  return view.fileName || (isEditedView(view) ? 'file' : view.displayName)
+}
 
-  if (!path && isEditedView(view)) {
-    return 'file'
-  }
+function canOpenFile(view: ToolStepView): boolean {
+  return !!view.filePath && ['read', 'write', 'edit'].includes(view.toolName)
+}
 
-  const normalized = path.replace(/\\/g, '/')
-  return normalized.split('/').filter(Boolean).pop() || normalized || view.displayName
+function openFile(view: ToolStepView) {
+  if (canOpenFile(view)) emit('open-file', view.filePath)
 }
 
 function editStats(view: ToolStepView): { additions: number; deletions: number } | null {
@@ -485,7 +530,7 @@ function compactValue(view: ToolStepView): string {
   }
 
   const raw = rawPathValue(view)
-  if (raw) return formatPath(raw)
+  if (raw) return fileLabel(view)
   return view.preview || view.displayName
 }
 
@@ -512,24 +557,6 @@ function rawPathValue(view: ToolStepView): string {
   if (typeof args.file_path === 'string') return args.file_path
   if (typeof args.path === 'string') return args.path
   return ''
-}
-
-function formatPath(value: string): string {
-  if (!value) return ''
-  const normalized = value.replace(/\\/g, '/')
-  const workdir = workingDirectory.value.replace(/\\/g, '/').replace(/\/+$/, '')
-  const home = getHomePath()
-
-  if (workdir && (normalized === workdir || normalized.startsWith(`${workdir}/`))) {
-    const relative = normalized === workdir ? '.' : normalized.slice(workdir.length + 1)
-    return relative || '.'
-  }
-
-  if (home && (normalized === home || normalized.startsWith(`${home}/`))) {
-    return `~${normalized.slice(home.length)}`
-  }
-
-  return normalized
 }
 
 function formatCommand(command: string): string {
@@ -714,7 +741,7 @@ function toggleExpand(stepId: string) {
   outline: none;
 }
 
-.edited-row:hover .edited-file {
+.edited-row:hover .edited-file:not(.file-link) {
   text-decoration: underline;
 }
 
@@ -724,6 +751,21 @@ function toggleExpand(stepId: string) {
 
 .edited-file {
   color: var(--text-link);
+}
+
+.file-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-link);
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.file-link:hover {
+  text-decoration: underline;
 }
 
 .edited-stats {
@@ -809,6 +851,10 @@ function toggleExpand(stepId: string) {
   color: var(--text-muted);
 }
 
+button.diff-file {
+  color: var(--text-link);
+}
+
 .diff-copy {
   color: var(--text-faint);
 }
@@ -856,6 +902,10 @@ function toggleExpand(stepId: string) {
 
 .compact-row.awaiting .compact-value {
   color: var(--text-primary);
+}
+
+button.compact-value {
+  color: var(--text-link);
 }
 
 .compact-spacer {

@@ -1,5 +1,5 @@
 import type { Step, ToolCall } from '@/types'
-import { formatToolCallPreview } from './tool-preview'
+import { basename, formatToolCallPreview } from './tool-preview'
 import { getToolRenderStatus, type ToolRenderStatus } from './tool-status'
 
 export interface ToolDiffData {
@@ -21,6 +21,9 @@ export interface StreamingToolContent {
   filePath: string
   content: string
   additions: number
+  isTruncated?: boolean
+  totalLines?: number
+  omittedLines?: number
 }
 
 export interface ToolStepView {
@@ -31,6 +34,8 @@ export interface ToolStepView {
   displayName: string
   status: ToolRenderStatus
   preview: string
+  filePath: string
+  fileName: string
   inlineResult: string | null
   errorPreview: string | null
   streamingContent: StreamingToolContent | null
@@ -48,6 +53,12 @@ export interface ToolStepView {
 
 const AUTO_EXPAND_TOOLS = new Set(['write', 'read', 'edit'])
 const DETAILS_ARGS_EXCLUDED_TOOLS = new Set(['edit', 'read', 'write'])
+const STREAMING_CONTENT_CACHE_LIMIT = 80
+const STREAMING_PREVIEW_HEAD_LINES = 80
+const STREAMING_PREVIEW_TAIL_LINES = 80
+const STREAMING_PREVIEW_MAX_LINES = STREAMING_PREVIEW_HEAD_LINES + STREAMING_PREVIEW_TAIL_LINES
+
+const streamingContentCache = new Map<string, StreamingToolContent | null>()
 
 export function buildSyntheticToolCall(step: Step): ToolCall {
   const name = step.title?.split(':')[0] || 'tool'
@@ -66,8 +77,9 @@ export function buildToolStepView(step: Step): ToolStepView {
   const toolName = toolCall.toolName?.toLowerCase() || ''
   const status = getToolRenderStatus(toolCall, step)
   const diff = getDiffFromStep(step)
-  const streamingContent = getStreamingContent(step, diff)
+  const streamingContent = getCachedStreamingContent(step, diff, status)
   const streamingDiff = getStreamingDiff(streamingContent)
+  const filePath = getToolFilePath(toolCall, diff, streamingContent)
   const argsJson = getArgsJson(step)
   const resultText = getResultText(step)
   const liveOutput = step.status === 'running' && step.result
@@ -96,11 +108,13 @@ export function buildToolStepView(step: Step): ToolStepView {
     displayName: toolCall.toolName || step.title?.split(':')[0] || 'tool',
     status,
     preview: formatToolCallPreview(toolCall),
+    filePath,
+    fileName: basename(filePath),
     inlineResult,
     errorPreview,
     streamingContent,
     streamingDiff,
-    streamingDiffLines: streamingDiff ? parseStreamingDiffLines(streamingContent?.content || '') : [],
+    streamingDiffLines: streamingDiff ? parseStreamingDiffLines(streamingContent) : [],
     diff,
     diffLines: diff ? parseDiffWithLineNumbers(diff.diff) : [],
     argsJson,
@@ -113,6 +127,25 @@ export function buildToolStepView(step: Step): ToolStepView {
   }
 }
 
+export function getToolFilePath(
+  toolCall: ToolCall | undefined,
+  diff: ToolDiffData | null = null,
+  streamingContent: StreamingToolContent | null = null,
+): string {
+  const args = toolCall?.arguments || {}
+  if (diff?.filePath) return diff.filePath
+  if (streamingContent?.filePath) return streamingContent.filePath
+  if (typeof toolCall?.changes?.filePath === 'string') return toolCall.changes.filePath
+  if (typeof args.file_path === 'string') return args.file_path
+  if (typeof args.path === 'string') return args.path
+  if (toolCall?.status === 'input-streaming' && toolCall.streamingArgs) {
+    return extractStreamingStringValue(toolCall.streamingArgs, 'file_path') ||
+      extractStreamingStringValue(toolCall.streamingArgs, 'path') ||
+      ''
+  }
+  return ''
+}
+
 function getStreamingDiff(streamingContent: StreamingToolContent | null): ToolDiffData | null {
   if (!streamingContent) return null
   return {
@@ -123,14 +156,26 @@ function getStreamingDiff(streamingContent: StreamingToolContent | null): ToolDi
   }
 }
 
-function parseStreamingDiffLines(content: string): ToolDiffLine[] {
-  if (!content) return []
-  return content.split('\n').map((line, index) => ({
+function parseStreamingDiffLines(streamingContent: StreamingToolContent | null): ToolDiffLine[] {
+  if (!streamingContent?.content) return []
+  const lines = streamingContent.content.split('\n')
+  const result: ToolDiffLine[] = lines.map((line, index) => ({
     class: 'diff-add',
     prefix: '+',
     content: line,
     newNum: index + 1,
   }))
+
+  if (streamingContent.isTruncated && streamingContent.omittedLines) {
+    result.splice(STREAMING_PREVIEW_HEAD_LINES, 0, {
+      class: 'diff-hunk',
+      prefix: '',
+      content: `... ${streamingContent.omittedLines} lines omitted while streaming ...`,
+      newNum: '',
+    })
+  }
+
+  return result
 }
 
 export function getResultText(step: Step): string | null {
@@ -203,6 +248,29 @@ function truncateOutput(output: string, maxLines: number = 8): string {
   return '...\n' + lines.slice(-maxLines).join('\n')
 }
 
+function getCachedStreamingContent(
+  step: Step,
+  diff: ToolDiffData | null,
+  status: ToolRenderStatus,
+): StreamingToolContent | null {
+  const args = step.toolCall?.streamingArgs
+  if (diff || !args) return null
+
+  const toolCallId = step.toolCall?.id || step.toolCallId || step.id
+  const cacheKey = `${toolCallId}:${args.length}:${status}`
+  if (streamingContentCache.has(cacheKey)) {
+    return streamingContentCache.get(cacheKey) ?? null
+  }
+
+  const result = getStreamingContent(step, diff)
+  streamingContentCache.set(cacheKey, result)
+  if (streamingContentCache.size > STREAMING_CONTENT_CACHE_LIMIT) {
+    const firstKey = streamingContentCache.keys().next().value
+    if (firstKey) streamingContentCache.delete(firstKey)
+  }
+  return result
+}
+
 function getStreamingContent(step: Step, diff: ToolDiffData | null): StreamingToolContent | null {
   if (diff || !step.toolCall?.streamingArgs) return null
 
@@ -216,11 +284,11 @@ function getStreamingContent(step: Step, diff: ToolDiffData | null): StreamingTo
     const parsed = JSON.parse(args)
     const parsedContent = toolName === 'write' ? parsed.content : parsed.new_string
     const content = typeof parsedContent === 'string' ? parsedContent : ''
-    return {
+    return normalizeStreamingContent({
       filePath: typeof parsed.file_path === 'string' ? parsed.file_path : '',
       content,
       additions: countAddedLines(content),
-    }
+    })
   } catch {
     // Incomplete JSON while the model is still streaming; fall through to
     // tolerant extraction below.
@@ -245,8 +313,32 @@ function getStreamingContent(step: Step, diff: ToolDiffData | null): StreamingTo
   }
 
   return (result.filePath || result.content)
-    ? { ...result, additions: countAddedLines(result.content) }
+    ? normalizeStreamingContent({ ...result, additions: countAddedLines(result.content) })
     : null
+}
+
+function normalizeStreamingContent(content: StreamingToolContent): StreamingToolContent {
+  const lines = content.content ? content.content.split('\n') : []
+  if (lines.length <= STREAMING_PREVIEW_MAX_LINES) {
+    return {
+      ...content,
+      totalLines: lines.length,
+      isTruncated: false,
+      omittedLines: 0,
+    }
+  }
+
+  const omittedLines = Math.max(0, lines.length - STREAMING_PREVIEW_MAX_LINES)
+  return {
+    ...content,
+    content: [
+      ...lines.slice(0, STREAMING_PREVIEW_HEAD_LINES),
+      ...lines.slice(-STREAMING_PREVIEW_TAIL_LINES),
+    ].join('\n'),
+    totalLines: lines.length,
+    isTruncated: true,
+    omittedLines,
+  }
 }
 
 function countAddedLines(content: string): number {

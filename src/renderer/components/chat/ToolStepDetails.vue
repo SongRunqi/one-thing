@@ -6,6 +6,7 @@
       :diff="activeDiff"
       :lines="activeDiffLines"
       :status="view.status"
+      @open-file="(filePath) => emit('open-file', filePath)"
     />
 
     <div
@@ -71,6 +72,10 @@ import ToolDiffPreview from './ToolDiffPreview.vue'
 
 const props = defineProps<{
   view: ToolStepView
+}>()
+
+const emit = defineEmits<{
+  'open-file': [filePath: string]
 }>()
 
 const streamingPreviewRef = ref<InstanceType<typeof ToolDiffPreview> | null>(null)

@@ -14,7 +14,7 @@ vi.mock('../../../stores/settings.js', () => ({
   getSettings: vi.fn(() => ({})),
 }))
 
-import { expandPath, isPathContained, getSandboxBoundary, checkFileAccess } from '../sandbox'
+import { expandPath, isPathContained, getSandboxBoundary, resolveToolPath, checkFileAccess } from '../sandbox'
 import { Permission } from '../../../permission/index.js'
 import { getSettings } from '../../../stores/settings.js'
 
@@ -49,6 +49,30 @@ describe('sandbox', () => {
     it('should handle empty string', () => {
       const result = expandPath('')
       expect(result).toBe('')
+    })
+  })
+
+  // ─── resolveToolPath ─────────────────────────────────────────────
+
+  describe('resolveToolPath()', () => {
+    it('should expand ~ before resolving paths', () => {
+      const result = resolveToolPath('~/file.txt', '/workspace')
+      expect(result).toBe(os.homedir() + '/file.txt')
+    })
+
+    it('should resolve relative paths against boundary', () => {
+      const result = resolveToolPath('src/file.ts', '/workspace')
+      expect(result).toBe(path.resolve('/workspace', 'src/file.ts'))
+    })
+
+    it('should leave absolute paths absolute', () => {
+      const result = resolveToolPath('/workspace/src/file.ts', '/other')
+      expect(result).toBe('/workspace/src/file.ts')
+    })
+
+    it('should not expand full-width tilde', () => {
+      const result = resolveToolPath('～/file.txt', '/workspace')
+      expect(result).toBe(path.resolve('/workspace', '～/file.txt'))
     })
   })
 
@@ -149,13 +173,26 @@ describe('sandbox', () => {
       expect(Permission.ask).not.toHaveBeenCalled()
     })
 
+    it('should expand ~ before checking access', async () => {
+      const result = await checkFileAccess('~/file.txt', defaultCtx, 'read')
+      expect(result).toBe(os.homedir() + '/file.txt')
+      expect(Permission.ask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'external_directory',
+          metadata: expect.objectContaining({
+            filePath: os.homedir() + '/file.txt',
+          }),
+        })
+      )
+    })
+
     it('should request permission for path outside boundary', async () => {
       const result = await checkFileAccess('/other/file.ts', defaultCtx, 'write')
       expect(result).toBe('/other/file.ts')
       expect(Permission.ask).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'external_directory',
-          pattern: ['/other', '/other/file.ts'],
+          pattern: '/other/*',
           sessionId: 'test-session',
           messageId: 'test-message',
           callId: 'test-call',

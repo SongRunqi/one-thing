@@ -42,6 +42,10 @@ export function initializeIPCHub() {
         store.handleStreamComplete({ sessionId, aborted: true })
         break
 
+      case 'stream:start':
+        store.handleStreamStarted({ sessionId, messageId: event.messageId || event.assistantMessageId })
+        break
+
       // Tool events → mapped to stream chunk format for store compatibility
       case 'tool:call':
         store.handleStreamChunk({ type: 'tool_call', sessionId, messageId: '', content: '', toolCall: event.toolCall })
@@ -145,8 +149,6 @@ export function initializeIPCHub() {
           })
         })
         break
-
-      // stream:start — no store action needed
     }
   })
 
@@ -158,15 +160,15 @@ export function initializeIPCHub() {
 
     switch (chunk.type) {
       case 'text-delta':
-        store.handleStreamChunk({ type: 'text', sessionId, messageId: '', content: chunk.text })
+        store.handleStreamChunk({ type: 'text', sessionId, messageId: chunk.messageId || '', content: chunk.text, turnIndex: chunk.turnIndex })
         break
 
       case 'reasoning-delta':
-        store.handleStreamChunk({ type: 'reasoning', sessionId, messageId: '', content: '', reasoning: chunk.reasoning })
+        store.handleStreamChunk({ type: 'reasoning', sessionId, messageId: chunk.messageId || '', content: '', reasoning: chunk.reasoning, turnIndex: chunk.turnIndex })
         break
 
       case 'tool-input-delta':
-        store.handleStreamChunk({ type: 'tool_input_delta', sessionId, messageId: '', content: '', toolCallId: chunk.toolCallId, argsTextDelta: chunk.argsTextDelta })
+        store.handleStreamChunk({ type: 'tool_input_delta', sessionId, messageId: chunk.messageId || '', content: '', toolCallId: chunk.toolCallId, argsTextDelta: chunk.argsTextDelta })
         break
     }
   })

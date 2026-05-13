@@ -411,8 +411,8 @@ const openaiProvider: ProviderDefinition = {
     requiresApiKey: true,
   },
 
-  create: ({ apiKey, baseUrl, localAddress }) => {
-    const boundFetch = createBoundFetch(localAddress)
+  create: ({ apiKey, baseUrl }) => {
+    const boundFetch = createBoundFetch()
     const client = new OpenAI({
       apiKey: apiKey ?? '',
       baseURL: (baseUrl || 'https://api.openai.com/v1').replace(/\/$/, ''),

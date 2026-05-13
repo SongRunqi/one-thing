@@ -59,19 +59,31 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
   return {
     // ── Stream Chunks → StreamChannel ───────────
 
-    sendTextChunk(text) {
+    sendTextChunk(text, turnIndex) {
       const s = stream()
       if (s) {
-        try { s.push(sessionId, { type: 'text-delta', text }) } catch (err) {
+        try {
+          s.push(sessionId, {
+            type: 'text-delta',
+            text,
+            ...(turnIndex !== undefined ? { turnIndex } : {}),
+          })
+        } catch (err) {
           console.error('[EventOnlyEmitter] StreamChannel error:', err)
         }
       }
     },
 
-    sendReasoningChunk(reasoning) {
+    sendReasoningChunk(reasoning, turnIndex) {
       const s = stream()
       if (s) {
-        try { s.push(sessionId, { type: 'reasoning-delta', reasoning }) } catch (err) {
+        try {
+          s.push(sessionId, {
+            type: 'reasoning-delta',
+            reasoning,
+            ...(turnIndex !== undefined ? { turnIndex } : {}),
+          })
+        } catch (err) {
           console.error('[EventOnlyEmitter] StreamChannel error:', err)
         }
       }
@@ -140,6 +152,7 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
     // ── Context → EventBus ──────────────────────
 
     sendContextSizeUpdate(contextSize) {
+      store.updateSessionContextSize(sessionId, contextSize)
       emitSafe({ type: 'context:size-updated', contextSize })
     },
 

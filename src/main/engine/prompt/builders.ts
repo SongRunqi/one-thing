@@ -13,6 +13,7 @@ import { getMacOSAutomationDocsPath, getToolUsageDocsPath } from '../../stores/p
 import type {
   SystemPromptVariables,
   SkillsVariables,
+  ContextCompactVariables,
   TemplateSkill,
   PromptSegment,
 } from './types.js'
@@ -123,4 +124,14 @@ export function buildSkillsToolPrompt(skills: SkillDefinition[]): string {
   }
 
   return pm.render('skills/tool', variables)
+}
+
+export function buildContextCompactPrompt(messages: string, previousSummary?: string): string {
+  const pm = getPromptManager()
+  const variables: ContextCompactVariables = {
+    messages,
+    previousSummary: previousSummary?.trim(),
+  }
+
+  return pm.render('main/context-compact', variables)
 }

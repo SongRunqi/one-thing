@@ -21,6 +21,16 @@ export function expandPath(dir: string): string {
 }
 
 /**
+ * Resolve a tool path consistently against the sandbox boundary.
+ */
+export function resolveToolPath(filePath: string, workingDirectory?: string): string {
+  const expandedPath = expandPath(filePath)
+  return path.isAbsolute(expandedPath)
+    ? expandedPath
+    : path.resolve(getSandboxBoundary(workingDirectory), expandedPath)
+}
+
+/**
  * Check if a path is contained within a boundary directory
  */
 export function isPathContained(boundary: string, targetPath: string): boolean {
@@ -71,9 +81,7 @@ export async function checkFileAccess(
   targetType: 'file' | 'directory' = 'file',
 ): Promise<string> {
   // Ensure absolute path
-  const absolutePath = path.isAbsolute(filePath)
-    ? filePath
-    : path.resolve(getSandboxBoundary(ctx.workingDirectory), filePath)
+  const absolutePath = resolveToolPath(filePath, ctx.workingDirectory)
 
   // Get sandbox boundary
   const boundary = getSandboxBoundary(ctx.workingDirectory)

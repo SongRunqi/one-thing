@@ -26,7 +26,7 @@ export function registerShellHandlers() {
       win.setWindowButtonVisibility(visible)
       // Restore traffic light position after showing (macOS resets position on visibility change)
       if (visible) {
-        win.setWindowButtonPosition({ x: 13, y: 13 })
+        win.setWindowButtonPosition({ x: 16, y: 17 })
       }
     }
   })

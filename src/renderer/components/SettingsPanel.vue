@@ -142,6 +142,27 @@
           Tools
         </button>
         <button
+          :class="['tab-btn', { active: activeTab === 'network' }]"
+          @click="activeTab = 'network'"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+            />
+            <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
+          </svg>
+          Network
+        </button>
+        <button
           :class="['tab-btn', { active: activeTab === 'shortcuts' }]"
           @click="activeTab = 'shortcuts'"
         >
@@ -275,6 +296,12 @@
           @update:settings="updateSettings"
         />
 
+        <NetworkSettingsTab
+          v-show="activeTab === 'network'"
+          :settings="localSettings"
+          @update:settings="updateSettings"
+        />
+
         <!-- Shortcuts Tab -->
         <ShortcutsSettingsTab
           v-show="activeTab === 'shortcuts'"
@@ -339,6 +366,7 @@ import GeneralSettingsTab from './settings/GeneralSettingsTab.vue'
 import EditorSettingsTab from './settings/EditorSettingsTab.vue'
 import { AIProviderTab } from './settings/provider'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
+import NetworkSettingsTab from './settings/NetworkSettingsTab.vue'
 import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import SettingsFooter from './settings/SettingsFooter.vue'
 import PluginsSettingsTab from './settings/PluginsSettingsTab.vue'
@@ -350,7 +378,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 
 // Active tab
-const activeTab = ref<'general' | 'editor' | 'ai' | 'tools' | 'shortcuts' | 'mcp' | 'skills' | 'plugins'>('general')
+const activeTab = ref<'general' | 'editor' | 'ai' | 'tools' | 'network' | 'shortcuts' | 'mcp' | 'skills' | 'plugins'>('general')
 
 // Deep clone settings, ensuring providers object exists
 const localSettings = ref<AppSettings>(
@@ -419,6 +447,23 @@ function initializeSettings() {
     localSettings.value.tools = {
       enableToolCalls: true,
       tools: {},
+    }
+  }
+
+  // Ensure network settings exist
+  if (!localSettings.value.network) {
+    localSettings.value.network = {
+      proxy: {
+        enabled: false,
+        url: '',
+        bypassRules: 'localhost;127.0.0.1;::1;*.local',
+      },
+    }
+  } else if (!localSettings.value.network.proxy) {
+    localSettings.value.network.proxy = {
+      enabled: false,
+      url: '',
+      bypassRules: 'localhost;127.0.0.1;::1;*.local',
     }
   }
 

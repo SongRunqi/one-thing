@@ -10,6 +10,13 @@
       @regenerate="handleRegenerate"
       @edit-and-resend="handleEditAndResend"
       @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
+      @open-file="(filePath) => emit('openFile', filePath)"
+    />
+
+    <TodoPlanPanel
+      v-if="settingsStore.settings.general?.todoPlan?.enabled !== false"
+      :session-id="effectiveSessionId"
+      :working-directory="currentSession?.workingDirectory || ''"
     />
 
     <div
@@ -28,12 +35,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
+import { useSettingsStore } from '@/stores/settings'
 import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
+import TodoPlanPanel from './TodoPlanPanel.vue'
 
 const props = defineProps<{
   sessionId?: string
@@ -41,10 +50,12 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   splitWithBranch: [sessionId: string]
+  openFile: [filePath: string]
 }>()
 
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
 
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
 
@@ -92,33 +103,72 @@ async function waitForRestorePage(sessionId: string, anchorMessageId?: string) {
   return effectiveSessionId.value === sessionId
 }
 
+function saveCurrentSnapshot(sessionId: string, prepareForSwitch = false) {
+  const distanceToBottom = messageListRef.value?.getDistanceToBottom() ?? 0
+  const isAtTail = distanceToBottom <= TAIL_SNAPSHOT_DISTANCE_PX
+  const anchorMessageId = messageListRef.value?.getAnchorMessageId() ?? undefined
+  const anchorOffset = messageListRef.value?.getAnchorOffset() ?? 0
+  const navMessageId = messageListRef.value?.getNavMessageId() ?? undefined
+  const hasNavigated = messageListRef.value?.getHasNavigated() ?? false
+  const messageInput = inputBoxRef.value?.getMessageInput() ?? ''
+  const quotedText = inputBoxRef.value?.getQuotedText() ?? ''
+
+  if (prepareForSwitch) {
+    messageListRef.value?.prepareForSwitch()
+  }
+
+  chatStore.saveSnapshot(sessionId, {
+    mode: isAtTail || !anchorMessageId ? 'tail' : 'anchor',
+    anchorMessageId: isAtTail ? undefined : anchorMessageId,
+    offsetWithinMessage: isAtTail ? undefined : anchorOffset,
+    navMessageId: isAtTail ? undefined : navMessageId,
+    hasNavigated,
+    messageInput,
+    quotedText,
+  })
+}
+
+async function restoreCurrentSnapshot(sessionId: string) {
+  const snapshot = chatStore.getSnapshot(sessionId)
+  if (!snapshot) return false
+
+  if (snapshot.mode === 'anchor') {
+    await waitForRestorePage(sessionId, snapshot.anchorMessageId)
+  }
+  if (effectiveSessionId.value !== sessionId) return false
+
+  if (snapshot.mode === 'anchor') {
+    messageListRef.value?.restoreAnchor(snapshot)
+  } else {
+    messageListRef.value?.restoreTail()
+  }
+
+  if (effectiveSessionId.value !== sessionId) return false
+  inputBoxRef.value?.restoreSnapshot(snapshot)
+  return true
+}
+
+onMounted(() => {
+  const sessionId = effectiveSessionId.value
+  if (sessionId) {
+    restoreCurrentSnapshot(sessionId)
+  }
+})
+
+onBeforeUnmount(() => {
+  const sessionId = effectiveSessionId.value
+  if (sessionId) {
+    saveCurrentSnapshot(sessionId)
+  }
+})
+
 // Session switch: save/restore scroll position and input state
 watch(effectiveSessionId, async (newId, oldId) => {
   const start = performance.now()
   const oldMessageCount = oldId ? (chatStore.sessionMessages.get(oldId)?.length ?? 0) : 0
   const newMessageCount = newId ? (chatStore.sessionMessages.get(newId)?.length ?? 0) : 0
   if (oldId && oldId !== newId) {
-    // Capture every viewport-derived value BEFORE prepareForSwitch — it zeroes
-    // scrollTop, which would otherwise make the second/third captureTopAnchor()
-    // call read a fresh (and wrong) anchor at the top of the list.
-    const distanceToBottom = messageListRef.value?.getDistanceToBottom() ?? 0
-    const isAtTail = distanceToBottom <= TAIL_SNAPSHOT_DISTANCE_PX
-    const anchorMessageId = messageListRef.value?.getAnchorMessageId() ?? undefined
-    const anchorOffset = messageListRef.value?.getAnchorOffset() ?? 0
-    const navMessageId = messageListRef.value?.getNavMessageId() ?? undefined
-    const hasNavigated = messageListRef.value?.getHasNavigated() ?? false
-    const messageInput = inputBoxRef.value?.getMessageInput() ?? ''
-    const quotedText = inputBoxRef.value?.getQuotedText() ?? ''
-    messageListRef.value?.prepareForSwitch()
-    chatStore.saveSnapshot(oldId, {
-      mode: isAtTail || !anchorMessageId ? 'tail' : 'anchor',
-      anchorMessageId: isAtTail ? undefined : anchorMessageId,
-      offsetWithinMessage: isAtTail ? undefined : anchorOffset,
-      navMessageId: isAtTail ? undefined : navMessageId,
-      hasNavigated,
-      messageInput,
-      quotedText,
-    })
+    saveCurrentSnapshot(oldId, true)
   }
 
   const beforeTick = performance.now()
@@ -126,21 +176,10 @@ watch(effectiveSessionId, async (newId, oldId) => {
   const afterTick = performance.now()
 
   if (newId) {
-    const snapshot = chatStore.getSnapshot(newId)
-    if (snapshot?.mode === 'anchor') {
-      await waitForRestorePage(newId, snapshot.anchorMessageId)
-    }
+    const hadSnapshot = !!chatStore.getSnapshot(newId)
+    await restoreCurrentSnapshot(newId)
     if (effectiveSessionId.value !== newId) return
-    if (snapshot?.mode === 'anchor') {
-      messageListRef.value?.restoreAnchor(snapshot)
-    } else {
-      messageListRef.value?.restoreTail()
-    }
-
-    if (effectiveSessionId.value !== newId) return
-    if (snapshot) {
-      inputBoxRef.value?.restoreSnapshot(snapshot)
-    } else {
+    if (!hadSnapshot) {
       inputBoxRef.value?.clearInput()
     }
   }
@@ -196,6 +235,19 @@ function focusInput() {
   inputBoxRef.value?.focus()
 }
 
+function saveSnapshotForCurrentSession() {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return false
+  saveCurrentSnapshot(sessionId, false)
+  return true
+}
+
+async function restoreSnapshotForCurrentSession() {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return false
+  return restoreCurrentSnapshot(sessionId)
+}
+
 async function scrollToMessage(messageId: string) {
   await nextTick()
   return messageListRef.value?.scrollToMessage?.(messageId) ?? false
@@ -203,13 +255,15 @@ async function scrollToMessage(messageId: string) {
 
 defineExpose({
   focusInput,
+  saveSnapshotForCurrentSession,
+  restoreSnapshotForCurrentSession,
   scrollToMessage,
 })
 </script>
 
 <style scoped>
 .chat-panel {
-  --chat-content-width: min(720px, max(64%, calc(100% - 96px)));
+  --chat-content-width: min(680px, max(64%, calc(100% - 96px)));
 
   display: flex;
   flex-direction: column;
@@ -217,6 +271,7 @@ defineExpose({
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .composer-container {

@@ -3,6 +3,9 @@
   <ContextCompactPanel
     v-if="contextCompactData"
     :summary="contextCompactData.summary"
+    :status="contextCompactData.status"
+    :error="contextCompactData.error"
+    :compacted-message-count="contextCompactData.compactedMessageCount"
   />
 
   <!-- Default system message rendering -->
@@ -74,11 +77,23 @@ const formattedTime = computed(() => {
 })
 
 // Try to parse content as context-compact message
-const contextCompactData = computed<{ type: 'context-compact'; summary: string } | null>(() => {
+const contextCompactData = computed<{
+  type: 'context-compact'
+  status?: 'compacting' | 'completed' | 'failed'
+  summary: string
+  error?: string
+  compactedMessageCount?: number
+} | null>(() => {
   try {
     const parsed = JSON.parse(props.content)
     if (parsed && parsed.type === 'context-compact') {
-      return parsed as { type: 'context-compact'; summary: string }
+      return parsed as {
+        type: 'context-compact'
+        status?: 'compacting' | 'completed' | 'failed'
+        summary: string
+        error?: string
+        compactedMessageCount?: number
+      }
     }
   } catch {
     // Not JSON

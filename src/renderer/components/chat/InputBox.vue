@@ -52,6 +52,7 @@
       :visible="showFilePicker"
       :query="fileQuery"
       :cwd="workingDirectory"
+      :session-id="effectiveSessionId || ''"
       @select="handleFilePickerSelect"
       @close="handleFilePickerClose"
     />
@@ -122,20 +123,26 @@
     <div
       class="composer"
       :class="{ focused: isFocused }"
-      @click="focusTextarea"
+      @click="focusEditor"
     >
       <!-- Input area -->
       <div class="input-area">
-        <textarea
-          ref="textareaRef"
+        <TextEditor
+          ref="editorRef"
           v-model="messageInput"
           class="composer-input"
+          profile="composer"
+          language="markdown"
           placeholder="Ask anything..."
-          rows="1"
+          :settings="editorSettings"
+          :min-height="56"
+          :max-height="composerMaxHeight"
           @keydown="handleKeyDown"
           @focus="isFocused = true"
           @blur="isFocused = false"
-          @input="adjustHeight"
+          @height-change="handleEditorHeightChange"
+          @selection-change="handleEditorSelectionChange"
+          @transaction="handleEditorTransaction"
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
         />
@@ -192,6 +199,8 @@ import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
 import { X, Square, Send, Check, CornerDownRight, Trash2, MoreHorizontal } from 'lucide-vue-next'
 import { findCommand } from '@/services/commands'
+import TextEditor from '@/editor/TextEditor.vue'
+import type { EditorHandle } from '@/editor'
 
 // Composables
 import { useInputHistory } from '@/composables/useInputHistory'
@@ -224,7 +233,7 @@ const messageInput = ref('')
 const quotedText = ref('')
 const isFocused = ref(false)
 const isComposing = ref(false)
-const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const editorRef = ref<EditorHandle | null>(null)
 const composerWrapperRef = ref<HTMLElement | null>(null)
 
 interface QueuedMessage {
@@ -241,25 +250,33 @@ const effectiveSessionId = computed(() => props.sessionId || sessionsStore.curre
 const workingDirectory = computed(() => {
   const sessionId = effectiveSessionId.value
   if (!sessionId) return ''
+  const workdirVariable = sessionsStore.sessionVariables.get(sessionId)?.find(variable => variable.name === 'workdir')
+  if (workdirVariable?.value) return workdirVariable.value
   const session = sessionsStore.sessions.find(s => s.id === sessionId)
   return session?.workingDirectory || ''
 })
 
 // --- Composables ---
 
-function adjustHeight() {
-  const textarea = textareaRef.value
-  if (!textarea) return
-  textarea.style.height = 'auto'
-  const newHeight = Math.min(Math.max(textarea.scrollHeight, 24), 200)
-  textarea.style.height = `${newHeight}px`
+const editorSettings = computed(() => settingsStore.settings.general.editor)
+const composerMaxHeight = computed(() => editorSettings.value?.composerMaxHeight ?? 200)
+
+function updateComposerHeight() {
+  const height = composerWrapperRef.value?.getBoundingClientRect().height ?? 0
+  if (height > 0) {
+    document.documentElement.style.setProperty('--composer-height', `${height + 40}px`)
+  }
+}
+
+function handleEditorHeightChange() {
+  updateComposerHeight()
 }
 
 const {
   resetHistoryNavigation,
   handleHistoryNavigation,
   checkHistoryEdit,
-} = useInputHistory(effectiveSessionId, messageInput, textareaRef, adjustHeight)
+} = useInputHistory(effectiveSessionId, messageInput, editorRef, updateComposerHeight)
 
 const {
   enabledSkills,
@@ -281,8 +298,10 @@ const {
   handlePathPickerSelect,
   handlePathPickerClose,
   anyPickerVisible,
+  handleEditorSelectionChange,
+  handleEditorTransaction,
   closeAllPickers,
-} = usePickerOrchestration(messageInput, workingDirectory, textareaRef, adjustHeight, checkHistoryEdit)
+} = usePickerOrchestration(messageInput, workingDirectory, editorRef, updateComposerHeight, checkHistoryEdit)
 
 const { commandFeedback, showCommandFeedback } = useCommandFeedback()
 
@@ -334,7 +353,7 @@ function handleDocumentMouseDown(event: MouseEvent) {
 }
 
 onMounted(async () => {
-  adjustHeight()
+  updateComposerHeight()
   await loadSkills()
   document.addEventListener('mousedown', handleDocumentMouseDown)
 
@@ -359,7 +378,7 @@ onUnmounted(() => {
 // --- Core handlers ---
 
 function handleKeyDown(e: KeyboardEvent) {
-  if (isComposing.value) return
+  if (isComposing.value || e.isComposing) return
 
   // Don't handle send shortcuts when any picker is visible
   const pathPickerVisible = showPathPicker.value
@@ -445,20 +464,20 @@ async function sendMessage() {
       })
 
       if (result.success) {
-        showCommandFeedback('success', result.message || 'Done')
+          showCommandFeedback('success', result.message || 'Done')
         messageInput.value = ''
         resetHistoryNavigation()
         closeAllPickers()
         nextTick(() => {
-          adjustHeight()
-          textareaRef.value?.focus()
+          updateComposerHeight()
+          editorRef.value?.focus()
         })
       } else {
         showCommandFeedback('error', result.error || `/${commandId} failed`)
         closeAllPickers()
         nextTick(() => {
-          adjustHeight()
-          textareaRef.value?.focus()
+          updateComposerHeight()
+          editorRef.value?.focus()
         })
       }
       return
@@ -487,11 +506,9 @@ async function sendMessage() {
   resetHistoryNavigation()
   quotedText.value = ''
   nextTick(() => {
-    adjustHeight()
-    if (textareaRef.value) {
-      textareaRef.value.scrollTop = 0
-    }
-    textareaRef.value?.focus()
+    updateComposerHeight()
+    editorRef.value?.scrollToTop()
+    editorRef.value?.focus()
   })
 }
 
@@ -526,8 +543,8 @@ function flushQueuedMessage() {
   emit('sendMessage', nextMessage.content, 'send')
 }
 
-function focusTextarea() {
-  textareaRef.value?.focus()
+function focusEditor() {
+  editorRef.value?.focus()
 }
 
 // --- Exposed methods ---
@@ -535,7 +552,7 @@ function focusTextarea() {
 function setQuotedText(text: string) {
   quotedText.value = text
   nextTick(() => {
-    textareaRef.value?.focus()
+    editorRef.value?.focus()
   })
 }
 
@@ -546,8 +563,8 @@ function clearQuotedText() {
 function setMessageInput(text: string) {
   messageInput.value = text
   nextTick(() => {
-    adjustHeight()
-    textareaRef.value?.focus()
+    updateComposerHeight()
+    editorRef.value?.focus()
   })
 }
 
@@ -555,19 +572,19 @@ defineExpose({
   setQuotedText,
   clearQuotedText,
   setMessageInput,
-  focus: focusTextarea,
+  focus: focusEditor,
   // Snapshot API for session switching
   getMessageInput: () => messageInput.value,
   getQuotedText: () => quotedText.value,
   restoreSnapshot: (snap: { messageInput: string; quotedText: string }) => {
     messageInput.value = snap.messageInput
     quotedText.value = snap.quotedText
-    nextTick(() => adjustHeight())
+    nextTick(() => updateComposerHeight())
   },
   clearInput: () => {
     messageInput.value = ''
     quotedText.value = ''
-    nextTick(() => adjustHeight())
+    nextTick(() => updateComposerHeight())
   },
 })
 </script>
@@ -735,30 +752,9 @@ defineExpose({
 
 .composer-input {
   width: 100%;
-  padding: 12px 0 0 0;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--text-input);
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.6;
-  resize: none;
+  --editor-font-size: 15px;
   min-height: 56px;
-  max-height: 200px;
-  overflow-y: auto;
-  caret-color: var(--accent);
 }
-
-.composer-input::placeholder {
-  color: var(--text-input-placeholder);
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.composer-input::-webkit-scrollbar { width: 4px; }
-.composer-input::-webkit-scrollbar-track { background: transparent; }
-.composer-input::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
 
 /* Bottom toolbar */
 .composer-toolbar {

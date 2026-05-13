@@ -63,6 +63,28 @@
             @update:model-value="updateShortcut('focusInput', $event)"
           />
         </div>
+
+        <div class="shortcut-row">
+          <div class="shortcut-info">
+            <span class="shortcut-name">Search Everywhere</span>
+            <span class="shortcut-desc">Open the global search window</span>
+          </div>
+          <ShortcutInput
+            :model-value="settings.general.shortcuts?.searchEverywhere"
+            @update:model-value="updateShortcut('searchEverywhere', $event)"
+          />
+        </div>
+
+        <div class="shortcut-row">
+          <div class="shortcut-info">
+            <span class="shortcut-name">Todo Window</span>
+            <span class="shortcut-desc">Open or hide the standalone todo window</span>
+          </div>
+          <ShortcutInput
+            :model-value="settings.general.shortcuts?.toggleTodoPlanWindow"
+            @update:model-value="updateShortcut('toggleTodoPlanWindow', $event)"
+          />
+        </div>
       </div>
     </section>
   </div>
@@ -87,6 +109,9 @@ function updateShortcut(key: keyof ShortcutSettings, shortcut: KeyboardShortcut 
     closeChat: { key: 'w', metaKey: true },
     toggleSidebar: { key: 'b', metaKey: true },
     focusInput: { key: '/' },
+    searchEverywhere: { key: 'k', metaKey: true },
+    toggleTodoPlanWindow: { key: 't', metaKey: true, shiftKey: true },
+    toggleTodoPlan: { key: 't', metaKey: true, altKey: true },
   }
 
   emit('update:settings', {

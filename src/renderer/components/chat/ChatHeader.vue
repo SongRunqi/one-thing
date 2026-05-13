@@ -150,11 +150,11 @@ defineEmits<{
 
 .drag-zone-before-toolbar {
   left: 82px;
-  width: max(0px, calc(var(--app-toolbar-left, 204px) - 82px));
+  width: max(0px, calc(var(--app-toolbar-left, 204px) - 98px));
 }
 
 .drag-zone-after-toolbar {
-  left: calc(var(--app-toolbar-left, 204px) + 92px);
+  left: calc(var(--app-toolbar-left, 204px) + 108px);
   right: 0;
 }
 

@@ -56,6 +56,12 @@ export interface RetryMessageCommand {
   messageId: string
 }
 
+export interface CompactContextCommand {
+  type: 'command:compact-context'
+  requestId?: string
+  manual?: boolean
+}
+
 /** Inject a steering message mid-stream (after current turn ends) */
 export interface InjectSteeringCommand {
   type: 'command:inject-steering'
@@ -78,5 +84,6 @@ export type SessionCommand =
   | ResumeAfterConfirmCommand
   | PermissionRespondCommand
   | RetryMessageCommand
+  | CompactContextCommand
   | InjectSteeringCommand
   | InjectFollowUpCommand

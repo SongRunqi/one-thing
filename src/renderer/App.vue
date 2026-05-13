@@ -8,6 +8,9 @@
   <!-- Search Everywhere Window Mode -->
   <SearchWindow v-else-if="isSearchWindow" />
 
+  <!-- Todo / Plan Window Mode -->
+  <TodoPlanWindow v-else-if="isTodoPlanWindow" />
+
   <!-- Main App Mode -->
   <ErrorBoundary v-else-if="appReady">
     <div class="app-shell">
@@ -18,15 +21,6 @@
           '--app-toolbar-left': toolbarLeft + 'px',
         }"
       >
-        <div
-          v-show="!showMediaPanel"
-          class="window-drag-hotspots"
-          aria-hidden="true"
-        >
-          <span class="window-drag-strip-top-before-toolbar" />
-          <span class="window-drag-strip-left" />
-        </div>
-
         <!-- Media Panel (left side) -->
         <MediaPanel
           :visible="showMediaPanel"
@@ -70,12 +64,12 @@
           >
             <PanelLeftClose
               v-if="!sidebarCollapsed || sidebarFloating"
-              :size="16"
+              :size="14"
               :stroke-width="1.5"
             />
             <PanelLeftOpen
               v-else
-              :size="16"
+              :size="14"
               :stroke-width="1.5"
             />
           </button>
@@ -85,7 +79,7 @@
             @click="openSearch"
           >
             <Search
-              :size="16"
+              :size="14"
               :stroke-width="1.5"
             />
           </button>
@@ -95,7 +89,7 @@
             @click="createNewChat"
           >
             <SquarePen
-              :size="16"
+              :size="14"
               :stroke-width="1.5"
             />
           </button>
@@ -150,6 +144,7 @@ import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
 import ChatInspectorPanel from '@/components/chat/ChatInspectorPanel.vue'
 import SearchWindow from '@/components/search/SearchWindow.vue'
+import TodoPlanWindow from '@/components/TodoPlanWindow.vue'
 import { PanelLeftClose, PanelLeftOpen, Search, SquarePen } from 'lucide-vue-next'
 import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
@@ -169,6 +164,7 @@ const currentHash = ref(window.location.hash)
 const isSettingsWindow = computed(() => currentHash.value.startsWith('#/settings'))
 const isImagePreviewWindow = computed(() => currentHash.value.startsWith('#/image-preview'))
 const isSearchWindow = computed(() => currentHash.value.startsWith('#/search'))
+const isTodoPlanWindow = computed(() => currentHash.value.startsWith('#/todo-plan'))
 
 function syncCurrentHash() {
   currentHash.value = window.location.hash
@@ -247,6 +243,15 @@ useShortcuts({
   onOpenSettings: () => {
     window.electronAPI.openSettingsWindow()
   },
+  onSearchEverywhere: () => {
+    openSearch()
+  },
+  onToggleTodoPlanWindow: () => {
+    window.electronAPI?.toggleTodoPlanWindow?.()
+  },
+  onToggleTodoPlan: () => {
+    window.dispatchEvent(new CustomEvent('todo-plan:toggle-card'))
+  },
 })
 
 
@@ -257,12 +262,13 @@ const sidebarFloatingClosing = ref(false)
 const sidebarNoTransition = ref(false) // Disable transition during/after floating
 const floatingCooldown = ref(false) // Prevent re-expansion after toggle
 const floatingShowTimer = ref<ReturnType<typeof setTimeout> | null>(null) // Delay before showing floating sidebar
+const TOOLBAR_SLOT_WIDTH = 80
 
 // Toolbar position — single set of buttons, animated between sidebar right and traffic lights
 const toolbarLeft = computed(() => {
   if (sidebarCollapsed.value && !sidebarFloating.value) return 84
-  if (sidebarFloating.value) return 300 - 96
-  return sidebarWidth.value - 96
+  if (sidebarFloating.value) return 300 - TOOLBAR_SLOT_WIDTH
+  return sidebarWidth.value - TOOLBAR_SLOT_WIDTH
 })
 
 const toolbarAnimating = ref(false)
@@ -573,34 +579,6 @@ onUnmounted(() => {
   position: relative;
 }
 
-.window-drag-hotspots {
-  position: fixed;
-  inset: 0 auto auto 0;
-  z-index: 550;
-  pointer-events: none;
-}
-
-.window-drag-strip-top-before-toolbar,
-.window-drag-strip-left {
-  position: fixed;
-  pointer-events: auto;
-  -webkit-app-region: drag;
-}
-
-.window-drag-strip-top-before-toolbar {
-  top: 0;
-  left: 0;
-  height: 44px;
-  width: var(--app-toolbar-left, 204px);
-}
-
-.window-drag-strip-left {
-  top: 0;
-  left: 0;
-  width: 20px;
-  height: 44px;
-}
-
 /* Session Lens slide transition */
 .lens-pop-enter-active,
 .lens-pop-leave-active {
@@ -645,12 +623,22 @@ html[data-theme='light'] .sidebar-floating-backdrop {
 /* App toolbar — single set of buttons that slides between sidebar right and traffic lights */
 .app-toolbar {
   position: fixed;
-  top: 5px;
-  height: 28px;
+  top: 12px;
+  height: 24px;
   display: flex;
   align-items: center;
   gap: 2px;
   z-index: 600;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.app-toolbar::before {
+  content: '';
+  position: absolute;
+  inset: -3px -6px;
+  border-radius: 8px;
+  z-index: 0;
   -webkit-app-region: no-drag;
 }
 
@@ -659,8 +647,10 @@ html[data-theme='light'] .sidebar-floating-backdrop {
 }
 
 .app-toolbar-btn {
-  width: 28px;
-  height: 28px;
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;

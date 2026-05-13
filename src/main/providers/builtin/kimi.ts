@@ -25,11 +25,11 @@ const kimiProvider: ProviderDefinition = {
     // Models fetched dynamically from OpenRouter API (if available)
   },
 
-  create: ({ apiKey, baseUrl, localAddress }) => {
+  create: ({ apiKey, baseUrl }) => {
     const provider = createMoonshotAI({
       apiKey,
       baseURL: baseUrl || 'https://api.moonshot.cn/v1',
-      fetch: createBoundFetch(localAddress),
+      fetch: createBoundFetch(),
     })
     return {
       createModel: (modelId: string) => provider.chatModel(modelId),

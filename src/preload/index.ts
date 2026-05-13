@@ -259,6 +259,11 @@ const electronAPI = {
   getSystemTheme: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SYSTEM_THEME),
 
+  testProxy: (proxy: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TEST_PROXY, {
+      proxy: JSON.parse(JSON.stringify(proxy)),
+    }),
+
   onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => {
     const listener = (_event: any, theme: 'light' | 'dark') => callback(theme)
     ipcRenderer.on(IPC_CHANNELS.SYSTEM_THEME_CHANGED, listener)
@@ -303,9 +308,6 @@ const electronAPI = {
   // Providers methods
   getProviders: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDERS),
-
-  getNetworkInterfaces: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_NETWORK_INTERFACES),
 
   // Tools methods
   getTools: () =>
@@ -529,8 +531,31 @@ const electronAPI = {
   // File content reading/writing (for file preview panel)
   readFileContent: (filePath: string, maxSize?: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_CONTENT, { path: filePath, maxSize }),
-  saveFileContent: (filePath: string, content: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.FILE_SAVE_CONTENT, { path: filePath, content }),
+  saveFileContent: (filePath: string, content: string, expectedMtimeMs?: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_SAVE_CONTENT, { path: filePath, content, expectedMtimeMs }),
+  listDirectory: (dirPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_LIST_DIRECTORY, { path: dirPath }),
+  createFile: (filePath: string, content?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_CREATE, { path: filePath, content }),
+  createDirectory: (dirPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_CREATE_DIRECTORY, { path: dirPath }),
+  renamePath: (oldPath: string, newPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_RENAME, { oldPath, newPath }),
+  deletePath: (targetPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_DELETE, { path: targetPath }),
+  statPath: (targetPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_STAT, { path: targetPath }),
+  revealPath: (targetPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_REVEAL, { path: targetPath }),
+  watchWorkspace: (root: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_WATCH_START, { root }),
+  unwatchWorkspace: (root: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_WATCH_STOP, { root }),
+  onWorkspaceFileChanged: (callback: (data: { root: string; path: string; eventType: string }) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.FILE_WATCH_EVENT, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.FILE_WATCH_EVENT, listener)
+  },
 
   // ── Plugin management ───────────────────────────
   getPlugins: () =>
@@ -579,6 +604,40 @@ const electronAPI = {
     const listener = (_event: any, actionId: string) => callback(actionId)
     ipcRenderer.on('search:action', listener)
     return () => ipcRenderer.removeListener('search:action', listener)
+  },
+
+  // Todo / Plan
+  getTodoPlan: (request?: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_GET, request),
+
+  createTodoPlanNote: (request: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_CREATE, request),
+
+  updateTodoPlan: (request: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_UPDATE, request),
+
+  renameTodoPlanNote: (request: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_RENAME, request),
+
+  deleteTodoPlanNote: (request: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_DELETE, request),
+
+  revealTodoPlanDirectory: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_REVEAL_DIRECTORY),
+
+  openTodoPlanWindow: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW),
+
+  toggleTodoPlanWindow: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW),
+
+  setTodoPlanWindowPinned: (pinned: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED, { pinned }),
+
+  onTodoPlanChanged: (callback: (data: any) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.TODO_PLAN_CHANGED, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.TODO_PLAN_CHANGED, listener)
   },
 
 }

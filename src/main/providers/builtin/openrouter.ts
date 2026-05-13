@@ -24,12 +24,12 @@ const openrouterProvider: ProviderDefinition = {
     // All models fetched dynamically from OpenRouter API
   },
 
-  create: ({ apiKey, localAddress }) => {
+  create: ({ apiKey }) => {
     const provider = createOpenAICompatible({
       name: 'openrouter',
       apiKey,
       baseURL: 'https://openrouter.ai/api/v1',
-      fetch: createBoundFetch(localAddress),
+      fetch: createBoundFetch(),
     })
     return {
       createModel: (modelId: string) => provider(modelId),

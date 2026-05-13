@@ -24,11 +24,11 @@ const geminiProvider: ProviderDefinition = {
     // Models fetched dynamically from OpenRouter API
   },
 
-  create: ({ apiKey, baseUrl, localAddress }) => {
+  create: ({ apiKey, baseUrl }) => {
     const provider = createGoogleGenerativeAI({
       apiKey,
       baseURL: baseUrl || 'https://generativelanguage.googleapis.com/v1beta',
-      fetch: createBoundFetch(localAddress),
+      fetch: createBoundFetch(),
     })
     return {
       createModel: (modelId: string) => provider(modelId) as unknown as LanguageModel,

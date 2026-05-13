@@ -12,6 +12,7 @@ import path from 'path'
 import os from 'os'
 import crypto from 'crypto'
 import type { OAuthToken } from '../../../shared/ipc.js'
+import { createRequiredAppFetch } from '../bound-fetch.js'
 
 // Helper to use Electron's network stack for OAuth requests
 // This helps bypass Cloudflare's bot detection
@@ -23,7 +24,7 @@ async function electronFetch(url: string, options: RequestInit): Promise<Respons
   } catch (error) {
     // Fallback to regular fetch if net.fetch fails
     console.warn('net.fetch failed, falling back to regular fetch:', error)
-    return fetch(url, options)
+    return createRequiredAppFetch()(url, options)
   }
 }
 
@@ -295,7 +296,7 @@ class OAuthManager {
       throw new Error(`Device flow not supported for provider: ${providerId}`)
     }
 
-    const response = await fetch(config.deviceCodeUrl, {
+    const response = await electronFetch(config.deviceCodeUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -337,7 +338,7 @@ class OAuthManager {
       return { completed: false, error: 'expired_token' }
     }
 
-    const response = await fetch(config.tokenUrl, {
+    const response = await electronFetch(config.tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',

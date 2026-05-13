@@ -1,14 +1,15 @@
 <template>
   <div class="context-compact-panel">
     <div class="panel-header">
-      <div class="header-icon">
+      <div :class="['header-icon', { spinning: isCompacting, failed: isFailed }]">
         <Archive :size="18" />
       </div>
       <div class="header-content">
-        <span class="header-title">Context Compacted</span>
-        <span class="header-subtitle">Conversation history has been summarized</span>
+        <span class="header-title">{{ title }}</span>
+        <span class="header-subtitle">{{ subtitle }}</span>
       </div>
       <button
+        v-if="!isCompacting && !isFailed"
         class="toggle-btn"
         :title="isExpanded ? 'Collapse' : 'Expand'"
         @click="isExpanded = !isExpanded"
@@ -26,6 +27,21 @@
         class="panel-body"
       >
         <div
+          v-if="isCompacting"
+          class="compact-waiting"
+        >
+          <span class="pulse-dot" />
+          <span class="pulse-line" />
+          <span class="pulse-line short" />
+        </div>
+        <div
+          v-else-if="isFailed"
+          class="compact-error"
+        >
+          {{ error || 'Context compact failed.' }}
+        </div>
+        <div
+          v-else
           class="summary-content"
           v-html="renderedSummary"
         />
@@ -41,11 +57,34 @@ import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 
 interface Props {
   summary: string
+  status?: 'compacting' | 'completed' | 'failed'
+  error?: string
+  compactedMessageCount?: number
 }
 
 const props = defineProps<Props>()
 
 const isExpanded = ref(true)
+const isCompacting = computed(() => props.status === 'compacting')
+const isFailed = computed(() => props.status === 'failed')
+
+const title = computed(() => {
+  if (isCompacting.value) return 'Compacting Context'
+  if (isFailed.value) return 'Context Compact Failed'
+  return 'Context Compacted'
+})
+
+const subtitle = computed(() => {
+  if (isCompacting.value) {
+    return props.compactedMessageCount
+      ? `Summarizing ${props.compactedMessageCount} older messages. Previous messages stay visible.`
+      : 'Summarizing older messages. Previous messages stay visible.'
+  }
+  if (isFailed.value) return 'The original conversation history was left unchanged'
+  return props.compactedMessageCount
+    ? `Summarized ${props.compactedMessageCount} older messages; the original messages remain above`
+    : 'Conversation history has been summarized; original messages remain above'
+})
 
 const renderedSummary = computed(() => {
   return renderMarkdown(props.summary, false)
@@ -81,6 +120,15 @@ const renderedSummary = computed(() => {
   background: rgba(139, 92, 246, 0.2);
   color: rgb(139, 92, 246);
   flex-shrink: 0;
+}
+
+.header-icon.spinning svg {
+  animation: compactSpin 1.1s linear infinite;
+}
+
+.header-icon.failed {
+  background: rgba(239, 68, 68, 0.15);
+  color: rgb(239, 68, 68);
 }
 
 .header-content {
@@ -130,6 +178,42 @@ const renderedSummary = computed(() => {
 
 .panel-body {
   padding: 14px;
+}
+
+.compact-waiting {
+  display: grid;
+  grid-template-columns: 10px minmax(120px, 1fr) minmax(70px, 0.45fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+}
+
+.pulse-dot,
+.pulse-line {
+  display: block;
+  background: rgba(139, 92, 246, 0.22);
+  animation: compactPulse 1.25s ease-in-out infinite;
+}
+
+.pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.pulse-line {
+  height: 10px;
+  border-radius: 999px;
+}
+
+.pulse-line.short {
+  animation-delay: 0.18s;
+}
+
+.compact-error {
+  color: rgb(220, 38, 38);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .summary-content {
@@ -203,6 +287,21 @@ const renderedSummary = computed(() => {
 .expand-leave-from {
   opacity: 1;
   max-height: 500px;
+}
+
+@keyframes compactSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes compactPulse {
+  0%, 100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 @keyframes fadeIn {

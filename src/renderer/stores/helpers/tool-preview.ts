@@ -8,11 +8,10 @@ import type { ToolCall } from '@/types'
 
 const STREAMING_TAIL_MAX = 80
 const BASH_PREVIEW_MAX = 55
-const PATH_PREVIEW_MAX = 45
 const PATTERN_PREVIEW_MAX = 20
 
 /** Shorten a file path to its last 1-2 segments when it exceeds maxLen. */
-export function shortenPath(path: string, maxLen: number = PATH_PREVIEW_MAX): string {
+export function shortenPath(path: string, maxLen: number = 45): string {
   if (!path) return ''
   if (path.length <= maxLen) return path
   const parts = path.split('/')
@@ -21,6 +20,13 @@ export function shortenPath(path: string, maxLen: number = PATH_PREVIEW_MAX): st
     if (short.length <= maxLen) return short
   }
   return '.../' + parts[parts.length - 1]
+}
+
+/** Return the final path segment for compact file-tool UI. */
+export function basename(path: string): string {
+  if (!path) return ''
+  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
+  return normalized.split('/').filter(Boolean).pop() || normalized || path
 }
 
 /** Truncate `s` to `max` chars, adding an ellipsis when shortened. */
@@ -64,7 +70,7 @@ function formatArgsSummary(toolCall: ToolCall): string {
 
   switch (toolName) {
     case 'read': {
-      const path = shortenPath(String(args.file_path || args.path || ''))
+      const path = basename(String(args.file_path || args.path || ''))
       const offset = args.offset as number | undefined
       const limit = args.limit as number | undefined
       if (offset || limit) {
@@ -89,14 +95,14 @@ function formatArgsSummary(toolCall: ToolCall): string {
     }
 
     case 'edit': {
-      const path = shortenPath(String(args.file_path || ''))
       const changes = toolCall.changes
+      const path = basename(String(args.file_path || changes?.filePath || ''))
       if (changes) return `${path} (+${changes.additions} -${changes.deletions})`
       return path
     }
 
     case 'write': {
-      const path = shortenPath(String(args.file_path || ''))
+      const path = basename(String(args.file_path || ''))
       const content = args.content as string | undefined
       if (content) return `${path} (${content.length} chars)`
       return path
@@ -118,7 +124,7 @@ function formatArgsSummary(toolCall: ToolCall): string {
     default: {
       // Generic fallback: prefer file path > pattern > command > first value
       if (args.file_path || args.path) {
-        return shortenPath(String(args.file_path || args.path))
+        return basename(String(args.file_path || args.path))
       }
       if (args.pattern) return `"${args.pattern}"`
       if (args.command) return truncate(String(args.command), BASH_PREVIEW_MAX)
@@ -144,7 +150,7 @@ export function formatToolCallPreview(toolCall: ToolCall | undefined): string {
     const toolName = toolCall.toolName?.toLowerCase()
     if (toolName === 'write' || toolName === 'edit' || toolName === 'read') {
       const path = extractStreamingPath(args)
-      return path || ''
+      return path ? basename(path) : ''
     }
     return args.length > STREAMING_TAIL_MAX ? '...' + args.slice(-STREAMING_TAIL_MAX) : args
   }

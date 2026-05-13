@@ -12,6 +12,7 @@ import * as fs from 'fs/promises'
 import * as os from 'os'
 import { spawn } from 'child_process'
 import { ZipReader, BlobReader, BlobWriter } from '@zip.js/zip.js'
+import { createRequiredAppFetch } from '../providers/bound-fetch.js'
 
 // Platform configurations for ripgrep download
 const PLATFORM_CONFIG = {
@@ -87,7 +88,7 @@ async function downloadRipgrep(): Promise<string> {
   const filename = `ripgrep-${RIPGREP_VERSION}-${config.platform}.${config.extension}`
   const url = `https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/${filename}`
 
-  const response = await fetch(url)
+  const response = await createRequiredAppFetch()(url)
   if (!response.ok) {
     throw new Error(`Failed to download ripgrep: ${response.status}`)
   }

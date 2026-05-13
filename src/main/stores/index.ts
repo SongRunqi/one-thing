@@ -29,6 +29,7 @@ export {
   addMessageStep,
   updateMessageStep,
   updateStepsUsageByTurn,
+  updateSessionSummary,
   updateSessionPin,
   updateSessionArchived,
   updateSessionModel,
@@ -36,6 +37,7 @@ export {
   updateSessionVariables,
   inheritSessionWorkingDirectory,
   updateSessionTokenUsage,
+  updateSessionContextSize,
   getSessionTokenUsage,
   // Optimized session loading (Phase 4: Metadata Separation)
   getSessionsList,

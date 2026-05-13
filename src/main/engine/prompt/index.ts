@@ -31,4 +31,5 @@ export {
   buildSkillsAwarenessPrompt,
   buildSkillsDirectPrompt,
   buildSkillsToolPrompt,
+  buildContextCompactPrompt,
 } from './builders.js'

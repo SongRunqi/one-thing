@@ -108,8 +108,9 @@ export function getSettings(): AppSettings {
  */
 export async function saveSettingsAsync(settings: AppSettings): Promise<void> {
   const settingsPath = getSettingsPath()
-  await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
-  settingsInstance = settings
+  const normalized = mergeWithDefaults(settings)
+  await fs.promises.writeFile(settingsPath, JSON.stringify(normalized, null, 2), 'utf-8')
+  settingsInstance = normalized
   console.log('[Settings] Saved to disk asynchronously')
 }
 
@@ -118,8 +119,9 @@ export async function saveSettingsAsync(settings: AppSettings): Promise<void> {
  * Updates both disk and memory cache
  */
 export function saveSettings(settings: AppSettings): void {
-  writeJsonFile(getSettingsPath(), settings)
-  settingsInstance = settings
+  const normalized = mergeWithDefaults(settings)
+  writeJsonFile(getSettingsPath(), normalized)
+  settingsInstance = normalized
 }
 
 // ============================================================================
@@ -143,5 +145,4 @@ export function invalidateSettingsCache(): void {
 export function updateSettingsInMemory(settings: AppSettings): void {
   settingsInstance = settings
 }
-
 

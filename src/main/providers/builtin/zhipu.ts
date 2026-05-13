@@ -10,7 +10,7 @@
 
 import type { LanguageModelV2, LanguageModelV2StreamPart, LanguageModelV2CallOptions, LanguageModelV2FunctionTool } from '@ai-sdk/provider'
 import type { ProviderDefinition } from '../types.js'
-import { createBoundFetch } from '../bound-fetch.js'
+import { createRequiredAppFetch } from '../bound-fetch.js'
 
 type FetchFn = typeof globalThis.fetch
 
@@ -632,9 +632,9 @@ const zhipuProvider: ProviderDefinition = {
     // Models fetched dynamically from OpenRouter API (if available)
   },
 
-  create: ({ apiKey, baseUrl, localAddress }) => {
+  create: ({ apiKey, baseUrl }) => {
     const finalBaseUrl = baseUrl || 'https://open.bigmodel.cn/api/paas/v4'
-    const fetchImpl = createBoundFetch(localAddress) ?? fetch
+    const fetchImpl = createRequiredAppFetch()
     return {
       createModel: (modelId: string) => createZhipuModel(modelId, apiKey ?? '', finalBaseUrl, fetchImpl) as any,
     }

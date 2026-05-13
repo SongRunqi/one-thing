@@ -95,6 +95,21 @@ export type HistoryMessage =
       content: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: unknown }>
     }
 
+export function sanitizeToolResultForAI(result: unknown): unknown {
+  if (!result || typeof result !== 'object') return result
+
+  if (Array.isArray(result)) {
+    return result.map(sanitizeToolResultForAI)
+  }
+
+  const sanitized: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(result as Record<string, unknown>)) {
+    if (key === 'originalContent') continue
+    sanitized[key] = sanitizeToolResultForAI(value)
+  }
+  return sanitized
+}
+
 /**
  * Build history messages from session messages
  * Includes reasoningContent for assistant messages (required by DeepSeek Reasoner)
@@ -175,7 +190,7 @@ export function buildHistoryMessages(
                 type: 'tool-result' as const,
                 toolCallId: tc.id,
                 toolName: getAIToolName(tc.toolId || tc.toolName),
-                result: tc.status === 'completed' ? tc.result : { error: tc.error },
+                result: tc.status === 'completed' ? sanitizeToolResultForAI(tc.result) : { error: tc.error },
               })),
             })
           }
@@ -238,7 +253,7 @@ export function buildHistoryMessages(
             type: 'tool-result' as const,
             toolCallId: tc.id,
             toolName: getAIToolName(tc.toolId || tc.toolName),
-            result: tc.status === 'completed' ? tc.result : { error: tc.error },
+            result: tc.status === 'completed' ? sanitizeToolResultForAI(tc.result) : { error: tc.error },
           })),
         })
       }

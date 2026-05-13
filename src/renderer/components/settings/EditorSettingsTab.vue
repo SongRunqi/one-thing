@@ -31,6 +31,93 @@
       </div>
     </section>
 
+    <!-- Text Editor -->
+    <section class="settings-section">
+      <h3 class="section-title">
+        Text Editor
+      </h3>
+      <div class="settings-card">
+        <div class="card-row">
+          <div class="form-group">
+            <label class="form-label">
+              Tab Size
+              <span class="label-value">{{ currentEditor.tabSize }}</span>
+            </label>
+            <input
+              type="range"
+              class="form-slider"
+              :min="1"
+              :max="8"
+              :step="1"
+              :value="currentEditor.tabSize"
+              @input="updateEditor({ tabSize: Number(($event.target as HTMLInputElement).value) })"
+            >
+            <div class="slider-labels">
+              <span>1</span>
+              <span>4</span>
+              <span>8</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-row compact">
+          <label class="toggle-row">
+            <input
+              type="checkbox"
+              :checked="currentEditor.lineWrapping"
+              @change="updateEditor({ lineWrapping: ($event.target as HTMLInputElement).checked })"
+            >
+            <span>Line Wrapping</span>
+          </label>
+        </div>
+
+        <div class="card-row compact">
+          <label class="toggle-row">
+            <input
+              type="checkbox"
+              :checked="currentEditor.syntaxHighlighting"
+              @change="updateEditor({ syntaxHighlighting: ($event.target as HTMLInputElement).checked })"
+            >
+            <span>Syntax Highlighting</span>
+          </label>
+        </div>
+
+        <div class="card-row compact">
+          <label class="toggle-row">
+            <input
+              type="checkbox"
+              :checked="currentEditor.completionEnabled"
+              @change="updateEditor({ completionEnabled: ($event.target as HTMLInputElement).checked })"
+            >
+            <span>Completions</span>
+          </label>
+        </div>
+
+        <div class="card-row">
+          <div class="form-group">
+            <label class="form-label">
+              Composer Height
+              <span class="label-value">{{ currentEditor.composerMaxHeight }}px</span>
+            </label>
+            <input
+              type="range"
+              class="form-slider"
+              :min="80"
+              :max="640"
+              :step="20"
+              :value="currentEditor.composerMaxHeight"
+              @input="updateEditor({ composerMaxHeight: Number(($event.target as HTMLInputElement).value) })"
+            >
+            <div class="slider-labels">
+              <span>80px</span>
+              <span>360px</span>
+              <span>640px</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- File Preview -->
     <section class="settings-section">
       <h3 class="section-title">
@@ -66,7 +153,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AppSettings } from '@/types'
+import type { AppSettings, EditorSettings } from '@/types'
 
 const props = defineProps<{
   settings: AppSettings
@@ -78,6 +165,13 @@ const emit = defineEmits<{
 
 const currentMaxTabs = computed(() => props.settings.general.maxTabs ?? 15)
 const currentMaxFilePreviewKB = computed(() => props.settings.general.maxFilePreviewKB ?? 256)
+const currentEditor = computed<Required<EditorSettings>>(() => ({
+  tabSize: props.settings.general.editor?.tabSize ?? 2,
+  lineWrapping: props.settings.general.editor?.lineWrapping ?? true,
+  syntaxHighlighting: props.settings.general.editor?.syntaxHighlighting ?? true,
+  completionEnabled: props.settings.general.editor?.completionEnabled ?? true,
+  composerMaxHeight: props.settings.general.editor?.composerMaxHeight ?? 200,
+}))
 
 function updateGeneral(key: string, value: number) {
   emit('update:settings', {
@@ -85,6 +179,19 @@ function updateGeneral(key: string, value: number) {
     general: {
       ...props.settings.general,
       [key]: value,
+    },
+  })
+}
+
+function updateEditor(patch: EditorSettings) {
+  emit('update:settings', {
+    ...props.settings,
+    general: {
+      ...props.settings.general,
+      editor: {
+        ...currentEditor.value,
+        ...patch,
+      },
     },
   })
 }
@@ -131,6 +238,10 @@ function updateGeneral(key: string, value: number) {
 
 .card-row:last-child {
   border-bottom: none;
+}
+
+.card-row.compact {
+  padding: 10px 14px;
 }
 
 .form-group {
@@ -182,5 +293,21 @@ function updateGeneral(key: string, value: number) {
   margin-top: 8px;
   font-size: var(--type-caption-size);
   color: var(--text-muted);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.toggle-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
 }
 </style>

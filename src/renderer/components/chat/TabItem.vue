@@ -22,7 +22,14 @@
         :size="13"
         class="tab-icon"
       />
-      <span class="tab-title">{{ displayTitle }}</span>
+      <span class="tab-title">
+        <span
+          v-if="tab.type !== 'chat' && tab.dirty"
+          class="tab-dirty-dot"
+          aria-label="Modified"
+        />
+        {{ displayTitle }}
+      </span>
       <button
         v-if="closable"
         class="tab-close"
@@ -40,7 +47,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { MessageSquare, FileText, X } from 'lucide-vue-next'
+import { MessageSquare, FolderCode, X } from 'lucide-vue-next'
 import type { Tab } from '@/types/tabs'
 
 const props = defineProps<{
@@ -62,16 +69,20 @@ const emit = defineEmits<{
 const dragOver = ref(false)
 
 const icon = computed(() =>
-  props.tab.type === 'chat' ? MessageSquare : FileText
+  props.tab.type === 'chat' ? MessageSquare : FolderCode
 )
 
 const displayTitle = computed(() => {
   if (props.tab.type === 'chat') return props.sessionName || 'New Chat'
+  if (props.tab.type === 'workbench') return props.tab.title
   if (props.tab.type === 'file') return props.tab.title
   return ''
 })
 
 const tooltip = computed(() => {
+  if (props.tab.type === 'workbench') {
+    return `${props.tab.workspaceRoot}\nActive: ${props.tab.activeFilePath || props.tab.initialFilePath}`
+  }
   if (props.tab.type === 'file') return props.tab.filePath
   return ''
 })
@@ -242,9 +253,20 @@ function onDrop(e: DragEvent) {
 }
 
 .tab-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.tab-dirty-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: 0 0 7px;
 }
 
 .tab-close {
@@ -256,6 +278,7 @@ function onDrop(e: DragEvent) {
   height: 18px;
   border: none;
   background: none;
+  -webkit-app-region: no-drag;
   border-radius: 6px;
   color: var(--muted);
   cursor: pointer;

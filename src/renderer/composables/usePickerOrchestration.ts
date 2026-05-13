@@ -3,11 +3,13 @@ import { nextTick } from 'vue'
 import type { SkillDefinition } from '@/types'
 import type { PaletteItem } from '@/types/palette'
 import { filterPaletteItems } from '@/services/palette'
+import type { EditorHandle, EditorSelection, EditorTransaction } from '@/editor'
+import { applyTriggerReplacement, parseEditorTrigger, type EditorTrigger } from '@/editor'
 
 export function usePickerOrchestration(
   messageInput: Ref<string>,
   workingDirectory: Ref<string>,
-  textareaRef: Ref<HTMLTextAreaElement | null>,
+  editorRef: Ref<EditorHandle | null>,
   adjustHeight: () => void,
   checkHistoryEdit: (newValue: string) => void,
 ) {
@@ -27,6 +29,8 @@ export function usePickerOrchestration(
   // Path picker state
   const showPathPicker = ref(false)
   const pathQuery = ref('')
+  const activeTrigger = ref<EditorTrigger | null>(null)
+  let suppressedTriggerValue: string | null = null
 
   const enabledSkills = computed(() => {
     return availableSkills.value.filter(s => s.enabled)
@@ -52,17 +56,36 @@ export function usePickerOrchestration(
     showCommandPicker.value || showSkillPicker.value || showFilePicker.value
   )
 
-  // Watch messageInput to auto-detect picker triggers
-  watch(messageInput, (newValue) => {
-    // Check history edit state
-    checkHistoryEdit(newValue)
+  function clearPickerState() {
+    showCommandPicker.value = false
+    commandQuery.value = ''
+    showSkillPicker.value = false
+    skillTriggerQuery.value = ''
+    showFilePicker.value = false
+    fileQuery.value = ''
+    showPathPicker.value = false
+    pathQuery.value = ''
+    activeTrigger.value = null
+  }
 
-    // Check for command pattern first: /word (without space - still typing command name)
-    const commandMatch = newValue.match(/^\/(\w*)$/)
+  function refreshTriggerState(value = messageInput.value, cursor?: number) {
+    if (suppressedTriggerValue !== null) {
+      if (value === suppressedTriggerValue) {
+        clearPickerState()
+        return
+      }
+      suppressedTriggerValue = null
+    }
 
-    if (commandMatch) {
+    const trigger = parseEditorTrigger(
+      value,
+      cursor ?? editorRef.value?.getSelection().from ?? value.length,
+    )
+    activeTrigger.value = trigger
+
+    if (trigger?.type === 'command') {
       loadSkills()
-      const query = commandMatch[1]
+      const query = trigger.query
       const items = filterPaletteItems(query, enabledSkills.value)
       if (items.length > 0) {
         commandQuery.value = query
@@ -81,10 +104,8 @@ export function usePickerOrchestration(
     showCommandPicker.value = false
     commandQuery.value = ''
 
-    // Check for /cd path completion pattern: /cd <path>
-    const cdMatch = newValue.match(/^\/cd\s+(.*)$/)
-    if (cdMatch) {
-      pathQuery.value = cdMatch[1]
+    if (trigger?.type === 'path') {
+      pathQuery.value = trigger.query
       showPathPicker.value = true
       showFilePicker.value = false
       showSkillPicker.value = false
@@ -97,10 +118,8 @@ export function usePickerOrchestration(
     showPathPicker.value = false
     pathQuery.value = ''
 
-    // Check for @ file search pattern
-    const fileMatch = newValue.match(/@([^\s@]*)$/)
-    if (fileMatch && workingDirectory.value) {
-      fileQuery.value = fileMatch[1]
+    if (trigger?.type === 'file') {
+      fileQuery.value = trigger.query
       showFilePicker.value = true
       showSkillPicker.value = false
       skillTriggerQuery.value = ''
@@ -113,6 +132,13 @@ export function usePickerOrchestration(
 
     showSkillPicker.value = false
     skillTriggerQuery.value = ''
+    activeTrigger.value = null
+  }
+
+  // Watch messageInput to auto-detect picker triggers.
+  watch(messageInput, (newValue) => {
+    checkHistoryEdit(newValue)
+    refreshTriggerState(newValue)
   })
 
   // --- Picker event handlers ---
@@ -128,10 +154,10 @@ export function usePickerOrchestration(
       })
 
       if (result.success && result.result?.output) {
-        messageInput.value = result.result.output
+        setEditorValue(result.result.output)
         await nextTick()
         adjustHeight()
-        textareaRef.value?.focus()
+        editorRef.value?.focus()
       }
     } catch (error) {
       console.error('Failed to execute skill:', error)
@@ -151,12 +177,13 @@ export function usePickerOrchestration(
     }
 
     if (item.type === 'command' && item.command) {
-      messageInput.value = `/${item.command.id} `
+      const replacement = `/${item.command.id} `
+      replaceActiveTrigger(replacement, 'command')
     }
 
     await nextTick()
     adjustHeight()
-    textareaRef.value?.focus()
+    editorRef.value?.focus()
   }
 
   function handleCommandPickerClose() {
@@ -166,11 +193,11 @@ export function usePickerOrchestration(
 
   async function handleFilePickerSelect(filePath: string) {
     showFilePicker.value = false
-    messageInput.value = messageInput.value.replace(/@[^\s@]*$/, `@${filePath} `)
+    replaceActiveTrigger(`@${filePath} `, 'file')
     fileQuery.value = ''
     await nextTick()
     adjustHeight()
-    textareaRef.value?.focus()
+    editorRef.value?.focus()
   }
 
   function handleFilePickerClose() {
@@ -180,11 +207,11 @@ export function usePickerOrchestration(
 
   async function handlePathPickerSelect(selectedPath: string) {
     showPathPicker.value = false
-    messageInput.value = `/cd ${selectedPath}`
+    replaceActiveTrigger(`/cd ${selectedPath}`, 'path')
     pathQuery.value = ''
     await nextTick()
     adjustHeight()
-    textareaRef.value?.focus()
+    editorRef.value?.focus()
   }
 
   function handlePathPickerClose() {
@@ -192,15 +219,46 @@ export function usePickerOrchestration(
     pathQuery.value = ''
   }
 
+  function setEditorValue(value: string) {
+    const editor = editorRef.value
+    if (editor) {
+      editor.setValue(value)
+    } else {
+      messageInput.value = value
+    }
+  }
+
+  function replaceActiveTrigger(replacement: string, type: EditorTrigger['type']) {
+    const cursor = editorRef.value?.getSelection().from ?? messageInput.value.length
+    const currentTrigger = parseEditorTrigger(messageInput.value, cursor)
+    const trigger = currentTrigger?.type === type
+      ? currentTrigger
+      : activeTrigger.value?.type === type
+      ? activeTrigger.value
+      : null
+    if (trigger?.type === type) {
+      suppressedTriggerValue = applyTriggerReplacement(messageInput.value, trigger, replacement)
+      editorRef.value?.replaceRange(trigger.from, trigger.to, replacement)
+      if (!editorRef.value) {
+        messageInput.value = suppressedTriggerValue
+      }
+      activeTrigger.value = null
+      return
+    }
+    setEditorValue(replacement)
+  }
+
+  function handleEditorSelectionChange(selection: EditorSelection) {
+    refreshTriggerState(messageInput.value, selection.from)
+  }
+
+  function handleEditorTransaction(transaction: EditorTransaction) {
+    refreshTriggerState(transaction.value, transaction.selection.from)
+  }
+
   function closeAllPickers() {
-    showCommandPicker.value = false
-    commandQuery.value = ''
-    showSkillPicker.value = false
-    skillTriggerQuery.value = ''
-    showFilePicker.value = false
-    fileQuery.value = ''
-    showPathPicker.value = false
-    pathQuery.value = ''
+    suppressedTriggerValue = null
+    clearPickerState()
   }
 
   return {
@@ -228,6 +286,9 @@ export function usePickerOrchestration(
     handlePathPickerClose,
     // Utilities
     anyPickerVisible,
+    refreshTriggerState,
+    handleEditorSelectionChange,
+    handleEditorTransaction,
     closeAllPickers,
   }
 }

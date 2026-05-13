@@ -1,0 +1,156 @@
+<template>
+  <div
+    ref="containerRef"
+    class="monaco-editor-host"
+  />
+</template>
+
+<script setup lang="ts">
+import './monaco-setup'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import * as monaco from 'monaco-editor'
+
+const props = defineProps<{
+  model: monaco.editor.ITextModel | null
+  viewState?: monaco.editor.ICodeEditorViewState | null
+  readOnly?: boolean
+}>()
+
+const emit = defineEmits<{
+  change: [value: string]
+  cursorChange: [line: number, column: number]
+  viewStateChange: [state: monaco.editor.ICodeEditorViewState | null]
+  markersChange: [markers: monaco.editor.IMarker[]]
+}>()
+
+const containerRef = ref<HTMLElement | null>(null)
+let editor: monaco.editor.IStandaloneCodeEditor | null = null
+let resizeObserver: ResizeObserver | null = null
+let modelChangeDisposable: monaco.IDisposable | null = null
+let cursorDisposable: monaco.IDisposable | null = null
+let markersDisposable: monaco.IDisposable | null = null
+let disposed = false
+let modelWatchVersion = 0
+
+function isCanceledError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'Canceled'
+}
+
+function bindModelListeners() {
+  modelChangeDisposable?.dispose()
+  cursorDisposable?.dispose()
+  modelChangeDisposable = editor?.onDidChangeModelContent(() => {
+    emit('change', editor?.getValue() ?? '')
+    emit('viewStateChange', editor?.saveViewState() ?? null)
+  }) ?? null
+  cursorDisposable = editor?.onDidChangeCursorPosition((event) => {
+    emit('cursorChange', event.position.lineNumber, event.position.column)
+    emit('viewStateChange', editor?.saveViewState() ?? null)
+  }) ?? null
+}
+
+function createEditor() {
+  if (!containerRef.value || editor) return
+  disposed = false
+  editor = monaco.editor.create(containerRef.value, {
+    model: props.model,
+    automaticLayout: true,
+    readOnly: !!props.readOnly,
+    minimap: { enabled: false },
+    fontSize: 13,
+    lineHeight: 20,
+    scrollBeyondLastLine: false,
+    theme: document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs',
+  })
+  restoreViewStateSafely(editor, props.viewState)
+  bindModelListeners()
+  markersDisposable = monaco.editor.onDidChangeMarkers((uris) => {
+    const model = editor?.getModel()
+    if (model && uris.some(uri => uri.toString() === model.uri.toString())) {
+      emit('markersChange', monaco.editor.getModelMarkers({ resource: model.uri }))
+    }
+  })
+  resizeObserver = new ResizeObserver(() => editor?.layout())
+  resizeObserver.observe(containerRef.value)
+}
+
+function focus() {
+  editor?.focus()
+}
+
+function layout() {
+  editor?.layout()
+}
+
+function revealLine(lineNumber: number) {
+  editor?.revealLineInCenter(lineNumber)
+}
+
+function openFind() {
+  editor?.getAction('actions.find')?.run()
+}
+
+function saveViewState() {
+  return editor?.saveViewState() ?? null
+}
+
+function restoreViewStateSafely(
+  targetEditor: monaco.editor.IStandaloneCodeEditor,
+  viewState: monaco.editor.ICodeEditorViewState | null | undefined,
+) {
+  if (!viewState || disposed) return
+  try {
+    targetEditor.restoreViewState(viewState)
+  } catch (error) {
+    if (!isCanceledError(error)) throw error
+  }
+}
+
+onMounted(() => {
+  createEditor()
+})
+
+onBeforeUnmount(() => {
+  disposed = true
+  modelWatchVersion++
+  emit('viewStateChange', editor?.saveViewState() ?? null)
+  modelChangeDisposable?.dispose()
+  cursorDisposable?.dispose()
+  markersDisposable?.dispose()
+  resizeObserver?.disconnect()
+  editor?.dispose()
+  editor = null
+})
+
+watch(() => props.model, async (model) => {
+  const targetEditor = editor
+  if (!targetEditor || disposed) return
+  const version = ++modelWatchVersion
+  targetEditor.setModel(model)
+  await nextTick()
+  if (disposed || version !== modelWatchVersion) return
+  restoreViewStateSafely(targetEditor, props.viewState)
+  bindModelListeners()
+  emit('markersChange', model ? monaco.editor.getModelMarkers({ resource: model.uri }) : [])
+})
+
+watch(() => props.readOnly, (readOnly) => {
+  editor?.updateOptions({ readOnly: !!readOnly })
+})
+
+defineExpose({
+  focus,
+  layout,
+  revealLine,
+  openFind,
+  saveViewState,
+})
+</script>
+
+<style scoped>
+.monaco-editor-host {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+</style>

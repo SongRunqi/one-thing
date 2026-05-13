@@ -7,9 +7,10 @@
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import * as os from 'os'
-import { ipcMain } from 'electron'
+import { ipcMain, shell } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { listFiles } from '../utils/ripgrep.js'
+import { getVariablesStore } from '../variables/store/index.js'
 
 // Types for file listing
 export interface ListFilesRequest {
@@ -54,6 +55,43 @@ export interface FileReadResponse {
   content?: string
   encoding?: string
   size?: number
+  mtimeMs?: number
+  isBinary?: boolean
+  error?: string
+}
+
+export interface FileSaveRequest {
+  path: string
+  content: string
+  expectedMtimeMs?: number
+}
+
+export interface FileSaveResponse {
+  success: boolean
+  mtimeMs?: number
+  error?: string
+  conflict?: boolean
+}
+
+export interface DirectoryEntry {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  size?: number
+  mtimeMs?: number
+}
+
+export interface ListDirectoryResponse {
+  success: boolean
+  entries?: DirectoryEntry[]
+  error?: string
+}
+
+export interface FileStatResponse {
+  success: boolean
+  type?: 'file' | 'directory'
+  size?: number
+  mtimeMs?: number
   error?: string
 }
 
@@ -62,6 +100,41 @@ export interface ListDirsResponse {
   dirs: string[]     // Full paths to directories
   basePath: string   // Expanded base path
   error?: string
+}
+
+function expandPath(p: string): string {
+  if (p.startsWith('~')) return p.replace('~', os.homedir())
+  return p
+}
+
+function looksBinary(buffer: Buffer): boolean {
+  const sampleLength = Math.min(buffer.length, 8000)
+  for (let i = 0; i < sampleLength; i++) {
+    if (buffer[i] === 0) return true
+  }
+  return false
+}
+
+function getFileSearchDirs(cwd: string): string[] {
+  const dirs: string[] = []
+  const seen = new Set<string>()
+
+  function add(p: string | undefined | null) {
+    if (!p) return
+    const resolved = path.resolve(expandPath(p))
+    if (seen.has(resolved)) return
+    seen.add(resolved)
+    dirs.push(resolved)
+  }
+
+  add(cwd)
+
+  const variablesStore = getVariablesStore()
+  add(variablesStore.getAiNoteDir())
+  add(variablesStore.getUserNoteDir())
+  add(variablesStore.getWorkNoteDir())
+
+  return dirs
 }
 
 /**
@@ -74,29 +147,41 @@ export function registerFilesHandlers() {
     async (_event, request: ListFilesRequest): Promise<ListFilesResponse> => {
       const { cwd, query = '', limit = 50 } = request
 
-      if (!cwd) {
-        return { success: false, files: [], error: 'Working directory is required' }
-      }
-
-      // cwd is already expanded by getSession (passed from frontend session.workingDirectory)
-
       try {
         const files: string[] = []
         const lowerQuery = query.toLowerCase()
+        const searchDirs = getFileSearchDirs(cwd)
+        const seen = new Set<string>()
 
-        // Collect files from async generator
-        for await (const file of listFiles({ cwd, hidden: false })) {
-          // Fuzzy match: check if query is contained in file path (case-insensitive)
-          if (!query || file.toLowerCase().includes(lowerQuery)) {
-            // Return absolute path by joining cwd with relative path
-            const absolutePath = path.join(cwd, file)
-            files.push(absolutePath)
+        if (searchDirs.length === 0) {
+          return { success: true, files: [] }
+        }
 
-            // Stop collecting once we reach the limit
-            if (files.length >= limit) {
-              break
+        for (const searchDir of searchDirs) {
+          try {
+            // Collect files from async generator
+            for await (const file of listFiles({ cwd: searchDir, hidden: false, noIgnore: true })) {
+              // Fuzzy match: check if query is contained in file path (case-insensitive)
+              if (!query || file.toLowerCase().includes(lowerQuery)) {
+                // Return absolute path by joining cwd with relative path
+                const absolutePath = path.join(searchDir, file)
+                if (!seen.has(absolutePath)) {
+                  seen.add(absolutePath)
+                  files.push(absolutePath)
+                }
+
+                // Stop collecting once we reach the limit
+                if (files.length >= limit) {
+                  break
+                }
+              }
             }
+          } catch {
+            // A configured note/work directory may have been moved or deleted.
+            // Skip it and keep returning matches from the remaining roots.
           }
+
+          if (files.length >= limit) break
         }
 
         return { success: true, files }
@@ -245,13 +330,17 @@ export function registerFilesHandlers() {
         try {
           const buf = Buffer.alloc(Math.min(stats.size, maxSize))
           const { bytesRead } = await fileHandle.read(buf, 0, buf.length, 0)
-          const content = buf.subarray(0, bytesRead).toString('utf-8')
+          const contentBuffer = buf.subarray(0, bytesRead)
+          const isBinary = looksBinary(contentBuffer)
+          const content = isBinary ? '' : contentBuffer.toString('utf-8')
 
           return {
             success: true,
             content,
             encoding: 'utf-8',
             size: stats.size,
+            mtimeMs: stats.mtimeMs,
+            isBinary,
           }
         } finally {
           await fileHandle.close()
@@ -278,16 +367,27 @@ export function registerFilesHandlers() {
   // Save file content
   ipcMain.handle(
     IPC_CHANNELS.FILE_SAVE_CONTENT,
-    async (_event, request: { path: string; content: string }): Promise<{ success: boolean; error?: string }> => {
-      const { path: filePath, content } = request
+    async (_event, request: FileSaveRequest): Promise<FileSaveResponse> => {
+      const { path: filePath, content, expectedMtimeMs } = request
 
       if (!filePath) {
         return { success: false, error: 'File path is required' }
       }
 
       try {
+        if (expectedMtimeMs !== undefined) {
+          const stats = await fs.stat(filePath)
+          if (Math.abs(stats.mtimeMs - expectedMtimeMs) > 1) {
+            return {
+              success: false,
+              conflict: true,
+              error: 'File changed on disk. Review before saving again.',
+            }
+          }
+        }
         await fs.writeFile(filePath, content, 'utf-8')
-        return { success: true }
+        const stats = await fs.stat(filePath)
+        return { success: true, mtimeMs: stats.mtimeMs }
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'EACCES') {
           return { success: false, error: 'Permission denied' }
@@ -297,6 +397,145 @@ export function registerFilesHandlers() {
           error: error instanceof Error ? error.message : 'Failed to save file',
         }
       }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_LIST_DIRECTORY,
+    async (_event, request: { path: string }): Promise<ListDirectoryResponse> => {
+      const dirPath = request.path
+      if (!dirPath) return { success: false, error: 'Directory path is required' }
+
+      try {
+        const entries = await fs.readdir(dirPath, { withFileTypes: true })
+        const result: DirectoryEntry[] = []
+
+        for (const entry of entries) {
+          if (entry.name === 'node_modules' || entry.name === '.git') continue
+          const entryPath = path.join(dirPath, entry.name)
+          const stats = await fs.stat(entryPath).catch(() => null)
+          result.push({
+            name: entry.name,
+            path: entryPath,
+            type: entry.isDirectory() ? 'directory' : 'file',
+            size: stats?.size,
+            mtimeMs: stats?.mtimeMs,
+          })
+        }
+
+        result.sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'directory' ? -1 : 1
+          return a.name.localeCompare(b.name)
+        })
+
+        return { success: true, entries: result }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to list directory' }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_CREATE,
+    async (_event, request: { path: string; content?: string }): Promise<{ success: boolean; error?: string }> => {
+      try {
+        await fs.writeFile(request.path, request.content ?? '', { flag: 'wx' })
+        return { success: true }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to create file' }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_CREATE_DIRECTORY,
+    async (_event, request: { path: string }): Promise<{ success: boolean; error?: string }> => {
+      try {
+        await fs.mkdir(request.path, { recursive: false })
+        return { success: true }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to create directory' }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_RENAME,
+    async (_event, request: { oldPath: string; newPath: string }): Promise<{ success: boolean; error?: string }> => {
+      try {
+        await fs.rename(request.oldPath, request.newPath)
+        return { success: true }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to rename path' }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_DELETE,
+    async (_event, request: { path: string }): Promise<{ success: boolean; error?: string }> => {
+      try {
+        await fs.rm(request.path, { recursive: true, force: false })
+        return { success: true }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to delete path' }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_STAT,
+    async (_event, request: { path: string }): Promise<FileStatResponse> => {
+      try {
+        const stats = await fs.stat(request.path)
+        return {
+          success: true,
+          type: stats.isDirectory() ? 'directory' : 'file',
+          size: stats.size,
+          mtimeMs: stats.mtimeMs,
+        }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to stat path' }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_REVEAL,
+    async (_event, request: { path: string }): Promise<{ success: boolean; error?: string }> => {
+      const targetPath = request.path
+      if (!targetPath) return { success: false, error: 'Path is required' }
+
+      try {
+        await fs.stat(targetPath)
+        shell.showItemInFolder(targetPath)
+        return { success: true }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to reveal path',
+        }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_WATCH_START,
+    async (_event, request: { root: string }): Promise<{ success: boolean; error?: string }> => {
+      const root = request.root
+      if (!root) return { success: false, error: 'Workspace root is required' }
+      // Disabled for V1: recursive fs.watch can overwhelm the app on large workspaces.
+      // Keep the IPC shape stable and reintroduce this with throttled, non-recursive
+      // watching once the workbench core is stable.
+      return { success: true }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_WATCH_STOP,
+    async (_event, request: { root: string }): Promise<{ success: boolean }> => {
+      void request
+      return { success: true }
     }
   )
 }

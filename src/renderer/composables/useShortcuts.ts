@@ -15,6 +15,7 @@ import type { KeyboardShortcut } from '@/types'
  */
 export function matchShortcut(event: KeyboardEvent, shortcut: KeyboardShortcut | undefined): boolean {
   if (!shortcut || !shortcut.key) return false
+  if (shortcut.sequence) return false
 
   // Normalize the key for comparison
   const eventKey = event.key.toLowerCase()
@@ -37,6 +38,7 @@ export function matchShortcut(event: KeyboardEvent, shortcut: KeyboardShortcut |
  */
 export function formatShortcut(shortcut: KeyboardShortcut | undefined): string {
   if (!shortcut || !shortcut.key) return ''
+  if (shortcut.sequence === 'double-shift') return 'Double Shift'
 
   const parts: string[] = []
 
@@ -60,6 +62,9 @@ export interface ShortcutHandlers {
   onToggleSidebar?: () => void
   onFocusInput?: () => void
   onOpenSettings?: () => void
+  onSearchEverywhere?: () => void
+  onToggleTodoPlanWindow?: () => void
+  onToggleTodoPlan?: () => void
 }
 
 /**
@@ -78,6 +83,26 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
 
     const shortcuts = settingsStore.settings?.general?.shortcuts
     if (!shortcuts) return
+
+    if (matchShortcut(event, shortcuts.searchEverywhere)) {
+      event.preventDefault()
+      if (handlers.onSearchEverywhere) {
+        handlers.onSearchEverywhere()
+      } else {
+        window.electronAPI?.toggleSearchWindow?.()
+      }
+      return
+    }
+
+    if (matchShortcut(event, shortcuts.toggleTodoPlanWindow)) {
+      event.preventDefault()
+      if (handlers.onToggleTodoPlanWindow) {
+        handlers.onToggleTodoPlanWindow()
+      } else {
+        window.electronAPI?.toggleTodoPlanWindow?.()
+      }
+      return
+    }
 
     // New Chat - works everywhere
     if (matchShortcut(event, shortcuts.newChat)) {
@@ -98,6 +123,16 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       event.preventDefault()
       if (handlers.onToggleSidebar) {
         handlers.onToggleSidebar()
+      }
+      return
+    }
+
+    if (matchShortcut(event, shortcuts.toggleTodoPlan)) {
+      event.preventDefault()
+      if (handlers.onToggleTodoPlan) {
+        handlers.onToggleTodoPlan()
+      } else {
+        window.dispatchEvent(new CustomEvent('todo-plan:toggle-card'))
       }
       return
     }

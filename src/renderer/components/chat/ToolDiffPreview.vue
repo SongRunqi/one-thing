@@ -9,7 +9,15 @@
         v-if="!hideHeader"
         class="diff-header"
       >
-        <span class="diff-file-path">{{ diff.filePath }}</span>
+        <button
+          class="diff-file-path"
+          type="button"
+          :title="diff.filePath"
+          @click.stop="emit('open-file', diff.filePath)"
+          @keydown.stop
+        >
+          {{ displayFileName }}
+        </button>
         <span class="diff-stats">
           <span class="additions">+{{ diff.additions || 0 }}</span>
           <span class="deletions">-{{ diff.deletions || 0 }}</span>
@@ -51,6 +59,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import type { ToolDiffData, ToolDiffLine } from '@/stores/helpers/tool-step-view'
 import type { ToolRenderStatus } from '@/stores/helpers/tool-status'
+import { basename } from '@/stores/helpers/tool-preview'
 
 const props = defineProps<{
   diff: ToolDiffData
@@ -59,7 +68,12 @@ const props = defineProps<{
   hideHeader?: boolean
 }>()
 
+const emit = defineEmits<{
+  'open-file': [filePath: string]
+}>()
+
 const diffContentRef = ref<HTMLElement | null>(null)
+const displayFileName = computed(() => basename(props.diff.filePath) || props.diff.filePath || 'file')
 const isLive = computed(() =>
   props.status === 'streaming-input' || props.status === 'executing',
 )
@@ -120,14 +134,25 @@ defineExpose({
 }
 
 .diff-file-path {
+  border: 0;
+  padding: 0;
+  background: transparent;
   font-size: var(--font-size-sm, 12px);
   font-weight: var(--font-weight-medium, 500);
   color: var(--text-code-block);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
   min-width: 0;
+}
+
+.diff-file-path:hover {
+  color: var(--text-link);
+  text-decoration: underline;
 }
 
 .diff-stats {

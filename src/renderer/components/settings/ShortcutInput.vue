@@ -5,6 +5,7 @@
     tabindex="0"
     @click="startRecording"
     @keydown="handleKeyDown"
+    @keyup="handleKeyUp"
     @blur="stopRecording"
   >
     <span
@@ -63,6 +64,7 @@ const emit = defineEmits<{
 }>()
 
 const isRecording = ref(false)
+const lastShiftUp = ref(0)
 
 const hasShortcut = computed(() => {
   return props.modelValue && props.modelValue.key
@@ -71,6 +73,9 @@ const hasShortcut = computed(() => {
 const displayText = computed(() => {
   if (!props.modelValue || !props.modelValue.key) {
     return 'Click to set'
+  }
+  if (props.modelValue.sequence === 'double-shift') {
+    return 'Double Shift'
   }
 
   const parts: string[] = []
@@ -92,10 +97,12 @@ const displayText = computed(() => {
 
 function startRecording() {
   isRecording.value = true
+  lastShiftUp.value = 0
 }
 
 function stopRecording() {
   isRecording.value = false
+  lastShiftUp.value = 0
 }
 
 function handleKeyDown(e: KeyboardEvent) {
@@ -104,7 +111,8 @@ function handleKeyDown(e: KeyboardEvent) {
   e.preventDefault()
   e.stopPropagation()
 
-  // Ignore modifier-only presses
+  // Ignore modifier-only presses. Double Shift is handled on keyup so it can
+  // be recorded as a deliberate sequence instead of a single modifier.
   if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
     return
   }
@@ -125,6 +133,22 @@ function handleKeyDown(e: KeyboardEvent) {
 
   emit('update:modelValue', shortcut)
   stopRecording()
+}
+
+function handleKeyUp(e: KeyboardEvent) {
+  if (!isRecording.value || e.key !== 'Shift' || e.ctrlKey || e.altKey || e.metaKey) return
+
+  e.preventDefault()
+  e.stopPropagation()
+
+  const now = Date.now()
+  if (now - lastShiftUp.value < 500) {
+    emit('update:modelValue', { key: 'Shift', sequence: 'double-shift' })
+    stopRecording()
+    return
+  }
+
+  lastShiftUp.value = now
 }
 
 function clearShortcut() {

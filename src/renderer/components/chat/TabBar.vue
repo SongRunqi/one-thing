@@ -15,7 +15,7 @@
           :key="tab.id"
           :tab="tab"
           :active="tab.id === activeTabId"
-          :closable="tab.type === 'file' || chatTabCount > 1"
+          :closable="tab.type !== 'chat' || chatTabCount > 1"
           :is-first="index === 0"
           :hide-trailing-divider="tab.id === activeTabId || tabs[index + 1]?.id === activeTabId"
           :session-name="tab.type === 'chat' ? sessionName : undefined"
@@ -25,6 +25,10 @@
           @drop-on="(id) => { $emit('moveTab', dragFromId!, id); dragFromId = null }"
         />
       </div>
+      <div
+        class="tab-bar-drag-spacer"
+        aria-hidden="true"
+      />
     </div>
 
     <!-- Right: action buttons -->
@@ -138,7 +142,6 @@ const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').le
     linear-gradient(rgba(var(--accent-rgb), 0.04), rgba(var(--accent-rgb), 0.04)),
     var(--bg-app);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg-floating) 20%, transparent);
-  -webkit-app-region: drag;
 }
 
 .tab-bar::after {
@@ -156,6 +159,7 @@ const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').le
 .traffic-lights-reserved {
   width: 164px;
   flex-shrink: 0;
+  -webkit-app-region: no-drag;
 }
 
 /* ── Left: tabs ──────────────────── */
@@ -186,6 +190,13 @@ const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').le
   display: none;
 }
 
+.tab-bar-drag-spacer {
+  flex: 1;
+  min-width: 24px;
+  align-self: stretch;
+  -webkit-app-region: drag;
+}
+
 /* ── Right: action buttons ───────── */
 .tab-bar-right {
   display: flex;
@@ -211,6 +222,7 @@ const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').le
   border-radius: 8px;
   color: var(--muted);
   cursor: pointer;
+  -webkit-app-region: no-drag;
   transition:
     background var(--duration-fast) var(--ease-default),
     border-color var(--duration-fast) var(--ease-default),

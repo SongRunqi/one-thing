@@ -86,6 +86,8 @@ export interface ToolContext<M extends ToolMetadata = ToolMetadata> {
    */
   onStepStart?: (step: Step) => void
   onStepComplete?: (step: Step) => void
+  /** Wait before performing filesystem/process/remote side effects. */
+  beforeSideEffect?: () => Promise<void>
 }
 
 /**

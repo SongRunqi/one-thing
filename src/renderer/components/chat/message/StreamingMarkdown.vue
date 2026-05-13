@@ -62,8 +62,11 @@ interface Props {
 const props = defineProps<Props>()
 
 const DEFER_MARKDOWN_CHAR_THRESHOLD = 4000
+const THROTTLE_MARKDOWN_CHAR_THRESHOLD = 2000
+const STREAMING_MARKDOWN_PARSE_INTERVAL_MS = 50
 
 const displayedContent = ref(props.content)
+const parsedContent = ref(props.content)
 const effectiveStreaming = computed(() =>
   Boolean(!props.isUser && (props.isStreaming || displayedContent.value !== props.content)),
 )
@@ -79,7 +82,9 @@ const caf = typeof cancelAnimationFrame === 'function'
   : (id: number) => clearTimeout(id)
 
 let pendingFrame: number | null = null
+let pendingParseTimer: ReturnType<typeof setTimeout> | null = null
 let lastRevealTs = 0
+let lastParseCommitTs = 0
 
 function cancelPendingFrame() {
   if (pendingFrame === null) return
@@ -87,9 +92,50 @@ function cancelPendingFrame() {
   pendingFrame = null
 }
 
+function cancelPendingParse() {
+  if (pendingParseTimer === null) return
+  clearTimeout(pendingParseTimer)
+  pendingParseTimer = null
+}
+
+function commitParsedContent() {
+  cancelPendingParse()
+  parsedContent.value = displayedContent.value
+  lastParseCommitTs = performance.now()
+}
+
+function shouldThrottleStreamingParse(): boolean {
+  return Boolean(
+    !props.isUser &&
+    effectiveStreaming.value &&
+    displayedContent.value.length > THROTTLE_MARKDOWN_CHAR_THRESHOLD,
+  )
+}
+
+function scheduleParsedContentUpdate() {
+  if (!shouldThrottleStreamingParse()) {
+    commitParsedContent()
+    return
+  }
+
+  const now = performance.now()
+  const elapsed = now - lastParseCommitTs
+  if (elapsed >= STREAMING_MARKDOWN_PARSE_INTERVAL_MS) {
+    commitParsedContent()
+    return
+  }
+
+  if (pendingParseTimer !== null) return
+  pendingParseTimer = setTimeout(() => {
+    pendingParseTimer = null
+    commitParsedContent()
+  }, STREAMING_MARKDOWN_PARSE_INTERVAL_MS - elapsed)
+}
+
 function commitDisplayedContent() {
   cancelPendingFrame()
   displayedContent.value = props.content
+  commitParsedContent()
   lastRevealTs = 0
   scheduleDeferredMarkdownHydration()
 }
@@ -101,10 +147,12 @@ function revealDisplayedContent(ts: number) {
 
   const next = advanceSmoothStreamingText(displayedContent.value, props.content, elapsed)
   displayedContent.value = next
+  scheduleParsedContentUpdate()
 
   if (next !== props.content) {
     scheduleDisplayedContent()
   } else {
+    commitParsedContent()
     scheduleDeferredMarkdownHydration()
   }
 }
@@ -169,6 +217,7 @@ watch(
     if (props.isStreaming && !props.isUser) {
       if (!props.content.startsWith(displayedContent.value)) {
         displayedContent.value = props.content
+        scheduleParsedContentUpdate()
         lastRevealTs = 0
         return
       }
@@ -202,21 +251,21 @@ scheduleDeferredMarkdownHydration()
  */
 const segments = computed<MarkdownSegment[]>(() => {
   if (props.isUser) {
-    return [{ type: 'markdown', key: 'user-md', content: displayedContent.value, complete: true }]
+    return [{ type: 'markdown', key: 'user-md', content: parsedContent.value, complete: true }]
   }
   const streaming = useStableAssistantPipeline.value
-  const cacheKey = `${streaming ? '1' : '0'}:${contentCacheKey(displayedContent.value)}`
+  const cacheKey = `${streaming ? '1' : '0'}:${contentCacheKey(parsedContent.value)}`
   const cached = getCachedSegments(cacheKey)
   if (cached) return cached
 
   const started = performance.now()
-  const parsed = parseStreamingMarkdown(displayedContent.value, { streaming })
+  const parsed = parseStreamingMarkdown(parsedContent.value, { streaming })
   cacheSegments(cacheKey, parsed)
   const elapsed = performance.now() - started
   if (elapsed > 16) {
     console.info('[Perf][Markdown][segments]', {
       elapsedMs: Math.round(elapsed),
-      chars: displayedContent.value.length,
+      chars: parsedContent.value.length,
       segments: parsed.length,
     })
   }
@@ -247,6 +296,7 @@ function renderMd(key: string, content: string): string {
 onBeforeUnmount(() => {
   hydrationToken++
   cancelPendingFrame()
+  cancelPendingParse()
 })
 </script>
 

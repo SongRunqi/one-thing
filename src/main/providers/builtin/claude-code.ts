@@ -135,7 +135,7 @@ const claudeCodeProvider: ProviderDefinition = {
     // Models fetched dynamically from OpenRouter API (filtered for Pro/Max tier)
   },
 
-  create: ({ baseUrl, apiKey, oauthToken, localAddress }) => {
+  create: ({ baseUrl, apiKey, oauthToken }) => {
     // Get access token from either:
     // 1. oauthToken.accessToken (from registry async path)
     // 2. apiKey (from chat.ts which fetches OAuth token and passes it as apiKey)
@@ -148,7 +148,7 @@ const claudeCodeProvider: ProviderDefinition = {
     // Create provider with custom fetch for OAuth authentication
     // OAuth requires Authorization: Bearer header instead of x-api-key
     // Use empty apiKey (matching opencode-anthropic-auth plugin)
-    const boundFetch = createBoundFetch(localAddress)
+    const boundFetch = createBoundFetch()
     const provider = createAnthropic({
       apiKey: '', // Empty - our custom fetch handles real auth
       baseURL: baseUrl || 'https://api.anthropic.com/v1',

@@ -41,7 +41,78 @@ const commands: CommandDefinition[] = [
       return { success: true, message: `Working directory set to ${nextDirectory}` }
     },
   },
+  {
+    id: 'compact',
+    name: 'Compact Context',
+    description: 'Summarize older conversation history to reduce context usage',
+    usage: '/compact',
+    async execute(context) {
+      const requestId = globalThis.crypto?.randomUUID?.() || `compact-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const completion = waitForCompactCompletion(context.sessionId, requestId)
+
+      const emitted = await window.electronAPI.emitCommand(context.sessionId, {
+        type: 'command:compact-context',
+        requestId,
+        manual: true,
+      })
+
+      if (!emitted?.success) {
+        completion.cancel()
+        return { success: false, error: emitted?.error || 'Failed to start compact' }
+      }
+
+      const result = await completion.promise
+      if (!result.success) {
+        return { success: false, error: result.error || 'Compact failed' }
+      }
+      if (result.skipped) {
+        return { success: true, message: result.error || 'Nothing to compact yet' }
+      }
+      return { success: true, message: 'Context compacted' }
+    },
+  },
 ]
+
+function waitForCompactCompletion(sessionId: string, requestId: string): {
+  promise: Promise<{ success: boolean; skipped?: boolean; error?: string }>
+  cancel: () => void
+} {
+  let cleanup: (() => void) | undefined
+  let timeout: number | undefined
+
+  const promise = new Promise<{ success: boolean; skipped?: boolean; error?: string }>((resolve) => {
+    const finish = (result: { success: boolean; skipped?: boolean; error?: string }) => {
+      if (timeout !== undefined) window.clearTimeout(timeout)
+      cleanup?.()
+      resolve(result)
+    }
+
+    timeout = window.setTimeout(() => {
+      finish({ success: false, error: 'Timed out waiting for compact to finish' })
+    }, 120000)
+
+    cleanup = window.electronAPI.onSessionEvent((envelope: any) => {
+      if (envelope.sessionId !== sessionId) return
+      const event = envelope.event
+      if (event?.type !== 'context:compact-completed') return
+      if (event.requestId !== requestId) return
+
+      finish({
+        success: event.success,
+        skipped: event.skipped,
+        error: event.error,
+      })
+    })
+  })
+
+  return {
+    promise,
+    cancel: () => {
+      if (timeout !== undefined) window.clearTimeout(timeout)
+      cleanup?.()
+    },
+  }
+}
 
 /**
  * Get all available commands

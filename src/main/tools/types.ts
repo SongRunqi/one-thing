@@ -40,6 +40,8 @@ export interface ToolExecutionContext {
   onStepComplete?: (step: Step) => void
   // Tool metadata streaming callback
   onMetadata?: (update: ToolMetadataUpdate) => void
+  // Wait point for tools that are about to perform filesystem/process/remote side effects.
+  beforeSideEffect?: () => Promise<void>
 }
 
 /**

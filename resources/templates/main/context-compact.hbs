@@ -3,6 +3,13 @@
 
 You are a conversation summarization assistant. Please read the following conversation history and generate a structured summary.
 
+{{#if previousSummary}}
+## Existing Summary
+{{{previousSummary}}}
+
+Update and merge this existing summary with the additional conversation history below. Do not duplicate details.
+
+{{/if}}
 ## Conversation History
 {{{messages}}}
 

@@ -91,9 +91,6 @@ export interface ProviderConfig {
   // OAuth-specific fields (used when provider.requiresOAuth = true)
   authType?: 'apiKey' | 'oauth'  // Authentication method
   oauthToken?: OAuthToken        // Stored OAuth token (encrypted in storage)
-  // Outbound network interface binding — IPv4/IPv6 address of the NIC to source requests from.
-  // Empty/undefined = let the OS pick the default route.
-  localAddress?: string
   // Per-provider sampling temperature. Undefined = inherit AISettings.temperature (global default).
   // Used only as a fallback when a per-model override isn't set (see temperatureByModel).
   temperature?: number
@@ -187,19 +184,5 @@ export interface ModelInfo {
 export interface GetProvidersResponse {
   success: boolean
   providers?: ProviderInfo[]
-  error?: string
-}
-
-// Network interface info for localAddress selector
-export interface NetworkInterfaceInfo {
-  name: string        // Interface name, e.g. "en0", "utun6"
-  address: string     // IP address (used as localAddress value)
-  family: 'IPv4' | 'IPv6'
-  internal: boolean
-}
-
-export interface GetNetworkInterfacesResponse {
-  success: boolean
-  interfaces?: NetworkInterfaceInfo[]
   error?: string
 }

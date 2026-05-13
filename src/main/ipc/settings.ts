@@ -3,6 +3,8 @@ import { IPC_CHANNELS } from '../../shared/ipc.js'
 import * as store from '../store.js'
 import { openSettingsWindow } from '../window.js'
 import { invalidateProviderCache } from '../providers/registry.js'
+import { applyNetworkProxySettings, testProxy } from '../network/proxy.js'
+import { registerGlobalWindowShortcuts } from '../shortcuts/global-shortcuts.js'
 
 export function registerSettingsHandlers() {
   // Open settings window
@@ -40,6 +42,8 @@ export function registerSettingsHandlers() {
 
     // Invalidate provider cache so new API keys / base URLs take effect immediately
     invalidateProviderCache()
+    await applyNetworkProxySettings(settings.network?.proxy)
+    registerGlobalWindowShortcuts()
 
     // Get the sender's webContents ID to exclude from broadcast
     const senderWebContentsId = event.sender.id
@@ -52,6 +56,10 @@ export function registerSettingsHandlers() {
       }
     })
     return { success: true }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.TEST_PROXY, async (_event, request) => {
+    return testProxy(request.proxy)
   })
 
   // 显示打开目录对话框

@@ -45,6 +45,7 @@
             @execute-tool="handleExecuteTool"
             @confirm-tool="handleConfirmTool"
             @reject-tool="handleRejectTool"
+            @open-file="(filePath) => emit('openFile', filePath)"
             @update-thinking-time="handleUpdateThinkingTime"
           />
         </div>
@@ -186,6 +187,7 @@ const emit = defineEmits<{
   regenerate: [messageId: string]
   editAndResend: [messageId: string, newContent: string]
   splitWithBranch: [sessionId: string]
+  openFile: [filePath: string]
 }>()
 
 const chatStore = useChatStore()
@@ -294,11 +296,14 @@ const hasNavigated = ref(false)
 let isActivelyNavigating = false
 let navigationCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let navMarkerUpdateFrame: number | null = null
+let visibleUserMessageFrame: number | null = null
+let measurementRefreshFrame: number | null = null
 let navResizeObserver: ResizeObserver | null = null
 let isPrependingHistory = false
 let renderMeasureStart: number | null = null
 let renderMeasureSessionId = ''
 let renderMeasureMessageCount = 0
+let userMessageMeasurements: Array<{ messageIndex: number; messageId: string; start: number }> = []
 
 interface TopAnchor {
   messageId: string
@@ -348,6 +353,10 @@ function scheduleFollowNudge(source: string) {
   if (isFollowing.value) {
     scrollCoordinator.onLayoutChange()
     updateScrollToBottomButton()
+    return
+  }
+  if (!scrollCoordinator.isAnchored()) {
+    scheduleScrollStateUpdate()
     return
   }
   if (followNudgeFrame !== null) return
@@ -412,12 +421,13 @@ watch(
     if (!el || typeof ResizeObserver === 'undefined') return
     navContentResizeObserver = new ResizeObserver(() => {
       scheduleNavMarkerUpdate()
+      scheduleMeasurementRefresh()
       // Always notify the coordinator — it routes itself based on tail / anchor / idle.
       // Tail mode used to be skipped here, which let markdown hydration / code-block
       // highlighting drift the viewport away from the bottom.
       scrollCoordinator.onLayoutChange()
       if (!scrollCoordinator.isAnchored()) {
-        updateVisibleUserMessageIndex()
+        scheduleVisibleUserMessageIndexUpdate()
       }
     })
     navContentResizeObserver.observe(el)
@@ -501,6 +511,7 @@ watch(
 
     // Schedule marker update after DOM renders
     nextTick(() => {
+      scheduleMeasurementRefresh()
       nextTick(() => scheduleNavMarkerUpdate())
     })
   },
@@ -741,8 +752,9 @@ async function loadOlderHistoryIfNeeded(force = false) {
     if (loaded) {
       await nextTick()
       restoreTopAnchor(anchor)
+      scheduleMeasurementRefresh()
       scheduleNavMarkerUpdate()
-      updateVisibleUserMessageIndex()
+      scheduleVisibleUserMessageIndexUpdate()
     }
   } finally {
     isFollowing.value = wasFollowing
@@ -794,16 +806,6 @@ async function scrollToMessage(
   return true
 }
 
-function getMessageMeasurement(messageIndex: number): { start: number; end: number; size: number } | undefined {
-  const row = getMessageRow(messageIndex)
-  if (!row) return undefined
-  return {
-    start: row.offsetTop,
-    end: row.offsetTop + row.offsetHeight,
-    size: row.offsetHeight,
-  }
-}
-
 function getFallbackNavPosition(messageIndex: number): number {
   const denominator = Math.max(props.messages.length - 1, 1)
   return Math.min(0.98, Math.max(0.02, messageIndex / denominator))
@@ -843,6 +845,53 @@ function scheduleNavMarkerUpdate() {
   navMarkerUpdateFrame = requestAnimationFrame(() => {
     navMarkerUpdateFrame = null
     updateNavMarkers()
+  })
+}
+
+function scheduleScrollStateUpdate() {
+  if (followNudgeFrame !== null) return
+  followNudgeFrame = requestAnimationFrame(() => {
+    followNudgeFrame = null
+    updateScrollToBottomButton()
+  })
+}
+
+function refreshUserMessageMeasurements() {
+  const content = messageListContentRef.value
+  if (!content || userMessageIndices.value.length === 0) {
+    userMessageMeasurements = []
+    return
+  }
+
+  userMessageMeasurements = userMessageIndices.value
+    .map(messageIndex => {
+      const message = props.messages[messageIndex]
+      if (!message?.id) return null
+      const row = getMessageRowById(message.id) || getMessageRow(messageIndex)
+      if (!row) return null
+      return {
+        messageIndex,
+        messageId: message.id,
+        start: row.offsetTop,
+      }
+    })
+    .filter((item): item is { messageIndex: number; messageId: string; start: number } => item !== null)
+}
+
+function scheduleMeasurementRefresh() {
+  if (measurementRefreshFrame !== null) return
+  measurementRefreshFrame = requestAnimationFrame(() => {
+    measurementRefreshFrame = null
+    refreshUserMessageMeasurements()
+    scheduleVisibleUserMessageIndexUpdate()
+  })
+}
+
+function scheduleVisibleUserMessageIndexUpdate() {
+  if (visibleUserMessageFrame !== null) return
+  visibleUserMessageFrame = requestAnimationFrame(() => {
+    visibleUserMessageFrame = null
+    updateVisibleUserMessageIndex()
   })
 }
 
@@ -887,9 +936,9 @@ function getBranchesForMessage(messageId: string): BranchInfo[] {
 }
 
 // Find which user message is currently most visible in the viewport
-function updateVisibleUserMessageIndex() {
+function updateVisibleUserMessageIndex(options: { allowAnchored?: boolean } = {}) {
   if (isActivelyNavigating) return
-  if (scrollCoordinator.isAnchored()) return
+  if (!options.allowAnchored && scrollCoordinator.isAnchored()) return
   if (props.messages.length === 0) return
 
   const el = messageListRef.value
@@ -911,14 +960,19 @@ function updateVisibleUserMessageIndex() {
   const viewportAnchor = el.scrollTop + el.clientHeight * 0.18
 
   let activeMessageIndex = 0
-  for (let msgIdx = 0; msgIdx < props.messages.length; msgIdx++) {
-    const measurement = getMessageMeasurement(msgIdx)
-    const start = measurement
-      ? measurement.start
-      : getFallbackNavPosition(msgIdx) * Math.max(1, el.scrollHeight)
+  const measurements = userMessageMeasurements
+  if (measurements.length > 0) {
+    for (const measurement of measurements) {
+      if (measurement.start <= viewportAnchor) activeMessageIndex = measurement.messageIndex
+      else break
+    }
+  } else {
+    for (const msgIdx of userMessageIndices.value) {
+      const start = getFallbackNavPosition(msgIdx) * Math.max(1, el.scrollHeight)
 
-    if (start <= viewportAnchor) activeMessageIndex = msgIdx
-    else break
+      if (start <= viewportAnchor) activeMessageIndex = msgIdx
+      else break
+    }
   }
 
   const activeMessage = props.messages[activeMessageIndex]
@@ -936,7 +990,7 @@ function handleScroll() {
   }
   updateScrollToBottomButton()
   scheduleNavMarkerUpdate()
-  updateVisibleUserMessageIndex()
+  scheduleVisibleUserMessageIndexUpdate()
   loadOlderHistoryIfNeeded()
 }
 
@@ -1010,7 +1064,10 @@ onMounted(() => {
     messageListRef.value.addEventListener('wheel', handleWheel, { passive: false })
     messageListRef.value.addEventListener('pointerdown', handlePointerDown)
     if (typeof ResizeObserver !== 'undefined') {
-      navResizeObserver = new ResizeObserver(() => scheduleNavMarkerUpdate())
+      navResizeObserver = new ResizeObserver(() => {
+        scheduleNavMarkerUpdate()
+        scheduleMeasurementRefresh()
+      })
       navResizeObserver.observe(messageListRef.value)
     }
   }
@@ -1021,6 +1078,7 @@ onMounted(() => {
       scrollCoordinator.setTail()
     }
     scheduleNavMarkerUpdate()
+    scheduleMeasurementRefresh()
   })
 })
 
@@ -1040,6 +1098,14 @@ onUnmounted(() => {
   if (navMarkerUpdateFrame !== null) {
     cancelAnimationFrame(navMarkerUpdateFrame)
     navMarkerUpdateFrame = null
+  }
+  if (visibleUserMessageFrame !== null) {
+    cancelAnimationFrame(visibleUserMessageFrame)
+    visibleUserMessageFrame = null
+  }
+  if (measurementRefreshFrame !== null) {
+    cancelAnimationFrame(measurementRefreshFrame)
+    measurementRefreshFrame = null
   }
   if (followNudgeFrame !== null) {
     cancelAnimationFrame(followNudgeFrame)
@@ -1470,7 +1536,8 @@ function finishSessionSwitchFromViewport() {
       const el = messageListRef.value
       if (!el) return
       isFollowing.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 2
-      updateVisibleUserMessageIndex()
+      scheduleMeasurementRefresh()
+      scheduleVisibleUserMessageIndexUpdate()
       scheduleNavMarkerUpdate()
       updateScrollToBottomButton()
     })
@@ -1504,6 +1571,7 @@ defineExpose({
     follow.isFollowing.value = true
     scrollCoordinator.setTail()
     follow.finishSwitch()
+    updateScrollToBottomButton()
   },
 
   restoreAnchor: (snap: {
@@ -1516,28 +1584,39 @@ defineExpose({
     setNavIndexToMessage(snap.navMessageId)
     follow.isFollowing.value = false
     const restoreSessionId = effectiveSessionId.value
-    nextTick(async () => {
+
+    const applyAnchor = () => {
       if (!restoreSessionId || effectiveSessionId.value !== restoreSessionId) {
         follow.finishSwitch()
-        return
+        return true
       }
       const row = snap.anchorMessageId ? getMessageRowById(snap.anchorMessageId) : null
-      if (!row || !messageListRef.value) {
+      if (!row || !messageListRef.value) return false
+
+      const offsetWithinMessage = Math.max(0, snap.offsetWithinMessage ?? 0)
+      scrollCoordinator.writeScrollTop(row.offsetTop + offsetWithinMessage)
+      refreshUserMessageMeasurements()
+      updateVisibleUserMessageIndex({ allowAnchored: true })
+      if (snap.anchorMessageId) {
+        scrollCoordinator.setAnchor(snap.anchorMessageId, offsetWithinMessage, SESSION_RESTORE_ANCHOR_LOCK_MS)
+      }
+      follow.finishSwitch()
+      updateScrollToBottomButton()
+      return true
+    }
+
+    if (applyAnchor()) return
+
+    nextTick(async () => {
+      if (!applyAnchor()) {
         scrollCoordinator.clear()
         hasNavigated.value = false
         setNavIndexToLastMarker()
         follow.isFollowing.value = true
         scrollCoordinator.setTail()
         follow.finishSwitch()
-        return
+        updateScrollToBottomButton()
       }
-      const offsetWithinMessage = Math.max(0, snap.offsetWithinMessage ?? 0)
-      scrollCoordinator.writeScrollTop(row.offsetTop + offsetWithinMessage)
-      if (snap.anchorMessageId) {
-        scrollCoordinator.setAnchor(snap.anchorMessageId, offsetWithinMessage, SESSION_RESTORE_ANCHOR_LOCK_MS)
-      }
-      follow.finishSwitch()
-      updateScrollToBottomButton()
     })
   },
 

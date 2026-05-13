@@ -44,7 +44,7 @@
           v-if="message.role === 'assistant'"
           :is-streaming="message.isStreaming || false"
           :has-content="!!message.content || !!(message.toolCalls?.length) || !!(message.steps?.length)"
-          :reasoning="message.reasoning"
+          :reasoning="topReasoning"
           :thinking-start-time="message.thinkingStartTime"
           :thinking-time="message.thinkingTime"
           :loading-memory="isLoadingMemory"
@@ -71,6 +71,7 @@
           @execute-tool="handleToolExecute"
           @confirm-tool="handleToolConfirm"
           @reject-tool="handleToolReject"
+          @open-file="(filePath) => emit('openFile', filePath)"
         />
 
         <!-- Inline error for assistant messages that failed mid-stream -->
@@ -115,6 +116,7 @@
           :session-id="message.sessionId"
           @confirm="handleToolConfirm"
           @reject="handleToolReject"
+          @open-file="(filePath) => emit('openFile', filePath)"
         />
 
         <!-- Message footer -->
@@ -190,6 +192,7 @@ const emit = defineEmits<{
   executeTool: [toolCall: ToolCall]
   confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
   rejectTool: [toolCall: ToolCall]
+  openFile: [filePath: string]
   updateThinkingTime: [messageId: string, thinkingTime: number]
 }>()
 
@@ -213,6 +216,19 @@ const isHighlighted = computed(() => props.isHighlighted || false)
 const isLoadingMemory = computed(() => {
   if (!props.message.contentParts) return false
   return props.message.contentParts.some(part => part.type === 'loading-memory')
+})
+
+const topReasoning = computed(() => {
+  const reasoning = props.message.reasoning || ''
+  if (!reasoning || !props.message.contentParts?.length) return reasoning
+
+  const inlineReasoning = props.message.contentParts
+    .filter(part => part.type === 'reasoning')
+    .map(part => part.content)
+    .join('')
+
+  if (!inlineReasoning || !reasoning.endsWith(inlineReasoning)) return reasoning
+  return reasoning.slice(0, reasoning.length - inlineReasoning.length)
 })
 
 // Format time

@@ -25,7 +25,10 @@ import type {
   MessageListDensity,
   KeyboardShortcut,
   ShortcutSettings,
+  EditorSettings,
   ChatSettings,
+  ProxySettings,
+  NetworkSettings,
   MessageAttachment,
   AttachmentMediaType,
   GetChatHistoryResponse,
@@ -40,8 +43,6 @@ import type {
   SaveSettingsResponse,
   GenerateTitleResponse,
   GetProvidersResponse,
-  GetNetworkInterfacesResponse,
-  NetworkInterfaceInfo,
   ToolDefinition,
   ToolCall,
   ToolSettings,
@@ -115,6 +116,19 @@ import type {
   ProjectDirsAddResponse,
   ProjectDirsUpdateResponse,
   ProjectDirsRemoveResponse,
+  TodoPlanChangedPayload,
+  TodoPlanCreateRequest,
+  TodoPlanCreateResponse,
+  TodoPlanDocument,
+  TodoPlanGetRequest,
+  TodoPlanGetResponse,
+  TodoPlanRenameRequest,
+  TodoPlanRenameResponse,
+  TodoPlanDeleteRequest,
+  TodoPlanDeleteResponse,
+  TodoPlanSnapshot,
+  TodoPlanUpdateResponse,
+  TodoPlanUpdateRequest,
 } from '../../shared/ipc'
 
 export type {
@@ -144,7 +158,10 @@ export type {
   MessageListDensity,
   KeyboardShortcut,
   ShortcutSettings,
+  EditorSettings,
   ChatSettings,
+  ProxySettings,
+  NetworkSettings,
   MessageAttachment,
   AttachmentMediaType,
   ToolDefinition,
@@ -185,8 +202,19 @@ export type {
   // Theme types
   ThemeMeta,
   Theme,
-  // Network interface types for provider localAddress binding
-  NetworkInterfaceInfo,
+  TodoPlanChangedPayload,
+  TodoPlanCreateRequest,
+  TodoPlanCreateResponse,
+  TodoPlanDocument,
+  TodoPlanGetRequest,
+  TodoPlanGetResponse,
+  TodoPlanRenameRequest,
+  TodoPlanRenameResponse,
+  TodoPlanDeleteRequest,
+  TodoPlanDeleteResponse,
+  TodoPlanSnapshot,
+  TodoPlanUpdateResponse,
+  TodoPlanUpdateRequest,
 }
 
 // Gallery image type for image preview window
@@ -212,6 +240,7 @@ export interface ElectronAPI {
     argsTextDelta?: string
     // For content_part chunks (interleaved text and steps)
     contentPart?: ContentPart
+    turnIndex?: number
   }) => void) => () => void
   onStreamReasoningDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
   onStreamTextDelta: (callback: (data: { messageId: string; delta: string }) => void) => () => void
@@ -269,6 +298,7 @@ export interface ElectronAPI {
   openSettingsWindow: () => Promise<{ success: boolean }>
   onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void
   getSystemTheme: () => Promise<{ success: boolean; theme?: 'light' | 'dark' }>
+  testProxy: (proxy: ProxySettings) => Promise<{ success: boolean; error?: string; status?: number }>
   onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void
   // Theme methods
   getThemes: () => Promise<GetThemesResponse>
@@ -277,7 +307,6 @@ export interface ElectronAPI {
   refreshThemes: (projectPath?: string) => Promise<RefreshThemesResponse>
   openThemesFolder: () => Promise<{ success: boolean; error?: string }>
   getProviders: () => Promise<GetProvidersResponse>
-  getNetworkInterfaces: () => Promise<GetNetworkInterfacesResponse>
   // New OpenRouter-based model API
   getModelsWithCapabilities: (providerId: string) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
   getAllModels: () => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
@@ -395,8 +424,35 @@ export interface ElectronAPI {
   listDirs: (options: { basePath: string; query?: string; limit?: number }) => Promise<{ success: boolean; dirs: string[]; basePath: string; error?: string }>
 
   // File content reading/writing (for file preview panel)
-  readFileContent: (filePath: string, maxSize?: number) => Promise<{ success: boolean; content?: string; size?: number; error?: string }>
-  saveFileContent: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>
+  readFileContent: (filePath: string, maxSize?: number) => Promise<{
+    success: boolean
+    content?: string
+    encoding?: string
+    size?: number
+    mtimeMs?: number
+    isBinary?: boolean
+    error?: string
+  }>
+  saveFileContent: (filePath: string, content: string, expectedMtimeMs?: number) => Promise<{
+    success: boolean
+    mtimeMs?: number
+    conflict?: boolean
+    error?: string
+  }>
+  listDirectory: (dirPath: string) => Promise<{
+    success: boolean
+    entries?: Array<{ name: string; path: string; type: 'file' | 'directory'; size?: number; mtimeMs?: number }>
+    error?: string
+  }>
+  createFile: (filePath: string, content?: string) => Promise<{ success: boolean; error?: string }>
+  createDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>
+  renamePath: (oldPath: string, newPath: string) => Promise<{ success: boolean; error?: string }>
+  deletePath: (targetPath: string) => Promise<{ success: boolean; error?: string }>
+  statPath: (targetPath: string) => Promise<{ success: boolean; type?: 'file' | 'directory'; size?: number; mtimeMs?: number; error?: string }>
+  revealPath: (targetPath: string) => Promise<{ success: boolean; error?: string }>
+  watchWorkspace: (root: string) => Promise<{ success: boolean; error?: string }>
+  unwatchWorkspace: (root: string) => Promise<{ success: boolean }>
+  onWorkspaceFileChanged: (callback: (data: { root: string; path: string; eventType: string }) => void) => () => void
 
   // Window methods
   setWindowButtonVisibility: (visible: boolean) => Promise<{ success: boolean }>
@@ -404,7 +460,7 @@ export interface ElectronAPI {
   // Unified event-driven channels (Phase 4)
   onSessionEvent: (callback: (envelope: any) => void) => () => void
   onSessionStream: (callback: (data: { sessionId: string; chunk: any }) => void) => () => void
-  emitCommand: (sessionId: string, command: any) => Promise<void>
+  emitCommand: (sessionId: string, command: any) => Promise<{ success: boolean; error?: string; result?: any }>
 
   // Skill execution
   executeSkill: (skillId: string, options: { sessionId: string; input: string }) => Promise<{ success: boolean; result?: { output: string }; error?: string }>
@@ -424,12 +480,12 @@ export interface ElectronAPI {
   getAppState: () => Promise<{
     currentSessionId: string
     currentWorkspaceId: string | null
-    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; title?: string }>
+    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; initialFilePath?: string; activeFilePath?: string; workspaceRoot?: string; title?: string }>
     activeTabIndex?: number
     sidebarCollapsed?: boolean
   }>
   saveUIState: (uiState: {
-    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; title?: string }>
+    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; initialFilePath?: string; activeFilePath?: string; workspaceRoot?: string; title?: string }>
     activeTabIndex?: number
     sidebarCollapsed?: boolean
   }) => Promise<{ success: boolean }>
@@ -441,6 +497,18 @@ export interface ElectronAPI {
   searchQuery: (req: { query: string; category: string; limit?: number }) => Promise<{ success: boolean; results: import('@shared/ipc/search').SearchResult[] }>
   searchExecuteAction: (actionId: string) => Promise<{ success: boolean }>
   onSearchAction: (callback: (actionId: string) => void) => () => void
+
+  // Todo / Plan
+  getTodoPlan: (request?: TodoPlanGetRequest) => Promise<TodoPlanGetResponse>
+  createTodoPlanNote: (request: TodoPlanCreateRequest) => Promise<TodoPlanCreateResponse>
+  updateTodoPlan: (request: TodoPlanUpdateRequest) => Promise<TodoPlanUpdateResponse>
+  renameTodoPlanNote: (request: TodoPlanRenameRequest) => Promise<TodoPlanRenameResponse>
+  deleteTodoPlanNote: (request: TodoPlanDeleteRequest) => Promise<TodoPlanDeleteResponse>
+  revealTodoPlanDirectory: () => Promise<{ success: boolean; error?: string }>
+  openTodoPlanWindow: () => Promise<{ success: boolean }>
+  toggleTodoPlanWindow: () => Promise<{ success: boolean }>
+  setTodoPlanWindowPinned: (pinned: boolean) => Promise<{ success: boolean; pinned: boolean }>
+  onTodoPlanChanged: (callback: (data: TodoPlanChangedPayload) => void) => () => void
 
 }
 

@@ -127,4 +127,37 @@ describe('useFollowScroll geometry helpers', () => {
 
     expect(scroller.scrollTop).toBe(780)
   })
+
+  it('does not pin layout changes after the user scrolls away from the bottom', () => {
+    let resizeCallback: ResizeObserverCallback | null = null
+    class FakeResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback
+      }
+
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+
+    const scroller = {
+      scrollTop: 700,
+      scrollHeight: 1200,
+      clientHeight: 500,
+    }
+    const content = {}
+    const follow = useFollowScroll({
+      scroller: ref(scroller as HTMLElement),
+      content: ref(content as HTMLElement),
+      count: computed(() => 1),
+    })
+
+    follow.onWheel({ deltaY: -1 } as WheelEvent)
+    scroller.scrollHeight = 1400
+    const triggerResize = resizeCallback as unknown as ResizeObserverCallback
+    triggerResize([] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
+
+    expect(follow.isFollowing.value).toBe(false)
+    expect(scroller.scrollTop).toBe(700)
+  })
 })

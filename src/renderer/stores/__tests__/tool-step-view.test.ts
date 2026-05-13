@@ -32,12 +32,14 @@ describe('buildToolStepView', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         status: 'input-streaming',
-        streamingArgs: '{"file_path":"src/a.ts","content":"hello\\nworld"}',
+        streamingArgs: '{"file_path":"/Users/me/project/src/a.ts","content":"hello\\nworld"}',
       }),
     }))
 
     expect(view.status).toBe('streaming-input')
-    expect(view.preview).toBe('src/a.ts')
+    expect(view.preview).toBe('a.ts')
+    expect(view.filePath).toBe('/Users/me/project/src/a.ts')
+    expect(view.fileName).toBe('a.ts')
     expect(view.streamingContent?.content).toBe('hello\nworld')
     expect(view.hasDetails).toBe(true)
     expect(view.defaultExpanded).toBe(true)
@@ -52,7 +54,7 @@ describe('buildToolStepView', () => {
         streamingArgs: '{"file_path":"src/a.ts","content":"stale"}',
         changes: {
           diff: '--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new\n',
-          filePath: 'src/a.ts',
+          filePath: '/Users/me/project/src/a.ts',
           additions: 1,
           deletions: 1,
         },
@@ -61,7 +63,9 @@ describe('buildToolStepView', () => {
 
     expect(view.status).toBe('awaiting-confirmation')
     expect(view.streamingContent).toBeNull()
-    expect(view.diff?.filePath).toBe('src/a.ts')
+    expect(view.diff?.filePath).toBe('/Users/me/project/src/a.ts')
+    expect(view.filePath).toBe('/Users/me/project/src/a.ts')
+    expect(view.fileName).toBe('a.ts')
     expect(view.isAwaitingConfirmation).toBe(true)
     expect(view.defaultExpanded).toBe(true)
   })
@@ -80,6 +84,36 @@ describe('buildToolStepView', () => {
     expect(view.argsJson).toBe('git status')
     expect(view.hasDetails).toBe(true)
     expect(view.defaultExpanded).toBe(false)
+  })
+
+  it('caches streaming write parsing for the same tool input length and status', () => {
+    const streamingStep = step({
+      toolCall: tc({
+        status: 'input-streaming',
+        streamingArgs: '{"file_path":"src/a.ts","content":"cached"}',
+      }),
+    })
+
+    const first = buildToolStepView(streamingStep)
+    const second = buildToolStepView(streamingStep)
+
+    expect(second.streamingContent).toBe(first.streamingContent)
+  })
+
+  it('truncates large streaming write previews but keeps total additions', () => {
+    const content = Array.from({ length: 220 }, (_, index) => `line ${index + 1}`).join('\n')
+    const view = buildToolStepView(step({
+      toolCall: tc({
+        status: 'input-streaming',
+        streamingArgs: JSON.stringify({ file_path: 'src/large.ts', content }),
+      }),
+    }))
+
+    expect(view.streamingContent?.additions).toBe(220)
+    expect(view.streamingContent?.isTruncated).toBe(true)
+    expect(view.streamingContent?.omittedLines).toBe(60)
+    expect(view.streamingDiffLines.some(line => line.content.includes('lines omitted'))).toBe(true)
+    expect(view.streamingDiffLines.length).toBeLessThan(220)
   })
 })
 

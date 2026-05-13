@@ -5,7 +5,7 @@
  */
 
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import type { AppSettings, AIProvider, ProviderInfo, OpenRouterModel, NetworkInterfaceInfo } from '@/types'
+import type { AppSettings, AIProvider, ProviderInfo, OpenRouterModel } from '@/types'
 import { useSettingsStore } from '@/stores/settings'
 
 export interface OAuthStatus {
@@ -33,9 +33,6 @@ export function useProviderSettings(
   const modelSearchQuery = ref('')
   const newModelInput = ref('')
   const modelError = ref('')
-
-  // Network interfaces (lazy-loaded on mount) for localAddress selector
-  const networkInterfaces = ref<NetworkInterfaceInfo[]>([])
 
   // OAuth state
   const isOAuthLoading = ref(false)
@@ -427,25 +424,6 @@ export function useProviderSettings(
     updateSettings({ ai: { ...props.settings.ai, providers } })
   }
 
-  function updateProviderLocalAddress(localAddress: string) {
-    const providers = { ...props.settings.ai.providers }
-    // Treat empty string as "clear" so the OS picks the default route.
-    const value = localAddress.trim() ? localAddress : undefined
-    providers[viewingProvider.value] = { ...providers[viewingProvider.value], localAddress: value }
-    updateSettings({ ai: { ...props.settings.ai, providers } })
-  }
-
-  async function loadNetworkInterfaces() {
-    try {
-      const res = await window.electronAPI.getNetworkInterfaces()
-      if (res.success && res.interfaces) {
-        networkInterfaces.value = res.interfaces
-      }
-    } catch (err) {
-      console.error('Failed to load network interfaces:', err)
-    }
-  }
-
   // Writes the per-model temperature override. Falls back to provider/global when unset.
   // Function name kept for backwards compat with template; it now writes per-model.
   function updateProviderTemperature(temperature: number) {
@@ -770,7 +748,6 @@ export function useProviderSettings(
   // Lifecycle
   async function initialize() {
     await checkOAuthStatus()
-    await loadNetworkInterfaces()
     // Warm-load models for the initial provider so capability icons render on open.
     loadCachedModels()
 
@@ -802,7 +779,6 @@ export function useProviderSettings(
     modelSearchQuery,
     newModelInput,
     modelError,
-    networkInterfaces,
     isOAuthLoading,
     oauthStatus,
     deviceFlowInfo,
@@ -845,7 +821,6 @@ export function useProviderSettings(
     formatContextLength,
     updateProviderApiKey,
     updateProviderBaseUrl,
-    updateProviderLocalAddress,
     updateProviderTemperature,
     resetProviderTemperature,
     updateModelMaxOutput,

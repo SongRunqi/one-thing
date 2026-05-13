@@ -19,7 +19,9 @@ import type {
   UserMessageMarker,
 } from '@/types'
 import {
+  appendOrMergeReasoning,
   appendOrMergeText,
+  appendReasoningIfMissing,
   appendToolCallPlaceholder,
   popTrailingTransient,
   pushDataStepsIfMissing,
@@ -48,6 +50,7 @@ interface StreamChunk {
   argsTextDelta?: string
   // For content_part chunks (interleaved text and steps)
   contentPart?: ContentPart
+  turnIndex?: number
 }
 
 // Stream complete data from IPC
@@ -100,6 +103,18 @@ interface SkillActivatedData {
   skillName: string
 }
 
+interface PermissionRequestData {
+  sessionId: string
+  requestId: string
+  messageId: string
+  callId?: string
+  permissionType: string
+  title: string
+  pattern?: string | string[]
+  metadata: Record<string, unknown>
+  canRespond: boolean
+}
+
 export const useChatStore = defineStore('chat', () => {
   // ============ Per-session 状态 ============
 
@@ -132,10 +147,57 @@ export const useChatStore = defineStore('chat', () => {
 
   // Active streams (sessionId -> messageId)
   const activeStreams = ref<Map<string, string>>(new Map())
+  const pendingPermissionRequests = new Map<string, PermissionRequestData[]>()
+
+  // Chunks can arrive before the assistant-created event during HMR/replay or
+  // very tight event timing. Keep them until the target message exists.
+  const pendingStreamChunks = new Map<string, Map<string, StreamChunk[]>>()
 
   /** Resolve messageId: use provided value or fallback to activeStreams lookup */
   function resolveMessageId(sessionId: string, messageId?: string): string {
     return (messageId && messageId !== '') ? messageId : (activeStreams.value.get(sessionId) || '')
+  }
+
+  function queuePendingStreamChunk(sessionId: string, messageId: string, chunk: StreamChunk) {
+    let byMessage = pendingStreamChunks.get(sessionId)
+    if (!byMessage) {
+      byMessage = new Map()
+      pendingStreamChunks.set(sessionId, byMessage)
+    }
+    const key = messageId || '__active__'
+    const queued = byMessage.get(key) || []
+    queued.push(chunk)
+    byMessage.set(key, queued)
+  }
+
+  function flushPendingStreamChunks(sessionId: string, messageId: string) {
+    const byMessage = pendingStreamChunks.get(sessionId)
+    if (!byMessage) return
+
+    const chunks = [
+      ...(byMessage.get(messageId) || []),
+      ...(byMessage.get('__active__') || []),
+    ]
+    byMessage.delete(messageId)
+    byMessage.delete('__active__')
+    if (byMessage.size === 0) pendingStreamChunks.delete(sessionId)
+
+    for (const chunk of chunks) {
+      handleStreamChunk({ ...chunk, messageId: chunk.messageId || messageId })
+    }
+  }
+
+  function clearPendingStreamChunks(sessionId: string, messageId?: string) {
+    if (!messageId) {
+      pendingStreamChunks.delete(sessionId)
+      return
+    }
+
+    const byMessage = pendingStreamChunks.get(sessionId)
+    if (!byMessage) return
+    byMessage.delete(messageId)
+    byMessage.delete('__active__')
+    if (byMessage.size === 0) pendingStreamChunks.delete(sessionId)
   }
 
   function resolveStreamingMessage(messages: ChatMessage[], messageId?: string): ChatMessage | undefined {
@@ -339,6 +401,86 @@ export const useChatStore = defineStore('chat', () => {
     triggerRef(sessionMessages)
   }
 
+  function cachePendingPermissionRequest(data: PermissionRequestData): void {
+    const requests = pendingPermissionRequests.get(data.sessionId) || []
+    const existingIndex = requests.findIndex(req => req.requestId === data.requestId)
+    if (existingIndex >= 0) {
+      requests[existingIndex] = data
+    } else {
+      requests.push(data)
+    }
+    pendingPermissionRequests.set(data.sessionId, requests)
+  }
+
+  function findToolCallForPermission(message: ChatMessage, data: PermissionRequestData) {
+    let toolCall = message.toolCalls?.find(tc => tc.id === data.callId)
+    if (!toolCall && data.metadata.command) {
+      toolCall = message.toolCalls?.find(tc =>
+        tc.arguments?.command === data.metadata.command
+      )
+    }
+    return toolCall
+  }
+
+  function applyPermissionRequest(data: PermissionRequestData, cacheIfMissing = true): boolean {
+    const messages = getSessionMessagesRef(data.sessionId)
+    const message = messages.find(m => m.id === data.messageId)
+    if (!message) {
+      if (cacheIfMissing) {
+        cachePendingPermissionRequest(data)
+        console.log('[Chat Store] Cached permission request until message exists:', data.messageId)
+      }
+      return false
+    }
+
+    const toolCall = findToolCallForPermission(message, data)
+    if (!toolCall) {
+      if (cacheIfMissing) {
+        cachePendingPermissionRequest(data)
+        console.log('[Chat Store] Cached permission request until tool call exists:', data.callId)
+      }
+      return false
+    }
+
+    toolCall.permissionId = data.requestId
+    toolCall.canRespond = data.canRespond
+    toolCall.requiresConfirmation = true
+    toolCall.status = 'pending'
+
+    const step = message.steps?.find(s => s.toolCallId === toolCall.id)
+    if (step) {
+      step.status = 'awaiting-confirmation'
+      if (data.metadata && (data.metadata.diff || data.metadata.filePath)) {
+        step.result = JSON.stringify(data.metadata)
+      }
+      if (message.steps) {
+        message.steps = [...message.steps]
+      }
+    }
+
+    triggerRef(sessionMessages)
+    console.log('[Chat Store] Updated tool call with permission request:', toolCall.id, 'canRespond:', data.canRespond)
+    return true
+  }
+
+  function applyPendingPermissionRequests(sessionId: string, messageId: string): void {
+    const requests = pendingPermissionRequests.get(sessionId)
+    if (!requests?.length) return
+
+    const remaining: PermissionRequestData[] = []
+    for (const request of requests) {
+      if (request.messageId !== messageId || !applyPermissionRequest(request, false)) {
+        remaining.push(request)
+      }
+    }
+
+    if (remaining.length > 0) {
+      pendingPermissionRequests.set(sessionId, remaining)
+    } else {
+      pendingPermissionRequests.delete(sessionId)
+    }
+  }
+
   function setSessionPageState(
     sessionId: string,
     page: GetSessionMessagesPageResponse,
@@ -401,8 +543,8 @@ export const useChatStore = defineStore('chat', () => {
    * Handle stream chunk event
    */
   function handleStreamChunk(chunk: StreamChunk) {
-    // 诊断日志：显示所有 tool_input 相关的 chunk
-    if (chunk.type === 'tool_input_start' || chunk.type === 'tool_input_delta') {
+    const debugToolInput = (import.meta as any).env?.VITE_DEBUG_TOOL_INPUT === 'true'
+    if (debugToolInput && (chunk.type === 'tool_input_start' || chunk.type === 'tool_input_delta')) {
       console.log('[Chat Store] handleStreamChunk entry:', {
         type: chunk.type,
         sessionId: chunk.sessionId,
@@ -420,9 +562,14 @@ export const useChatStore = defineStore('chat', () => {
 
     const messages = getSessionMessagesRef(sessionId)
     const resolvedMsgId = resolveMessageId(sessionId, chunk.messageId)
+    if (!resolvedMsgId) {
+      queuePendingStreamChunk(sessionId, '', chunk)
+      return
+    }
+
     const messageIndex = messages.findIndex(m => m.id === resolvedMsgId)
     if (messageIndex === -1) {
-      console.warn('[Chat Store] Message not found for chunk:', resolvedMsgId)
+      queuePendingStreamChunk(sessionId, resolvedMsgId, chunk)
       return
     }
 
@@ -442,16 +589,16 @@ export const useChatStore = defineStore('chat', () => {
         message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
       } else {
         message.content = (message.content || '') + chunk.content
-        const last = parts[parts.length - 1]
-        if (last && last.type === 'text') {
-          last.content += chunk.content
-        } else {
-          appendOrMergeText(parts, chunk.content)
-          message.contentParts = [...parts]
-        }
+        appendOrMergeText(parts, chunk.content, chunk.turnIndex)
+        message.contentParts = [...parts]
       }
     } else if (chunk.type === 'reasoning') {
-      message.reasoning = (message.reasoning || '') + (chunk.reasoning || '')
+      const reasoning = chunk.reasoning || ''
+      message.reasoning = (message.reasoning || '') + reasoning
+      if (reasoning && message.content) {
+        appendOrMergeReasoning(parts, reasoning, chunk.turnIndex)
+        message.contentParts = [...parts]
+      }
     } else if (chunk.type === 'tool_call' || chunk.type === 'tool_result') {
       if (chunk.toolCall) {
         // Merge into the canonical entry in place so any step.toolCall
@@ -459,6 +606,7 @@ export const useChatStore = defineStore('chat', () => {
         const canonical = upsertMessageToolCall(message, chunk.toolCall)
         upsertToolCall(parts, canonical)
         message.contentParts = [...parts]
+        applyPendingPermissionRequests(sessionId, message.id)
       }
     } else if (chunk.type === 'continuation') {
       pushWaiting(parts)
@@ -484,6 +632,7 @@ export const useChatStore = defineStore('chat', () => {
         }
         appendToolCallPlaceholder(parts, placeholder)
         message.contentParts = [...parts]
+        applyPendingPermissionRequests(sessionId, message.id)
       }
     } else if (chunk.type === 'tool_input_delta') {
       // Streaming tool input delta - accumulate args text in-place. The
@@ -505,6 +654,9 @@ export const useChatStore = defineStore('chat', () => {
         // built up the text, so nothing to add here — the content_part exists
         // mainly to anchor data-steps ordering.
         popTrailingTransient(parts)
+        message.contentParts = [...parts]
+      } else if (newPart.type === 'reasoning') {
+        appendReasoningIfMissing(parts, newPart.content)
         message.contentParts = [...parts]
       }
     }
@@ -531,8 +683,11 @@ export const useChatStore = defineStore('chat', () => {
     const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
     const message = resolveStreamingMessage(messages, resolvedMsgId)
     if (message) {
+      flushPendingStreamChunks(sessionId, message.id)
       stopMessageStreaming(message, data.usage)
       setSessionMessages(sessionId, [...messages])
+    } else {
+      clearPendingStreamChunks(sessionId, resolvedMsgId)
     }
 
     // Fold the turn's usage into the session-level token stats so the
@@ -558,6 +713,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionGenerating.value.set(sessionId, false)
     sessionLoading.value.set(sessionId, false)
     activeStreams.value.delete(sessionId)
+    clearPendingStreamChunks(sessionId)
     triggerRef(sessionGenerating)
     triggerRef(sessionLoading)
     triggerRef(activeStreams)
@@ -637,6 +793,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionGenerating.value.set(sessionId, false)
     sessionLoading.value.set(sessionId, false)
     activeStreams.value.delete(sessionId)
+    clearPendingStreamChunks(sessionId)
     triggerRef(sessionGenerating)
     triggerRef(sessionLoading)
     triggerRef(activeStreams)
@@ -676,6 +833,10 @@ export const useChatStore = defineStore('chat', () => {
     // mutations from the chunk reducer / MessageList handlers propagate to
     // both consumers without manual mirror writes.
     linkStepsToToolCalls(message)
+    const linkedStep = message.steps.find(s => s.id === step.id || s.toolCallId === step.toolCallId)
+    if (linkedStep?.toolCall?.requiresConfirmation) {
+      linkedStep.status = 'awaiting-confirmation'
+    }
     message.steps = [...message.steps]
 
     // Add steps placeholder to contentParts if needed
@@ -684,6 +845,8 @@ export const useChatStore = defineStore('chat', () => {
         message.contentParts = [...message.contentParts]
       }
     }
+
+    applyPendingPermissionRequests(sessionId, message.id)
 
     setSessionMessages(sessionId, [...messages])
   }
@@ -1160,6 +1323,21 @@ export const useChatStore = defineStore('chat', () => {
     triggerRef(sessionGenerating)
     triggerRef(sessionLoading)
     bumpScrollVersion(sessionId)
+    flushPendingStreamChunks(sessionId, message.id)
+  }
+
+  /**
+   * Handle stream:start event — establish active assistant id as early as possible.
+   */
+  function handleStreamStarted(data: { sessionId: string; messageId: string }) {
+    const { sessionId, messageId } = data
+    if (!sessionId || !messageId) return
+
+    activeStreams.value.set(sessionId, messageId)
+    sessionGenerating.value.set(sessionId, true)
+    triggerRef(activeStreams)
+    triggerRef(sessionGenerating)
+    flushPendingStreamChunks(sessionId, messageId)
   }
 
   /**
@@ -1214,50 +1392,7 @@ export const useChatStore = defineStore('chat', () => {
     /** Whether this channel can respond (true for targetChannel match) */
     canRespond: boolean
   }) {
-    const messages = getSessionMessagesRef(data.sessionId)
-    const message = messages.find(m => m.id === data.messageId)
-    if (!message) {
-      console.log('[Chat Store] Message not found for permission request, messageId:', data.messageId)
-      return
-    }
-
-    // Find the tool call by callId or by matching command in metadata
-    let toolCall = message.toolCalls?.find(tc => tc.id === data.callId)
-    if (!toolCall && data.metadata.command) {
-      toolCall = message.toolCalls?.find(tc =>
-        tc.arguments?.command === data.metadata.command
-      )
-    }
-
-    if (toolCall) {
-      // Store permission ID and canRespond flag on tool call
-      toolCall.permissionId = data.requestId
-      toolCall.canRespond = data.canRespond
-      toolCall.requiresConfirmation = true
-      toolCall.status = 'pending'
-
-      // Update corresponding step (step-own fields only; the step.toolCall
-      // mirror is the same reference as `toolCall` above).
-      const step = message.steps?.find(s => s.toolCallId === toolCall!.id)
-      if (step) {
-        step.status = 'awaiting-confirmation'
-        // Store metadata from permission request (contains diff for edit tool)
-        if (data.metadata && (data.metadata.diff || data.metadata.filePath)) {
-          step.result = JSON.stringify(data.metadata)
-        }
-        // Force reactivity
-        if (message.steps) {
-          message.steps = [...message.steps]
-        }
-      }
-
-      // Trigger reactivity for the session messages
-      triggerRef(sessionMessages)
-
-      console.log('[Chat Store] Updated tool call with permission request:', toolCall.id, 'canRespond:', data.canRespond)
-    } else {
-      console.log('[Chat Store] No matching tool call found for permission request')
-    }
+    applyPermissionRequest(data)
   }
 
   return {
@@ -1286,6 +1421,7 @@ export const useChatStore = defineStore('chat', () => {
 
     // Event handlers (called by IPC Hub)
     handleStreamChunk,
+    handleStreamStarted,
     handleStreamComplete,
     handleStreamError,
     handleStepAdded,

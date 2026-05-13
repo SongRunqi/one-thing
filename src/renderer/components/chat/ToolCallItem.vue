@@ -10,6 +10,7 @@
     @toggle-expand="isExpanded = !isExpanded"
     @confirm="(tc, response) => emit('confirm', tc, response)"
     @reject="(tc) => emit('reject', tc)"
+    @open-file="(filePath) => emit('open-file', filePath)"
   />
 </template>
 
@@ -27,6 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   confirm: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
   reject: [toolCall: ToolCall]
+  'open-file': [filePath: string]
 }>()
 
 const isExpanded = ref(false)

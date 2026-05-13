@@ -201,6 +201,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
+import { useChatStore } from '@/stores/chat'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
 import DiffOverlay from '@/components/chat/DiffOverlay.vue'
 
@@ -240,6 +241,7 @@ const emit = defineEmits<{
 }>()
 
 const sessionsStore = useSessionsStore()
+const chatStore = useChatStore()
 
 // Panel refs for focusing input
 const panelRefs = ref<Record<string, InstanceType<typeof ChatWindow> | null>>({})
@@ -451,12 +453,24 @@ async function jumpToMessage(sessionId: string, messageId: string) {
     await sessionsStore.switchSession(sessionId)
     await nextTick()
   }
+  if (sessionsStore.currentSessionId !== sessionId) return false
 
   const panel = panels.value.find(item => item.sessionId === sessionId) || panels.value[0]
   if (!panel) return false
 
   panel.sessionId = sessionId
   await nextTick()
+
+  const hasLoadedMessage = () => {
+    return (chatStore.sessionMessages.get(sessionId) || []).some(message => message.id === messageId)
+  }
+
+  if (!hasLoadedMessage()) {
+    const loaded = await chatStore.loadMessagesAround(sessionId, messageId)
+    if (!loaded) return false
+    await nextTick()
+  }
+
   return panelRefs.value[panel.id]?.scrollToMessage?.(messageId) ?? false
 }
 
@@ -726,6 +740,7 @@ onUnmounted(() => {
   justify-content: center;
   background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
   position: relative;
+  -webkit-app-region: drag;
 }
 
 .empty-state-content {

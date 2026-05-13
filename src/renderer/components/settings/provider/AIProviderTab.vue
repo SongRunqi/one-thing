@@ -196,28 +196,6 @@
             </div>
           </div>
 
-          <!-- Network Interface (applies to all providers incl. OAuth) -->
-          <div class="settings-group network-group">
-            <div class="settings-row">
-              <span class="row-label">Network Interface</span>
-              <select
-                class="row-input row-select"
-                :value="settings.ai.providers?.[providerSettings.viewingProvider.value]?.localAddress ?? ''"
-                @change="providerSettings.updateProviderLocalAddress(($event.target as HTMLSelectElement).value)"
-              >
-                <option value="">
-                  System default
-                </option>
-                <option
-                  v-for="iface in providerSettings.networkInterfaces.value"
-                  :key="`${iface.name}-${iface.address}`"
-                  :value="iface.address"
-                >
-                  {{ iface.name }} — {{ iface.address }} ({{ iface.family }})
-                </option>
-              </select>
-            </div>
-          </div>
         </section>
 
         <!-- Models Section -->

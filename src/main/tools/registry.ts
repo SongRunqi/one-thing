@@ -375,6 +375,7 @@ export async function executeTool(
         },
         onStepStart: context.onStepStart,
         onStepComplete: context.onStepComplete,
+        beforeSideEffect: context.beforeSideEffect,
       }
 
       const result = await staticTool.execute(parseResult.data, toolContext)
@@ -426,6 +427,7 @@ export async function executeTool(
         },
         onStepStart: context.onStepStart,
         onStepComplete: context.onStepComplete,
+        beforeSideEffect: context.beforeSideEffect,
       }
 
       const result = await initResult.execute(parseResult.data, toolContext)

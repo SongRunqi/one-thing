@@ -1,11 +1,22 @@
 import { ref, computed, type Ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { nextTick } from 'vue'
+import type { EditorHandle } from '@/editor'
+
+export function isSelectionOnFirstLine(value: string, selectionStart: number): boolean {
+  if (!value) return true
+  return !value.substring(0, selectionStart).includes('\n')
+}
+
+export function isSelectionOnLastLine(value: string, selectionStart: number): boolean {
+  if (!value) return true
+  return !value.substring(selectionStart).includes('\n')
+}
 
 export function useInputHistory(
   effectiveSessionId: Ref<string | undefined>,
   messageInput: Ref<string>,
-  textareaRef: Ref<HTMLTextAreaElement | null>,
+  editorRef: Ref<EditorHandle | null>,
   adjustHeight: () => void,
 ) {
   const chatStore = useChatStore()
@@ -25,15 +36,15 @@ export function useInputHistory(
   })
 
   function isCursorOnFirstLine(): boolean {
-    const textarea = textareaRef.value
-    if (!textarea || !textarea.value) return true
-    return !textarea.value.substring(0, textarea.selectionStart).includes('\n')
+    const editor = editorRef.value
+    if (!editor || !editor.getValue()) return true
+    return isSelectionOnFirstLine(editor.getValue(), editor.getSelection().from)
   }
 
   function isCursorOnLastLine(): boolean {
-    const textarea = textareaRef.value
-    if (!textarea || !textarea.value) return true
-    return !textarea.value.substring(textarea.selectionStart).includes('\n')
+    const editor = editorRef.value
+    if (!editor || !editor.getValue()) return true
+    return isSelectionOnLastLine(editor.getValue(), editor.getSelection().from)
   }
 
   function resetHistoryNavigation() {
@@ -68,9 +79,7 @@ export function useInputHistory(
 
     nextTick(() => {
       adjustHeight()
-      if (textareaRef.value) {
-        textareaRef.value.selectionStart = textareaRef.value.selectionEnd = textareaRef.value.value.length
-      }
+      editorRef.value?.setSelection(messageInput.value.length)
     })
     return true
   }

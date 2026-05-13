@@ -8,7 +8,7 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { ProviderDefinition } from '../types.js'
 import type { ModelInfo } from '../../../shared/ipc.js'
-import { createBoundFetch } from '../bound-fetch.js'
+import { createBoundFetch, createRequiredAppFetch } from '../bound-fetch.js'
 
 // Cache for Copilot completion tokens
 interface CopilotToken {
@@ -38,7 +38,7 @@ async function getCopilotCompletionToken(githubAccessToken: string): Promise<str
   }
 
   // Request new Copilot token
-  const response = await fetch('https://api.github.com/copilot_internal/v2/token', {
+  const response = await createRequiredAppFetch()('https://api.github.com/copilot_internal/v2/token', {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${githubAccessToken}`,
@@ -80,7 +80,7 @@ export async function fetchCopilotModels(githubAccessToken: string): Promise<Mod
     const copilotToken = await getCopilotCompletionToken(githubAccessToken)
 
     // Fetch models from Copilot API
-    const response = await fetch('https://api.githubcopilot.com/models', {
+    const response = await createRequiredAppFetch()('https://api.githubcopilot.com/models', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${copilotToken}`,
@@ -228,7 +228,7 @@ const githubCopilotProvider: ProviderDefinition = {
     // Models: GitHub Copilot provides its own model list
   },
 
-  create: ({ apiKey, oauthToken, localAddress }) => {
+  create: ({ apiKey, oauthToken }) => {
     // Get GitHub access token from either:
     // 1. oauthToken.accessToken (from registry async path)
     // 2. apiKey (from chat.ts which fetches OAuth token and passes it as apiKey)
@@ -254,7 +254,7 @@ const githubCopilotProvider: ProviderDefinition = {
         'User-Agent': 'onething/1.0',
         'OpenAI-Intent': 'conversation-panel',
       },
-      fetch: createBoundFetch(localAddress),
+      fetch: createBoundFetch(),
     })
 
     return {

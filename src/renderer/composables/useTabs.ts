@@ -6,17 +6,33 @@
  */
 
 import { ref, computed, watch } from 'vue'
-import type { Tab, ChatTab, FileTab } from '@/types/tabs'
+import type { Tab, ChatTab, FileTab, WorkbenchTab } from '@/types/tabs'
 
 let nextId = 0
 function genTabId(): string {
   return `tab-${Date.now()}-${++nextId}`
 }
 
+function normalizePath(path: string): string {
+  if (path === '/') return '/'
+  return path.replace(/\/+$/, '')
+}
+
+function basename(path: string): string {
+  return normalizePath(path).split('/').filter(Boolean).pop() || path
+}
+
+function parentDir(filePath: string): string {
+  return normalizePath(filePath).split('/').slice(0, -1).join('/') || '/'
+}
+
 export interface SerializedTab {
-  type: 'chat' | 'file'
+  type: 'chat' | 'file' | 'workbench'
   sessionId?: string
   filePath?: string
+  initialFilePath?: string
+  activeFilePath?: string
+  workspaceRoot?: string
   title?: string
 }
 
@@ -43,32 +59,41 @@ export function useTabs(initialSessionId: string) {
     }
   }
 
-  function addFileTab(filePath: string, maxTabs = 15): FileTab {
+  function addWorkbenchTab(filePath: string, workspaceRoot = parentDir(filePath), maxTabs = 15): WorkbenchTab {
+    const root = normalizePath(workspaceRoot)
     const existing = tabs.value.find(
-      t => t.type === 'file' && t.filePath === filePath
-    ) as FileTab | undefined
+      t => t.type === 'workbench' && t.workspaceRoot === root
+    ) as WorkbenchTab | undefined
     if (existing) {
+      existing.initialFilePath = filePath
+      existing.activeFilePath = filePath
       activeTabId.value = existing.id
+      persistTabs()
       return existing
     }
 
-    const fileTabs = tabs.value.filter(t => t.type === 'file')
-    if (tabs.value.length >= maxTabs && fileTabs.length > 0) {
-      const oldest = fileTabs[0]
+    const workbenchTabs = tabs.value.filter(t => t.type === 'workbench' || t.type === 'file')
+    if (tabs.value.length >= maxTabs && workbenchTabs.length > 0) {
+      const oldest = workbenchTabs[0]
       removeTab(oldest.id)
     }
 
-    const basename = filePath.split('/').pop() || filePath
-    const tab: FileTab = {
+    const tab: WorkbenchTab = {
       id: genTabId(),
-      type: 'file',
-      filePath,
-      title: basename,
+      type: 'workbench',
+      workspaceRoot: root,
+      initialFilePath: filePath,
+      activeFilePath: filePath,
+      title: basename(root),
     }
     tabs.value.push(tab)
     activeTabId.value = tab.id
     persistTabs()
     return tab
+  }
+
+  function addFileTab(filePath: string, maxTabs = 15): WorkbenchTab {
+    return addWorkbenchTab(filePath, parentDir(filePath), maxTabs)
   }
 
   function removeTab(id: string) {
@@ -118,8 +143,25 @@ export function useTabs(initialSessionId: string) {
       if (t.type === 'chat') {
         return { type: 'chat' as const, sessionId: (t as ChatTab).sessionId }
       }
+      if (t.type === 'workbench') {
+        const wt = t as WorkbenchTab
+        return {
+          type: 'workbench' as const,
+          workspaceRoot: wt.workspaceRoot,
+          initialFilePath: wt.initialFilePath,
+          activeFilePath: wt.activeFilePath,
+          title: wt.title,
+        }
+      }
       const ft = t as FileTab
-      return { type: 'file' as const, filePath: ft.filePath, title: ft.title }
+      const workspaceRoot = parentDir(ft.filePath)
+      return {
+        type: 'workbench' as const,
+        workspaceRoot,
+        initialFilePath: ft.filePath,
+        activeFilePath: ft.filePath,
+        title: basename(workspaceRoot),
+      }
     })
     const activeIdx = tabs.value.findIndex(t => t.id === activeTabId.value)
     return { tabs: serialized, activeTabIndex: Math.max(0, activeIdx) }
@@ -130,8 +172,35 @@ export function useTabs(initialSessionId: string) {
     for (const s of saved) {
       if (s.type === 'chat') {
         restored.push({ id: genTabId(), type: 'chat', sessionId: s.sessionId || initialSessionId })
+      } else if (s.type === 'workbench' && (s.initialFilePath || s.activeFilePath || s.filePath)) {
+        const initialFilePath = s.initialFilePath || s.activeFilePath || s.filePath!
+        const workspaceRoot = normalizePath(s.workspaceRoot || parentDir(initialFilePath))
+        restored.push({
+          id: genTabId(),
+          type: 'workbench',
+          workspaceRoot,
+          initialFilePath,
+          activeFilePath: s.activeFilePath || initialFilePath,
+          title: s.title || basename(workspaceRoot),
+        })
       } else if (s.type === 'file' && s.filePath) {
-        restored.push({ id: genTabId(), type: 'file', filePath: s.filePath, title: s.title || s.filePath.split('/').pop() || '' })
+        const workspaceRoot = normalizePath(s.workspaceRoot || parentDir(s.filePath))
+        const existing = restored.find(
+          tab => tab.type === 'workbench' && tab.workspaceRoot === workspaceRoot
+        ) as WorkbenchTab | undefined
+        if (existing) {
+          existing.initialFilePath = s.filePath
+          existing.activeFilePath = s.filePath
+        } else {
+          restored.push({
+            id: genTabId(),
+            type: 'workbench',
+            workspaceRoot,
+            initialFilePath: s.filePath,
+            activeFilePath: s.filePath,
+            title: basename(workspaceRoot),
+          })
+        }
       }
     }
     if (restored.length === 0 || !restored.some(t => t.type === 'chat')) {
@@ -156,6 +225,7 @@ export function useTabs(initialSessionId: string) {
     chatTabs,
     setActiveTab,
     addFileTab,
+    addWorkbenchTab,
     removeTab,
     moveTab,
     updateChatSession,

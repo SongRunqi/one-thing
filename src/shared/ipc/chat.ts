@@ -23,7 +23,8 @@ export interface ContextVariable {
 
 // Content part types for sequential display
 export type ContentPart =
-  | { type: 'text'; content: string }
+  | { type: 'text'; content: string; turnIndex?: number }
+  | { type: 'reasoning'; content: string; turnIndex?: number }
   | { type: 'tool-call'; toolCalls: ToolCall[] }
   | { type: 'waiting' }                          // Waiting for AI continuation after tool call
   | { type: 'loading-memory' }                   // Loading memory before generation begins

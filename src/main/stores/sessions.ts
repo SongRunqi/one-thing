@@ -55,6 +55,7 @@ const sessionCache = new LRUCache<string, ChatSession>(SESSION_CACHE_SIZE)
 // 同一 session 的多次写入在 promise 链上串行化,避免旧异步写盖新数据。
 // 关键生命周期(finalize / delete / 应用退出)会强制 flush。
 const SAVE_THROTTLE_MS = 300
+const SQLITE_STREAM_SYNC_THROTTLE_MS = 1000
 
 interface PendingSave {
   timer: NodeJS.Timeout | null
@@ -62,6 +63,7 @@ interface PendingSave {
 }
 
 const pendingSaves = new Map<string, PendingSave>()
+const pendingSqliteMessageSyncs = new Map<string, NodeJS.Timeout>()
 
 function getPendingSave(sessionId: string): PendingSave {
   let p = pendingSaves.get(sessionId)
@@ -125,12 +127,17 @@ export async function flushAllPendingSaves(): Promise<void> {
  */
 function cancelPendingSave(sessionId: string): void {
   const p = pendingSaves.get(sessionId)
-  if (!p) return
-  if (p.timer) {
+  if (p?.timer) {
     clearTimeout(p.timer)
     p.timer = null
   }
   pendingSaves.delete(sessionId)
+  for (const [key, timer] of pendingSqliteMessageSyncs) {
+    if (key.startsWith(`${sessionId}:`)) {
+      clearTimeout(timer)
+      pendingSqliteMessageSyncs.delete(key)
+    }
+  }
 }
 
 /**
@@ -489,6 +496,28 @@ function syncMessageToSqliteIfReady(session: ChatSession, message: ChatMessage):
   try {
     const seq = session.messages.findIndex(item => item.id === message.id) + 1
     if (seq <= 0) return
+
+    const syncKey = `${session.id}:${message.id}`
+    const pendingTimer = pendingSqliteMessageSyncs.get(syncKey)
+    if (message.isStreaming) {
+      if (!pendingTimer) {
+        pendingSqliteMessageSyncs.set(syncKey, setTimeout(() => {
+          pendingSqliteMessageSyncs.delete(syncKey)
+          const latestSession = sessionCache.get(session.id)
+          const latestMessage = latestSession?.messages.find(item => item.id === message.id)
+          if (latestSession && latestMessage) {
+            syncMessageToSqliteIfReady(latestSession, latestMessage)
+          }
+        }, SQLITE_STREAM_SYNC_THROTTLE_MS))
+      }
+      return
+    }
+
+    if (pendingTimer) {
+      clearTimeout(pendingTimer)
+      pendingSqliteMessageSyncs.delete(syncKey)
+    }
+
     if (isSqliteSessionReady(session.id)) {
       syncSqliteMessage(session.id, message, seq)
       syncSqliteSessionMetadata(session)
@@ -833,6 +862,25 @@ export function updateSessionTokenUsage(
   } catch (error) {
     console.error('[Sessions] Failed to sync usage to SQLite:', error)
   }
+}
+
+export function updateSessionContextSize(sessionId: string, contextSize: number): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  session.lastInputTokens = Math.max(0, contextSize)
+  session.contextSize = Math.max(0, contextSize)
+
+  saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
+  try {
+    if (isSqliteSessionReady(sessionId)) syncSqliteSessionUsage(session)
+    else scheduleSessionSqliteMigration(sessionId)
+  } catch (error) {
+    console.error('[Sessions] Failed to sync context size to SQLite:', error)
+  }
+
+  return true
 }
 
 // Get session token usage

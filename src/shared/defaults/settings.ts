@@ -8,6 +8,8 @@ import type {
   AppSettings,
   GeneralSettings,
   ChatSettings,
+  EditorSettings,
+  NetworkSettings,
 } from '../ipc/settings.js'
 import type { ProviderConfig, AISettings } from '../ipc/providers.js'
 import type { ToolSettings } from '../ipc/tools.js'
@@ -19,6 +21,14 @@ import type { ToolSettings } from '../ipc/tools.js'
 export const DEFAULT_TEMPERATURE = 0.7
 export const DEFAULT_MAX_TOKENS = 4096
 export const DEFAULT_CONTEXT_LENGTH = 128000
+
+export const DEFAULT_EDITOR_SETTINGS: Required<EditorSettings> = {
+  tabSize: 2,
+  lineWrapping: true,
+  syntaxHighlighting: true,
+  completionEnabled: true,
+  composerMaxHeight: 200,
+}
 
 // ============================================================================
 // Provider Configurations
@@ -118,6 +128,9 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     closeChat: { key: 'w', metaKey: true },
     toggleSidebar: { key: 'b', metaKey: true },
     focusInput: { key: '/' },
+    searchEverywhere: { key: 'k', metaKey: true },
+    toggleTodoPlanWindow: { key: 't', metaKey: true, shiftKey: true },
+    toggleTodoPlan: { key: 't', metaKey: true, altKey: true },
   },
   quickCommands: [
     { commandId: 'cd', enabled: true },
@@ -131,6 +144,14 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     useObsidianConfig: true,
     format: 'YYYY-MM-DD',
   },
+  todoPlan: {
+    enabled: true,
+    directory: '',
+    cardHeight: 360,
+    pinned: false,
+    docked: false,
+  },
+  editor: DEFAULT_EDITOR_SETTINGS,
 }
 
 // ============================================================================
@@ -145,6 +166,9 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   frequencyPenalty: 0,
   branchOpenInSplitScreen: true,
   chatFontSize: 14,
+  contextCompactEnabled: true,
+  contextCompactThreshold: 85,
+  contextCompactKeepRecentTurns: 6,
 }
 
 // ============================================================================
@@ -166,6 +190,14 @@ export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
   },
 }
 
+export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
+  proxy: {
+    enabled: false,
+    url: '',
+    bypassRules: 'localhost;127.0.0.1;::1;*.local',
+  },
+}
+
 // ============================================================================
 // Complete Default Settings Factory
 // ============================================================================
@@ -181,6 +213,7 @@ export function createDefaultSettings(): AppSettings {
     general: JSON.parse(JSON.stringify(DEFAULT_GENERAL_SETTINGS)),
     chat: JSON.parse(JSON.stringify(DEFAULT_CHAT_SETTINGS)),
     tools: JSON.parse(JSON.stringify(DEFAULT_TOOL_SETTINGS)),
+    network: JSON.parse(JSON.stringify(DEFAULT_NETWORK_SETTINGS)),
   }
 }
 
@@ -215,10 +248,28 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         ...defaults.general.dailyNotes,
         ...settings.general?.dailyNotes,
       },
+      todoPlan: {
+        ...defaults.general.todoPlan,
+        ...settings.general?.todoPlan,
+      },
+      editor: normalizeEditorSettings(settings.general?.editor),
     },
     chat: {
       ...defaults.chat,
       ...settings.chat,
+      contextCompactEnabled: settings.chat?.contextCompactEnabled ?? DEFAULT_CHAT_SETTINGS.contextCompactEnabled,
+      contextCompactThreshold: clampNumber(
+        settings.chat?.contextCompactThreshold,
+        50,
+        100,
+        DEFAULT_CHAT_SETTINGS.contextCompactThreshold ?? 85,
+      ),
+      contextCompactKeepRecentTurns: clampNumber(
+        settings.chat?.contextCompactKeepRecentTurns,
+        1,
+        20,
+        DEFAULT_CHAT_SETTINGS.contextCompactKeepRecentTurns ?? 6,
+      ),
     },
     tools: {
       ...defaults.tools,
@@ -228,9 +279,52 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         ...settings.tools?.bash,
       },
     },
+    network: {
+      ...defaults.network!,
+      ...settings.network,
+      proxy: {
+        ...defaults.network!.proxy,
+        ...settings.network?.proxy,
+      },
+    },
     mcp: settings.mcp,
     skills: settings.skills,
   }
 
+  stripLegacyProviderLocalAddress(merged.ai.providers)
+  if (Array.isArray(merged.ai.customProviders)) {
+    for (const provider of merged.ai.customProviders) {
+      delete (provider as any).localAddress
+    }
+  }
+
   return merged as AppSettings
+}
+
+export function normalizeEditorSettings(settings?: EditorSettings): Required<EditorSettings> {
+  return {
+    tabSize: clampNumber(settings?.tabSize, 1, 8, DEFAULT_EDITOR_SETTINGS.tabSize),
+    lineWrapping: settings?.lineWrapping ?? DEFAULT_EDITOR_SETTINGS.lineWrapping,
+    syntaxHighlighting: settings?.syntaxHighlighting ?? DEFAULT_EDITOR_SETTINGS.syntaxHighlighting,
+    completionEnabled: settings?.completionEnabled ?? DEFAULT_EDITOR_SETTINGS.completionEnabled,
+    composerMaxHeight: clampNumber(
+      settings?.composerMaxHeight,
+      80,
+      640,
+      DEFAULT_EDITOR_SETTINGS.composerMaxHeight,
+    ),
+  }
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.max(min, Math.min(max, Math.round(value)))
+}
+
+function stripLegacyProviderLocalAddress(providers: Record<string, unknown>): void {
+  for (const config of Object.values(providers)) {
+    if (config && typeof config === 'object') {
+      delete (config as any).localAddress
+    }
+  }
 }

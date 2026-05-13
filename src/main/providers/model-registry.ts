@@ -10,6 +10,7 @@
 import type { OpenRouterModel } from '../../shared/ipc.js'
 import type { ModelCapabilityOverride, ProviderConfig, ModelCapabilityEntry } from '../../shared/ipc/providers.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
+import { createRequiredAppFetch } from './bound-fetch.js'
 
 // ============================================================================
 // Constants
@@ -185,7 +186,7 @@ function sortModels(models: OpenRouterModel[]): OpenRouterModel[] {
 async function fetchModelsDevData(): Promise<ModelsDevResponse> {
   console.log('[ModelRegistry] Fetching from models.dev...')
 
-  const response = await fetch(MODELS_DEV_API, {
+  const response = await createRequiredAppFetch()(MODELS_DEV_API, {
     headers: { 'Accept': 'application/json', 'User-Agent': 'onething-electron/1.0' },
     signal: AbortSignal.timeout(15000),
   })

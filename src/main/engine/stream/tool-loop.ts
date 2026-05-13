@@ -4,7 +4,7 @@
  */
 
 import * as store from '../../store.js'
-import type { SkillDefinition, ToolCall, ChatMessage } from '../../../shared/ipc.js'
+import type { SkillDefinition, ToolCall, ChatMessage, ContentPart } from '../../../shared/ipc.js'
 import type { AIMessageContent, ToolChatMessage } from '../../providers/index.js'
 import {
   streamChatResponseWithTools,
@@ -29,10 +29,11 @@ import type { StreamChunkWithTools } from '../../providers/index.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import { getEventBus } from '../../events/index.js'
 import { sendUIMessageFinish } from './stream-helpers.js'
-import { formatMessagesForLog, buildSystemPrompt, buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
+import { formatMessagesForLog, buildSystemPrompt, buildHistoryMessages, sanitizeToolResultForAI, type HistoryMessage } from './message-helpers.js'
 import { getTextFromContent } from './message-helpers.js'
 import { getProviderApiType } from './provider-helpers.js'
 import { executeToolAndUpdate } from './tool-execution.js'
+import { OrderedSideEffectQueue, needsOrderedSideEffectGate } from './tool-execution-order.js'
 import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages } from './chat-logger.js'
 import { buildContextVariablesPromptText } from '../../variables/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
@@ -59,8 +60,15 @@ interface TurnState {
   toolCalls: ToolCall[]
   content: { value: string }
   reasoning: { value: string }
+  orderedParts: ContentPart[]
   finishReason: string
   usage?: { inputTokens: number; outputTokens: number; totalTokens: number }
+}
+
+interface ToolExecutionJob {
+  toolCall: ToolCall
+  promise: Promise<void>
+  settled: boolean
 }
 
 /**
@@ -71,9 +79,23 @@ function createTurnState(): TurnState {
     toolCalls: [],
     content: { value: '' },
     reasoning: { value: '' },
+    orderedParts: [],
     finishReason: 'unknown',
     usage: undefined,
   }
+}
+
+function appendOrderedPart(parts: ContentPart[], part: ContentPart): void {
+  const last = parts[parts.length - 1]
+  if (part.type === 'text' && last?.type === 'text' && last.turnIndex === part.turnIndex) {
+    last.content += part.content
+    return
+  }
+  if (part.type === 'reasoning' && last?.type === 'reasoning' && last.turnIndex === part.turnIndex) {
+    last.content += part.content
+    return
+  }
+  parts.push(part)
 }
 
 /**
@@ -89,14 +111,13 @@ function persistTurnContentParts(
   // Add contentParts for this turn to enable proper interleaving of text and steps
   // Note: IPC messages for content_part are sent earlier (before tool execution) for proper ordering
   // Here we only persist to store and send IPC for turns WITHOUT tool calls
-  if (turnState.content.value) {
-    store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, {
-      type: 'text',
-      content: turnState.content.value,
-    })
-    // Only send IPC if no tool calls (otherwise already sent before tool execution)
+  for (const part of turnState.orderedParts) {
+    store.addMessageContentPart(ctx.sessionId, ctx.assistantMessageId, part)
+    // Only send IPC if no tool calls (otherwise already sent before tool execution).
+    // Text/reasoning deltas already updated the live renderer; these low-frequency
+    // parts are mainly persisted ordering anchors.
     if (turnState.toolCalls.length === 0) {
-      emitter.sendContentPart({ type: 'text', content: turnState.content.value })
+      emitter.sendContentPart(part)
     }
   }
 
@@ -142,7 +163,7 @@ function buildContinuationMessages(
       type: 'tool-result' as const,
       toolCallId: tc.id,
       toolName: getAIToolName(tc.toolId),
-      result: tc.status === 'completed' ? tc.result : { error: tc.error },
+      result: tc.status === 'completed' ? sanitizeToolResultForAI(tc.result) : { error: tc.error },
     })),
   }
   conversationMessages.push(toolResultMsg)
@@ -314,10 +335,10 @@ export async function runStream(
       currentTurn++
       assistantTurn++
       const turn = createTurnState()
-      let visibleToolInputId: string | undefined
-      const bufferedToolChunks = new Map<string, StreamChunkWithTools[]>()
-      const bufferedToolOrder: string[] = []
       const executedToolCallIds = new Set<string>()
+      const toolExecutionJobs: ToolExecutionJob[] = []
+      const sideEffectQueue = new OrderedSideEffectQueue()
+      let sentToolContentParts = false
 
       logTurnStart(currentTurn)
 
@@ -469,7 +490,6 @@ export async function runStream(
         baseUrl: ctx.providerConfig.baseUrl,
         model,
         apiType,
-        localAddress: ctx.providerConfig.localAddress,
       },
       conversationMessages,
       toolsForAI,
@@ -483,147 +503,114 @@ export async function runStream(
 
     let turnUsage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined
 
-    const getChunkToolCallId = (chunk: StreamChunkWithTools): string | undefined => {
-      if (chunk.type === 'tool-input-start') return chunk.toolInputStart?.toolCallId
-      if (chunk.type === 'tool-input-delta') return chunk.toolInputDelta?.toolCallId
-      if (chunk.type === 'tool-input-end') return chunk.toolInputEnd?.toolCallId
-      if (chunk.type === 'tool-call') return chunk.toolCall?.toolCallId
-      return undefined
-    }
-
-    const bufferToolChunk = (toolCallId: string, chunk: StreamChunkWithTools): void => {
-      if (!bufferedToolChunks.has(toolCallId)) {
-        bufferedToolChunks.set(toolCallId, [])
-        bufferedToolOrder.push(toolCallId)
+    const sendToolContentPartsOnce = (): void => {
+      if (sentToolContentParts) return
+      sentToolContentParts = true
+      for (const part of turn.orderedParts) {
+        if (part.type === 'text') {
+          console.log(`[Stream] Sending content_part: text (${part.content.length} chars) before first tool`)
+        }
+        emitter.sendContentPart(part)
       }
-      bufferedToolChunks.get(toolCallId)!.push(chunk)
+      console.log(`[Stream] Sending content_part: data-steps turn=${currentTurn}`)
+      emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
     }
 
-    const processToolChunk = async (chunk: StreamChunkWithTools): Promise<boolean> => {
+    const startToolExecution = (
+      toolCall: ToolCall,
+      toolCallData: { toolName: string; args: Record<string, any> },
+      existingStepId?: string,
+    ): void => {
+      if (executedToolCallIds.has(toolCall.id)) return
+
+      sendToolContentPartsOnce()
+      turn.toolCalls.push(toolCall)
+      executedToolCallIds.add(toolCall.id)
+
+      const gate = needsOrderedSideEffectGate(toolCallData.toolName)
+        ? sideEffectQueue.createGate()
+        : undefined
+
+      const job: ToolExecutionJob = {
+        toolCall,
+        settled: false,
+        promise: Promise.resolve(),
+      }
+
+      job.promise = (async () => {
+        try {
+          await executeToolAndUpdate(ctx, toolCall, toolCallData, processor.toolCalls, enabledSkills, currentTurn, existingStepId, {
+            beforeSideEffect: gate?.beforeSideEffect,
+          })
+        } catch (err) {
+          console.error('[ToolLoop] tool execution job error:', err)
+        } finally {
+          gate?.release()
+          job.settled = true
+        }
+      })()
+
+      toolExecutionJobs.push(job)
+    }
+
+    const processToolChunk = (chunk: StreamChunkWithTools): void => {
       if (chunk.type === 'tool-input-start' && chunk.toolInputStart) {
         const toolCallId = chunk.toolInputStart.toolCallId
-        if (visibleToolInputId && visibleToolInputId !== toolCallId) {
-          bufferToolChunk(toolCallId, chunk)
-          return false
-        }
-        visibleToolInputId = toolCallId
         processor.handleToolInputStart(
           toolCallId,
           chunk.toolInputStart.toolName,
           currentTurn  // Pass turnIndex for proper contentParts ordering
         )
-        return false
+        return
       }
 
       if (chunk.type === 'tool-input-delta' && chunk.toolInputDelta) {
-        const toolCallId = chunk.toolInputDelta.toolCallId
-        if (visibleToolInputId && visibleToolInputId !== toolCallId) {
-          bufferToolChunk(toolCallId, chunk)
-          return false
-        }
         processor.handleToolInputDelta(
-          toolCallId,
+          chunk.toolInputDelta.toolCallId,
           chunk.toolInputDelta.argsTextDelta
         )
-        return false
+        return
       }
 
       if (chunk.type === 'tool-call' && chunk.toolCall) {
         const toolCallId = chunk.toolCall.toolCallId
         if (executedToolCallIds.has(toolCallId)) {
-          return false
+          return
         }
-        if (visibleToolInputId && visibleToolInputId !== toolCallId) {
-          bufferToolChunk(toolCallId, chunk)
-          return false
-        }
-
-        visibleToolInputId = toolCallId
 
         // Get the step ID before handleToolCallChunk (which may clear the buffer)
         const existingStepId = processor.getStepIdForToolCall(toolCallId)
 
         const toolCall = processor.handleToolCallChunk(chunk.toolCall)
 
-        // Send data-steps placeholder BEFORE executing the first tool of this turn
-        // This ensures proper ordering: text -> data-steps -> STEP_ADDED events
-        if (turn.toolCalls.length === 0) {
-          if (turn.content.value) {
-            console.log(`[Stream] Sending content_part: text (${turn.content.value.length} chars) before first tool`)
-            emitter.sendContentPart({ type: 'text', content: turn.content.value })
-          }
-          console.log(`[Stream] Sending content_part: data-steps turn=${currentTurn}`)
-          emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
-        }
-
-        turn.toolCalls.push(toolCall)
-
         // Always execute tools - the tool will decide if it needs confirmation
         // by returning requiresConfirmation: true (e.g., bash for dangerous commands)
         // Pass the resolved toolId for execution, include skills for Tool Agent
-        await executeToolAndUpdate(ctx, toolCall, {
+        startToolExecution(toolCall, {
           toolName: toolCall.toolId,
           args: chunk.toolCall.args
-        }, processor.toolCalls, enabledSkills, currentTurn, existingStepId)
-
-        visibleToolInputId = undefined
-        executedToolCallIds.add(toolCallId)
-        return !!toolCall.requiresConfirmation
+        }, existingStepId)
+        return
       }
 
       if (chunk.type === 'tool-input-end' && chunk.toolInputEnd) {
         const toolCallId = chunk.toolInputEnd.toolCallId
         if (executedToolCallIds.has(toolCallId)) {
-          return false
-        }
-        if (visibleToolInputId && visibleToolInputId !== toolCallId) {
-          bufferToolChunk(toolCallId, chunk)
-          return false
+          return
         }
 
         const existingStepId = processor.getStepIdForToolCall(toolCallId)
         const toolCall = processor.handleToolInputEnd(toolCallId)
         if (!toolCall) {
-          visibleToolInputId = undefined
-          return false
+          return
         }
 
-        if (turn.toolCalls.length === 0) {
-          if (turn.content.value) {
-            console.log(`[Stream] Sending content_part: text (${turn.content.value.length} chars) before first tool`)
-            emitter.sendContentPart({ type: 'text', content: turn.content.value })
-          }
-          console.log(`[Stream] Sending content_part: data-steps turn=${currentTurn}`)
-          emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
-        }
-
-        turn.toolCalls.push(toolCall)
-
-        await executeToolAndUpdate(ctx, toolCall, {
+        startToolExecution(toolCall, {
           toolName: toolCall.toolId,
           args: toolCall.arguments,
-        }, processor.toolCalls, enabledSkills, currentTurn, existingStepId)
-
-        visibleToolInputId = undefined
-        executedToolCallIds.add(toolCallId)
-        return !!toolCall.requiresConfirmation
+        }, existingStepId)
+        return
       }
-
-      return false
-    }
-
-    const flushBufferedToolChunks = async (): Promise<boolean> => {
-      while (!visibleToolInputId && bufferedToolOrder.length > 0) {
-        const nextToolCallId = bufferedToolOrder.shift()!
-        const chunks = bufferedToolChunks.get(nextToolCallId) || []
-        bufferedToolChunks.delete(nextToolCallId)
-
-        for (const bufferedChunk of chunks) {
-          const paused = await processToolChunk(bufferedChunk)
-          if (paused) return true
-        }
-      }
-      return false
     }
 
     for await (const chunk of stream) {
@@ -645,29 +632,20 @@ export async function runStream(
         }
 
         if (chunk.type === 'text' && chunk.text) {
-          processor.handleTextChunk(chunk.text, turn.content)
+          processor.handleTextChunk(chunk.text, turn.content, currentTurn)
+          appendOrderedPart(turn.orderedParts, { type: 'text', content: chunk.text, turnIndex: currentTurn })
         }
 
         if (chunk.type === 'reasoning' && chunk.reasoning) {
-          processor.handleReasoningChunk(chunk.reasoning, turn.reasoning)
+          const shouldInlineReasoning = processor.accumulatedContent.length > 0
+          processor.handleReasoningChunk(chunk.reasoning, turn.reasoning, currentTurn)
+          if (shouldInlineReasoning) {
+            appendOrderedPart(turn.orderedParts, { type: 'reasoning', content: chunk.reasoning, turnIndex: currentTurn })
+          }
         }
 
         if (chunk.type === 'tool-input-start' || chunk.type === 'tool-input-delta' || chunk.type === 'tool-input-end' || chunk.type === 'tool-call') {
-          const toolCallId = getChunkToolCallId(chunk)
-          if (toolCallId && visibleToolInputId && visibleToolInputId !== toolCallId) {
-            bufferToolChunk(toolCallId, chunk)
-          } else {
-            const paused = await processToolChunk(chunk)
-            if (paused) {
-              console.log(`[Backend] Tool requires user confirmation, pausing loop`)
-              return { pausedForConfirmation: true, ctx, processor }
-            }
-            const bufferedPaused = await flushBufferedToolChunks()
-            if (bufferedPaused) {
-              console.log(`[Backend] Tool requires user confirmation, pausing loop`)
-              return { pausedForConfirmation: true, ctx, processor }
-            }
-          }
+          processToolChunk(chunk)
         }
 
         // AI SDK v6 flow: tool-input-start -> tool-input-delta* -> tool-input-end -> tool-call.
@@ -695,9 +673,14 @@ export async function runStream(
             // Context size = input tokens only (context window limit applies to input)
             emitter.sendContextSizeUpdate(chunk.usage.inputTokens)
           }
-        }
-      }
-    // Update all steps in this turn with the turn's usage data
+	        }
+	      }
+
+    if (toolExecutionJobs.length > 0) {
+      await Promise.allSettled(toolExecutionJobs.map(job => job.promise))
+    }
+
+	    // Update all steps in this turn with the turn's usage data
     if (turnUsage && turn.toolCalls.length > 0) {
       const updatedStepIds = store.updateStepsUsageByTurn(
         ctx.sessionId,
@@ -1079,6 +1062,10 @@ export async function executeStreamGeneration(
 
       const errorDetailsStr = extractErrorDetails(error) ?? ''
       const errorContent = error.message || 'Streaming error'
+      const providerInputTokens = parseProviderInputTokens(`${errorContent}\n${errorDetailsStr}`)
+      if (providerInputTokens) {
+        activeEmitter.sendContextSizeUpdate(providerInputTokens)
+      }
 
       // Update the assistant message with error details
       store.updateMessageError(activeCtx.sessionId, activeCtx.assistantMessageId, errorDetailsStr)
@@ -1100,4 +1087,11 @@ export async function executeStreamGeneration(
     // On error, stream is not paused - it's terminated
     return { pausedForConfirmation: false }
   }
+}
+
+function parseProviderInputTokens(text: string): number | null {
+  const match = text.match(/requested\s+\d+\s+tokens\s+\((\d+)\s+in the messages/i)
+  if (!match) return null
+  const value = Number(match[1])
+  return Number.isFinite(value) && value > 0 ? value : null
 }

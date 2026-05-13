@@ -7,6 +7,22 @@ import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { SearchRequest, SearchResponse } from '../../shared/ipc/search.js'
 import { toggleSearchWindow, closeSearchWindow } from './window.js'
 import { createDailyNote, executeSearch } from './providers.js'
+import { isMainAppWindowUrl } from './window-target.js'
+
+function isMainAppWindow(win: BrowserWindow | null | undefined): win is BrowserWindow {
+  if (!win || win.isDestroyed()) return false
+  return isMainAppWindowUrl(win.webContents.getURL())
+}
+
+function findMainAppWindow(sourceWindow?: BrowserWindow | null): BrowserWindow | null {
+  const parentWindow = sourceWindow?.getParentWindow()
+  if (isMainAppWindow(parentWindow)) return parentWindow
+
+  const focusedWindow = BrowserWindow.getFocusedWindow()
+  if (isMainAppWindow(focusedWindow)) return focusedWindow
+
+  return BrowserWindow.getAllWindows().find(isMainAppWindow) ?? null
+}
 
 export function registerSearchHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SEARCH_WINDOW_TOGGLE, async () => {
@@ -28,7 +44,8 @@ export function registerSearchHandlers(): void {
   })
 
   // Action execution: search window tells main window to run an action
-  ipcMain.handle(IPC_CHANNELS.SEARCH_EXECUTE_ACTION, async (_event, actionId: string) => {
+  ipcMain.handle(IPC_CHANNELS.SEARCH_EXECUTE_ACTION, async (event, actionId: string) => {
+    const sourceWindow = BrowserWindow.fromWebContents(event.sender)
     closeSearchWindow()
 
     let resolvedActionId = actionId
@@ -39,15 +56,13 @@ export function registerSearchHandlers(): void {
       resolvedActionId = `open-file:${filePath}`
     }
 
-    const mainWindow = BrowserWindow.getAllWindows().find(w => {
-      // Main window is the one that is NOT the search window, settings window, etc.
-      // It's the largest / first one that has no parent
-      return !w.isDestroyed() && !w.getParentWindow()
-    })
+    const mainWindow = findMainAppWindow(sourceWindow)
 
     if (mainWindow) {
       mainWindow.webContents.send('search:action', resolvedActionId)
       mainWindow.focus()
+    } else {
+      console.warn('[Search] No main app window found for action:', resolvedActionId)
     }
     return { success: true }
   })

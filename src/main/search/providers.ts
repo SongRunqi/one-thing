@@ -234,7 +234,14 @@ interface DailyNoteProfile {
   source: 'obsidian' | 'folder'
 }
 
+interface DailySearchResult extends SearchResult {
+  fileMtime?: number
+  fileCtime?: number
+  isCreateShortcut?: boolean
+}
+
 const DEFAULT_DAILY_FORMAT = 'YYYY-MM-DD'
+const DAILY_SEARCH_CANDIDATE_LIMIT = 1000
 const COMMON_DAILY_FORMATS = [
   'YYYY-MM-DD',
   'YYYY/MM/DD',
@@ -449,6 +456,17 @@ async function getDailyNoteProfiles(): Promise<DailyNoteProfile[]> {
   }
 
   if (profiles.some(profile => profile.source === 'obsidian')) {
+    for (const dir of dirs) {
+      const resolved = path.resolve(dir)
+      if (profiles.some(p => p.searchDir === resolved)) continue
+      await add({
+        vaultRoot: resolved,
+        searchDir: resolved,
+        format: dailySettings?.format?.trim() || DEFAULT_DAILY_FORMAT,
+        label: `${path.basename(resolved) || resolved} daily notes`,
+        source: 'folder',
+      })
+    }
     return profiles
   }
 
@@ -507,7 +525,7 @@ export async function createDailyNote(filePath: string): Promise<string> {
 async function searchDailyNotes(query: string, limit: number): Promise<SearchResult[]> {
   const profiles = await getDailyNoteProfiles()
   const q = normalizeQuery(query)
-  const results: SearchResult[] = []
+  const results: DailySearchResult[] = []
   const seen = new Set<string>()
   const today = new Date()
   const todayIso = toIsoDate(today)
@@ -519,14 +537,15 @@ async function searchDailyNotes(query: string, limit: number): Promise<SearchRes
     const todayExists = await pathExists(todayPath)
     if (!hasTodayShortcut && todayMatchesQuery(query, todayIso)) {
       const todayTitle = todayExists ? `Today: ${todayIso}` : `Create today's daily note: ${todayIso}`
-      const todayResult: SearchResult = {
+      const todayResult: DailySearchResult = {
         id: `${todayExists ? 'daily' : 'daily-create'}:${todayPath}`,
         type: 'daily',
         title: todayTitle,
         subtitle: path.relative(profile.vaultRoot, todayPath) || path.basename(todayPath),
         detail: todayExists ? 'Open today' : `Create in ${profile.label}`,
         filePath: todayPath,
-        timestamp: today.getTime(),
+        timestamp: todayExists ? today.getTime() : 0,
+        isCreateShortcut: !todayExists,
       }
       if (!todayExists) todayResult.actionId = `create-daily-note:${encodeURIComponent(todayPath)}`
       results.push(todayResult)
@@ -535,18 +554,21 @@ async function searchDailyNotes(query: string, limit: number): Promise<SearchRes
     }
 
     try {
+      let matchedCandidates = 0
       for await (const relPath of listFiles({ cwd: profile.searchDir, glob: ['**/*.md'], hidden: false, noIgnore: true })) {
-        if (results.length >= limit + 8) break
+        if (matchedCandidates >= DAILY_SEARCH_CANDIDATE_LIMIT) break
         const absPath = path.resolve(profile.searchDir, relPath)
         if (seen.has(absPath)) continue
 
         const date = parseDateFromPath(relPath, profile.format)
         if (!date) continue
+        matchedCandidates += 1
 
         const iso = toIsoDate(date)
         const title = `${iso} · ${path.basename(relPath, '.md')}`
         const searchable = `${iso} ${relPath}`.toLowerCase()
         if (q && !searchable.includes(q)) continue
+        const stats = await fs.stat(absPath).catch(() => null)
 
         seen.add(absPath)
         results.push({
@@ -557,6 +579,8 @@ async function searchDailyNotes(query: string, limit: number): Promise<SearchRes
           detail: profile.source === 'obsidian' ? 'Obsidian daily note' : 'Daily note',
           filePath: absPath,
           timestamp: date.getTime(),
+          fileMtime: stats?.mtimeMs,
+          fileCtime: stats?.ctimeMs,
           matchRanges: matchRanges(title, q),
         })
       }
@@ -566,7 +590,13 @@ async function searchDailyNotes(query: string, limit: number): Promise<SearchRes
   }
 
   return results
-    .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0) || a.title.localeCompare(b.title))
+    .sort((a, b) => {
+      if (q && a.isCreateShortcut !== b.isCreateShortcut) return a.isCreateShortcut ? 1 : -1
+      return (b.timestamp ?? 0) - (a.timestamp ?? 0)
+        || (b.fileMtime ?? 0) - (a.fileMtime ?? 0)
+        || (b.fileCtime ?? 0) - (a.fileCtime ?? 0)
+        || a.title.localeCompare(b.title)
+    })
     .slice(0, limit)
 }
 

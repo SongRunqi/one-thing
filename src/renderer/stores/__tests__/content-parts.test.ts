@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
+  appendOrMergeReasoning,
   appendOrMergeText,
+  appendReasoningIfMissing,
   appendToolCallPlaceholder,
   popTrailingTransient,
   pushDataStepsIfMissing,
@@ -85,6 +87,37 @@ describe('content-parts helpers', () => {
       expect(parts).toEqual([{ type: 'text', content: 'hello world' }])
     })
 
+    it('keeps turn text before data-steps when it arrived first', () => {
+      const parts: ContentPart[] = []
+      appendOrMergeText(parts, 'SKILL.md updated.', 2)
+      expect(pushDataStepsIfMissing(parts, 2)).toBe(true)
+      expect(parts).toEqual([
+        { type: 'text', content: 'SKILL.md updated.', turnIndex: 2 },
+        { type: 'data-steps', turnIndex: 2 },
+      ])
+    })
+
+    it('keeps later turn text after data-steps when it arrived later', () => {
+      const parts: ContentPart[] = []
+      appendOrMergeText(parts, 'before tool.', 2)
+      pushDataStepsIfMissing(parts, 2)
+      appendOrMergeText(parts, 'after tool.', 2)
+      expect(parts).toEqual([
+        { type: 'text', content: 'before tool.', turnIndex: 2 },
+        { type: 'data-steps', turnIndex: 2 },
+        { type: 'text', content: 'after tool.', turnIndex: 2 },
+      ])
+    })
+
+    it('keeps legacy text without a turn index in place', () => {
+      const parts: ContentPart[] = [{ type: 'text', content: 'legacy text' }]
+      expect(pushDataStepsIfMissing(parts, 2)).toBe(true)
+      expect(parts).toEqual([
+        { type: 'text', content: 'legacy text' },
+        { type: 'data-steps', turnIndex: 2 },
+      ])
+    })
+
     it('pops waiting before merging', () => {
       const parts: ContentPart[] = [
         { type: 'text', content: 'a' },
@@ -101,6 +134,74 @@ describe('content-parts helpers', () => {
       appendOrMergeText(parts, 'next')
       expect(parts).toHaveLength(2)
       expect(parts[1]).toEqual({ type: 'text', content: 'next' })
+    })
+  })
+
+  describe('appendOrMergeReasoning', () => {
+    it('starts a new reasoning part on empty array', () => {
+      const parts: ContentPart[] = []
+      appendOrMergeReasoning(parts, 'thinking')
+      expect(parts).toEqual([{ type: 'reasoning', content: 'thinking' }])
+    })
+
+    it('merges into trailing reasoning', () => {
+      const parts: ContentPart[] = [{ type: 'reasoning', content: 'think' }]
+      appendOrMergeReasoning(parts, ' more')
+      expect(parts).toEqual([{ type: 'reasoning', content: 'think more' }])
+    })
+
+    it('keeps order between text parts', () => {
+      const parts: ContentPart[] = []
+      appendOrMergeText(parts, 'answer')
+      appendOrMergeReasoning(parts, ' hidden')
+      appendOrMergeText(parts, ' done')
+      expect(parts).toEqual([
+        { type: 'text', content: 'answer' },
+        { type: 'reasoning', content: ' hidden' },
+        { type: 'text', content: ' done' },
+      ])
+    })
+
+    it('does not cross tool-call boundaries', () => {
+      const parts: ContentPart[] = []
+      appendOrMergeText(parts, 'before')
+      upsertToolCall(parts, makeToolCall('t1'))
+      appendOrMergeReasoning(parts, 'after tool')
+      appendOrMergeText(parts, 'after reasoning')
+      expect(parts.map(p => p.type)).toEqual(['text', 'tool-call', 'reasoning', 'text'])
+    })
+  })
+
+  describe('appendReasoningIfMissing', () => {
+    it('appends finalized reasoning when the live delta was missed', () => {
+      const parts: ContentPart[] = [{ type: 'text', content: 'answer' }]
+      expect(appendReasoningIfMissing(parts, 'thought')).toBe(true)
+      expect(parts).toEqual([
+        { type: 'text', content: 'answer' },
+        { type: 'reasoning', content: 'thought' },
+      ])
+    })
+
+    it('does not duplicate finalized reasoning already created by live deltas', () => {
+      const parts: ContentPart[] = [
+        { type: 'text', content: 'answer' },
+        { type: 'reasoning', content: 'thought' },
+      ]
+      expect(appendReasoningIfMissing(parts, 'thought')).toBe(false)
+      expect(parts).toEqual([
+        { type: 'text', content: 'answer' },
+        { type: 'reasoning', content: 'thought' },
+      ])
+    })
+
+    it('removes a trailing transient even when skipping a duplicate', () => {
+      const parts: ContentPart[] = [
+        { type: 'text', content: 'answer' },
+        { type: 'reasoning', content: 'thought' },
+        { type: 'waiting' },
+      ]
+      expect(appendReasoningIfMissing(parts, 'thought')).toBe(false)
+      expect(parts.map(part => part.type)).toEqual(['text', 'reasoning'])
     })
   })
 

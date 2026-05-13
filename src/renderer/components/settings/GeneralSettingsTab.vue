@@ -144,6 +144,75 @@
 
     <section class="settings-section">
       <h3 class="section-title">
+        Context Compact
+      </h3>
+      <div class="settings-card">
+        <div class="card-row">
+          <label class="toggle-row">
+            <span>
+              <span class="toggle-title">Enable automatic compact</span>
+              <span class="toggle-desc">Summarizes older chat history before a request gets too close to the model context limit.</span>
+            </span>
+            <input
+              type="checkbox"
+              :checked="contextCompactEnabled"
+              @change="updateContextCompactEnabled(($event.target as HTMLInputElement).checked)"
+            >
+          </label>
+        </div>
+
+        <div class="card-row">
+          <div class="form-group">
+            <label class="form-label">
+              Auto compact threshold
+              <span class="label-value">{{ contextCompactThreshold }}%</span>
+            </label>
+            <input
+              type="range"
+              class="form-slider"
+              :min="50"
+              :max="100"
+              :step="5"
+              :value="contextCompactThreshold"
+              :disabled="!contextCompactEnabled"
+              @input="updateContextCompactThreshold(Number(($event.target as HTMLInputElement).value))"
+            >
+            <div class="slider-labels">
+              <span>50</span>
+              <span>85</span>
+              <span>100</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-row">
+          <div class="form-group">
+            <label class="form-label">
+              Keep recent turns
+              <span class="label-value">{{ contextCompactKeepRecentTurns }}</span>
+            </label>
+            <input
+              type="range"
+              class="form-slider"
+              :min="1"
+              :max="20"
+              :step="1"
+              :value="contextCompactKeepRecentTurns"
+              :disabled="!contextCompactEnabled"
+              @input="updateContextCompactKeepRecentTurns(Number(($event.target as HTMLInputElement).value))"
+            >
+            <div class="slider-labels">
+              <span>1</span>
+              <span>6</span>
+              <span>20</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <h3 class="section-title">
         Daily Notes
       </h3>
       <div class="settings-card">
@@ -231,6 +300,49 @@
         </div>
       </div>
     </section>
+
+    <section class="settings-section">
+      <h3 class="section-title">
+        Todo / Plan
+      </h3>
+      <div class="settings-card">
+        <div class="card-row">
+          <label class="toggle-row">
+            <span>
+              <span class="toggle-title">Enable todo card</span>
+              <span class="toggle-desc">Shows the markdown todo and plan card in chat.</span>
+            </span>
+            <input
+              type="checkbox"
+              :checked="todoPlan.enabled !== false"
+              @change="updateTodoPlan({ enabled: ($event.target as HTMLInputElement).checked })"
+            >
+          </label>
+        </div>
+
+        <div class="card-row">
+          <div class="form-group">
+            <label class="form-label">Markdown Directory</label>
+            <div class="directory-field">
+              <input
+                class="form-input"
+                :value="todoPlan.directory || ''"
+                placeholder="Default: ~/.onething/todo-plan"
+                spellcheck="false"
+                @input="updateTodoPlan({ directory: ($event.target as HTMLInputElement).value })"
+              >
+              <button
+                class="secondary-btn"
+                type="button"
+                @click="chooseTodoPlanDirectory"
+              >
+                Choose
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -238,6 +350,7 @@
 import { computed } from 'vue'
 import type { AppSettings } from '@/types'
 import type { DailyNoteSettings } from '@shared/ipc/settings'
+import type { TodoPlanSettings } from '@shared/ipc/todo-plan'
 import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
 import { getFontsByLang, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '@shared/fonts'
 
@@ -257,6 +370,9 @@ const zhFonts = getFontsByLang('zh')
 const currentFontSize = computed(() => props.settings.chat?.chatFontSize ?? 14)
 const currentFontEn = computed(() => props.settings.chat?.chatFontEn ?? DEFAULT_FONT_EN)
 const currentFontZh = computed(() => props.settings.chat?.chatFontZh ?? DEFAULT_FONT_ZH)
+const contextCompactEnabled = computed(() => props.settings.chat?.contextCompactEnabled !== false)
+const contextCompactThreshold = computed(() => props.settings.chat?.contextCompactThreshold ?? 85)
+const contextCompactKeepRecentTurns = computed(() => props.settings.chat?.contextCompactKeepRecentTurns ?? 6)
 const dailyNotes = computed<DailyNoteSettings>(() => ({
   enabled: true,
   directoryMode: 'personal',
@@ -264,6 +380,14 @@ const dailyNotes = computed<DailyNoteSettings>(() => ({
   useObsidianConfig: true,
   format: 'YYYY-MM-DD',
   ...props.settings.general.dailyNotes,
+}))
+const todoPlan = computed<TodoPlanSettings>(() => ({
+  enabled: true,
+  directory: '',
+  cardHeight: 360,
+  pinned: false,
+  docked: false,
+  ...props.settings.general.todoPlan,
 }))
 
 function updateTheme(theme: 'light' | 'dark' | 'system') {
@@ -313,6 +437,36 @@ function updateFontZh(fontId: string) {
   })
 }
 
+function updateContextCompactEnabled(enabled: boolean) {
+  emit('update:settings', {
+    ...props.settings,
+    chat: {
+      ...props.settings.chat!,
+      contextCompactEnabled: enabled,
+    },
+  })
+}
+
+function updateContextCompactThreshold(threshold: number) {
+  emit('update:settings', {
+    ...props.settings,
+    chat: {
+      ...props.settings.chat!,
+      contextCompactThreshold: Math.max(50, Math.min(100, threshold)),
+    },
+  })
+}
+
+function updateContextCompactKeepRecentTurns(turns: number) {
+  emit('update:settings', {
+    ...props.settings,
+    chat: {
+      ...props.settings.chat!,
+      contextCompactKeepRecentTurns: Math.max(1, Math.min(20, turns)),
+    },
+  })
+}
+
 function updateDailyNotes(patch: Partial<DailyNoteSettings>) {
   emit('update:settings', {
     ...props.settings,
@@ -320,6 +474,19 @@ function updateDailyNotes(patch: Partial<DailyNoteSettings>) {
       ...props.settings.general,
       dailyNotes: {
         ...dailyNotes.value,
+        ...patch,
+      },
+    },
+  })
+}
+
+function updateTodoPlan(patch: Partial<TodoPlanSettings>) {
+  emit('update:settings', {
+    ...props.settings,
+    general: {
+      ...props.settings.general,
+      todoPlan: {
+        ...todoPlan.value,
         ...patch,
       },
     },
@@ -337,6 +504,17 @@ async function chooseDailyNoteDirectory() {
       directoryMode: 'custom',
       customDirectory: result.filePaths[0],
     })
+  }
+}
+
+async function chooseTodoPlanDirectory() {
+  const result = await window.electronAPI.showOpenDialog({
+    title: 'Choose Todo / Plan Directory',
+    properties: ['openDirectory'],
+    defaultPath: todoPlan.value.directory || undefined,
+  })
+  if (!result.canceled && result.filePaths[0]) {
+    updateTodoPlan({ directory: result.filePaths[0] })
   }
 }
 

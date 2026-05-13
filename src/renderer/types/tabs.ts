@@ -2,7 +2,7 @@
  * Tab system type definitions
  */
 
-export type TabType = 'chat' | 'file'
+export type TabType = 'chat' | 'workbench' | 'file'
 
 export interface ChatTab {
   id: string
@@ -15,6 +15,17 @@ export interface FileTab {
   type: 'file'
   filePath: string
   title: string
+  dirty?: boolean
 }
 
-export type Tab = ChatTab | FileTab
+export interface WorkbenchTab {
+  id: string
+  type: 'workbench'
+  workspaceRoot: string
+  initialFilePath: string
+  activeFilePath?: string
+  title: string
+  dirty?: boolean
+}
+
+export type Tab = ChatTab | WorkbenchTab | FileTab

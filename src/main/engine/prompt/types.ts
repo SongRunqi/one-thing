@@ -101,6 +101,7 @@ export interface SkillsVariables {
  */
 export interface ContextCompactVariables {
   messages: string
+  previousSummary?: string
 }
 
 /**

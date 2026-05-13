@@ -7,6 +7,7 @@ import type { AISettings } from './providers.js'
 import type { ToolSettings } from './tools.js'
 import type { MCPSettings } from './mcp.js'
 import type { SkillSettings } from './skills.js'
+import type { TodoPlanSettings } from './todo-plan.js'
 
 export type ColorTheme = 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'cyan' | 'red'
 
@@ -25,6 +26,7 @@ export interface KeyboardShortcut {
   metaKey?: boolean     // Cmd on Mac
   shiftKey?: boolean
   altKey?: boolean
+  sequence?: 'double-shift'
 }
 
 export interface ShortcutSettings {
@@ -33,6 +35,9 @@ export interface ShortcutSettings {
   closeChat: KeyboardShortcut        // Close current chat
   toggleSidebar: KeyboardShortcut    // Toggle sidebar
   focusInput: KeyboardShortcut       // Focus input (default /)
+  searchEverywhere?: KeyboardShortcut      // Toggle Search Everywhere window
+  toggleTodoPlanWindow?: KeyboardShortcut  // Toggle standalone todo/plan window
+  toggleTodoPlan?: KeyboardShortcut        // Toggle todo/plan card
 }
 
 // Quick command button configuration for InputBox toolbar
@@ -49,6 +54,14 @@ export interface DailyNoteSettings {
   format?: string
 }
 
+export interface EditorSettings {
+  tabSize?: number
+  lineWrapping?: boolean
+  syntaxHighlighting?: boolean
+  completionEnabled?: boolean
+  composerMaxHeight?: number
+}
+
 export interface GeneralSettings {
   animationSpeed: number  // 0.1 - 0.5 seconds, default 0.25
   sendShortcut: 'enter' | 'ctrl-enter' | 'cmd-enter'  // Legacy, kept for compatibility
@@ -62,6 +75,8 @@ export interface GeneralSettings {
   messageLineHeight?: number  // Message line height, 1.2-2.2, default 1.6
   quickCommands?: QuickCommandConfig[]  // Quick command buttons shown above InputBox
   dailyNotes?: DailyNoteSettings
+  todoPlan?: TodoPlanSettings
+  editor?: EditorSettings
   // User profile for lightweight context injection
   userProfile?: UserProfileSettings
   maxTabs?: number           // Maximum open tabs per panel, 3-30, default 15
@@ -98,7 +113,19 @@ export interface ChatSettings {
   chatFontSize?: number        // Chat font size in px, 12-20, default 14
   chatFontEn?: string          // English body font ID (e.g., 'public-sans', 'lora')
   chatFontZh?: string          // Chinese body font ID (e.g., 'noto-sans-sc', 'lxgw-wenkai')
+  contextCompactEnabled?: boolean  // Enable automatic context compacting, default true
   contextCompactThreshold?: number  // Context usage % to trigger compacting, 50-100, default 85
+  contextCompactKeepRecentTurns?: number  // Recent user/assistant turns to keep verbatim, default 6
+}
+
+export interface ProxySettings {
+  enabled: boolean
+  url: string
+  bypassRules?: string
+}
+
+export interface NetworkSettings {
+  proxy: ProxySettings
 }
 
 export interface AppSettings {
@@ -107,6 +134,7 @@ export interface AppSettings {
   general: GeneralSettings
   chat?: ChatSettings
   tools: ToolSettings
+  network?: NetworkSettings
   mcp?: MCPSettings
   skills?: SkillSettings
 }
@@ -123,4 +151,14 @@ export interface SaveSettingsRequest extends AppSettings { }
 export interface SaveSettingsResponse {
   success: boolean
   error?: string
+}
+
+export interface TestProxyRequest {
+  proxy: ProxySettings
+}
+
+export interface TestProxyResponse {
+  success: boolean
+  error?: string
+  status?: number
 }

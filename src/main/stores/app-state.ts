@@ -1,9 +1,12 @@
 import { getAppStatePath, readJsonFile, writeJsonFile } from './paths.js'
 
 export interface SerializedTab {
-  type: 'chat' | 'file'
+  type: 'chat' | 'file' | 'workbench'
   sessionId?: string
   filePath?: string
+  initialFilePath?: string
+  activeFilePath?: string
+  workspaceRoot?: string
   title?: string
 }
 

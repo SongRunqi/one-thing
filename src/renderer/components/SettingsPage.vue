@@ -132,6 +132,12 @@
                   @update:settings="handleSettingsUpdate"
                 />
 
+                <NetworkSettingsTab
+                  v-else-if="activeTab === 'network'"
+                  :settings="localSettings"
+                  @update:settings="handleSettingsUpdate"
+                />
+
                 <ShortcutsSettingsTab
                   v-else-if="activeTab === 'shortcuts'"
                   :settings="localSettings"
@@ -192,6 +198,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import {
   Boxes,
   Code2,
+  Globe2,
   Keyboard,
   Plug,
   Search,
@@ -209,6 +216,7 @@ import GeneralSettingsTab from './settings/GeneralSettingsTab.vue'
 import EditorSettingsTab from './settings/EditorSettingsTab.vue'
 import { AIProviderTab } from './settings/provider'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
+import NetworkSettingsTab from './settings/NetworkSettingsTab.vue'
 import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
@@ -255,6 +263,12 @@ const navItems = [
     label: 'Tools',
     hint: 'Built-in capabilities and search keys',
     icon: Wrench,
+  },
+  {
+    id: 'network',
+    label: 'Network',
+    hint: 'Global proxy for outbound requests',
+    icon: Globe2,
   },
   {
     id: 'shortcuts',

@@ -248,7 +248,6 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
         baseUrl: providerConfig?.baseUrl,
         model: providerConfig?.model || '',
         apiType,
-        localAddress: providerConfig?.localAddress,
       },
       filterHistoryForNonToolAPI(historyMessages),
       {
@@ -459,7 +458,6 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
         baseUrl: providerConfig?.baseUrl,
         model: providerConfig?.model || '',
         apiType,
-        localAddress: providerConfig?.localAddress,
       },
       filterHistoryForNonToolAPI(historyMessages),
       {

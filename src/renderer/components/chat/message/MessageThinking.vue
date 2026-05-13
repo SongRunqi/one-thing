@@ -1,5 +1,8 @@
 <template>
-  <div class="thinking-container">
+  <div
+    ref="containerRef"
+    class="thinking-container"
+  >
     <!-- Status overlay: always in DOM, collapses height to 0 when nothing to show.
          Inner v-if chain handles row-to-row swap via mode="out-in". -->
     <div
@@ -82,6 +85,7 @@
     <!-- Reasoning expand: in document flow, smooth grid-rows animation -->
     <!-- User-triggered expand, so pushing content down is expected -->
     <div
+      ref="reasoningWrapperRef"
       v-if="reasoning"
       class="thinking-reasoning-wrapper"
       :class="{ expanded: isExpanded }"
@@ -97,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { renderMarkdown, cleanReasoningContent } from '@/composables/useMarkdownRenderer'
 
 interface Props {
@@ -118,6 +122,8 @@ const emit = defineEmits<{
 const isExpanded = ref(false)
 const thinkingElapsed = ref(0)
 const finalThinkingTime = ref(0)
+const containerRef = ref<HTMLElement | null>(null)
+const reasoningWrapperRef = ref<HTMLElement | null>(null)
 let thinkingStartTimeValue: number | null = null
 let thinkingTimer: ReturnType<typeof setInterval> | null = null
 
@@ -146,8 +152,27 @@ const shouldShowStatus = computed(() => {
 
 function toggleExpand() {
   if (props.reasoning) {
-    isExpanded.value = !isExpanded.value
+    const nextExpanded = !isExpanded.value
+    isExpanded.value = nextExpanded
+    if (nextExpanded) {
+      scrollExpandedReasoningIntoView()
+    }
   }
+}
+
+function scrollExpandedReasoningIntoView() {
+  const scrollNearest = () => {
+    const target = reasoningWrapperRef.value || containerRef.value
+    target?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }
+
+  nextTick(() => {
+    scrollNearest()
+    requestAnimationFrame(() => {
+      scrollNearest()
+      setTimeout(scrollNearest, 220)
+    })
+  })
 }
 
 function formatThinkingTime(seconds: number): string {

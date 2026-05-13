@@ -98,6 +98,7 @@ export async function executeToolDirectly(
     // Step event callbacks for sub-agent tools (e.g., CustomAgent)
     onStepStart?: (step: Step) => void
     onStepComplete?: (step: Step) => void
+    beforeSideEffect?: () => Promise<void>
   }
 ): Promise<ToolExecutionResult> {
   try {
@@ -130,6 +131,7 @@ export async function executeToolDirectly(
           arguments: args,
         },
       })
+      await context.beforeSideEffect?.()
       const result = await executeMCPTool(toolName, args)
       // Check abort after MCP call in case it was triggered during execution
       if (context.abortSignal?.aborted) {
@@ -150,6 +152,7 @@ export async function executeToolDirectly(
       // Forward step callbacks for sub-agent tools (e.g., CustomAgent)
       onStepStart: context.onStepStart,
       onStepComplete: context.onStepComplete,
+      beforeSideEffect: context.beforeSideEffect,
     }
     const result = await executeTool(toolName, args, execContext)
     return result
@@ -197,7 +200,10 @@ export async function executeToolAndUpdate(
   allToolCalls: ToolCall[],
   _skills: SkillDefinition[] = [],
   turnIndex?: number,
-  existingStepId?: string
+  existingStepId?: string,
+  options: {
+    beforeSideEffect?: () => Promise<void>
+  } = {},
 ): Promise<void> {
   const emitter = createEventOnlyEmitter(ctx)
 
@@ -327,6 +333,7 @@ export async function executeToolAndUpdate(
           error: subStep.error,
         })
       },
+      beforeSideEffect: options.beforeSideEffect,
     }
   )
 

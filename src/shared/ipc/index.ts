@@ -90,8 +90,6 @@ export type {
   ModelType,
   ModelInfo,
   GetProvidersResponse,
-  NetworkInterfaceInfo,
-  GetNetworkInterfacesResponse,
 } from './providers.js'
 
 export { AIProvider } from './providers.js'
@@ -169,12 +167,17 @@ export type {
   BaseTheme,
   KeyboardShortcut,
   ShortcutSettings,
+  EditorSettings,
   GeneralSettings,
   ChatSettings,
+  NetworkSettings,
+  ProxySettings,
   AppSettings,
   GetSettingsResponse,
   SaveSettingsRequest,
   SaveSettingsResponse,
+  TestProxyRequest,
+  TestProxyResponse,
 } from './settings.js'
 
 // Theme types
@@ -270,3 +273,23 @@ export type {
   SearchResult,
   SearchResponse,
 } from './search.js'
+
+// Todo / plan panel types
+export type {
+  TodoPlanScope,
+  TodoPlanDocument,
+  TodoPlanContext,
+  TodoPlanSnapshot,
+  TodoPlanSettings,
+  TodoPlanGetRequest,
+  TodoPlanGetResponse,
+  TodoPlanCreateRequest,
+  TodoPlanCreateResponse,
+  TodoPlanUpdateRequest,
+  TodoPlanUpdateResponse,
+  TodoPlanRenameRequest,
+  TodoPlanRenameResponse,
+  TodoPlanDeleteRequest,
+  TodoPlanDeleteResponse,
+  TodoPlanChangedPayload,
+} from './todo-plan.js'

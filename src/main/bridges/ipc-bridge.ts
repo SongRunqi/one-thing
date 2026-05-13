@@ -8,9 +8,9 @@
  *
  * Key behaviors:
  * - `safeSend()` guards against window-close (sender.isDestroyed())
- * - Text/reasoning/tool-input deltas are coalesced in a 16ms buffer
+ * - Text/reasoning/tool-input deltas are coalesced in a 16ms ordered buffer
  *   (per session) before being sent via session:stream. This reduces
- *   IPC call frequency from ~50+/frame to ≤3/frame (~60fps).
+ *   IPC call frequency while preserving cross-type stream ordering.
  * - Flush-before-complete: all pending stream buffers are flushed before
  *   the session:event for stream:complete is sent, ensuring no tokens are lost.
  */
@@ -21,12 +21,70 @@ import type { SessionEventEnvelope, StreamChunk } from '../../shared/events/inde
 import type { Unsubscribe } from '../events/types.js'
 import { getEventBus, getStreamChannel } from '../events/index.js'
 
+type BufferedStreamChunk =
+  | { type: 'text-delta'; text: string; turnIndex?: number }
+  | { type: 'reasoning-delta'; reasoning: string; turnIndex?: number }
+  | { type: 'tool-input-delta'; toolCallId: string; argsTextDelta: string }
+
 /** Accumulates high-frequency stream chunks between 16ms flush intervals. */
 interface StreamBuffer {
-  text: string
-  reasoning: string
-  toolInputs: Map<string, string>  // toolCallId → accumulated argsTextDelta
+  chunks: BufferedStreamChunk[]
   timer: ReturnType<typeof setTimeout> | null
+}
+
+export function createStreamBuffer(): StreamBuffer {
+  return { chunks: [], timer: null }
+}
+
+export function appendStreamBufferChunk(buffer: StreamBuffer, chunk: StreamChunk): boolean {
+  const last = buffer.chunks[buffer.chunks.length - 1]
+
+  if (chunk.type === 'text-delta') {
+    if (last?.type === 'text-delta' && last.turnIndex === chunk.turnIndex) {
+      last.text += chunk.text
+    } else {
+      buffer.chunks.push({
+        type: 'text-delta',
+        text: chunk.text,
+        ...(chunk.turnIndex !== undefined ? { turnIndex: chunk.turnIndex } : {}),
+      })
+    }
+    return true
+  }
+
+  if (chunk.type === 'reasoning-delta') {
+    if (last?.type === 'reasoning-delta' && last.turnIndex === chunk.turnIndex) {
+      last.reasoning += chunk.reasoning
+    } else {
+      buffer.chunks.push({
+        type: 'reasoning-delta',
+        reasoning: chunk.reasoning,
+        ...(chunk.turnIndex !== undefined ? { turnIndex: chunk.turnIndex } : {}),
+      })
+    }
+    return true
+  }
+
+  if (chunk.type === 'tool-input-delta') {
+    if (last?.type === 'tool-input-delta' && last.toolCallId === chunk.toolCallId) {
+      last.argsTextDelta += chunk.argsTextDelta
+    } else {
+      buffer.chunks.push({
+        type: 'tool-input-delta',
+        toolCallId: chunk.toolCallId,
+        argsTextDelta: chunk.argsTextDelta,
+      })
+    }
+    return true
+  }
+
+  return false
+}
+
+export function drainStreamBuffer(buffer: StreamBuffer): BufferedStreamChunk[] {
+  const chunks = buffer.chunks
+  buffer.chunks = []
+  return chunks
 }
 
 /**
@@ -105,6 +163,11 @@ export class IPCBridge {
 
   private handleSessionEvent(envelope: SessionEventEnvelope): void {
     const { sessionId, event } = envelope
+    const existing = this.sessions.get(sessionId)
+
+    if (existing && event.type !== 'stream:start') {
+      this.flushBuffer(sessionId, existing)
+    }
 
     // Session lifecycle management
     switch (event.type) {
@@ -144,7 +207,7 @@ export class IPCBridge {
     this.sessions.set(sessionId, {
       messageId,
       unsubStream,
-      buffer: { text: '', reasoning: '', toolInputs: new Map(), timer: null },
+      buffer: createStreamBuffer(),
     })
   }
 
@@ -166,29 +229,12 @@ export class IPCBridge {
       buf.timer = null
     }
 
-    if (buf.text) {
+    for (const chunk of drainStreamBuffer(buf)) {
       this.safeSend(IPC_CHANNELS.SESSION_STREAM, {
         sessionId,
-        chunk: { type: 'text-delta', text: buf.text },
-      })
-      buf.text = ''
-    }
-
-    if (buf.reasoning) {
-      this.safeSend(IPC_CHANNELS.SESSION_STREAM, {
-        sessionId,
-        chunk: { type: 'reasoning-delta', reasoning: buf.reasoning },
-      })
-      buf.reasoning = ''
-    }
-
-    for (const [toolCallId, argsTextDelta] of buf.toolInputs) {
-      this.safeSend(IPC_CHANNELS.SESSION_STREAM, {
-        sessionId,
-        chunk: { type: 'tool-input-delta', toolCallId, argsTextDelta },
+        chunk: { ...chunk, messageId: state.messageId },
       })
     }
-    buf.toolInputs.clear()
   }
 
   // ── StreamChannel chunk handling ───────────────
@@ -198,20 +244,15 @@ export class IPCBridge {
 
     // For non-buffered chunk types, send immediately
     if (!state || (chunk.type !== 'text-delta' && chunk.type !== 'reasoning-delta' && chunk.type !== 'tool-input-delta')) {
-      this.safeSend(IPC_CHANNELS.SESSION_STREAM, { sessionId, chunk })
+      this.safeSend(IPC_CHANNELS.SESSION_STREAM, {
+        sessionId,
+        chunk: state ? { ...chunk, messageId: (chunk as any).messageId || state.messageId } : chunk,
+      })
       return
     }
 
-    // Accumulate into buffer
     const buf = state.buffer
-    if (chunk.type === 'text-delta') {
-      buf.text += chunk.text
-    } else if (chunk.type === 'reasoning-delta') {
-      buf.reasoning += chunk.reasoning
-    } else if (chunk.type === 'tool-input-delta') {
-      const prev = buf.toolInputs.get(chunk.toolCallId) ?? ''
-      buf.toolInputs.set(chunk.toolCallId, prev + chunk.argsTextDelta)
-    }
+    appendStreamBufferChunk(buf, chunk)
 
     // Schedule flush if not already pending
     if (buf.timer === null) {

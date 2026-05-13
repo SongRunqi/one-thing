@@ -64,6 +64,9 @@ export const IPC_CHANNELS = {
   GET_SYSTEM_THEME: 'settings:get-system-theme',
   SYSTEM_THEME_CHANGED: 'settings:system-theme-changed',
 
+  // Network related
+  TEST_PROXY: 'network:test-proxy',
+
   // Models related (read from settings.json modelRegistry)
   // Model registry
   GET_MODELS_WITH_CAPABILITIES: 'models:get-with-capabilities',
@@ -75,7 +78,6 @@ export const IPC_CHANNELS = {
 
   // Providers related
   GET_PROVIDERS: 'providers:get-all',
-  GET_NETWORK_INTERFACES: 'providers:get-network-interfaces',
 
   // Tools related
   GET_TOOLS: 'tools:get-all',
@@ -157,6 +159,16 @@ export const IPC_CHANNELS = {
   // File Preview related (for reading file content)
   FILE_READ_CONTENT: 'file:read-content',
   FILE_SAVE_CONTENT: 'file:save-content',
+  FILE_LIST_DIRECTORY: 'file:list-directory',
+  FILE_CREATE: 'file:create',
+  FILE_CREATE_DIRECTORY: 'file:create-directory',
+  FILE_RENAME: 'file:rename',
+  FILE_DELETE: 'file:delete',
+  FILE_STAT: 'file:stat',
+  FILE_REVEAL: 'file:reveal',
+  FILE_WATCH_START: 'file:watch-start',
+  FILE_WATCH_STOP: 'file:watch-stop',
+  FILE_WATCH_EVENT: 'file:watch-event',
 
   // Unified event-driven channels (Phase 4)
   SESSION_EVENT: 'session:event',
@@ -191,4 +203,16 @@ export const IPC_CHANNELS = {
   SEARCH_WINDOW_SHOWN: 'search-window:shown',
   SEARCH_QUERY: 'search:query',
   SEARCH_EXECUTE_ACTION: 'search:execute-action',
+
+  // Todo / Plan
+  TODO_PLAN_GET: 'todo-plan:get',
+  TODO_PLAN_CREATE: 'todo-plan:create',
+  TODO_PLAN_UPDATE: 'todo-plan:update',
+  TODO_PLAN_RENAME: 'todo-plan:rename',
+  TODO_PLAN_DELETE: 'todo-plan:delete',
+  TODO_PLAN_REVEAL_DIRECTORY: 'todo-plan:reveal-directory',
+  TODO_PLAN_OPEN_WINDOW: 'todo-plan:open-window',
+  TODO_PLAN_TOGGLE_WINDOW: 'todo-plan:toggle-window',
+  TODO_PLAN_SET_WINDOW_PINNED: 'todo-plan:set-window-pinned',
+  TODO_PLAN_CHANGED: 'todo-plan:changed',
 } as const

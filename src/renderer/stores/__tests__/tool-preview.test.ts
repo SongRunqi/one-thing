@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatToolCallPreview, shortenPath } from '../helpers/tool-preview'
+import { basename, formatToolCallPreview, shortenPath } from '../helpers/tool-preview'
 import type { ToolCall } from '@/types'
 
 function tc(overrides: Partial<ToolCall> = {}): ToolCall {
@@ -36,6 +36,17 @@ describe('shortenPath', () => {
   })
 })
 
+describe('basename', () => {
+  it('returns only the final path segment', () => {
+    expect(basename('/Users/me/project/src/index.ts')).toBe('index.ts')
+    expect(basename('src/components/Foo.vue')).toBe('Foo.vue')
+  })
+
+  it('handles trailing slashes', () => {
+    expect(basename('/Users/me/project/src/')).toBe('src')
+  })
+})
+
 describe('formatToolCallPreview', () => {
   it('returns empty string for undefined', () => {
     expect(formatToolCallPreview(undefined)).toBe('')
@@ -46,8 +57,8 @@ describe('formatToolCallPreview', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'write',
         status: 'input-streaming',
-        streamingArgs: '{"file_path":"src/foo.ts","content":"...',
-      }))).toBe('src/foo.ts')
+        streamingArgs: '{"file_path":"/Users/me/project/src/foo.ts","content":"...',
+      }))).toBe('foo.ts')
     })
 
     it('does not use streamed edit content as a filename', () => {
@@ -100,12 +111,12 @@ describe('formatToolCallPreview', () => {
     it('read: shows file path with optional range', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'read',
-        arguments: { file_path: 'src/foo.ts' },
-      }))).toBe('src/foo.ts')
+        arguments: { file_path: '/Users/me/project/src/foo.ts' },
+      }))).toBe('foo.ts')
       expect(formatToolCallPreview(tc({
         toolName: 'read',
-        arguments: { file_path: 'src/foo.ts', offset: 10, limit: 20 },
-      }))).toBe('src/foo.ts:10-29')
+        arguments: { file_path: '/Users/me/project/src/foo.ts', offset: 10, limit: 20 },
+      }))).toBe('foo.ts:10-29')
     })
 
     it('grep: shows quoted pattern with optional glob', () => {
@@ -122,16 +133,16 @@ describe('formatToolCallPreview', () => {
     it('edit: shows path with diff stats when present', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'edit',
-        arguments: { file_path: 'src/foo.ts' },
-        changes: { diff: '...', filePath: 'src/foo.ts', additions: 3, deletions: 1 },
-      }))).toBe('src/foo.ts (+3 -1)')
+        arguments: { file_path: '/Users/me/project/src/foo.ts' },
+        changes: { diff: '...', filePath: '/Users/me/project/src/foo.ts', additions: 3, deletions: 1 },
+      }))).toBe('foo.ts (+3 -1)')
     })
 
     it('write: shows path with content size', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'write',
-        arguments: { file_path: 'src/foo.ts', content: 'hello world' },
-      }))).toBe('src/foo.ts (11 chars)')
+        arguments: { file_path: '/Users/me/project/src/foo.ts', content: 'hello world' },
+      }))).toBe('foo.ts (11 chars)')
     })
 
     it('default: falls back to first arg or path/pattern', () => {

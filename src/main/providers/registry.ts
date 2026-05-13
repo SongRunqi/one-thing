@@ -23,7 +23,7 @@ const providerInstanceCache = new Map<string, {
 const PROVIDER_CACHE_TTL = 5 * 60 * 1000  // 5 分钟
 
 function getProviderCacheKey(providerId: string, config: ProviderConfig): string {
-  return `${providerId}#${config.apiKey || ''}#${config.baseUrl || ''}#${config.localAddress || ''}`
+  return `${providerId}#${config.apiKey || ''}#${config.baseUrl || ''}`
 }
 
 function cleanExpiredProviderCache(): void {
@@ -210,7 +210,7 @@ function createCustomProviderInstance(
   config: ProviderConfig & { apiType?: 'openai' | 'anthropic' }
 ): ProviderInstance {
   const apiType = config.apiType || 'openai'
-  const boundFetch = createBoundFetch(config.localAddress)
+  const boundFetch = createBoundFetch()
 
   if (apiType === 'anthropic') {
     const provider = createAnthropic({

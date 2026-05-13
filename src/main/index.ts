@@ -16,6 +16,8 @@ import { Permission } from './permission/index.js'
 import { bootstrapVariableSystem } from './variables/index.js'
 import { bootstrapProjectDirs } from './project-dirs/index.js'
 import { warmSearchWindow } from './search/index.js'
+import { applyNetworkProxySettings } from './network/proxy.js'
+import { registerGlobalWindowShortcuts, unregisterGlobalWindowShortcuts } from './shortcuts/global-shortcuts.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -73,6 +75,7 @@ app.on('ready', async () => {
 
   // Initialize settings asynchronously (before any settings access)
   await initializeSettings()
+  await applyNetworkProxySettings()
 
   // Initialize event system (EventBus + StreamChannel + SessionManager + StreamEngine)
   initializeEventSystem()
@@ -119,6 +122,7 @@ app.on('ready', async () => {
 
   // Create window first for fast startup
   mainWindow = createWindow()
+  registerGlobalWindowShortcuts(mainWindow)
 
   // Initialize IPCBridge — the single exit point for all renderer IPC
   initializeIPCBridge(mainWindow.webContents)
@@ -164,6 +168,7 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (mainWindow === null) {
     mainWindow = createWindow()
+    registerGlobalWindowShortcuts(mainWindow)
     initializeIPCBridge(mainWindow.webContents)
     getStreamEngine().bind(mainWindow.webContents)
     mainWindow.on('closed', () => {
@@ -183,6 +188,7 @@ app.on('activate', () => {
 app.on('before-quit', async () => {
   // Stop template watcher
   stopTemplateWatcher()
+  unregisterGlobalWindowShortcuts()
 
   // Shutdown MCP
   await shutdownMCP()

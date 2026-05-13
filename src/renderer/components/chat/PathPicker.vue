@@ -161,11 +161,13 @@ function handleKeyDown(e: KeyboardEvent) {
   switch (e.key) {
     case 'ArrowUp':
       e.preventDefault()
+      e.stopPropagation()
       selectedIndex.value = Math.max(0, selectedIndex.value - 1)
       scrollToSelected()
       break
     case 'ArrowDown':
       e.preventDefault()
+      e.stopPropagation()
       selectedIndex.value = Math.min(dirs.value.length - 1, selectedIndex.value + 1)
       scrollToSelected()
       break
@@ -173,12 +175,14 @@ function handleKeyDown(e: KeyboardEvent) {
       // Tab selects the completion, Enter sends the command
       if (dirs.value.length > 0) {
         e.preventDefault()
+        e.stopPropagation()
         selectPath(dirs.value[selectedIndex.value])
       }
       break
     // Enter is NOT handled here - let InputBox send the command
     case 'Escape':
       e.preventDefault()
+      e.stopPropagation()
       emit('close')
       break
   }
@@ -197,11 +201,11 @@ function selectPath(path: string) {
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('keydown', handleKeyDown, true)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keydown', handleKeyDown, true)
   if (debounceTimer) {
     clearTimeout(debounceTimer)
   }

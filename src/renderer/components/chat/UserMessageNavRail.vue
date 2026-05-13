@@ -192,7 +192,7 @@ watch(
       setPageStart(nextStart, direction)
     }
   },
-  { immediate: true, flush: 'post' },
+  { immediate: true, flush: 'sync' },
 )
 
 watch(maxPageStartIndex, maxStart => {

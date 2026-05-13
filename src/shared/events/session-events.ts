@@ -87,6 +87,15 @@ export interface ContextSizeUpdatedEvent {
   contextSize: number
 }
 
+export interface ContextCompactCompletedEvent {
+  type: 'context:compact-completed'
+  requestId?: string
+  success: boolean
+  skipped?: boolean
+  summary?: string
+  error?: string
+}
+
 export interface SessionVariablesUpdatedEvent {
   type: 'session:variables-updated'
   workingDirectory?: string
@@ -248,6 +257,7 @@ export type SessionEvent =
   | ContentPartEvent
   | ContentContinuationEvent
   | ContextSizeUpdatedEvent
+  | ContextCompactCompletedEvent
   | SessionVariablesUpdatedEvent
   | StreamParamsResolvingEvent
   | RequestSnapshotEvent
