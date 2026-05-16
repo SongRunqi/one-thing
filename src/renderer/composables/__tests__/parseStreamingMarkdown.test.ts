@@ -36,13 +36,13 @@ describe('parseStreamingMarkdown', () => {
     ])
   })
 
-  it('preserves ordinary trailing code newlines while suppressing partial closing fences', () => {
+  it('suppresses transient trailing blank lines and partial closing fences', () => {
     expect(parseStreamingMarkdown('```ts\nconst a = 1\n', { streaming: true })).toEqual([
       {
         type: 'code',
         key: 'code-0',
         lang: 'ts',
-        content: 'const a = 1\n',
+        content: 'const a = 1',
         complete: false,
       },
     ])

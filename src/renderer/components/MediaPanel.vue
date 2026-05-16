@@ -4,9 +4,7 @@
       v-if="visible"
       class="media-panel"
     >
-      <!-- Navigation -->
       <div class="media-nav">
-        <!-- Traffic lights space -->
         <div class="traffic-lights-space" />
         <div class="nav-items">
           <button
@@ -24,10 +22,10 @@
             />
             <span class="nav-label">{{ item.label }}</span>
             <span
-              v-if="item.id === 'media' && mediaStore.images.length > 0"
+              v-if="item.id === 'media' && mediaStore.assets.length > 0"
               class="nav-badge"
             >
-              {{ mediaStore.images.length }}
+              {{ mediaStore.assets.length }}
             </span>
           </button>
         </div>
@@ -57,116 +55,159 @@
         </div>
       </div>
 
-      <!-- Content Area -->
       <div class="media-content">
-        <!-- Media Content -->
         <template v-if="activeNav === 'media'">
           <div class="content-header">
             <input
               v-model="searchQuery"
               type="text"
               class="search-input"
-              placeholder="Search images..."
+              :placeholder="searchPlaceholder"
             >
+
+            <div class="kind-tabs">
+              <button
+                v-for="tab in kindTabs"
+                :key="tab.id"
+                class="kind-tab"
+                :class="{ active: activeKind === tab.id }"
+                @click="activeKind = tab.id"
+              >
+                <component
+                  :is="tab.icon"
+                  :size="15"
+                  :stroke-width="1.8"
+                />
+                <span>{{ tab.label }}</span>
+                <span class="tab-count">{{ tabCount(tab.id) }}</span>
+              </button>
+            </div>
+
+            <div
+              v-if="activeKind === 'image'"
+              class="source-tabs"
+            >
+              <button
+                v-for="filter in sourceFilters"
+                :key="filter.id"
+                class="source-tab"
+                :class="{ active: activeSource === filter.id }"
+                @click="activeSource = filter.id"
+              >
+                {{ filter.label }}
+                <span>{{ sourceCount(filter.id) }}</span>
+              </button>
+            </div>
           </div>
 
           <div class="content-body">
-            <!-- Image Grid -->
             <div
-              v-if="filteredImages.length > 0"
-              class="media-grid"
+              v-if="mediaStore.isLoading || mediaStore.isRebuilding"
+              class="loading-state"
             >
-              <div
-                v-for="image in filteredImages"
-                :key="image.id"
-                class="media-item"
-                @click="openImage(image)"
-              >
-                <img
-                  :src="mediaStore.getImageUrl(image)"
-                  :alt="image.prompt"
-                  class="media-thumbnail"
-                >
-                <div class="media-overlay">
-                  <p class="media-prompt">
-                    {{ image.prompt }}
-                  </p>
-                  <span class="media-model">{{ image.model }}</span>
-                </div>
-                <!-- Delete button -->
-                <button
-                  class="delete-btn"
-                  title="Delete image"
-                  @click.stop="deleteImage(image.id)"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    <line
-                      x1="10"
-                      y1="11"
-                      x2="10"
-                      y2="17"
-                    />
-                    <line
-                      x1="14"
-                      y1="11"
-                      x2="14"
-                      y2="17"
-                    />
-                  </svg>
-                </button>
-              </div>
+              <div class="loading-spinner" />
+              <span>{{ mediaStore.isRebuilding ? 'Indexing media...' : 'Loading media...' }}</span>
             </div>
 
-            <!-- Empty State -->
+            <template v-else-if="activeKind === 'image' && filteredAssets.length > 0">
+              <div class="media-grid">
+                <div
+                  v-for="asset in filteredAssets"
+                  :key="asset.id"
+                  class="media-item"
+                  @click="openAsset(asset)"
+                >
+                  <img
+                    :src="mediaStore.getImageUrl(asset)"
+                    :alt="assetTitle(asset)"
+                    class="media-thumbnail"
+                  >
+                  <div class="media-source-badge">
+                    {{ sourceLabel(asset.source) }}
+                  </div>
+                  <div class="media-overlay">
+                    <p class="media-title">
+                      {{ assetTitle(asset) }}
+                    </p>
+                    <span class="media-meta">{{ assetSubtitle(asset) }}</span>
+                  </div>
+                  <button
+                    class="delete-btn"
+                    title="Remove from library"
+                    @click.stop="removeAsset(asset.id)"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <template v-else-if="activeKind !== 'image' && filteredAssets.length > 0">
+              <div class="asset-list">
+                <div
+                  v-for="asset in filteredAssets"
+                  :key="asset.id"
+                  class="asset-row"
+                  role="button"
+                  tabindex="0"
+                  @click="openAsset(asset)"
+                  @keydown.enter.prevent="openAsset(asset)"
+                  @keydown.space.prevent="openAsset(asset)"
+                >
+                  <component
+                    :is="kindIcon(asset.kind)"
+                    :size="18"
+                    :stroke-width="1.8"
+                    class="asset-row-icon"
+                  />
+                  <span class="asset-row-main">
+                    <span class="asset-row-title">{{ assetTitle(asset) }}</span>
+                    <span class="asset-row-meta">{{ assetSubtitle(asset) }}</span>
+                  </span>
+                  <span class="asset-source">{{ sourceLabel(asset.source) }}</span>
+                  <button
+                    class="row-remove"
+                    title="Remove from library"
+                    @click.stop="removeAsset(asset.id)"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </template>
+
             <div
               v-else
               class="empty-state"
             >
               <div class="empty-icon">
-                <svg
-                  width="48"
-                  height="48"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                >
-                  <rect
-                    x="3"
-                    y="3"
-                    width="18"
-                    height="18"
-                    rx="2"
-                    ry="2"
-                  />
-                  <circle
-                    cx="8.5"
-                    cy="8.5"
-                    r="1.5"
-                  />
-                  <polyline points="21 15 16 10 5 21" />
-                </svg>
+                <component
+                  :is="kindIcon(activeKind)"
+                  :size="48"
+                  :stroke-width="1.5"
+                />
               </div>
               <p class="empty-text">
-                No images yet
+                {{ emptyTitle }}
               </p>
               <p class="empty-hint">
-                AI-generated images will appear here
+                {{ emptyHint }}
               </p>
             </div>
           </div>
         </template>
 
-        <!-- Archived Chats Content -->
+        <MemoryPanelContent v-else-if="activeNav === 'memory'" />
         <ArchivedChatsContent v-else-if="activeNav === 'archive'" />
       </div>
     </div>
@@ -174,12 +215,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, type Component } from 'vue'
 import ArchivedChatsContent from './ArchivedChatsContent.vue'
-import { useMediaStore, type GeneratedMedia } from '@/stores/media'
+import MemoryPanelContent from './memory/MemoryPanelContent.vue'
+import { useMediaStore } from '@/stores/media'
+import type { MediaAsset, MediaKind, MediaSource } from '@/types'
 import {
-  Images,
   Archive,
+  Brain,
+  FileText,
+  Images,
+  Music,
+  Upload,
+  Video,
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -187,80 +235,178 @@ const props = defineProps<{
   initialTab?: string
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   close: []
 }>()
 
+type SourceFilter = 'all' | 'user-upload' | 'ai-generated'
+
 const mediaStore = useMediaStore()
 const searchQuery = ref('')
-
-// Default to 'media' tab, or use initialTab if provided
 const activeNav = ref(props.initialTab || 'media')
+const activeKind = ref<MediaKind>('image')
+const activeSource = ref<SourceFilter>('all')
 
-// Filter images by search query
-const filteredImages = computed(() => {
-  if (!searchQuery.value) return mediaStore.images
-  const query = searchQuery.value.toLowerCase()
-  return mediaStore.images.filter(img =>
-    img.prompt.toLowerCase().includes(query) ||
-    img.model.toLowerCase().includes(query)
-  )
+const navItems = [
+  { id: 'media', label: 'Media', icon: Images },
+  { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'archive', label: 'Archived Chats', icon: Archive },
+]
+
+const kindTabs: Array<{ id: MediaKind; label: string; icon: Component }> = [
+  { id: 'image', label: 'Images', icon: Images },
+  { id: 'file', label: 'Files', icon: FileText },
+  { id: 'audio', label: 'Audio', icon: Music },
+  { id: 'video', label: 'Video', icon: Video },
+]
+
+const sourceFilters: Array<{ id: SourceFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'user-upload', label: 'Uploaded' },
+  { id: 'ai-generated', label: 'Generated' },
+]
+
+const searchPlaceholder = computed(() =>
+  activeKind.value === 'image' ? 'Search images...' : 'Search media...'
+)
+
+const filteredAssets = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  return mediaStore.assets
+    .filter(asset => matchesActiveKind(asset))
+    .filter(asset => activeKind.value !== 'image' || activeSource.value === 'all' || asset.source === activeSource.value)
+    .filter(asset => {
+      if (!query) return true
+      return [
+        asset.fileName,
+        asset.mimeType,
+        asset.metadata?.prompt,
+        asset.metadata?.revisedPrompt,
+        asset.metadata?.model,
+        asset.source,
+      ].some(value => value?.toLowerCase().includes(query))
+    })
+    .sort((a, b) => b.createdAt - a.createdAt)
 })
 
-// Open image in gallery preview window (now uses mediaId, gallery loads its own data)
-function openImage(image: GeneratedMedia) {
-  console.log('[MediaPanel] Opening gallery for mediaId:', image.id)
-  window.electronAPI.openImageGallery(image.id)
+const emptyTitle = computed(() => {
+  if (activeKind.value !== 'image') return `No ${activeKind.value} assets yet`
+  if (activeSource.value === 'user-upload') return 'No uploaded images yet'
+  if (activeSource.value === 'ai-generated') return 'No generated images yet'
+  return 'No images yet'
+})
+
+const emptyHint = computed(() => {
+  if (activeKind.value !== 'image') return 'Files attached in chat will appear here'
+  if (activeSource.value === 'user-upload') return 'Images you paste or attach in chat will appear here'
+  if (activeSource.value === 'ai-generated') return 'AI-generated images will appear here'
+  return 'Uploaded and AI-generated images will appear here'
+})
+
+function sourceCount(source: SourceFilter): number {
+  return mediaStore.images.filter(asset => source === 'all' || asset.source === source).length
 }
 
-// Delete an image
-async function deleteImage(id: string) {
-  if (confirm('Delete this image?')) {
+function matchesActiveKind(asset: MediaAsset): boolean {
+  if (activeKind.value === 'file') {
+    return asset.kind === 'file' || asset.kind === 'document'
+  }
+  return asset.kind === activeKind.value
+}
+
+function tabCount(kind: MediaKind): number {
+  if (kind === 'file') {
+    return mediaStore.kindCounts.file + mediaStore.kindCounts.document
+  }
+  return mediaStore.kindCounts[kind]
+}
+
+function sourceLabel(source: MediaSource): string {
+  if (source === 'user-upload') return 'Uploaded'
+  if (source === 'ai-generated') return 'Generated'
+  if (source === 'tool-output') return 'Tool'
+  return 'External'
+}
+
+function kindIcon(kind: MediaKind) {
+  if (kind === 'image') return Images
+  if (kind === 'audio') return Music
+  if (kind === 'video') return Video
+  return FileText
+}
+
+function assetTitle(asset: MediaAsset): string {
+  return asset.metadata?.prompt || asset.fileName || 'Untitled asset'
+}
+
+function assetSubtitle(asset: MediaAsset): string {
+  const label = asset.metadata?.model || sourceLabel(asset.source)
+  const date = new Date(asset.createdAt).toLocaleDateString()
+  return `${label} · ${date}`
+}
+
+function openAsset(asset: MediaAsset) {
+  if (asset.kind === 'image') {
+    window.electronAPI.openImageGallery(asset.id)
+    return
+  }
+  if (asset.filePath) {
+    window.electronAPI.openPath(asset.filePath)
+  }
+}
+
+async function removeAsset(id: string) {
+  if (confirm('Remove this item from the library? The original chat message will stay unchanged.')) {
     await mediaStore.removeMedia(id)
   }
 }
 
-// Listen for image generation events
+async function refreshMedia(rebuild = false) {
+  await mediaStore.loadMedia({ rebuild })
+}
+
 let unsubscribe: (() => void) | null = null
 
 onMounted(async () => {
-  // Load saved media from disk
-  await mediaStore.loadMedia()
+  if (props.visible) {
+    await refreshMedia(true)
+  }
 
-  // Listen for new image generation events (image already saved by main process)
-  unsubscribe = window.electronAPI.onImageGenerated(async (data) => {
-    console.log('[MediaPanel] Image generated (already saved):', data.id)
-    // Just reload the media list to show the new image
-    await mediaStore.loadMedia()
+  unsubscribe = window.electronAPI.onImageGenerated(async () => {
+    await refreshMedia()
   })
 })
+
+watch(
+  () => props.visible,
+  async (visible) => {
+    if (visible) {
+      await refreshMedia(true)
+    }
+  },
+)
+
+watch(
+  () => props.initialTab,
+  (tab) => {
+    if (tab) activeNav.value = tab
+  },
+)
 
 onUnmounted(() => {
   if (unsubscribe) unsubscribe()
 })
-
-// Keep the last selected tab when panel is reopened
-// (activeNav persists between visibility toggles since it's not reset)
-
-// Navigation items with lucide-vue-next icons
-const navItems = [
-  { id: 'media', label: 'Media', icon: Images },
-  { id: 'archive', label: 'Archived Chats', icon: Archive },
-]
-
 </script>
 
 <style scoped>
 .media-panel {
-  width: 500px;
+  width: 560px;
   flex-shrink: 0;
   display: flex;
-  /* Match container's darker base for consistent "surface" */
   background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
   overflow: hidden;
 }
 
-/* Navigation - elevated sidebar */
 .media-nav {
   display: flex;
   flex-direction: column;
@@ -296,21 +442,26 @@ html[data-theme='light'] .media-nav {
   padding: 8px;
 }
 
-.nav-close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 40px;
+.nav-close-btn,
+.nav-item {
   border: none;
-  border-radius: 10px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.nav-close-btn:hover {
+.nav-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 40px;
+  border-radius: 8px;
+}
+
+.nav-close-btn:hover,
+.nav-item:hover {
   background: var(--hover);
   color: var(--text);
 }
@@ -322,28 +473,13 @@ html[data-theme='light'] .media-nav {
   align-items: center;
   gap: 4px;
   padding: 12px 8px;
-  border: none;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
+  border-radius: 8px;
   min-width: 72px;
-}
-
-.nav-item:hover {
-  background: var(--hover);
-  color: var(--text);
 }
 
 .nav-item.active {
   background: var(--active);
   color: var(--accent);
-}
-
-.nav-icon {
-  width: 20px;
-  height: 20px;
 }
 
 .nav-label {
@@ -368,7 +504,6 @@ html[data-theme='light'] .media-nav {
   justify-content: center;
 }
 
-/* Content Container */
 .media-content {
   flex: 1;
   display: flex;
@@ -379,17 +514,20 @@ html[data-theme='light'] .media-nav {
 }
 
 .content-header {
-  padding: 16px 4px;
+  padding: 16px 4px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .search-input {
   width: 100%;
-  padding: 10px 36px 10px 14px;
+  padding: 10px 14px;
   font-size: 14px;
   color: var(--text);
   background: var(--hover);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   transition: all 0.15s ease;
 }
 
@@ -402,13 +540,57 @@ html[data-theme='light'] .media-nav {
   color: var(--muted);
 }
 
+.kind-tabs,
+.source-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kind-tab,
+.source-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.kind-tab {
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.source-tab {
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.kind-tab.active,
+.source-tab.active {
+  color: var(--accent);
+  background: var(--active);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.tab-count,
+.source-tab span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .content-body {
   flex: 1;
   overflow-y: auto;
   padding: 0 4px;
 }
 
-/* Empty State */
+.loading-state,
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -416,17 +598,33 @@ html[data-theme='light'] .media-nav {
   justify-content: center;
   padding: 60px 20px;
   text-align: center;
+  color: var(--muted);
+}
+
+.loading-spinner {
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .empty-icon {
-  color: var(--muted);
   opacity: 0.5;
   margin-bottom: 16px;
 }
 
 .empty-text {
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text);
   margin: 0 0 4px;
 }
@@ -437,7 +635,6 @@ html[data-theme='light'] .media-nav {
   margin: 0;
 }
 
-/* Media Grid */
 .media-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -448,7 +645,7 @@ html[data-theme='light'] .media-nav {
 .media-item {
   position: relative;
   aspect-ratio: 1;
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -466,13 +663,25 @@ html[data-theme='light'] .media-nav {
   object-fit: cover;
 }
 
+.media-source-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 6px;
+  color: white;
+  background: rgba(0, 0, 0, 0.62);
+}
+
 .media-overlay {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 8px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+  padding: 9px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.82));
   opacity: 0;
   transition: opacity 0.2s ease;
 }
@@ -490,7 +699,7 @@ html[data-theme='light'] .media-nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.62);
   border: none;
   border-radius: 6px;
   color: white;
@@ -507,7 +716,7 @@ html[data-theme='light'] .media-nav {
   background: rgba(220, 38, 38, 0.9);
 }
 
-.media-prompt {
+.media-title {
   font-size: 11px;
   color: white;
   margin: 0 0 4px;
@@ -517,13 +726,76 @@ html[data-theme='light'] .media-nav {
   overflow: hidden;
 }
 
-.media-model {
+.media-meta {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.7);
-  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
 }
 
-/* Transition - width-based for proper flexbox layout */
+.asset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 16px;
+}
+
+.asset-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 10px;
+  text-align: left;
+  color: var(--text);
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.asset-row-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.asset-row-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.asset-row-title {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-row-meta,
+.asset-source {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.row-remove {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 5px 7px;
+  cursor: pointer;
+}
+
+.row-remove:hover {
+  color: var(--danger, #dc2626);
+  border-color: currentColor;
+}
+
 .media-panel-enter-active,
 .media-panel-leave-active {
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);

@@ -13,6 +13,11 @@ import type { ToolExecutionContext, ToolExecutionResult } from '../../tools/type
 import type { StreamContext } from './stream-processor.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 
+function isPermissionRejectedError(error: unknown): error is Permission.RejectedError {
+  return error instanceof Permission.RejectedError ||
+    (error instanceof Error && error.name === 'PermissionRejectedError')
+}
+
 /**
  * Detect if a bash command is reading a skill file and extract skill name
  */
@@ -157,6 +162,16 @@ export async function executeToolDirectly(
     const result = await executeTool(toolName, args, execContext)
     return result
   } catch (error: any) {
+    if (isPermissionRejectedError(error)) {
+      console.log(`[DirectExec] Permission rejected for tool ${toolName}`)
+      return {
+        success: false,
+        error: error.message || 'User rejected this operation',
+        rejected: true,
+        rejectionReason: error.reason,
+      }
+    }
+
     console.error(`[DirectExec] Tool execution error:`, error)
     // Check if error is due to abort signal
     const isAborted = context.abortSignal?.aborted ||
@@ -360,6 +375,9 @@ export async function executeToolAndUpdate(
     }
     toolCall.result = result.data
     toolCall.error = result.error
+    toolCall.rejected = result.rejected || undefined
+    toolCall.rejectionReason = result.rejectionReason
+    toolCall.requiresConfirmation = false
     // Update step status based on result, include result/error
     const stepStatus = result.aborted ? 'cancelled' : (result.success ? 'completed' : 'failed')
     // Extract title from result.data if available (tools return title in data)
@@ -373,6 +391,8 @@ export async function executeToolAndUpdate(
       toolCall: { ...toolCall, changes: step.toolCall?.changes },
       result: typeof result.data === 'string' ? result.data : JSON.stringify(result.data),
       error: result.error,
+      rejected: result.rejected || undefined,
+      rejectionReason: result.rejectionReason,
     })
   }
 

@@ -430,9 +430,9 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   /**
-   * Fetch models for a provider from settings.json modelRegistry.
-   * Model data is stored in settings.json after user refreshes the registry.
-   * No network fetch here — that's done via refreshModelRegistry().
+   * Fetch models for a provider. Most providers read from settings.json
+   * modelRegistry; provider-direct model sources such as Codex and Copilot are
+   * fetched by the main-process IPC handler.
    */
   async function fetchModelsForProvider(
     providerId: string,
@@ -440,7 +440,13 @@ export const useSettingsStore = defineStore('settings', () => {
   ): Promise<OpenRouterModel[]> {
     // Return cached if available and not forcing refresh
     if (!forceRefresh && providerModels.value.has(providerId)) {
-      return providerModels.value.get(providerId)!
+      const cachedModels = providerModels.value.get(providerId)!
+      const selectedIds = settings.value.ai.providers[providerId]?.selectedModels || []
+      const codexMissingSelectedMetadata = providerId === 'codex' &&
+        selectedIds.some((id) => !cachedModels.some((model) => model.id === id))
+      if (!codexMissingSelectedMetadata) {
+        return cachedModels
+      }
     }
 
     // Check if already loading
@@ -482,15 +488,18 @@ export const useSettingsStore = defineStore('settings', () => {
 
   /**
    * Refresh model registry from models.dev and fetch fresh models for a provider.
-   * This triggers a network fetch to models.dev API via forceRefresh().
+   * Provider-direct model sources bypass models.dev and fetch only their own API.
    */
   async function refreshModelsForProvider(providerId: string): Promise<OpenRouterModel[]> {
-    try {
-      await window.electronAPI.refreshModelRegistry()
-    } catch (error) {
-      console.warn('[SettingsStore] Failed to refresh model registry:', error)
+    const providerDirectModels = new Set(['codex', 'github-copilot'])
+    if (!providerDirectModels.has(providerId)) {
+      try {
+        await window.electronAPI.refreshModelRegistry()
+      } catch (error) {
+        console.warn('[SettingsStore] Failed to refresh model registry:', error)
+      }
     }
-    // Clear client-side cache so we re-read from settings.json
+    // Clear client-side cache so we re-read from the registry or provider API.
     providerModels.value.delete(providerId)
     return fetchModelsForProvider(providerId, true)
   }

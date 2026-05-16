@@ -165,6 +165,12 @@ const isSettingsWindow = computed(() => currentHash.value.startsWith('#/settings
 const isImagePreviewWindow = computed(() => currentHash.value.startsWith('#/image-preview'))
 const isSearchWindow = computed(() => currentHash.value.startsWith('#/search'))
 const isTodoPlanWindow = computed(() => currentHash.value.startsWith('#/todo-plan'))
+const isAuxiliaryWindow = computed(() =>
+  isSettingsWindow.value ||
+  isImagePreviewWindow.value ||
+  isSearchWindow.value ||
+  isTodoPlanWindow.value
+)
 
 function syncCurrentHash() {
   currentHash.value = window.location.hash
@@ -235,21 +241,34 @@ function closeMediaPanel() {
 
 // Setup global keyboard shortcuts
 useShortcuts({
-  onNewChat: createNewChat,
-  onToggleSidebar: handleSidebarToggle,
+  onNewChat: () => {
+    if (isAuxiliaryWindow.value) return
+    createNewChat()
+  },
+  onToggleSidebar: () => {
+    if (isAuxiliaryWindow.value) return
+    handleSidebarToggle()
+  },
   onFocusInput: () => {
+    if (isAuxiliaryWindow.value) return
     chatContainerRef.value?.focusInput()
   },
   onOpenSettings: () => {
+    if (isAuxiliaryWindow.value) return
     window.electronAPI.openSettingsWindow()
   },
   onSearchEverywhere: () => {
+    if (isAuxiliaryWindow.value) return
     openSearch()
   },
   onToggleTodoPlanWindow: () => {
-    window.electronAPI?.toggleTodoPlanWindow?.()
+    window.electronAPI?.toggleTodoPlanWindow?.({
+      activation: 'preserve-current-app',
+      preserveMainWindowVisibility: true,
+    })
   },
   onToggleTodoPlan: () => {
+    if (isAuxiliaryWindow.value) return
     window.dispatchEvent(new CustomEvent('todo-plan:toggle-card'))
   },
 })
@@ -364,8 +383,8 @@ watch(sidebarCollapsed, (collapsed) => {
 // Persist sidebar collapsed state and always show traffic lights
 watch([sidebarCollapsed, sidebarFloating, showMediaPanel], ([collapsed]) => {
   localStorage.setItem('sidebarCollapsed', String(collapsed))
-  // Skip traffic light control for settings/preview windows - always show there
-  if (isSettingsWindow.value || isImagePreviewWindow.value) return
+  // Auxiliary windows own their chrome behavior. Todo/Notes uses native hover-only buttons.
+  if (isSettingsWindow.value || isImagePreviewWindow.value || isSearchWindow.value || isTodoPlanWindow.value) return
   // Always show traffic lights since sidebar strip is always visible
   window.electronAPI?.setWindowButtonVisibility?.(true).catch(() => {
     // Handler may not be registered yet during initial load

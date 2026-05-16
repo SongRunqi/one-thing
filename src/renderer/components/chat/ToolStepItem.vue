@@ -25,6 +25,11 @@
           :size="13"
           :stroke-width="2.4"
         />
+        <Ban
+          v-else-if="view.status === 'rejected'"
+          :size="13"
+          :stroke-width="2.2"
+        />
         <X
           v-else-if="view.status === 'failed'"
           :size="13"
@@ -74,6 +79,7 @@
       <span
         v-if="view.errorPreview"
         class="error-tag"
+        :class="{ rejected: view.status === 'rejected' }"
       >{{ view.errorPreview }}</span>
 
       <div
@@ -92,10 +98,10 @@
       </div>
 
       <ChevronDown
-        v-else-if="view.hasDetails"
-        :class="['expand-icon', { rotated: expanded }]"
+        :class="['expand-icon', { rotated: expanded, placeholder: view.isAwaitingConfirmation || !view.hasDetails }]"
         :size="14"
         :stroke-width="2"
+        :aria-hidden="view.isAwaitingConfirmation || !view.hasDetails"
       />
     </div>
 
@@ -113,7 +119,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AlertTriangle, Check, ChevronDown, Circle, Minus, X } from 'lucide-vue-next'
+import { AlertTriangle, Ban, Check, ChevronDown, Circle, Minus, X } from 'lucide-vue-next'
 import type { ToolCall } from '@/types'
 import type { ToolStepView } from '@/stores/helpers/tool-step-view'
 import AllowSplitButton from '../common/AllowSplitButton.vue'
@@ -145,6 +151,7 @@ const statusTitle = computed(() => {
     case 'executing': return 'Running'
     case 'awaiting-confirmation': return 'Needs confirmation'
     case 'completed': return 'Completed'
+    case 'rejected': return 'User rejected'
     case 'failed': return 'Failed'
     case 'cancelled': return 'Cancelled'
     default: return 'Pending'
@@ -224,6 +231,12 @@ const statusTitle = computed(() => {
   color: var(--text-error);
   background: color-mix(in srgb, var(--color-danger) 12%, transparent);
   border-color: color-mix(in srgb, var(--border-error) 26%, transparent);
+}
+
+.status-icon.rejected {
+  color: var(--text-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--border-warning) 26%, transparent);
 }
 
 .status-icon.executing,
@@ -332,6 +345,12 @@ button.tool-preview:hover {
   flex-shrink: 0;
 }
 
+.error-tag.rejected {
+  color: var(--text-warning);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  border-color: color-mix(in srgb, var(--border-warning) 20%, transparent);
+}
+
 .confirm-buttons {
   display: flex;
   gap: var(--space-1, 4px);
@@ -373,6 +392,10 @@ button.tool-preview:hover {
 
 .expand-icon.rotated {
   transform: rotate(180deg);
+}
+
+.expand-icon.placeholder {
+  opacity: 0;
 }
 
 .tool-step-details {

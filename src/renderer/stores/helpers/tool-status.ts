@@ -16,6 +16,7 @@ export type ToolRenderStatus =
   | 'awaiting-confirmation'
   | 'executing'
   | 'completed'
+  | 'rejected'
   | 'failed'
   | 'cancelled'
 
@@ -25,6 +26,7 @@ export type ToolRenderStatus =
  * tool call with no step yet, or a step whose toolCall is unset).
  */
 export function getToolRenderStatus(toolCall?: ToolCall, step?: Step): ToolRenderStatus {
+  if (step?.rejected || toolCall?.rejected) return 'rejected'
   // awaiting-confirmation is a UI gate that overrides downstream state.
   if (toolCall?.requiresConfirmation || step?.status === 'awaiting-confirmation') {
     return 'awaiting-confirmation'

@@ -78,6 +78,7 @@ export const IPC_CHANNELS = {
 
   // Providers related
   GET_PROVIDERS: 'providers:get-all',
+  GET_PROVIDER_USAGE: 'providers:get-usage',
 
   // Tools related
   GET_TOOLS: 'tools:get-all',
@@ -116,7 +117,12 @@ export const IPC_CHANNELS = {
   SHOW_OPEN_DIALOG: 'dialog:show-open',
 
   // Image Preview related
+  LIST_MEDIA_ASSETS: 'media:list-assets',
+  HIDE_MEDIA_ASSET: 'media:hide-asset',
+  REBUILD_MEDIA_LIBRARY: 'media:rebuild-library',
+  GET_MEDIA_GALLERY: 'media:get-gallery',
   OPEN_IMAGE_PREVIEW: 'media:open-image-preview',
+  GET_IMAGE_PREVIEW: 'media:get-image-preview',
   OPEN_IMAGE_GALLERY: 'media:open-image-gallery',
   IMAGE_PREVIEW_UPDATE: 'image-preview:update',
   IMAGE_GALLERY_UPDATE: 'image-gallery:update',
@@ -192,6 +198,31 @@ export const IPC_CHANNELS = {
   PLUGINS_ENABLE: 'plugins:enable',
   PLUGINS_DISABLE: 'plugins:disable',
   PLUGINS_REFRESH: 'plugins:refresh',
+  PLUGINS_COMMANDS: 'plugins:commands',
+  PLUGINS_EXECUTE_COMMAND: 'plugins:execute-command',
+
+  // Soul / Memory panel
+  MEMORY_OVERVIEW: 'memory:overview',
+  MEMORY_READ: 'memory:read',
+  MEMORY_SEARCH: 'memory:search',
+  MEMORY_APPEND: 'memory:append',
+  MEMORY_SAVE_FILE: 'memory:save-file',
+  MEMORY_INDEX: 'memory:index',
+  MEMORY_RUN_DREAMING: 'memory:run-dreaming',
+  MEMORY_CAPTURE_SAVE: 'memory:capture-save',
+  MEMORY_CAPTURE_DISCARD: 'memory:capture-discard',
+  MEMORY_PROFILE_LIST: 'memory.profile:list',
+  MEMORY_PROFILE_SEARCH: 'memory.profile:search',
+  MEMORY_PROFILE_UPSERT: 'memory.profile:upsert',
+  MEMORY_PROFILE_DELETE: 'memory.profile:delete',
+  MEMORY_PROFILE_AUDIT: 'memory.profile:audit',
+  MEMORY_PROFILE_EXPORT: 'memory.profile:export',
+
+  // Generic scheduler
+  SCHEDULER_LIST: 'scheduler:list',
+  SCHEDULER_GET: 'scheduler:get',
+  SCHEDULER_RUN_NOW: 'scheduler:run-now',
+  SCHEDULER_SET_ENABLED: 'scheduler:set-enabled',
 
   // App State (restore on startup)
   GET_APP_STATE: 'app-state:get',
@@ -212,6 +243,7 @@ export const IPC_CHANNELS = {
   TODO_PLAN_DELETE: 'todo-plan:delete',
   TODO_PLAN_REVEAL_DIRECTORY: 'todo-plan:reveal-directory',
   TODO_PLAN_OPEN_WINDOW: 'todo-plan:open-window',
+  TODO_PLAN_HIDE_WINDOW: 'todo-plan:hide-window',
   TODO_PLAN_TOGGLE_WINDOW: 'todo-plan:toggle-window',
   TODO_PLAN_SET_WINDOW_PINNED: 'todo-plan:set-window-pinned',
   TODO_PLAN_CHANGED: 'todo-plan:changed',

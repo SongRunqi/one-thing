@@ -8,6 +8,7 @@
  */
 
 import type { Step, ToolCall, ContentPart } from '../../../shared/ipc.js'
+import type { ReasoningPlacement } from '../../../shared/events/index.js'
 
 /**
  * Data for stream completion event
@@ -43,7 +44,7 @@ export interface IPCEmitter {
   sendTextChunk(text: string, turnIndex?: number): void
 
   /** Send a reasoning chunk to the frontend */
-  sendReasoningChunk(reasoning: string, turnIndex?: number): void
+  sendReasoningChunk(reasoning: string, turnIndex?: number, placement?: ReasoningPlacement): void
 
   /** Send a content part (text or data-steps) */
   sendContentPart(part: ContentPart): void

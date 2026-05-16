@@ -21,6 +21,7 @@ export {
   updateSessionArchived,
   addMessage,
   deleteMessage,
+  deleteMessageAndTruncate,
   updateMessageAndTruncate,
   updateMessageContent,
   updateMessageReasoning,
@@ -43,6 +44,7 @@ export {
   inheritSessionWorkingDirectory,
   updateSessionTokenUsage,
   updateSessionContextSize,
+  updateSessionPromptContext,
   getSessionTokenUsage,
   // Optimized session loading (Phase 4: Metadata Separation)
   getSessionsList,

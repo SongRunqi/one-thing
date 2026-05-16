@@ -165,7 +165,24 @@
                       />
                       <polyline points="21 15 16 10 5 21" />
                     </svg>
-                    Image
+                    Image output
+                  </span>
+                  <span
+                    v-if="hasNativeImageGeneration(model)"
+                    class="badge image-gen"
+                  >
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path d="M12 3v18M3 12h18" />
+                      <path d="M5 5l14 14M19 5L5 19" />
+                    </svg>
+                    Image generation
                   </span>
                   <span
                     v-if="hasVision(model)"
@@ -186,7 +203,23 @@
                         r="3"
                       />
                     </svg>
-                    Vision
+                    Image input
+                  </span>
+                  <span
+                    v-if="hasSpeed(model)"
+                    class="badge speed"
+                  >
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z" />
+                    </svg>
+                    Speed
                   </span>
                 </div>
               </div>
@@ -285,6 +318,9 @@ function buildSelectedModels(providerId: string): OpenRouterModel[] {
     if (found) {
       return { ...found, name: displayName }
     }
+    if (providerId === 'codex') {
+      return buildCodexFallbackModel(id, displayName)
+    }
     // Placeholder for models not (yet) in the registry — keeps the entry visible
     // and selectable even if metadata hasn't loaded.
     return {
@@ -302,6 +338,38 @@ function buildSelectedModels(providerId: string): OpenRouterModel[] {
       supported_parameters: [],
     }
   })
+}
+
+function buildCodexFallbackModel(id: string, name: string): OpenRouterModel {
+  return {
+    id,
+    name,
+    context_length: 0,
+    architecture: {
+      modality: 'text+image->text',
+      input_modalities: ['text', 'image'],
+      output_modalities: ['text'],
+      tokenizer: 'unknown',
+    },
+    pricing: { prompt: '0', completion: '0', request: '0', image: '0' },
+    top_provider: { context_length: 0, max_completion_tokens: 0, is_moderated: false },
+    supported_parameters: ['tools', 'reasoning'],
+    providerMetadata: {
+      codex: {
+        defaultReasoningEffort: 'medium',
+        supportedReasoningEfforts: [
+          { effort: 'minimal', name: 'Minimal' },
+          { effort: 'low', name: 'Low' },
+          { effort: 'medium', name: 'Medium' },
+          { effort: 'high', name: 'High' },
+          { effort: 'xhigh', name: 'X High' },
+        ],
+        supportsReasoningSummaries: true,
+        serviceTiers: [],
+        nativeTools: ['image_generation'],
+      },
+    },
+  }
 }
 
 // Get models for selected provider — fully reactive.
@@ -340,6 +408,7 @@ function handleProviderHover(providerId: string) {
     selectedProviderId.value = providerId
     focusedIndex.value = -1
   }
+  loadModelsForProvider(providerId)
 }
 
 // Select model
@@ -365,15 +434,31 @@ function formatContextLength(length: number): string {
 
 // Capability checks
 function hasTools(model: OpenRouterModel): boolean {
-  return model.supported_parameters?.includes('tools') || false
+  const codexMetadata = model.providerMetadata?.codex as Record<string, unknown> | undefined
+  return model.supported_parameters?.includes('tools') || !!codexMetadata
 }
 
 function hasReasoning(model: OpenRouterModel): boolean {
-  return model.supported_parameters?.includes('reasoning') || false
+  const codexMetadata = model.providerMetadata?.codex as Record<string, unknown> | undefined
+  return model.supported_parameters?.includes('reasoning') ||
+    Array.isArray(codexMetadata?.supportedReasoningEfforts) ||
+    codexMetadata?.supportsReasoningSummaries === true
 }
 
 function hasImageOutput(model: OpenRouterModel): boolean {
   return model.architecture?.output_modalities?.includes('image') || false
+}
+
+function hasNativeImageGeneration(model: OpenRouterModel): boolean {
+  const codexMetadata = model.providerMetadata?.codex as Record<string, unknown> | undefined
+  return Array.isArray(codexMetadata?.nativeTools) &&
+    codexMetadata.nativeTools.includes('image_generation')
+}
+
+function hasSpeed(model: OpenRouterModel): boolean {
+  const codexMetadata = model.providerMetadata?.codex as Record<string, unknown> | undefined
+  return (Array.isArray(codexMetadata?.serviceTiers) && codexMetadata.serviceTiers.length > 0) ||
+    (Array.isArray(codexMetadata?.additionalSpeedTiers) && codexMetadata.additionalSpeedTiers.length > 0)
 }
 
 function hasVision(model: OpenRouterModel): boolean {
@@ -711,7 +796,17 @@ onUnmounted(() => {
   color: var(--text-success);
 }
 
+.badge.image-gen {
+  background: rgba(var(--color-success-rgb), 0.15);
+  color: var(--text-success);
+}
+
 .badge.vision {
+  background: rgba(var(--color-warning-rgb), 0.15);
+  color: var(--text-warning);
+}
+
+.badge.speed {
   background: rgba(var(--color-warning-rgb), 0.15);
   color: var(--text-warning);
 }

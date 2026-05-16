@@ -3,6 +3,7 @@ import type { AppSettings, ChatMessage, ChatSession } from '../../shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
 import { generateChatResponse } from '../providers/index.js'
 import { buildContextCompactPrompt } from './prompt/index.js'
+import { runBeforeContextCompactHooks } from '../plugins/lifecycle.js'
 import * as store from '../store.js'
 
 export interface ContextCompactResult {
@@ -52,9 +53,19 @@ export function selectCompactPlan(
   if (cutoffIndex < 0) return null
 
   const cutoffMessage = session.messages[cutoffIndex]
-  const previousSummaryIndex = session.summaryUpToMessageId
-    ? session.messages.findIndex(m => m.id === session.summaryUpToMessageId)
-    : -1
+  let previousSummaryIndex = -1
+  let previousSummary: string | undefined
+  if (session.summary && session.summaryUpToMessageId) {
+    previousSummaryIndex = session.messages.findIndex(m => m.id === session.summaryUpToMessageId)
+    if (previousSummaryIndex === -1) {
+      console.warn('[ContextCompact] Ignoring summary with missing anchor:', {
+        sessionId: session.id,
+        summaryUpToMessageId: session.summaryUpToMessageId,
+      })
+    } else {
+      previousSummary = session.summary
+    }
+  }
 
   if (previousSummaryIndex >= cutoffIndex) return null
 
@@ -68,7 +79,7 @@ export function selectCompactPlan(
     cutoffIndex,
     cutoffMessage,
     messagesToSummarize,
-    previousSummary: session.summary,
+    previousSummary,
   }
 }
 
@@ -111,6 +122,15 @@ export async function compactSessionContext(options: {
   await options.onMessageCreated?.(compactMessage)
 
   try {
+    await runBeforeContextCompactHooks({
+      sessionId: options.sessionId,
+      providerId: options.providerId,
+      configWithApiKey: options.configWithApiKey as unknown as Record<string, unknown>,
+      settings: options.settings,
+      keepRecentTurns: options.keepRecentTurns,
+      messagesToSummarize: plan.messagesToSummarize,
+    })
+
     const formattedMessages = formatMessagesForSummary(plan.messagesToSummarize)
     const summary = await summarizeInChunks({
       providerId: options.providerId,
@@ -129,6 +149,7 @@ export async function compactSessionContext(options: {
 
     store.updateSessionSummary(options.sessionId, summary, plan.cutoffMessage.id)
     store.updateSessionContextSize(options.sessionId, 0)
+    store.updateSessionPromptContext(options.sessionId, null)
     store.updateMessageContent(options.sessionId, compactMessage.id, finalContent)
     await options.onMessageUpdated?.(compactMessage.id, { content: finalContent })
 
@@ -187,77 +208,6 @@ export function getContextCompactReason(options: {
   if (hardLimitRisk) return 'hard-limit'
   if (thresholdHit) return 'threshold'
   return null
-}
-
-export function estimateSessionInputTokens(session: ChatSession): number {
-  const effectiveMessages = getEffectiveContextMessages(session)
-  const summaryText = session.summary && session.summaryUpToMessageId
-    ? `[Conversation History Summary]\n${session.summary}\n\nPlease continue the conversation based on the above context.\nUnderstood. I have reviewed the previous conversation context. Please continue.\n`
-    : ''
-  const text = summaryText + effectiveMessages
-    .map(formatMessageForTokenEstimate)
-    .join('\n')
-
-  return Math.ceil(text.length / 4)
-}
-
-function formatMessageForTokenEstimate(message: ChatMessage): string {
-  const parts = [`${message.role}: ${message.content || ''}`]
-
-  if (message.reasoning) {
-    parts.push(`reasoning: ${message.reasoning}`)
-  }
-
-  if (message.toolCalls?.length) {
-    for (const tc of message.toolCalls) {
-      parts.push(`toolCall ${tc.toolName || tc.toolId}: ${safeStringify(tc.arguments || {})}`)
-      if (tc.result !== undefined) {
-        parts.push(`toolResult ${tc.toolName || tc.toolId}: ${safeStringify(sanitizeToolResultLikeRequest(tc.result))}`)
-      }
-      if (tc.error) {
-        parts.push(`toolError ${tc.toolName || tc.toolId}: ${tc.error}`)
-      }
-    }
-  }
-
-  if (message.attachments?.length) {
-    parts.push(`attachments: ${message.attachments.map(a => `${a.fileName} ${a.mimeType} ${a.size} ${a.base64Data || ''}`).join('\n')}`)
-  }
-
-  return parts.join('\n')
-}
-
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-
-function sanitizeToolResultLikeRequest(value: unknown): unknown {
-  if (!value || typeof value !== 'object') return value
-  if (Array.isArray(value)) return value.map(sanitizeToolResultLikeRequest)
-
-  const out: Record<string, unknown> = {}
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (key === 'originalContent') continue
-    out[key] = sanitizeToolResultLikeRequest(child)
-  }
-  return out
-}
-
-function getEffectiveContextMessages(session: ChatSession): ChatMessage[] {
-  if (session.summary && session.summaryUpToMessageId) {
-    const summaryIndex = session.messages.findIndex(m => m.id === session.summaryUpToMessageId)
-    if (summaryIndex !== -1) {
-      return session.messages
-        .slice(summaryIndex + 1)
-        .filter(m => m.role === 'user' || m.role === 'assistant')
-    }
-  }
-
-  return session.messages.filter(m => m.role === 'user' || m.role === 'assistant')
 }
 
 async function summarizeInChunks(options: {

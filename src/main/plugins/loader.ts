@@ -13,6 +13,7 @@ import { execSync } from 'child_process'
 import type { PluginDefinition, PluginManifest, PluginEntry } from './types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
 import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
+import soulMemoryPlugin, { soulMemoryManifest } from './builtin/soul-memory.js'
 
 const DEFAULT_ENTRY = 'plugin-entry.js'
 
@@ -80,6 +81,16 @@ function getBuiltinPlugins(): PluginDefinition[] {
       entryPath: 'builtin://note-skills/plugin-entry',
       entry: noteSkillsPlugin,
       enabled: getPluginEnabled('note-skills'),
+      needsInstall: false,
+    },
+    {
+      id: 'soul-memory',
+      source: 'builtin',
+      manifest: soulMemoryManifest,
+      dirPath: 'builtin://soul-memory',
+      entryPath: 'builtin://soul-memory/plugin-entry',
+      entry: soulMemoryPlugin,
+      enabled: getPluginEnabled('soul-memory'),
       needsInstall: false,
     },
   ]

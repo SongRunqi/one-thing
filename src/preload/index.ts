@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS, AIProvider, MessageAttachment } from '../shared/ipc.js'
-import type { GetSessionMessagesPageRequest, UIMessageStreamData } from '../shared/ipc.js'
+import type {
+  GetSessionMessagesPageRequest,
+  MediaQuery,
+  ProviderUsageResponse,
+  TodoPlanWindowActionRequest,
+  UIMessageStreamData,
+} from '../shared/ipc.js'
 
 const electronAPI = {
   // Stream event listeners
@@ -309,6 +315,9 @@ const electronAPI = {
   getProviders: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDERS),
 
+  getProviderUsage: (providerId: string): Promise<ProviderUsageResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDER_USAGE, { providerId }),
+
   // Tools methods
   getTools: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_TOOLS),
@@ -429,14 +438,29 @@ const electronAPI = {
   readImageBase64: (filePath: string) =>
     ipcRenderer.invoke('media:read-image-base64', filePath),
 
+  listMediaAssets: (query?: MediaQuery) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LIST_MEDIA_ASSETS, query),
+
+  hideMediaAsset: (id: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.HIDE_MEDIA_ASSET, id),
+
+  rebuildMediaLibrary: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.REBUILD_MEDIA_LIBRARY),
+
+  getMediaGallery: (assetId: string, query?: MediaQuery) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_MEDIA_GALLERY, { assetId, query }),
+
   // Image preview methods
   openImagePreview: (src: string, alt?: string) => {
     console.log('[Preload] openImagePreview called:', { src: src.substring(0, 50), alt })
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_IMAGE_PREVIEW, { src, alt })
   },
 
-  onImagePreviewUpdate: (callback: (data: { mode: 'single'; src: string; alt?: string }) => void) => {
-    const listener = (_event: any, data: { mode: 'single'; src: string; alt?: string }) => callback(data)
+  getImagePreview: (previewId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_IMAGE_PREVIEW, previewId),
+
+  onImagePreviewUpdate: (callback: (data: { mode: 'single'; previewId?: string; src?: string; alt?: string }) => void) => {
+    const listener = (_event: any, data: { mode: 'single'; previewId?: string; src?: string; alt?: string }) => callback(data)
     ipcRenderer.on(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, listener)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, listener)
   },
@@ -477,18 +501,14 @@ const electronAPI = {
   oauthGetStatus: (providerId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.OAUTH_STATUS, { providerId }),
 
-  oauthDevicePoll: (providerId: string, deviceCode: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.OAUTH_DEVICE_POLL, { providerId, deviceCode }),
+  oauthDevicePoll: (providerId: string, flowId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.OAUTH_DEVICE_POLL, { providerId, flowId }),
 
   oauthRefresh: (providerId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.OAUTH_REFRESH, { providerId }),
 
   oauthCallback: (providerId: string, code: string, state: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.OAUTH_CALLBACK, { providerId, code, state }),
-
-  // Test OAuth API directly (for debugging)
-  oauthTestDirect: (providerId: string) =>
-    ipcRenderer.invoke('oauth:test-direct', providerId),
 
   // OAuth event listeners
   onOAuthTokenRefreshed: (callback: (data: { providerId: string }) => void) => {
@@ -570,6 +590,80 @@ const electronAPI = {
   refreshPlugins: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REFRESH),
 
+  getPluginCommands: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_COMMANDS),
+
+  executePluginCommand: (commandName: string, args: string, sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_EXECUTE_COMMAND, { commandName, args, sessionId }),
+
+  // ── Soul / Memory panel ────────────────────────
+  getMemoryOverview: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_OVERVIEW),
+
+  readMemoryFile: (request: { path: string; startLine?: number; endLine?: number; lines?: number; full?: boolean }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_READ, request),
+
+  searchMemory: (request: { query: string; limit?: number | string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_SEARCH, request),
+
+  appendMemory: (request: { content: string; target?: 'daily' | 'memory'; heading?: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_APPEND, request),
+
+  saveMemoryFile: (request: { path: string; content: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_SAVE_FILE, request),
+
+  rebuildMemoryIndex: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_INDEX),
+
+  runMemoryDreaming: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_RUN_DREAMING),
+
+  listMemoryProfile: (request?: { query?: string; includeDeleted?: boolean; limit?: number }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_LIST, request),
+
+  searchMemoryProfile: (request: { query?: string; includeDeleted?: boolean; limit?: number }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_SEARCH, request),
+
+  upsertMemoryProfile: (request: {
+    id?: string
+    memoryKey?: string
+    kind: string
+    subject?: string
+    value: string
+    text?: string
+    confidence?: number
+    sensitivity?: string
+    evidence?: string
+  }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_UPSERT, request),
+
+  deleteMemoryProfile: (request: { id: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_DELETE, request),
+
+  getMemoryProfileAudit: (request: { id: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_AUDIT, request),
+
+  exportMemoryProfile: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_EXPORT),
+
+  saveMemoryCapture: (request?: { id?: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_CAPTURE_SAVE, request),
+
+  discardMemoryCapture: (request?: { id?: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_CAPTURE_DISCARD, request),
+
+  listSchedulerTasks: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_LIST),
+
+  getSchedulerTask: (request: { id: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_GET, request),
+
+  runSchedulerTaskNow: (request: { id: string; force?: boolean }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_RUN_NOW, request),
+
+  setSchedulerTaskEnabled: (request: { id: string; enabled: boolean }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_SET_ENABLED, request),
+
   // ── App State (restore on startup) ─────────────
   getAppState: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_APP_STATE),
@@ -625,11 +719,14 @@ const electronAPI = {
   revealTodoPlanDirectory: () =>
     ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_REVEAL_DIRECTORY),
 
-  openTodoPlanWindow: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW),
+  openTodoPlanWindow: (request?: TodoPlanWindowActionRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW, request),
 
-  toggleTodoPlanWindow: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW),
+  hideTodoPlanWindow: (request?: TodoPlanWindowActionRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_HIDE_WINDOW, request),
+
+  toggleTodoPlanWindow: (request?: TodoPlanWindowActionRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW, request),
 
   setTodoPlanWindowPinned: (pinned: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED, { pinned }),

@@ -7,17 +7,13 @@
 import { ipcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import https from 'https'
-import http from 'http'
 import { v4 as uuidv4 } from 'uuid'
-import {
-  getMediaImagesDir,
-  getMediaIndexPath,
-  readJsonFile,
-  writeJsonFile,
-} from '../stores/paths.js'
+import { getMediaImagesDir } from '../stores/paths.js'
+import { getSessions } from '../stores/index.js'
 import { openImagePreviewWindow } from '../window.js'
+import { mediaAssetToLegacyImage, mediaLibraryService } from '../media/media-library-service.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import type { MediaAsset, MediaQuery } from '../../shared/ipc.js'
 
 export interface MediaItem {
   id: string
@@ -31,62 +27,40 @@ export interface MediaItem {
   messageId: string
 }
 
-interface MediaIndex {
-  items: MediaItem[]
+interface ImagePreviewRecord {
+  src: string
+  alt?: string
+  createdAt: number
 }
 
-function loadMediaIndex(): MediaIndex {
-  return readJsonFile<MediaIndex>(getMediaIndexPath(), { items: [] })
+const imagePreviewRecords = new Map<string, ImagePreviewRecord>()
+const IMAGE_PREVIEW_TTL_MS = 10 * 60 * 1000
+const MAX_IMAGE_PREVIEW_RECORDS = 20
+
+function pruneImagePreviewRecords(): void {
+  const now = Date.now()
+  for (const [id, record] of imagePreviewRecords) {
+    if (now - record.createdAt > IMAGE_PREVIEW_TTL_MS) {
+      imagePreviewRecords.delete(id)
+    }
+  }
+
+  while (imagePreviewRecords.size > MAX_IMAGE_PREVIEW_RECORDS) {
+    const oldestId = imagePreviewRecords.keys().next().value
+    if (!oldestId) break
+    imagePreviewRecords.delete(oldestId)
+  }
 }
 
-function saveMediaIndex(index: MediaIndex): void {
-  writeJsonFile(getMediaIndexPath(), index)
-}
-
-async function downloadImage(url: string, filePath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const protocol = url.startsWith('https') ? https : http
-    const file = fs.createWriteStream(filePath)
-
-    protocol.get(url, (response) => {
-      // Handle redirects
-      if (response.statusCode === 301 || response.statusCode === 302) {
-        const redirectUrl = response.headers.location
-        if (redirectUrl) {
-          file.close()
-          fs.unlinkSync(filePath)
-          downloadImage(redirectUrl, filePath).then(resolve).catch(reject)
-          return
-        }
-      }
-
-      if (response.statusCode !== 200) {
-        file.close()
-        fs.unlinkSync(filePath)
-        reject(new Error(`Failed to download: ${response.statusCode}`))
-        return
-      }
-
-      response.pipe(file)
-      file.on('finish', () => {
-        file.close()
-        resolve()
-      })
-    }).on('error', (err) => {
-      file.close()
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath)
-      }
-      reject(err)
-    })
+function createImagePreviewRecord(src: string, alt?: string): string {
+  pruneImagePreviewRecords()
+  const previewId = uuidv4()
+  imagePreviewRecords.set(previewId, {
+    src,
+    alt,
+    createdAt: Date.now(),
   })
-}
-
-async function saveBase64Image(base64Data: string, filePath: string): Promise<void> {
-  // Remove data URL prefix if present
-  const base64Content = base64Data.replace(/^data:image\/\w+;base64,/, '')
-  const buffer = Buffer.from(base64Content, 'base64')
-  fs.writeFileSync(filePath, buffer)
+  return previewId
 }
 
 /**
@@ -102,41 +76,45 @@ export async function saveMediaImage(data: {
   sessionId: string
   messageId: string
 }): Promise<MediaItem> {
-  const id = uuidv4()
-  const filename = `${id}.png`
-  const filePath = path.join(getMediaImagesDir(), filename)
-
-  // Download or save the image
-  if (data.url) {
-    await downloadImage(data.url, filePath)
-  } else if (data.base64) {
-    await saveBase64Image(data.base64, filePath)
-  } else {
-    throw new Error('No image data provided')
-  }
-
-  // Create media item
-  const item: MediaItem = {
-    id,
-    type: 'image',
-    filePath,
-    prompt: data.prompt,
-    revisedPrompt: data.revisedPrompt,
-    model: data.model,
-    createdAt: Date.now(),
-    sessionId: data.sessionId,
-    messageId: data.messageId,
-  }
-
-  // Save to index
-  const index = loadMediaIndex()
-  index.items.unshift(item)
-  saveMediaIndex(index)
-
-  return item
+  const asset = await mediaLibraryService.ingestGeneratedImage(data)
+  return mediaAssetToLegacyImage(asset)
 }
 
 export function registerMediaHandlers() {
+  ipcMain.handle(IPC_CHANNELS.LIST_MEDIA_ASSETS, async (_, query?: MediaQuery): Promise<MediaAsset[]> => {
+    return mediaLibraryService.listAssets(query || {})
+  })
+
+  ipcMain.handle(IPC_CHANNELS.HIDE_MEDIA_ASSET, async (_, id: string): Promise<{ success: boolean }> => {
+    return { success: mediaLibraryService.hideAsset(id) }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REBUILD_MEDIA_LIBRARY, async (): Promise<{
+    success: boolean
+    added: number
+    skipped: number
+    error?: string
+  }> => {
+    try {
+      const result = mediaLibraryService.rebuildFromSessions(getSessions())
+      return { success: true, ...result }
+    } catch (error) {
+      return {
+        success: false,
+        added: 0,
+        skipped: 0,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_MEDIA_GALLERY, async (_, data: {
+    assetId: string
+    query?: MediaQuery
+  }) => {
+    return mediaLibraryService.getGallery(data.assetId, data.query || {})
+  })
+
   // Save a generated image (IPC wrapper for saveMediaImage)
   ipcMain.handle('media:save-image', async (_, data: {
     url?: string
@@ -152,51 +130,20 @@ export function registerMediaHandlers() {
 
   // Load all media items
   ipcMain.handle('media:load-all', async (): Promise<MediaItem[]> => {
-    const index = loadMediaIndex()
-    // Filter out items whose files no longer exist
-    const validItems = index.items.filter(item => fs.existsSync(item.filePath))
-
-    // Update index if some items were removed
-    if (validItems.length !== index.items.length) {
-      index.items = validItems
-      saveMediaIndex(index)
-    }
-
-    return validItems
+    return mediaLibraryService
+      .listAssets({ kind: 'image' })
+      .filter(asset => asset.filePath && fs.existsSync(asset.filePath))
+      .map(mediaAssetToLegacyImage)
   })
 
   // Delete a media item
   ipcMain.handle('media:delete', async (_, id: string): Promise<boolean> => {
-    const index = loadMediaIndex()
-    const item = index.items.find(i => i.id === id)
-
-    if (!item) return false
-
-    // Delete file
-    if (fs.existsSync(item.filePath)) {
-      fs.unlinkSync(item.filePath)
-    }
-
-    // Update index
-    index.items = index.items.filter(i => i.id !== id)
-    saveMediaIndex(index)
-
-    return true
+    return mediaLibraryService.hideAsset(id)
   })
 
   // Clear all media
   ipcMain.handle('media:clear-all', async (): Promise<void> => {
-    const index = loadMediaIndex()
-
-    // Delete all files
-    for (const item of index.items) {
-      if (fs.existsSync(item.filePath)) {
-        fs.unlinkSync(item.filePath)
-      }
-    }
-
-    // Clear index
-    saveMediaIndex({ items: [] })
+    mediaLibraryService.hideAllAssets()
   })
 
   // Open image preview window (single image - for non-media images like attachments)
@@ -204,9 +151,33 @@ export function registerMediaHandlers() {
     src: string
     alt?: string
   }) => {
-    console.log('[Media IPC] Opening image preview window:', { src: data.src.substring(0, 50), alt: data.alt })
-    openImagePreviewWindow({ mode: 'single', src: data.src, alt: data.alt })
+    const previewId = createImagePreviewRecord(data.src, data.alt)
+    console.log('[Media IPC] Opening image preview window:', {
+      previewId,
+      alt: data.alt,
+      srcPrefix: data.src.substring(0, 50),
+      srcLength: data.src.length,
+    })
+    openImagePreviewWindow({ mode: 'single', previewId, alt: data.alt })
     return { success: true }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_IMAGE_PREVIEW, async (_, previewId: string): Promise<{
+    success: boolean
+    src?: string
+    alt?: string
+    error?: string
+  }> => {
+    pruneImagePreviewRecords()
+    const record = imagePreviewRecords.get(previewId)
+    if (!record) {
+      return { success: false, error: 'Image preview expired or was not found' }
+    }
+    return {
+      success: true,
+      src: record.src,
+      alt: record.alt,
+    }
   })
 
   // Open image gallery window (by mediaId - gallery loads its own data)

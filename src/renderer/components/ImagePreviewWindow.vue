@@ -55,7 +55,7 @@
           @error="onImageError"
         >
         <div
-          v-else
+          v-else-if="!loadError"
           class="loading-state"
         >
           <div class="loading-spinner" />
@@ -294,9 +294,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { matchShortcut } from '@/composables/useShortcuts'
+import type { MediaAsset } from '@/types'
 
 const settingsStore = useSettingsStore()
 
@@ -327,16 +328,11 @@ interface GalleryImage {
   thumbnail?: string
 }
 
-interface MediaItem {
-  id: string
-  type: 'image'
-  filePath: string
-  prompt: string
-  revisedPrompt?: string
-  model: string
-  createdAt: number
-  sessionId: string
-  messageId: string
+interface SingleImagePreviewPayload {
+  mode?: 'single'
+  previewId?: string
+  src?: string
+  alt?: string
 }
 
 // Mode and images state
@@ -542,15 +538,48 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 // Listen for single image updates from main process
+async function applySingleImagePreview(data: SingleImagePreviewPayload) {
+  console.log('[ImagePreviewWindow] Applying single image data:', {
+    previewId: data.previewId,
+    hasInlineSrc: Boolean(data.src),
+    inlineSrcLength: data.src?.length,
+    alt: data.alt,
+  })
+
+  isGalleryMode.value = false
+  singleImageSrc.value = ''
+  singleImageAlt.value = data.alt || ''
+  loadError.value = false
+  resetView()
+
+  if (data.src) {
+    singleImageSrc.value = data.src
+    return
+  }
+
+  if (!data.previewId) {
+    console.warn('[ImagePreviewWindow] Single image preview missing previewId and src')
+    loadError.value = true
+    return
+  }
+
+  try {
+    const response = await window.electronAPI?.getImagePreview?.(data.previewId)
+    if (!response?.success || !response.src) {
+      throw new Error(response?.error || 'Image preview was not found')
+    }
+    singleImageSrc.value = response.src
+    singleImageAlt.value = response.alt || data.alt || ''
+  } catch (error) {
+    console.error('[ImagePreviewWindow] Failed to load single image preview:', error)
+    loadError.value = true
+  }
+}
+
 function setupSingleImageListener() {
   console.log('[ImagePreviewWindow] Setting up single image IPC listener')
   const cleanup = window.electronAPI?.onImagePreviewUpdate?.((data) => {
-    console.log('[ImagePreviewWindow] Received single image data:', { src: data.src.substring(0, 50), alt: data.alt })
-    isGalleryMode.value = false
-    singleImageSrc.value = data.src
-    singleImageAlt.value = data.alt || ''
-    loadError.value = false
-    resetView()
+    void applySingleImagePreview(data)
   })
   return cleanup
 }
@@ -562,29 +591,26 @@ function setupSingleImageListener() {
 async function loadGalleryFromMedia(mediaId: string) {
   console.log('[ImagePreviewWindow] Loading gallery for mediaId:', mediaId)
   try {
-    const mediaItems: MediaItem[] = await window.electronAPI.loadAllMedia()
-    console.log('[ImagePreviewWindow] Loaded media items:', mediaItems.length)
+    const gallery = await window.electronAPI.getMediaGallery(mediaId, { kind: 'image' })
+    console.log('[ImagePreviewWindow] Loaded media gallery:', gallery.images.length)
 
-    if (mediaItems.length === 0) {
+    if (gallery.images.length === 0) {
       console.warn('[ImagePreviewWindow] No media items found')
       loadError.value = true
       return
     }
 
-    // Convert media items to gallery images (sorted by createdAt desc in store)
-    const galleryImages: GalleryImage[] = mediaItems.map(item => ({
-      id: item.id,
-      src: `media://${item.id}.png`,
-      alt: item.prompt,
-      thumbnail: `media://${item.id}.png`
-    }))
-
-    // Find the index of the requested mediaId
-    let targetIndex = galleryImages.findIndex(img => img.id === mediaId)
-    if (targetIndex === -1) {
-      console.warn('[ImagePreviewWindow] MediaId not found, defaulting to first image')
-      targetIndex = 0
-    }
+    const galleryImages: GalleryImage[] = gallery.images.map((item: MediaAsset) => {
+      const filename = item.filePath?.split('/').pop() || item.fileName
+      const src = `media://${filename}`
+      return {
+        id: item.id,
+        src,
+        alt: item.metadata?.prompt || item.fileName,
+        thumbnail: src,
+      }
+    })
+    const targetIndex = gallery.currentIndex
 
     console.log('[ImagePreviewWindow] Gallery loaded:', {
       count: galleryImages.length,
@@ -614,14 +640,17 @@ onMounted(() => {
   const params = getQueryParams()
   const mode = params.mode
   const mediaId = params.mediaId
+  const previewId = params.previewId
 
-  console.log('[ImagePreviewWindow] onMounted, mode:', mode, 'mediaId:', mediaId)
+  console.log('[ImagePreviewWindow] onMounted, mode:', mode, 'mediaId:', mediaId, 'previewId:', previewId)
 
   if (mode === 'gallery' && mediaId) {
     // Gallery mode: load media data ourselves (Pull mode - reliable)
     loadGalleryFromMedia(mediaId)
+  } else if (mode === 'single' && previewId) {
+    void applySingleImagePreview({ mode: 'single', previewId })
   }
-  // Single mode: wait for IPC message (handled by setupSingleImageListener)
+  // Single mode without previewId still waits for IPC message for backward compatibility.
 
   // Load settings for keyboard shortcuts (non-blocking)
   settingsStore.loadSettings().then(() => {

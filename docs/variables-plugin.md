@@ -215,12 +215,14 @@ unsubscribes external-change hooks. Generally only needed in tests.
 
 ## Persistence layout
 
-Global variables (note dirs, project_dirs) live in
-`~/.onething/variables.json` (versioned schema, see
-`src/main/variables/store/schema.ts`). Per-session variables (workdir,
+Global scalar variables (note dirs and `global_variables`) live in
+`~/.onething/variables.json` (schema lives in
+`src/main/variables/store/schema.ts`). Project directories are stored
+by the separate project-dirs subsystem under
+`~/.onething/project-dirs/`. Per-session variables (workdir,
 session-scoped custom variables) live inside the owning
-`~/.onething/sessions/<id>.json` since their lifecycle is tied to
-the session.
+`~/.onething/sessions/<id>.json` since their lifecycle is tied to the
+session.
 
 Plugins that need their own persistence are free to bring their own
 storage backend (a flat JSON file, sqlite, etc.) — the registry never

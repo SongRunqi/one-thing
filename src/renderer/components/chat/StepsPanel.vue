@@ -1,326 +1,175 @@
 <template>
   <div
-    v-if="views.length > 0"
-    class="steps-panel"
+    v-if="activities.length > 0"
+    class="tool-activity-timeline"
     :data-depth="depth"
   >
     <template
-      v-for="run in displayRuns"
-      :key="run.id"
+      v-for="activity in activities"
+      :key="activity.id"
     >
       <FartCallItem
-        v-if="run.kind === 'fart'"
-        :tool-call="run.views[0].toolCall"
+        v-if="activity.isFart"
+        :tool-call="activity.toolCall"
       />
 
       <section
-        v-else-if="run.kind === 'edited'"
-        class="activity"
-        :class="{ open: isEditedRunOpen(run) }"
+        v-else
+        class="tool-activity"
+        :class="[
+          `status-${activity.status}`,
+          {
+            expanded: isExpanded(activity),
+            awaiting: activity.isAwaitingConfirmation,
+            interactive: activity.hasDetails,
+          },
+        ]"
+        data-tool-activity-row
       >
-        <button
-          class="activity-summary"
-          type="button"
-          @click="toggleEdited(run.id)"
-        >
-          <Pencil
-            class="activity-icon"
-            :size="18"
-            :stroke-width="1.8"
-          />
-          <span
-            class="activity-title"
-            :class="{ flowing: isRunFlowing(run) }"
-          >{{ editedRunTitle(run) }}</span>
-          <ChevronDown
-            class="activity-chevron"
-            :class="{ open: isEditedRunOpen(run) }"
-            :size="18"
-            :stroke-width="1.8"
-          />
-        </button>
-
         <div
-          v-if="isEditedRunOpen(run)"
-          class="activity-body"
+          class="activity-main"
+          :role="activity.hasDetails ? 'button' : undefined"
+          :tabindex="activity.hasDetails ? 0 : undefined"
+          :aria-expanded="activity.hasDetails ? isExpanded(activity) : undefined"
+          @click="toggleActivity(activity)"
+          @keydown.enter.prevent="toggleActivity(activity)"
+          @keydown.space.prevent="toggleActivity(activity)"
         >
-          <div
-            v-if="run.views.length > 1"
-            class="edited-list"
-          >
-            <div
-              v-for="view in run.views"
-              :key="view.id"
-              class="edited-item"
-            >
-              <div
-                class="edited-row"
-                role="button"
-                tabindex="0"
-                :aria-expanded="isEditedExpanded(view)"
-                @click="selectEdited(view.id)"
-                @keydown.enter.prevent="selectEdited(view.id)"
-                @keydown.space.prevent="selectEdited(view.id)"
-              >
-                <span class="edited-action">Edited</span>
-                <button
-                  v-if="canOpenFile(view)"
-                  class="edited-file file-link"
-                  type="button"
-                  :title="view.filePath"
-                  @click.stop="openFile(view)"
-                  @keydown.stop
-                >
-                  {{ fileLabel(view) }}
-                </button>
-                <span
-                  v-else
-                  class="edited-file"
-                >{{ fileLabel(view) }}</span>
-                <span
-                  v-if="editStats(view)"
-                  class="edited-stats"
-                >
-                  <span class="stat-add">+{{ editStats(view)!.additions }}</span>
-                  <span class="stat-del">-{{ editStats(view)!.deletions }}</span>
-                </span>
-                <ChevronDown
-                  class="row-chevron"
-                  :class="{ open: isEditedExpanded(view) }"
-                  :size="15"
-                  :stroke-width="1.9"
-                />
-              </div>
-
-              <div
-                v-if="isEditedExpanded(view)"
-                class="active-edit nested"
-              >
-                <div class="diff-shell">
-                  <div class="diff-shell-header">
-                    <button
-                      v-if="canOpenFile(view)"
-                      class="diff-file file-link"
-                      type="button"
-                      :title="view.filePath"
-                      @click.stop="openFile(view)"
-                      @keydown.stop
-                    >
-                      {{ fileLabel(view) }}
-                    </button>
-                    <span
-                      v-else
-                      class="diff-file"
-                    >{{ fileLabel(view) }}</span>
-                    <span
-                      v-if="editStats(view)"
-                      class="edited-stats"
-                    >
-                      <span class="stat-add">+{{ editStats(view)!.additions }}</span>
-                      <span class="stat-del">-{{ editStats(view)!.deletions }}</span>
-                    </span>
-                    <span class="diff-spacer" />
-                    <span
-                      v-if="view.isAwaitingConfirmation"
-                      class="row-confirm"
-                    >
-                      <AllowSplitButton @confirm="(response) => confirmEdited(view, response)" />
-                      <button
-                        class="btn-reject"
-                        type="button"
-                        @click="rejectEdited(view)"
-                      >
-                        Reject
-                      </button>
-                    </span>
-                    <Copy
-                      v-else
-                      class="diff-copy"
-                      :size="17"
-                      :stroke-width="1.8"
-                    />
-                  </div>
-                  <ToolDiffPreview
-                    v-if="activeDiff(view)"
-                    class="embedded-diff"
-                    :diff="activeDiff(view)!"
-                    :lines="activeDiffLines(view)"
-                    :status="view.status"
-                    :hide-header="true"
-                    @open-file="(filePath) => emit('open-file', filePath)"
-                  />
-                  <ToolStepDetails
-                    v-else
-                    class="embedded-details"
-                    :view="view"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div
-            v-if="activeEditedViewFor(run) && run.views.length === 1"
-            class="active-edit"
-          >
-            <div class="diff-shell">
-              <div class="diff-shell-header">
-                <button
-                  v-if="canOpenFile(activeEditedViewFor(run)!)"
-                  class="diff-file file-link"
-                  type="button"
-                  :title="activeEditedViewFor(run)!.filePath"
-                  @click.stop="openFile(activeEditedViewFor(run)!)"
-                  @keydown.stop
-                >
-                  {{ fileLabel(activeEditedViewFor(run)!) }}
-                </button>
-                <span
-                  v-else
-                  class="diff-file"
-                >{{ fileLabel(activeEditedViewFor(run)!) }}</span>
-                <span
-                  v-if="editStats(activeEditedViewFor(run)!)"
-                  class="edited-stats"
-                >
-                  <span class="stat-add">+{{ editStats(activeEditedViewFor(run)!)!.additions }}</span>
-                  <span class="stat-del">-{{ editStats(activeEditedViewFor(run)!)!.deletions }}</span>
-                </span>
-                <span class="diff-spacer" />
-                <span
-                  v-if="activeEditedViewFor(run)!.isAwaitingConfirmation"
-                  class="row-confirm"
-                >
-                  <AllowSplitButton @confirm="(response) => confirmEdited(activeEditedViewFor(run)!, response)" />
-                  <button
-                    class="btn-reject"
-                    type="button"
-                    @click="rejectEdited(activeEditedViewFor(run)!)"
-                  >
-                    Reject
-                  </button>
-                </span>
-                <Copy
-                  v-else
-                  class="diff-copy"
-                  :size="17"
-                  :stroke-width="1.8"
-                />
-              </div>
-              <ToolDiffPreview
-                v-if="activeDiff(activeEditedViewFor(run)!)"
-                class="embedded-diff"
-                :diff="activeDiff(activeEditedViewFor(run)!)!"
-                :lines="activeDiffLines(activeEditedViewFor(run)!)"
-                :status="activeEditedViewFor(run)!.status"
-                :hide-header="true"
-                @open-file="(filePath) => emit('open-file', filePath)"
-              />
-              <ToolStepDetails
-                v-else
-                class="embedded-details"
-                :view="activeEditedViewFor(run)!"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section
-        v-else-if="run.kind === 'utility'"
-        class="activity muted"
-        :class="{ attention: runNeedsConfirmation(run) }"
-      >
-        <button
-          class="activity-summary"
-          type="button"
-          @click="toggleExplore(run.id)"
-        >
-          <SquareTerminal
-            class="activity-icon"
-            :size="18"
-            :stroke-width="1.8"
-          />
           <span
-            class="activity-title"
-            :class="{ flowing: isRunFlowing(run) }"
-          >{{ utilityRunTitle(run) }}</span>
-        </button>
-        <div
-          v-if="isUtilityRunOpen(run)"
-          class="activity-body compact-list"
-        >
-          <div
-            v-for="view in run.views"
-            :key="view.id"
-            class="compact-row"
-            :class="{ awaiting: view.isAwaitingConfirmation }"
+            class="status-mark"
+            :title="statusTitle(activity.status)"
           >
-            <span>{{ compactVerb(view) }}</span>
+            <Loader2
+              v-if="isLive(activity.status)"
+              class="spin"
+              :size="14"
+              :stroke-width="2.2"
+            />
+            <Check
+              v-else-if="activity.status === 'completed'"
+              :size="14"
+              :stroke-width="2.4"
+            />
+            <Ban
+              v-else-if="activity.status === 'rejected'"
+              :size="14"
+              :stroke-width="2.2"
+            />
+            <X
+              v-else-if="activity.status === 'failed'"
+              :size="14"
+              :stroke-width="2.4"
+            />
+            <Minus
+              v-else-if="activity.status === 'cancelled'"
+              :size="14"
+              :stroke-width="2.4"
+            />
+            <AlertTriangle
+              v-else-if="activity.status === 'awaiting-confirmation'"
+              :size="14"
+              :stroke-width="2.2"
+            />
+            <Circle
+              v-else
+              :size="10"
+              :stroke-width="2.4"
+            />
+          </span>
+
+          <span class="activity-copy">
+            <span class="activity-verb">{{ activity.verb }}</span>
             <button
-              v-if="canOpenFile(view)"
-              class="compact-value file-link"
+              v-if="activity.canOpenFile"
+              class="activity-target link"
               type="button"
-              :title="view.filePath"
-              @click.stop="openFile(view)"
+              :title="activity.filePath"
+              @click.stop="emit('open-file', activity.filePath)"
               @keydown.stop
             >
-              {{ compactValue(view) }}
+              {{ activity.target }}
             </button>
             <span
               v-else
-              class="compact-value"
-            >{{ compactValue(view) }}</span>
-            <span class="compact-spacer" />
-            <span
-              v-if="view.isAwaitingConfirmation"
-              class="row-confirm"
-              @click.stop
+              class="activity-target"
+            >{{ activity.target }}</span>
+          </span>
+
+          <span class="activity-spacer" />
+
+          <span
+            v-if="activity.stats"
+            class="activity-meta stats"
+          >{{ activity.stats }}</span>
+          <span
+            v-if="activity.duration"
+            class="activity-meta duration"
+          >{{ activity.duration }}</span>
+          <span
+            v-if="activity.status === 'awaiting-confirmation'"
+            class="activity-badge warning"
+          >Confirm</span>
+          <span
+            v-else-if="activity.status === 'rejected'"
+            class="activity-badge rejected"
+          >Rejected</span>
+          <span
+            v-else-if="activity.status === 'failed'"
+            class="activity-badge danger"
+          >Failed</span>
+
+          <span
+            v-if="activity.isAwaitingConfirmation"
+            class="confirm-actions"
+            @click.stop
+          >
+            <AllowSplitButton @confirm="(response) => emit('confirm', activity.toolCall, response)" />
+            <button
+              class="btn-reject"
+              type="button"
+              @click="emit('reject', activity.toolCall)"
             >
-              <AllowSplitButton @confirm="(response) => emit('confirm', view.toolCall, response)" />
-              <button
-                class="btn-reject"
-                type="button"
-                @click="emit('reject', view.toolCall)"
-              >
-                Reject
-              </button>
-            </span>
-          </div>
+              Reject
+            </button>
+          </span>
+
+          <ChevronDown
+            class="expand-icon"
+            :class="{ open: isExpanded(activity), placeholder: !activity.hasDetails }"
+            :size="15"
+            :stroke-width="2"
+            :aria-hidden="!activity.hasDetails"
+          />
+        </div>
+
+        <div
+          v-if="activity.hasDetails && isExpanded(activity)"
+          class="activity-details"
+        >
+          <ToolStepDetails
+            :view="detailedView(activity)"
+            @open-file="(filePath) => emit('open-file', filePath)"
+          />
         </div>
       </section>
-
-      <ToolStepItem
-        v-else
-        :view="run.views[0]"
-        :expanded="isExpanded(run.views[0])"
-        @toggle-expand="toggleExpand(run.views[0].id)"
-        @confirm="(toolCall, response) => emit('confirm', toolCall, response)"
-        @reject="(toolCall) => emit('reject', toolCall)"
-        @open-file="(filePath) => emit('open-file', filePath)"
-      />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ChevronDown, Copy, Pencil, SquareTerminal } from 'lucide-vue-next'
+import { AlertTriangle, Ban, Check, ChevronDown, Circle, Loader2, Minus, X } from 'lucide-vue-next'
 import type { Step, ToolCall } from '@/types'
-import { buildToolStepView, type ToolDiffData, type ToolDiffLine, type ToolStepView } from '@/stores/helpers/tool-step-view'
 import {
-  buildStepActivityRuns,
-  isEditedStepView,
-  isExploreStepView,
-  shouldFlowStepActivityTitle,
-  type StepActivityRun,
-} from '@/stores/helpers/steps-panel-runs'
-import { useSessionsStore } from '@/stores/sessions'
+  buildDetailedToolStepView,
+  buildToolActivityViews,
+  type ToolActivityView,
+} from '@/stores/helpers/tool-activity-view'
+import type { ToolRenderStatus } from '@/stores/helpers/tool-status'
+import type { ToolStepView } from '@/stores/helpers/tool-step-view'
 import AllowSplitButton from '../common/AllowSplitButton.vue'
 import FartCallItem from './FartCallItem.vue'
-import ToolDiffPreview from './ToolDiffPreview.vue'
 import ToolStepDetails from './ToolStepDetails.vue'
-import ToolStepItem from './ToolStepItem.vue'
 
 const props = withDefaults(defineProps<{
   steps: Step[]
@@ -339,469 +188,292 @@ const emit = defineEmits<{
   'open-file': [filePath: string]
 }>()
 
-const sessionsStore = useSessionsStore()
-const userExpandedSteps = ref<Set<string>>(new Set())
-const userCollapsedSteps = ref<Set<string>>(new Set())
-const editedOpen = ref<Map<string, boolean>>(new Map())
-const exploreOpen = ref<Map<string, boolean>>(new Map())
-const selectedEditedIds = ref<Set<string>>(new Set())
+const userExpanded = ref<Set<string>>(new Set())
+const userCollapsed = ref<Set<string>>(new Set())
+const stickyExpanded = ref<Set<string>>(new Set())
+const detailCache = new Map<string, { fingerprint: string; view: ToolStepView }>()
 
-const views = computed(() => props.steps.map(step => buildToolStepView(step)))
-const workingDirectory = computed(() =>
-  sessionsStore.sessions.find(session => session.id === props.sessionId)?.workingDirectory || '',
-)
-const displayRuns = computed(() => buildStepActivityRuns(views.value))
+const activities = computed(() => buildToolActivityViews(props.steps))
+
+watch(activities, (nextActivities) => {
+  const nextIds = new Set(nextActivities.map(activity => activity.id))
+  const sticky = new Set(stickyExpanded.value)
+  for (const id of sticky) {
+    if (!nextIds.has(id)) sticky.delete(id)
+  }
+  for (const activity of nextActivities) {
+    if (activity.isAwaitingConfirmation || activity.status === 'failed' || activity.status === 'rejected') {
+      sticky.add(activity.id)
+    }
+  }
+  stickyExpanded.value = sticky
+}, { immediate: true })
 
 watch(() => props.parentCollapsed, (collapsed) => {
-  if (collapsed) {
-    userExpandedSteps.value = new Set()
-    userCollapsedSteps.value = new Set()
-    editedOpen.value = new Map()
-    exploreOpen.value = new Map()
-    selectedEditedIds.value = new Set()
-  }
+  if (!collapsed) return
+  userExpanded.value = new Set()
+  userCollapsed.value = new Set()
+  stickyExpanded.value = new Set()
+  detailCache.clear()
 })
 
-function isEditedView(view: ToolStepView): boolean {
-  return isEditedStepView(view)
+function isLive(status: ToolRenderStatus): boolean {
+  return status === 'pending' || status === 'streaming-input' || status === 'executing'
 }
 
-function isExploreView(view: ToolStepView): boolean {
-  return isExploreStepView(view)
-}
-
-function isViewInProgress(view: ToolStepView): boolean {
-  return ['pending', 'streaming-input', 'awaiting-confirmation', 'executing'].includes(view.status)
-}
-
-function isViewFlowing(view: ToolStepView): boolean {
-  return shouldFlowStepActivityTitle(view)
-}
-
-function runNeedsConfirmation(run: StepActivityRun): boolean {
-  return run.views.some(view => view.isAwaitingConfirmation)
-}
-
-function isRunFlowing(run: StepActivityRun): boolean {
-  return run.views.some(isViewFlowing)
-}
-
-function activeRunView(run: StepActivityRun): ToolStepView | null {
-  return [...run.views].reverse().find(isViewInProgress) ||
-    run.views[run.views.length - 1] ||
-    null
-}
-
-function isEditedRunOpen(run: StepActivityRun): boolean {
-  if (run.views.some(view => view.isAwaitingConfirmation || view.status === 'streaming-input')) {
-    return true
+function statusTitle(status: ToolRenderStatus): string {
+  switch (status) {
+    case 'streaming-input': return 'Reading tool input'
+    case 'executing': return 'Running'
+    case 'awaiting-confirmation': return 'Needs confirmation'
+    case 'completed': return 'Completed'
+    case 'rejected': return 'User rejected'
+    case 'failed': return 'Failed'
+    case 'cancelled': return 'Cancelled'
+    default: return 'Pending'
   }
-  return editedOpen.value.get(run.id) ?? run.views.length === 1
 }
 
-function activeEditedViewFor(run: StepActivityRun): ToolStepView | null {
-  if (!isEditedRunOpen(run) || run.views.length !== 1) return null
-  return run.views[0]
+function isExpanded(activity: ToolActivityView): boolean {
+  if (userCollapsed.value.has(activity.id)) return false
+  if (userExpanded.value.has(activity.id)) return true
+  if (stickyExpanded.value.has(activity.id)) return true
+  return activity.defaultExpanded
 }
 
-function editedRunTitle(run: StepActivityRun): string {
-  const activeView = activeRunView(run)
-  if (run.views.some(isViewInProgress) && activeView) {
-    return `${editingVerb(activeView)} ${fileLabel(activeView)}`
-  }
-  if (run.views.length !== 1) return `Edited ${run.views.length} files`
-  const view = run.views[0]
-  const stats = editStats(view)
-  const suffix = stats ? ` +${stats.additions} -${stats.deletions}` : ''
-  return `Edited ${fileLabel(view)}${suffix}`
-}
+function toggleActivity(activity: ToolActivityView) {
+  if (!activity.hasDetails) return
+  const currentlyExpanded = isExpanded(activity)
+  const expanded = new Set(userExpanded.value)
+  const collapsed = new Set(userCollapsed.value)
 
-function isUtilityRunOpen(run: StepActivityRun): boolean {
-  return runNeedsConfirmation(run) || exploreOpen.value.get(run.id) === true
-}
-
-function utilityRunTitle(run: StepActivityRun): string {
-  const activeView = activeRunView(run)
-  if (run.views.some(isViewInProgress) && activeView) {
-    return utilityActiveTitle(activeView)
-  }
-
-  const exploreCount = run.views.filter(isExploreView).length
-  const commandCount = run.views.filter(view => view.toolName === 'bash').length
-  const parts: string[] = []
-  if (exploreCount > 0) {
-    parts.push(`Explored ${exploreCount} ${exploreCount === 1 ? 'file' : 'files'}`)
-  }
-  if (commandCount > 0) {
-    parts.push(`Ran ${commandCount} ${commandCount === 1 ? 'command' : 'commands'}`)
-  }
-  return parts.join(', ')
-}
-
-function toggleEdited(runId: string) {
-  const next = new Map(editedOpen.value)
-  const run = displayRuns.value.find(item => item.id === runId)
-  const currentlyOpen = run ? isEditedRunOpen(run) : next.get(runId) === true
-  next.set(runId, !currentlyOpen)
-  editedOpen.value = next
-  if (currentlyOpen) selectedEditedIds.value = new Set()
-}
-
-function selectEdited(stepId: string) {
-  const next = new Set(selectedEditedIds.value)
-  if (next.has(stepId)) next.delete(stepId)
-  else next.add(stepId)
-  selectedEditedIds.value = next
-}
-
-function isEditedExpanded(view: ToolStepView): boolean {
-  return view.isAwaitingConfirmation ||
-    view.status === 'streaming-input' ||
-    selectedEditedIds.value.has(view.id)
-}
-
-function confirmEdited(view: ToolStepView, response: 'once' | 'session' | 'workdir' | 'always') {
-  emit('confirm', view.toolCall, response)
-}
-
-function rejectEdited(view: ToolStepView) {
-  emit('reject', view.toolCall)
-}
-
-function toggleExplore(runId: string) {
-  const next = new Map(exploreOpen.value)
-  const run = displayRuns.value.find(item => item.id === runId)
-  const currentlyOpen = run ? isUtilityRunOpen(run) : next.get(runId) === true
-  next.set(runId, !currentlyOpen)
-  exploreOpen.value = next
-}
-
-function activeDiff(view: ToolStepView): ToolDiffData | null {
-  return view.diff || view.streamingDiff
-}
-
-function activeDiffLines(view: ToolStepView): ToolDiffLine[] {
-  return view.diff ? view.diffLines : view.streamingDiffLines
-}
-
-function fileLabel(view: ToolStepView): string {
-  return view.fileName || (isEditedView(view) ? 'file' : view.displayName)
-}
-
-function canOpenFile(view: ToolStepView): boolean {
-  return !!view.filePath && ['read', 'write', 'edit'].includes(view.toolName)
-}
-
-function openFile(view: ToolStepView) {
-  if (canOpenFile(view)) emit('open-file', view.filePath)
-}
-
-function editStats(view: ToolStepView): { additions: number; deletions: number } | null {
-  if (view.diff) {
-    return {
-      additions: view.diff.additions,
-      deletions: view.diff.deletions,
-    }
-  }
-  if (view.streamingContent?.additions) {
-    return {
-      additions: view.streamingContent.additions,
-      deletions: 0,
-    }
-  }
-  return null
-}
-
-function editingVerb(view: ToolStepView): string {
-  if (view.toolName === 'write') return 'Writing'
-  return 'Editing'
-}
-
-function compactVerb(view: ToolStepView): string {
-  if (view.toolName === 'bash') return view.isAwaitingConfirmation ? 'Run' : 'Ran'
-  if (view.toolName === 'grep') return 'Searched'
-  if (view.toolName === 'glob') return 'Matched'
-  return 'Read'
-}
-
-function compactValue(view: ToolStepView): string {
-  if (view.toolName === 'bash') {
-    return formatCommand(view.preview || String(view.toolCall.arguments?.command || ''))
-  }
-
-  const raw = rawPathValue(view)
-  if (raw) return fileLabel(view)
-  return view.preview || view.displayName
-}
-
-function exploreTargetLabel(view: ToolStepView): string {
-  const value = compactValue(view)
-  return value || view.displayName
-}
-
-function utilityActiveTitle(view: ToolStepView): string {
-  if (view.toolName === 'bash') {
-    const command = compactValue(view)
-    const verb = view.isAwaitingConfirmation ? 'Run' : 'Running'
-    return command ? `${verb} ${command}` : verb
-  }
-
-  const target = exploreTargetLabel(view)
-  return target ? `Exploring ${target}` : 'Exploring'
-}
-
-function rawPathValue(view: ToolStepView): string {
-  const args = view.toolCall.arguments || {}
-  if (view.diff?.filePath) return view.diff.filePath
-  if (view.streamingContent?.filePath) return view.streamingContent.filePath
-  if (typeof args.file_path === 'string') return args.file_path
-  if (typeof args.path === 'string') return args.path
-  return ''
-}
-
-function formatCommand(command: string): string {
-  if (!command) return ''
-  const workdir = workingDirectory.value.replace(/\\/g, '/').replace(/\/+$/, '')
-  const home = getHomePath()
-
-  let formatted = command.replace(/\\/g, '/')
-  if (workdir) {
-    formatted = formatted.split(workdir).join('.')
-  }
-  if (home) {
-    formatted = formatted.split(home).join('~')
-  }
-  return formatted
-}
-
-function getHomePath(): string {
-  const workdir = workingDirectory.value.replace(/\\/g, '/')
-  const marker = '/data/'
-  const markerIndex = workdir.indexOf(marker)
-  if (markerIndex > 0) return workdir.slice(0, markerIndex)
-  const parts = workdir.split('/').filter(Boolean)
-  if (workdir.startsWith('/') && parts.length >= 2 && parts[0] === 'Users') {
-    return `/${parts[0]}/${parts[1]}`
-  }
-  return ''
-}
-
-function isExpanded(view: ToolStepView): boolean {
-  if (!view.hasDetails) return false
-  if (view.isAwaitingConfirmation) return true
-  if (userExpandedSteps.value.has(view.id)) return true
-  if (userCollapsedSteps.value.has(view.id)) return false
-  return view.defaultExpanded
-}
-
-function toggleExpand(stepId: string) {
-  if (userCollapsedSteps.value.has(stepId)) {
-    userCollapsedSteps.value.delete(stepId)
-    userExpandedSteps.value.add(stepId)
-  } else if (userExpandedSteps.value.has(stepId)) {
-    userExpandedSteps.value.delete(stepId)
-    userCollapsedSteps.value.add(stepId)
+  if (currentlyExpanded) {
+    expanded.delete(activity.id)
+    collapsed.add(activity.id)
+    const sticky = new Set(stickyExpanded.value)
+    sticky.delete(activity.id)
+    stickyExpanded.value = sticky
   } else {
-    const view = views.value.find(item => item.id === stepId)
-    if (view?.defaultExpanded) userCollapsedSteps.value.add(stepId)
-    else userExpandedSteps.value.add(stepId)
+    collapsed.delete(activity.id)
+    expanded.add(activity.id)
   }
 
-  userExpandedSteps.value = new Set(userExpandedSteps.value)
-  userCollapsedSteps.value = new Set(userCollapsedSteps.value)
+  userExpanded.value = expanded
+  userCollapsed.value = collapsed
+}
+
+function detailFingerprint(activity: ToolActivityView): string {
+  const toolCall = activity.toolCall
+  const changes = toolCall.changes
+  return [
+    activity.status,
+    toolCall.streamingArgs?.length ?? 0,
+    typeof activity.step.result === 'string' ? activity.step.result.length : 0,
+    activity.step.error?.length ?? 0,
+    changes?.diff?.length ?? 0,
+    changes?.additions ?? 0,
+    changes?.deletions ?? 0,
+  ].join(':')
+}
+
+function detailedView(activity: ToolActivityView): ToolStepView {
+  const fingerprint = detailFingerprint(activity)
+  const cached = detailCache.get(activity.id)
+  if (cached?.fingerprint === fingerprint) return cached.view
+  const view = buildDetailedToolStepView(activity)
+  detailCache.set(activity.id, { fingerprint, view })
+  return view
 }
 </script>
 
 <style scoped>
-.steps-panel {
+.tool-activity-timeline {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  margin: 2px 0 4px;
-}
-
-.activity {
+  gap: 4px;
+  margin: 4px 0 6px;
   color: var(--text-secondary);
 }
 
-.activity-summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 26px;
-  padding: 1px 4px;
+.tool-activity {
+  position: relative;
   border: 1px solid transparent;
-  border-radius: var(--radius-xs, 6px);
+  border-radius: var(--radius-sm, 8px);
   background: transparent;
-  color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: var(--font-size-md, 14px);
-  font-weight: var(--font-weight-normal, 400);
-  line-height: 1.35;
-  cursor: pointer;
+  transition:
+    background var(--duration-fast, 0.15s) var(--ease-default, ease),
+    border-color var(--duration-fast, 0.15s) var(--ease-default, ease);
 }
 
-.activity-summary:hover {
-  background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
+.tool-activity.expanded,
+.tool-activity:hover {
+  background: color-mix(in srgb, var(--bg-tool-call) 76%, transparent);
   border-color: color-mix(in srgb, var(--border-subtle) 70%, transparent);
 }
 
-.activity-summary:focus-visible {
+.tool-activity.awaiting {
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+  border-color: color-mix(in srgb, var(--border-warning) 28%, transparent);
+}
+
+.activity-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 8px;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.tool-activity.interactive .activity-main {
+  cursor: pointer;
+}
+
+.activity-main:focus-visible {
   outline: none;
-  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
-.activity.muted .activity-summary {
-  color: var(--text-faint);
-}
-
-.activity.attention .activity-summary {
-  color: var(--text-primary);
-}
-
-.activity.muted .activity-summary:hover {
-  border-color: color-mix(in srgb, var(--border-subtle) 72%, transparent);
-  box-shadow: none;
-}
-
-.activity-icon {
-  color: var(--text-faint);
+.status-mark {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
+  border-radius: 999px;
+  color: var(--text-faint);
+  background: color-mix(in srgb, var(--bg-elevated) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 75%, transparent);
 }
 
-.activity-title {
+.status-completed .status-mark {
+  color: var(--text-success);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  border-color: color-mix(in srgb, var(--border-success) 24%, transparent);
+}
+
+.status-failed .status-mark {
+  color: var(--text-error);
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--border-error) 24%, transparent);
+}
+
+.status-rejected .status-mark {
+  color: var(--text-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--border-warning) 24%, transparent);
+}
+
+.status-awaiting-confirmation .status-mark {
+  color: var(--text-warning);
+  background: color-mix(in srgb, var(--color-warning) 13%, transparent);
+  border-color: color-mix(in srgb, var(--border-warning) 30%, transparent);
+}
+
+.status-streaming-input .status-mark,
+.status-executing .status-mark,
+.status-pending .status-mark {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.spin {
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.activity-copy {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.activity-verb {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm, 12px);
+  font-weight: var(--font-weight-medium, 500);
+  white-space: nowrap;
+}
+
+.activity-target {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.activity-title.flowing {
-  background: linear-gradient(
-    90deg,
-    var(--text-faint) 0%,
-    var(--accent) 50%,
-    var(--text-faint) 100%
-  );
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: flowingGradient 2s linear infinite;
-}
-
-@keyframes flowingGradient {
-  0% { background-position: 200% center; }
-  100% { background-position: -200% center; }
-}
-
-.activity-chevron {
-  color: var(--text-faint);
-  transition: transform var(--duration-normal, 0.2s) var(--ease-default, ease);
-}
-
-.activity-chevron.open {
-  transform: rotate(180deg);
-}
-
-.activity-body {
-  margin: 3px 0 2px 30px;
-}
-
-.edited-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.edited-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.edited-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 23px;
-  padding: 0;
-  border: 0;
-  background: transparent;
   color: var(--text-muted);
-  font: inherit;
-  font-size: var(--font-size-md, 14px);
-  line-height: 1.35;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm, 12px);
+}
+
+button.activity-target {
+  border: 0;
+  padding: 0;
+  background: transparent;
   text-align: left;
   cursor: pointer;
 }
 
-.edited-row:focus-visible {
-  outline: none;
-}
-
-.edited-row:hover .edited-file:not(.file-link) {
-  text-decoration: underline;
-}
-
-.edited-action {
-  color: var(--text-muted);
-}
-
-.edited-file {
+.activity-target.link {
   color: var(--text-link);
 }
 
-.file-link {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--text-link);
-  font: inherit;
-  line-height: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.file-link:hover {
+.activity-target.link:hover {
   text-decoration: underline;
 }
 
-.edited-stats {
-  display: inline-flex;
-  gap: 7px;
-  font-variant-numeric: tabular-nums;
+.activity-spacer {
+  flex: 0 0 8px;
 }
 
-.row-chevron {
-  color: var(--text-faint);
+.activity-meta,
+.activity-badge {
   flex: 0 0 auto;
-  transform: rotate(-90deg);
-  transition: transform var(--duration-normal, 0.2s) var(--ease-default, ease);
+  font-size: var(--font-size-xs, 11px);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
 }
 
-.row-chevron.open {
-  transform: rotate(0deg);
+.activity-meta.stats {
+  color: var(--text-muted);
 }
 
-.stat-add {
-  color: var(--text-success);
+.activity-badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid transparent;
 }
 
-.stat-del {
+.activity-badge.warning {
+  color: var(--text-warning);
+  background: color-mix(in srgb, var(--color-warning) 11%, transparent);
+  border-color: color-mix(in srgb, var(--border-warning) 24%, transparent);
+}
+
+.activity-badge.rejected {
+  color: var(--text-warning);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  border-color: color-mix(in srgb, var(--border-warning) 22%, transparent);
+}
+
+.activity-badge.danger {
   color: var(--text-error);
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  border-color: color-mix(in srgb, var(--border-error) 20%, transparent);
 }
 
-.edited-spacer,
-.diff-spacer {
-  flex: 1;
-}
-
-.row-confirm {
+.confirm-actions {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex: 0 0 auto;
 }
 
 .btn-reject {
@@ -820,95 +492,31 @@ function toggleExpand(stepId: string) {
   background: color-mix(in srgb, var(--color-danger) 10%, transparent);
 }
 
-.active-edit {
-  margin-top: 8px;
-}
-
-.active-edit.nested {
-  margin: 2px 0 8px 0;
-}
-
-.diff-shell {
-  overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm, 8px);
-  background: color-mix(in srgb, var(--bg-code-block) 88%, var(--bg-panel));
-}
-
-.diff-shell-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: color-mix(in srgb, var(--bg-code-header) 42%, var(--bg-panel));
-  font-size: var(--font-size-md, 14px);
-  line-height: 1.35;
-}
-
-.diff-file {
-  color: var(--text-muted);
-}
-
-button.diff-file {
-  color: var(--text-link);
-}
-
-.diff-copy {
+.expand-icon {
+  flex: 0 0 auto;
   color: var(--text-faint);
+  transition: transform 0.16s ease;
 }
 
-.embedded-diff {
-  margin: 0;
+.expand-icon.open {
+  transform: rotate(180deg);
 }
 
-.embedded-diff :deep(.diff-content) {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent;
+.expand-icon.placeholder {
+  opacity: 0;
 }
 
-.embedded-details {
-  padding: 10px;
+.activity-details {
+  margin: 2px 8px 8px 38px;
 }
 
-.compact-list {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
 
-.compact-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--text-muted);
-  font-size: var(--font-size-sm, 13px);
-  line-height: 1.35;
-  min-height: 28px;
-}
-
-.compact-value {
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm, 13px);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.compact-row.awaiting .compact-value {
-  color: var(--text-primary);
-}
-
-button.compact-value {
-  color: var(--text-link);
-}
-
-.compact-spacer {
-  flex: 1;
+  .expand-icon {
+    transition: none;
+  }
 }
 </style>

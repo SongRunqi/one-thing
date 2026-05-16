@@ -70,6 +70,29 @@ describe('selectCompactPlan', () => {
 
     expect(selectCompactPlan(session(messages, 'assistant-4'), 1)).toBeNull()
   })
+
+  it('ignores a stale summary when its anchor is no longer in the timeline', () => {
+    const messages = [
+      message(1, 'user'),
+      message(2, 'assistant'),
+      message(3, 'user'),
+      message(4, 'assistant'),
+      message(5, 'user'),
+      message(6, 'assistant'),
+      message(7, 'user'),
+      message(8, 'assistant'),
+    ]
+
+    const plan = selectCompactPlan(session(messages, 'missing-message'), 2)
+
+    expect(plan?.previousSummary).toBeUndefined()
+    expect(plan?.messagesToSummarize.map(m => m.id)).toEqual([
+      'user-1',
+      'assistant-2',
+      'user-3',
+      'assistant-4',
+    ])
+  })
 })
 
 describe('shouldAutoCompactBeforeSend', () => {

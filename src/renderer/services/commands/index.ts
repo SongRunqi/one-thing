@@ -73,6 +73,48 @@ const commands: CommandDefinition[] = [
   },
 ]
 
+let pluginCommands: CommandDefinition[] = []
+let pluginCommandsPromise: Promise<CommandDefinition[]> | null = null
+
+export async function refreshPluginCommands(): Promise<CommandDefinition[]> {
+  if (pluginCommandsPromise) return pluginCommandsPromise
+
+  pluginCommandsPromise = (async () => {
+    try {
+      const result = await window.electronAPI.getPluginCommands()
+      if (!result.success) {
+        pluginCommands = []
+        return pluginCommands
+      }
+      pluginCommands = (result.commands || []).map(command => ({
+        id: command.id,
+        name: command.name.replace(/^\//, '') || command.id,
+        description: command.description,
+        usage: command.usage,
+        async execute(context) {
+          const response = await window.electronAPI.executePluginCommand(
+            command.name,
+            context.rawArgs,
+            context.sessionId,
+          )
+          if (!response.success) {
+            return { success: false, error: response.error || `${command.name} failed` }
+          }
+          return { success: true, message: response.message || `${command.name} completed` }
+        },
+      }))
+      return pluginCommands
+    } catch {
+      pluginCommands = []
+      return pluginCommands
+    } finally {
+      pluginCommandsPromise = null
+    }
+  })()
+
+  return pluginCommandsPromise
+}
+
 function waitForCompactCompletion(sessionId: string, requestId: string): {
   promise: Promise<{ success: boolean; skipped?: boolean; error?: string }>
   cancel: () => void
@@ -118,7 +160,12 @@ function waitForCompactCompletion(sessionId: string, requestId: string): {
  * Get all available commands
  */
 export function getCommands(): CommandDefinition[] {
-  return commands
+  const merged = new Map<string, CommandDefinition>()
+  for (const command of commands) merged.set(command.id, command)
+  for (const command of pluginCommands) {
+    if (!merged.has(command.id)) merged.set(command.id, command)
+  }
+  return Array.from(merged.values())
 }
 
 /**
@@ -126,7 +173,7 @@ export function getCommands(): CommandDefinition[] {
  */
 export function findCommand(id: string): CommandDefinition | undefined {
   const normalized = id.toLowerCase()
-  return commands.find((cmd) => cmd.id === normalized)
+  return getCommands().find((cmd) => cmd.id === normalized)
 }
 
 /**
@@ -136,10 +183,10 @@ export function filterCommands(query: string): CommandDefinition[] {
   const normalized = query.toLowerCase().replace(/^\//, '')
 
   if (!normalized) {
-    return commands
+    return getCommands()
   }
 
-  return commands.filter(
+  return getCommands().filter(
     (cmd) =>
       cmd.id.includes(normalized) ||
       cmd.name.toLowerCase().includes(normalized) ||
@@ -154,7 +201,11 @@ export async function executeCommand(
   id: string,
   context: { sessionId: string; args?: string }
 ): Promise<{ success: boolean; message?: string; error?: string }> {
-  const command = findCommand(id)
+  let command = findCommand(id)
+  if (!command) {
+    await refreshPluginCommands()
+    command = findCommand(id)
+  }
   if (!command) {
     return { success: false, error: `Unknown command: ${id}` }
   }

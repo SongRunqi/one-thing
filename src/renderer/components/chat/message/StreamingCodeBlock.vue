@@ -86,7 +86,8 @@ let renderedLang = props.lang
 
 function createLineEl(): HTMLSpanElement {
   const el = document.createElement('span')
-  el.className = 'code-line'
+  el.className = 'code-line stream-code-line'
+  el.dataset.codeLine = ''
   el.style.display = 'block'
   el.style.minHeight = '20px'
   return el

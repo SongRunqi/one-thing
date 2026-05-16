@@ -67,9 +67,11 @@ export async function processImageGenerationStream(
     model,
   }).catch(err => console.error('[ImageStream] stream:start emit error:', err))
 
-  // Send a "thinking" message to show progress via StreamChannel
-  streamChannel?.push(sessionId, { type: 'text-delta', text: '正在生成图片...\n\n' })
-  store.updateMessageContent(sessionId, assistantMessageId, '正在生成图片...\n\n')
+  // Show a transient skeleton in the assistant message while the provider works.
+  eventBus?.emit(sessionId, {
+    type: 'content:part',
+    part: { type: 'image-loading', label: 'Generating image' },
+  }).catch(err => console.error('[ImageStream] image-loading content:part emit error:', err))
 
   let result: ImageGenerationResult
   let modelForDisplay: string
@@ -116,10 +118,12 @@ export async function processImageGenerationStream(
 
     // Update message
     store.updateMessageContent(sessionId, assistantMessageId, responseContent)
+    store.addMessageContentPart(sessionId, assistantMessageId, { type: 'text', content: responseContent })
     store.updateMessageStreaming(sessionId, assistantMessageId, false)
     await store.flushSessionSave(sessionId)
 
-    // Send complete content via content:part event (replaces progress text)
+    // Send the real image markdown; the renderer reducer pops the skeleton first.
+    streamChannel?.push(sessionId, { type: 'text-delta', text: responseContent })
     eventBus?.emit(sessionId, {
       type: 'content:part',
       part: { type: 'text', content: responseContent },

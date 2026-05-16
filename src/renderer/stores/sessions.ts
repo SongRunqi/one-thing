@@ -1,12 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatSession, SessionMeta, SessionDetails, ContextVariable } from '@/types'
+import type { ChatSession, SessionDetails, ContextVariable } from '@/types'
 import { useChatStore } from './chat'
 import { useSettingsStore } from './settings'
 
-// Base session type for list display - can be either metadata-only or full session
+// Base session type for list display - can be metadata-only initially, then
+// hydrated with full activation details such as token/context fields.
 // This allows mixed loading: metadata on startup, full session after switching
-type SessionListItem = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary'>>
+type SessionListItem = SessionDetails & Partial<Pick<ChatSession, 'messages'>>
 
 const SWITCH_INITIAL_MESSAGE_LIMIT = 6
 const SWITCH_TARGET_MESSAGE_LIMIT = 16

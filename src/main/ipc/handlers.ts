@@ -16,6 +16,8 @@ import { registerThemeHandlers, initializeThemeSystem } from './themes.js'
 import { registerVariableHandlers } from '../variables/ipc.js'
 import { registerProjectDirsHandlers } from '../project-dirs/index.js'
 import { registerPluginHandlers } from './plugins.js'
+import { registerMemoryHandlers } from './memory.js'
+import { registerSchedulerHandlers } from './scheduler.js'
 import { registerFilesHandlers } from './files.js'
 import { registerSearchHandlers } from '../search/index.js'
 import { registerAppStateHandlers } from './app-state.js'
@@ -38,6 +40,8 @@ export function initializeIPC() {
   registerVariableHandlers()
   registerProjectDirsHandlers()
   registerPluginHandlers()
+  registerMemoryHandlers()
+  registerSchedulerHandlers()
   registerFilesHandlers()
   registerSearchHandlers()
   registerAppStateHandlers()

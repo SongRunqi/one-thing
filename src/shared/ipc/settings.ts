@@ -62,6 +62,115 @@ export interface EditorSettings {
   composerMaxHeight?: number
 }
 
+export interface SoulMemoryActiveSettings {
+  enabled?: boolean
+  queryMode?: 'message' | 'recent' | 'full'
+  promptStyle?: 'balanced' | 'strict' | 'contextual' | 'recall-heavy' | 'precision-heavy' | 'preference-only'
+  timeoutMs?: number
+  cacheTtlMs?: number
+  maxSummaryChars?: number
+  recentUserTurns?: number
+  recentAssistantTurns?: number
+  recentUserChars?: number
+  recentAssistantChars?: number
+  circuitBreakerMaxTimeouts?: number
+  circuitBreakerCooldownMs?: number
+}
+
+export interface SoulMemorySearchSettings {
+  enabled?: boolean
+  chunkTokens?: number
+  chunkOverlap?: number
+  maxResults?: number
+  mmrEnabled?: boolean
+  temporalDecayHalfLifeDays?: number
+}
+
+export interface SoulMemoryEmbeddingSettings {
+  enabled?: boolean
+  providerId?: 'auto' | 'openai' | 'openrouter' | 'gemini' | 'custom' | 'ollama' | string
+  customProviderId?: string
+  apiKey?: string
+  model?: string
+  baseUrl?: string
+  dimensions?: number
+}
+
+export interface SoulMemoryFlushSettings {
+  enabled?: boolean
+  maxInputChars?: number
+}
+
+export interface SoulMemoryCaptureSettings {
+  enabled?: boolean
+  mode?: 'explicit-only' | 'ask' | 'auto' | 'off'
+  policy?: 'high-confidence' | 'aggressive'
+  targetPolicy?: 'canonical-first' | 'daily-only' | 'hybrid'
+  writePolicy?: 'high-confidence-auto'
+  /** @deprecated Use targetPolicy. Kept for old settings files. */
+  target?: 'daily' | 'memory'
+  maxInputChars?: number
+  timeoutMs?: number
+  maxCandidates?: number
+  /** @deprecated Use longTermMinConfidence / dailyMinConfidence. */
+  minConfidence?: number
+  longTermMinConfidence?: number
+  dailyMinConfidence?: number
+}
+
+export interface SoulMemoryCanonicalSettings {
+  enabled?: boolean
+  store?: 'sqlite'
+  highConfidenceThreshold?: number
+  semanticDedupeThreshold?: number
+}
+
+export interface SoulMemoryDreamingSettings {
+  enabled?: boolean
+  frequency?: string
+  timezone?: string
+  model?: string
+  sources?: Array<'daily' | 'sessions' | 'short-term' | 'memory' | 'recall'>
+  lookbackDays?: number
+  maxSourceFiles?: number
+  maxSessions?: number
+  maxMessagesPerSession?: number
+  maxInputChars?: number
+  maxPromotions?: number
+  minScore?: number
+  minRecallCount?: number
+  minUniqueSources?: number
+  timeoutMs?: number
+}
+
+export interface SoulMemoryDailyContextSettings {
+  enabled?: boolean
+  mode?: 'session-start' | 'always'
+  daysBack?: number
+  maxChars?: number
+}
+
+export interface SoulMemoryReadSettings {
+  defaultLines?: number
+  maxLines?: number
+}
+
+export interface SoulMemorySettings {
+  enabled?: boolean
+  directoryMode?: 'ai-note-dir' | 'custom'
+  customDirectory?: string
+  bootstrapMaxChars?: number
+  activeMemory?: SoulMemoryActiveSettings
+  search?: SoulMemorySearchSettings
+  embeddings?: SoulMemoryEmbeddingSettings
+  memoryFlush?: SoulMemoryFlushSettings
+  capture?: SoulMemoryCaptureSettings
+  canonicalMemory?: SoulMemoryCanonicalSettings
+  dreaming?: SoulMemoryDreamingSettings
+  dailyContext?: SoulMemoryDailyContextSettings
+  read?: SoulMemoryReadSettings
+}
+
 export interface GeneralSettings {
   animationSpeed: number  // 0.1 - 0.5 seconds, default 0.25
   sendShortcut: 'enter' | 'ctrl-enter' | 'cmd-enter'  // Legacy, kept for compatibility
@@ -75,6 +184,7 @@ export interface GeneralSettings {
   messageLineHeight?: number  // Message line height, 1.2-2.2, default 1.6
   quickCommands?: QuickCommandConfig[]  // Quick command buttons shown above InputBox
   dailyNotes?: DailyNoteSettings
+  soulMemory?: SoulMemorySettings
   todoPlan?: TodoPlanSettings
   editor?: EditorSettings
   // User profile for lightweight context injection

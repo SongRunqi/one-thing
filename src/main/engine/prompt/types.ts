@@ -18,6 +18,15 @@ export interface PromptSegment {
   source: string
   content: string
   absolutePath?: string
+  role?: 'base' | 'developer' | 'user'
+  marker?: {
+    name: string
+    start: string
+    end: string
+  }
+  hash?: string
+  reason?: 'initial' | 'changed' | 'removed'
+  emittedThisTurn?: boolean
 }
 
 /**

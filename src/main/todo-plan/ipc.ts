@@ -6,8 +6,9 @@ import {
   type TodoPlanGetRequest,
   type TodoPlanRenameRequest,
   type TodoPlanUpdateRequest,
+  type TodoPlanWindowActionRequest,
 } from '../../shared/ipc.js'
-import { openTodoPlanWindow, setTodoPlanWindowPinned, toggleTodoPlanWindow } from '../window.js'
+import { hideTodoPlanWindow, openTodoPlanWindow, setTodoPlanWindowPinned, toggleTodoPlanWindow } from '../window.js'
 import {
   createUserTodoNote,
   deleteUserTodoNote,
@@ -68,13 +69,18 @@ export function registerTodoPlanHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW, async () => {
-    openTodoPlanWindow()
+  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW, async (_event, request?: TodoPlanWindowActionRequest) => {
+    openTodoPlanWindow(request)
     return { success: true }
   })
 
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW, async () => {
-    toggleTodoPlanWindow()
+  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_HIDE_WINDOW, async (_event, request?: TodoPlanWindowActionRequest) => {
+    hideTodoPlanWindow(request)
+    return { success: true }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW, async (_event, request?: TodoPlanWindowActionRequest) => {
+    toggleTodoPlanWindow(request)
     return { success: true }
   })
 

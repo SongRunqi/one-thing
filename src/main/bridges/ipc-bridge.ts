@@ -17,13 +17,13 @@
 
 import type { WebContents } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
-import type { SessionEventEnvelope, StreamChunk } from '../../shared/events/index.js'
+import type { ReasoningPlacement, SessionEventEnvelope, StreamChunk } from '../../shared/events/index.js'
 import type { Unsubscribe } from '../events/types.js'
 import { getEventBus, getStreamChannel } from '../events/index.js'
 
 type BufferedStreamChunk =
   | { type: 'text-delta'; text: string; turnIndex?: number }
-  | { type: 'reasoning-delta'; reasoning: string; turnIndex?: number }
+  | { type: 'reasoning-delta'; reasoning: string; turnIndex?: number; placement?: ReasoningPlacement }
   | { type: 'tool-input-delta'; toolCallId: string; argsTextDelta: string }
 
 /** Accumulates high-frequency stream chunks between 16ms flush intervals. */
@@ -53,13 +53,14 @@ export function appendStreamBufferChunk(buffer: StreamBuffer, chunk: StreamChunk
   }
 
   if (chunk.type === 'reasoning-delta') {
-    if (last?.type === 'reasoning-delta' && last.turnIndex === chunk.turnIndex) {
+    if (last?.type === 'reasoning-delta' && last.turnIndex === chunk.turnIndex && last.placement === chunk.placement) {
       last.reasoning += chunk.reasoning
     } else {
       buffer.chunks.push({
         type: 'reasoning-delta',
         reasoning: chunk.reasoning,
         ...(chunk.turnIndex !== undefined ? { turnIndex: chunk.turnIndex } : {}),
+        ...(chunk.placement ? { placement: chunk.placement } : {}),
       })
     }
     return true

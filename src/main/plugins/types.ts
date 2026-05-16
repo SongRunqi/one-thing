@@ -11,6 +11,23 @@ import type { z } from 'zod'
 import type { ToolMetadata, ToolContext as CoreToolContext } from '../tools/core/tool.js'
 import type { ToolInfo, ToolInfoAsync } from '../tools/core/tool.js'
 import type { PluginSkillRootProvider } from '../skills/plugin-roots.js'
+import type {
+  PluginPromptContext,
+  PluginPromptContextProvider,
+} from '../engine/prompt/plugin-context.js'
+import type {
+  BeforeContextCompactContext,
+  BeforeContextCompactHook,
+  AfterAssistantResponseContext,
+  AfterAssistantResponseHook,
+} from './lifecycle.js'
+import type {
+  SchedulerRunOptions,
+  SchedulerRunRecord,
+  SchedulerTaskHandle,
+  SchedulerTaskRegistration,
+  SchedulerTaskSnapshot,
+} from '../scheduler/types.js'
 
 // ── Plugin Manifest ─────────────────────────────
 
@@ -107,6 +124,8 @@ export interface PluginCommandDefinition {
   name: string
   /** Description shown in command picker */
   description?: string
+  /** Usage shown in command picker */
+  usage?: string
   /** Execute the command */
   handler(args: string, ctx: PluginCommandContext): Promise<void>
 }
@@ -122,6 +141,17 @@ export interface PluginCommandContext {
   notify(message: string, level?: 'info' | 'warn' | 'error'): void
   /** Execute a shell command */
   exec(command: string, args?: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }>
+}
+
+export type PluginScheduledTaskRegistration = Omit<SchedulerTaskRegistration, 'pluginId'>
+
+export interface PluginSchedulerAPI {
+  register(task: PluginScheduledTaskRegistration): SchedulerTaskHandle
+  getStatus(id: string): SchedulerTaskSnapshot | undefined
+  list(): SchedulerTaskSnapshot[]
+  refresh(id: string): SchedulerTaskSnapshot | undefined
+  runNow(id: string, options?: SchedulerRunOptions): Promise<SchedulerRunRecord>
+  setEnabled(id: string, enabled: boolean): SchedulerTaskSnapshot | undefined
 }
 
 // ── Plugin API (the "pi" object passed to plugin entry) ──
@@ -161,6 +191,21 @@ export interface PluginAPI {
   /** Register a slash command */
   registerCommand(name: string, options: Omit<PluginCommandDefinition, 'name'>): void
 
+  /**
+   * Register an async provider that contributes prompt context fragments
+   * immediately before a request prompt is built.
+   */
+  registerPromptContextProvider(
+    id: string,
+    provider: PluginPromptContextProvider,
+  ): void
+
+  /** Register a lifecycle hook that runs before session context compaction. */
+  beforeContextCompact(id: string, hook: BeforeContextCompactHook): void
+
+  /** Register a lifecycle hook that runs after an assistant response finishes. */
+  afterAssistantResponse(id: string, hook: AfterAssistantResponseHook): void
+
   /** Register additional filesystem roots that expose SKILL.md-based skills. */
   registerSkillRoot(provider: PluginSkillRootProvider): void
 
@@ -170,6 +215,9 @@ export interface PluginAPI {
   // ── Persistent Storage ──
   /** Scoped key-value store (persisted per-plugin) */
   store: PluginStore
+
+  /** Register and inspect durable host-managed scheduled tasks. */
+  scheduler: PluginSchedulerAPI
 
   // ── UI (minimal v1) ──
   ui: MinimalPluginUI
@@ -182,6 +230,20 @@ export type PluginEventHandler = (envelope: {
   timestamp: number
   event: { type: string; [key: string]: unknown }
 }) => Promise<void> | void
+
+export type {
+  PluginPromptContext,
+  PluginPromptContextProvider,
+  BeforeContextCompactContext,
+  BeforeContextCompactHook,
+  AfterAssistantResponseContext,
+  AfterAssistantResponseHook,
+  SchedulerRunOptions,
+  SchedulerRunRecord,
+  SchedulerTaskHandle,
+  SchedulerTaskRegistration,
+  SchedulerTaskSnapshot,
+}
 
 // ── Plugin Store ───────────────────────────────
 

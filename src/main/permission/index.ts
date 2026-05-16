@@ -402,7 +402,7 @@ export namespace Permission {
       public readonly permissionId: string,
       public readonly toolCallId?: string,
       public readonly metadata?: Record<string, unknown>,
-      reason?: string
+      public readonly reason?: string
     ) {
       // If user provided a reason, include it directly; otherwise use default message
       const message = reason

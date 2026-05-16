@@ -88,6 +88,7 @@ export type HistoryMessage =
       role: 'assistant'
       content: AIMessageContent
       reasoningContent?: string
+      codexEncryptedReasoning?: string[]
       toolCalls?: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>
     }
   | {
@@ -108,6 +109,41 @@ export function sanitizeToolResultForAI(result: unknown): unknown {
     sanitized[key] = sanitizeToolResultForAI(value)
   }
   return sanitized
+}
+
+function getCodexEncryptedReasoning(message: ChatMessage): string[] {
+  const encrypted: string[] = []
+  for (const part of message.contentParts ?? []) {
+    if (
+      part.type === 'provider-data' &&
+      part.provider === 'codex' &&
+      typeof part.encryptedReasoning === 'string' &&
+      part.encryptedReasoning.length > 0
+    ) {
+      encrypted.push(part.encryptedReasoning)
+    }
+  }
+  return encrypted
+}
+
+function getMessageReasoningContent(message: ChatMessage): string | undefined {
+  const fragments: string[] = []
+  const seen = new Set<string>()
+
+  const push = (text: unknown): void => {
+    if (typeof text !== 'string') return
+    const trimmed = text.trim()
+    if (!trimmed || seen.has(trimmed)) return
+    seen.add(trimmed)
+    fragments.push(text)
+  }
+
+  push(message.reasoning)
+  for (const part of message.contentParts ?? []) {
+    if (part.type === 'reasoning') push(part.content)
+  }
+
+  return fragments.length > 0 ? fragments.join('\n\n') : undefined
 }
 
 /**
@@ -148,8 +184,10 @@ export function buildHistoryMessages(
       for (const m of recentMessages) {
         if (m.role !== 'user' && m.role !== 'assistant') continue
         if (m.isStreaming) continue
+        const codexEncryptedReasoning = getCodexEncryptedReasoning(m)
+        const hasToolContext = (m.toolCalls?.length ?? 0) > 0
         // Skip messages with empty content (causes API error)
-        if (!m.content && (!m.attachments || m.attachments.length === 0)) continue
+        if (!m.content && (!m.attachments || m.attachments.length === 0) && codexEncryptedReasoning.length === 0 && !hasToolContext) continue
 
         if (m.role === 'user') {
           result.push({
@@ -163,8 +201,12 @@ export function buildHistoryMessages(
             content: buildMessageContent(m),
           }
 
-          if (m.reasoning) {
-            assistantMsg.reasoningContent = m.reasoning
+          const reasoningContent = getMessageReasoningContent(m)
+          if (reasoningContent) {
+            assistantMsg.reasoningContent = reasoningContent
+          }
+          if (codexEncryptedReasoning.length > 0) {
+            assistantMsg.codexEncryptedReasoning = codexEncryptedReasoning
           }
 
           // Include completed/failed tool calls
@@ -200,6 +242,11 @@ export function buildHistoryMessages(
       console.log(`[buildHistoryMessages] Using summary + ${recentMessages.length} recent messages`)
       return result
     }
+
+    console.warn('[buildHistoryMessages] Ignoring summary with missing anchor:', {
+      sessionId: session.id,
+      summaryUpToMessageId: session.summaryUpToMessageId,
+    })
   }
 
   // No summary - use full history
@@ -210,8 +257,10 @@ export function buildHistoryMessages(
     if (m.role !== 'user' && m.role !== 'assistant') continue
     // Exclude streaming messages (current message being generated)
     if (m.isStreaming) continue
+    const codexEncryptedReasoning = getCodexEncryptedReasoning(m)
+    const hasToolContext = (m.toolCalls?.length ?? 0) > 0
     // Exclude messages with empty content (causes API error)
-    if (!m.content && (!m.attachments || m.attachments.length === 0)) continue
+    if (!m.content && (!m.attachments || m.attachments.length === 0) && codexEncryptedReasoning.length === 0 && !hasToolContext) continue
 
     if (m.role === 'user') {
       result.push({
@@ -226,8 +275,12 @@ export function buildHistoryMessages(
       }
 
       // Include reasoning content for assistant messages (needed for DeepSeek Reasoner)
-      if (m.reasoning) {
-        assistantMsg.reasoningContent = m.reasoning
+      const reasoningContent = getMessageReasoningContent(m)
+      if (reasoningContent) {
+        assistantMsg.reasoningContent = reasoningContent
+      }
+      if (codexEncryptedReasoning.length > 0) {
+        assistantMsg.codexEncryptedReasoning = codexEncryptedReasoning
       }
 
       // Include completed/failed tool calls for context preservation across turns

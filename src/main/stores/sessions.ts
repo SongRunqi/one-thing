@@ -9,6 +9,7 @@ import type {
   ContextVariable,
   GetSessionMessagesPageRequest,
   GetSessionMessagesPageResponse,
+  PromptContextState,
   UserMessageMarker,
 } from '../../shared/ipc.js'
 import {
@@ -31,6 +32,7 @@ import { getMessagesPageFromJsonFile } from './session-repository/json-message-p
 import {
   deleteSqliteSessions,
   getSqliteMessagesPage,
+  getSqliteSessionDetails,
   getSqliteUserMessageMarkers,
   importSessionIndexToSqlite,
   isSqliteSessionReady,
@@ -64,6 +66,12 @@ interface PendingSave {
 
 const pendingSaves = new Map<string, PendingSave>()
 const pendingSqliteMessageSyncs = new Map<string, NodeJS.Timeout>()
+
+type TokenUsage = NonNullable<ChatMessage['usage']>
+
+export interface TimelineMetadataRepairOptions {
+  recomputeContextSize?: boolean
+}
 
 function getPendingSave(sessionId: string): PendingSave {
   let p = pendingSaves.get(sessionId)
@@ -175,6 +183,107 @@ export function getSessionCacheStats(): { size: number; maxSize: number; cachedS
   }
 }
 
+function isTokenUsage(value: unknown): value is TokenUsage {
+  if (!value || typeof value !== 'object') return false
+  const usage = value as Partial<TokenUsage>
+  return Number.isFinite(usage.inputTokens) && usage.inputTokens! >= 0
+}
+
+function getLatestStepUsage(message: ChatMessage): TokenUsage | undefined {
+  let latest:
+    | {
+        turnIndex: number
+        timestamp: number
+        usage: TokenUsage
+      }
+    | undefined
+
+  const visit = (steps: Step[] | undefined): void => {
+    if (!steps) return
+    for (const step of steps) {
+      if (isTokenUsage(step.usage)) {
+        const candidate = {
+          turnIndex: step.turnIndex ?? -1,
+          timestamp: step.timestamp ?? 0,
+          usage: step.usage,
+        }
+        if (
+          !latest ||
+          candidate.turnIndex > latest.turnIndex ||
+          (candidate.turnIndex === latest.turnIndex && candidate.timestamp >= latest.timestamp)
+        ) {
+          latest = candidate
+        }
+      }
+
+      const childSteps = (step as Step & { childSteps?: Step[] }).childSteps
+      if (Array.isArray(childSteps)) {
+        visit(childSteps)
+      }
+    }
+  }
+
+  visit(message.steps)
+  return latest?.usage
+}
+
+export function deriveRetainedContextSize(
+  session: Pick<ChatSession, 'messages' | 'summary' | 'summaryUpToMessageId'>,
+): number {
+  const summaryIndex = session.summary && session.summaryUpToMessageId
+    ? session.messages.findIndex(message => message.id === session.summaryUpToMessageId)
+    : -1
+  const startIndex = summaryIndex >= 0 ? summaryIndex + 1 : 0
+
+  for (let index = session.messages.length - 1; index >= startIndex; index--) {
+    const message = session.messages[index]
+    if (message.role !== 'assistant' || message.isStreaming) continue
+
+    const usage = getLatestStepUsage(message) ?? message.usage
+    if (isTokenUsage(usage)) {
+      return Math.max(0, usage.inputTokens)
+    }
+  }
+
+  return 0
+}
+
+export function repairSessionTimelineMetadata(
+  session: ChatSession,
+  options: TimelineMetadataRepairOptions = {},
+): boolean {
+  let modified = false
+  let clearedSummary = false
+  const messageIds = new Set(session.messages.map(message => message.id))
+  const hasSummary = typeof session.summary === 'string' && session.summary.length > 0
+  const hasSummaryAnchor = typeof session.summaryUpToMessageId === 'string' && session.summaryUpToMessageId.length > 0
+  const hasAnySummaryMetadata = hasSummary || hasSummaryAnchor || session.summaryCreatedAt !== undefined
+  const summaryAnchorExists = hasSummaryAnchor ? messageIds.has(session.summaryUpToMessageId!) : false
+
+  if (hasAnySummaryMetadata && (!hasSummary || !hasSummaryAnchor || !summaryAnchorExists)) {
+    console.warn('[Sessions] Cleared invalid summary metadata after timeline repair:', {
+      sessionId: session.id,
+      summaryUpToMessageId: session.summaryUpToMessageId,
+    })
+    delete session.summary
+    delete session.summaryUpToMessageId
+    delete session.summaryCreatedAt
+    clearedSummary = true
+    modified = true
+  }
+
+  if (options.recomputeContextSize || clearedSummary) {
+    const contextSize = deriveRetainedContextSize(session)
+    if ((session.contextSize ?? 0) !== contextSize || (session.lastInputTokens ?? 0) !== contextSize) {
+      session.contextSize = contextSize
+      session.lastInputTokens = contextSize
+      modified = true
+    }
+  }
+
+  return modified
+}
+
 /**
  * Sanitize a session after loading - clean up UI-only states
  * Note: Step/toolCall statuses are NOT modified here to preserve state across session switches
@@ -189,6 +298,15 @@ function sanitizeSession(session: ChatSession): ChatSession {
       message.isStreaming = false
       modified = true
     }
+  }
+
+  if (repairSessionTimelineMetadata(session)) {
+    modified = true
+  }
+
+  if (modified) {
+    saveSessionToFile(session.id, session)
+    syncSessionToSqliteIfReady(session)
   }
 
   return session
@@ -275,9 +393,14 @@ export function sanitizeAllSessionsOnStartup(): void {
       }
     }
 
+    if (repairSessionTimelineMetadata(session)) {
+      modified = true
+    }
+
     // Only write back if modified
     if (modified) {
       writeJsonFile(sessionPath, session)
+      syncSessionToSqliteIfReady(session)
     }
   }
 }
@@ -331,20 +454,74 @@ export function initializeSessionRepositoryIndex(): void {
   importSessionIndexToSqlite(loadSessionsIndex())
 }
 
+function getSqliteSessionDetailsSafe(sessionId: string): SessionDetails | undefined {
+  try {
+    return getSqliteSessionDetails(sessionId)
+  } catch (error) {
+    console.error('[Sessions] Failed to load SQLite session details:', error)
+    return undefined
+  }
+}
+
+function hasUsageDetails(details: SessionDetails): boolean {
+  return details.contextSize !== undefined ||
+    details.lastInputTokens !== undefined ||
+    details.totalInputTokens !== undefined ||
+    details.totalOutputTokens !== undefined ||
+    details.totalTokens !== undefined
+}
+
+function mergeSessionDetails(
+  meta: SessionMeta | undefined,
+  details: SessionMeta | SessionDetails,
+): SessionDetails {
+  const messageCount =
+    details.messageCount && details.messageCount > 0
+      ? details.messageCount
+      : meta?.messageCount ?? details.messageCount ?? 0
+
+  return {
+    ...meta,
+    ...details,
+    messageCount,
+    totalInputTokens: (details as SessionDetails).totalInputTokens ?? 0,
+    totalOutputTokens: (details as SessionDetails).totalOutputTokens ?? 0,
+    totalTokens: (details as SessionDetails).totalTokens ?? 0,
+    lastInputTokens: (details as SessionDetails).lastInputTokens ?? 0,
+    contextSize: (details as SessionDetails).contextSize ?? 0,
+  }
+}
+
 /**
  * Get session details without messages
  * Used for session activation before loading messages
  */
 export function getSessionDetails(sessionId: string): SessionDetails | undefined {
   const meta = loadSessionsIndex().find(session => session.id === sessionId)
-  if (meta) return meta
+  const sqliteDetails = getSqliteSessionDetailsSafe(sessionId)
 
-  // Fallback for a missing/stale index entry. This path may read the full
-  // legacy JSON file, but normal session switching stays metadata-only.
+  if (sqliteDetails && hasUsageDetails(sqliteDetails)) {
+    return mergeSessionDetails(meta, sqliteDetails)
+  }
+
+  // Fallback to the JSON session when SQLite only has index metadata or is not
+  // ready. Activation needs the persisted token/context fields, not just list
+  // metadata.
   const session = getSession(sessionId)
-  if (!session) return undefined
-  const { messages, ...details } = session
-  return { ...details, messageCount: messages.length }
+  if (session) {
+    const { messages, ...details } = session
+    return mergeSessionDetails(meta, { ...details, messageCount: messages.length })
+  }
+
+  if (sqliteDetails) {
+    return mergeSessionDetails(meta, sqliteDetails)
+  }
+
+  if (meta) {
+    return mergeSessionDetails(undefined, meta)
+  }
+
+  return undefined
 }
 
 /**
@@ -883,6 +1060,21 @@ export function updateSessionContextSize(sessionId: string, contextSize: number)
   return true
 }
 
+export function updateSessionPromptContext(
+  sessionId: string,
+  promptContext: PromptContextState | null,
+): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  session.promptContext = promptContext
+
+  saveSessionToFile(sessionId, session)
+  syncSessionMetadataToSqlite(session)
+
+  return true
+}
+
 // Get session token usage
 export function getSessionTokenUsage(sessionId: string): {
   totalInputTokens: number
@@ -970,6 +1162,57 @@ export function deleteMessage(sessionId: string, messageId: string): boolean {
   return true
 }
 
+function subtractDeletedMessageUsage(session: ChatSession, messagesToDelete: ChatMessage[]): void {
+  const tokensToSubtract = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+  for (const msg of messagesToDelete) {
+    if (msg.usage) {
+      tokensToSubtract.inputTokens += msg.usage.inputTokens
+      tokensToSubtract.outputTokens += msg.usage.outputTokens
+      tokensToSubtract.totalTokens += msg.usage.totalTokens
+    }
+  }
+
+  if (tokensToSubtract.totalTokens > 0) {
+    session.totalInputTokens = Math.max(0, (session.totalInputTokens || 0) - tokensToSubtract.inputTokens)
+    session.totalOutputTokens = Math.max(0, (session.totalOutputTokens || 0) - tokensToSubtract.outputTokens)
+    session.totalTokens = Math.max(0, (session.totalTokens || 0) - tokensToSubtract.totalTokens)
+    console.log('[Sessions] Subtracted tokens from deleted messages:', tokensToSubtract, 'New session totals:', {
+      totalInputTokens: session.totalInputTokens,
+      totalOutputTokens: session.totalOutputTokens,
+      totalTokens: session.totalTokens,
+    })
+  }
+}
+
+// Delete a message and all messages after it.
+// Used when regenerating an earlier assistant response so later conversation is discarded.
+export function deleteMessageAndTruncate(sessionId: string, messageId: string): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const messageIndex = session.messages.findIndex((m) => m.id === messageId)
+  if (messageIndex === -1) return false
+
+  const messagesToDelete = session.messages.slice(messageIndex)
+  subtractDeletedMessageUsage(session, messagesToDelete)
+
+  session.messages = session.messages.slice(0, messageIndex)
+  repairSessionTimelineMetadata(session, { recomputeContextSize: true })
+  session.updatedAt = Date.now()
+
+  saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
+
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.updatedAt = session.updatedAt
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
+
 // Update a message and remove all messages after it
 // Returns true if successful, also subtracts token usage of deleted messages from session total
 export function updateMessageAndTruncate(
@@ -985,26 +1228,7 @@ export function updateMessageAndTruncate(
 
   // Calculate token usage of messages that will be deleted
   const messagesToDelete = session.messages.slice(messageIndex + 1)
-  const tokensToSubtract = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-  for (const msg of messagesToDelete) {
-    if (msg.usage) {
-      tokensToSubtract.inputTokens += msg.usage.inputTokens
-      tokensToSubtract.outputTokens += msg.usage.outputTokens
-      tokensToSubtract.totalTokens += msg.usage.totalTokens
-    }
-  }
-
-  // Subtract deleted messages' token usage from session total
-  if (tokensToSubtract.totalTokens > 0) {
-    session.totalInputTokens = Math.max(0, (session.totalInputTokens || 0) - tokensToSubtract.inputTokens)
-    session.totalOutputTokens = Math.max(0, (session.totalOutputTokens || 0) - tokensToSubtract.outputTokens)
-    session.totalTokens = Math.max(0, (session.totalTokens || 0) - tokensToSubtract.totalTokens)
-    console.log('[Sessions] Subtracted tokens from deleted messages:', tokensToSubtract, 'New session totals:', {
-      totalInputTokens: session.totalInputTokens,
-      totalOutputTokens: session.totalOutputTokens,
-      totalTokens: session.totalTokens,
-    })
-  }
+  subtractDeletedMessageUsage(session, messagesToDelete)
 
   // Update the message content
   session.messages[messageIndex].content = newContent
@@ -1012,6 +1236,7 @@ export function updateMessageAndTruncate(
 
   // Remove all messages after this one
   session.messages = session.messages.slice(0, messageIndex + 1)
+  repairSessionTimelineMetadata(session, { recomputeContextSize: true })
   session.updatedAt = Date.now()
 
   // Save session file

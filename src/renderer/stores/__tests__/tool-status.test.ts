@@ -69,6 +69,12 @@ describe('getToolRenderStatus', () => {
     expect(getToolRenderStatus(undefined, st({ status: 'failed' }))).toBe('failed')
   })
 
+  it('returns rejected when permission rejection metadata is present', () => {
+    expect(getToolRenderStatus(tc({ status: 'failed', rejected: true }))).toBe('rejected')
+    expect(getToolRenderStatus(tc({ status: 'pending', requiresConfirmation: true, rejected: true }))).toBe('rejected')
+    expect(getToolRenderStatus(undefined, st({ status: 'failed', rejected: true }))).toBe('rejected')
+  })
+
   it('cancelled beats failed/completed (cancelled is the strongest terminal)', () => {
     expect(getToolRenderStatus(tc({ status: 'cancelled' }), st({ status: 'completed' }))).toBe('cancelled')
   })

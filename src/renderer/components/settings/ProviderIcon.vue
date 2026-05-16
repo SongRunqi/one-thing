@@ -1,7 +1,23 @@
 <template>
+  <!-- Codex Logo -->
+  <svg
+    v-if="provider === 'codex'"
+    :width="size"
+    :height="size"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="M16 18l6-6-6-6" />
+    <path d="M8 6l-6 6 6 6" />
+    <path d="M14 4l-4 16" />
+  </svg>
   <!-- OpenAI Logo -->
   <svg
-    v-if="provider === 'openai'"
+    v-else-if="provider === 'openai'"
     :width="size"
     :height="size"
     viewBox="0 0 24 24"

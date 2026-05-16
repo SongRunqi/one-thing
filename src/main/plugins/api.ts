@@ -17,6 +17,12 @@ import type { StreamEngine } from '../engine/stream-engine.js'
 import { z } from 'zod'
 import { PluginStore } from './store.js'
 import { registerPluginSkillRootProvider } from '../skills/plugin-roots.js'
+import { registerPromptContextProvider } from '../engine/prompt/plugin-context.js'
+import {
+  registerAfterAssistantResponseHook,
+  registerBeforeContextCompactHook,
+} from './lifecycle.js'
+import { getScheduler } from '../scheduler/index.js'
 import type {
   PluginAPI,
   PluginEntry,
@@ -26,6 +32,7 @@ import type {
   PluginToolResult,
   PluginCommandDefinition,
   MinimalPluginUI,
+  PluginSchedulerAPI,
 } from './types.js'
 
 // Track all subscriptions so we can clean up on disable/unload
@@ -35,6 +42,8 @@ export interface PluginState {
   commands: Map<string, PluginCommandDefinition>
   toolIds: string[]
   skillRootUnsubs: Array<() => void>
+  promptContextUnsubs: Array<() => void>
+  lifecycleUnsubs: Array<() => void>
   disposeCallbacks: Array<() => void>
 }
 
@@ -47,9 +56,64 @@ export function createPluginAPI(
   const commands = new Map<string, PluginCommandDefinition>()
   const toolIds: string[] = []
   const skillRootUnsubs: Array<() => void> = []
+  const promptContextUnsubs: Array<() => void> = []
+  const lifecycleUnsubs: Array<() => void> = []
   const disposeCallbacks: Array<() => void> = []
 
   const store = new PluginStore(pluginId)
+  const scheduler = getScheduler()
+
+  const scopeTaskId = (id: string) => `plugin:${pluginId}:${id}`
+  const unscopeTaskId = (id: string) => id.startsWith(`plugin:${pluginId}:`)
+    ? id.slice(`plugin:${pluginId}:`.length)
+    : id
+  const unscopeSnapshot = (snapshot: ReturnType<typeof scheduler.getStatus>) => snapshot
+    ? { ...snapshot, id: unscopeTaskId(snapshot.id) }
+    : undefined
+
+  const pluginScheduler: PluginSchedulerAPI = {
+    register(task) {
+      const pluginTaskId = task.id.trim()
+      const scopedTaskId = scopeTaskId(pluginTaskId)
+      const handle = scheduler.register({
+        ...task,
+        id: scopedTaskId,
+        pluginId,
+        run: context => task.run({
+          ...context,
+          taskId: pluginTaskId,
+          pluginId,
+        }),
+      })
+      const cleanup = () => handle.unregister()
+      disposeCallbacks.push(cleanup)
+      return {
+        id: pluginTaskId,
+        unregister: cleanup,
+        refresh: () => unscopeSnapshot(handle.refresh()),
+        getStatus: () => unscopeSnapshot(handle.getStatus()),
+        runNow: options => handle.runNow(options),
+        setEnabled: enabled => unscopeSnapshot(handle.setEnabled(enabled)),
+      }
+    },
+    getStatus(id) {
+      return unscopeSnapshot(scheduler.getStatus(scopeTaskId(id)))
+    },
+    list() {
+      return scheduler.list()
+        .filter(snapshot => snapshot.pluginId === pluginId)
+        .map(snapshot => ({ ...snapshot, id: unscopeTaskId(snapshot.id) }))
+    },
+    refresh(id) {
+      return unscopeSnapshot(scheduler.refresh(scopeTaskId(id)))
+    },
+    runNow(id, options) {
+      return scheduler.runNow(scopeTaskId(id), options)
+    },
+    setEnabled(id, enabled) {
+      return unscopeSnapshot(scheduler.setEnabled(scopeTaskId(id), enabled))
+    },
+  }
 
   const ui: MinimalPluginUI = {
     notify(message: string, level: 'info' | 'warn' | 'error' = 'info') {
@@ -166,6 +230,24 @@ export function createPluginAPI(
       console.log(`[Plugin:${pluginId}] Registered command: ${fullName}`)
     },
 
+    registerPromptContextProvider(id, provider): void {
+      const unsub = registerPromptContextProvider(pluginId, id, provider)
+      promptContextUnsubs.push(unsub)
+      console.log(`[Plugin:${pluginId}] Registered prompt context provider: ${id}`)
+    },
+
+    beforeContextCompact(id, hook): void {
+      const unsub = registerBeforeContextCompactHook(pluginId, id, hook)
+      lifecycleUnsubs.push(unsub)
+      console.log(`[Plugin:${pluginId}] Registered beforeContextCompact hook: ${id}`)
+    },
+
+    afterAssistantResponse(id, hook): void {
+      const unsub = registerAfterAssistantResponseHook(pluginId, id, hook)
+      lifecycleUnsubs.push(unsub)
+      console.log(`[Plugin:${pluginId}] Registered afterAssistantResponse hook: ${id}`)
+    },
+
     registerSkillRoot(provider): void {
       const unsub = registerPluginSkillRootProvider(pluginId, provider)
       skillRootUnsubs.push(unsub)
@@ -182,11 +264,25 @@ export function createPluginAPI(
     // ── Store ──
     store,
 
+    scheduler: pluginScheduler,
+
     // ── UI ──
     ui,
   }
 
-  return { api, state: { api, unsubs, commands, toolIds, skillRootUnsubs, disposeCallbacks } }
+  return {
+    api,
+    state: {
+      api,
+      unsubs,
+      commands,
+      toolIds,
+      skillRootUnsubs,
+      promptContextUnsubs,
+      lifecycleUnsubs,
+      disposeCallbacks,
+    },
+  }
 }
 
 /**
@@ -209,6 +305,24 @@ export function disposePlugin(state: PluginState): void {
     }
   }
   state.toolIds.length = 0
+
+  for (const unsub of state.promptContextUnsubs) {
+    try {
+      unsub()
+    } catch (err) {
+      // ignore
+    }
+  }
+  state.promptContextUnsubs.length = 0
+
+  for (const unsub of state.lifecycleUnsubs) {
+    try {
+      unsub()
+    } catch (err) {
+      // ignore
+    }
+  }
+  state.lifecycleUnsubs.length = 0
 
   for (const unsub of state.skillRootUnsubs) {
     try {

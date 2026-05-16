@@ -11,6 +11,11 @@ export interface OAuthStartRequest {
 // OAuth start response (for authorization-code flow with PKCE)
 export interface OAuthStartResponse {
   success: boolean
+  flowId?: string
+  flowKind?: 'pkce-callback' | 'manual-pkce' | 'device-code'
+  pollIntervalMs?: number
+  expiresAt?: number
+  statusMessage?: string
   // For PKCE flow - returns auth URL to open in browser
   authUrl?: string
   state?: string
@@ -46,8 +51,18 @@ export interface OAuthStatusRequest {
 // OAuth status response
 export interface OAuthStatusResponse {
   success: boolean
+  providerId?: string
   isLoggedIn: boolean
+  isExpired?: boolean
+  canRefresh?: boolean
   expiresAt?: number
+  account?: {
+    id?: string
+    email?: string
+    planType?: string
+    isFedramp?: boolean
+  }
+  lastError?: string
   error?: string
 }
 
@@ -65,7 +80,8 @@ export interface OAuthLogoutResponse {
 // OAuth device poll request (for device flow)
 export interface OAuthDevicePollRequest {
   providerId: string
-  deviceCode: string
+  deviceCode?: string
+  flowId?: string
 }
 
 // OAuth device poll response

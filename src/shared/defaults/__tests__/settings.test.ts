@@ -54,6 +54,96 @@ describe('editor settings defaults', () => {
   })
 })
 
+describe('soul memory settings defaults', () => {
+  it('enables soul-memory with ai_note_dir defaults', () => {
+    const settings = createDefaultSettings()
+
+    expect(settings.general.soulMemory?.enabled).toBe(true)
+    expect(settings.general.soulMemory?.directoryMode).toBe('ai-note-dir')
+    expect(settings.general.soulMemory?.bootstrapMaxChars).toBe(12000)
+    expect(settings.general.soulMemory?.activeMemory?.enabled).toBe(true)
+    expect(settings.general.soulMemory?.activeMemory?.queryMode).toBe('recent')
+    expect(settings.general.soulMemory?.activeMemory?.promptStyle).toBe('balanced')
+    expect(settings.general.soulMemory?.activeMemory?.timeoutMs).toBe(15000)
+    expect(settings.general.soulMemory?.activeMemory?.recentUserChars).toBe(220)
+    expect(settings.general.soulMemory?.activeMemory?.recentAssistantChars).toBe(180)
+    expect(settings.general.soulMemory?.search?.chunkTokens).toBe(400)
+    expect(settings.general.soulMemory?.search?.chunkOverlap).toBe(80)
+    expect(settings.general.soulMemory?.embeddings?.providerId).toBe('auto')
+    expect(settings.general.soulMemory?.embeddings?.apiKey).toBe('')
+    expect(settings.general.soulMemory?.memoryFlush?.enabled).toBe(true)
+    expect(settings.general.soulMemory?.dreaming?.enabled).toBe(false)
+    expect(settings.general.soulMemory?.dreaming?.frequency).toBe('0 3 * * *')
+    expect(settings.general.soulMemory?.dreaming?.lookbackDays).toBe(30)
+    expect(settings.general.soulMemory?.dreaming?.maxPromotions).toBe(10)
+    expect(settings.general.soulMemory?.dreaming?.timeoutMs).toBe(60000)
+    expect(settings.general.soulMemory?.dailyContext?.mode).toBe('session-start')
+    expect(settings.general.soulMemory?.dailyContext?.daysBack).toBe(1)
+    expect(settings.general.soulMemory?.read?.defaultLines).toBe(200)
+  })
+
+  it('merges and clamps soul-memory settings for older settings files', () => {
+    const settings = mergeWithDefaults({
+      general: {
+        soulMemory: {
+          bootstrapMaxChars: 999999,
+          activeMemory: {
+            timeoutMs: 1,
+            cacheTtlMs: 999999,
+            queryMode: 'full',
+          },
+          search: {
+            chunkTokens: 120,
+            chunkOverlap: 500,
+            maxResults: 999,
+          },
+          memoryFlush: {
+            maxInputChars: 1,
+          },
+          dreaming: {
+            frequency: '*/15 * * * *',
+            lookbackDays: 999,
+            maxSourceFiles: 0,
+            maxInputChars: 1,
+            maxPromotions: 999,
+            timeoutMs: 1,
+          },
+          dailyContext: {
+            daysBack: 999,
+            maxChars: 1,
+            mode: 'always',
+          },
+          read: {
+            defaultLines: 9999,
+            maxLines: 60,
+          },
+        },
+      } as any,
+    })
+
+    expect(settings.general.soulMemory?.bootstrapMaxChars).toBe(50000)
+    expect(settings.general.soulMemory?.activeMemory?.timeoutMs).toBe(1000)
+    expect(settings.general.soulMemory?.activeMemory?.cacheTtlMs).toBe(120000)
+    expect(settings.general.soulMemory?.activeMemory?.queryMode).toBe('full')
+    expect(settings.general.soulMemory?.activeMemory?.promptStyle).toBe('contextual')
+    expect(settings.general.soulMemory?.search?.chunkTokens).toBe(120)
+    expect(settings.general.soulMemory?.search?.chunkOverlap).toBe(119)
+    expect(settings.general.soulMemory?.search?.maxResults).toBe(20)
+    expect(settings.general.soulMemory?.memoryFlush?.maxInputChars).toBe(2000)
+    expect(settings.general.soulMemory?.dreaming?.frequency).toBe('*/15 * * * *')
+    expect(settings.general.soulMemory?.dreaming?.lookbackDays).toBe(365)
+    expect(settings.general.soulMemory?.dreaming?.maxSourceFiles).toBe(1)
+    expect(settings.general.soulMemory?.dreaming?.maxInputChars).toBe(2000)
+    expect(settings.general.soulMemory?.dreaming?.maxPromotions).toBe(100)
+    expect(settings.general.soulMemory?.dreaming?.timeoutMs).toBe(5000)
+    expect(settings.general.soulMemory?.dailyContext?.daysBack).toBe(14)
+    expect(settings.general.soulMemory?.dailyContext?.maxChars).toBe(1000)
+    expect(settings.general.soulMemory?.dailyContext?.mode).toBe('always')
+    expect(settings.general.soulMemory?.read?.maxLines).toBe(60)
+    expect(settings.general.soulMemory?.read?.defaultLines).toBe(60)
+  })
+})
+
 describe('shortcut settings defaults', () => {
   it('provides shortcut defaults', () => {
     const settings = createDefaultSettings()

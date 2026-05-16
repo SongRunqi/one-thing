@@ -28,7 +28,7 @@ function step(overrides: Partial<Step> = {}): Step {
 }
 
 describe('buildToolStepView', () => {
-  it('keeps write streaming details expanded by default', () => {
+  it('keeps write streaming details available but collapsed by default', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         status: 'input-streaming',
@@ -42,7 +42,26 @@ describe('buildToolStepView', () => {
     expect(view.fileName).toBe('a.ts')
     expect(view.streamingContent?.content).toBe('hello\nworld')
     expect(view.hasDetails).toBe(true)
-    expect(view.defaultExpanded).toBe(true)
+    expect(view.defaultExpanded).toBe(false)
+  })
+
+  it('can build a lightweight row without parsing heavy details', () => {
+    const view = buildToolStepView(step({
+      toolCall: tc({
+        status: 'input-streaming',
+        streamingArgs: '{"file_path":"/Users/me/project/src/a.ts","content":"hello\\nworld"}',
+      }),
+    }), { includeDetails: false })
+
+    expect(view.status).toBe('streaming-input')
+    expect(view.preview).toBe('a.ts')
+    expect(view.filePath).toBe('/Users/me/project/src/a.ts')
+    expect(view.streamingContent).toBeNull()
+    expect(view.streamingDiffLines).toEqual([])
+    expect(view.argsJson).toBeNull()
+    expect(view.resultText).toBeNull()
+    expect(view.hasDetails).toBe(true)
+    expect(view.defaultExpanded).toBe(false)
   })
 
   it('uses diff as the authoritative write detail once available', () => {
@@ -84,6 +103,25 @@ describe('buildToolStepView', () => {
     expect(view.argsJson).toBe('git status')
     expect(view.hasDetails).toBe(true)
     expect(view.defaultExpanded).toBe(false)
+  })
+
+  it('renders permission rejection as rejected instead of failed error preview', () => {
+    const view = buildToolStepView(step({
+      status: 'failed',
+      error: 'User rejected this operation',
+      rejected: true,
+      toolCall: tc({
+        toolId: 'bash',
+        toolName: 'bash',
+        status: 'failed',
+        rejected: true,
+        error: 'User rejected this operation',
+      }),
+    }))
+
+    expect(view.status).toBe('rejected')
+    expect(view.errorPreview).toBe('Rejected')
+    expect(view.defaultExpanded).toBe(true)
   })
 
   it('caches streaming write parsing for the same tool input length and status', () => {

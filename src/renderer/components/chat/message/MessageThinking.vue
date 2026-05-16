@@ -18,8 +18,12 @@
           <div
             v-if="loadingMemory && isStreaming && !hasContent && !reasoning"
             key="loading-memory"
-            class="thinking-status-row"
+            class="thinking-status-row status-live"
           >
+            <span
+              class="thinking-dot"
+              aria-hidden="true"
+            />
             <span class="thinking-text flowing">Extracting memory</span>
             <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
           </div>
@@ -28,8 +32,12 @@
           <div
             v-else-if="isStreaming && !hasContent && !reasoning"
             key="waiting"
-            class="thinking-status-row"
+            class="thinking-status-row status-live"
           >
+            <span
+              class="thinking-dot"
+              aria-hidden="true"
+            />
             <span class="thinking-text flowing">Waiting</span>
             <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
           </div>
@@ -39,8 +47,14 @@
             v-else-if="reasoning"
             key="reasoning-status"
             class="thinking-status-row clickable"
+            :class="{ 'status-live': isStreaming && !hasContent }"
             @click="toggleExpand"
           >
+            <span
+              v-if="isStreaming && !hasContent"
+              class="thinking-dot"
+              aria-hidden="true"
+            />
             <Transition
               name="status-text-fade"
               mode="out-in"
@@ -65,6 +79,8 @@
             <button
               class="thinking-toggle-btn"
               :class="{ expanded: isExpanded }"
+              type="button"
+              :aria-label="isExpanded ? 'Collapse thought' : 'Expand thought'"
             >
               <svg
                 width="12"
@@ -126,6 +142,7 @@ const containerRef = ref<HTMLElement | null>(null)
 const reasoningWrapperRef = ref<HTMLElement | null>(null)
 let thinkingStartTimeValue: number | null = null
 let thinkingTimer: ReturnType<typeof setInterval> | null = null
+const userControlledExpansion = ref(false)
 
 // Computed display time (final time or elapsed time)
 const displayTime = computed(() => {
@@ -153,6 +170,7 @@ const shouldShowStatus = computed(() => {
 function toggleExpand() {
   if (props.reasoning) {
     const nextExpanded = !isExpanded.value
+    userControlledExpansion.value = true
     isExpanded.value = nextExpanded
     if (nextExpanded) {
       scrollExpandedReasoningIntoView()
@@ -212,11 +230,17 @@ watch(
   (newVal, oldVal) => {
     if (newVal && !oldVal) {
       startThinkingTimer()
+      if (props.reasoning && !userControlledExpansion.value) {
+        isExpanded.value = true
+      }
     } else if (!newVal && oldVal) {
       // Stream ended — stop regardless of whether content arrived.
       // Reasoning-only turns (no text / no tool calls) would otherwise
       // leave the timer running forever.
       stopThinkingTimer()
+      if (props.reasoning && !userControlledExpansion.value) {
+        isExpanded.value = false
+      }
     }
   },
   { immediate: true }
@@ -238,6 +262,20 @@ watch(
   (newVal) => {
     if (newVal && newVal > 0) {
       finalThinkingTime.value = newVal
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  () => props.reasoning,
+  (reasoning) => {
+    if (reasoning && props.isStreaming && !userControlledExpansion.value) {
+      isExpanded.value = true
+    }
+    if (!reasoning) {
+      userControlledExpansion.value = false
+      isExpanded.value = false
     }
   },
   { immediate: true }
@@ -286,11 +324,18 @@ onUnmounted(() => {
 }
 
 .thinking-status-row {
+  --thinking-fg: color-mix(
+    in srgb,
+    var(--text-ai-thinking, var(--text-muted, var(--muted))) 72%,
+    var(--text-primary, var(--text)) 28%
+  );
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 4px 0;
+  min-height: 30px;
+  padding: 3px 0;
+  color: var(--thinking-fg);
 }
 
 .thinking-status-row.clickable {
@@ -299,103 +344,85 @@ onUnmounted(() => {
 
 .thinking-text {
   font-size: 13px;
-  font-weight: 500;
-  color: var(--muted);
+  font-weight: 560;
+  color: currentColor;
 }
 
 .thinking-text.flowing {
-  background: linear-gradient(
-    90deg,
-    var(--muted) 0%,
-    var(--accent) 50%,
-    var(--muted) 100%
-  );
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: flowingGradient 2s linear infinite;
+  animation: thinkingTextPulse 1.6s ease-in-out infinite;
 }
 
 .thinking-text.thought {
-  color: var(--muted);
-  opacity: 0.6;
+  color: color-mix(in srgb, var(--thinking-fg) 90%, var(--text-primary, var(--text)) 10%);
 }
 
-@keyframes flowingGradient {
-  0% {
-    background-position: 200% center;
+.thinking-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 28%, transparent);
+  animation: thinkingDotPulse 1.35s ease-in-out infinite;
+}
+
+@keyframes thinkingDotPulse {
+  0%, 100% {
+    opacity: 0.58;
+    transform: scale(0.86);
   }
-  100% {
-    background-position: -200% center;
+  50% {
+    opacity: 1;
+    transform: scale(1);
   }
+}
+
+@keyframes thinkingTextPulse {
+  0%, 100% { opacity: 0.76; }
+  50% { opacity: 1; }
 }
 
 .thinking-time {
   font-size: 12px;
-  color: var(--muted);
-  opacity: 0.7;
+  color: color-mix(in srgb, var(--thinking-fg) 76%, transparent);
   font-variant-numeric: tabular-nums;
 }
 
 /* Transition: Waiting <-> Thinking/Thought row */
 .thinking-fade-enter-active {
-  animation: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
 .thinking-fade-leave-active {
-  animation: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
-@keyframes thinkingFadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+.thinking-fade-enter-from,
+.thinking-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-2px);
 }
 
-@keyframes thinkingFadeOut {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
 
 /* Transition: Thinking -> Thought text */
 .status-text-fade-enter-active {
-  animation: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
 .status-text-fade-leave-active {
-  animation: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
-@keyframes statusTextEnter {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes statusTextLeave {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
+.status-text-fade-enter-from,
+.status-text-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-2px);
 }
 
 /* Transition: Time display fade */
 .time-fade-enter-active,
 .time-fade-leave-active {
-  transition: none;
+  transition: opacity 0.12s ease;
 }
 
 .time-fade-enter-from,
@@ -403,11 +430,11 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-/* Reasoning expand: smooth grid-template-rows animation */
+/* Reasoning expand: layout change is immediate; motion stays opacity/transform only. */
 .thinking-reasoning-wrapper {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.2s ease, margin-bottom 0.2s ease;
+  transition: none;
   margin-bottom: 0;
 }
 
@@ -426,14 +453,13 @@ onUnmounted(() => {
   height: 20px;
   border: none;
   background: transparent;
-  color: var(--muted);
-  opacity: 0.6;
+  color: color-mix(in srgb, var(--thinking-fg, var(--text-ai-thinking, var(--muted))) 82%, transparent);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  transition: all 0.15s ease;
+  transition: none;
 }
 
 .thinking-toggle-btn:hover {
@@ -451,11 +477,14 @@ onUnmounted(() => {
 
 .thinking-content {
   padding: 8px 12px;
-  border-left: 2px solid var(--border);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 34%, var(--border));
   font-size: 12.5px;
   line-height: 1.5;
-  color: var(--muted);
-  opacity: 0.55;
+  color: color-mix(
+    in srgb,
+    var(--text-ai-thinking, var(--text-muted, var(--muted))) 82%,
+    var(--text-primary, var(--text)) 18%
+  );
 }
 
 .thinking-content :deep(p) {
@@ -469,5 +498,22 @@ onUnmounted(() => {
 .thinking-content :deep(ol),
 .thinking-content :deep(ul) {
   padding-left: 1.5em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dot,
+  .thinking-text.flowing {
+    animation: none;
+  }
+
+  .thinking-fade-enter-active,
+  .thinking-fade-leave-active,
+  .status-text-fade-enter-active,
+  .status-text-fade-leave-active,
+  .time-fade-enter-active,
+  .time-fade-leave-active,
+  .thinking-toggle-btn svg {
+    transition: none;
+  }
 }
 </style>

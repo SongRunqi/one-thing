@@ -28,6 +28,10 @@ extraResources:
     to: docs
     filter:
       - "**/*"
+  - from: resources/native
+    to: native
+    filter:
+      - "**/*"
 
 win:
   target:

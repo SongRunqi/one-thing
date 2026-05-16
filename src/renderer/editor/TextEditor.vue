@@ -16,6 +16,7 @@ import {
   completionExtensions,
   createEditorCompartments,
   languageExtensions,
+  markdownLivePreviewExtension,
   normalizeEditorSettings,
   placeholderExtensions,
   readOnlyExtensions,
@@ -44,6 +45,7 @@ interface Props {
   minHeight?: number
   maxHeight?: number
   spellcheck?: boolean
+  markdownLivePreview?: boolean
   settings?: EditorSettings
   selectOnFocus?: boolean
 }
@@ -58,6 +60,7 @@ const props = withDefaults(defineProps<Props>(), {
   minHeight: 24,
   maxHeight: 200,
   spellcheck: true,
+  markdownLivePreview: false,
   settings: undefined,
   selectOnFocus: false,
 })
@@ -72,6 +75,7 @@ const emit = defineEmits<{
   selectionChange: [selection: EditorSelection]
   transaction: [payload: EditorTransaction]
   keydown: [event: KeyboardEvent]
+  paste: [event: ClipboardEvent]
   compositionstart: []
   compositionend: []
 }>()
@@ -112,6 +116,7 @@ function createExtensions() {
     placeholder: props.placeholder,
     readOnly: props.readOnly,
     spellcheck: props.spellcheck,
+    markdownLivePreview: props.markdownLivePreview,
     settings: effectiveSettings.value,
     compartments,
     onTransaction: handleViewUpdate,
@@ -130,6 +135,9 @@ function createExtensions() {
         emit('submit')
       }
       if (event.key === 'Escape') emit('cancel')
+    },
+    onPaste: (event) => {
+      emit('paste', event)
     },
     onCompositionStart: () => {
       emit('compositionstart')
@@ -178,6 +186,7 @@ function reconfigureView() {
       compartments.placeholder.reconfigure(placeholderExtensions(props.placeholder)),
       compartments.language.reconfigure(languageExtensions(settings, props.language, props.path)),
       compartments.completion.reconfigure(completionExtensions(settings.completionEnabled)),
+      compartments.markdownLivePreview.reconfigure(markdownLivePreviewExtension(props.markdownLivePreview)),
     ],
   })
   view.contentDOM.setAttribute('spellcheck', props.spellcheck ? 'true' : 'false')
@@ -335,6 +344,7 @@ watch(
     props.placeholder,
     props.readOnly,
     props.spellcheck,
+    props.markdownLivePreview,
     effectiveSettings.value.tabSize,
     effectiveSettings.value.lineWrapping,
     effectiveSettings.value.syntaxHighlighting,

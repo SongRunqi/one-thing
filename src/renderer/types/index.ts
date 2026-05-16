@@ -18,6 +18,10 @@ import type {
   ModelCapabilityOverride,
   CustomProviderConfig,
   ProviderInfo,
+  CodexProviderUsage,
+  CodexUsageLimit,
+  CodexUsageWindow,
+  ProviderUsageResponse,
   ModelInfo,
   OpenRouterModel,
   ColorTheme,
@@ -31,6 +35,14 @@ import type {
   NetworkSettings,
   MessageAttachment,
   AttachmentMediaType,
+  MediaKind,
+  MediaSource,
+  MediaAsset,
+  MediaAssetLink,
+  MediaAssetMetadata,
+  MediaQuery,
+  MediaGalleryResponse,
+  MediaRebuildResponse,
   GetChatHistoryResponse,
   GetSessionsResponse,
   CreateSessionResponse,
@@ -96,6 +108,38 @@ import type {
   ReadSkillFileResponse,
   OpenSkillDirectoryResponse,
   CreateSkillResponse,
+  PluginCommandInfo,
+  GetPluginCommandsResponse,
+  ExecutePluginCommandResponse,
+  MemoryAppendRequest,
+  MemoryAppendResponse,
+  MemoryCaptureDecisionRequest,
+  MemoryCaptureDecisionResponse,
+  MemoryIndexResponse,
+  MemoryOverviewResponse,
+  MemoryProfileAuditRequest,
+  MemoryProfileAuditResponse,
+  MemoryProfileDeleteRequest,
+  MemoryProfileDeleteResponse,
+  MemoryProfileExportResponse,
+  MemoryProfileListRequest,
+  MemoryProfileListResponse,
+  MemoryProfileUpsertRequest,
+  MemoryProfileUpsertResponse,
+  MemoryRunDreamingResponse,
+  MemoryReadRequest,
+  MemoryReadResponse,
+  MemorySaveFileRequest,
+  MemorySaveFileResponse,
+  MemorySearchRequest,
+  MemorySearchResponse,
+  SchedulerGetRequest,
+  SchedulerGetResponse,
+  SchedulerListResponse,
+  SchedulerRunNowRequest,
+  SchedulerRunNowResponse,
+  SchedulerSetEnabledRequest,
+  SchedulerSetEnabledResponse,
   // Permission types
   PermissionInfo,
   PermissionResponse,
@@ -129,6 +173,7 @@ import type {
   TodoPlanSnapshot,
   TodoPlanUpdateResponse,
   TodoPlanUpdateRequest,
+  TodoPlanWindowActionRequest,
 } from '../../shared/ipc'
 
 export type {
@@ -151,6 +196,10 @@ export type {
   ModelCapabilityOverride,
   CustomProviderConfig,
   ProviderInfo,
+  CodexProviderUsage,
+  CodexUsageLimit,
+  CodexUsageWindow,
+  ProviderUsageResponse,
   ModelInfo,
   OpenRouterModel,
   ColorTheme,
@@ -164,6 +213,14 @@ export type {
   NetworkSettings,
   MessageAttachment,
   AttachmentMediaType,
+  MediaKind,
+  MediaSource,
+  MediaAsset,
+  MediaAssetLink,
+  MediaAssetMetadata,
+  MediaQuery,
+  MediaGalleryResponse,
+  MediaRebuildResponse,
   ToolDefinition,
   ToolCall,
   ToolSettings,
@@ -196,6 +253,29 @@ export type {
   SkillFile,
   SkillSource,
   SkillSettings,
+  PluginCommandInfo,
+  GetPluginCommandsResponse,
+  ExecutePluginCommandResponse,
+  MemoryAppendRequest,
+  MemoryAppendResponse,
+  MemoryCaptureDecisionRequest,
+  MemoryCaptureDecisionResponse,
+  MemoryIndexResponse,
+  MemoryOverviewResponse,
+  MemoryRunDreamingResponse,
+  MemoryReadRequest,
+  MemoryReadResponse,
+  MemorySaveFileRequest,
+  MemorySaveFileResponse,
+  MemorySearchRequest,
+  MemorySearchResponse,
+  SchedulerGetRequest,
+  SchedulerGetResponse,
+  SchedulerListResponse,
+  SchedulerRunNowRequest,
+  SchedulerRunNowResponse,
+  SchedulerSetEnabledRequest,
+  SchedulerSetEnabledResponse,
   // Permission types
   PermissionInfo,
   PermissionResponse,
@@ -307,6 +387,7 @@ export interface ElectronAPI {
   refreshThemes: (projectPath?: string) => Promise<RefreshThemesResponse>
   openThemesFolder: () => Promise<{ success: boolean; error?: string }>
   getProviders: () => Promise<GetProvidersResponse>
+  getProviderUsage: (providerId: string) => Promise<ProviderUsageResponse>
   // New OpenRouter-based model API
   getModelsWithCapabilities: (providerId: string) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
   getAllModels: () => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
@@ -370,20 +451,29 @@ export interface ElectronAPI {
   deleteMedia: (id: string) => Promise<boolean>
   clearAllMedia: () => Promise<void>
   readImageBase64: (filePath: string) => Promise<string>
+  listMediaAssets: (query?: MediaQuery) => Promise<MediaAsset[]>
+  hideMediaAsset: (id: string) => Promise<{ success: boolean }>
+  rebuildMediaLibrary: () => Promise<MediaRebuildResponse>
+  getMediaGallery: (assetId: string, query?: MediaQuery) => Promise<MediaGalleryResponse>
 
   // Image preview methods
   openImagePreview: (src: string, alt?: string) => Promise<{ success: boolean }>
+  getImagePreview: (previewId: string) => Promise<{ success: boolean; src?: string; alt?: string; error?: string }>
   openImageGallery: (mediaId: string) => Promise<{ success: boolean }>
-  onImagePreviewUpdate: (callback: (data: { src: string; alt?: string }) => void) => () => void
+  onImagePreviewUpdate: (callback: (data: { mode?: 'single'; previewId?: string; src?: string; alt?: string }) => void) => () => void
 
   // OAuth methods
   oauthStart: (providerId: string) => Promise<{
     success: boolean
     error?: string
+    flowId?: string
+    flowKind?: 'pkce-callback' | 'manual-pkce' | 'device-code'
+    pollIntervalMs?: number
+    expiresAt?: number
+    statusMessage?: string
     // For device flow (GitHub Copilot)
     userCode?: string
     verificationUri?: string
-    deviceCode?: string
     // For manual code entry flow (Claude Code)
     requiresCodeEntry?: boolean
     state?: string
@@ -396,17 +486,27 @@ export interface ElectronAPI {
   oauthLogout: (providerId: string) => Promise<{ success: boolean; error?: string }>
   oauthGetStatus: (providerId: string) => Promise<{
     success: boolean
+    providerId?: string
     isLoggedIn: boolean
+    isExpired?: boolean
+    canRefresh?: boolean
     expiresAt?: number
+    account?: {
+      id?: string
+      email?: string
+      planType?: string
+      isFedramp?: boolean
+    }
+    lastError?: string
     error?: string
   }>
-  oauthDevicePoll: (providerId: string, deviceCode: string) => Promise<{
+  oauthDevicePoll: (providerId: string, flowId?: string) => Promise<{
     success: boolean
     completed?: boolean
     error?: string
+    pollStatus?: string
   }>
   oauthRefresh: (providerId: string) => Promise<{ success: boolean; error?: string }>
-  oauthTestDirect: (providerId: string) => Promise<{ success: boolean; error?: string; response?: any }>
   onOAuthTokenRefreshed: (callback: (data: { providerId: string }) => void) => () => void
   onOAuthTokenExpired: (callback: (data: { providerId: string; error?: string }) => void) => () => void
 
@@ -475,6 +575,33 @@ export interface ElectronAPI {
   enablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
   disablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
   refreshPlugins: () => Promise<{ success: boolean; error?: string }>
+  getPluginCommands: () => Promise<GetPluginCommandsResponse>
+  executePluginCommand: (
+    commandName: string,
+    args: string,
+    sessionId: string
+  ) => Promise<ExecutePluginCommandResponse>
+
+  // Soul / Memory panel
+  getMemoryOverview: () => Promise<MemoryOverviewResponse>
+  readMemoryFile: (request: MemoryReadRequest) => Promise<MemoryReadResponse>
+  searchMemory: (request: MemorySearchRequest) => Promise<MemorySearchResponse>
+  appendMemory: (request: MemoryAppendRequest) => Promise<MemoryAppendResponse>
+  saveMemoryFile: (request: MemorySaveFileRequest) => Promise<MemorySaveFileResponse>
+  rebuildMemoryIndex: () => Promise<MemoryIndexResponse>
+  runMemoryDreaming: () => Promise<MemoryRunDreamingResponse>
+  listMemoryProfile: (request?: MemoryProfileListRequest) => Promise<MemoryProfileListResponse>
+  searchMemoryProfile: (request: MemoryProfileListRequest) => Promise<MemoryProfileListResponse>
+  upsertMemoryProfile: (request: MemoryProfileUpsertRequest) => Promise<MemoryProfileUpsertResponse>
+  deleteMemoryProfile: (request: MemoryProfileDeleteRequest) => Promise<MemoryProfileDeleteResponse>
+  getMemoryProfileAudit: (request: MemoryProfileAuditRequest) => Promise<MemoryProfileAuditResponse>
+  exportMemoryProfile: () => Promise<MemoryProfileExportResponse>
+  saveMemoryCapture: (request?: MemoryCaptureDecisionRequest) => Promise<MemoryCaptureDecisionResponse>
+  discardMemoryCapture: (request?: MemoryCaptureDecisionRequest) => Promise<MemoryCaptureDecisionResponse>
+  listSchedulerTasks: () => Promise<SchedulerListResponse>
+  getSchedulerTask: (request: SchedulerGetRequest) => Promise<SchedulerGetResponse>
+  runSchedulerTaskNow: (request: SchedulerRunNowRequest) => Promise<SchedulerRunNowResponse>
+  setSchedulerTaskEnabled: (request: SchedulerSetEnabledRequest) => Promise<SchedulerSetEnabledResponse>
 
   // App State
   getAppState: () => Promise<{
@@ -505,8 +632,9 @@ export interface ElectronAPI {
   renameTodoPlanNote: (request: TodoPlanRenameRequest) => Promise<TodoPlanRenameResponse>
   deleteTodoPlanNote: (request: TodoPlanDeleteRequest) => Promise<TodoPlanDeleteResponse>
   revealTodoPlanDirectory: () => Promise<{ success: boolean; error?: string }>
-  openTodoPlanWindow: () => Promise<{ success: boolean }>
-  toggleTodoPlanWindow: () => Promise<{ success: boolean }>
+  openTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => Promise<{ success: boolean }>
+  hideTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => Promise<{ success: boolean }>
+  toggleTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => Promise<{ success: boolean }>
   setTodoPlanWindowPinned: (pinned: boolean) => Promise<{ success: boolean; pinned: boolean }>
   onTodoPlanChanged: (callback: (data: TodoPlanChangedPayload) => void) => () => void
 

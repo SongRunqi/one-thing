@@ -60,6 +60,18 @@ describe('IPCBridge stream buffer', () => {
     ])
   })
 
+  it('does not merge adjacent reasoning chunks with different placements', () => {
+    const buffer = createStreamBuffer()
+
+    appendStreamBufferChunk(buffer, { type: 'reasoning-delta', reasoning: 'top', placement: 'top' })
+    appendStreamBufferChunk(buffer, { type: 'reasoning-delta', reasoning: 'inline', placement: 'inline' })
+
+    expect(drainStreamBuffer(buffer)).toEqual([
+      { type: 'reasoning-delta', reasoning: 'top', placement: 'top' },
+      { type: 'reasoning-delta', reasoning: 'inline', placement: 'inline' },
+    ])
+  })
+
   it('merges only adjacent tool input chunks for the same tool call id', () => {
     const buffer = createStreamBuffer()
 

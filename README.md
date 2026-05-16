@@ -1,24 +1,24 @@
 # onething
 
-> A powerful AI chat desktop app with multi-provider support, built-in tools, and intelligent memory.
+> An AI chat desktop app with multi-provider support, built-in tools, project context, and an event-driven streaming engine.
 
-![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron)
-![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript)
-![License](https://img.shields.io/badge/License-MIT-green)
+![Electron](https://img.shields.io/badge/Electron-39-47848F?logo=electron)
+![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vue.js)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
 
 ## What is onething?
 
-onething is an Electron-based desktop application that brings together multiple AI providers (OpenAI, Claude, DeepSeek, Gemini, etc.) with a powerful tool execution system and semantic memory. Think of it as a local AI assistant that can remember context, execute commands, and work with your filesystem—all within a clean, customizable interface.
+onething is an Electron-based desktop application that brings together multiple AI providers with a local tool execution system. It is built around an event-driven streaming engine, a typed Electron IPC bridge, project-directory context, and a Vue interface for long-running chat sessions.
 
 ## Key Features
 
-- **🤖 Multi-Provider Support** - OpenAI, Claude (including Claude Code OAuth), DeepSeek, Gemini, GitHub Copilot, OpenRouter, and custom APIs
-- **🛠️ Built-in Tools** - Bash execution, file operations (read/write/edit), search (glob/grep), and more
-- **🧠 Intelligent Memory** - Semantic memory system with vector search that remembers user facts and conversation context
-- **🎭 Custom Agents** - Create personalized agents with custom prompts, memory isolation, and unique personalities
-- **📁 Workspace Management** - Organize conversations by project with isolated working directories
-- **🔌 Extensible** - MCP (Model Context Protocol) and Skills system support
+- **Multi-provider chat** - OpenAI, Claude, Claude Code OAuth, DeepSeek, Gemini, GitHub Copilot, OpenRouter, Kimi, Zhipu, and OpenAI-compatible custom providers.
+- **Event-driven streaming** - Session commands and stream events flow through the main-process EventBus and IPCBridge.
+- **Built-in tools** - Bash, read/write/edit, glob/grep, calculator, web search, variables, todo plans, skills, and image generation support.
+- **Permission controls** - Directory-scoped permissions for tool execution, with renderer confirmation for sensitive actions.
+- **Project context** - Project directories, per-session `workdir`, notes directories, and context variables can be surfaced to the model.
+- **Extensibility** - MCP servers, Codex-style skills, local plugins, custom themes, and provider model registries.
+- **Desktop workflow UI** - Chat sessions, streaming markdown, file/editor panels, search, media preview, and settings screens.
 
 ## Quick Start
 
@@ -26,11 +26,11 @@ onething is an Electron-based desktop application that brings together multiple 
 # Install dependencies (using bun)
 bun install
 
-# Development mode
-bun run dev:all
+# Development mode (electron-vite runs main, preload, and renderer)
+bun run dev
 
 # Build for production
-bun run build:electron
+bun run build
 ```
 
 ### First-Time Setup
@@ -39,6 +39,22 @@ bun run build:electron
 2. Open settings (`Cmd/Ctrl + ,`)
 3. Choose an AI provider and enter your API key (or use OAuth)
 4. Start chatting!
+
+## Development Commands
+
+```bash
+# Typecheck both Node and renderer projects
+bun run typecheck
+
+# Run tests
+bun run test
+
+# Run ESLint with auto-fix
+bun run lint
+
+# Typecheck, then build
+bun run build:check
+```
 
 ## Building & Releasing
 
@@ -70,7 +86,9 @@ Use the automated release script:
 bun run release 1.0.0
 ```
 
-Or manually:
+The release script updates `package.json`, creates a version commit and tag, and pushes both to the current branch's remote.
+
+You can also tag manually:
 
 ```bash
 # Update version in package.json, commit, and tag
@@ -78,49 +96,39 @@ git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 ```
 
-The GitHub Actions workflow will automatically build and create a draft release. See [RELEASE.md](./RELEASE.md) for detailed instructions.
+GitHub Actions build and test workflows live in [`.github/workflows`](./.github/workflows).
 
 ## Architecture
 
 onething follows Electron's three-process model:
 
-- **Main Process** - Node.js backend with SQLite storage, AI providers, tool execution, and memory management
+- **Main Process** - Node.js backend with EventBus, StreamEngine, AI providers, tool execution, permissions, and persistence
 - **Renderer Process** - Vue 3 frontend with Pinia state management
 - **Preload Script** - Type-safe IPC bridge between main and renderer
 
-Key technologies: Electron, Vue 3, TypeScript, Vercel AI SDK, SQLite + sqlite-vec, Pinia
+Key technologies: Electron, Vue 3, TypeScript, Pinia, Vercel AI SDK, better-sqlite3, electron-vite, and Vitest.
 
 ## Documentation
 
 See `/docs` for detailed documentation:
 
-- [Architecture Overview](./docs/ARCHITECTURE.md)
-- [Chat System](./docs/architecture-chat.md)
-- [Providers](./docs/providers.md)
-- [Storage Layer](./docs/storage.md)
-- [Memory System](./docs/memory-service.md)
-- [Tools & MCP](./docs/architecture-tools.md)
+- [Project directories](./docs/project-dirs.md)
+- [Variables plugin guide](./docs/variables-plugin.md)
+- [Long-session storage and rendering](./docs/design/long-session-storage-and-rendering.md)
+- [Streaming markdown rendering](./docs/design/streaming-markdown-rendering.md)
+- [Streaming scroll stability](./docs/design/streaming-scroll-stability.md)
+- [Message action jitter](./docs/design/message-action-jitter.md)
+- [Editor platform hardening](./docs/design/editor-platform-hardening.md)
 
-Or check [CLAUDE.md](./CLAUDE.md) for quick guidance when working with this codebase.
+Coding-agent guidance lives in [AGENTS.md](./AGENTS.md) and [CLAUDE.md](./CLAUDE.md).
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Desktop | Electron 33 |
+| Desktop | Electron 39 |
 | Frontend | Vue 3 + TypeScript + Pinia |
-| AI SDK | Vercel AI SDK |
-| Database | SQLite (better-sqlite3) + sqlite-vec |
-| Build | Vite + esbuild |
-
-## Contributing
-
-Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
-
-## License
-
-[MIT License](./LICENSE)
-
----
-
-**Built with ❤️ using Electron + Vue + AI**
+| AI SDK | Vercel AI SDK (`ai`) |
+| Storage | File-based JSON + better-sqlite3 session repository |
+| Build | electron-vite + electron-builder |
+| Test | Vitest |

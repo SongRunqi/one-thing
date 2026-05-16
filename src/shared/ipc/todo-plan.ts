@@ -1,5 +1,12 @@
 export type TodoPlanScope = 'user-note' | 'workspace-ai-todo'
 
+export type TodoPlanActivationMode = 'preserve-current-app' | 'focus-if-app-active'
+
+export interface TodoPlanWindowActionRequest {
+  activation?: TodoPlanActivationMode
+  preserveMainWindowVisibility?: boolean
+}
+
 export interface TodoPlanDocument {
   id: string
   scope: TodoPlanScope

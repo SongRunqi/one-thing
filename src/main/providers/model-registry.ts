@@ -11,6 +11,7 @@ import type { OpenRouterModel } from '../../shared/ipc.js'
 import type { ModelCapabilityOverride, ProviderConfig, ModelCapabilityEntry } from '../../shared/ipc/providers.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
 import { createRequiredAppFetch } from './bound-fetch.js'
+import { getCodexFallbackModels } from './builtin/codex.js'
 
 // ============================================================================
 // Constants
@@ -132,6 +133,35 @@ function toCapabilityEntry(model: ModelsDevModel, providerId: string): ModelCapa
   }
 }
 
+function openRouterModelToCapabilityEntry(model: OpenRouterModel, providerId: string): ModelCapabilityEntry {
+  const inputModalities = model.architecture?.input_modalities || ['text']
+  const outputModalities = model.architecture?.output_modalities || ['text']
+  const supportedParameters = model.supported_parameters || []
+
+  return {
+    id: model.id,
+    name: model.name || model.id,
+    provider: providerId,
+    contextLength: model.context_length || model.top_provider?.context_length || 128000,
+    maxOutputTokens: model.top_provider?.max_completion_tokens || 4096,
+    supportsTools: supportedParameters.includes('tools'),
+    supportsVision: inputModalities.includes('image'),
+    supportsReasoning: supportedParameters.includes('reasoning'),
+    supportsImageOutput: outputModalities.includes('image'),
+    supportsTemperature: supportedParameters.includes('temperature'),
+    inputModalities,
+    outputModalities,
+    pricing: {
+      input: Number(model.pricing?.prompt ?? 0) || 0,
+      output: Number(model.pricing?.completion ?? 0) || 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    lastUpdated: model.last_updated,
+    providerMetadata: model.providerMetadata,
+  }
+}
+
 // ============================================================================
 // Convert: ModelCapabilityEntry -> OpenRouterModel (for runtime API)
 // ============================================================================
@@ -165,7 +195,24 @@ function toOpenRouterModel(entry: ModelCapabilityEntry): OpenRouterModel {
     },
     supported_parameters: supportedParams,
     last_updated: entry.lastUpdated,
+    providerMetadata: entry.providerMetadata,
   }
+}
+
+export function saveProviderModels(providerId: string, models: OpenRouterModel[]): void {
+  const settings = getSettings()
+  const providerConfig = (settings.ai.providers[providerId] || {}) as ProviderConfig
+  const entries: Record<string, ModelCapabilityEntry> = {}
+
+  for (const model of models) {
+    entries[model.id] = openRouterModelToCapabilityEntry(model, providerId)
+  }
+
+  providerConfig.models = entries
+  providerConfig.modelsLastFetched = Date.now()
+  settings.ai.providers[providerId] = providerConfig
+  saveSettings(settings)
+  console.log(`[ModelRegistry] Saved ${Object.keys(entries).length} provider-direct models for ${providerId}`)
 }
 
 function sortModels(models: OpenRouterModel[]): OpenRouterModel[] {
@@ -207,6 +254,11 @@ async function fetchModelsDevData(): Promise<ModelsDevResponse> {
 export async function refreshProviderModels(providerId: string): Promise<void> {
   console.log(`[ModelRegistry] Refreshing models for provider: ${providerId}`)
 
+  if (providerId === 'codex') {
+    console.log('[ModelRegistry] Codex models are loaded from the authenticated Codex backend')
+    return
+  }
+
   const data = await fetchModelsDevData()
 
   // Find the models.dev key for this provider
@@ -245,6 +297,7 @@ export async function refreshAllProviders(): Promise<void> {
   const providerIds = Object.keys(providers).filter(pid => {
     // Skip 'custom' and empty/invalid providers
     if (pid === 'custom') return false
+    if (pid === 'codex') return false
     return true
   })
 
@@ -287,7 +340,9 @@ export const forceRefresh = refreshAllProviders
 
 export async function getModelsForProvider(providerId: string): Promise<OpenRouterModel[]> {
   const models = getProviderModels(providerId)
-  if (!models) return []
+  if (!models) {
+    return providerId === 'codex' ? getCodexFallbackModels() : []
+  }
 
   let entries = Object.values(models)
 

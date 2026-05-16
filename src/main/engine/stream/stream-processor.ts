@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid'
 import * as store from '../../store.js'
 import type { AppSettings, ProviderConfig, ToolSettings, Step, StepType } from '../../../shared/ipc.js'
 import type { ToolCall } from '../../../shared/ipc.js'
+import type { ReasoningPlacement } from '../../../shared/events/index.js'
 import { createToolCall } from '../../tools/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '../../mcp/index.js'
 import { resolveAIToolName } from '../../providers/tool-name-alias.js'
@@ -115,7 +116,7 @@ export interface StreamProcessor {
   accumulatedReasoning: string
   toolCalls: ToolCall[]
   handleTextChunk(text: string, turnContent?: { value: string }, turnIndex?: number): void
-  handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }, turnIndex?: number): void
+  handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }, turnIndex?: number, placement?: ReasoningPlacement): void
   handleToolCallChunk(toolCallData: {
     toolCallId: string
     toolName: string
@@ -158,11 +159,13 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       emitter.sendTextChunk(text, turnIndex)
     },
 
-    handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }, turnIndex?: number) {
+    handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }, turnIndex?: number, placement: ReasoningPlacement = 'top') {
       accumulatedReasoning += reasoning
       if (turnReasoning) turnReasoning.value += reasoning
-      store.updateMessageReasoning(ctx.sessionId, ctx.assistantMessageId, accumulatedReasoning)
-      emitter.sendReasoningChunk(reasoning, turnIndex)
+      if (placement === 'top') {
+        store.updateMessageReasoning(ctx.sessionId, ctx.assistantMessageId, accumulatedReasoning)
+      }
+      emitter.sendReasoningChunk(reasoning, turnIndex, placement)
     },
 
     handleToolCallChunk(toolCallData: {

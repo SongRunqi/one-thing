@@ -27,6 +27,7 @@ import {
 
 import { Tool } from '../core/tool'
 import type { ToolExecutionContext } from '../types'
+import { Permission } from '../../permission/index'
 
 // Helper to create a static tool
 function createStaticTool(id: string, overrides: Partial<any> = {}) {
@@ -53,7 +54,7 @@ function createStaticTool(id: string, overrides: Partial<any> = {}) {
 
 describe('Tool Registry', () => {
   beforeEach(() => {
-    for (const id of ['test-tool', 'tool-a', 'tool-b', 'tool-c', 'async-tool', 'disabled-tool', 'auto-tool', 'non-existent']) {
+    for (const id of ['test-tool', 'tool-a', 'tool-b', 'tool-c', 'async-tool', 'disabled-tool', 'auto-tool', 'reject-tool', 'error-tool', 'non-existent']) {
       unregisterTool(id)
     }
     vi.clearAllMocks()
@@ -194,6 +195,37 @@ describe('Tool Registry', () => {
 
       expect(result.success).toBe(false)
       expect(result.error).toContain('not found')
+    })
+
+    it('should mark permission rejection separately from execution errors', async () => {
+      registerTool(createStaticTool('reject-tool', {
+        async execute() {
+          throw new Permission.RejectedError('session-1', 'perm-1', 'call-1', undefined, 'No thanks')
+        },
+      }))
+
+      const result = await executeTool('reject-tool', { input: 'test' }, mockContext)
+
+      expect(result.success).toBe(false)
+      expect(result.rejected).toBe(true)
+      expect(result.rejectionReason).toBe('No thanks')
+      expect(result.error).toContain('No thanks')
+    })
+
+    it('should keep ordinary execution errors as non-rejected failures', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      registerTool(createStaticTool('error-tool', {
+        async execute() {
+          throw new Error('Boom')
+        },
+      }))
+
+      const result = await executeTool('error-tool', { input: 'test' }, mockContext)
+
+      expect(result.success).toBe(false)
+      expect(result.rejected).toBeUndefined()
+      expect(result.error).toBe('Boom')
+      errorSpy.mockRestore()
     })
   })
 

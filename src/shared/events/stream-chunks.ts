@@ -20,10 +20,13 @@ export interface TextDeltaChunk {
 
 // ── Reasoning delta ─────────────────────────────
 
+export type ReasoningPlacement = 'top' | 'inline'
+
 export interface ReasoningDeltaChunk {
   type: 'reasoning-delta'
   reasoning: string
   turnIndex?: number
+  placement?: ReasoningPlacement
 }
 
 // ── Tool input delta ────────────────────────────

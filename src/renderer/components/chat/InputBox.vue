@@ -81,12 +81,19 @@
           :stroke-width="2"
         />
         <div class="queued-message-text">
-          {{ item.content }}
+          {{ item.content || attachmentSummary(item.attachments) }}
+          <span
+            v-if="item.content && item.attachments?.length"
+            class="queued-message-attachments"
+          >
+            {{ attachmentSummary(item.attachments) }}
+          </span>
         </div>
         <button
           class="queued-message-action"
           type="button"
-          title="Steer the current tool loop with this message"
+          :disabled="!!item.attachments?.length"
+          :title="item.attachments?.length ? 'File messages will send after the current response' : 'Steer the current tool loop with this message'"
           @click.stop="steerQueuedMessage(item.id)"
         >
           <CornerDownRight
@@ -138,6 +145,7 @@
           :min-height="56"
           :max-height="composerMaxHeight"
           @keydown="handleKeyDown"
+          @paste="handlePasteAttachments"
           @focus="isFocused = true"
           @blur="isFocused = false"
           @height-change="handleEditorHeightChange"
@@ -146,6 +154,55 @@
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
         />
+      </div>
+
+      <div
+        v-if="attachedFiles.length > 0 || isProcessingAttachments"
+        class="attachment-tray"
+        @click.stop
+      >
+        <div
+          v-for="file in attachedFiles"
+          :key="file.id"
+          class="attachment-chip"
+          :class="{ 'is-image': file.mediaType === 'image' }"
+          :title="`${file.fileName} (${formatFileSize(file.size)})`"
+        >
+          <img
+            v-if="file.mediaType === 'image' && file.preview"
+            class="attachment-thumb"
+            :src="file.preview"
+            :alt="file.fileName"
+          >
+          <span
+            v-else
+            class="attachment-file-icon"
+          >
+            <FileText :size="15" />
+          </span>
+          <span class="attachment-info">
+            <span class="attachment-name">{{ file.fileName }}</span>
+            <span class="attachment-size">{{ formatFileSize(file.size) }}</span>
+          </span>
+          <button
+            class="attachment-remove"
+            type="button"
+            :title="`Remove ${file.fileName}`"
+            @click.stop="removeAttachment(file.id)"
+          >
+            <X :size="14" />
+          </button>
+        </div>
+        <div
+          v-if="isProcessingAttachments"
+          class="attachment-chip is-loading"
+        >
+          <Loader2
+            class="attachment-spinner"
+            :size="15"
+          />
+          <span>Reading files...</span>
+        </div>
       </div>
 
       <!-- Bottom toolbar -->
@@ -178,7 +235,7 @@
               :stroke-width="0"
             />
           </button>
-        </div>
+      </div>
       </div>
     </div>
   </div>
@@ -197,15 +254,18 @@ import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
 import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
-import { X, Square, Send, Check, CornerDownRight, Trash2, MoreHorizontal } from 'lucide-vue-next'
-import { findCommand } from '@/services/commands'
+import { X, Square, Send, Check, CornerDownRight, Trash2, MoreHorizontal, FileText, Loader2 } from 'lucide-vue-next'
+import { findCommand, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
+import type { MessageAttachment } from '@/types'
 
 // Composables
 import { useInputHistory } from '@/composables/useInputHistory'
 import { usePickerOrchestration } from '@/composables/usePickerOrchestration'
 import { useCommandFeedback } from '@/composables/useCommandFeedback'
+import { useAttachments } from '@/composables/useAttachments'
+import type { AttachedFile } from '@/composables/useAttachments'
 
 interface Props {
   isLoading?: boolean
@@ -214,7 +274,7 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'sendMessage', message: string, mode?: 'send' | 'steer' | 'followup'): void
+  (e: 'sendMessage', message: string, mode?: 'send' | 'steer' | 'followup', attachments?: MessageAttachment[]): void
   (e: 'stopGeneration'): void
 }
 
@@ -239,6 +299,7 @@ const composerWrapperRef = ref<HTMLElement | null>(null)
 interface QueuedMessage {
   id: string
   content: string
+  attachments?: MessageAttachment[]
 }
 
 const queuedMessages = ref<QueuedMessage[]>([])
@@ -304,21 +365,31 @@ const {
 } = usePickerOrchestration(messageInput, workingDirectory, editorRef, updateComposerHeight, checkHistoryEdit)
 
 const { commandFeedback, showCommandFeedback } = useCommandFeedback()
+const {
+  attachedFiles,
+  isProcessing: isProcessingAttachments,
+  handlePaste: handleAttachmentPaste,
+  removeAttachment,
+  clearAttachments,
+  restoreAttachments,
+  toMessageAttachments,
+} = useAttachments()
 
 // --- Computed ---
 
 const hasMessageContent = computed(() => messageInput.value.trim().length > 0)
+const hasAttachments = computed(() => attachedFiles.value.length > 0)
 const hasActiveGeneration = computed(() => {
   const sessionId = effectiveSessionId.value
   return !!props.isLoading || (sessionId ? chatStore.isSessionGenerating(sessionId) : false)
 })
 
 const canSend = computed(() => {
-  return hasMessageContent.value
+  return (hasMessageContent.value || hasAttachments.value) && !isProcessingAttachments.value
 })
 
 const shouldShowStopAction = computed(() => {
-  return hasActiveGeneration.value && !hasMessageContent.value
+  return hasActiveGeneration.value && !hasMessageContent.value && !hasAttachments.value
 })
 
 const isPrimaryActionDisabled = computed(() => {
@@ -376,6 +447,40 @@ onUnmounted(() => {
 })
 
 // --- Core handlers ---
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function attachmentSummary(attachments?: MessageAttachment[]) {
+  const count = attachments?.length ?? 0
+  if (count === 0) return ''
+  return count === 1 ? '1 file attached' : `${count} files attached`
+}
+
+function showAttachmentResult(accepted: AttachedFile[], rejected: { message: string }[]) {
+  if (rejected.length > 0) {
+    showCommandFeedback('error', rejected[0].message)
+    return
+  }
+  if (accepted.length > 0) {
+    showCommandFeedback('success', accepted.length === 1
+      ? `Attached ${accepted[0].fileName}`
+      : `Attached ${accepted.length} files`)
+  }
+}
+
+async function handlePasteAttachments(event: ClipboardEvent) {
+  const result = await handleAttachmentPaste(event)
+  if (!result.handled) return
+  showAttachmentResult(result.accepted, result.rejected)
+  nextTick(() => {
+    updateComposerHeight()
+    editorRef.value?.focus()
+  })
+}
 
 function handleKeyDown(e: KeyboardEvent) {
   if (isComposing.value || e.isComposing) return
@@ -450,11 +555,17 @@ async function sendMessage() {
   if (!canSend.value) return
 
   // Check if this is a command
-  const commandMatch = messageInput.value.match(/^\/(\w+)(?:\s+(.*))?$/)
+  const commandMatch = !hasAttachments.value
+    ? messageInput.value.match(/^\/([a-zA-Z0-9_-]+)(?:\s+(.*))?$/)
+    : null
   if (commandMatch) {
     const commandId = commandMatch[1]
     const argsString = commandMatch[2] || ''
-    const command = findCommand(commandId)
+    let command = findCommand(commandId)
+    if (!command) {
+      await refreshPluginCommands()
+      command = findCommand(commandId)
+    }
 
     if (command) {
       const result = await command.execute({
@@ -486,6 +597,7 @@ async function sendMessage() {
 
   // Regular message sending
   let fullMessage = messageInput.value
+  const attachments = toMessageAttachments()
 
   if (quotedText.value) {
     const quotedLines = quotedText.value.split('\n').map(line => `> ${line}`).join('\n')
@@ -496,15 +608,17 @@ async function sendMessage() {
     queuedMessages.value.push({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       content: fullMessage,
+      attachments,
     })
     showCommandFeedback('success', 'Message queued')
   } else {
-    emit('sendMessage', fullMessage, 'send')
+    emit('sendMessage', fullMessage, 'send', attachments)
   }
 
   messageInput.value = ''
   resetHistoryNavigation()
   quotedText.value = ''
+  clearAttachments()
   nextTick(() => {
     updateComposerHeight()
     editorRef.value?.scrollToTop()
@@ -527,6 +641,10 @@ function handlePrimaryAction() {
 function steerQueuedMessage(id: string) {
   const item = queuedMessages.value.find(message => message.id === id)
   if (!item) return
+  if (item.attachments?.length) {
+    showCommandFeedback('error', 'File messages will send after the current response')
+    return
+  }
   queuedMessages.value = queuedMessages.value.filter(message => message.id !== id)
   emit('sendMessage', item.content, 'steer')
   showCommandFeedback('success', 'Steering queued')
@@ -540,7 +658,7 @@ function flushQueuedMessage() {
   if (hasActiveGeneration.value) return
   const nextMessage = queuedMessages.value.shift()
   if (!nextMessage) return
-  emit('sendMessage', nextMessage.content, 'send')
+  emit('sendMessage', nextMessage.content, 'send', nextMessage.attachments)
 }
 
 function focusEditor() {
@@ -576,14 +694,17 @@ defineExpose({
   // Snapshot API for session switching
   getMessageInput: () => messageInput.value,
   getQuotedText: () => quotedText.value,
-  restoreSnapshot: (snap: { messageInput: string; quotedText: string }) => {
+  getAttachments: () => toMessageAttachments() ?? [],
+  restoreSnapshot: (snap: { messageInput: string; quotedText: string; attachments?: MessageAttachment[] }) => {
     messageInput.value = snap.messageInput
     quotedText.value = snap.quotedText
+    restoreAttachments(snap.attachments)
     nextTick(() => updateComposerHeight())
   },
   clearInput: () => {
     messageInput.value = ''
     quotedText.value = ''
+    clearAttachments()
     nextTick(() => updateComposerHeight())
   },
 })
@@ -712,6 +833,20 @@ defineExpose({
   color: var(--text);
 }
 
+.queued-message-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.queued-message-attachments {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .queued-message-enter-active,
 .queued-message-leave-active {
   transition: opacity 0.18s ease, transform 0.18s ease;
@@ -754,6 +889,123 @@ defineExpose({
   width: 100%;
   --editor-font-size: 15px;
   min-height: 56px;
+}
+
+.attachment-tray {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 12px 8px;
+  min-height: 44px;
+}
+
+.attachment-tray::-webkit-scrollbar {
+  height: 4px;
+}
+
+.attachment-tray::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.attachment-tray::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 2px;
+}
+
+.attachment-chip {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  width: min(230px, 68vw);
+  height: 42px;
+  padding: 5px 6px 5px 5px;
+  border: 0.5px solid var(--border);
+  border-radius: 8px;
+  background: rgba(var(--bg-rgb, 30, 30, 35), 0.48);
+  color: var(--text);
+}
+
+.attachment-chip.is-loading {
+  grid-template-columns: auto 1fr;
+  width: auto;
+  padding: 5px 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.attachment-thumb,
+.attachment-file-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.attachment-thumb {
+  object-fit: cover;
+  background: var(--bg-muted);
+}
+
+.attachment-file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hover);
+  color: var(--muted);
+}
+
+.attachment-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.attachment-name,
+.attachment-size {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-name {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.attachment-size {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.attachment-remove {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attachment-remove:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.attachment-spinner {
+  animation: attachment-spin 0.8s linear infinite;
+}
+
+@keyframes attachment-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Bottom toolbar */

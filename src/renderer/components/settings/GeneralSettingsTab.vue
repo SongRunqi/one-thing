@@ -151,7 +151,7 @@
           <label class="toggle-row">
             <span>
               <span class="toggle-title">Enable automatic compact</span>
-              <span class="toggle-desc">Summarizes older chat history before a request gets too close to the model context limit.</span>
+              <span class="toggle-desc">Summarizes older chat history before the context limit. Memory writes during compact are controlled separately in Memory settings.</span>
             </span>
             <input
               type="checkbox"
@@ -599,6 +599,23 @@ async function chooseTodoPlanDirectory() {
   outline: none;
 }
 
+.form-select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border-radius: 8px;
+  background: var(--settings-paper-2, var(--bg));
+  color: var(--text-primary);
+  font-size: var(--type-body-size);
+  padding: 7px 10px;
+  outline: none;
+}
+
+.form-select:focus {
+  border-color: var(--settings-accent, var(--accent));
+  box-shadow: 0 0 0 2px var(--settings-accent-soft, rgba(var(--accent-rgb), 0.12));
+}
+
 .form-input:focus {
   border-color: var(--settings-accent, var(--accent));
   box-shadow: 0 0 0 2px var(--settings-accent-soft, rgba(var(--accent-rgb), 0.12));
@@ -979,6 +996,7 @@ async function chooseTodoPlanDirectory() {
     width: 20px;
     height: 20px;
   }
+
 }
 
 /* Font Options */

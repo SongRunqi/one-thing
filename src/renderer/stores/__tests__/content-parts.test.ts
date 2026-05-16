@@ -6,6 +6,7 @@ import {
   appendToolCallPlaceholder,
   popTrailingTransient,
   pushDataStepsIfMissing,
+  pushImageLoading,
   pushWaiting,
   removeTransientIndicators,
   upsertToolCall,
@@ -38,6 +39,12 @@ describe('content-parts helpers', () => {
       expect(parts).toEqual([])
     })
 
+    it('removes trailing image-loading', () => {
+      const parts: ContentPart[] = [{ type: 'image-loading', label: 'Generating image' }]
+      popTrailingTransient(parts)
+      expect(parts).toEqual([])
+    })
+
     it('leaves non-transient trailing parts alone', () => {
       const parts: ContentPart[] = [{ type: 'text', content: 'hi' }]
       popTrailingTransient(parts)
@@ -52,12 +59,13 @@ describe('content-parts helpers', () => {
   })
 
   describe('removeTransientIndicators', () => {
-    it('removes all waiting and loading-memory parts', () => {
+    it('removes all waiting, loading-memory, and image-loading parts', () => {
       const parts: ContentPart[] = [
         { type: 'text', content: 'a' },
         { type: 'waiting' },
         { type: 'data-steps', turnIndex: 1 },
         { type: 'loading-memory' },
+        { type: 'image-loading', turnIndex: 2 },
         { type: 'waiting' },
       ]
       expect(removeTransientIndicators(parts)).toBe(true)
@@ -125,6 +133,16 @@ describe('content-parts helpers', () => {
       ]
       appendOrMergeText(parts, 'b')
       expect(parts).toEqual([{ type: 'text', content: 'ab' }])
+    })
+
+    it('pops image-loading before appending generated image markdown', () => {
+      const parts: ContentPart[] = [
+        { type: 'image-loading', label: 'Generating image' },
+      ]
+      appendOrMergeText(parts, '![Generated Image|mediaId:abc](media://abc.png)')
+      expect(parts).toEqual([
+        { type: 'text', content: '![Generated Image|mediaId:abc](media://abc.png)' },
+      ])
     })
 
     it('starts a new text part after a tool-call', () => {
@@ -332,6 +350,51 @@ describe('content-parts helpers', () => {
       const parts: ContentPart[] = [{ type: 'text', content: 'hi' }]
       pushWaiting(parts)
       expect(parts.map(p => p.type)).toEqual(['text', 'waiting'])
+    })
+
+    it('keeps waiting after data-steps for tool-loop continuation', () => {
+      const parts: ContentPart[] = [{ type: 'data-steps', turnIndex: 1 }]
+      pushWaiting(parts, 2)
+      expect(parts).toEqual([
+        { type: 'data-steps', turnIndex: 1 },
+        { type: 'waiting', turnIndex: 2 },
+      ])
+    })
+
+    it('dedupes waiting for the same turn', () => {
+      const parts: ContentPart[] = [{ type: 'data-steps', turnIndex: 1 }]
+      pushWaiting(parts, 2)
+      pushWaiting(parts, 2)
+      expect(parts).toEqual([
+        { type: 'data-steps', turnIndex: 1 },
+        { type: 'waiting', turnIndex: 2 },
+      ])
+    })
+  })
+
+  describe('pushImageLoading', () => {
+    it('appends an image-loading part', () => {
+      const parts: ContentPart[] = []
+      pushImageLoading(parts, 1, 'Generating image')
+      expect(parts).toEqual([{ type: 'image-loading', turnIndex: 1, label: 'Generating image' }])
+    })
+
+    it('does not append duplicate adjacent image-loading parts', () => {
+      const parts: ContentPart[] = [{ type: 'image-loading' }]
+      pushImageLoading(parts)
+      expect(parts).toEqual([{ type: 'image-loading' }])
+    })
+
+    it('replaces trailing waiting with image loading', () => {
+      const parts: ContentPart[] = [
+        { type: 'data-steps', turnIndex: 1 },
+        { type: 'waiting', turnIndex: 2 },
+      ]
+      pushImageLoading(parts, 2, 'Generating image')
+      expect(parts).toEqual([
+        { type: 'data-steps', turnIndex: 1 },
+        { type: 'image-loading', turnIndex: 2, label: 'Generating image' },
+      ])
     })
   })
 

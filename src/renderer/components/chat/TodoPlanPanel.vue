@@ -2,121 +2,127 @@
   <section
     ref="panelRef"
     class="todo-plan-panel"
-    :class="{ pinned, docked, collapsed, standalone, 'gutter-docked': canDockInRightGutter, searching: searchOpen, 'has-quick-add': mode === 'preview' }"
-    :style="{ height: collapsed ? undefined : `${panelHeight}px` }"
-    @mouseenter="expandFromEdge"
-    @mouseleave="collapseToEdge"
+    :class="[
+      `surface-${surface}`,
+      {
+        pinned,
+        docked,
+        collapsed,
+        standalone: isStandalone,
+        'gutter-docked': canDockInRightGutter,
+        'find-open': findOpen,
+        'switcher-open': switcherOpen,
+        'action-panel-open': actionPanelOpen,
+        'format-buffer-open': formatBufferOpen,
+      },
+    ]"
+    :style="panelStyle"
+    @mouseenter="handlePanelMouseEnter"
+    @mouseleave="handlePanelMouseLeave"
+    @keydown="handleShortcut"
   >
     <button
       v-if="collapsed"
       class="wake-button"
       type="button"
-      title="Todo / Plan"
+      title="Todo / Notes"
+      aria-label="Show Todo / Notes"
       @click="collapsed = false"
     />
 
     <template v-else>
       <header class="panel-header">
-        <button
-          class="panel-logo"
-          ref="panelLogoRef"
-          type="button"
-          title="Switch todo"
-          @click="deckOpen = !deckOpen"
-        >
-          <ListChecks :size="16" />
-        </button>
+        <div
+          v-if="isStandalone"
+          class="window-traffic-spacer"
+          aria-hidden="true"
+        />
 
         <div
-          v-if="deckOpen"
-          ref="deckPopoverRef"
-          class="deck-popover"
+          v-if="!isStandalone"
+          class="title-display"
         >
-          <div class="deck-section-label">User Todo</div>
-          <button
-            v-for="doc in snapshot?.userNotes || []"
-            :key="doc.id"
-            :class="{ active: activeId === doc.id }"
-            type="button"
-            @click="selectDocument(doc.id); deckOpen = false"
-          >
-            <span>{{ doc.title }}</span>
-            <strong>{{ doc.totalTasks }} tasks</strong>
-          </button>
-
-          <div class="deck-actions">
-            <button
-              type="button"
-              @click.stop="createNote"
-            >New</button>
-            <button
-              v-if="activeDocument?.scope === 'user-note'"
-              type="button"
-              @click.stop="renameNote"
-            >Rename</button>
-            <button
-              v-if="activeDocument?.scope === 'user-note'"
-              type="button"
-              @click.stop="deleteNote"
-            >Delete</button>
-          </div>
-
-          <div class="deck-section-label">Workspace</div>
-          <button
-            :class="{ active: activeId === snapshot?.workspaceAiTodo.id }"
-            type="button"
-            @click="selectDocument(snapshot?.workspaceAiTodo.id || 'workspace-ai-todo'); deckOpen = false"
-          >
-            <span>AI Todo</span>
-            <strong>{{ snapshot?.workspaceAiTodo.totalTasks || 0 }} tasks</strong>
-          </button>
-
+          <span class="panel-title">
+            <strong>{{ panelChromeTitle }}</strong>
+            <span>{{ headerSummary }}</span>
+          </span>
         </div>
 
-        <div class="panel-title">
-          <strong>{{ activeDocument?.title || 'Todo' }}</strong>
-          <span>{{ headerSummary }}</span>
+        <div
+          v-else
+          class="window-title"
+        >
+          {{ displayTitle }}
         </div>
 
         <div class="panel-actions">
           <button
             class="icon-button"
             type="button"
-            title="Search"
-            @click="toggleSearch"
+            title="Command Panel"
+            aria-label="Command Panel"
+            @click="openActionPanel"
           >
-            <Search :size="15" />
+            <Command :size="isStandalone ? 19 : 15" />
+          </button>
+          <button
+            ref="titleButtonRef"
+            class="icon-button"
+            type="button"
+            title="Browse notes"
+            aria-label="Browse notes"
+            @click="openSwitcher"
+          >
+            <FileText :size="isStandalone ? 18 : 15" />
           </button>
           <button
             class="icon-button"
             type="button"
-            title="Edit markdown"
-            @click="mode = mode === 'edit' ? 'preview' : 'edit'"
+            title="New note"
+            aria-label="New note"
+            @click="createNote"
           >
-            <Pencil :size="15" />
+            <Plus :size="15" />
           </button>
           <button
+            v-if="isStandalone"
             class="icon-button"
             :class="{ active: pinned }"
             type="button"
-            :title="pinned ? 'Unpin card' : 'Pin card'"
+            :title="pinned ? 'Do not keep window on top' : 'Keep window on top'"
+            :aria-label="pinned ? 'Do not keep window on top' : 'Keep window on top'"
             @click="togglePinned"
           >
             <Pin :size="15" />
           </button>
           <button
+            v-if="!isStandalone"
+            class="icon-button"
+            :class="{ active: pinned }"
+            type="button"
+            :title="pinned ? 'Allow card to collapse' : 'Keep card open'"
+            :aria-label="pinned ? 'Allow card to collapse' : 'Keep card open'"
+            @click="togglePinned"
+          >
+            <Pin :size="15" />
+          </button>
+          <button
+            v-if="!isStandalone"
             class="icon-button"
             :class="{ active: docked }"
             type="button"
-            title="Dock"
+            :title="docked ? 'Float card' : 'Dock card'"
+            :aria-label="docked ? 'Float card' : 'Dock card'"
             @click="toggleDocked"
           >
             <PanelRight :size="15" />
           </button>
           <button
+            v-if="!isStandalone"
             class="icon-button"
             type="button"
-            title="Open window"
+            title="Open in window"
+            aria-label="Open in window"
             @click="openWindow"
           >
             <ExternalLink :size="15" />
@@ -124,118 +130,331 @@
         </div>
       </header>
 
+      <TodoNotesActionPanel
+        :visible="actionPanelOpen"
+        :query="actionQuery"
+        :actions="todoActions"
+        :surface="surface"
+        @update:query="actionQuery = $event"
+        @select="runAction"
+        @close="closeActionPanel"
+      />
+
       <div
-        v-if="searchOpen"
-        class="search-row"
+        v-if="switcherOpen"
+        ref="switcherRef"
+        class="note-switcher"
+      >
+        <label class="switcher-search">
+          <Search :size="14" />
+          <input
+            ref="switcherInputRef"
+            v-model="switcherQuery"
+            placeholder="Search for notes..."
+            spellcheck="false"
+            @keydown="handleSwitcherKeydown"
+          >
+        </label>
+
+        <div class="switcher-list">
+          <div class="switcher-header-row">
+            <strong>Notes</strong>
+            <span>
+              {{ noteCountLabel }}
+              <Info :size="16" />
+            </span>
+          </div>
+          <div
+            v-for="doc in filteredUserNotes"
+            :key="doc.id"
+            :class="['note-option', { active: activeId === doc.id }]"
+          >
+            <button
+              class="note-option-main"
+              type="button"
+              @click="selectDocument(doc.id)"
+            >
+              <strong>{{ doc.title }}</strong>
+              <small>
+                <i :class="{ current: activeId === doc.id }" />
+                {{ activeId === doc.id ? 'Current' : 'Note' }}
+                <b>•</b>
+                {{ doc.content.length }} Characters
+              </small>
+            </button>
+            <div class="note-option-actions">
+              <button
+                :class="{ active: isNotePinned(doc.id) }"
+                type="button"
+                :title="isNotePinned(doc.id) ? 'Unpin note' : 'Pin note'"
+                :aria-label="isNotePinned(doc.id) ? 'Unpin note' : 'Pin note'"
+                @click="toggleNotePinned(doc.id)"
+              >
+                <Pin :size="16" />
+              </button>
+              <button
+                type="button"
+                title="Delete note"
+                aria-label="Delete note"
+                @click="deleteUserNote(doc.id)"
+              >
+                <Trash2 :size="16" />
+              </button>
+            </div>
+          </div>
+
+          <div class="switcher-label">
+            System
+          </div>
+          <div
+            v-if="snapshot?.workspaceAiTodo"
+            :class="['note-option', 'system', { active: activeId === snapshot.workspaceAiTodo.id }]"
+          >
+            <button
+              class="note-option-main"
+              type="button"
+              @click="selectDocument(snapshot.workspaceAiTodo.id)"
+            >
+              <strong>AI Todo</strong>
+              <small>
+                <i :class="{ current: activeId === snapshot.workspaceAiTodo.id }" />
+                {{ activeId === snapshot.workspaceAiTodo.id ? 'Current' : 'System' }}
+                <b>•</b>
+                {{ snapshot.workspaceAiTodo.content.length }} Characters
+              </small>
+            </button>
+            <div class="note-option-actions">
+              <Bot :size="16" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="findOpen"
+        ref="findBarRef"
+        class="floating-find-bar"
       >
         <Search :size="14" />
         <input
-          v-model="searchQuery"
-          placeholder="Search tasks"
+          ref="findInputRef"
+          v-model="findQuery"
+          placeholder="Find"
           spellcheck="false"
+          @keydown="handleFindKeydown"
         >
+        <span>{{ findStatus }}</span>
+        <button
+          class="mini-button"
+          type="button"
+          title="Previous match"
+          aria-label="Previous match"
+          @click="moveFind(-1)"
+        >
+          <ChevronUp :size="14" />
+        </button>
+        <button
+          class="mini-button"
+          type="button"
+          title="Next match"
+          aria-label="Next match"
+          @click="moveFind(1)"
+        >
+          <ChevronDown :size="14" />
+        </button>
+        <button
+          class="mini-button"
+          type="button"
+          title="Close find"
+          aria-label="Close find"
+          @click="closeFind"
+        >
+          <X :size="14" />
+        </button>
       </div>
 
-      <div class="panel-body">
-        <TextEditor
-          v-if="mode === 'edit'"
-          v-model="draft"
+      <div
+        ref="bodyRef"
+        class="panel-body"
+      >
+        <MarkdownDocumentEditor
+          ref="editorRef"
+          :model-value="draft"
           class="markdown-editor"
-          profile="markdown-document"
-          language="markdown"
+          surface="todo-notes"
+          :document-id="activeDocument?.id || 'todo-notes'"
+          :features="todoMarkdownFeatures"
+          :toolbar="false"
+          placeholder="# Untitled Note"
           :min-height="120"
           :max-height="100000"
-          :spellcheck="false"
-          @update:model-value="scheduleSave"
+          :spellcheck="true"
+          @update:model-value="handleDraftUpdate"
+          @keydown="handleEditorKeydown"
+          @cancel="handleEscape"
         />
-
-        <div
-          v-else
-          class="task-view"
-        >
-          <div
-            v-if="filteredTaskSections.length > 0"
-            class="task-sections"
-          >
-            <section
-              v-for="section in filteredTaskSections"
-              :key="section.title"
-              class="task-section"
-            >
-              <h4>{{ section.title }}</h4>
-              <div class="task-list">
-                <label
-                  v-for="task in section.tasks"
-                  :key="task.lineIndex"
-                  :class="['task-row', { done: task.done }]"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="task.done"
-                    @change="toggleTask(task.lineIndex)"
-                  >
-                  <span class="task-check">
-                    <Check :size="14" />
-                  </span>
-                  <span class="task-text">{{ task.text }}</span>
-                  <span
-                    v-if="task.lineIndex === firstOpenTaskLine"
-                    class="task-status"
-                  >DOING</span>
-                  <button
-                    class="task-delete"
-                    type="button"
-                    title="Delete task"
-                    aria-label="Delete task"
-                    @click.stop.prevent="deleteTask(task.lineIndex)"
-                  >
-                    <Trash2 :size="13" />
-                  </button>
-                </label>
-              </div>
-            </section>
-          </div>
-
-          <span
-            v-else
-            class="empty-state"
-          >No tasks</span>
-
-          <div
-            v-if="aiSuggestion && activeDocument?.scope === 'user-note'"
-            class="ai-suggestion"
-          >
-            <Sparkles :size="15" />
-            <span><strong>AI 建议下一步：</strong>{{ aiSuggestion }}</span>
-            <button
-              type="button"
-              @click="addSuggestedTask"
-            >
-              添加
-              <ArrowRight :size="13" />
-            </button>
-          </div>
-        </div>
-
       </div>
 
       <footer
-        v-if="mode === 'preview'"
-        class="quick-add"
+        class="note-footer"
+        :class="{ formatting: formatBufferOpen }"
       >
-        <Plus :size="16" />
-        <input
-          v-model="newTaskText"
-          placeholder="添加任务，回车保存..."
-          spellcheck="false"
-          @keydown.enter.prevent="addTask"
+        <div
+          v-if="formatBufferOpen"
+          class="format-buffer"
+          role="toolbar"
+          aria-label="Markdown formatting"
         >
-        <span>⌘ ↵</span>
+          <button
+            class="format-command heading-command"
+            type="button"
+            title="Heading 1"
+            aria-label="Heading 1"
+            @mousedown.prevent
+            @click="runFormatCommand('heading-1')"
+          >
+            <span>H</span>
+            <ChevronDown :size="12" />
+          </button>
+          <button
+            class="format-command"
+            type="button"
+            title="Bold"
+            aria-label="Bold"
+            @mousedown.prevent
+            @click="runFormatCommand('bold')"
+          >
+            <Bold :size="16" />
+          </button>
+          <button
+            class="format-command"
+            type="button"
+            title="Italic"
+            aria-label="Italic"
+            @mousedown.prevent
+            @click="runFormatCommand('italic')"
+          >
+            <Italic :size="16" />
+          </button>
+          <button
+            class="format-command"
+            type="button"
+            title="Strikethrough"
+            aria-label="Strikethrough"
+            @mousedown.prevent
+            @click="runFormatCommand('strikethrough')"
+          >
+            <Strikethrough :size="16" />
+          </button>
+          <button
+            class="format-command"
+            type="button"
+            title="Underline"
+            aria-label="Underline"
+            @mousedown.prevent
+            @click="runFormatCommand('underline')"
+          >
+            <Underline :size="16" />
+          </button>
+          <button
+            class="format-command"
+            type="button"
+            title="Inline code"
+            aria-label="Inline code"
+            @mousedown.prevent
+            @click="runFormatCommand('inline-code')"
+          >
+            <Code2 :size="16" />
+          </button>
+          <button
+            class="format-command"
+            type="button"
+            title="Link"
+            aria-label="Link"
+            @mousedown.prevent
+            @click="runFormatCommand('link')"
+          >
+            <Link :size="16" />
+          </button>
+          <button
+            class="format-command"
+            type="button"
+            title="Code block"
+            aria-label="Code block"
+            @mousedown.prevent
+            @click="runFormatCommand('code-block')"
+          >
+            <Code2 :size="16" />
+          </button>
+          <button
+            class="format-command"
+            type="button"
+            title="Quote"
+            aria-label="Quote"
+            @mousedown.prevent
+            @click="runFormatCommand('blockquote')"
+          >
+            <Quote :size="16" />
+          </button>
+          <button
+            class="format-command"
+            type="button"
+            title="Bulleted list"
+            aria-label="Bulleted list"
+            @mousedown.prevent
+            @click="runFormatCommand('bullet-list')"
+          >
+            <List :size="16" />
+          </button>
+          <button
+            class="format-command"
+            type="button"
+            title="Numbered list"
+            aria-label="Numbered list"
+            @mousedown.prevent
+            @click="runFormatCommand('ordered-list')"
+          >
+            <ListOrdered :size="16" />
+          </button>
+          <button
+            class="format-command"
+            type="button"
+            title="Task list"
+            aria-label="Task list"
+            @mousedown.prevent
+            @click="runFormatCommand('task-list')"
+          >
+            <ListChecks :size="16" />
+          </button>
+          <span class="format-separator" />
+          <button
+            class="format-command close-format"
+            type="button"
+            title="Hide formatting bar"
+            aria-label="Hide formatting bar"
+            @click="formatBufferOpen = false"
+          >
+            <X :size="16" />
+          </button>
+        </div>
+        <template v-else>
+          <span>{{ characterCountLabel }}</span>
+          <button
+            class="format-toggle"
+            type="button"
+            title="Show formatting bar"
+            aria-label="Show formatting bar"
+            @click="toggleFormatBuffer"
+          >
+            <Type :size="21" />
+          </button>
+        </template>
       </footer>
 
       <div
+        v-if="surface === 'chat-floating-card'"
         class="resize-handle"
-        title="Resize"
+        title="Resize card"
         @pointerdown="startResize"
       />
     </template>
@@ -243,35 +462,57 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
-  ArrowRight,
-  Check,
+  Bot,
+  Bold,
+  ChevronDown,
+  ChevronUp,
+  Code2,
+  Command,
+  Copy,
   ExternalLink,
+  FileText,
+  FolderOpen,
+  Heading1,
+  Heading2,
+  Heading3,
+  Image,
+  Info,
+  Italic,
+  Link,
+  List,
   ListChecks,
+  ListOrdered,
+  Minus,
   PanelRight,
   Pencil,
   Pin,
   Plus,
+  Quote,
   Search,
-  Sparkles,
+  Strikethrough,
+  Table2,
   Trash2,
+  Type,
+  Underline,
+  X,
 } from 'lucide-vue-next'
 import { useSessionsStore } from '@/stores/sessions'
 import type { TodoPlanDocument, TodoPlanSnapshot } from '@/types'
-import TextEditor from '@/editor/TextEditor.vue'
-
-interface ParsedTask {
-  lineIndex: number
-  done: boolean
-  text: string
-  section: string
-}
-
-interface TaskSection {
-  title: string
-  tasks: ParsedTask[]
-}
+import MarkdownDocumentEditor from '@/editor/MarkdownDocumentEditor.vue'
+import type { MarkdownCommand, MarkdownDocumentEditorHandle, MarkdownFeatureSet } from '@/editor/markdown-document'
+import TodoNotesActionPanel from './TodoNotesActionPanel.vue'
+import {
+  findMarkdownMatches,
+  parseTasks,
+  titleFromMarkdown,
+  type TodoPlanSurface,
+} from './todo-plan-utils'
+import type {
+  TodoNotesAction,
+  TodoNotesSurfaceActionContext,
+} from './todo-notes-actions'
 
 const props = defineProps<{
   sessionId?: string
@@ -280,32 +521,85 @@ const props = defineProps<{
 }>()
 
 const sessionsStore = useSessionsStore()
+const storagePrefix = props.standalone ? 'todoPlanWindow' : 'todoPlanCard'
+const legacyChatStorage: Record<string, string> = {
+  ActiveId: 'todoPlanActiveId',
+  Pinned: 'todoPlanPinned',
+  Docked: 'todoPlanDocked',
+  Collapsed: 'todoPlanCollapsed',
+  Height: 'todoPlanHeight',
+}
+const PINNED_NOTES_STORAGE_KEY = 'todoPlanPinnedNoteIds'
+
+function storageKey(name: string): string {
+  return `${storagePrefix}${name}`
+}
+
+function readStorage(name: string, fallback = ''): string {
+  const scoped = localStorage.getItem(storageKey(name))
+  if (scoped !== null) return scoped
+  const legacyKey = props.standalone ? undefined : legacyChatStorage[name]
+  return (legacyKey ? localStorage.getItem(legacyKey) : null) ?? fallback
+}
+
+function readStorageNumber(name: string, fallback: number): number {
+  const value = Number(readStorage(name, String(fallback)))
+  return Number.isFinite(value) ? value : fallback
+}
+
 const snapshot = ref<TodoPlanSnapshot | null>(null)
-const activeId = ref(localStorage.getItem('todoPlanActiveId') || '')
+const activeId = ref(readStorage('ActiveId'))
 const draft = ref('')
-const mode = ref<'preview' | 'edit'>('preview')
-const pinnedStorageKey = props.standalone ? 'todoPlanWindowPinned' : 'todoPlanPinned'
-const pinned = ref(localStorage.getItem(pinnedStorageKey) === 'true')
-const docked = ref(localStorage.getItem('todoPlanDocked') === 'true')
-const collapsed = ref(props.standalone ? false : localStorage.getItem('todoPlanCollapsed') !== 'false')
-const panelHeight = ref(Number(localStorage.getItem('todoPlanHeight') || 300))
-const saveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-const searchOpen = ref(false)
-const searchQuery = ref('')
-const newTaskText = ref('')
-const deckOpen = ref(false)
+const pinned = ref(readStorage('Pinned', 'false') === 'true')
+const docked = ref(!props.standalone && readStorage('Docked', 'false') === 'true')
+const collapsed = ref(props.standalone ? false : readStorage('Collapsed', 'true') !== 'false')
+const panelHeight = ref(readStorageNumber('Height', 360))
+const switcherOpen = ref(false)
+const switcherQuery = ref('')
+const actionPanelOpen = ref(false)
+const actionQuery = ref('')
+const formatBufferOpen = ref(false)
+const pinnedNoteIds = ref<Set<string>>(readPinnedNoteIds())
+const findOpen = ref(false)
+const findQuery = ref('')
+const activeFindIndex = ref(0)
 const panelRef = ref<HTMLElement | null>(null)
-const panelLogoRef = ref<HTMLElement | null>(null)
-const deckPopoverRef = ref<HTMLElement | null>(null)
+const bodyRef = ref<HTMLElement | null>(null)
+const titleButtonRef = ref<HTMLElement | null>(null)
+const switcherRef = ref<HTMLElement | null>(null)
+const switcherInputRef = ref<HTMLInputElement | null>(null)
+const findBarRef = ref<HTMLElement | null>(null)
+const findInputRef = ref<HTMLInputElement | null>(null)
+const editorRef = ref<MarkdownDocumentEditorHandle | null>(null)
 const canDockInRightGutter = ref(false)
 let cleanupChanged: (() => void) | undefined
 let resizeObserver: ResizeObserver | undefined
+let saveTimer: ReturnType<typeof setTimeout> | null = null
 let resizing = false
 let resizeStartY = 0
 let resizeStartHeight = 0
-const TODO_PANEL_WIDTH = 292
-const TODO_PANEL_GAP = 16
+let loadedDocumentId = ''
 
+const TODO_PANEL_WIDTH = 360
+const TODO_PANEL_GAP = 16
+const todoMarkdownFeatures: MarkdownFeatureSet = {
+  tasks: true,
+  tables: true,
+  images: true,
+  math: true,
+  codeBlocks: true,
+  frontmatter: true,
+}
+
+const isStandalone = computed(() => props.standalone === true)
+const surface = computed<TodoPlanSurface>(() => {
+  if (isStandalone.value) return 'standalone-window'
+  return docked.value ? 'chat-docked-card' : 'chat-floating-card'
+})
+const panelStyle = computed(() => {
+  if (collapsed.value || isStandalone.value || docked.value) return {}
+  return { height: `${panelHeight.value}px` }
+})
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId || undefined)
 const effectiveWorkingDirectory = computed(() => {
   if (props.workingDirectory !== undefined) return props.workingDirectory || undefined
@@ -314,35 +608,201 @@ const effectiveWorkingDirectory = computed(() => {
 })
 const allDocuments = computed(() => {
   if (!snapshot.value) return []
-  return [
-    ...snapshot.value.userNotes,
-    snapshot.value.workspaceAiTodo,
-  ]
+  return [...snapshot.value.userNotes, snapshot.value.workspaceAiTodo]
 })
 const activeDocument = computed(() => allDocuments.value.find(doc => doc.id === activeId.value) || allDocuments.value[0])
 const tasks = computed(() => parseTasks(draft.value))
-const headerSummary = computed(() => `${tasks.value.length} tasks`)
-const firstOpenTaskLine = computed(() => tasks.value.find(task => !task.done)?.lineIndex ?? -1)
-const filteredTasks = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase()
-  if (!query) return tasks.value
-  return tasks.value.filter(task => task.text.toLowerCase().includes(query))
+const openTaskCount = computed(() => tasks.value.filter(task => !task.done).length)
+const displayTitle = computed(() => titleFromMarkdown(draft.value, activeDocument.value?.title || 'Todo / Notes'))
+const panelChromeTitle = computed(() => 'Notes')
+const headerSummary = computed(() => {
+  const kind = activeDocument.value?.scope === 'workspace-ai-todo' ? 'AI Todo' : 'Markdown note'
+  if (!tasks.value.length) return kind
+  if (!openTaskCount.value) return 'All tasks done'
+  const taskLabel = openTaskCount.value === 1 ? 'task' : 'tasks'
+  return `${openTaskCount.value} open ${taskLabel}`
 })
-const filteredTaskSections = computed(() => groupTasksBySection(filteredTasks.value))
-const aiSuggestion = computed(() => {
-  const suggestion = parseTasks(snapshot.value?.workspaceAiTodo.content || '').find(task => !task.done)?.text
-  return suggestion || ''
+const noteCountLabel = computed(() => {
+  const count = snapshot.value?.userNotes.length || 0
+  const label = count === 1 ? 'Note' : 'Notes'
+  return `${count} ${label}`
+})
+const characterCountLabel = computed(() => `${draft.value.length} characters`)
+const actionContext = computed<TodoNotesSurfaceActionContext>(() => ({
+  surface: surface.value,
+  activeDocument: activeDocument.value,
+  selection: editorRef.value?.getSelection() || { from: 0, to: 0 },
+  canEditNote: Boolean(activeDocument.value),
+  canDeleteNote: activeDocument.value?.scope === 'user-note',
+  pinned: pinned.value,
+  docked: docked.value,
+}))
+const todoActions = computed<TodoNotesAction[]>(() => {
+  const context = actionContext.value
+  const canDelete = context.canDeleteNote
+  return [
+    {
+      id: 'create-note',
+      title: 'Create Note',
+      subtitle: 'Start a new Markdown note',
+      group: 'Note Actions',
+      shortcut: '⌘N',
+      icon: Plus,
+      keywords: ['new', 'add'],
+      run: createNote,
+    },
+    {
+      id: 'rename-note',
+      title: 'Rename Note',
+      subtitle: canDelete ? 'Rename the current user note' : 'Only user notes can be renamed',
+      group: 'Note Actions',
+      icon: Pencil,
+      enabled: canDelete,
+      keywords: ['title'],
+      run: renameNote,
+    },
+    {
+      id: 'delete-note',
+      title: 'Delete Note',
+      subtitle: canDelete ? 'Delete the current user note' : 'System notes cannot be deleted',
+      group: 'Note Actions',
+      icon: Trash2,
+      enabled: canDelete,
+      keywords: ['remove'],
+      run: deleteNote,
+    },
+    {
+      id: 'reveal-notes-folder',
+      title: 'Reveal Notes Folder',
+      subtitle: 'Open the Markdown storage directory',
+      group: 'Note Actions',
+      icon: FolderOpen,
+      keywords: ['folder', 'directory', 'files'],
+      run: revealNotesFolder,
+    },
+    {
+      id: 'copy-markdown',
+      title: 'Copy Markdown',
+      subtitle: 'Copy the current note as Markdown',
+      group: 'Note Actions',
+      icon: Copy,
+      keywords: ['clipboard', 'copy text'],
+      run: copyMarkdown,
+    },
+    markdownAction('bold', 'Bold', 'bold', 'Markdown Formatting', Bold, '⌘B'),
+    markdownAction('italic', 'Italic', 'italic', 'Markdown Formatting', Italic, '⌘I'),
+    markdownAction('strikethrough', 'Strikethrough', 'strikethrough', 'Markdown Formatting', Strikethrough),
+    markdownAction('underline', 'Underline', 'underline', 'Markdown Formatting', Underline, '⌘U'),
+    markdownAction('inline-code', 'Inline Code', 'inline-code', 'Markdown Formatting', Code2, '⌘E'),
+    markdownAction('link', 'Link', 'link', 'Markdown Formatting', Link),
+    markdownAction('heading-1', 'Heading 1', 'heading-1', 'Markdown Formatting', Heading1, '⌥⌘1'),
+    markdownAction('heading-2', 'Heading 2', 'heading-2', 'Markdown Formatting', Heading2, '⌥⌘2'),
+    markdownAction('heading-3', 'Heading 3', 'heading-3', 'Markdown Formatting', Heading3, '⌥⌘3'),
+    markdownAction('bullet-list', 'Bulleted List', 'bullet-list', 'Insert', List, '⇧⌘8'),
+    markdownAction('ordered-list', 'Numbered List', 'ordered-list', 'Insert', ListOrdered, '⇧⌘7'),
+    markdownAction('task-list', 'Task List', 'task-list', 'Insert', ListChecks, '⇧⌘9'),
+    markdownAction('blockquote', 'Quote', 'blockquote', 'Insert', Quote),
+    markdownAction('code-block', 'Code Block', 'code-block', 'Insert', Code2),
+    markdownAction('table', 'Table', 'table', 'Insert', Table2),
+    markdownAction('image', 'Image', 'image', 'Insert', Image),
+    markdownAction('divider', 'Divider', 'horizontal-rule', 'Insert', Minus),
+    {
+      id: 'browse-notes',
+      title: 'Browse Notes',
+      subtitle: 'Open the notes switcher',
+      group: 'Navigation',
+      shortcut: '⌘P',
+      icon: FileText,
+      keywords: ['switch', 'open note'],
+      run: openSwitcher,
+    },
+    {
+      id: 'find-in-note',
+      title: 'Find in Note',
+      subtitle: 'Search the current note',
+      group: 'Navigation',
+      shortcut: '⌘F',
+      icon: Search,
+      keywords: ['search'],
+      run: openFind,
+    },
+    {
+      id: 'keep-window-on-top',
+      title: pinned.value ? 'Disable Always on Top' : 'Keep Window on Top',
+      subtitle: 'Toggle standalone window pinning',
+      group: 'Window/Card',
+      icon: Pin,
+      visible: isStandalone.value,
+      keywords: ['pin', 'float', 'always on top'],
+      run: togglePinned,
+    },
+    {
+      id: 'keep-card-open',
+      title: pinned.value ? 'Allow Card to Collapse' : 'Keep Card Open',
+      subtitle: 'Toggle chat card pinning',
+      group: 'Window/Card',
+      icon: Pin,
+      visible: !isStandalone.value,
+      keywords: ['pin'],
+      run: togglePinned,
+    },
+    {
+      id: 'dock-card',
+      title: docked.value ? 'Float Card' : 'Dock Card',
+      subtitle: 'Toggle docked chat card layout',
+      group: 'Window/Card',
+      icon: PanelRight,
+      visible: !isStandalone.value,
+      keywords: ['dock', 'float'],
+      run: toggleDocked,
+    },
+    {
+      id: 'open-window',
+      title: 'Open in Window',
+      subtitle: 'Open the standalone Todo / Notes window',
+      group: 'Window/Card',
+      icon: ExternalLink,
+      visible: !isStandalone.value,
+      keywords: ['standalone'],
+      run: openWindow,
+    },
+  ]
+})
+const filteredUserNotes = computed(() => {
+  const query = switcherQuery.value.trim().toLowerCase()
+  const notes = sortedUserNotes.value
+  if (!query) return notes
+  return notes.filter(note =>
+    note.title.toLowerCase().includes(query) ||
+    note.content.toLowerCase().includes(query)
+  )
+})
+const sortedUserNotes = computed(() => {
+  const notes = snapshot.value?.userNotes || []
+  return [...notes].sort((a, b) => {
+    const pinnedDelta = Number(isNotePinned(b.id)) - Number(isNotePinned(a.id))
+    if (pinnedDelta !== 0) return pinnedDelta
+    return b.updatedAt - a.updatedAt || a.title.localeCompare(b.title)
+  })
+})
+const findMatches = computed(() => findMarkdownMatches(draft.value, findQuery.value))
+const findStatus = computed(() => {
+  if (!findQuery.value.trim()) return '0/0'
+  if (!findMatches.value.length) return '0/0'
+  return `${activeFindIndex.value + 1}/${findMatches.value.length}`
 })
 
 watch(activeDocument, (doc) => {
-  draft.value = doc?.content || ''
+  if (!doc || doc.id === loadedDocumentId) return
+  loadedDocumentId = doc.id
+  draft.value = doc.content || ''
 }, { immediate: true })
 
-watch([mode, pinned, docked, collapsed], () => {
-  localStorage.setItem(pinnedStorageKey, String(pinned.value))
-  localStorage.setItem('todoPlanDocked', String(docked.value))
-  if (!props.standalone) {
-    localStorage.setItem('todoPlanCollapsed', String(collapsed.value))
+watch([pinned, docked, collapsed], () => {
+  localStorage.setItem(storageKey('Pinned'), String(pinned.value))
+  if (!isStandalone.value) {
+    localStorage.setItem(storageKey('Docked'), String(docked.value))
+    localStorage.setItem(storageKey('Collapsed'), String(collapsed.value))
   }
 })
 
@@ -350,37 +810,14 @@ watch([effectiveSessionId, effectiveWorkingDirectory], () => {
   loadSnapshot()
 })
 
-function parseTasks(content: string): ParsedTask[] {
-  let section = 'Tasks'
-  return content.split('\n').flatMap((line, lineIndex) => {
-    const heading = line.match(/^##\s+(.+?)\s*$/)
-    if (heading) {
-      section = heading[1].trim() || 'Tasks'
-      return []
-    }
-    const match = line.match(/^\s*[-*]\s+\[([ xX])]\s+(.*)$/)
-    if (!match) return []
-    return [{
-      lineIndex,
-      done: match[1].toLowerCase() === 'x',
-      text: match[2].trim(),
-      section,
-    }]
-  })
-}
+watch(findQuery, () => {
+  activeFindIndex.value = 0
+  selectActiveFindMatch()
+})
 
-function groupTasksBySection(sourceTasks: ParsedTask[]): TaskSection[] {
-  const sections: TaskSection[] = []
-  for (const task of sourceTasks) {
-    let section = sections.find(item => item.title === task.section)
-    if (!section) {
-      section = { title: task.section, tasks: [] }
-      sections.push(section)
-    }
-    section.tasks.push(task)
-  }
-  return sections
-}
+watch(activeFindIndex, () => {
+  selectActiveFindMatch()
+})
 
 async function loadSnapshot() {
   const response = await window.electronAPI.getTodoPlan({
@@ -390,26 +827,89 @@ async function loadSnapshot() {
   if (!response.success || !response.snapshot) return
   snapshot.value = response.snapshot
   if (!allDocuments.value.some(doc => doc.id === activeId.value)) {
-    activeId.value = response.snapshot.userNotes[0]?.id || response.snapshot.workspaceAiTodo.id
+    selectDocument(response.snapshot.userNotes[0]?.id || response.snapshot.workspaceAiTodo.id, false)
   }
 }
 
-function selectDocument(id: string) {
-  activeId.value = id
-  localStorage.setItem('todoPlanActiveId', id)
+function readPinnedNoteIds(): Set<string> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PINNED_NOTES_STORAGE_KEY) || '[]')
+    return new Set(Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string') : [])
+  } catch {
+    return new Set()
+  }
 }
 
-watch(activeId, () => {
-  deckOpen.value = false
-  searchQuery.value = ''
-})
+function writePinnedNoteIds(ids: Set<string>) {
+  localStorage.setItem(PINNED_NOTES_STORAGE_KEY, JSON.stringify([...ids]))
+}
+
+function isNotePinned(id: string): boolean {
+  return pinnedNoteIds.value.has(id)
+}
+
+function toggleNotePinned(id: string) {
+  const next = new Set(pinnedNoteIds.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  pinnedNoteIds.value = next
+  writePinnedNoteIds(next)
+}
+
+function selectDocument(id: string, closeSwitcher = true) {
+  activeId.value = id
+  localStorage.setItem(storageKey('ActiveId'), id)
+  const document = allDocuments.value.find(doc => doc.id === id)
+  loadedDocumentId = id
+  draft.value = document?.content || ''
+  findQuery.value = ''
+  if (closeSwitcher) switcherOpen.value = false
+  nextTick(() => {
+    editorRef.value?.focus()
+  })
+}
+
+function markdownAction(
+  id: string,
+  title: string,
+  command: MarkdownCommand,
+  group: TodoNotesAction['group'],
+  icon: TodoNotesAction['icon'],
+  shortcut?: string,
+): TodoNotesAction {
+  return {
+    id,
+    title,
+    subtitle: 'Format the current Markdown selection',
+    group,
+    shortcut,
+    icon,
+    markdownCommand: command,
+    keywords: [command, 'markdown', 'format'],
+    enabled: Boolean(activeDocument.value),
+    run: () => applyEditorCommand(command),
+  }
+}
+
+function applyEditorCommand(command: MarkdownCommand) {
+  editorRef.value?.applyCommand(command)
+}
+
+function handleDraftUpdate(value: string) {
+  draft.value = value
+  scheduleSave()
+}
 
 function scheduleSave() {
-  if (saveTimer.value) clearTimeout(saveTimer.value)
-  saveTimer.value = setTimeout(saveDraft, 260)
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(saveDraft, 260)
 }
 
 async function saveDraft() {
+  saveTimer = null
   const document = activeDocument.value
   if (!document) return
   const response = await window.electronAPI.updateTodoPlan({
@@ -434,28 +934,32 @@ function applyDocument(document: TodoPlanDocument) {
   } else if (document.scope === 'workspace-ai-todo') {
     snapshot.value = { ...snapshot.value, workspaceAiTodo: document }
   }
-  if (document.id === activeId.value && mode.value === 'preview') {
-    draft.value = document.content
-  }
 }
 
 async function createNote() {
-  const title = window.prompt('Todo title', 'New Todo')
-  if (!title?.trim()) return
-  const response = await window.electronAPI.createTodoPlanNote({ title })
+  const title = 'Untitled Note'
+  const response = await window.electronAPI.createTodoPlanNote({
+    title,
+    content: `# ${title}\n\n`,
+  })
   if (response.success && response.document) {
     applyDocument(response.document)
     selectDocument(response.document.id)
+    nextTick(() => {
+      editorRef.value?.focus()
+      editorRef.value?.setSelection(response.document?.content.length || draft.value.length)
+    })
   }
 }
 
 async function renameNote() {
   const document = activeDocument.value
   if (!document || document.scope !== 'user-note') return
-  const title = window.prompt('Rename todo', document.title)
+  const title = window.prompt('Rename note', displayTitle.value)
   if (!title?.trim()) return
   const response = await window.electronAPI.renameTodoPlanNote({ id: document.id, title })
   if (response.success && response.document) {
+    loadedDocumentId = ''
     await loadSnapshot()
     selectDocument(response.document.id)
   }
@@ -464,99 +968,269 @@ async function renameNote() {
 async function deleteNote() {
   const document = activeDocument.value
   if (!document || document.scope !== 'user-note') return
+  await deleteUserNote(document.id)
+}
+
+async function deleteUserNote(id: string) {
+  const document = snapshot.value?.userNotes.find(note => note.id === id)
+  if (!document) return
   if (!window.confirm(`Delete "${document.title}"?`)) return
   const response = await window.electronAPI.deleteTodoPlanNote({ id: document.id })
   if (response.success) {
+    loadedDocumentId = ''
     await loadSnapshot()
   }
 }
 
-function replaceDraftLine(lineIndex: number, nextLine: string) {
-  const lines = draft.value.split('\n')
-  lines[lineIndex] = nextLine
-  draft.value = lines.join('\n')
+function openSwitcher() {
+  actionPanelOpen.value = false
+  formatBufferOpen.value = false
+  switcherOpen.value = true
+  switcherQuery.value = ''
+  nextTick(() => {
+    switcherInputRef.value?.focus()
+    switcherInputRef.value?.select()
+  })
 }
 
-function toggleTask(lineIndex: number) {
-  const lines = draft.value.split('\n')
-  const current = lines[lineIndex]
-  const match = current?.match(/^(\s*[-*]\s+\[)([ xX])(]\s+.*)$/)
-  if (!match) return
-  replaceDraftLine(lineIndex, `${match[1]}${match[2].toLowerCase() === 'x' ? ' ' : 'x'}${match[3]}`)
-  saveDraft()
+function closeSwitcher() {
+  switcherOpen.value = false
 }
 
-function deleteTask(lineIndex: number) {
-  const lines = draft.value.split('\n')
-  if (!lines[lineIndex]?.match(/^\s*[-*]\s+\[[ xX]]\s+/)) return
-  lines.splice(lineIndex, 1)
-  draft.value = lines.join('\n').replace(/\n*$/, '\n')
-  saveDraft()
+function openActionPanel() {
+  actionPanelOpen.value = true
+  actionQuery.value = ''
+  switcherOpen.value = false
+  findOpen.value = false
+  formatBufferOpen.value = false
 }
 
-function addTask() {
-  const text = newTaskText.value.trim()
-  if (!text) return
-  const nextTask = `- [ ] ${text}`
-  if (activeDocument.value?.scope === 'workspace-ai-todo') {
-    draft.value = addTaskToSection(draft.value, 'Now', nextTask)
-  } else {
-    const separator = draft.value.endsWith('\n') || draft.value.length === 0 ? '' : '\n'
-    draft.value = `${draft.value}${separator}${nextTask}\n`
+function closeActionPanel(focusEditor = true) {
+  actionPanelOpen.value = false
+  actionQuery.value = ''
+  if (focusEditor) nextTick(() => editorRef.value?.focus())
+}
+
+async function runAction(action: TodoNotesAction) {
+  if (action.enabled === false) return
+  actionPanelOpen.value = false
+  actionQuery.value = ''
+  await action.run()
+  if (!switcherOpen.value && !findOpen.value) {
+    nextTick(() => editorRef.value?.focus())
   }
-  newTaskText.value = ''
-  saveDraft()
 }
 
-function addTaskToSection(content: string, sectionTitle: string, taskLine: string): string {
-  const lines = content.split('\n')
-  const sectionIndex = lines.findIndex(line => line.trim().toLowerCase() === `## ${sectionTitle.toLowerCase()}`)
-  if (sectionIndex === -1) {
-    const separator = content.endsWith('\n') || content.length === 0 ? '' : '\n'
-    return `${content}${separator}## ${sectionTitle}\n${taskLine}\n`
-  }
-
-  let insertIndex = lines.length
-  for (let index = sectionIndex + 1; index < lines.length; index += 1) {
-    if (/^##\s+/.test(lines[index])) {
-      insertIndex = index
-      break
-    }
-  }
-
-  while (insertIndex > sectionIndex + 1 && lines[insertIndex - 1]?.trim() === '') {
-    insertIndex -= 1
-  }
-  lines.splice(insertIndex, 0, taskLine)
-  return lines.join('\n').replace(/\n*$/, '\n')
+function openFind() {
+  actionPanelOpen.value = false
+  formatBufferOpen.value = false
+  findOpen.value = true
+  nextTick(() => {
+    findInputRef.value?.focus()
+    findInputRef.value?.select()
+    selectActiveFindMatch()
+  })
 }
 
-function addSuggestedTask() {
-  if (!aiSuggestion.value) return
-  newTaskText.value = aiSuggestion.value
-  addTask()
+function closeFind() {
+  findOpen.value = false
+  findQuery.value = ''
+  nextTick(() => editorRef.value?.focus())
 }
 
-function toggleSearch() {
-  searchOpen.value = !searchOpen.value
-  if (!searchOpen.value) searchQuery.value = ''
+function toggleFormatBuffer() {
+  formatBufferOpen.value = !formatBufferOpen.value
+  if (formatBufferOpen.value) {
+    actionPanelOpen.value = false
+    switcherOpen.value = false
+    findOpen.value = false
+    nextTick(() => editorRef.value?.focus())
+  }
+}
+
+function runFormatCommand(command: MarkdownCommand) {
+  applyEditorCommand(command)
+}
+
+async function revealNotesFolder() {
+  await window.electronAPI.revealTodoPlanDirectory?.()
+}
+
+async function copyMarkdown() {
+  await navigator.clipboard?.writeText(draft.value)
+}
+
+function moveFind(direction: number) {
+  if (!findMatches.value.length) return
+  activeFindIndex.value = (activeFindIndex.value + direction + findMatches.value.length) % findMatches.value.length
+}
+
+function selectActiveFindMatch() {
+  const match = findMatches.value[activeFindIndex.value]
+  if (!findOpen.value || !match) return
+  nextTick(() => editorRef.value?.setSelection(match.from, match.to))
+}
+
+function handleFindKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeFind()
+    return
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    moveFind(event.shiftKey ? -1 : 1)
+  }
+}
+
+function handleSwitcherKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeSwitcher()
+    return
+  }
+  if (event.key !== 'Enter') return
+  const target = filteredUserNotes.value[0] || snapshot.value?.workspaceAiTodo
+  if (target) {
+    event.preventDefault()
+    selectDocument(target.id)
+  }
+}
+
+function handleEditorKeydown(event: KeyboardEvent) {
+  if (event.isComposing) return
+  const command = event.metaKey || event.ctrlKey
+  const key = event.key.toLowerCase()
+
+  if (command && key === 'f') {
+    event.preventDefault()
+    openFind()
+    return
+  }
+  if (command && key === 'p') {
+    event.preventDefault()
+    openSwitcher()
+    return
+  }
+  if (command && key === 'k') {
+    event.preventDefault()
+    openActionPanel()
+    return
+  }
+  if (command && key === 'n') {
+    event.preventDefault()
+    createNote()
+    return
+  }
+}
+
+function handleShortcut(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.isComposing) return
+  const target = event.target as Node | null
+  const isInPanel = isStandalone.value || (target && panelRef.value?.contains(target))
+  const command = event.metaKey || event.ctrlKey
+  const key = event.key.toLowerCase()
+
+  if (command && event.shiftKey && key === 't' && !isStandalone.value) {
+    event.preventDefault()
+    toggleCollapsed()
+    return
+  }
+  if (!isInPanel) return
+
+  if (command && key === 'f') {
+    event.preventDefault()
+    openFind()
+    return
+  }
+  if (command && key === 'p') {
+    event.preventDefault()
+    openSwitcher()
+    return
+  }
+  if (command && key === 'k') {
+    event.preventDefault()
+    openActionPanel()
+    return
+  }
+  if (command && key === 'n') {
+    event.preventDefault()
+    createNote()
+    return
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    handleEscape()
+  }
+}
+
+function handleEscape() {
+  if (actionPanelOpen.value) {
+    closeActionPanel()
+    return
+  }
+  if (findOpen.value) {
+    closeFind()
+    return
+  }
+  if (switcherOpen.value) {
+    closeSwitcher()
+    return
+  }
+  if (formatBufferOpen.value) {
+    formatBufferOpen.value = false
+    nextTick(() => editorRef.value?.focus())
+    return
+  }
+  if (isStandalone.value) {
+    window.electronAPI.hideTodoPlanWindow?.({
+      activation: 'preserve-current-app',
+      preserveMainWindowVisibility: true,
+    })
+    return
+  }
+  collapseToEdge()
+}
+
+function handleOutsidePointerDown(event: PointerEvent) {
+  const target = event.target as Node | null
+  if (!target) return
+  if (actionPanelOpen.value) {
+    const actionPanel = panelRef.value?.querySelector('.todo-notes-action-panel')
+    if (actionPanel?.contains(target)) return
+    actionPanelOpen.value = false
+  }
+  if (switcherOpen.value) {
+    if (titleButtonRef.value?.contains(target) || switcherRef.value?.contains(target)) return
+    switcherOpen.value = false
+  }
+  if (findOpen.value) {
+    if (findBarRef.value?.contains(target)) return
+  }
+  if (formatBufferOpen.value && panelRef.value && !panelRef.value.contains(target)) {
+    formatBufferOpen.value = false
+  }
 }
 
 function togglePinned() {
   pinned.value = !pinned.value
   if (pinned.value) collapsed.value = false
-  if (props.standalone) {
+  if (isStandalone.value) {
     window.electronAPI.setTodoPlanWindowPinned(pinned.value)
   }
 }
 
 function toggleDocked() {
+  if (isStandalone.value) return
   docked.value = !docked.value
   if (docked.value) collapsed.value = false
 }
 
 function openWindow() {
-  window.electronAPI.openTodoPlanWindow()
+  window.electronAPI.openTodoPlanWindow({
+    activation: 'focus-if-app-active',
+    preserveMainWindowVisibility: true,
+  })
 }
 
 function startResize(event: PointerEvent) {
@@ -569,9 +1243,9 @@ function startResize(event: PointerEvent) {
 
 function handleResize(event: PointerEvent) {
   if (!resizing) return
-  const nextHeight = Math.min(620, Math.max(220, resizeStartHeight + event.clientY - resizeStartY))
+  const nextHeight = Math.min(720, Math.max(260, resizeStartHeight + event.clientY - resizeStartY))
   panelHeight.value = nextHeight
-  localStorage.setItem('todoPlanHeight', String(nextHeight))
+  localStorage.setItem(storageKey('Height'), String(nextHeight))
 }
 
 function stopResize() {
@@ -579,39 +1253,41 @@ function stopResize() {
   window.removeEventListener('pointermove', handleResize)
 }
 
-function handleShortcut(event: KeyboardEvent) {
-  if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 't') {
-    event.preventDefault()
-    toggleCollapsed()
-  }
-}
-
-function handleOutsidePointerDown(event: PointerEvent) {
-  if (!deckOpen.value) return
-  const target = event.target as Node | null
-  if (!target) return
-  if (panelLogoRef.value?.contains(target) || deckPopoverRef.value?.contains(target)) return
-  deckOpen.value = false
-}
-
 function toggleCollapsed() {
-  if (props.standalone) return
+  if (isStandalone.value) return
   collapsed.value = !collapsed.value
 }
 
 function expandFromEdge() {
-  if (props.standalone) return
+  if (isStandalone.value) return
   collapsed.value = false
 }
 
 function collapseToEdge() {
-  if (props.standalone) return
+  if (isStandalone.value) return
   if (pinned.value || docked.value || canDockInRightGutter.value) return
   collapsed.value = true
 }
 
+function setStandaloneWindowButtonsVisible(visible: boolean) {
+  if (!isStandalone.value) return
+  window.electronAPI.setWindowButtonVisibility?.(visible).catch(() => {
+    // Auxiliary chrome control is best-effort during app startup and tests.
+  })
+}
+
+function handlePanelMouseEnter() {
+  setStandaloneWindowButtonsVisible(true)
+  expandFromEdge()
+}
+
+function handlePanelMouseLeave() {
+  setStandaloneWindowButtonsVisible(false)
+  collapseToEdge()
+}
+
 function updateRightGutterDocking() {
-  if (props.standalone) {
+  if (isStandalone.value) {
     canDockInRightGutter.value = false
     return
   }
@@ -634,8 +1310,9 @@ function shouldRefreshChanged(data: { scope: string; sessionId?: string; working
 
 onMounted(() => {
   loadSnapshot()
-  if (props.standalone) {
+  if (isStandalone.value) {
     window.electronAPI.setTodoPlanWindowPinned(pinned.value)
+    setStandaloneWindowButtonsVisible(false)
   }
   updateRightGutterDocking()
   const chatPanel = panelRef.value?.closest('.chat-panel') as HTMLElement | null
@@ -653,16 +1330,20 @@ onMounted(() => {
   })
   window.addEventListener('keydown', handleShortcut)
   window.addEventListener('pointerdown', handleOutsidePointerDown, true)
-  window.addEventListener('todo-plan:toggle-card', toggleCollapsed)
+  if (!isStandalone.value) {
+    window.addEventListener('todo-plan:toggle-card', toggleCollapsed)
+  }
 })
 
 onUnmounted(() => {
-  if (saveTimer.value) clearTimeout(saveTimer.value)
+  if (saveTimer) clearTimeout(saveTimer)
   resizeObserver?.disconnect()
   cleanupChanged?.()
   window.removeEventListener('keydown', handleShortcut)
   window.removeEventListener('pointerdown', handleOutsidePointerDown, true)
-  window.removeEventListener('todo-plan:toggle-card', toggleCollapsed)
+  if (!isStandalone.value) {
+    window.removeEventListener('todo-plan:toggle-card', toggleCollapsed)
+  }
   window.removeEventListener('pointermove', handleResize)
 })
 </script>
@@ -679,17 +1360,27 @@ onUnmounted(() => {
   --todo-accent: var(--accent);
   --todo-accent-soft: rgba(var(--accent-rgb, 59, 130, 246), 0.14);
   --todo-accent-border: rgba(var(--accent-rgb, 59, 130, 246), 0.36);
-  --todo-plan-width: 292px;
+  --todo-plan-width: 360px;
   --todo-plan-gap: 16px;
+  --todo-popover-top: 44px;
+  --todo-popover-width: min(430px, calc(100% - 18px));
+  --todo-popover-radius: 12px;
+  --todo-popover-shadow: 0 16px 42px rgba(0, 0, 0, 0.2);
+  --todo-popover-search-height: 38px;
+  --todo-popover-search-padding-x: 12px;
+  --todo-popover-search-gap: 8px;
+  --todo-popover-search-font-size: 13px;
+  --todo-switcher-popover-max-height: min(286px, calc(100vh - 94px));
+  --todo-action-popover-max-height: min(286px, calc(100vh - 94px));
 
   position: absolute;
   top: 52px;
   right: 12px;
   z-index: calc(var(--z-dropdown, 100) + 2);
   width: min(var(--todo-plan-width), calc(100vw - var(--todo-plan-nav-gutter) - 18px));
-  min-height: 200px;
+  min-height: 240px;
   border: 1px solid var(--todo-rule);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--todo-card-bg);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16);
   color: var(--todo-text);
@@ -730,23 +1421,38 @@ onUnmounted(() => {
   width: var(--todo-plan-width);
 }
 
-.todo-plan-panel.gutter-docked.docked:not(.collapsed) {
-  right: max(
-    12px,
-    calc((100% - var(--chat-content-width, min(70%, 800px))) / 2 - var(--todo-plan-width) - var(--todo-plan-gap))
-  );
+.todo-plan-panel.standalone {
+  --todo-card-bg: color-mix(in srgb, var(--bg-elevated, var(--panel)) 92%, #f5f0dd 8%);
+  --todo-card-bg-soft: color-mix(in srgb, var(--todo-card-bg) 86%, #fff 14%);
+  --todo-popover-top: clamp(58px, 12vh, 88px);
+  --todo-popover-width: min(520px, calc(100% - 56px));
+  --todo-popover-radius: 14px;
+  --todo-popover-shadow: 0 18px 52px rgba(0, 0, 0, 0.22);
+  --todo-popover-search-height: 46px;
+  --todo-popover-search-padding-x: 16px;
+  --todo-popover-search-gap: 10px;
+  --todo-popover-search-font-size: 15px;
+  --todo-switcher-popover-max-height: min(330px, calc(100vh - 94px));
+  --todo-action-popover-max-height: min(330px, calc(100vh - 94px));
+
+  width: 100%;
+  min-height: 100%;
+  border-radius: 22px;
+  box-shadow: none;
 }
 
 .wake-button,
 .icon-button,
-.panel-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.mini-button,
+.note-option-main,
+.note-option-actions button,
+.format-toggle,
+.format-command {
   border: 0;
   color: var(--todo-muted);
   background: transparent;
   cursor: pointer;
+  font: inherit;
 }
 
 .wake-button {
@@ -771,50 +1477,8 @@ onUnmounted(() => {
   opacity: 1;
 }
 
-.panel-logo {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  border-radius: 8px;
-  color: var(--todo-accent);
-  background: var(--todo-accent-soft);
-}
-
-.icon-button {
-  width: 23px;
-  height: 23px;
-  border-radius: 6px;
-}
-
-.icon-button:hover,
-.wake-button:hover {
-  color: var(--todo-text);
-  background: var(--hover, color-mix(in srgb, var(--text) 8%, transparent));
-}
-
-.icon-button.active {
-  color: var(--todo-accent);
-  background: var(--todo-accent-soft);
-}
-
-.icon-button:focus,
-.wake-button:focus,
-.panel-logo:focus,
-.deck-popover button:focus,
-.ai-suggestion button:focus {
-  outline: none;
-}
-
-.icon-button:focus-visible,
-.wake-button:focus-visible,
-.panel-logo:focus-visible,
-.deck-popover button:focus-visible,
-.ai-suggestion button:focus-visible {
-  outline: 2px solid var(--todo-accent-border);
-  outline-offset: 2px;
-}
-
 .panel-header {
+  position: relative;
   height: 50px;
   padding: 0 10px;
   display: flex;
@@ -825,23 +1489,67 @@ onUnmounted(() => {
 }
 
 .todo-plan-panel.standalone .panel-header {
-  padding-left: 96px;
+  height: 30px;
+  padding: 0 10px 0 0;
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--todo-card-bg) 84%, transparent);
   -webkit-app-region: drag;
 }
 
-.todo-plan-panel.standalone .panel-logo,
 .todo-plan-panel.standalone .panel-actions,
-.todo-plan-panel.standalone .deck-popover,
-.todo-plan-panel.standalone .search-row,
-.todo-plan-panel.standalone .panel-body,
-.todo-plan-panel.standalone .quick-add,
-.todo-plan-panel.standalone .resize-handle {
+.todo-plan-panel.standalone .note-switcher,
+.todo-plan-panel.standalone .todo-notes-action-panel,
+.todo-plan-panel.standalone .floating-find-bar,
+.todo-plan-panel.standalone .panel-body {
   -webkit-app-region: no-drag;
+}
+
+.window-title {
+  position: absolute;
+  left: 50%;
+  right: auto;
+  width: max-content;
+  max-width: min(430px, calc(100% - 330px));
+  transform: translateX(-50%);
+  overflow: hidden;
+  color: color-mix(in srgb, var(--todo-text) 72%, transparent);
+  font-size: 16px;
+  font-weight: 650;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.window-traffic-spacer {
+  display: none;
+}
+
+.todo-plan-panel.standalone .window-traffic-spacer {
+  display: block;
+  flex: 0 0 78px;
+  height: 100%;
+  pointer-events: none;
+}
+
+.title-display {
+  min-width: 0;
+  flex: 1;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  text-align: left;
+}
+
+.icon-button:hover,
+.mini-button:hover,
+.note-option:hover {
+  color: var(--todo-text);
+  background: var(--hover, color-mix(in srgb, var(--text) 8%, transparent));
 }
 
 .panel-title {
   min-width: 0;
-  flex: 1;
   display: flex;
   flex-direction: column;
   line-height: 1.18;
@@ -867,23 +1575,125 @@ onUnmounted(() => {
 }
 
 .panel-actions {
+  margin-left: auto;
   display: flex;
-  gap: 3px;
+  flex: 0 0 auto;
+  gap: 6px;
 }
 
-.search-row {
-  height: 30px;
-  padding: 0 10px;
+.todo-plan-panel.standalone .panel-actions {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-1px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+.todo-plan-panel.standalone:hover .panel-actions,
+.todo-plan-panel.standalone .panel-header:focus-within .panel-actions,
+.todo-plan-panel.standalone.find-open .panel-actions,
+.todo-plan-panel.standalone.switcher-open .panel-actions,
+.todo-plan-panel.standalone.action-panel-open .panel-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.icon-button,
+.mini-button {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.todo-plan-panel.standalone .icon-button {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  color: color-mix(in srgb, var(--todo-text) 66%, transparent);
+}
+
+.todo-plan-panel.standalone .icon-button:hover,
+.todo-plan-panel.standalone .icon-button.active:hover {
+  color: var(--todo-text);
+  background: color-mix(in srgb, var(--todo-text) 10%, transparent);
+}
+
+.todo-plan-panel.standalone .icon-button.active {
+  color: color-mix(in srgb, var(--todo-text) 66%, transparent);
+  background: transparent;
+}
+
+.icon-button.active {
+  color: var(--todo-accent);
+  background: var(--todo-accent-soft);
+}
+
+.icon-button:focus-visible,
+.mini-button:focus-visible,
+.note-option:focus-visible {
+  outline: 2px solid var(--todo-accent-border);
+  outline-offset: 2px;
+}
+
+.todo-plan-panel.standalone .icon-button:focus,
+.todo-plan-panel.standalone .icon-button:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.note-switcher {
+  position: absolute;
+  top: var(--todo-popover-top);
+  left: 50%;
+  z-index: 5;
+  width: var(--todo-popover-width);
+  max-height: var(--todo-switcher-popover-max-height);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--todo-rule);
+  border-radius: var(--todo-popover-radius);
+  background: var(--todo-card-bg);
+  box-shadow: var(--todo-popover-shadow);
+  transform: translateX(-50%);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+}
+
+.todo-plan-panel.standalone .note-switcher {
+  background: color-mix(in srgb, var(--todo-card-bg) 96%, #fff 4%);
+}
+
+.switcher-search,
+.floating-find-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid var(--todo-rule-soft);
   color: var(--todo-muted);
   background: var(--todo-card-bg-soft);
 }
 
-.search-row input,
-.quick-add input {
+.switcher-search {
+  height: var(--todo-popover-search-height);
+  padding: 0 var(--todo-popover-search-padding-x);
+  gap: var(--todo-popover-search-gap);
+  border-bottom: 1px solid var(--todo-rule-soft);
+  font-size: var(--todo-popover-search-font-size);
+  line-height: 1.25;
+}
+
+.switcher-search svg {
+  flex: 0 0 auto;
+}
+
+.switcher-search input,
+.floating-find-bar input {
   min-width: 0;
   flex: 1;
   border: 0;
@@ -893,275 +1703,265 @@ onUnmounted(() => {
   font: inherit;
 }
 
-.deck-popover {
-  position: absolute;
-  top: 42px;
-  left: 10px;
-  z-index: 3;
-  width: 218px;
-  max-height: min(360px, calc(100vh - 96px));
-  overflow: auto;
-  padding: 6px;
-  border: 1px solid var(--todo-rule);
-  border-radius: 10px;
-  background: var(--todo-card-bg);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.18);
+.switcher-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 254px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 8px;
 }
 
-.deck-popover button {
-  width: 100%;
-  min-height: 32px;
-  padding: 0 8px;
+.todo-plan-panel.standalone .switcher-list {
+  max-height: 282px;
+  padding: 7px;
+}
+
+.switcher-header-row {
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  color: color-mix(in srgb, var(--todo-text) 72%, transparent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.switcher-header-row span {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
-  border: 0;
-  border-radius: 8px;
+  color: color-mix(in srgb, var(--todo-text) 66%, transparent);
+  font-weight: 650;
+}
+
+.todo-plan-panel.standalone .switcher-header-row {
+  height: 28px;
+  padding: 0 6px;
+  font-size: 13px;
+}
+
+.switcher-label {
+  padding: 8px 2px 5px;
   color: var(--todo-muted);
-  background: transparent;
-  cursor: pointer;
-  font-size: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.deck-popover button.active,
-.deck-popover button:hover {
+.note-option {
+  width: 100%;
+  min-height: 58px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  border-radius: 12px;
+  text-align: left;
+}
+
+.surface-chat-floating-card .note-option,
+.surface-chat-docked-card .note-option {
+  min-height: 52px;
+}
+
+.todo-plan-panel.standalone .note-option {
+  min-height: 52px;
+  border-radius: 12px;
+}
+
+.note-option.active {
   color: var(--todo-text);
-  background: var(--todo-accent-soft);
+  background: color-mix(in srgb, var(--todo-text) 9%, transparent);
 }
 
-.deck-popover span {
+.note-option.system {
+  color: color-mix(in srgb, var(--todo-text) 90%, var(--todo-accent) 10%);
+}
+
+.note-option-main {
   min-width: 0;
+  width: 100%;
+  height: 100%;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 5px;
+  border-radius: inherit;
+  text-align: left;
+}
+
+.todo-plan-panel.standalone .note-option-main {
+  padding: 8px 10px;
+  gap: 4px;
+}
+
+.note-option-main:hover {
+  color: var(--todo-text);
+  background: transparent;
+}
+
+.note-option strong,
+.note-option small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.deck-popover strong {
-  flex: 0 0 auto;
-  font-size: 10px;
-  color: var(--todo-muted);
-}
-
-.deck-section-label {
-  padding: 8px 8px 4px;
-  color: var(--todo-muted);
-  font-size: 10px;
+.note-option strong {
+  color: inherit;
+  font-size: 14px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
-.deck-actions {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-  padding: 6px 0 2px;
+.todo-plan-panel.standalone .note-option strong {
+  font-size: 14px;
 }
 
-.deck-actions button {
+.note-option small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--todo-muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.todo-plan-panel.standalone .note-option small {
+  font-size: 12px;
+}
+
+.note-option small i {
+  width: 7px;
+  height: 7px;
+  display: inline-block;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--todo-muted) 52%, transparent);
+}
+
+.note-option small i.current {
+  background: #ff5f57;
+}
+
+.note-option small b {
+  color: color-mix(in srgb, var(--todo-muted) 62%, transparent);
+  font-weight: 500;
+}
+
+.note-option-actions {
+  padding-right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--todo-muted);
+}
+
+.note-option-actions button {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  min-height: 26px;
-  border: 1px solid var(--todo-rule-soft);
+  border-radius: 8px;
+}
+
+.todo-plan-panel.standalone .note-option-actions {
+  padding-right: 10px;
+  gap: 6px;
+}
+
+.todo-plan-panel.standalone .note-option-actions button {
+  width: 24px;
+  height: 24px;
+}
+
+@media (max-width: 460px) {
+  .todo-plan-panel.standalone {
+    --todo-popover-width: min(360px, calc(100% - 32px));
+    --todo-popover-search-height: 44px;
+    --todo-popover-search-padding-x: 14px;
+    --todo-popover-search-font-size: 14px;
+    --todo-switcher-popover-max-height: min(308px, calc(100vh - 84px));
+    --todo-action-popover-max-height: min(308px, calc(100vh - 84px));
+  }
+
+  .todo-plan-panel.standalone .switcher-header-row {
+    height: 30px;
+    font-size: 13px;
+  }
+
+  .todo-plan-panel.standalone .note-option {
+    min-height: 50px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .todo-plan-panel.standalone .note-option strong {
+    font-size: 14px;
+  }
+
+  .todo-plan-panel.standalone .note-option small {
+    max-width: 100%;
+    font-size: 12px;
+  }
+
+  .todo-plan-panel.standalone .note-option-actions {
+    display: none;
+  }
+}
+
+.note-option-actions button.active {
+  color: var(--todo-text);
+  background: color-mix(in srgb, var(--todo-text) 11%, transparent);
+}
+
+.floating-find-bar {
+  position: absolute;
+  top: 62px;
+  right: 12px;
+  z-index: 4;
+  width: min(300px, calc(100% - 24px));
+  height: 34px;
+  padding: 0 7px 0 10px;
+  border: 1px solid var(--todo-rule);
+  border-radius: 9px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
+}
+
+.floating-find-bar span {
+  flex: 0 0 auto;
+  min-width: 36px;
+  color: var(--todo-muted);
   font-size: 11px;
+  text-align: center;
 }
 
 .panel-body {
-  height: calc(100% - 50px);
-  min-height: 120px;
+  height: calc(100% - 88px);
+  min-height: 180px;
   overflow: auto;
   background: var(--todo-card-bg);
 }
 
-.todo-plan-panel.searching .panel-body {
-  height: calc(100% - 80px);
-}
-
-.todo-plan-panel.has-quick-add .panel-body {
-  height: calc(100% - 90px);
-}
-
-.todo-plan-panel.searching.has-quick-add .panel-body {
-  height: calc(100% - 120px);
-}
-
-.quick-add + .resize-handle,
-.quick-add {
-  border-top: 1px solid var(--todo-rule-soft);
-}
-
-.task-view {
-  padding: 10px 12px 8px;
-}
-
-.task-sections {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.task-section {
-  min-width: 0;
-}
-
-.task-section h4 {
-  margin: 0 0 6px;
-  color: var(--todo-muted);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: 0.04em;
-}
-
-.task-list {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.task-row {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto 24px;
-  align-items: center;
-  column-gap: 9px;
-  min-height: 28px;
-  color: var(--todo-text);
-  font-size: 12px;
-  line-height: 1.45;
-  cursor: pointer;
-}
-
-.task-row input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.task-check {
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid var(--todo-rule);
-  border-radius: 7px;
-  color: transparent;
-  background: var(--todo-card-bg);
-}
-
-.task-row input:checked + .task-check {
-  border-color: var(--todo-accent);
-  color: var(--text-btn-primary, #fff);
-  background: var(--todo-accent);
-}
-
-.task-text {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.task-row.done .task-text {
-  color: var(--todo-muted);
-  text-decoration: line-through;
-}
-
-.task-status {
-  padding: 3px 7px;
-  border: 1px solid var(--todo-accent-border);
-  border-radius: 999px;
-  color: var(--todo-accent);
-  background: var(--todo-accent-soft);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-}
-
-.task-delete {
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 6px;
-  color: var(--todo-muted);
-  background: transparent;
-  cursor: pointer;
-  opacity: 0;
-  transition:
-    opacity 0.12s ease,
-    color 0.12s ease,
-    background-color 0.12s ease;
-}
-
-.task-row:hover .task-delete,
-.task-delete:focus-visible {
-  opacity: 0.72;
-}
-
-.task-delete:hover,
-.task-delete:focus-visible {
-  color: var(--todo-text);
-  background: var(--hover, color-mix(in srgb, var(--text) 8%, transparent));
-  opacity: 1;
-  outline: none;
-}
-
-.ai-suggestion {
-  margin-top: 10px;
-  padding: 9px 10px;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  border: 1px dashed var(--todo-rule);
-  border-radius: 8px;
-  color: var(--todo-muted);
-  background: color-mix(in srgb, var(--todo-card-bg-soft) 82%, transparent);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.ai-suggestion strong {
-  color: var(--todo-text);
-}
-
-.ai-suggestion button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 26px;
-  padding: 0 8px;
-  border: 1px solid var(--todo-rule);
-  border-radius: 999px;
-  color: var(--todo-text);
-  background: var(--todo-card-bg);
-  cursor: pointer;
-}
-
-.quick-add {
-  height: 40px;
-  padding: 0 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--todo-muted);
-  background: var(--todo-card-bg-soft);
-  font-size: 12px;
-}
-
-.quick-add span {
-  flex: 0 0 auto;
-  color: var(--todo-muted);
-  font-size: 12px;
+.todo-plan-panel.standalone .panel-body {
+  height: calc(100% - 68px);
+  min-height: 120px;
 }
 
 .markdown-editor {
   width: 100%;
   height: 100%;
-  --editor-font-size: 13px;
-  min-height: 120px;
+  --editor-font-size: 14px;
+  min-height: 96px;
   padding: 14px;
+}
+
+.todo-plan-panel.standalone .markdown-editor {
+  --editor-font-size: 15px;
+  padding: 10px 18px 10px;
 }
 
 .markdown-editor :deep(.cm-editor),
@@ -1169,8 +1969,141 @@ onUnmounted(() => {
   height: 100%;
 }
 
-.empty-state {
-  color: var(--todo-muted);
+.note-footer {
+  height: 38px;
+  padding: 0 18px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  border-top: 1px solid var(--todo-rule-soft);
+  color: color-mix(in srgb, var(--todo-muted) 72%, transparent);
+  background: color-mix(in srgb, var(--todo-card-bg) 88%, transparent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.note-footer.formatting {
+  padding: 0 8px;
+  display: flex;
+  justify-content: stretch;
+}
+
+.note-footer span {
+  text-align: center;
+}
+
+.format-toggle {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: color-mix(in srgb, var(--todo-text) 72%, transparent);
+}
+
+.format-toggle:hover,
+.format-toggle:focus-visible {
+  color: var(--todo-text);
+  background: color-mix(in srgb, var(--todo-text) 9%, transparent);
+  outline: none;
+}
+
+.format-buffer {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.format-buffer::-webkit-scrollbar {
+  display: none;
+}
+
+.format-command {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border-radius: 7px;
+  color: color-mix(in srgb, var(--todo-text) 72%, transparent);
+}
+
+.format-command:hover,
+.format-command:focus-visible {
+  color: var(--todo-text);
+  background: color-mix(in srgb, var(--todo-text) 9%, transparent);
+  outline: none;
+}
+
+.heading-command {
+  width: 42px;
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.format-separator {
+  width: 1px;
+  height: 28px;
+  flex: 0 0 auto;
+  margin: 0 8px 0 auto;
+  background: var(--todo-rule);
+}
+
+.close-format {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  color: var(--todo-card-bg);
+  background: color-mix(in srgb, var(--todo-text) 58%, transparent);
+}
+
+.close-format:hover,
+.close-format:focus-visible {
+  color: var(--todo-card-bg);
+  background: color-mix(in srgb, var(--todo-text) 72%, transparent);
+}
+
+.todo-plan-panel.standalone .note-footer {
+  height: 38px;
+  padding-right: 18px;
+  font-size: 13px;
+}
+
+.todo-plan-panel.standalone .note-footer.formatting {
+  padding: 0 8px;
+}
+
+.todo-plan-panel.standalone .format-buffer {
+  gap: 5px;
+}
+
+.todo-plan-panel.standalone .format-command {
+  width: 30px;
+  height: 30px;
+}
+
+.todo-plan-panel.standalone .heading-command {
+  width: 42px;
+  font-size: 22px;
+}
+
+.todo-plan-panel.standalone .format-separator {
+  height: 28px;
+  margin-right: 8px;
+}
+
+.todo-plan-panel.standalone .close-format {
+  width: 30px;
+  height: 30px;
 }
 
 .resize-handle {
@@ -1186,7 +2119,7 @@ onUnmounted(() => {
   .todo-plan-panel {
     right: 8px;
     top: 46px;
-    width: min(292px, calc(100vw - 16px));
+    width: min(340px, calc(100vw - 16px));
     border-right: 0;
   }
 
@@ -1199,7 +2132,7 @@ onUnmounted(() => {
   .todo-plan-panel {
     left: auto;
     right: 6px;
-    width: min(292px, calc(100vw - 12px));
+    width: min(340px, calc(100vw - 12px));
     border-radius: 10px;
   }
 

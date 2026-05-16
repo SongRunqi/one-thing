@@ -7,11 +7,17 @@ import * as store from '../../store.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '../../../shared/ipc.js'
 import { requiresOAuth } from '../../providers/index.js'
 import { oauthManager } from '../../providers/auth/oauth-manager.js'
+import { authService } from '../../auth/auth-service.js'
+import type { ProviderAuthContext } from '../../auth/types.js'
 
 /**
  * Extract detailed error information from API responses
  */
 export function extractErrorDetails(error: any): string | undefined {
+  const bodyDetails = extractResponseBodyDetails(error?.responseBody) ||
+    extractResponseBodyDetails(error?.data?.responseBody)
+  if (bodyDetails) return bodyDetails
+
   // AI SDK wraps errors with additional context
   if (error.cause) {
     return extractErrorDetails(error.cause)
@@ -40,8 +46,18 @@ export function extractErrorDetails(error: any): string | undefined {
       return data.message
     }
 
+    if (data.responseBody) {
+      const details = extractResponseBodyDetails(data.responseBody)
+      if (details) return details
+    }
+
     if (typeof data === 'string') {
       return data
+    }
+
+    // Avoid surfacing full provider request snapshots in the UI/log payload.
+    if (data.requestBodyValues || data.responseHeaders || data.statusCode) {
+      return data.message || `Provider API request failed${data.statusCode ? ` (${data.statusCode})` : ''}`
     }
 
     try {
@@ -53,6 +69,22 @@ export function extractErrorDetails(error: any): string | undefined {
 
   // Return message or stack trace
   return error.message || error.stack
+}
+
+function extractResponseBodyDetails(body: unknown): string | undefined {
+  if (typeof body !== 'string' || !body.trim()) return undefined
+  try {
+    const parsed = JSON.parse(body)
+    const message = parsed?.detail ||
+      parsed?.error?.message ||
+      parsed?.message ||
+      parsed?.error
+    if (typeof message === 'string' && message.trim()) return message.trim()
+  } catch {
+    // Fall back to compact text below.
+  }
+  const compact = body.replace(/\s+/g, ' ').trim()
+  return compact || undefined
 }
 
 /**
@@ -84,11 +116,31 @@ export async function getApiKeyForProvider(providerId: string, providerConfig: P
 }
 
 /**
+ * Resolve runtime auth without forcing OAuth providers through the API-key path.
+ */
+export async function resolveProviderAuth(
+  providerId: string,
+  providerConfig: ProviderConfig | undefined,
+): Promise<ProviderAuthContext | null> {
+  if (requiresOAuth(providerId)) {
+    try {
+      return await authService.resolveProviderAuth(providerId, providerConfig?.apiKey)
+    } catch (error) {
+      console.error(`Failed to resolve OAuth credentials for ${providerId}:`, error)
+      return null
+    }
+  }
+
+  const apiKey = providerConfig?.apiKey || ''
+  return apiKey ? { kind: 'api-key', apiKey } : null
+}
+
+/**
  * Check if a provider has valid credentials (API key or OAuth token)
  */
 export async function hasValidCredentials(providerId: string, providerConfig: ProviderConfig | undefined): Promise<boolean> {
-  const apiKey = await getApiKeyForProvider(providerId, providerConfig)
-  return !!apiKey
+  const auth = await resolveProviderAuth(providerId, providerConfig)
+  return !!auth
 }
 
 /**
@@ -154,6 +206,7 @@ export interface ResolvedProviderConfig {
   providerId: string
   model: string
   apiKey: string
+  authContext: ProviderAuthContext
   baseUrl?: string
   temperature: number
 }
@@ -174,13 +227,14 @@ export async function getProviderConfigForChat(
   const session = store.getSession(sessionId)
   if (session?.lastProvider && session?.lastModel) {
     const providerConfig = settings.ai.providers[session.lastProvider]
-    const apiKey = await getApiKeyForProvider(session.lastProvider, providerConfig)
+    const authContext = await resolveProviderAuth(session.lastProvider, providerConfig)
 
-    if (apiKey) {
+    if (authContext) {
       return {
         providerId: session.lastProvider,
         model: session.lastModel,
-        apiKey,
+        apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
+        authContext,
         baseUrl: providerConfig?.baseUrl,
         temperature: providerConfig?.temperature ?? settings.ai.temperature,
       }
@@ -190,16 +244,17 @@ export async function getProviderConfigForChat(
   // 3. Fall back to global settings
   const providerId = settings.ai.provider
   const providerConfig = settings.ai.providers[providerId]
-  const apiKey = await getApiKeyForProvider(providerId, providerConfig)
+  const authContext = await resolveProviderAuth(providerId, providerConfig)
 
-  if (!apiKey) {
+  if (!authContext) {
     return null
   }
 
   return {
     providerId,
     model: providerConfig?.model || '',
-    apiKey,
+    apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
+    authContext,
     baseUrl: providerConfig?.baseUrl,
     temperature: providerConfig?.temperature ?? settings.ai.temperature,
   }

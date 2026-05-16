@@ -111,22 +111,34 @@
           </h3>
 
           <!-- OAuth Provider Login -->
-          <ProviderOAuth
+          <div
             v-if="providerSettings.isOAuthProvider.value"
-            :provider-id="providerSettings.viewingProvider.value"
-            :provider-name="providerSettings.currentProviderName.value"
-            :oauth-status="providerSettings.oauthStatus.value"
-            :is-loading="providerSettings.isOAuthLoading.value"
-            :device-flow-info="providerSettings.deviceFlowInfo.value"
-            :code-entry-info="providerSettings.codeEntryInfo.value"
-            :manual-code="providerSettings.manualCode.value"
-            :is-submitting-code="providerSettings.isSubmittingCode.value"
-            :code-entry-error="providerSettings.codeEntryError.value"
-            @start-login="providerSettings.startOAuthLogin"
-            @logout="providerSettings.logoutOAuth"
-            @update:manual-code="providerSettings.manualCode.value = $event"
-            @submit-code="providerSettings.submitManualCode"
-          />
+            class="oauth-config-stack"
+          >
+            <AuthCard
+              :provider-id="providerSettings.viewingProvider.value"
+              :provider-name="providerSettings.currentProviderName.value"
+              :oauth-status="providerSettings.oauthStatus.value"
+              :is-loading="providerSettings.isOAuthLoading.value"
+              :device-flow-info="providerSettings.deviceFlowInfo.value"
+              :code-entry-info="providerSettings.codeEntryInfo.value"
+              :manual-code="providerSettings.manualCode.value"
+              :is-submitting-code="providerSettings.isSubmittingCode.value"
+              :code-entry-error="providerSettings.codeEntryError.value"
+              @start-login="providerSettings.startOAuthLogin"
+              @logout="providerSettings.logoutOAuth"
+              @update:manual-code="providerSettings.manualCode.value = $event"
+              @submit-code="providerSettings.submitManualCode"
+            />
+
+            <ProviderUsageCard
+              v-if="providerUsage.shouldShow.value"
+              :response="providerUsage.response.value"
+              :is-loading="providerUsage.isLoading.value"
+              :error="providerUsage.error.value"
+              @refresh="providerUsage.refresh(true)"
+            />
+          </div>
 
           <!-- Traditional API Key Input -->
           <div
@@ -357,9 +369,11 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import type { AppSettings, ProviderInfo } from '@/types'
 import GlobalDefaultSelector from './GlobalDefaultSelector.vue'
 import ProviderIcon from '../ProviderIcon.vue'
-import ProviderOAuth from './ProviderOAuth.vue'
+import AuthCard from './AuthCard.vue'
+import ProviderUsageCard from './ProviderUsageCard.vue'
 import ProviderModels from './ProviderModels.vue'
 import { useProviderSettings } from './useProviderSettings'
+import { useProviderUsage } from './useProviderUsage'
 
 const props = defineProps<{
   settings: AppSettings
@@ -375,6 +389,7 @@ const emit = defineEmits<{
 const showApiKey = ref(false)
 
 const providerSettings = useProviderSettings(props, (event, value) => emit(event, value))
+const providerUsage = useProviderUsage(providerSettings.viewingProvider, providerSettings.oauthStatus)
 
 function providerModelLabel(providerId: string): string {
   const config = props.settings.ai.providers?.[providerId]
@@ -388,8 +403,10 @@ function providerStatus(providerId: string): 'active' | 'off' {
 
 function providerKeyPreview(providerId: string): string {
   const config = props.settings.ai.providers?.[providerId]
+  const provider = props.providers.find(p => p.id === providerId)
   const key = config?.apiKey?.trim()
 
+  if (provider?.requiresOAuth) return 'Subscription'
   if (key) {
     const head = key.slice(0, Math.min(6, key.length))
     const tail = key.length > 10 ? key.slice(-4) : ''
@@ -700,6 +717,12 @@ onUnmounted(() => {
 .settings-group.is-disabled {
   opacity: 0.5;
   pointer-events: none;
+}
+
+.oauth-config-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .form-slider:disabled {

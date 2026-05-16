@@ -338,6 +338,8 @@
                 <span v-if="selectedSnapshot.temperature !== undefined">temp {{ selectedSnapshot.temperature.toFixed(2) }}</span>
                 <span v-if="selectedSnapshot.maxTokens !== undefined">max {{ formatTokens(selectedSnapshot.maxTokens) }}</span>
                 <span v-if="selectedSnapshot.thinking">thinking {{ selectedSnapshot.thinking }}</span>
+                <span v-if="selectedSnapshot.thinkingEffort">effort {{ selectedSnapshot.thinkingEffort }}</span>
+                <span v-if="selectedSnapshot.serviceTier">speed {{ selectedSnapshot.serviceTier }}</span>
               </div>
 
               <div class="request-main">
@@ -383,6 +385,18 @@
                             <FileText :size="11" />
                             <code>{{ seg.source }}</code>
                           </button>
+                          <small
+                            v-if="seg.role || seg.marker || seg.reason || seg.emittedThisTurn"
+                            class="segment-meta"
+                          >
+                            <span v-if="seg.role">{{ seg.role }}</span>
+                            <span v-if="seg.marker"> · {{ seg.marker.name }}</span>
+                            <span v-if="seg.reason"> · {{ seg.reason }}</span>
+                            <span
+                              v-if="seg.emittedThisTurn"
+                              class="segment-badge"
+                            >new this turn</span>
+                          </small>
                           <pre
                             v-if="seg.content"
                             :class="{ expanded: isSegmentExpanded(idx, segIdx) }"
@@ -689,6 +703,15 @@ interface PromptSourceSegmentView {
   source: string
   content: string
   absolutePath?: string
+  role?: 'base' | 'developer' | 'user'
+  marker?: {
+    name: string
+    start: string
+    end: string
+  }
+  hash?: string
+  reason?: 'initial' | 'changed' | 'removed'
+  emittedThisTurn?: boolean
 }
 interface RequestMessageView {
   content?: string
@@ -1804,6 +1827,7 @@ textarea.variable-value-input {
 }
 
 .role-pill.role-system { color: #facc15; }
+.role-pill.role-developer { color: #c084fc; }
 .role-pill.role-user { color: #60a5fa; }
 .role-pill.role-assistant { color: var(--accent); }
 .role-pill.role-tool { color: #34d399; }
@@ -1916,6 +1940,23 @@ textarea.variable-value-input {
   font-size: 10.5px;
   background: transparent;
   padding: 0;
+}
+
+.segment-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.segment-badge {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .tool-tags {

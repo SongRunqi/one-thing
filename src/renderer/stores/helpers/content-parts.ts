@@ -12,7 +12,7 @@ type TurnTextPart = Extract<ContentPart, { type: 'text' | 'reasoning' }>
 
 /** Transient indicators that should be popped when real content arrives. */
 function isTransient(part: ContentPart): boolean {
-  return part.type === 'waiting' || part.type === 'loading-memory'
+  return part.type === 'waiting' || part.type === 'loading-memory' || part.type === 'image-loading'
 }
 
 /** Pop the trailing transient indicator (waiting / loading-memory) if any. */
@@ -148,6 +148,24 @@ export function pushDataStepsIfMissing(parts: ContentPart[], turnIndex: number):
 }
 
 /** Push a waiting indicator (signals AI continuation after a tool call). */
-export function pushWaiting(parts: ContentPart[]): void {
-  parts.push({ type: 'waiting' })
+export function pushWaiting(parts: ContentPart[], turnIndex?: number): void {
+  if (parts.some(part => part.type === 'waiting' && part.turnIndex === turnIndex)) {
+    return
+  }
+  parts.push({
+    type: 'waiting',
+    ...(turnIndex !== undefined ? { turnIndex } : {}),
+  })
+}
+
+/** Push an image-generation skeleton, avoiding duplicate adjacent skeletons. */
+export function pushImageLoading(parts: ContentPart[], turnIndex?: number, label?: string): void {
+  const last = parts[parts.length - 1]
+  if (last?.type === 'image-loading') return
+  popTrailingTransient(parts)
+  parts.push({
+    type: 'image-loading',
+    ...(turnIndex !== undefined ? { turnIndex } : {}),
+    ...(label ? { label } : {}),
+  })
 }

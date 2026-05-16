@@ -24,6 +24,7 @@ import {
   normalizeEditorSettings,
 } from '@shared/defaults/settings'
 import { languageExtension } from './languages'
+import { markdownLivePreviewExtension } from './markdown-live-preview'
 import type { EditorLanguage, EditorProfile, EditorSettings } from './types'
 
 export interface EditorCompartments {
@@ -34,6 +35,7 @@ export interface EditorCompartments {
   placeholder: Compartment
   language: Compartment
   completion: Compartment
+  markdownLivePreview: Compartment
 }
 
 export interface BuildEditorExtensionsOptions {
@@ -43,6 +45,7 @@ export interface BuildEditorExtensionsOptions {
   placeholder?: string
   readOnly: boolean
   spellcheck: boolean
+  markdownLivePreview: boolean
   settings: Required<EditorSettings>
   compartments: EditorCompartments
   onTransaction: (update: ViewUpdate) => void
@@ -50,11 +53,12 @@ export interface BuildEditorExtensionsOptions {
   onFocus: () => void
   onBlur: () => void
   onKeydown: (event: KeyboardEvent) => void
+  onPaste: (event: ClipboardEvent) => void
   onCompositionStart: () => void
   onCompositionEnd: () => void
 }
 
-export { DEFAULT_EDITOR_SETTINGS, normalizeEditorSettings }
+export { DEFAULT_EDITOR_SETTINGS, markdownLivePreviewExtension, normalizeEditorSettings }
 
 export function createEditorCompartments(): EditorCompartments {
   return {
@@ -65,6 +69,7 @@ export function createEditorCompartments(): EditorCompartments {
     placeholder: new Compartment(),
     language: new Compartment(),
     completion: new Compartment(),
+    markdownLivePreview: new Compartment(),
   }
 }
 
@@ -90,6 +95,10 @@ export function buildEditorExtensions(options: BuildEditorExtensionsOptions): Ex
         options.onKeydown(event)
         return event.defaultPrevented
       },
+      paste: (event) => {
+        options.onPaste(event)
+        return event.defaultPrevented
+      },
       compositionstart: () => {
         options.onCompositionStart()
       },
@@ -112,6 +121,7 @@ export function buildEditorExtensions(options: BuildEditorExtensionsOptions): Ex
       options.path,
     )),
     options.compartments.completion.of(completionExtensions(options.settings.completionEnabled)),
+    options.compartments.markdownLivePreview.of(markdownLivePreviewExtension(options.markdownLivePreview)),
   ]
 
   return extensions
@@ -158,7 +168,7 @@ export function completionExtensions(enabled: boolean): Extension {
 export function themeExtension(profile: EditorProfile, spellcheck: boolean): Extension {
   const isComposer = profile === 'composer'
   const isInlineMessage = profile === 'inline-message'
-  const fontFamily = profile === 'code-file' || profile === 'markdown-document'
+  const fontFamily = profile === 'code-file'
     ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
     : 'var(--font-sans)'
 

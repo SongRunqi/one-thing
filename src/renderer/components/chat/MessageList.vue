@@ -581,7 +581,7 @@ async function navigateToUserMessage(navIndex: number) {
     if (getMessageRowById(marker.messageId)) {
       scrollToMessage(marker.messageId, {
         preserveNavigation: true,
-        behavior: 'auto',
+        behavior: 'smooth',
         viewportOffsetRatio: NAV_VIEWPORT_OFFSET_RATIO,
         lockDurationMs: SCROLL_ANCHOR_LOCK_MS,
       })
@@ -594,7 +594,7 @@ async function navigateToUserMessage(navIndex: number) {
       lockNavigationIndex(navIndex)
       scrollToMessage(marker.messageId, {
         preserveNavigation: true,
-        behavior: 'auto',
+        behavior: 'smooth',
         viewportOffsetRatio: NAV_VIEWPORT_OFFSET_RATIO,
         lockDurationMs: SCROLL_ANCHOR_LOCK_MS,
       })
@@ -632,7 +632,7 @@ function scrollToUserMessage(navIndex: number) {
   if (!messageId) return
   scrollToMessage(messageId, {
     preserveNavigation: true,
-    behavior: 'auto',
+    behavior: 'smooth',
     viewportOffsetRatio: NAV_VIEWPORT_OFFSET_RATIO,
     lockDurationMs: SCROLL_ANCHOR_LOCK_MS,
   })
@@ -784,14 +784,17 @@ async function scrollToMessage(
   await nextTick()
   const row = getMessageRowById(messageId) || getMessageRow(messageIndex)
   const scroller = messageListRef.value
+  const behavior = options.behavior ?? 'smooth'
   if (row && scroller && typeof options.viewportOffsetRatio === 'number') {
     const offsetWithinMessage = -Math.round(scroller.clientHeight * options.viewportOffsetRatio)
-    scrollCoordinator.writeScrollTop(row.offsetTop + offsetWithinMessage)
-    scrollCoordinator.setAnchor(messageId, offsetWithinMessage, options.lockDurationMs)
+    scrollCoordinator.writeScrollTop(row.offsetTop + offsetWithinMessage, { behavior })
+    if (behavior !== 'smooth') {
+      scrollCoordinator.setAnchor(messageId, offsetWithinMessage, options.lockDurationMs)
+    }
   } else if (row && scroller) {
     const offsetWithinMessage = -Math.round((scroller.clientHeight - row.offsetHeight) / 2)
-    scrollCoordinator.writeScrollTop(row.offsetTop + offsetWithinMessage)
-    if (options.behavior !== 'smooth') {
+    scrollCoordinator.writeScrollTop(row.offsetTop + offsetWithinMessage, { behavior })
+    if (behavior !== 'smooth') {
       scrollCoordinator.setAnchor(messageId, offsetWithinMessage, options.lockDurationMs)
     }
   }
@@ -1054,7 +1057,7 @@ usePermissionShortcuts(
 function scrollToBottomFromButton() {
   setNavIndexToLastMarker()
   follow.isFollowing.value = true
-  scrollCoordinator.setTail()
+  scrollCoordinator.setTail({ behavior: 'smooth' })
 }
 
 // Setup event listeners
@@ -1487,10 +1490,15 @@ async function handleRejectTool(toolCall: any, rejectReasonArg?: string) {
   }
 
   if (message) {
+    const rejectionMessage = rejectReasonArg
+      ? `User rejected this operation: ${rejectReasonArg}`
+      : 'User rejected this operation'
     const tc = message.toolCalls?.find(t => t.id === toolCall.id)
     if (tc) {
-      tc.status = 'cancelled'
-      tc.error = 'Command rejected by user'
+      tc.status = 'failed'
+      tc.error = rejectionMessage
+      tc.rejected = true
+      tc.rejectionReason = rejectReasonArg
       tc.requiresConfirmation = false
     }
 
@@ -1499,7 +1507,9 @@ async function handleRejectTool(toolCall: any, rejectReasonArg?: string) {
     const step = message.steps?.find(s => s.toolCallId === toolCall.id)
     if (step) {
       step.status = 'failed'
-      step.error = 'Command execution cancelled by user'
+      step.error = rejectionMessage
+      step.rejected = true
+      step.rejectionReason = rejectReasonArg
       // Force reactivity
       if (message.steps) {
         message.steps = [...message.steps]
@@ -1623,7 +1633,7 @@ defineExpose({
   scrollToBottom: () => {
     setNavIndexToLastMarker()
     follow.isFollowing.value = true
-    scrollCoordinator.setTail()
+    scrollCoordinator.setTail({ behavior: 'smooth' })
   },
 
   scrollToMessage,

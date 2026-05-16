@@ -26,15 +26,17 @@ export type ContentPart =
   | { type: 'text'; content: string; turnIndex?: number }
   | { type: 'reasoning'; content: string; turnIndex?: number }
   | { type: 'tool-call'; toolCalls: ToolCall[] }
-  | { type: 'waiting' }                          // Waiting for AI continuation after tool call
+  | { type: 'waiting'; turnIndex?: number }      // Waiting for AI continuation after tool call
   | { type: 'loading-memory' }                   // Loading memory before generation begins
+  | { type: 'image-loading'; turnIndex?: number; label?: string } // Image generation skeleton
   | { type: 'data-steps'; turnIndex: number }    // Placeholder for steps panel (rendered inline)
+  | { type: 'provider-data'; provider: string; encryptedReasoning?: string; turnIndex?: number } // Hidden provider context
 
 // Helper: parts whose presence/absence affects subsequent content layout.
 // Used by the chunk reducer to pop trailing transient indicators when real
 // content arrives.
 export function isTransientPart(part: ContentPart): boolean {
-  return part.type === 'waiting' || part.type === 'loading-memory'
+  return part.type === 'waiting' || part.type === 'loading-memory' || part.type === 'image-loading'
 }
 
 // Step types for showing AI reasoning process
@@ -55,6 +57,8 @@ export interface Step {
   result?: string                  // Tool execution result
   summary?: string                 // AI's analysis after getting the result
   error?: string                   // Error message if failed
+  rejected?: boolean               // True when the user rejected permission for this step
+  rejectionReason?: string         // Optional user-provided rejection reason
   // Token usage for this turn (shared by all steps in the same turn)
   usage?: {
     inputTokens: number
@@ -76,6 +80,7 @@ export interface MessageAttachment {
   url?: string               // Local file URL (for display, optional)
   width?: number             // Image width (for images)
   height?: number            // Image height (for images)
+  mediaAssetId?: string      // Linked Media Library asset, when indexed
 }
 
 // Type definitions for IPC messages
@@ -141,6 +146,7 @@ export interface SessionDetails extends SessionMeta {
   summary?: string
   summaryUpToMessageId?: string
   summaryCreatedAt?: number
+  promptContext?: PromptContextState | null
   totalInputTokens?: number
   totalOutputTokens?: number
   totalTokens?: number
@@ -172,12 +178,64 @@ export interface ChatSession {
   summary?: string              // Conversation summary for context window management
   summaryUpToMessageId?: string // ID of the last message included in the summary
   summaryCreatedAt?: number     // Timestamp when summary was created
+  promptContext?: PromptContextState | null // Internal model-visible prompt context baseline/transcript
   // Token usage tracking
   totalInputTokens?: number     // Accumulated input tokens for this session
   totalOutputTokens?: number    // Accumulated output tokens for this session
   totalTokens?: number          // Accumulated total tokens for this session
   lastInputTokens?: number      // Last request's input tokens
   contextSize?: number          // Current context window size (last turn's input tokens)
+}
+
+// ============================================================================
+// Prompt Context Types
+// ============================================================================
+
+export type PromptContextRole = 'developer' | 'user'
+
+export interface BaseInstructions {
+  source: string
+  content: string
+  hash: string
+}
+
+export interface PromptContextMarker {
+  name: string
+  start: string
+  end: string
+}
+
+export interface PromptContextFragment {
+  role: PromptContextRole
+  source: string
+  marker: PromptContextMarker
+  content: string
+  rendered: string
+  hash: string
+  reason?: 'initial' | 'changed' | 'removed'
+}
+
+export interface TurnContextSnapshot {
+  createdAt: number
+  hasTools: boolean
+  osType: 'macos' | 'windows' | 'linux'
+  workingDirectory?: string
+  contextVariablesHash?: string
+  activeProjectHash?: string
+  knownProjectsHash?: string
+  skillsHash?: string
+  toolNamesHash?: string
+  mcpToolNamesHash?: string
+  agentsMdHash?: string
+  fragmentHashes: Record<string, string>
+}
+
+export interface PromptContextState {
+  version: 1
+  baseInstructions?: BaseInstructions
+  referenceSnapshot?: TurnContextSnapshot
+  items: PromptContextFragment[]
+  updatedAt: number
 }
 
 // IPC Request/Response types

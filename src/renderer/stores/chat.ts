@@ -24,6 +24,7 @@ import {
   appendReasoningIfMissing,
   appendToolCallPlaceholder,
   popTrailingTransient,
+  pushImageLoading,
   pushDataStepsIfMissing,
   pushWaiting,
   removeTransientIndicators,
@@ -51,6 +52,7 @@ interface StreamChunk {
   // For content_part chunks (interleaved text and steps)
   contentPart?: ContentPart
   turnIndex?: number
+  placement?: 'top' | 'inline'
 }
 
 // Stream complete data from IPC
@@ -244,6 +246,77 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
+  const TOOL_INPUT_DELTA_SEPARATOR = '\u0000'
+  const pendingToolInputDeltas = new Map<string, string>()
+  let pendingToolInputFlushFrame: number | null = null
+
+  function toolInputDeltaKey(sessionId: string, messageId: string, toolCallId: string): string {
+    return [sessionId, messageId, toolCallId].join(TOOL_INPUT_DELTA_SEPARATOR)
+  }
+
+  function parseToolInputDeltaKey(key: string): { sessionId: string; messageId: string; toolCallId: string } {
+    const [sessionId, messageId, toolCallId] = key.split(TOOL_INPUT_DELTA_SEPARATOR)
+    return { sessionId, messageId, toolCallId }
+  }
+
+  function queueToolInputDelta(sessionId: string, messageId: string, toolCallId: string, delta: string) {
+    const key = toolInputDeltaKey(sessionId, messageId, toolCallId)
+    pendingToolInputDeltas.set(key, (pendingToolInputDeltas.get(key) || '') + delta)
+    if (pendingToolInputFlushFrame !== null) return
+    pendingToolInputFlushFrame = scheduleFrame(() => {
+      pendingToolInputFlushFrame = null
+      flushToolInputDeltas()
+    }) as unknown as number
+  }
+
+  function flushToolInputDeltas(sessionId?: string, messageId?: string, toolCallId?: string) {
+    if (pendingToolInputDeltas.size === 0) return
+
+    const touchedSessions = new Set<string>()
+    for (const [key, delta] of Array.from(pendingToolInputDeltas.entries())) {
+      const parsed = parseToolInputDeltaKey(key)
+      if (sessionId && parsed.sessionId !== sessionId) continue
+      if (messageId && parsed.messageId !== messageId) continue
+      if (toolCallId && parsed.toolCallId !== toolCallId) continue
+
+      if (!delta) continue
+
+      const messages = getSessionMessagesRef(parsed.sessionId)
+      const message = messages.find(m => m.id === parsed.messageId)
+      const toolCall = message?.toolCalls?.find(tc => tc.id === parsed.toolCallId)
+      if (!message || !toolCall || toolCall.status !== 'input-streaming') continue
+
+      pendingToolInputDeltas.delete(key)
+      toolCall.streamingArgs = (toolCall.streamingArgs || '') + delta
+      if (message.steps) {
+        for (const step of message.steps) {
+          if (step.toolCallId === parsed.toolCallId) {
+            step.toolCall = toolCall
+          }
+        }
+      }
+      if (message.toolCalls) message.toolCalls = [...message.toolCalls]
+      if (message.steps) message.steps = [...message.steps]
+      if (message.contentParts) message.contentParts = [...message.contentParts]
+      touchedSessions.add(parsed.sessionId)
+    }
+
+    for (const touchedSessionId of touchedSessions) {
+      const messages = getSessionMessagesRef(touchedSessionId)
+      setSessionMessages(touchedSessionId, [...messages])
+      bumpScrollVersion(touchedSessionId)
+    }
+  }
+
+  function clearToolInputDeltas(sessionId: string, messageId?: string) {
+    for (const key of Array.from(pendingToolInputDeltas.keys())) {
+      const parsed = parseToolInputDeltaKey(key)
+      if (parsed.sessionId !== sessionId) continue
+      if (messageId && parsed.messageId !== messageId) continue
+      pendingToolInputDeltas.delete(key)
+    }
+  }
+
   // ============ Inspector — request snapshots ring buffer ============
   // Per-session list of the most recent outbound LLM requests (cap = 5).
   // Populated from the `request:snapshot` event emitted by tool-loop.
@@ -279,6 +352,7 @@ export const useChatStore = defineStore('chat', () => {
     hasNavigated: boolean
     messageInput: string
     quotedText: string
+    attachments?: MessageAttachment[]
   }
 
   const sessionSnapshots = new Map<string, SessionUISnapshot>()
@@ -575,6 +649,10 @@ export const useChatStore = defineStore('chat', () => {
 
     perfMark('chunk-start')
     const message = messages[messageIndex]
+    if (chunk.type !== 'tool_input_delta') {
+      flushToolInputDeltas(sessionId, resolvedMsgId, chunk.toolCallId)
+    }
+    let shouldBumpScroll = true
 
     // Initialize contentParts if not exists
     if (!message.contentParts) {
@@ -594,8 +672,10 @@ export const useChatStore = defineStore('chat', () => {
       }
     } else if (chunk.type === 'reasoning') {
       const reasoning = chunk.reasoning || ''
-      message.reasoning = (message.reasoning || '') + reasoning
-      if (reasoning && message.content) {
+      const placement = chunk.placement ?? (message.content ? 'inline' : 'top')
+      if (placement === 'top') {
+        message.reasoning = (message.reasoning || '') + reasoning
+      } else if (reasoning) {
         appendOrMergeReasoning(parts, reasoning, chunk.turnIndex)
         message.contentParts = [...parts]
       }
@@ -609,7 +689,7 @@ export const useChatStore = defineStore('chat', () => {
         applyPendingPermissionRequests(sessionId, message.id)
       }
     } else if (chunk.type === 'continuation') {
-      pushWaiting(parts)
+      pushWaiting(parts, chunk.turnIndex)
       message.contentParts = [...parts]
     } else if (chunk.type === 'replace') {
       message.content = chunk.content
@@ -635,15 +715,13 @@ export const useChatStore = defineStore('chat', () => {
         applyPendingPermissionRequests(sessionId, message.id)
       }
     } else if (chunk.type === 'tool_input_delta') {
-      // Streaming tool input delta - accumulate args text in-place. The
-      // toolCall is shared with step.toolCall (relinked by handleStepAdded /
-      // rebuildContentParts), so a single field assignment is enough.
-      if (chunk.toolCallId && chunk.argsTextDelta && message.toolCalls) {
-        const toolCall = message.toolCalls.find(tc => tc.id === chunk.toolCallId)
-        if (toolCall && toolCall.status === 'input-streaming') {
-          toolCall.streamingArgs = (toolCall.streamingArgs || '') + chunk.argsTextDelta
-        }
+      // Streaming tool input can arrive in very small deltas. Batch the
+      // expensive reactive writes to one frame, then flush before any final
+      // tool event so the UI never misses the tail.
+      if (chunk.toolCallId && chunk.argsTextDelta) {
+        queueToolInputDelta(sessionId, resolvedMsgId, chunk.toolCallId, chunk.argsTextDelta)
       }
+      shouldBumpScroll = false
     } else if (chunk.type === 'content_part' && chunk.contentPart) {
       const newPart = chunk.contentPart
       if (newPart.type === 'data-steps') {
@@ -658,12 +736,15 @@ export const useChatStore = defineStore('chat', () => {
       } else if (newPart.type === 'reasoning') {
         appendReasoningIfMissing(parts, newPart.content)
         message.contentParts = [...parts]
+      } else if (newPart.type === 'image-loading') {
+        pushImageLoading(parts, newPart.turnIndex, newPart.label)
+        message.contentParts = [...parts]
       }
     }
 
     perfMark('chunk-end')
     perfMeasure('handleStreamChunk', 'chunk-start', 'chunk-end')
-    bumpScrollVersion(sessionId)
+    if (shouldBumpScroll) bumpScrollVersion(sessionId)
   }
 
   /**
@@ -684,10 +765,12 @@ export const useChatStore = defineStore('chat', () => {
     const message = resolveStreamingMessage(messages, resolvedMsgId)
     if (message) {
       flushPendingStreamChunks(sessionId, message.id)
+      flushToolInputDeltas(sessionId, message.id)
       stopMessageStreaming(message, data.usage)
       setSessionMessages(sessionId, [...messages])
     } else {
       clearPendingStreamChunks(sessionId, resolvedMsgId)
+      clearToolInputDeltas(sessionId, resolvedMsgId)
     }
 
     // Fold the turn's usage into the session-level token stats so the
@@ -714,6 +797,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionLoading.value.set(sessionId, false)
     activeStreams.value.delete(sessionId)
     clearPendingStreamChunks(sessionId)
+    clearToolInputDeltas(sessionId)
     triggerRef(sessionGenerating)
     triggerRef(sessionLoading)
     triggerRef(activeStreams)
@@ -753,10 +837,11 @@ export const useChatStore = defineStore('chat', () => {
     triggerRef(sessionErrorDetails)
 
     const messages = getSessionMessagesRef(sessionId)
+    const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
+    if (resolvedMsgId) flushToolInputDeltas(sessionId, resolvedMsgId)
 
     if (data.preserved) {
       // Message content is preserved in backend — just attach error details and stop streaming
-      const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
       const msg = resolveStreamingMessage(messages, resolvedMsgId)
       if (msg) {
         msg.errorDetails = data.errorDetails
@@ -773,7 +858,6 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.push(errorMessage)
 
-      const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
       if (resolvedMsgId) {
         const streamingIndex = messages.findIndex(m => m.id === resolvedMsgId)
         if (streamingIndex !== -1) {
@@ -794,6 +878,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionLoading.value.set(sessionId, false)
     activeStreams.value.delete(sessionId)
     clearPendingStreamChunks(sessionId)
+    clearToolInputDeltas(sessionId)
     triggerRef(sessionGenerating)
     triggerRef(sessionLoading)
     triggerRef(activeStreams)
@@ -816,6 +901,7 @@ export const useChatStore = defineStore('chat', () => {
     const resolvedMsgId = resolveMessageId(sessionId, messageId)
     const message = messages.find(m => m.id === resolvedMsgId)
     if (!message) return
+    flushToolInputDeltas(sessionId, message.id, step.toolCallId)
 
     // Initialize steps array if needed
     if (!message.steps) message.steps = []
@@ -861,6 +947,7 @@ export const useChatStore = defineStore('chat', () => {
     const resolvedMsgId = resolveMessageId(sessionId, messageId)
     const message = messages.find(m => m.id === resolvedMsgId)
     if (!message?.steps) return
+    flushToolInputDeltas(sessionId, message.id, updates?.toolCallId)
 
     // First try top-level steps
     const stepIndex = message.steps.findIndex(s => s.id === stepId)

@@ -14,6 +14,7 @@ import { executeStreamGeneration, type StreamGenerationResult } from './tool-loo
 import { type StreamContext } from './stream-processor.js'
 import { getStreamEngine } from '../index.js'
 import type { HistoryMessage } from './message-helpers.js'
+import type { ProviderAuthContext } from '../../auth/types.js'
 
 // Re-export for convenience
 export type { HistoryMessage }
@@ -23,6 +24,7 @@ export type { HistoryMessage }
  */
 export interface ProviderConfigWithKey extends ProviderConfig {
   apiKey: string
+  authContext?: ProviderAuthContext
 }
 
 /**

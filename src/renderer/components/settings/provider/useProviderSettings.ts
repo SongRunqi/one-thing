@@ -7,21 +7,9 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import type { AppSettings, AIProvider, ProviderInfo, OpenRouterModel } from '@/types'
 import { useSettingsStore } from '@/stores/settings'
+import { useProviderAuth } from './useProviderAuth'
 
-export interface OAuthStatus {
-  isLoggedIn: boolean
-  expiresAt?: number
-}
-
-export interface DeviceFlowInfo {
-  userCode: string
-  verificationUri: string
-}
-
-export interface CodeEntryInfo {
-  state: string
-  instructions: string
-}
+export type { OAuthStatus, DeviceFlowInfo, CodeEntryInfo } from './useProviderAuth'
 
 export function useProviderSettings(
   props: { settings: AppSettings; providers: ProviderInfo[] },
@@ -34,21 +22,8 @@ export function useProviderSettings(
   const newModelInput = ref('')
   const modelError = ref('')
 
-  // OAuth state
-  const isOAuthLoading = ref(false)
-  const oauthStatus = ref<OAuthStatus>({ isLoggedIn: false })
-  const deviceFlowInfo = ref<DeviceFlowInfo | null>(null)
-  const codeEntryInfo = ref<CodeEntryInfo | null>(null)
-  const manualCode = ref('')
-  const isSubmittingCode = ref(false)
-  const codeEntryError = ref('')
-
   // Viewing provider (can be different from active provider)
   const viewingProvider = ref<string>(props.settings.ai.provider)
-
-  // OAuth event cleanup refs
-  let oauthTokenRefreshedCleanup: (() => void) | null = null
-  let oauthTokenExpiredCleanup: (() => void) | null = null
 
   // Watch for settings changes to sync viewingProvider
   watch(() => props.settings.ai.provider, (newProvider) => {
@@ -138,6 +113,11 @@ export function useProviderSettings(
     return provider?.requiresOAuth === true
   })
 
+  const providerAuth = useProviderAuth(viewingProvider, isOAuthProvider, async (providerId) => {
+    if (providerId !== viewingProvider.value) return
+    await fetchModels(true)
+  })
+
   // Global default computed properties
   const enabledProviders = computed(() => {
     return props.providers.filter(p => {
@@ -188,6 +168,10 @@ export function useProviderSettings(
   }
 
   function hasImageGeneration(model: OpenRouterModel): boolean {
+    const codexMetadata = model.providerMetadata?.codex as Record<string, unknown> | undefined
+    if (Array.isArray(codexMetadata?.nativeTools) && codexMetadata.nativeTools.includes('image_generation')) {
+      return true
+    }
     if (model.architecture?.output_modalities?.includes('image')) {
       return true
     }
@@ -402,6 +386,8 @@ export function useProviderSettings(
     current.maxOutputByModel = moveKey(current.maxOutputByModel)
     current.temperatureByModel = moveKey(current.temperatureByModel)
     current.thinkingByModel = moveKey(current.thinkingByModel)
+    current.thinkingEffortByModel = moveKey(current.thinkingEffortByModel)
+    current.serviceTierByModel = moveKey(current.serviceTierByModel)
     current.modelCapabilitiesByModel = moveKey(current.modelCapabilitiesByModel)
 
     providers[viewingProvider.value] = current
@@ -471,14 +457,14 @@ export function useProviderSettings(
     viewingProvider.value = provider
     modelError.value = ''
     modelSearchQuery.value = ''
-    oauthStatus.value = { isLoggedIn: false }
-    deviceFlowInfo.value = null
-    codeEntryInfo.value = null
-    manualCode.value = ''
-    codeEntryError.value = ''
-    await checkOAuthStatus()
-    // Warm-load from cache (no force) so capability icons show without a manual Fetch click.
-    loadCachedModels()
+    providerAuth.resetOAuthState()
+    await providerAuth.checkOAuthStatus()
+    if (isOAuthProvider.value && providerAuth.oauthStatus.value.isLoggedIn) {
+      await fetchModels(true)
+    } else {
+      // Warm-load from cache (no force) so capability icons show without a manual Fetch click.
+      loadCachedModels()
+    }
   }
 
   function toggleModelSelection(modelId: string) {
@@ -572,154 +558,6 @@ export function useProviderSettings(
     }
   }
 
-  // OAuth functions
-  async function checkOAuthStatus() {
-    if (!isOAuthProvider.value) return
-
-    try {
-      const response = await window.electronAPI.oauthGetStatus(viewingProvider.value)
-      if (response.success) {
-        oauthStatus.value = {
-          isLoggedIn: response.isLoggedIn,
-          expiresAt: response.expiresAt,
-        }
-      }
-    } catch (err) {
-      console.error('Failed to check OAuth status:', err)
-      oauthStatus.value = { isLoggedIn: false }
-    }
-  }
-
-  async function startOAuthLogin() {
-    isOAuthLoading.value = true
-    deviceFlowInfo.value = null
-    codeEntryInfo.value = null
-    manualCode.value = ''
-    codeEntryError.value = ''
-
-    try {
-      const response = await window.electronAPI.oauthStart(viewingProvider.value)
-
-      if (!response.success) {
-        console.error('OAuth start failed:', response.error)
-        isOAuthLoading.value = false
-        return
-      }
-
-      if (response.userCode && response.verificationUri) {
-        deviceFlowInfo.value = {
-          userCode: response.userCode,
-          verificationUri: response.verificationUri,
-        }
-        await pollDeviceFlow(response.deviceCode!)
-      } else if (response.requiresCodeEntry) {
-        codeEntryInfo.value = {
-          state: response.state || '',
-          instructions: response.instructions || 'After authorizing, copy the code from the page and paste it here.',
-        }
-        isOAuthLoading.value = false
-      } else {
-        const startTime = Date.now()
-        const timeout = 5 * 60 * 1000
-
-        const checkInterval = setInterval(async () => {
-          if (Date.now() - startTime > timeout) {
-            clearInterval(checkInterval)
-            isOAuthLoading.value = false
-            return
-          }
-
-          await checkOAuthStatus()
-          if (oauthStatus.value.isLoggedIn) {
-            clearInterval(checkInterval)
-            isOAuthLoading.value = false
-          }
-        }, 2000)
-      }
-    } catch (err) {
-      console.error('OAuth login failed:', err)
-      isOAuthLoading.value = false
-    }
-  }
-
-  async function submitManualCode() {
-    if (!manualCode.value.trim() || !codeEntryInfo.value) return
-
-    isSubmittingCode.value = true
-    codeEntryError.value = ''
-
-    try {
-      const response = await window.electronAPI.oauthCallback(
-        viewingProvider.value,
-        manualCode.value.trim(),
-        codeEntryInfo.value.state
-      )
-
-      if (response.success) {
-        codeEntryInfo.value = null
-        manualCode.value = ''
-        await checkOAuthStatus()
-      } else {
-        codeEntryError.value = response.error || 'Failed to verify code'
-      }
-    } catch (err: any) {
-      codeEntryError.value = err.message || 'Failed to verify code'
-    } finally {
-      isSubmittingCode.value = false
-    }
-  }
-
-  async function pollDeviceFlow(deviceCode: string) {
-    const pollInterval = 5000
-    const maxAttempts = 60
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        const response = await window.electronAPI.oauthDevicePoll(viewingProvider.value, deviceCode)
-
-        if (response.success && response.completed) {
-          await checkOAuthStatus()
-          deviceFlowInfo.value = null
-          isOAuthLoading.value = false
-          return
-        }
-
-        if (response.error === 'authorization_pending') {
-          await new Promise(resolve => setTimeout(resolve, pollInterval))
-          continue
-        }
-
-        if (response.error === 'slow_down') {
-          await new Promise(resolve => setTimeout(resolve, pollInterval * 2))
-          continue
-        }
-
-        if (response.error === 'expired_token' || response.error === 'access_denied') {
-          deviceFlowInfo.value = null
-          isOAuthLoading.value = false
-          return
-        }
-      } catch (err) {
-        console.error('Device flow poll error:', err)
-      }
-
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
-    }
-
-    deviceFlowInfo.value = null
-    isOAuthLoading.value = false
-  }
-
-  async function logoutOAuth() {
-    try {
-      await window.electronAPI.oauthLogout(viewingProvider.value)
-      oauthStatus.value = { isLoggedIn: false }
-      deviceFlowInfo.value = null
-    } catch (err) {
-      console.error('OAuth logout failed:', err)
-    }
-  }
-
   // Model loading
   async function loadCachedModels() {
     try {
@@ -747,30 +585,18 @@ export function useProviderSettings(
 
   // Lifecycle
   async function initialize() {
-    await checkOAuthStatus()
-    // Warm-load models for the initial provider so capability icons render on open.
-    loadCachedModels()
-
-    oauthTokenRefreshedCleanup = window.electronAPI.onOAuthTokenRefreshed((data) => {
-      if (data.providerId === viewingProvider.value) {
-        checkOAuthStatus()
-      }
-    })
-
-    oauthTokenExpiredCleanup = window.electronAPI.onOAuthTokenExpired((data) => {
-      if (data.providerId === viewingProvider.value) {
-        oauthStatus.value = { isLoggedIn: false }
-      }
-    })
+    providerAuth.initializeOAuthListeners()
+    await providerAuth.checkOAuthStatus()
+    if (isOAuthProvider.value && providerAuth.oauthStatus.value.isLoggedIn) {
+      await fetchModels(true)
+    } else {
+      // Warm-load models for the initial provider so capability icons render on open.
+      loadCachedModels()
+    }
   }
 
   function cleanup() {
-    if (oauthTokenRefreshedCleanup) {
-      oauthTokenRefreshedCleanup()
-    }
-    if (oauthTokenExpiredCleanup) {
-      oauthTokenExpiredCleanup()
-    }
+    providerAuth.cleanupOAuthListeners()
   }
 
   return {
@@ -779,13 +605,13 @@ export function useProviderSettings(
     modelSearchQuery,
     newModelInput,
     modelError,
-    isOAuthLoading,
-    oauthStatus,
-    deviceFlowInfo,
-    codeEntryInfo,
-    manualCode,
-    isSubmittingCode,
-    codeEntryError,
+    isOAuthLoading: providerAuth.isOAuthLoading,
+    oauthStatus: providerAuth.oauthStatus,
+    deviceFlowInfo: providerAuth.deviceFlowInfo,
+    codeEntryInfo: providerAuth.codeEntryInfo,
+    manualCode: providerAuth.manualCode,
+    isSubmittingCode: providerAuth.isSubmittingCode,
+    codeEntryError: providerAuth.codeEntryError,
 
     // Computed
     availableModels,
@@ -837,10 +663,10 @@ export function useProviderSettings(
     setDefaultProvider,
     setDefaultModel,
     addCustomModel,
-    checkOAuthStatus,
-    startOAuthLogin,
-    submitManualCode,
-    logoutOAuth,
+    checkOAuthStatus: providerAuth.checkOAuthStatus,
+    startOAuthLogin: providerAuth.startOAuthLogin,
+    submitManualCode: providerAuth.submitManualCode,
+    logoutOAuth: providerAuth.logoutOAuth,
     loadCachedModels,
     fetchModels,
     initialize,

@@ -100,6 +100,12 @@ export const SESSION_REPOSITORY_MIGRATIONS: SqliteMigration[] = [
         ON message_blocks(message_id, block_seq)`,
     ],
   },
+  {
+    version: 2,
+    statements: [
+      `ALTER TABLE sessions ADD COLUMN prompt_context_json TEXT`,
+    ],
+  },
 ]
 
 export function getLatestSessionRepositorySchemaVersion(): number {

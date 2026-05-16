@@ -5,7 +5,7 @@
 
 import { ipcMain } from 'electron'
 import * as store from '../store.js'
-import type { ChatMessage, MessageAttachment } from '../../shared/ipc.js'
+import type { ChatMessage, MessageAttachment, ProviderConfig } from '../../shared/ipc.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
 import {
@@ -25,7 +25,7 @@ import { getMCPToolsForAI } from '../mcp/index.js'
 import { getSkillsForSession } from './skills.js'
 import { triggerManager } from '../engine/triggers/index.js'
 import { Permission } from '../permission/index.js'
-import { saveMediaImage } from './media.js'
+import { mediaLibraryService } from '../media/media-library-service.js'
 import * as modelRegistry from '../providers/model-registry.js'
 import { buildContextVariablesPromptText } from '../variables/index.js'
 import { buildProjectDirsPromptVars } from '../project-dirs/index.js'
@@ -41,13 +41,13 @@ import {
   formatMessagesForLog,
   buildMessageContent,
   buildHistoryMessages,
-  buildSystemPrompt,
   filterHistoryForNonToolAPI,
 } from '../engine/stream/message-helpers.js'
+import { buildPromptContext, buildRequestMessages } from '../engine/prompt/index.js'
 import {
   extractErrorDetails,
   getProviderConfig,
-  getApiKeyForProvider,
+  resolveProviderAuth,
   getEffectiveProviderConfig,
   getProviderApiType,
 } from '../engine/stream/provider-helpers.js'
@@ -65,6 +65,7 @@ import {
   runStream,
   executeStreamGeneration,
 } from '../engine/stream/tool-loop.js'
+import { sanitizeMessagesForRenderer } from './message-sanitizer.js'
 
 // ============================================
 // IPC Handlers
@@ -77,7 +78,7 @@ export function registerChatHandlers() {
     if (!session) {
       return { success: false, error: 'Session not found' }
     }
-    return { success: true, messages: session.messages }
+    return { success: true, messages: sanitizeMessagesForRenderer(session.messages) }
   })
 
   // 生成聊天标题
@@ -202,6 +203,24 @@ export function registerChatHandlers() {
 // Handler Implementations
 // ============================================
 
+async function resolveConfigWithAuth(
+  providerId: string,
+  providerConfig: ProviderConfig | undefined,
+  model: string,
+): Promise<ProviderConfigWithKey | null> {
+  const authContext = await resolveProviderAuth(providerId, providerConfig)
+  if (!authContext) return null
+
+  return {
+    ...providerConfig,
+    model,
+    selectedModels: providerConfig?.selectedModels ?? [model],
+    apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
+    authContext,
+    oauthToken: authContext.kind === 'oauth' ? authContext.token : providerConfig?.oauthToken,
+  }
+}
+
 // Edit a user message and resend to get new AI response
 async function handleEditAndResend(sessionId: string, messageId: string, newContent: string) {
   try {
@@ -216,9 +235,8 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
-    // Get API key (handles OAuth providers)
-    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
-    if (!apiKey) {
+    const authContext = await resolveProviderAuth(providerId, providerConfig)
+    if (!authContext) {
       const isOAuth = requiresOAuth(providerId)
       return {
         success: false,
@@ -239,12 +257,14 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
     const session = store.getSession(sessionId)
     const historyMessages = buildHistoryMessages(session?.messages || [], session)
 
-    // Use AI SDK to generate response (use OAuth token as apiKey)
+    // Use AI SDK to generate response
     const apiType = getProviderApiType(settings, providerId)
     const response = await generateChatResponseWithReasoning(
       providerId,
       {
-        apiKey,  // Use the apiKey we got (OAuth token or regular API key)
+        apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
+        authContext,
+        oauthToken: authContext.kind === 'oauth' ? authContext.token : providerConfig?.oauthToken,
         baseUrl: providerConfig?.baseUrl,
         model: providerConfig?.model || '',
         apiType,
@@ -297,9 +317,8 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
     const settings = store.getSettings()
     const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
-    // Get API key (handles OAuth providers)
-    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
-    if (!apiKey) {
+    const configWithApiKey = await resolveConfigWithAuth(providerId, providerConfig, effectiveModel)
+    if (!configWithApiKey) {
       const isOAuth = requiresOAuth(providerId)
       return {
         success: false,
@@ -307,14 +326,6 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
           ? `Not logged in to ${providerId}. Please login in settings.`
           : 'API Key not configured. Please configure your AI settings.',
       }
-    }
-
-    // Create config with the API key (for OAuth providers, this is the OAuth token)
-    const configWithApiKey: ProviderConfigWithKey = {
-      ...providerConfig,
-      model: effectiveModel,
-      selectedModels: providerConfig?.selectedModels ?? [effectiveModel],
-      apiKey,
     }
 
     if (!isProviderSupported(providerId)) {
@@ -427,9 +438,8 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
-    // Get API key (handles OAuth providers)
-    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
-    if (!apiKey) {
+    const authContext = await resolveProviderAuth(providerId, providerConfig)
+    if (!authContext) {
       const isOAuth = requiresOAuth(providerId)
       return {
         success: false,
@@ -454,7 +464,9 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     const response = await generateChatResponseWithReasoning(
       providerId,
       {
-        apiKey,
+        apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
+        authContext,
+        oauthToken: authContext.kind === 'oauth' ? authContext.token : providerConfig?.oauthToken,
         baseUrl: providerConfig?.baseUrl,
         model: providerConfig?.model || '',
         apiType,
@@ -507,9 +519,8 @@ async function handleGenerateTitle(userMessage: string) {
     const providerId = settings.ai.provider
     const providerConfig = getProviderConfig(settings)
 
-    // Get API key (handles OAuth providers)
-    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
-    if (!apiKey || !isProviderSupported(providerId)) {
+    const authContext = await resolveProviderAuth(providerId, providerConfig)
+    if (!authContext || !isProviderSupported(providerId)) {
       // Fallback to simple truncation
       return {
         success: true,
@@ -521,7 +532,9 @@ async function handleGenerateTitle(userMessage: string) {
     const title = await generateChatTitle(
       providerId,
       {
-        apiKey,
+        apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
+        authContext,
+        oauthToken: authContext.kind === 'oauth' ? authContext.token : providerConfig?.oauthToken,
         baseUrl: providerConfig?.baseUrl,
         model: providerConfig?.model || '',
         apiType,
@@ -560,6 +573,12 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
       timestamp: Date.now(),
       attachments: attachments, // Include file/image attachments
     }
+    mediaLibraryService.ingestMessageAttachments(
+      sessionId,
+      userMessage.id,
+      userMessage.role,
+      userMessage.attachments,
+    )
     console.log('[Backend] Created user message with id:', userMessage.id, 'attachments:', attachments?.length || 0)
     store.addMessage(sessionId, userMessage)
 
@@ -573,9 +592,8 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     const settings = store.getSettings()
     const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
-    // Get API key (handles OAuth providers)
-    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
-    if (!apiKey) {
+    const configWithApiKey = await resolveConfigWithAuth(providerId, providerConfig, effectiveModel)
+    if (!configWithApiKey) {
       const isOAuth = requiresOAuth(providerId)
       return {
         success: false,
@@ -583,14 +601,6 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
           ? `Not logged in to ${providerId}. Please login in settings.`
           : 'API Key not configured. Please configure your AI settings.',
       }
-    }
-
-    // Create config with the API key (for OAuth providers, this is the OAuth token)
-    const configWithApiKey: ProviderConfigWithKey = {
-      ...providerConfig,
-      model: effectiveModel,
-      selectedModels: providerConfig?.selectedModels ?? [effectiveModel],
-      apiKey,
     }
 
     if (!isProviderSupported(providerId)) {
@@ -699,9 +709,8 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     const settings = store.getSettings()
     const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
-    // Get API key (handles OAuth providers)
-    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
-    if (!apiKey) {
+    const configWithApiKey = await resolveConfigWithAuth(providerId, providerConfig, effectiveModel)
+    if (!configWithApiKey) {
       const isOAuth = requiresOAuth(providerId)
       return {
         success: false,
@@ -709,14 +718,6 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
           ? `Not logged in to ${providerId}. Please login in settings.`
           : 'API Key not configured',
       }
-    }
-
-    // Create config with the API key (for OAuth providers, this is the OAuth token)
-    const configWithApiKey: ProviderConfigWithKey = {
-      ...providerConfig,
-      model: effectiveModel,
-      selectedModels: providerConfig?.selectedModels ?? [effectiveModel],
-      apiKey,
     }
 
     if (!isProviderSupported(providerId)) {
@@ -774,18 +775,35 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     }
 
     const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
+    const builtinToolsForAI = hasTools ? convertToolDefinitionsForAI(enabledTools) : {}
+    const toolsForAI = hasTools ? { ...builtinToolsForAI, ...mcpTools } : {}
 
     const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
-    const { text: systemPrompt } = buildSystemPrompt({
+    const promptContext = await buildPromptContext({
+      previousState: session.promptContext ?? undefined,
+      sessionId,
+      providerId,
+      providerConfig: providerConfig as unknown as Record<string, unknown> | undefined,
+      settings,
       hasTools,
       skills: enabledSkills,
       workingDirectory: session.workingDirectory,
       contextVariables: await buildContextVariablesPromptText(sessionId),
       activeProject: projectVars.active,
       knownProjects: projectVars.known,
+      toolNames: Object.keys(builtinToolsForAI),
+      mcpToolNames: Object.keys(mcpTools),
     })
+    store.updateSessionPromptContext(sessionId, promptContext.state)
+    const requestMessages = buildRequestMessages({
+      providerId,
+      promptContext: promptContext.state,
+      emittedFragments: promptContext.emittedFragments,
+      historyMessages: [],
+    })
+    const { systemPrompt, systemPromptSegments } = requestMessages
 
-    conversationMessages.push({ role: 'system', content: systemPrompt })
+    conversationMessages.push(...(requestMessages.messages as ToolChatMessage[]))
 
     // Add history messages (excluding current assistant message)
     for (const msg of historyWithoutCurrent) {
@@ -868,12 +886,8 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
         console.log('[Chat] System Prompt:', systemPrompt)
         console.log('[Chat] Messages:', JSON.stringify(formatMessagesForLog(conversationMessages), null, 2))
 
-        // Build tools for AI
-        const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
-        const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
-
         // Continue the stream (resume after tool confirmation)
-        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, processor, enabledSkills)
+        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, [], processor, enabledSkills, undefined, undefined, systemPromptSegments)
 
         // Log request end
         const requestEndTime = Date.now()

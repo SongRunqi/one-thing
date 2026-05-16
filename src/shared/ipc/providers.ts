@@ -4,7 +4,9 @@
  */
 
 // Provider IDs - can be extended by adding new providers
-export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'zhipu' | 'gemini' | 'custom' | string
+export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'zhipu' | 'gemini' | 'codex' | 'custom' | string
+
+export type ThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 // Legacy enum for backwards compatibility
 export enum AIProvider {
@@ -17,6 +19,7 @@ export enum AIProvider {
   Gemini = 'gemini',
   ClaudeCode = 'claude-code',
   GitHubCopilot = 'github-copilot',
+  Codex = 'codex',
   Custom = 'custom',
 }
 
@@ -30,6 +33,12 @@ export interface OAuthToken {
   expiresAt: number        // Timestamp in milliseconds
   tokenType: string        // e.g., 'Bearer'
   scope?: string           // OAuth scopes
+  idToken?: string
+  accountId?: string
+  email?: string
+  planType?: string
+  isFedrampAccount?: boolean
+  providerMetadata?: Record<string, unknown>
 }
 
 /**
@@ -62,6 +71,7 @@ export interface OpenRouterModel {
   // model list newest-first in settings. Absent for custom-added or provider-direct
   // entries — those sort to the end.
   last_updated?: string
+  providerMetadata?: Record<string, unknown>
 }
 
 // Provider metadata for UI display
@@ -100,6 +110,11 @@ export interface ProviderConfig {
   maxOutputByModel?: Record<string, number>
   // Per-model native-thinking toggle. Keys are model IDs (e.g. "deepseek-v4-pro").
   thinkingByModel?: Record<string, boolean>
+  // Per-model thinking effort. Codex supports minimal/low/medium/high/xhigh;
+  // DeepSeek keeps high/max. Codex maps max to high at the provider boundary.
+  thinkingEffortByModel?: Record<string, ThinkingEffort>
+  // Per-model service tier. Codex uses this for speed controls; missing = Auto/default.
+  serviceTierByModel?: Record<string, string>
   // Per-model capability overrides. Keys are model IDs.
   modelCapabilitiesByModel?: Record<string, ModelCapabilityOverride>
   // Model metadata from models.dev. Keyed by modelId.
@@ -153,6 +168,8 @@ export interface ModelCapabilityEntry {
   }
   /** Release date from models.dev (ISO format) */
   lastUpdated?: string
+  /** Provider-specific metadata such as Codex reasoning levels and service tiers. */
+  providerMetadata?: Record<string, unknown>
 }
 
 export interface AISettings {
@@ -184,5 +201,51 @@ export interface ModelInfo {
 export interface GetProvidersResponse {
   success: boolean
   providers?: ProviderInfo[]
+  error?: string
+}
+
+export interface CodexUsageWindow {
+  usedPercent: number
+  windowSeconds?: number
+  resetAfterSeconds?: number
+  resetAt?: number
+}
+
+export interface CodexUsageCredits {
+  hasCredits: boolean
+  unlimited: boolean
+  balance?: string
+}
+
+export interface CodexUsageLimit {
+  id: string
+  name?: string
+  primary?: CodexUsageWindow
+  secondary?: CodexUsageWindow
+  rateLimitReachedType?: string
+}
+
+export interface CodexProviderUsage {
+  planType?: string
+  credits?: CodexUsageCredits
+  limits: CodexUsageLimit[]
+}
+
+export interface ProviderUsageRequest {
+  providerId: string
+}
+
+export interface ProviderUsageResponse {
+  success: boolean
+  providerId: string
+  capturedAt?: number
+  account?: {
+    id?: string
+    email?: string
+    planType?: string
+    isFedramp?: boolean
+  }
+  usage?: CodexProviderUsage
+  unsupported?: boolean
   error?: string
 }

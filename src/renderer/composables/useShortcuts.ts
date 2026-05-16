@@ -99,7 +99,10 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       if (handlers.onToggleTodoPlanWindow) {
         handlers.onToggleTodoPlanWindow()
       } else {
-        window.electronAPI?.toggleTodoPlanWindow?.()
+        window.electronAPI?.toggleTodoPlanWindow?.({
+          activation: 'preserve-current-app',
+          preserveMainWindowVisibility: true,
+        })
       }
       return
     }

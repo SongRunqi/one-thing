@@ -51,7 +51,10 @@ export interface ToolStepView {
   isAwaitingConfirmation: boolean
 }
 
-const AUTO_EXPAND_TOOLS = new Set(['write', 'read', 'edit'])
+export interface BuildToolStepViewOptions {
+  includeDetails?: boolean
+}
+
 const DETAILS_ARGS_EXCLUDED_TOOLS = new Set(['edit', 'read', 'write'])
 const STREAMING_CONTENT_CACHE_LIMIT = 80
 const STREAMING_PREVIEW_HEAD_LINES = 80
@@ -59,6 +62,12 @@ const STREAMING_PREVIEW_TAIL_LINES = 80
 const STREAMING_PREVIEW_MAX_LINES = STREAMING_PREVIEW_HEAD_LINES + STREAMING_PREVIEW_TAIL_LINES
 
 const streamingContentCache = new Map<string, StreamingToolContent | null>()
+
+interface ToolContentSource {
+  filePath: string
+  content: string
+  cacheKey: string
+}
 
 export function buildSyntheticToolCall(step: Step): ToolCall {
   const name = step.title?.split(':')[0] || 'tool'
@@ -72,25 +81,30 @@ export function buildSyntheticToolCall(step: Step): ToolCall {
   }
 }
 
-export function buildToolStepView(step: Step): ToolStepView {
+export function buildToolStepView(step: Step, options: BuildToolStepViewOptions = {}): ToolStepView {
+  const includeDetails = options.includeDetails ?? true
   const toolCall = step.toolCall || buildSyntheticToolCall(step)
   const toolName = toolCall.toolName?.toLowerCase() || ''
   const status = getToolRenderStatus(toolCall, step)
+  const isRejected = status === 'rejected'
   const diff = getDiffFromStep(step)
-  const streamingContent = getCachedStreamingContent(step, diff, status)
-  const streamingDiff = getStreamingDiff(streamingContent)
+  const streamingContent = includeDetails ? getCachedStreamingContent(step, diff, status) : null
+  const streamingDiff = includeDetails ? getStreamingDiff(streamingContent) : null
   const filePath = getToolFilePath(toolCall, diff, streamingContent)
-  const argsJson = getArgsJson(step)
-  const resultText = getResultText(step)
-  const liveOutput = step.status === 'running' && step.result
+  const argsJson = includeDetails ? getArgsJson(step) : null
+  const resultText = includeDetails ? getResultText(step) : null
+  const liveOutput = includeDetails && step.status === 'running' && step.result
     ? truncateOutput(step.result)
     : null
-  const inlineResult = getInlineResult(step)
-  const errorPreview = step.status === 'failed' && step.error
-    ? truncateError(step.error, 30)
-    : null
+  const inlineResult = includeDetails ? getInlineResult(step) : null
+  const errorPreview = isRejected
+    ? 'Rejected'
+    : step.status === 'failed' && step.error
+      ? truncateError(step.error, 30)
+      : null
 
   const hasDetails = !!(
+    hasPotentialDetails(step, toolName, diff) ||
     streamingContent ||
     diff ||
     step.thinking ||
@@ -114,17 +128,38 @@ export function buildToolStepView(step: Step): ToolStepView {
     errorPreview,
     streamingContent,
     streamingDiff,
-    streamingDiffLines: streamingDiff ? parseStreamingDiffLines(streamingContent) : [],
+    streamingDiffLines: includeDetails && streamingDiff ? parseStreamingDiffLines(streamingContent) : [],
     diff,
-    diffLines: diff ? parseDiffWithLineNumbers(diff.diff) : [],
+    diffLines: includeDetails && diff ? parseDiffWithLineNumbers(diff.diff) : [],
     argsJson,
     resultText,
     liveOutput,
     hasDetails,
-    defaultExpanded: status === 'awaiting-confirmation' ||
-      (AUTO_EXPAND_TOOLS.has(toolName) && (status === 'streaming-input' || status === 'completed')),
+    defaultExpanded: status === 'awaiting-confirmation' || status === 'failed' || status === 'rejected',
     isAwaitingConfirmation: status === 'awaiting-confirmation',
   }
+}
+
+function hasPotentialStreamingDetails(step: Step, toolName: string): boolean {
+  if (toolName !== 'write' && toolName !== 'edit') return false
+  return Boolean(
+    step.toolCall?.streamingArgs ||
+    step.toolCall?.changes ||
+    getFinalizedContentSource(step.toolCall, toolName),
+  )
+}
+
+function hasPotentialDetails(step: Step, toolName: string, diff: ToolDiffData | null): boolean {
+  if (hasPotentialStreamingDetails(step, toolName)) return true
+  if (diff || step.thinking || step.summary || step.error) return true
+  if (step.result) return true
+
+  const args = step.toolCall?.arguments
+  return Boolean(
+    args &&
+    Object.keys(args).length > 0 &&
+    !DETAILS_ARGS_EXCLUDED_TOOLS.has(toolName),
+  )
 }
 
 export function getToolFilePath(
@@ -253,16 +288,22 @@ function getCachedStreamingContent(
   diff: ToolDiffData | null,
   status: ToolRenderStatus,
 ): StreamingToolContent | null {
-  const args = step.toolCall?.streamingArgs
-  if (diff || !args) return null
+  if (diff) return null
+
+  const source = getToolContentSource(step)
+  if (!source) return null
 
   const toolCallId = step.toolCall?.id || step.toolCallId || step.id
-  const cacheKey = `${toolCallId}:${args.length}:${status}`
+  const cacheKey = `${toolCallId}:${source.cacheKey}:${status}`
   if (streamingContentCache.has(cacheKey)) {
     return streamingContentCache.get(cacheKey) ?? null
   }
 
-  const result = getStreamingContent(step, diff)
+  const result = normalizeStreamingContent({
+    filePath: source.filePath,
+    content: source.content,
+    additions: countAddedLines(source.content),
+  })
   streamingContentCache.set(cacheKey, result)
   if (streamingContentCache.size > STREAMING_CONTENT_CACHE_LIMIT) {
     const firstKey = streamingContentCache.keys().next().value
@@ -271,24 +312,33 @@ function getCachedStreamingContent(
   return result
 }
 
-function getStreamingContent(step: Step, diff: ToolDiffData | null): StreamingToolContent | null {
-  if (diff || !step.toolCall?.streamingArgs) return null
+function getToolContentSource(step: Step): ToolContentSource | null {
+  const toolCall = step.toolCall
+  const toolName = toolCall?.toolName?.toLowerCase()
+  if (!toolCall || (toolName !== 'write' && toolName !== 'edit')) return null
 
-  const toolName = step.toolCall.toolName?.toLowerCase()
-  if (toolName !== 'write' && toolName !== 'edit') return null
+  if (toolCall.streamingArgs) {
+    return getStreamingContentSource(toolName, toolCall.streamingArgs)
+  }
 
-  const args = step.toolCall.streamingArgs
+  return getFinalizedContentSource(toolCall, toolName)
+}
+
+function getStreamingContentSource(toolName: string, args: string): ToolContentSource | null {
   const result = { filePath: '', content: '' }
 
   try {
     const parsed = JSON.parse(args)
     const parsedContent = toolName === 'write' ? parsed.content : parsed.new_string
     const content = typeof parsedContent === 'string' ? parsedContent : ''
-    return normalizeStreamingContent({
-      filePath: typeof parsed.file_path === 'string' ? parsed.file_path : '',
-      content,
-      additions: countAddedLines(content),
-    })
+    const filePath = typeof parsed.file_path === 'string' ? parsed.file_path : ''
+    return (filePath || content)
+      ? {
+        filePath,
+        content,
+        cacheKey: `stream:${args.length}:${hashString(content)}`,
+      }
+      : null
   } catch {
     // Incomplete JSON while the model is still streaming; fall through to
     // tolerant extraction below.
@@ -313,8 +363,40 @@ function getStreamingContent(step: Step, diff: ToolDiffData | null): StreamingTo
   }
 
   return (result.filePath || result.content)
-    ? normalizeStreamingContent({ ...result, additions: countAddedLines(result.content) })
+    ? {
+      ...result,
+      cacheKey: `stream:${args.length}:${hashString(result.content)}`,
+    }
     : null
+}
+
+function getFinalizedContentSource(toolCall: ToolCall | undefined, toolName: string): ToolContentSource | null {
+  const args = toolCall?.arguments
+  if (!args) return null
+
+  const parsedContent = toolName === 'write' ? args.content : args.new_string
+  if (typeof parsedContent !== 'string') return null
+
+  const filePath = typeof args.file_path === 'string'
+    ? args.file_path
+    : typeof args.path === 'string'
+      ? args.path
+      : ''
+
+  return {
+    filePath,
+    content: parsedContent,
+    cacheKey: `final:${filePath}:${parsedContent.length}:${hashString(parsedContent)}`,
+  }
+}
+
+function hashString(value: string): string {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return String(hash >>> 0)
 }
 
 function normalizeStreamingContent(content: StreamingToolContent): StreamingToolContent {

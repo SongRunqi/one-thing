@@ -30,6 +30,10 @@ function trimStreamingCodeTail(codeContent: string, fenceChars: string): string 
   if (lastNewline === -1) return codeContent
 
   const trailingLine = codeContent.slice(lastNewline + 1)
+  if (trailingLine.trim() === '') {
+    return codeContent.slice(0, lastNewline)
+  }
+
   const fenceChar = fenceChars[0]
   const escapedFenceChar = fenceChar === '`' ? '\\`' : '\\~'
   const partialClose = new RegExp(`^[ \\t]*${escapedFenceChar}{1,${fenceChars.length - 1}}[ \\t]*$`)

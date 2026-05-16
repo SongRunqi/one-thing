@@ -1,6 +1,46 @@
 import { ipcMain } from 'electron'
-import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { AIProvider, IPC_CHANNELS } from '../../shared/ipc.js'
+import type { ProviderUsageRequest, ProviderUsageResponse } from '../../shared/ipc.js'
+import { authService } from '../auth/auth-service.js'
+import { fetchCodexUsage } from '../providers/builtin/codex.js'
 import { getAvailableProviders } from '../providers/index.js'
+
+function toUsageAccount(token: Awaited<ReturnType<typeof authService.refreshTokenIfNeeded>>): ProviderUsageResponse['account'] {
+  return {
+    id: token.accountId,
+    email: token.email,
+    planType: token.planType,
+    isFedramp: token.isFedrampAccount,
+  }
+}
+
+export async function handleGetProviderUsage(
+  _event: Electron.IpcMainInvokeEvent,
+  request: ProviderUsageRequest,
+): Promise<ProviderUsageResponse> {
+  const providerId = request.providerId
+  if (providerId !== 'codex' && providerId !== AIProvider.Codex) {
+    return { success: true, providerId, unsupported: true }
+  }
+
+  try {
+    const token = await authService.refreshTokenIfNeeded(AIProvider.Codex)
+    const usage = await fetchCodexUsage(token)
+    return {
+      success: true,
+      providerId: AIProvider.Codex,
+      capturedAt: Date.now(),
+      account: toUsageAccount(token),
+      usage,
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      providerId: AIProvider.Codex,
+      error: error?.message || 'Failed to fetch provider usage',
+    }
+  }
+}
 
 export function registerProvidersHandlers() {
   // Get all available providers
@@ -19,4 +59,6 @@ export function registerProvidersHandlers() {
       }
     }
   })
+
+  ipcMain.handle(IPC_CHANNELS.GET_PROVIDER_USAGE, handleGetProviderUsage)
 }

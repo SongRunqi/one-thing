@@ -210,6 +210,8 @@ export function registerToolHandlers() {
             status: stepStatus,
             result: typeof updates.result === 'string' ? updates.result : (updates.result ? JSON.stringify(updates.result) : undefined),
             error: updates.error,
+            rejected: updates.rejected,
+            rejectionReason: updates.rejectionReason,
             toolCall: { ...step.toolCall, ...updates } as any,
           })
         }

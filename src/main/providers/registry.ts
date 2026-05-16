@@ -9,7 +9,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { builtinProviders } from './builtin/index.js'
 import type { ProviderDefinition, ProviderInfo, ProviderInstance, ProviderConfig } from './types.js'
-import { oauthManager } from './auth/oauth-manager.js'
+import { authService } from '../auth/auth-service.js'
 import { createBoundFetch } from './bound-fetch.js'
 
 // Registry storage
@@ -23,7 +23,10 @@ const providerInstanceCache = new Map<string, {
 const PROVIDER_CACHE_TTL = 5 * 60 * 1000  // 5 分钟
 
 function getProviderCacheKey(providerId: string, config: ProviderConfig): string {
-  return `${providerId}#${config.apiKey || ''}#${config.baseUrl || ''}`
+  const oauthTokenKey = config.authContext?.kind === 'oauth'
+    ? config.authContext.token.accessToken
+    : config.oauthToken?.accessToken || ''
+  return `${providerId}#${config.apiKey || ''}#${oauthTokenKey}#${config.baseUrl || ''}`
 }
 
 function cleanExpiredProviderCache(): void {
@@ -188,7 +191,7 @@ export async function createProviderInstanceAsync(
   // Check if this is an OAuth provider
   if (definition.info.requiresOAuth) {
     // Fetch OAuth token
-    const token = await oauthManager.refreshTokenIfNeeded(providerId)
+    const token = await authService.refreshTokenIfNeeded(providerId)
     if (!token) {
       throw new Error(`Not logged in to ${definition.info.name}. Please login first.`)
     }
@@ -197,6 +200,16 @@ export async function createProviderInstanceAsync(
     return definition.create({
       ...config,
       oauthToken: token,
+      authContext: {
+        kind: 'oauth',
+        token,
+        account: {
+          id: token.accountId,
+          email: token.email,
+          planType: token.planType,
+          isFedramp: token.isFedrampAccount,
+        },
+      },
     })
   }
 

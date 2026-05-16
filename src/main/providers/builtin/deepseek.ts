@@ -59,6 +59,7 @@ interface DeepSeekRequest {
   tools?: DeepSeekTool[]
   tool_choice?: 'auto' | 'none'
   thinking?: { type: 'enabled' | 'disabled' }
+  reasoning_effort?: 'high' | 'max'
 }
 
 interface DeepSeekStreamChunk {
@@ -276,6 +277,11 @@ function createDeepSeekModel(
         | 'enabled'
         | 'disabled'
         | undefined
+      const configuredReasoningEffort = (rest as any).providerOptions?.deepseek?.reasoningEffort
+      const userReasoningEffort =
+        configuredReasoningEffort === 'high' || configuredReasoningEffort === 'max'
+          ? configuredReasoningEffort
+          : undefined
       const effectiveThinking =
         userThinking === 'enabled'
           ? true
@@ -310,6 +316,9 @@ function createDeepSeekModel(
         request.thinking = {
           type: effectiveThinking ? 'enabled' : 'disabled',
         }
+      }
+      if (effectiveThinking && userReasoningEffort) {
+        request.reasoning_effort = userReasoningEffort
       }
 
       const response = await fetchImpl(`${baseUrl}/chat/completions`, {

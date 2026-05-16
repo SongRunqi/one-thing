@@ -43,6 +43,7 @@ import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import TodoPlanPanel from './TodoPlanPanel.vue'
+import type { MessageAttachment } from '@/types'
 
 const props = defineProps<{
   sessionId?: string
@@ -112,6 +113,7 @@ function saveCurrentSnapshot(sessionId: string, prepareForSwitch = false) {
   const hasNavigated = messageListRef.value?.getHasNavigated() ?? false
   const messageInput = inputBoxRef.value?.getMessageInput() ?? ''
   const quotedText = inputBoxRef.value?.getQuotedText() ?? ''
+  const attachments = inputBoxRef.value?.getAttachments() ?? []
 
   if (prepareForSwitch) {
     messageListRef.value?.prepareForSwitch()
@@ -125,6 +127,7 @@ function saveCurrentSnapshot(sessionId: string, prepareForSwitch = false) {
     hasNavigated,
     messageInput,
     quotedText,
+    attachments,
   })
 }
 
@@ -197,7 +200,11 @@ watch(effectiveSessionId, async (newId, oldId) => {
   })
 })
 
-async function handleSendMessage(message: string, mode: 'send' | 'steer' | 'followup' = 'send') {
+async function handleSendMessage(
+  message: string,
+  mode: 'send' | 'steer' | 'followup' = 'send',
+  attachments?: MessageAttachment[],
+) {
   if (!currentSession.value) return
   messageListRef.value?.scrollToBottom()
   if (mode === 'steer') {
@@ -205,7 +212,7 @@ async function handleSendMessage(message: string, mode: 'send' | 'steer' | 'foll
   } else if (mode === 'followup') {
     await chatQueueFollowUpMessage(message)
   } else {
-    await chatSendMessage(message)
+    await chatSendMessage(message, attachments)
   }
 }
 

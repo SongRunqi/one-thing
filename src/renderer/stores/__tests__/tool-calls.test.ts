@@ -132,6 +132,24 @@ describe('linkStepsToToolCalls', () => {
     expect(step.toolCall).toBe(canonical)
   })
 
+  it('does not overwrite newer streaming args with an older step clone', () => {
+    const canonical = makeToolCall('a', {
+      status: 'input-streaming',
+      streamingArgs: '{"file_path":"a.txt","new_string":"hello',
+    })
+    const stepClone = makeToolCall('a', {
+      status: 'input-streaming',
+      streamingArgs: '{"file_path":"a.txt"',
+    })
+    const step = makeStep('s1', { toolCallId: 'a', toolCall: stepClone })
+    const message = makeMessage([canonical], [step])
+
+    linkStepsToToolCalls(message)
+
+    expect(canonical.streamingArgs).toBe('{"file_path":"a.txt","new_string":"hello')
+    expect(step.toolCall).toBe(canonical)
+  })
+
   it('skips steps without toolCallId', () => {
     const step = makeStep('s1', { type: 'thinking' })
     const message = makeMessage([], [step])

@@ -6,6 +6,7 @@ import type {
   ContextVariable,
   GetSessionMessagesPageRequest,
   GetSessionMessagesPageResponse,
+  PromptContextState,
   SessionDetails,
   SessionMeta,
   UserMessageMarker,
@@ -57,6 +58,7 @@ interface SessionRow {
   summary: string | null
   summary_up_to_message_id: string | null
   summary_created_at: number | null
+  prompt_context_json: string | null
   migration_state: 'pending' | 'migrating' | 'ready' | 'failed'
   migrated_from_json_at: number | null
   legacy_json_path: string | null
@@ -71,7 +73,7 @@ let db: DatabaseConnection | null = null
 const migratingSessions = new Set<string>()
 
 function jsonOrNull(value: unknown): string | null {
-  if (value === undefined) return null
+  if (value === undefined || value === null) return null
   return JSON.stringify(value)
 }
 
@@ -132,13 +134,13 @@ export function upsertSessionMetadata(meta: SessionMeta | SessionDetails): void 
     INSERT INTO sessions (
       id, name, created_at, updated_at, parent_session_id, branch_from_message_id,
       last_model, last_provider, is_pinned, is_archived, archived_at,
-      working_directory, summary, summary_up_to_message_id, summary_created_at,
+      working_directory, summary, summary_up_to_message_id, summary_created_at, prompt_context_json,
       migration_state, legacy_json_path
     )
     VALUES (
       @id, @name, @createdAt, @updatedAt, @parentSessionId, @branchFromMessageId,
       @lastModel, @lastProvider, @isPinned, @isArchived, @archivedAt,
-      @workingDirectory, @summary, @summaryUpToMessageId, @summaryCreatedAt,
+      @workingDirectory, @summary, @summaryUpToMessageId, @summaryCreatedAt, @promptContextJson,
       COALESCE(@migrationState, 'pending'), @legacyJsonPath
     )
     ON CONFLICT(id) DO UPDATE SET
@@ -156,6 +158,10 @@ export function upsertSessionMetadata(meta: SessionMeta | SessionDetails): void 
       summary = COALESCE(excluded.summary, sessions.summary),
       summary_up_to_message_id = COALESCE(excluded.summary_up_to_message_id, sessions.summary_up_to_message_id),
       summary_created_at = COALESCE(excluded.summary_created_at, sessions.summary_created_at),
+      prompt_context_json = CASE
+        WHEN @promptContextProvided THEN excluded.prompt_context_json
+        ELSE sessions.prompt_context_json
+      END,
       legacy_json_path = COALESCE(excluded.legacy_json_path, sessions.legacy_json_path)
   `).run({
     id: meta.id,
@@ -173,6 +179,8 @@ export function upsertSessionMetadata(meta: SessionMeta | SessionDetails): void 
     summary: ('summary' in meta ? meta.summary : undefined) ?? null,
     summaryUpToMessageId: ('summaryUpToMessageId' in meta ? meta.summaryUpToMessageId : undefined) ?? null,
     summaryCreatedAt: ('summaryCreatedAt' in meta ? meta.summaryCreatedAt : undefined) ?? null,
+    promptContextJson: 'promptContext' in meta ? jsonOrNull(meta.promptContext) : null,
+    promptContextProvided: 'promptContext' in meta ? 1 : 0,
     migrationState: null,
     legacyJsonPath: getSessionPath(meta.id),
   })
@@ -206,6 +214,7 @@ function rowToSessionDetails(row: SessionRow): SessionDetails {
     summary: row.summary ?? undefined,
     summaryUpToMessageId: row.summary_up_to_message_id ?? undefined,
     summaryCreatedAt: row.summary_created_at ?? undefined,
+    promptContext: parseJson<PromptContextState>(row.prompt_context_json) ?? undefined,
     totalInputTokens: row.total_input_tokens ?? undefined,
     totalOutputTokens: row.total_output_tokens ?? undefined,
     totalTokens: row.total_tokens ?? undefined,
@@ -490,9 +499,9 @@ function insertSession(database: DatabaseConnection, session: ChatSession): void
       id, name, created_at, updated_at, parent_session_id, branch_from_message_id,
       last_model, last_provider, is_pinned, is_archived, archived_at,
       working_directory, summary, summary_up_to_message_id, summary_created_at,
-      migration_state, migrated_from_json_at, legacy_json_path
+      prompt_context_json, migration_state, migrated_from_json_at, legacy_json_path
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'migrating', NULL, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'migrating', NULL, ?)
   `).run(
     session.id,
     session.name,
@@ -509,6 +518,7 @@ function insertSession(database: DatabaseConnection, session: ChatSession): void
     session.summary ?? null,
     session.summaryUpToMessageId ?? null,
     session.summaryCreatedAt ?? null,
+    jsonOrNull(session.promptContext ?? null),
     getSessionPath(session.id),
   )
 }
@@ -636,6 +646,7 @@ export function syncSqliteSessionMetadata(session: ChatSession): void {
     summary: session.summary,
     summaryUpToMessageId: session.summaryUpToMessageId,
     summaryCreatedAt: session.summaryCreatedAt,
+    promptContext: session.promptContext ?? null,
     totalInputTokens: session.totalInputTokens,
     totalOutputTokens: session.totalOutputTokens,
     totalTokens: session.totalTokens,

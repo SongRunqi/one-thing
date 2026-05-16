@@ -61,6 +61,7 @@
           :steps="message.steps"
           :skill-used="message.skillUsed"
           :is-streaming="message.isStreaming"
+          :hide-inline-reasoning="false"
           :is-editing="isEditing"
           :edit-content="editContent"
           :session-id="message.sessionId"
@@ -159,7 +160,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import type { ChatMessage, ToolCall, MessageAttachment } from '@/types'
+import type { ChatMessage, ToolCall } from '@/types'
 import StepsPanel from './StepsPanel.vue'
 import ImagePreview from '../common/ImagePreview.vue'
 import MessageError from './message/MessageError.vue'
@@ -219,16 +220,7 @@ const isLoadingMemory = computed(() => {
 })
 
 const topReasoning = computed(() => {
-  const reasoning = props.message.reasoning || ''
-  if (!reasoning || !props.message.contentParts?.length) return reasoning
-
-  const inlineReasoning = props.message.contentParts
-    .filter(part => part.type === 'reasoning')
-    .map(part => part.content)
-    .join('')
-
-  if (!inlineReasoning || !reasoning.endsWith(inlineReasoning)) return reasoning
-  return reasoning.slice(0, reasoning.length - inlineReasoning.length)
+  return props.message.reasoning || ''
 })
 
 // Format time
@@ -257,11 +249,9 @@ function handleCancelEdit() {
 }
 
 // Image preview handlers
-function handleOpenImage(attachment: MessageAttachment) {
-  if (attachment.base64Data) {
-    const src = `data:${attachment.mimeType};base64,${attachment.base64Data}`
-    window.electronAPI?.openImagePreview(src, attachment.fileName)
-  }
+function handleOpenImage(src: string, fileName?: string) {
+  if (!src) return
+  window.electronAPI?.openImagePreview(src, fileName)
 }
 
 function closeImagePreview() {

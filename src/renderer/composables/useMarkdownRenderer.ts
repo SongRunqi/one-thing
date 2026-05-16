@@ -1,30 +1,46 @@
 import { perfMark, perfMeasure } from '@/utils/perf'
+import { replaceEmojiShortcodes } from '@/editor/markdown-emoji'
+import type { MarkdownRenderOptions } from '@/editor/markdown-document'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import mathjax3 from 'markdown-it-mathjax3'
 
-function createMarkdownRenderer(enableMath: boolean) {
+interface MarkdownRendererConfig {
+  enableMath: boolean
+  allowHtml: boolean
+}
+
+const markdownRendererCache = new Map<string, MarkdownIt>()
+let codeCopyHandlerInstalled = false
+
+function createMarkdownRenderer(config: MarkdownRendererConfig) {
   const instance = new MarkdownIt({
-    html: true,
+    html: config.allowHtml,
     breaks: true,
     linkify: true,
     typographer: true,
   })
 
-  if (enableMath) {
+  if (config.enableMath) {
     // Supports $...$ for inline math and $$...$$ for block math.
     instance.use(mathjax3)
+  }
+
+  instance.renderer.rules.text = (tokens, idx) => {
+    return instance.utils.escapeHtml(replaceEmojiShortcodes(tokens[idx].content))
   }
 
   // Custom fence (code block) renderer
   instance.renderer.rules.fence = (tokens, idx) => {
     const token = tokens[idx]
     const code = token.content
-    const lang = token.info.trim() || 'text'
+    const rawLang = token.info.trim().split(/\s+/)[0] || 'text'
+    const lang = sanitizeCodeLanguage(rawLang)
+    const langLabel = instance.utils.escapeHtml(rawLang || 'text')
     let highlighted: string
-    if (lang && hljs.getLanguage(lang)) {
+    if (rawLang && hljs.getLanguage(rawLang)) {
       try {
-        highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+        highlighted = hljs.highlight(code, { language: rawLang, ignoreIllegals: true }).value
       } catch (e) {
         console.error('Highlight error:', e)
         highlighted = instance.utils.escapeHtml(code)
@@ -35,8 +51,8 @@ function createMarkdownRenderer(enableMath: boolean) {
 
     return `<div class="code-block-container">
     <div class="code-block-header">
-      <div class="code-block-lang">${lang}</div>
-      <button class="code-block-copy" onclick="navigator.clipboard.writeText(decodeURIComponent(this.getAttribute('data-code'))); this.classList.add('copied'); setTimeout(() => this.classList.remove('copied'), 1500)" data-code="${encodeURIComponent(code)}">
+      <div class="code-block-lang">${langLabel}</div>
+      <button class="code-block-copy" type="button" data-code="${escapeHtmlAttribute(encodeURIComponent(code))}" title="Copy" aria-label="Copy code">
         <svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         <svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
       </button>
@@ -54,11 +70,44 @@ function createMarkdownRenderer(enableMath: boolean) {
   return instance
 }
 
-// Singleton markdown-it instances. The streaming renderer avoids MathJax's
-// heavier SVG/layout work while text is still changing; final rendering uses
-// the full renderer so completed messages keep math support.
-const md = createMarkdownRenderer(true)
-const streamingMd = createMarkdownRenderer(false)
+function getMarkdownRenderer(config: MarkdownRendererConfig): MarkdownIt {
+  const key = `${config.enableMath}:${config.allowHtml}`
+  const existing = markdownRendererCache.get(key)
+  if (existing) return existing
+  const instance = createMarkdownRenderer(config)
+  markdownRendererCache.set(key, instance)
+  return instance
+}
+
+function sanitizeCodeLanguage(lang: string): string {
+  return (lang || 'text').replace(/[^\w-]/g, '-') || 'text'
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function ensureCodeCopyHandler(): void {
+  if (codeCopyHandlerInstalled || typeof document === 'undefined') return
+  codeCopyHandlerInstalled = true
+  document.addEventListener('click', async (event) => {
+    const target = event.target as Element | null
+    const button = target?.closest?.('.code-block-copy[data-code]') as HTMLButtonElement | null
+    if (!button) return
+    const encoded = button.getAttribute('data-code') || ''
+    try {
+      await navigator.clipboard?.writeText(decodeURIComponent(encoded))
+      button.classList.add('copied')
+      window.setTimeout(() => button.classList.remove('copied'), 1500)
+    } catch (error) {
+      console.error('Failed to copy code block:', error)
+    }
+  })
+}
 
 /**
  * Escape HTML special characters
@@ -77,13 +126,18 @@ export function escapeHtml(text: string): string {
 export function renderMarkdown(
   content: string,
   isUserMessage: boolean = false,
-  options: { streaming?: boolean } = {},
+  options: MarkdownRenderOptions = {},
 ): string {
-  if (isUserMessage) {
+  if (isUserMessage || options.surface === 'user-message') {
     return escapeHtml(content).replace(/\n/g, '<br>')
   }
   perfMark('md-render-start')
-  const html = (options.streaming ? streamingMd : md).render(content)
+  ensureCodeCopyHandler()
+  const streaming = options.streaming || options.surface === 'streaming'
+  const html = getMarkdownRenderer({
+    enableMath: options.math ?? !streaming,
+    allowHtml: options.allowHtml ?? false,
+  }).render(content)
   perfMark('md-render-end')
   perfMeasure('md.render', 'md-render-start', 'md-render-end')
   return html
@@ -112,7 +166,7 @@ export function cleanReasoningContent(content: string): string {
 export function stripMarkdown(content: string): string {
   if (!content) return ''
 
-  return content
+  return replaceEmojiShortcodes(content)
     // Remove code blocks
     .replace(/```[\s\S]*?```/g, '')
     // Remove inline code

@@ -59,6 +59,8 @@ export interface ToolCall {
   status: 'pending' | 'executing' | 'completed' | 'failed' | 'cancelled' | 'input-streaming'
   result?: any               // Result of the tool execution
   error?: string             // Error message if failed
+  rejected?: boolean         // True when the user rejected permission for this call
+  rejectionReason?: string   // Optional user-provided rejection reason
   timestamp: number
   startTime?: number         // Execution start timestamp
   endTime?: number           // Execution end timestamp

@@ -19,6 +19,7 @@ import { getMCPToolsForAI } from '../../mcp/index.js'
 import { getSkillsForSession } from '../../ipc/skills.js'
 import { updateSessionUsage } from '../../ipc/sessions.js'
 import { triggerManager, type TriggerContext } from '../triggers/index.js'
+import { runAfterAssistantResponseHooks } from '../../plugins/lifecycle.js'
 import * as modelRegistry from '../../providers/model-registry.js'
 
 import { v4 as uuidv4 } from 'uuid'
@@ -28,9 +29,11 @@ import { type IPCEmitter } from './ipc-emitter.js'
 import type { StreamChunkWithTools } from '../../providers/index.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import { getEventBus } from '../../events/index.js'
+import { saveMediaImage } from '../../ipc/media.js'
 import { sendUIMessageFinish } from './stream-helpers.js'
-import { formatMessagesForLog, buildSystemPrompt, buildHistoryMessages, sanitizeToolResultForAI, type HistoryMessage } from './message-helpers.js'
+import { sanitizeToolResultForAI, type HistoryMessage } from './message-helpers.js'
 import { getTextFromContent } from './message-helpers.js'
+import { buildPromptContext, buildRequestMessages } from '../prompt/index.js'
 import { getProviderApiType } from './provider-helpers.js'
 import { executeToolAndUpdate } from './tool-execution.js'
 import { OrderedSideEffectQueue, needsOrderedSideEffectGate } from './tool-execution-order.js'
@@ -39,10 +42,12 @@ import { buildContextVariablesPromptText } from '../../variables/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 import { type PendingMessageQueue, type PendingMessage } from './message-queue.js'
 import { getAIToolName } from '../../providers/tool-name-alias.js'
+import { IPC_CHANNELS } from '../../../shared/ipc.js'
 
 // Gate per-chunk stream logs behind env flag. Running JSON.stringify on every
 // text/tool-input delta noticeably slows streaming, so default off.
 const DEBUG_STREAM = process.env.DEBUG_STREAM === '1' || process.env.DEBUG_STREAM === 'true'
+const CODEX_NATIVE_IMAGE_GENERATION_TOOL = 'image_generation'
 
 /**
  * Stream result indicating why the stream ended
@@ -98,6 +103,66 @@ function appendOrderedPart(parts: ContentPart[], part: ContentPart): void {
   parts.push(part)
 }
 
+function getTurnCodexEncryptedReasoning(turnState: TurnState): string[] {
+  return turnState.orderedParts
+    .filter((part): part is Extract<ContentPart, { type: 'provider-data' }> =>
+      part.type === 'provider-data' &&
+      part.provider === 'codex' &&
+      typeof part.encryptedReasoning === 'string' &&
+      part.encryptedReasoning.length > 0,
+    )
+    .map((part) => part.encryptedReasoning as string)
+}
+
+function providerUsesCodexOAuth(ctx: StreamContext): boolean {
+  const providerConfig = ctx.providerConfig as any
+  return providerConfig.authContext?.kind === 'oauth' ||
+    typeof providerConfig.oauthToken?.accessToken === 'string'
+}
+
+async function getCodexNativeToolsForTurn(
+  ctx: StreamContext,
+  supportsTools: boolean,
+): Promise<string[]> {
+  if (ctx.providerId !== 'codex') return []
+  if (!ctx.toolSettings?.enableToolCalls) return []
+  if (!supportsTools) return []
+  if (!providerUsesCodexOAuth(ctx)) return []
+
+  const modelInfo = await modelRegistry.getModelById(ctx.providerConfig.model)
+  const codexMetadata = modelInfo?.providerMetadata?.codex as Record<string, unknown> | undefined
+  const nativeTools = Array.isArray(codexMetadata?.nativeTools)
+    ? codexMetadata.nativeTools.filter((tool): tool is string => typeof tool === 'string')
+    : undefined
+
+  if (nativeTools) {
+    return nativeTools.includes(CODEX_NATIVE_IMAGE_GENERATION_TOOL)
+      ? [CODEX_NATIVE_IMAGE_GENERATION_TOOL]
+      : []
+  }
+
+  const inputModalities = modelInfo?.architecture?.input_modalities
+  return !modelInfo || inputModalities?.includes('image')
+    ? [CODEX_NATIVE_IMAGE_GENERATION_TOOL]
+    : []
+}
+
+function getLatestUserPrompt(messages: ToolChatMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message.role !== 'user') continue
+    const text = getTextFromContent(message.content).trim()
+    if (text) return text
+  }
+  return 'Codex image generation'
+}
+
+function buildGeneratedImageMarkdown(mediaId: string, revisedPrompt?: string): string {
+  const imageUrl = `media://${mediaId}.png`
+  const promptText = revisedPrompt?.trim()
+  return `${promptText ? `**Revised prompt:** ${promptText}\n\n` : ''}![Generated Image|mediaId:${mediaId}](${imageUrl})`
+}
+
 /**
  * Persist content parts to store after turn completion
  * Also handles IPC sending for turns WITHOUT tool calls (tool call turns send IPC earlier)
@@ -116,7 +181,7 @@ function persistTurnContentParts(
     // Only send IPC if no tool calls (otherwise already sent before tool execution).
     // Text/reasoning deltas already updated the live renderer; these low-frequency
     // parts are mainly persisted ordering anchors.
-    if (turnState.toolCalls.length === 0) {
+    if (turnState.toolCalls.length === 0 && part.type !== 'provider-data') {
       emitter.sendContentPart(part)
     }
   }
@@ -143,6 +208,7 @@ function buildContinuationMessages(
     content: string
     toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>
     reasoningContent?: string
+    codexEncryptedReasoning?: string[]
   } = {
     role: 'assistant' as const,
     content: turnState.content.value,
@@ -154,6 +220,10 @@ function buildContinuationMessages(
   }
   if (turnState.reasoning.value) {
     assistantMsg.reasoningContent = turnState.reasoning.value
+  }
+  const codexEncryptedReasoning = getTurnCodexEncryptedReasoning(turnState)
+  if (codexEncryptedReasoning.length > 0) {
+    assistantMsg.codexEncryptedReasoning = codexEncryptedReasoning
   }
   conversationMessages.push(assistantMsg)
 
@@ -197,12 +267,17 @@ function appendAssistantTurnMessage(
     role: 'assistant'
     content: string
     reasoningContent?: string
+    codexEncryptedReasoning?: string[]
   } = {
     role: 'assistant' as const,
     content: turnState.content.value,
   }
   if (turnState.reasoning.value) {
     assistantMsg.reasoningContent = turnState.reasoning.value
+  }
+  const codexEncryptedReasoning = getTurnCodexEncryptedReasoning(turnState)
+  if (codexEncryptedReasoning.length > 0) {
+    assistantMsg.codexEncryptedReasoning = codexEncryptedReasoning
   }
   conversationMessages.push(assistantMsg)
 }
@@ -280,6 +355,7 @@ export async function runStream(
   conversationMessages: ToolChatMessage[],
   systemPrompt: string,
   toolsForAI: Record<string, any>,  // Can be {} for no-tools mode
+  codexNativeTools: string[] = [],
   processor: StreamProcessor,
   enabledSkills: SkillDefinition[],
   steeringQueue?: PendingMessageQueue,
@@ -291,6 +367,12 @@ export async function runStream(
   let currentTurn = 0
   let assistantTurn = 0
   const apiType = getProviderApiType(ctx.settings, ctx.providerId)
+  const activeCodexNativeTools = codexNativeTools.length > 0
+    ? codexNativeTools
+    : await getCodexNativeToolsForTurn(
+        ctx,
+        await modelRegistry.modelSupportsTools(ctx.providerConfig.model, ctx.providerId),
+      )
   let emitter = createEventOnlyEmitter(ctx)
 
   // Get model context length for logging
@@ -385,6 +467,44 @@ export async function runStream(
     // `undefined` means "leave it to the provider's default"; only forward
     // when the user has explicitly opted in or out via ThinkToggle.
     const thinkingPref = ctx.providerConfig.thinkingByModel?.[model]
+    const lowerModel = model.toLowerCase()
+    const isDeepSeekThinkingModel =
+      ctx.providerId === 'deepseek' &&
+      (thinkingPref === true ||
+        lowerModel.includes('reasoner') ||
+        lowerModel.includes('thinking') ||
+        /(^|[^a-z])v4/.test(lowerModel))
+    const isCodexThinkingModel =
+      ctx.providerId === 'codex' &&
+      (thinkingPref === true ||
+        lowerModel.startsWith('gpt-5') ||
+        lowerModel.includes('codex') ||
+        lowerModel.includes('reasoning') ||
+        await modelRegistry.modelSupportsReasoning(model, ctx.providerId))
+    const effectiveThinking =
+      thinkingPref === undefined
+        ? isCodexThinkingModel || isDeepSeekThinkingModel
+          ? true
+          : undefined
+        : thinkingPref
+    const thinkingEffort =
+      ctx.providerId === 'deepseek' && effectiveThinking !== false && isDeepSeekThinkingModel
+        ? ctx.providerConfig.thinkingEffortByModel?.[model] ?? 'high'
+        : ctx.providerId === 'codex' && effectiveThinking !== false && isCodexThinkingModel
+          ? ctx.providerConfig.thinkingEffortByModel?.[model] ?? 'medium'
+          : undefined
+    const configuredServiceTier = ctx.providerId === 'codex'
+      ? ctx.providerConfig.serviceTierByModel?.[model]?.trim()
+      : undefined
+    const serviceTier = configuredServiceTier && configuredServiceTier.toLowerCase() !== 'auto'
+      ? configuredServiceTier
+      : undefined
+    const snapshotThinking =
+      effectiveThinking === undefined
+        ? undefined
+        : effectiveThinking
+          ? 'enabled'
+          : 'disabled'
 
     // Emit a pre-flight snapshot for the Inspector panel. Captures intent
     // (messages, tools, thinking, sampling params) without touching the
@@ -425,9 +545,10 @@ export async function runStream(
           content: text,
           contentLength: text.length,
           sourceSegments:
-            m.role === 'system' && systemPromptSegments
+            (m as any).sourceSegments ??
+            (m.role === 'system' && systemPromptSegments
               ? systemPromptSegments
-              : undefined,
+              : undefined),
           hasReasoning: m.role === 'assistant' && !!(m as any).reasoningContent,
           reasoningLength:
             m.role === 'assistant' && (m as any).reasoningContent
@@ -462,16 +583,21 @@ export async function runStream(
             model,
             turn: currentTurn,
             messages: snapshotMessages,
-            tools: Object.entries(toolsForAI).map(([name, def]) => ({
-              name,
-              description: (def as any)?.description,
-            })),
-            thinking:
-              thinkingPref === undefined
-                ? undefined
-                : thinkingPref
-                  ? 'enabled'
-                  : 'disabled',
+            tools: [
+              ...Object.entries(toolsForAI).map(([name, def]) => ({
+                name,
+                description: (def as any)?.description,
+              })),
+              ...activeCodexNativeTools.map((name) => ({
+                name,
+                description: name === CODEX_NATIVE_IMAGE_GENERATION_TOOL
+                  ? 'Codex native image generation'
+                  : undefined,
+              })),
+            ],
+            thinking: snapshotThinking,
+            thinkingEffort,
+            serviceTier,
             temperature,
             maxTokens: effectiveMaxTokens,
           },
@@ -490,6 +616,8 @@ export async function runStream(
         baseUrl: ctx.providerConfig.baseUrl,
         model,
         apiType,
+        oauthToken: (ctx.providerConfig as any).oauthToken,
+        authContext: (ctx.providerConfig as any).authContext,
       },
       conversationMessages,
       toolsForAI,
@@ -497,7 +625,10 @@ export async function runStream(
         temperature,
         maxTokens: effectiveMaxTokens,
         abortSignal: ctx.abortSignal,
-        thinking: thinkingPref,
+        thinking: effectiveThinking,
+        thinkingEffort,
+        serviceTier,
+        codexNativeTools: activeCodexNativeTools,
       }
     )
 
@@ -507,6 +638,7 @@ export async function runStream(
       if (sentToolContentParts) return
       sentToolContentParts = true
       for (const part of turn.orderedParts) {
+        if (part.type === 'provider-data') continue
         if (part.type === 'text') {
           console.log(`[Stream] Sending content_part: text (${part.content.length} chars) before first tool`)
         }
@@ -551,6 +683,62 @@ export async function runStream(
       })()
 
       toolExecutionJobs.push(job)
+    }
+
+    const handleCodexProviderData = async (chunk: StreamChunkWithTools): Promise<void> => {
+      const data = chunk.providerData
+      if (!data || data.provider !== 'codex') return
+
+      if (data.type === 'encrypted-reasoning') {
+        appendOrderedPart(turn.orderedParts, {
+          type: 'provider-data',
+          provider: 'codex',
+          encryptedReasoning: data.encryptedContent,
+          turnIndex: currentTurn,
+        })
+        return
+      }
+
+      if (data.type === 'image-generation-start') {
+        console.log(`[Codex] Image generation started: ${data.callId}`)
+        emitter.sendContentPart({
+          type: 'image-loading',
+          turnIndex: currentTurn,
+          label: 'Generating image',
+        })
+        return
+      }
+
+      if (data.type !== 'image-generation-result') return
+
+      const mediaItem = await saveMediaImage({
+        base64: data.result,
+        prompt: getLatestUserPrompt(conversationMessages),
+        revisedPrompt: data.revisedPrompt,
+        model,
+        sessionId: ctx.sessionId,
+        messageId: ctx.assistantMessageId,
+      })
+
+      const markdown = buildGeneratedImageMarkdown(mediaItem.id, data.revisedPrompt)
+      const prefix = turn.content.value && !turn.content.value.endsWith('\n') ? '\n\n' : ''
+      const content = `${prefix}${markdown}`
+      processor.handleTextChunk(content, turn.content, currentTurn)
+      appendOrderedPart(turn.orderedParts, { type: 'text', content, turnIndex: currentTurn })
+
+      if (!ctx.sender.isDestroyed()) {
+        ctx.sender.send(IPC_CHANNELS.IMAGE_GENERATED, {
+          id: mediaItem.id,
+          mediaId: mediaItem.id,
+          filePath: mediaItem.filePath,
+          prompt: mediaItem.prompt,
+          revisedPrompt: mediaItem.revisedPrompt,
+          model: mediaItem.model,
+          sessionId: ctx.sessionId,
+          messageId: ctx.assistantMessageId,
+          createdAt: mediaItem.createdAt,
+        })
+      }
     }
 
     const processToolChunk = (chunk: StreamChunkWithTools): void => {
@@ -626,6 +814,8 @@ export async function runStream(
             console.log(`[Stream] tool-input-start:`, chunk.toolInputStart?.toolName, chunk.toolInputStart?.toolCallId)
           } else if (chunk.type === 'tool-input-delta') {
             console.log(`[Stream] tool-input-delta:`, chunk.toolInputDelta?.argsTextDelta)
+          } else if (chunk.type === 'provider-data') {
+            console.log('[Stream] provider-data: codex encrypted reasoning redacted')
           } else {
             console.log(`[Stream] ${chunk.type}:`, JSON.stringify(chunk).substring(0, 150))
           }
@@ -637,11 +827,25 @@ export async function runStream(
         }
 
         if (chunk.type === 'reasoning' && chunk.reasoning) {
-          const shouldInlineReasoning = processor.accumulatedContent.length > 0
-          processor.handleReasoningChunk(chunk.reasoning, turn.reasoning, currentTurn)
-          if (shouldInlineReasoning) {
+          const hasVisibleTurnActivity =
+            turn.content.value.length > 0 ||
+            turn.toolCalls.length > 0 ||
+            sentToolContentParts ||
+            turn.orderedParts.some(part => part.type !== 'provider-data')
+          const placement =
+            currentTurn === 1 &&
+            processor.accumulatedContent.length === 0 &&
+            !hasVisibleTurnActivity
+              ? 'top'
+              : 'inline'
+          processor.handleReasoningChunk(chunk.reasoning, turn.reasoning, currentTurn, placement)
+          if (placement === 'inline') {
             appendOrderedPart(turn.orderedParts, { type: 'reasoning', content: chunk.reasoning, turnIndex: currentTurn })
           }
+        }
+
+        if (chunk.type === 'provider-data' && chunk.providerData?.provider === 'codex') {
+          await handleCodexProviderData(chunk)
         }
 
         if (chunk.type === 'tool-input-start' || chunk.type === 'tool-input-delta' || chunk.type === 'tool-input-end' || chunk.type === 'tool-call') {
@@ -896,7 +1100,12 @@ export async function executeStreamGeneration(
       console.log(`[Chat] Model ${ctx.providerConfig.model} does not support tools, skipping tool calls`)
     }
 
-    const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
+    const codexNativeTools = await getCodexNativeToolsForTurn(ctx, supportsTools)
+    const hasTools = supportsTools && (
+      enabledTools.length > 0 ||
+      Object.keys(mcpTools).length > 0 ||
+      codexNativeTools.length > 0
+    )
 
     // Build lightweight user context (low token, high value)
     const userProfile = ctx.settings.general?.userProfile
@@ -924,22 +1133,37 @@ export async function executeStreamGeneration(
     
     const userContextPrompt = contextParts.length > 0 ? contextParts.join('\n') : undefined
 
-    const projectVars = buildProjectDirsPromptVars(sessionWorkingDir)
-    const { text: systemPrompt, segments: systemPromptSegments } = buildSystemPrompt({
-      hasTools,
-      skills: enabledSkills,
-      workingDirectory: sessionWorkingDir,
-      contextVariables: await buildContextVariablesPromptText(ctx.sessionId),
-      activeProject: projectVars.active,
-      knownProjects: projectVars.known,
-    })
-
     let pausedForConfirmation = false
     const requestStartTime = Date.now()
 
     // Build tools (can be empty {} for no-tools mode)
     const builtinToolsForAI = hasTools ? convertToolDefinitionsForAI(enabledTools) : {}
     const toolsForAI = hasTools ? { ...builtinToolsForAI, ...mcpTools } : {}
+
+    const projectVars = buildProjectDirsPromptVars(sessionWorkingDir)
+    const promptContext = await buildPromptContext({
+      previousState: session?.promptContext ?? undefined,
+      sessionId: ctx.sessionId,
+      providerId: ctx.providerId,
+      providerConfig: ctx.providerConfig as unknown as Record<string, unknown>,
+      settings: ctx.settings,
+      hasTools,
+      skills: enabledSkills,
+      workingDirectory: sessionWorkingDir,
+      contextVariables: await buildContextVariablesPromptText(ctx.sessionId),
+      activeProject: projectVars.active,
+      knownProjects: projectVars.known,
+      toolNames: [...Object.keys(builtinToolsForAI), ...codexNativeTools],
+      mcpToolNames: Object.keys(mcpTools),
+    })
+    store.updateSessionPromptContext(ctx.sessionId, promptContext.state)
+    const requestMessages = buildRequestMessages({
+      providerId: ctx.providerId,
+      promptContext: promptContext.state,
+      emittedFragments: promptContext.emittedFragments,
+      historyMessages,
+    })
+    const { systemPrompt, systemPromptSegments } = requestMessages
 
     // Log request start with structured format
     // logRequestStart({
@@ -953,11 +1177,7 @@ export async function executeStreamGeneration(
     //   hasTools,
     // })
 
-    // Build conversation messages with system prompt
-    const conversationMessages: ToolChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      ...historyMessages,
-    ]
+    const conversationMessages = requestMessages.messages as ToolChatMessage[]
 
     // Unified stream execution - works for both tools and no-tools modes
     // When toolsForAI is {}, the stream loop naturally exits after first turn
@@ -966,6 +1186,7 @@ export async function executeStreamGeneration(
       conversationMessages,
       systemPrompt,
       toolsForAI,
+      codexNativeTools,
       processor,
       enabledSkills,
       ctx.steeringQueue,
@@ -1035,6 +1256,12 @@ export async function executeStreamGeneration(
           // Run triggers asynchronously - don't await
           triggerManager.runPostResponse(triggerContext)
             .catch(err => console.error('[Backend] Trigger execution failed:', err))
+
+          runAfterAssistantResponseHooks({
+            ...triggerContext,
+            assistantMessageId: finalCtx.assistantMessageId,
+            settings: finalCtx.settings,
+          }).catch(err => console.error('[Backend] Plugin after-response hook failed:', err))
         }
       }
     } else {

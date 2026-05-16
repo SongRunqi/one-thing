@@ -2,17 +2,44 @@ import { ipcMain } from 'electron'
 import { IPC_CHANNELS, AIProvider } from '../../shared/ipc.js'
 import type { OpenRouterModel } from '../../shared/ipc.js'
 import * as modelRegistry from '../providers/model-registry.js'
-import { oauthManager } from '../providers/auth/oauth-manager.js'
+import { authService } from '../auth/auth-service.js'
 import { fetchCopilotModels, detectModelCapabilities } from '../providers/builtin/github-copilot.js'
+import { fetchCodexModels, getCodexFallbackModels } from '../providers/builtin/codex.js'
+import { getSettings } from '../stores/settings.js'
 
 // === GitHub Copilot Models Handler (still fetches from Copilot API) ===
 
 async function fetchGitHubCopilotModelsRaw(): Promise<{ id: string; name: string; description?: string }[]> {
-  const token = await oauthManager.getToken('github-copilot')
+  const token = await authService.getToken('github-copilot')
   if (!token?.accessToken) {
     throw new Error('Not logged in to GitHub Copilot')
   }
   return await fetchCopilotModels(token.accessToken)
+}
+
+async function fetchCodexModelsRaw(): Promise<OpenRouterModel[]> {
+  const token = await authService.refreshTokenIfNeeded('codex')
+  return fetchCodexModels(token)
+}
+
+function mergeModelsById(...groups: OpenRouterModel[][]): OpenRouterModel[] {
+  const merged = new Map<string, OpenRouterModel>()
+  for (const group of groups) {
+    for (const model of group) {
+      if (!merged.has(model.id)) {
+        merged.set(model.id, model)
+      }
+    }
+  }
+  return Array.from(merged.values())
+}
+
+function getConfiguredCodexModelIds(): string[] {
+  const config = getSettings()?.ai?.providers?.codex
+  return Array.from(new Set([
+    ...(config?.selectedModels ?? []),
+    ...(config?.model ? [config.model] : []),
+  ].filter(Boolean)))
 }
 
 // === Model Registry Handlers (read from settings.json) ===
@@ -61,6 +88,22 @@ async function handleGetModelsWithCapabilities(
           return { success: true, models: regModels }
         }
         return { success: false, error: 'No models available. Please refresh the model registry.' }
+      }
+    }
+
+    if (request.providerId === 'codex' || request.providerId === AIProvider.Codex) {
+      try {
+        const models = await fetchCodexModelsRaw()
+        modelRegistry.saveProviderModels('codex', models)
+        return { success: true, models }
+      } catch (error: any) {
+        console.warn('[Models] Failed to fetch Codex models, using fallback:', error.message)
+        const regModels = await modelRegistry.getModelsForProvider('codex')
+        const selectedFallbacks = getCodexFallbackModels(getConfiguredCodexModelIds())
+        return {
+          success: true,
+          models: mergeModelsById(regModels, selectedFallbacks, getCodexFallbackModels()),
+        }
       }
     }
 

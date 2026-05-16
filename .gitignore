@@ -32,6 +32,8 @@ dist-ssr
 # Electron
 out/
 release/
+native/*/build/
+resources/native/*.node
 
 # Environment
 .env

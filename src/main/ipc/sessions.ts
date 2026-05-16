@@ -5,6 +5,10 @@ import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { TokenUsage, SessionTokenUsage } from '../../shared/ipc.js'
 import * as store from '../store.js'
 import { workdirGateway } from '../variables/gateways.js'
+import {
+  sanitizeMessagesForRenderer,
+  sanitizeSessionForRenderer,
+} from './message-sanitizer.js'
 
 /**
  * Update session usage (called from chat.ts when finish chunk is received)
@@ -90,7 +94,7 @@ export function registerSessionHandlers() {
       if (!messages) {
         return { success: false, error: 'Session not found' }
       }
-      return { success: true, messages }
+      return { success: true, messages: sanitizeMessagesForRenderer(messages) }
     } catch (error: any) {
       console.error('[Sessions] Failed to get session messages:', error)
       return { success: false, error: error.message || 'Failed to get messages' }
@@ -108,7 +112,12 @@ export function registerSessionHandlers() {
         messages: response.messages?.length ?? 0,
         success: response.success,
       })
-      return response
+      return response.success
+        ? {
+            ...response,
+            messages: sanitizeMessagesForRenderer(response.messages),
+          }
+        : response
     } catch (error: any) {
       console.error('[Sessions] Failed to get session messages page:', error)
       console.info('[Perf][SessionPage][ipc]', {
@@ -138,7 +147,7 @@ export function registerSessionHandlers() {
   ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name }) => {
     const sessionId = uuidv4()
     const session = store.createSession(sessionId, name || 'New Chat')
-    return { success: true, session }
+    return { success: true, session: sanitizeSessionForRenderer(session) }
   })
 
   // 切换会话
@@ -149,7 +158,7 @@ export function registerSessionHandlers() {
     }
 
     store.setCurrentSessionId(sessionId)
-    return { success: true, session }
+    return { success: true, session: sanitizeSessionForRenderer(session) }
   })
 
   // 获取单个会话（不切换）
@@ -158,7 +167,7 @@ export function registerSessionHandlers() {
     if (!session) {
       return { success: false, error: 'Session not found' }
     }
-    return { success: true, session }
+    return { success: true, session: sanitizeSessionForRenderer(session) }
   })
 
   // 删除会话 (包括级联删除子会话)
@@ -256,7 +265,7 @@ export function registerSessionHandlers() {
           inheritedMessages
         )
 
-        return { success: true, session: branchSession }
+        return { success: true, session: sanitizeSessionForRenderer(branchSession) }
       } catch (error: any) {
         console.error('Error creating branch:', error)
         return { success: false, error: error.message || 'Failed to create branch' }

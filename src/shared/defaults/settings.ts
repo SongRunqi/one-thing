@@ -10,6 +10,16 @@ import type {
   ChatSettings,
   EditorSettings,
   NetworkSettings,
+  SoulMemoryActiveSettings,
+  SoulMemoryDailyContextSettings,
+  SoulMemoryDreamingSettings,
+  SoulMemoryEmbeddingSettings,
+  SoulMemoryFlushSettings,
+  SoulMemoryCaptureSettings,
+  SoulMemoryCanonicalSettings,
+  SoulMemoryReadSettings,
+  SoulMemorySearchSettings,
+  SoulMemorySettings,
 } from '../ipc/settings.js'
 import type { ProviderConfig, AISettings } from '../ipc/providers.js'
 import type { ToolSettings } from '../ipc/tools.js'
@@ -28,6 +38,113 @@ export const DEFAULT_EDITOR_SETTINGS: Required<EditorSettings> = {
   syntaxHighlighting: true,
   completionEnabled: true,
   composerMaxHeight: 200,
+}
+
+export const DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS: Required<SoulMemoryActiveSettings> = {
+  enabled: true,
+  queryMode: 'recent',
+  promptStyle: 'balanced',
+  timeoutMs: 15000,
+  cacheTtlMs: 15000,
+  maxSummaryChars: 220,
+  recentUserTurns: 2,
+  recentAssistantTurns: 1,
+  recentUserChars: 220,
+  recentAssistantChars: 180,
+  circuitBreakerMaxTimeouts: 3,
+  circuitBreakerCooldownMs: 60000,
+}
+
+export const DEFAULT_SOUL_MEMORY_SEARCH_SETTINGS: Required<SoulMemorySearchSettings> = {
+  enabled: true,
+  chunkTokens: 400,
+  chunkOverlap: 80,
+  maxResults: 8,
+  mmrEnabled: true,
+  temporalDecayHalfLifeDays: 30,
+}
+
+export const DEFAULT_SOUL_MEMORY_EMBEDDING_SETTINGS: Required<SoulMemoryEmbeddingSettings> = {
+  enabled: true,
+  providerId: 'auto',
+  customProviderId: '',
+  apiKey: '',
+  model: '',
+  baseUrl: '',
+  dimensions: 0,
+}
+
+export const DEFAULT_SOUL_MEMORY_FLUSH_SETTINGS: Required<SoulMemoryFlushSettings> = {
+  enabled: true,
+  maxInputChars: 32000,
+}
+
+export const DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS: Required<SoulMemoryCaptureSettings> = {
+  enabled: true,
+  mode: 'auto',
+  policy: 'high-confidence',
+  targetPolicy: 'canonical-first',
+  writePolicy: 'high-confidence-auto',
+  target: 'memory',
+  maxInputChars: 6000,
+  timeoutMs: 12000,
+  maxCandidates: 5,
+  minConfidence: 0.55,
+  longTermMinConfidence: 0.75,
+  dailyMinConfidence: 0.55,
+}
+
+export const DEFAULT_SOUL_MEMORY_CANONICAL_SETTINGS: Required<SoulMemoryCanonicalSettings> = {
+  enabled: true,
+  store: 'sqlite',
+  highConfidenceThreshold: 0.75,
+  semanticDedupeThreshold: 0.88,
+}
+
+export const DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS: Required<SoulMemoryDreamingSettings> = {
+  enabled: false,
+  frequency: '0 3 * * *',
+  timezone: '',
+  model: '',
+  sources: ['daily', 'sessions', 'short-term'],
+  lookbackDays: 30,
+  maxSourceFiles: 12,
+  maxSessions: 12,
+  maxMessagesPerSession: 24,
+  maxInputChars: 48000,
+  maxPromotions: 10,
+  minScore: 0.78,
+  minRecallCount: 1,
+  minUniqueSources: 1,
+  timeoutMs: 60000,
+}
+
+export const DEFAULT_SOUL_MEMORY_DAILY_CONTEXT_SETTINGS: Required<SoulMemoryDailyContextSettings> = {
+  enabled: true,
+  mode: 'session-start',
+  daysBack: 1,
+  maxChars: 12000,
+}
+
+export const DEFAULT_SOUL_MEMORY_READ_SETTINGS: Required<SoulMemoryReadSettings> = {
+  defaultLines: 200,
+  maxLines: 1000,
+}
+
+export const DEFAULT_SOUL_MEMORY_SETTINGS: Required<SoulMemorySettings> = {
+  enabled: true,
+  directoryMode: 'ai-note-dir',
+  customDirectory: '',
+  bootstrapMaxChars: 12000,
+  activeMemory: DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS,
+  search: DEFAULT_SOUL_MEMORY_SEARCH_SETTINGS,
+  embeddings: DEFAULT_SOUL_MEMORY_EMBEDDING_SETTINGS,
+  memoryFlush: DEFAULT_SOUL_MEMORY_FLUSH_SETTINGS,
+  capture: DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS,
+  canonicalMemory: DEFAULT_SOUL_MEMORY_CANONICAL_SETTINGS,
+  dreaming: DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS,
+  dailyContext: DEFAULT_SOUL_MEMORY_DAILY_CONTEXT_SETTINGS,
+  read: DEFAULT_SOUL_MEMORY_READ_SETTINGS,
 }
 
 // ============================================================================
@@ -89,6 +206,12 @@ export const DEFAULT_PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
     authType: 'oauth',
     enabled: false,
   },
+  [AIProvider.Codex]: {
+    model: 'gpt-5.3-codex',
+    selectedModels: [],
+    authType: 'oauth',
+    enabled: false,
+  },
   [AIProvider.Custom]: {
     apiKey: '',
     baseUrl: '',
@@ -144,6 +267,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     useObsidianConfig: true,
     format: 'YYYY-MM-DD',
   },
+  soulMemory: DEFAULT_SOUL_MEMORY_SETTINGS,
   todoPlan: {
     enabled: true,
     directory: '',
@@ -248,6 +372,7 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         ...defaults.general.dailyNotes,
         ...settings.general?.dailyNotes,
       },
+      soulMemory: normalizeSoulMemorySettings(settings.general?.soulMemory),
       todoPlan: {
         ...defaults.general.todoPlan,
         ...settings.general?.todoPlan,
@@ -316,9 +441,380 @@ export function normalizeEditorSettings(settings?: EditorSettings): Required<Edi
   }
 }
 
+export function normalizeSoulMemorySettings(settings?: SoulMemorySettings): Required<SoulMemorySettings> {
+  return {
+    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_SETTINGS.enabled,
+    directoryMode: settings?.directoryMode === 'custom' ? 'custom' : 'ai-note-dir',
+    customDirectory: settings?.customDirectory ?? DEFAULT_SOUL_MEMORY_SETTINGS.customDirectory,
+    bootstrapMaxChars: clampNumber(
+      settings?.bootstrapMaxChars,
+      1000,
+      50000,
+      DEFAULT_SOUL_MEMORY_SETTINGS.bootstrapMaxChars,
+    ),
+    activeMemory: normalizeSoulMemoryActiveSettings(settings?.activeMemory),
+    search: normalizeSoulMemorySearchSettings(settings?.search),
+    embeddings: normalizeSoulMemoryEmbeddingSettings(settings?.embeddings),
+    memoryFlush: normalizeSoulMemoryFlushSettings(settings?.memoryFlush),
+    capture: normalizeSoulMemoryCaptureSettings(settings?.capture),
+    canonicalMemory: normalizeSoulMemoryCanonicalSettings(settings?.canonicalMemory),
+    dreaming: normalizeSoulMemoryDreamingSettings(settings?.dreaming),
+    dailyContext: normalizeSoulMemoryDailyContextSettings(settings?.dailyContext),
+    read: normalizeSoulMemoryReadSettings(settings?.read),
+  }
+}
+
+function normalizeSoulMemoryActiveSettings(
+  settings?: SoulMemoryActiveSettings,
+): Required<SoulMemoryActiveSettings> {
+  return {
+    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.enabled,
+    queryMode:
+      settings?.queryMode === 'message' || settings?.queryMode === 'full'
+        ? settings.queryMode
+        : DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.queryMode,
+    promptStyle: normalizeSoulMemoryPromptStyle(settings?.promptStyle, settings?.queryMode),
+    timeoutMs: clampNumber(settings?.timeoutMs, 1000, 60000, DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.timeoutMs),
+    cacheTtlMs: clampNumber(settings?.cacheTtlMs, 0, 120000, DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.cacheTtlMs),
+    maxSummaryChars: clampNumber(
+      settings?.maxSummaryChars,
+      100,
+      5000,
+      DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.maxSummaryChars,
+    ),
+    recentUserTurns: clampNumber(
+      settings?.recentUserTurns,
+      1,
+      8,
+      DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.recentUserTurns,
+    ),
+    recentAssistantTurns: clampNumber(
+      settings?.recentAssistantTurns,
+      0,
+      6,
+      DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.recentAssistantTurns,
+    ),
+    recentUserChars: clampNumber(
+      settings?.recentUserChars,
+      120,
+      6000,
+      DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.recentUserChars,
+    ),
+    recentAssistantChars: clampNumber(
+      settings?.recentAssistantChars,
+      120,
+      6000,
+      DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.recentAssistantChars,
+    ),
+    circuitBreakerMaxTimeouts: clampNumber(
+      settings?.circuitBreakerMaxTimeouts,
+      1,
+      10,
+      DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.circuitBreakerMaxTimeouts,
+    ),
+    circuitBreakerCooldownMs: clampNumber(
+      settings?.circuitBreakerCooldownMs,
+      1000,
+      300000,
+      DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.circuitBreakerCooldownMs,
+    ),
+  }
+}
+
+function normalizeSoulMemoryPromptStyle(
+  style: SoulMemoryActiveSettings['promptStyle'],
+  queryMode: SoulMemoryActiveSettings['queryMode'],
+): Required<SoulMemoryActiveSettings>['promptStyle'] {
+  if (
+    style === 'balanced' ||
+    style === 'strict' ||
+    style === 'contextual' ||
+    style === 'recall-heavy' ||
+    style === 'precision-heavy' ||
+    style === 'preference-only'
+  ) {
+    return style
+  }
+  if (queryMode === 'message') return 'strict'
+  if (queryMode === 'full') return 'contextual'
+  return DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS.promptStyle
+}
+
+function normalizeSoulMemorySearchSettings(
+  settings?: SoulMemorySearchSettings,
+): Required<SoulMemorySearchSettings> {
+  const chunkTokens = clampNumber(
+    settings?.chunkTokens,
+    100,
+    2000,
+    DEFAULT_SOUL_MEMORY_SEARCH_SETTINGS.chunkTokens,
+  )
+  return {
+    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_SEARCH_SETTINGS.enabled,
+    chunkTokens,
+    chunkOverlap: Math.min(
+      chunkTokens - 1,
+      clampNumber(
+        settings?.chunkOverlap,
+        0,
+        1000,
+        DEFAULT_SOUL_MEMORY_SEARCH_SETTINGS.chunkOverlap,
+      ),
+    ),
+    maxResults: clampNumber(
+      settings?.maxResults,
+      1,
+      20,
+      DEFAULT_SOUL_MEMORY_SEARCH_SETTINGS.maxResults,
+    ),
+    mmrEnabled: settings?.mmrEnabled ?? DEFAULT_SOUL_MEMORY_SEARCH_SETTINGS.mmrEnabled,
+    temporalDecayHalfLifeDays: clampNumber(
+      settings?.temporalDecayHalfLifeDays,
+      1,
+      365,
+      DEFAULT_SOUL_MEMORY_SEARCH_SETTINGS.temporalDecayHalfLifeDays,
+    ),
+  }
+}
+
+function normalizeSoulMemoryEmbeddingSettings(
+  settings?: SoulMemoryEmbeddingSettings,
+): Required<SoulMemoryEmbeddingSettings> {
+  return {
+    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_EMBEDDING_SETTINGS.enabled,
+    providerId: settings?.providerId ?? DEFAULT_SOUL_MEMORY_EMBEDDING_SETTINGS.providerId,
+    customProviderId: settings?.customProviderId ?? DEFAULT_SOUL_MEMORY_EMBEDDING_SETTINGS.customProviderId,
+    apiKey: settings?.apiKey ?? DEFAULT_SOUL_MEMORY_EMBEDDING_SETTINGS.apiKey,
+    model: settings?.model ?? DEFAULT_SOUL_MEMORY_EMBEDDING_SETTINGS.model,
+    baseUrl: settings?.baseUrl ?? DEFAULT_SOUL_MEMORY_EMBEDDING_SETTINGS.baseUrl,
+    dimensions: clampNumber(
+      settings?.dimensions,
+      0,
+      8192,
+      DEFAULT_SOUL_MEMORY_EMBEDDING_SETTINGS.dimensions,
+    ),
+  }
+}
+
+function normalizeSoulMemoryFlushSettings(
+  settings?: SoulMemoryFlushSettings,
+): Required<SoulMemoryFlushSettings> {
+  return {
+    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_FLUSH_SETTINGS.enabled,
+    maxInputChars: clampNumber(
+      settings?.maxInputChars,
+      2000,
+      120000,
+      DEFAULT_SOUL_MEMORY_FLUSH_SETTINGS.maxInputChars,
+    ),
+  }
+}
+
+function normalizeSoulMemoryCaptureSettings(
+  settings?: SoulMemoryCaptureSettings,
+): Required<SoulMemoryCaptureSettings> {
+  const mode = settings?.mode === 'explicit-only' ||
+    settings?.mode === 'auto' ||
+    settings?.mode === 'ask' ||
+    settings?.mode === 'off'
+    ? settings.mode
+    : DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.mode
+  const legacyTargetPolicy = settings?.target === 'daily'
+    ? 'daily-only'
+    : settings?.target === 'memory'
+      ? 'canonical-first'
+      : undefined
+  return {
+    enabled: mode === 'off' ? false : settings?.enabled ?? DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.enabled,
+    mode,
+    policy: settings?.policy === 'aggressive'
+      ? 'aggressive'
+      : DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.policy,
+    writePolicy: 'high-confidence-auto',
+    targetPolicy:
+      settings?.targetPolicy === 'daily-only' || settings?.targetPolicy === 'hybrid' || settings?.targetPolicy === 'canonical-first'
+        ? settings.targetPolicy
+        : legacyTargetPolicy || DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.targetPolicy,
+    target: settings?.target === 'memory' ? 'memory' : DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.target,
+    maxInputChars: clampNumber(
+      settings?.maxInputChars,
+      1000,
+      50000,
+      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.maxInputChars,
+    ),
+    timeoutMs: clampNumber(
+      settings?.timeoutMs,
+      1000,
+      60000,
+      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.timeoutMs,
+    ),
+    maxCandidates: clampNumber(
+      settings?.maxCandidates,
+      1,
+      20,
+      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.maxCandidates,
+    ),
+    minConfidence: clampFraction(
+      settings?.minConfidence,
+      0,
+      1,
+      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.minConfidence,
+    ),
+    longTermMinConfidence: clampFraction(
+      settings?.longTermMinConfidence ?? settings?.minConfidence,
+      0,
+      1,
+      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.longTermMinConfidence,
+    ),
+    dailyMinConfidence: clampFraction(
+      settings?.dailyMinConfidence ?? settings?.minConfidence,
+      0,
+      1,
+      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.dailyMinConfidence,
+    ),
+  }
+}
+
+function normalizeSoulMemoryCanonicalSettings(
+  settings?: SoulMemoryCanonicalSettings,
+): Required<SoulMemoryCanonicalSettings> {
+  return {
+    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_CANONICAL_SETTINGS.enabled,
+    store: 'sqlite',
+    highConfidenceThreshold: clampFraction(
+      settings?.highConfidenceThreshold,
+      0,
+      1,
+      DEFAULT_SOUL_MEMORY_CANONICAL_SETTINGS.highConfidenceThreshold,
+    ),
+    semanticDedupeThreshold: clampFraction(
+      settings?.semanticDedupeThreshold,
+      0.5,
+      1,
+      DEFAULT_SOUL_MEMORY_CANONICAL_SETTINGS.semanticDedupeThreshold,
+    ),
+  }
+}
+
+function normalizeSoulMemoryDreamingSettings(
+  settings?: SoulMemoryDreamingSettings,
+): Required<SoulMemoryDreamingSettings> {
+  const frequency = settings?.frequency?.trim() || DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.frequency
+  const allowedSources = new Set(['daily', 'sessions', 'short-term', 'memory', 'recall'])
+  const sources = Array.isArray(settings?.sources)
+    ? settings.sources.filter(source => allowedSources.has(source))
+    : DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.sources
+  return {
+    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.enabled,
+    frequency,
+    timezone: settings?.timezone?.trim() || DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.timezone,
+    model: settings?.model?.trim() || DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.model,
+    sources: sources.length > 0 ? sources : DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.sources,
+    lookbackDays: clampNumber(
+      settings?.lookbackDays,
+      1,
+      365,
+      DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.lookbackDays,
+    ),
+    maxSourceFiles: clampNumber(
+      settings?.maxSourceFiles,
+      1,
+      100,
+      DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.maxSourceFiles,
+    ),
+    maxSessions: clampNumber(
+      settings?.maxSessions,
+      0,
+      100,
+      DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.maxSessions,
+    ),
+    maxMessagesPerSession: clampNumber(
+      settings?.maxMessagesPerSession,
+      1,
+      200,
+      DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.maxMessagesPerSession,
+    ),
+    maxInputChars: clampNumber(
+      settings?.maxInputChars,
+      2000,
+      200000,
+      DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.maxInputChars,
+    ),
+    maxPromotions: clampNumber(
+      settings?.maxPromotions,
+      0,
+      100,
+      DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.maxPromotions,
+    ),
+    minScore: clampFraction(
+      settings?.minScore,
+      0,
+      1,
+      DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.minScore,
+    ),
+    minRecallCount: clampNumber(
+      settings?.minRecallCount,
+      1,
+      20,
+      DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.minRecallCount,
+    ),
+    minUniqueSources: clampNumber(
+      settings?.minUniqueSources,
+      1,
+      10,
+      DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.minUniqueSources,
+    ),
+    timeoutMs: clampNumber(
+      settings?.timeoutMs,
+      5000,
+      300000,
+      DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.timeoutMs,
+    ),
+  }
+}
+
+function normalizeSoulMemoryDailyContextSettings(
+  settings?: SoulMemoryDailyContextSettings,
+): Required<SoulMemoryDailyContextSettings> {
+  return {
+    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_DAILY_CONTEXT_SETTINGS.enabled,
+    mode: settings?.mode === 'always' ? 'always' : DEFAULT_SOUL_MEMORY_DAILY_CONTEXT_SETTINGS.mode,
+    daysBack: clampNumber(
+      settings?.daysBack,
+      0,
+      14,
+      DEFAULT_SOUL_MEMORY_DAILY_CONTEXT_SETTINGS.daysBack,
+    ),
+    maxChars: clampNumber(
+      settings?.maxChars,
+      1000,
+      50000,
+      DEFAULT_SOUL_MEMORY_DAILY_CONTEXT_SETTINGS.maxChars,
+    ),
+  }
+}
+
+function normalizeSoulMemoryReadSettings(
+  settings?: SoulMemoryReadSettings,
+): Required<SoulMemoryReadSettings> {
+  const maxLines = clampNumber(settings?.maxLines, 50, 5000, DEFAULT_SOUL_MEMORY_READ_SETTINGS.maxLines)
+  return {
+    defaultLines: Math.min(
+      maxLines,
+      clampNumber(settings?.defaultLines, 20, 1000, DEFAULT_SOUL_MEMORY_READ_SETTINGS.defaultLines),
+    ),
+    maxLines,
+  }
+}
+
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.max(min, Math.min(max, Math.round(value)))
+}
+
+function clampFraction(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.max(min, Math.min(max, value))
 }
 
 function stripLegacyProviderLocalAddress(providers: Record<string, unknown>): void {

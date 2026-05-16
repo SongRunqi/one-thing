@@ -252,7 +252,7 @@
               >
                 <Tooltip
                   v-if="hasVision(model)"
-                  text="Vision input"
+                  text="Image input"
                 >
                   <Eye :size="12" />
                 </Tooltip>
@@ -371,7 +371,7 @@ const CAPABILITY_KEYS: Array<{
   icon: any
 }> = [
   { key: 'tools', label: 'Tools', icon: Wrench },
-  { key: 'vision', label: 'Vision', icon: Eye },
+  { key: 'vision', label: 'Image input', icon: Eye },
   { key: 'reasoning', label: 'Reasoning', icon: Brain },
   { key: 'imageOutput', label: 'Image output', icon: Image },
   { key: 'audio', label: 'Audio', icon: AudioLines },

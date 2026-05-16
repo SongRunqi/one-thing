@@ -8,7 +8,7 @@
  * The Session state machine reduces these events into SessionState.
  */
 
-import type { Step, ToolCall, ContentPart, ChatMessage, ContextVariable } from '../ipc.js'
+import type { Step, ToolCall, ContentPart, ChatMessage, ContextVariable, ThinkingEffort } from '../ipc.js'
 import type { StreamCompleteData, StreamErrorData } from '../../main/engine/stream/ipc-emitter.js'
 import type { SessionCommand } from './session-commands.js'
 
@@ -126,10 +126,19 @@ export interface PromptSourceSegment {
   content: string
   /** Absolute on-disk path of the source .hbs file, for opening in an editor. */
   absolutePath?: string
+  role?: 'base' | 'developer' | 'user'
+  marker?: {
+    name: string
+    start: string
+    end: string
+  }
+  hash?: string
+  reason?: 'initial' | 'changed' | 'removed'
+  emittedThisTurn?: boolean
 }
 
 export interface RequestMessageSnapshot {
-  role: 'system' | 'user' | 'assistant' | 'tool'
+  role: 'system' | 'developer' | 'user' | 'assistant' | 'tool'
   /** First N chars of the text content, escaped, for quick preview. */
   contentPreview: string
   /** Full text content for expanded inspection in the renderer. */
@@ -160,6 +169,8 @@ export interface RequestSnapshotEvent {
     messages: RequestMessageSnapshot[]
     tools: Array<{ name: string; description?: string }>
     thinking?: 'enabled' | 'disabled'
+    thinkingEffort?: ThinkingEffort
+    serviceTier?: string
     temperature?: number
     maxTokens?: number
   }

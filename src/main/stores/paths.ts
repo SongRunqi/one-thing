@@ -72,6 +72,10 @@ export function getMediaImagesDir(): string {
   return path.join(getMediaDir(), 'images')
 }
 
+export function getMediaFilesDir(): string {
+  return path.join(getMediaDir(), 'files')
+}
+
 export function getMediaIndexPath(): string {
   return path.join(getMediaDir(), 'index.json')
 }
@@ -140,6 +144,7 @@ export function ensureStoreDirs(): void {
     getScreenshotsDir(),
     getMediaDir(),
     getMediaImagesDir(),
+    getMediaFilesDir(),
     getToolOutputsDir(),
     getPermissionsDir(),
   ]

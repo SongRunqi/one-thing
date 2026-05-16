@@ -18,6 +18,7 @@ import openrouter from './openrouter.js'
 import gemini from './gemini.js'
 import claudeCode from './claude-code.js'
 import githubCopilot from './github-copilot.js'
+import codex from './codex.js'
 
 import type { ProviderDefinition } from '../types.js'
 
@@ -32,6 +33,7 @@ export const builtinProviders: ProviderDefinition[] = [
   gemini,
   claudeCode,
   githubCopilot,
+  codex,
 ]
 
 export default builtinProviders

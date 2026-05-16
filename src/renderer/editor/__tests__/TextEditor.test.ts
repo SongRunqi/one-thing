@@ -164,4 +164,22 @@ describe('TextEditor', () => {
     expect(editor.getValue()).toBe('const value = 1')
     expect(editor.getSelection()).toEqual({ from: 5, to: 5 })
   })
+
+  it('renders markdown live preview widgets without breaking v-model updates', async () => {
+    const { wrapper, editor } = await mountEditor({
+      modelValue: '# Title\n\n- [ ] Task',
+      profile: 'markdown-document',
+      markdownLivePreview: true,
+    })
+
+    await flushEditor()
+    const checkbox = wrapper.element.querySelector('.md-live-task-checkbox') as HTMLButtonElement | null
+
+    expect(checkbox).not.toBeNull()
+    checkbox?.click()
+    await flushEditor()
+
+    expect(editor.getValue()).toBe('# Title\n\n- [x] Task')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['# Title\n\n- [x] Task'])
+  })
 })

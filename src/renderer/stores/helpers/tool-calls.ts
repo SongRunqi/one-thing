@@ -69,7 +69,14 @@ export function linkStepsToToolCalls(message: ChatMessage): void {
 
     if (existing) {
       if (step.toolCall && step.toolCall !== existing) {
+        const existingStreamingArgs = existing.streamingArgs
         mergeToolCall(existing, step.toolCall)
+        if (
+          typeof existingStreamingArgs === 'string' &&
+          existingStreamingArgs.length > (existing.streamingArgs?.length ?? 0)
+        ) {
+          existing.streamingArgs = existingStreamingArgs
+        }
       }
       step.toolCall = existing
     } else if (step.toolCall) {

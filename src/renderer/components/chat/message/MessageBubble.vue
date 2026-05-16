@@ -18,11 +18,11 @@
         :class="{ 'is-image': attachment.mediaType === 'image' }"
       >
         <img
-          v-if="attachment.mediaType === 'image' && attachment.base64Data"
-          :src="`data:${attachment.mimeType};base64,${attachment.base64Data}`"
+          v-if="attachment.mediaType === 'image' && attachmentImageSrc(attachment)"
+          :src="attachmentImageSrc(attachment)"
           :alt="attachment.fileName"
           class="attachment-image"
-          @click="emit('openImage', attachment)"
+          @click.stop="openImageFromAttachment(attachment)"
         >
         <div
           v-else
@@ -104,17 +104,17 @@
           <!-- Text 内容 - Waiting 状态由 MessageThinking 组件处理 -->
           <Transition
             name="text-fade"
-            :css="!isStreaming"
+            :css="false"
           >
             <div
               v-if="firstTextPart"
               class="content"
             >
               <StreamingMarkdown
-                v-if="isStreaming"
+                v-if="shouldUseStreamingMarkdown(role === 'user')"
                 :content="firstTextPart.content"
                 :is-user="role === 'user'"
-                :is-streaming="true"
+                :is-streaming="Boolean(isStreaming)"
               />
               <StaticMarkdown
                 v-else
@@ -124,9 +124,6 @@
             </div>
           </Transition>
 
-          <!-- Other parts: tool-call, steps, additional text -->
-          <!-- Streaming path keeps TransitionGroup for enter/leave animation.
-               Static path uses a plain <div> to skip TransitionGroup bookkeeping. -->
           <component
             :is="otherPartsTag"
             v-if="otherParts && otherParts.length > 0"
@@ -140,19 +137,32 @@
               <div
                 v-if="part.type === 'waiting'"
                 class="tool-loop-waiting"
+                role="status"
+                aria-live="polite"
               >
-                <span class="thinking-text flowing">Waiting</span>
+                <span
+                  class="waiting-dot"
+                  aria-hidden="true"
+                />
+                <span class="waiting-text flowing">Waiting</span>
               </div>
+              <div
+                v-else-if="part.type === 'image-loading'"
+                class="image-generation-skeleton"
+                role="status"
+                :aria-label="part.label || 'Generating image'"
+                :title="part.label || 'Generating image'"
+              />
               <!-- Additional text parts (after the first one) -->
               <div
                 v-else-if="part.type === 'text'"
                 class="content"
               >
                 <StreamingMarkdown
-                  v-if="isStreaming"
+                  v-if="shouldUseStreamingMarkdown(role === 'user')"
                   :content="part.content"
                   :is-user="role === 'user'"
-                  :is-streaming="true"
+                  :is-streaming="Boolean(isStreaming)"
                 />
                 <StaticMarkdown
                   v-else
@@ -192,10 +202,10 @@
                     class="inline-reasoning-content"
                   >
                     <StreamingMarkdown
-                      v-if="isStreaming"
+                      v-if="shouldUseStreamingMarkdown(false)"
                       :content="cleanReasoningContent(part.content)"
                       :is-user="false"
-                      :is-streaming="true"
+                      :is-streaming="Boolean(isStreaming)"
                     />
                     <StaticMarkdown
                       v-else
@@ -252,10 +262,10 @@
           class="content"
         >
           <StreamingMarkdown
-            v-if="isStreaming"
+            v-if="shouldUseStreamingMarkdown(role === 'user')"
             :content="content"
             :is-user="role === 'user'"
-            :is-streaming="true"
+            :is-streaming="Boolean(isStreaming)"
           />
           <StaticMarkdown
             v-else
@@ -291,7 +301,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted, TransitionGroup } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
 import StreamingMarkdown from './StreamingMarkdown.vue'
@@ -310,6 +320,7 @@ interface Props {
   steps?: Step[]
   skillUsed?: string
   isStreaming?: boolean
+  hideInlineReasoning?: boolean
   isEditing?: boolean
   editContent?: string
   sessionId?: string  // Session ID for AgentExecutionPanel state management
@@ -320,7 +331,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   submitEdit: [content: string]
   cancelEdit: []
-  openImage: [attachment: MessageAttachment]
+  openImage: [src: string, fileName?: string]
   contentClick: [event: MouseEvent]
   textSelection: [text: string, position: { top: number; left: number }]
   executeTool: [toolCall: ToolCall]
@@ -335,6 +346,7 @@ const editEditor = ref<EditorHandle | null>(null)
 const localEditContent = ref('')
 const isEditComposing = ref(false)
 const expandedInlineReasoning = ref<Set<string>>(new Set())
+const hasBeenStreaming = ref(Boolean(props.isStreaming))
 
 // Collapsible content
 const MAX_COLLAPSED_HEIGHT = 300 // 最大折叠高度（像素）
@@ -359,10 +371,14 @@ const otherParts = computed(() => {
   if (!props.contentParts) return []
   const hasFirstText = !!firstTextPart.value
   let skippedFirstText = false
-  let skippedFirstWaiting = false
+  let sawVisiblePartBeforeWaiting = false
 
   return props.contentParts.filter(p => {
-    if (p.type === 'loading-memory') {
+    if (p.type === 'loading-memory' || p.type === 'provider-data') {
+      return false
+    }
+
+    if (p.type === 'reasoning' && props.hideInlineReasoning) {
       return false
     }
 
@@ -372,8 +388,7 @@ const otherParts = computed(() => {
 
     // Skip the initial waiting (handled by MessageThinking)
     if (p.type === 'waiting') {
-      if (!skippedFirstWaiting && !skippedFirstText) {
-        skippedFirstWaiting = true
+      if (!sawVisiblePartBeforeWaiting) {
         return false
       }
       return true
@@ -382,22 +397,24 @@ const otherParts = computed(() => {
     // Only skip the first text if firstTextPart is rendering it
     if (p.type === 'text' && hasFirstText && !skippedFirstText) {
       skippedFirstText = true
+      sawVisiblePartBeforeWaiting = true
       return false
     }
+    sawVisiblePartBeforeWaiting = true
     return true
   })
 })
 
-// Streaming path keeps TransitionGroup (with css=false, matching the original
-// `:css="!isStreaming"`) so keyed-children move-tracking still works while
-// parts arrive. Static path uses a plain <div> — no enter/leave/move tracking,
-// no per-child animation slots, just normal DOM diffing.
-const otherPartsTag = computed(() => props.isStreaming ? TransitionGroup : 'div')
-const otherPartsWrapperProps = computed(() =>
-  props.isStreaming
-    ? { name: 'other-parts', tag: 'div', class: 'other-parts-container', css: false }
-    : { class: 'other-parts-container' }
+const otherPartsTag = 'div'
+const otherPartsWrapperProps = { class: 'other-parts-container' }
+
+const useLiveAssistantMarkdown = computed(() =>
+  props.role === 'assistant' && hasBeenStreaming.value,
 )
+
+function shouldUseStreamingMarkdown(isUser: boolean): boolean {
+  return Boolean(props.isStreaming || (!isUser && useLiveAssistantMarkdown.value))
+}
 
 // Generate stable keys for other parts TransitionGroup
 function getOtherPartKey(part: ContentPart, index: number): string {
@@ -405,7 +422,8 @@ function getOtherPartKey(part: ContentPart, index: number): string {
   if (part.type === 'reasoning') return inlineReasoningKey(part, index)
   if (part.type === 'tool-call') return `tool-call-${part.toolCalls.map(tc => tc.id).join('-') || index}`
   if (part.type === 'data-steps') return `steps-${part.turnIndex ?? index}`
-  if (part.type === 'waiting') return `waiting-${index}`
+  if (part.type === 'waiting') return `waiting-${part.turnIndex ?? index}`
+  if (part.type === 'image-loading') return `image-loading-${part.turnIndex ?? index}`
   return `part-${index}`
 }
 
@@ -468,9 +486,18 @@ function getToolCallsWithoutSteps(toolCalls: ToolCall[]): ToolCall[] {
 
 const hasVisibleContent = computed(() => {
   return props.content ||
+    (props.attachments && props.attachments.length > 0) ||
     (props.contentParts && props.contentParts.length > 0) ||
     !props.isStreaming
 })
+
+watch(
+  () => props.isStreaming,
+  (isStreaming) => {
+    if (isStreaming) hasBeenStreaming.value = true
+  },
+  { immediate: true },
+)
 
 function getStepsForTurn(turnIndex: number | undefined) {
   if (!props.steps) return []
@@ -604,6 +631,26 @@ function handleTextSelection() {
 
     emit('textSelection', text, { top, left })
   }, 10)
+}
+
+function attachmentImageSrc(attachment: MessageAttachment): string {
+  if (attachment.base64Data) {
+    return `data:${attachment.mimeType};base64,${attachment.base64Data}`
+  }
+  return attachment.url || ''
+}
+
+function openImageFromAttachment(attachment: MessageAttachment) {
+  const src = attachmentImageSrc(attachment)
+  if (!src) {
+    console.warn('[MessageBubble] Image attachment has no preview source:', {
+      id: attachment.id,
+      fileName: attachment.fileName,
+      mimeType: attachment.mimeType,
+    })
+    return
+  }
+  emit('openImage', src, attachment.fileName)
 }
 
 function handleContentClick(event: MouseEvent) {
@@ -794,6 +841,54 @@ html[data-theme='light'] .attachment-file {
   transition: none;
 }
 
+.image-generation-skeleton {
+  position: relative;
+  width: min(320px, 70vw);
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.08), transparent 36%),
+    var(--bg-elevated);
+}
+
+.image-generation-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.16),
+    transparent
+  );
+  animation: image-skeleton-shimmer 1.25s ease-in-out infinite;
+}
+
+html[data-theme='light'] .image-generation-skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.72),
+    transparent
+  );
+}
+
+@keyframes image-skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-generation-skeleton::after {
+    animation: none;
+  }
+}
+
 .content-wrapper.collapsed {
   /* Gradient mask at bottom when collapsed */
 }
@@ -876,52 +971,72 @@ html[data-theme='light'] .attachment-file {
 
 /* Tool loop waiting (工具执行后等待 AI 继续) */
 .tool-loop-waiting {
-  padding: 8px 0;
+  --waiting-fg: color-mix(
+    in srgb,
+    var(--text-ai-thinking, var(--text-muted, var(--muted))) 72%,
+    var(--text-primary, var(--text)) 28%
+  );
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 3px 0;
+  color: var(--waiting-fg);
+  font-size: 13px;
+  line-height: 20px;
 }
 
-/* Flowing gradient text for waiting indicator */
-.thinking-text.flowing {
+.waiting-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 28%, transparent);
+  animation: waitingDotPulse 1.35s ease-in-out infinite;
+}
+
+.waiting-text {
   font-size: 13px;
-  font-weight: 500;
-  background: linear-gradient(
-    90deg,
-    var(--muted) 0%,
-    var(--accent) 50%,
-    var(--muted) 100%
-  );
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: flowingGradient 2s linear infinite;
+  font-weight: 560;
+  color: currentColor;
+}
+
+.waiting-text.flowing {
+  animation: waitingTextPulse 1.6s ease-in-out infinite;
 }
 
 .inline-reasoning {
-  margin: 2px 0;
-  color: var(--text-ai-thinking, var(--muted));
+  --reasoning-fg: color-mix(
+    in srgb,
+    var(--text-ai-thinking, var(--text-muted, var(--muted))) 76%,
+    var(--text-primary, var(--text)) 24%
+  );
+  margin: 3px 0;
+  color: var(--reasoning-fg);
 }
 
 .inline-reasoning-header {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  min-height: 18px;
-  padding: 0;
+  gap: 6px;
+  min-height: 22px;
+  padding: 1px 0;
   background: transparent;
   border: none;
-  color: color-mix(in srgb, var(--text-ai-thinking, var(--muted)) 78%, transparent);
+  color: color-mix(in srgb, var(--reasoning-fg) 88%, transparent);
   cursor: pointer;
   font: inherit;
-  line-height: 18px;
+  line-height: 20px;
 }
 
 .inline-reasoning-header:hover {
-  color: var(--text-ai-thinking, var(--muted));
+  color: var(--reasoning-fg);
 }
 
 .inline-reasoning-label {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 560;
 }
 
 .inline-reasoning-icon {
@@ -934,16 +1049,17 @@ html[data-theme='light'] .attachment-file {
 }
 
 .inline-reasoning-body {
-  margin-top: 3px;
+  margin-top: 4px;
 }
 
 .inline-reasoning-content {
   min-height: 0;
   overflow: hidden;
-  padding-left: 8px;
-  border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  padding-left: 10px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 34%, var(--border));
   font-size: 13px;
   line-height: 1.55;
+  color: color-mix(in srgb, var(--reasoning-fg) 92%, var(--text-primary, var(--text)) 8%);
 }
 
 .inline-reasoning-content :deep(p) {
@@ -954,9 +1070,27 @@ html[data-theme='light'] .attachment-file {
   margin-bottom: 0;
 }
 
-@keyframes flowingGradient {
-  0% { background-position: 200% center; }
-  100% { background-position: -200% center; }
+@keyframes waitingDotPulse {
+  0%, 100% {
+    opacity: 0.58;
+    transform: scale(0.86);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes waitingTextPulse {
+  0%, 100% { opacity: 0.76; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .waiting-dot,
+  .waiting-text.flowing {
+    animation: none;
+  }
 }
 
 /* ============ Other Parts TransitionGroup ============ */

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, protocol, net } from 'electron'
 import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
-import { createWindow } from './window.js'
+import { createWindow, hideUnpinnedTodoPlanWindowForMainActivation, shouldSuppressMainWindowActivation } from './window.js'
 import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills } from './ipc/handlers.js'
 import { initializeStores, flushAllPendingSaves } from './store.js'
 import { initializeSettings } from './stores/settings.js'
@@ -166,6 +166,10 @@ app.on('window-all-closed', () => {
 })
 
 app.on('activate', () => {
+  if (shouldSuppressMainWindowActivation()) {
+    return
+  }
+
   if (mainWindow === null) {
     mainWindow = createWindow()
     registerGlobalWindowShortcuts(mainWindow)
@@ -181,6 +185,16 @@ app.on('activate', () => {
         warmSearchWindow(mainWindow)
       }
     }, 1200)
+  } else if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+    mainWindow.show()
+    mainWindow.focus()
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    hideUnpinnedTodoPlanWindowForMainActivation()
+    setTimeout(() => {
+      hideUnpinnedTodoPlanWindowForMainActivation()
+    }, 80)
   }
 })
 

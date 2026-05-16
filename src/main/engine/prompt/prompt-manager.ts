@@ -35,6 +35,7 @@ interface TemplateCacheEntry {
 class PromptManager {
   private handlebars: typeof Handlebars
   private templateCache: Map<string, TemplateCacheEntry>
+  private partialMtimes: Map<string, number>
   private templatesPath: string
   private initialized: boolean
   private readonly isDev: boolean
@@ -44,6 +45,7 @@ class PromptManager {
     // Create isolated Handlebars instance
     this.handlebars = Handlebars.create()
     this.templateCache = new Map()
+    this.partialMtimes = new Map()
     this.initialized = false
     this.isDev = !app.isPackaged
     this.templatesPath = ''
@@ -106,14 +108,36 @@ class PromptManager {
           ? `${prefix}/${entry.name.replace('.hbs', '')}`
           : entry.name.replace('.hbs', '')
 
-        const content = fs.readFileSync(fullPath, 'utf-8')
-        // Wrap with sentinels so the rendered output preserves the source
-        // attribution for each chunk. Stripped before being sent to the LLM.
-        const wrapped = `${SRC_OPEN}partials/${partialName}${SRC_CLOSE_TAG}${content}${SRC_END}`
-        this.handlebars.registerPartial(partialName, wrapped)
+        this.registerPartialFromFile(partialName, fullPath)
         this._partialNames.push(partialName)
       }
     }
+  }
+
+  private registerPartialFromFile(partialName: string, fullPath: string): void {
+    const content = fs.readFileSync(fullPath, 'utf-8')
+    const stats = fs.statSync(fullPath)
+    // Wrap with sentinels so the rendered output preserves the source
+    // attribution for each chunk. Stripped before being sent to the LLM.
+    const wrapped = `${SRC_OPEN}partials/${partialName}${SRC_CLOSE_TAG}${content}${SRC_END}`
+    this.handlebars.registerPartial(partialName, wrapped)
+    this.partialMtimes.set(partialName, stats.mtimeMs)
+  }
+
+  private getPartialPath(partialName: string): string {
+    return path.join(this.templatesPath, 'partials', `${partialName}.hbs`)
+  }
+
+  private refreshPartialIfChanged(partialName: string): void {
+    if (!this.isDev) return
+
+    const fullPath = this.getPartialPath(partialName)
+    if (!fs.existsSync(fullPath)) return
+
+    const stats = fs.statSync(fullPath)
+    if (this.partialMtimes.get(partialName) === stats.mtimeMs) return
+
+    this.registerPartialFromFile(partialName, fullPath)
   }
 
   /**
@@ -195,18 +219,19 @@ class PromptManager {
    * Render a partial directly (for testing/debugging)
    */
   renderPartial(partialName: string, variables: Record<string, unknown> = {}): string {
+    this.refreshPartialIfChanged(partialName)
     const partial = this.handlebars.partials[partialName]
     if (!partial) {
       throw new Error(`Partial not found: ${partialName}`)
     }
 
     if (typeof partial === 'function') {
-      return (partial as Handlebars.TemplateDelegate)(variables)
+      return stripSentinels((partial as Handlebars.TemplateDelegate)(variables)).trim()
     }
 
     // Compile string partial
     const template = this.handlebars.compile(partial as string, { noEscape: true })
-    return template(variables)
+    return stripSentinels(template(variables)).trim()
   }
 
   /**
@@ -225,6 +250,7 @@ class PromptManager {
     for (const name of partialNames) {
       delete this.handlebars.partials[name]
     }
+    this.partialMtimes.clear()
 
     // Re-register
     this._partialNames = []

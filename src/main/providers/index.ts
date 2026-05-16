@@ -13,6 +13,7 @@
 import { generateText, streamText, convertToModelMessages, type LanguageModel } from 'ai'
 import type { UIMessage as AISDKUIMessage } from 'ai'
 import { z } from 'zod'
+import type { ThinkingEffort } from '../../shared/ipc.js'
 import {
   initializeRegistry,
   getAvailableProviders as getProvidersFromRegistry,
@@ -25,9 +26,14 @@ import {
   getProviderDefinition,
 } from './registry.js'
 import { modelSupportsReasoningSync } from './model-registry.js'
-import type { ProviderInfo, ProviderConfig } from './types.js'
+import type { ProviderCallMode, ProviderCallOptions, ProviderConfig, ProviderInfo } from './types.js'
 import { oauthManager } from '../providers/auth/oauth-manager.js'
 import { createAIToolName } from './tool-name-alias.js'
+
+type RuntimeProviderConfig = ProviderConfig & {
+  model: string
+  apiType?: 'openai' | 'anthropic'
+}
 
 // Gate per-chunk provider-layer logs. Every streamed delta went through JSON.stringify
 // before this gate, which measurably slowed streaming output.
@@ -58,6 +64,85 @@ function formatMessagesForLog(messages: unknown[]): unknown[] {
     }
     return m
   })
+}
+
+function prepareProviderCallOptions<T extends ProviderCallOptions>(
+  providerId: string,
+  modelId: string,
+  options: T,
+  context: { mode: ProviderCallMode; isReasoningModel: boolean },
+): T {
+  const definition = getProviderDefinition(providerId)
+  const prepared = definition?.prepareCallOptions?.(options, {
+    providerId,
+    modelId,
+    mode: context.mode,
+    isReasoningModel: context.isReasoningModel,
+  })
+  return (prepared ?? options) as T
+}
+
+function parseProviderResponseBody(body: unknown): string | undefined {
+  if (typeof body !== 'string' || !body.trim()) return undefined
+  try {
+    const parsed = JSON.parse(body)
+    const message = parsed?.detail ||
+      parsed?.error?.message ||
+      parsed?.message ||
+      parsed?.error
+    if (typeof message === 'string' && message.trim()) return message.trim()
+  } catch {
+    // Fall back to compact text below.
+  }
+  const compact = body.replace(/\s+/g, ' ').trim()
+  return compact || undefined
+}
+
+function getHeaderValue(headers: unknown, name: string): string | undefined {
+  const lowerName = name.toLowerCase()
+  if (!headers) return undefined
+  if (typeof (headers as any).get === 'function') {
+    return (headers as any).get(name) ?? (headers as any).get(lowerName) ?? undefined
+  }
+  if (typeof headers === 'object') {
+    const record = headers as Record<string, unknown>
+    const direct = record[name] ?? record[lowerName]
+    return typeof direct === 'string' ? direct : undefined
+  }
+  return undefined
+}
+
+function extractProviderErrorInfo(providerId: string, rawError: any): { message: string; code?: string } {
+  const statusCode = rawError?.statusCode ?? rawError?.status ?? rawError?.response?.status
+  const responseHeaders = rawError?.responseHeaders ?? rawError?.headers ?? rawError?.response?.headers
+  const requestId = getHeaderValue(responseHeaders, 'x-oai-request-id')
+  const bodyMessage = parseProviderResponseBody(rawError?.responseBody) ||
+    parseProviderResponseBody(rawError?.data?.responseBody)
+  const fallbackMessage = rawError?.message ||
+    rawError?.error?.message ||
+    rawError?.data?.error?.message ||
+    (typeof rawError === 'string' ? rawError : undefined)
+
+  let message = bodyMessage || fallbackMessage || 'Unknown stream error'
+  if (providerId === 'codex' && (bodyMessage || statusCode)) {
+    message = `Codex request failed${statusCode ? ` (${statusCode})` : ''}: ${message}`
+    if (requestId) message += ` [request id: ${requestId}]`
+  }
+
+  const code = rawError?.code ||
+    rawError?.error?.code ||
+    rawError?.error?.type ||
+    (statusCode ? String(statusCode) : undefined)
+
+  return { message, code }
+}
+
+function createProviderStreamError(providerId: string, rawError: any): Error {
+  const { message, code } = extractProviderErrorInfo(providerId, rawError)
+  const streamError = new Error(message)
+  ;(streamError as any).code = code
+  ;(streamError as any).data = rawError
+  return streamError
 }
 
 // Initialize registry on module load
@@ -178,6 +263,7 @@ export interface ChatResponseResult {
 export interface StreamChunkWithTools {
   type: 'text' | 'reasoning' | 'tool-call' | 'tool-result' | 'finish'
     | 'tool-input-start' | 'tool-input-delta' | 'tool-input-end'
+    | 'provider-data'
   text?: string
   reasoning?: string
   toolCall?: AIToolCall
@@ -193,6 +279,26 @@ export interface StreamChunkWithTools {
   toolInputEnd?: { toolCallId: string }
   /** Finish reason from AI model - used for loop control */
   finishReason?: 'stop' | 'length' | 'tool-calls' | 'content-filter' | 'error' | 'other' | 'unknown'
+  providerData?:
+    | {
+        provider: 'codex'
+        type: 'encrypted-reasoning'
+        encryptedContent: string
+      }
+    | {
+        provider: 'codex'
+        type: 'image-generation-start'
+        callId: string
+        status?: string
+      }
+    | {
+        provider: 'codex'
+        type: 'image-generation-result'
+        callId: string
+        status: string
+        revisedPrompt?: string
+        result: string
+      }
   usage?: {
     inputTokens: number
     outputTokens: number
@@ -256,7 +362,7 @@ function createZodSchema(parameters: Array<{ name: string; type: string; descrip
  */
 export async function generateChatResponse(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: RuntimeProviderConfig,
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
   options: { temperature?: number; maxTokens?: number } = {}
 ): Promise<string> {
@@ -270,7 +376,7 @@ export async function generateChatResponse(
  */
 export async function* streamChatResponse(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: RuntimeProviderConfig,
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
   options: { temperature?: number; maxTokens?: number } = {}
 ): AsyncGenerator<{ text: string; reasoning?: string }, void, unknown> {
@@ -280,7 +386,7 @@ export async function* streamChatResponse(
   const isReasoning = isReasoningModel(config.model, providerId)
 
   // Build streamText options
-  const streamOptions: Parameters<typeof streamText>[0] = {
+  let streamOptions: Parameters<typeof streamText>[0] = {
     model,
     messages,
     maxOutputTokens: options.maxTokens || 4096,
@@ -290,6 +396,11 @@ export async function* streamChatResponse(
   if (!isReasoning && options.temperature !== undefined) {
     streamOptions.temperature = options.temperature
   }
+
+  streamOptions = prepareProviderCallOptions(providerId, config.model, streamOptions as any, {
+    mode: 'stream',
+    isReasoningModel: isReasoning,
+  }) as Parameters<typeof streamText>[0]
 
   const stream = await streamText(streamOptions)
 
@@ -332,7 +443,7 @@ export async function* streamChatResponseWithReasoning(
   })
 
   // Build streamText options
-  const streamOptions: Parameters<typeof streamText>[0] = {
+  let streamOptions: Parameters<typeof streamText>[0] = {
     model,
     messages: convertedMessages,
     maxOutputTokens: options.maxTokens || 4096,
@@ -348,8 +459,13 @@ export async function* streamChatResponseWithReasoning(
     streamOptions.abortSignal = options.abortSignal
   }
 
+  streamOptions = prepareProviderCallOptions(providerId, config.model, streamOptions as any, {
+    mode: 'stream',
+    isReasoningModel: isReasoning,
+  }) as Parameters<typeof streamText>[0]
+
   console.log(`[Provider] streamChatResponseWithReasoning - providerId: ${providerId}, model: ${config.model}`)
-  console.log(`[Provider] Messages being sent:`, JSON.stringify(formatMessagesForLog(convertedMessages), null, 2))
+  console.log(`[Provider] Messages being sent:`, JSON.stringify(formatMessagesForLog((streamOptions as any).messages ?? convertedMessages), null, 2))
 
   const stream = await streamText(streamOptions)
 
@@ -380,7 +496,7 @@ export async function* streamChatResponseWithReasoning(
 
       // Handle error chunks
       if (chunk.type === 'error') {
-        const streamError = chunkAny.error || new Error('Unknown stream error')
+        const streamError = createProviderStreamError(providerId, chunkAny.error || chunkAny)
         console.error(`[Provider] Stream error in reasoning stream:`, streamError)
         throw streamError
       }
@@ -426,7 +542,7 @@ export async function* streamChatResponseWithReasoning(
         }
       } else if (chunk.type === 'error') {
         // Handle stream errors - throw to be caught by caller
-        const streamError = chunkAny.error || new Error('Unknown stream error')
+        const streamError = createProviderStreamError(providerId, chunkAny.error || chunkAny)
         console.error(`[Provider] Stream error in simple stream:`, streamError)
         throw streamError
       }
@@ -459,7 +575,7 @@ export async function* streamChatResponseWithReasoning(
  */
 export async function generateChatResponseWithReasoning(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: RuntimeProviderConfig,
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: AIMessageContent; reasoningContent?: string }>,
   options: { temperature?: number; maxTokens?: number } = {}
 ): Promise<ChatResponseResult> {
@@ -487,7 +603,7 @@ export async function generateChatResponseWithReasoning(
   }
 
   // For non-reasoning models, use generateText
-  const generateOptions: Parameters<typeof generateText>[0] = {
+  let generateOptions: Parameters<typeof generateText>[0] = {
     model,
     messages: convertedMessages,
     maxOutputTokens: options.maxTokens || 4096,
@@ -497,6 +613,11 @@ export async function generateChatResponseWithReasoning(
   if (!isReasoning && options.temperature !== undefined) {
     generateOptions.temperature = options.temperature
   }
+
+  generateOptions = prepareProviderCallOptions(providerId, config.model, generateOptions as any, {
+    mode: 'generate',
+    isReasoningModel: isReasoning,
+  }) as Parameters<typeof generateText>[0]
 
   const result = await generateText(generateOptions)
 
@@ -589,7 +710,7 @@ export function shouldUseStreaming(providerId: string, modelId: string): boolean
  */
 export async function generateChatTitle(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: RuntimeProviderConfig,
   userMessage: string
 ): Promise<string> {
   const prompt = `Generate a short, concise title (max 6 words) for a chat conversation that starts with this message. Only respond with the title, nothing else:\n\n"${userMessage}"`
@@ -610,8 +731,8 @@ export async function generateChatTitle(
  * Supports regular messages, assistant messages with tool calls, and tool result messages
  */
 export type ToolChatMessage =
-  | { role: 'user' | 'system'; content: AIMessageContent }
-  | { role: 'assistant'; content: AIMessageContent; toolCalls?: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>; reasoningContent?: string }
+  | { role: 'user' | 'system' | 'developer'; content: AIMessageContent; sourceSegments?: any[] }
+  | { role: 'assistant'; content: AIMessageContent; sourceSegments?: any[]; toolCalls?: Array<{ toolCallId: string; toolName: string; args: Record<string, any> }>; reasoningContent?: string; codexEncryptedReasoning?: string[] }
   | { role: 'tool'; content: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: any }> }
 
 /**
@@ -620,16 +741,21 @@ export type ToolChatMessage =
  */
 export async function* streamChatResponseWithTools(
   providerId: string,
-  config: { apiKey: string; baseUrl?: string; model: string; apiType?: 'openai' | 'anthropic' },
+  config: RuntimeProviderConfig,
   messages: ToolChatMessage[],
   tools: Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }>,
   options: {
     temperature?: number
     maxTokens?: number
     abortSignal?: AbortSignal
-    /** Per-model thinking toggle. Currently only honored by DeepSeek's
-     *  v4 series, where it maps to the `thinking` request flag. */
+    /** Per-model thinking toggle for native-thinking providers. */
     thinking?: boolean
+    /** Provider-specific thinking effort. */
+    thinkingEffort?: ThinkingEffort
+    /** Provider-specific service tier, used by Codex speed controls. */
+    serviceTier?: string
+    /** Provider-native Codex tools such as ChatGPT backend image generation. */
+    codexNativeTools?: string[]
   } = {}
 ): AsyncGenerator<StreamChunkWithTools, void, unknown> {
   const provider = createProvider(providerId, config)
@@ -670,14 +796,14 @@ export async function* streamChatResponseWithTools(
   // For DeepSeek Reasoner, reasoning must be included as { type: 'reasoning', text: ... } parts
   // in the content array, not as a separate reasoning_content field
   let convertedMessages: any[] = messages.map(msg => {
-    if (msg.role === 'system') {
+    if (msg.role === 'system' || msg.role === 'developer') {
       // AI SDK 6.x requires system content to be a string
       const content = typeof msg.content === 'string'
         ? msg.content
         : Array.isArray(msg.content)
           ? msg.content.filter((p: any) => p.type === 'text').map((p: any) => p.text).join('\n')
           : String(msg.content)
-      return { role: 'system', content }
+      return { role: msg.role, content }
     }
     if (msg.role === 'user') {
       // User messages can be string or array of content parts
@@ -687,12 +813,18 @@ export async function* streamChatResponseWithTools(
       // Check if we need complex content format (reasoning or tool calls)
       const hasToolCalls = msg.toolCalls && msg.toolCalls.length > 0
       const hasReasoning = !!msg.reasoningContent
+      const codexEncryptedReasoning = Array.isArray(msg.codexEncryptedReasoning)
+        ? msg.codexEncryptedReasoning.filter((value): value is string => typeof value === 'string' && value.length > 0)
+        : []
+      const providerOptions = codexEncryptedReasoning.length > 0
+        ? { providerOptions: { codex: { encryptedReasoning: codexEncryptedReasoning } } }
+        : {}
 
       // Simple-text path: no reasoning, no tool calls, not a reasoning session.
       // In a reasoning session every assistant message must carry the field
       // (even empty), so fall through to the content-array path.
       if (!hasToolCalls && !hasReasoning && !needsReasoningParts) {
-        return { role: 'assistant', content: msg.content || '' }
+        return { role: 'assistant', content: msg.content || '', ...providerOptions }
       }
 
       // Build content array with reasoning, text, and tool calls
@@ -738,10 +870,10 @@ export async function* streamChatResponseWithTools(
 
       // If no content parts, use empty string for content (required by API)
       if (content.length === 0) {
-        return { role: 'assistant', content: '' }
+        return { role: 'assistant', content: '', ...providerOptions }
       }
 
-      return { role: 'assistant', content }
+      return { role: 'assistant', content, ...providerOptions }
     }
     if (msg.role === 'tool') {
       // Tool result message - convert to AI SDK 6.x format
@@ -800,7 +932,7 @@ export async function* streamChatResponseWithTools(
   }
 
   // Build streamText options
-  const streamOptions: Parameters<typeof streamText>[0] = {
+  let streamOptions: Parameters<typeof streamText>[0] = {
     model,
     messages: convertedMessages,
     tools: Object.keys(aiTools).length > 0 ? aiTools : undefined,
@@ -829,23 +961,60 @@ export async function* streamChatResponseWithTools(
     }
   }
 
-  // DeepSeek: forward the user's per-model thinking preference (set via the
-  // ThinkToggle button) to our custom DeepSeek provider, which reads it from
-  // providerOptions.deepseek.thinking and writes it to the wire request.
-  if (providerId === 'deepseek' && options.thinking !== undefined) {
+  // DeepSeek: forward the user's per-model thinking preference and effort
+  // (set via the ThinkToggle button) to our custom provider, which writes
+  // them to the OpenAI-format wire request.
+  if (providerId === 'deepseek' && (options.thinking !== undefined || options.thinkingEffort !== undefined)) {
     (streamOptions as any).providerOptions = {
       ...((streamOptions as any).providerOptions ?? {}),
       deepseek: {
         ...((streamOptions as any).providerOptions?.deepseek ?? {}),
-        thinking: options.thinking ? 'enabled' : 'disabled',
+        ...(options.thinking !== undefined
+          ? { thinking: options.thinking ? 'enabled' : 'disabled' }
+          : {}),
+        ...(options.thinkingEffort !== undefined
+          ? { reasoningEffort: options.thinkingEffort }
+          : {}),
       },
     }
   }
 
+  // Codex's ChatGPT subscription backend expects reasoning controls in its
+  // own provider namespace. Defaulting happens in the tool loop, while the
+  // Codex provider normalizes unsupported values such as `max`.
+  if (providerId === 'codex') {
+    const streamOptionsAny = streamOptions as any
+    streamOptionsAny.includeRawChunks = true
+    streamOptionsAny.providerOptions = {
+      ...(streamOptionsAny.providerOptions ?? {}),
+      codex: {
+        ...(streamOptionsAny.providerOptions?.codex ?? {}),
+        ...(options.thinking !== undefined
+          ? { thinking: options.thinking ? 'enabled' : 'disabled' }
+          : {}),
+        ...(options.thinkingEffort !== undefined
+          ? { reasoningEffort: options.thinkingEffort }
+          : {}),
+        ...(options.serviceTier !== undefined
+          ? { serviceTier: options.serviceTier }
+          : {}),
+        ...(options.codexNativeTools && options.codexNativeTools.length > 0
+          ? { nativeTools: options.codexNativeTools }
+          : {}),
+        reasoningSummary: 'auto',
+      },
+    }
+  }
+
+  streamOptions = prepareProviderCallOptions(providerId, config.model, streamOptions as any, {
+    mode: 'stream',
+    isReasoningModel: isReasoning,
+  }) as Parameters<typeof streamText>[0]
+
   // Log complete request body being sent to AI
   const requestBodyForLog = {
     model: config.model,
-    messages: convertedMessages,
+    messages: (streamOptions as any).messages ?? convertedMessages,
     tools: streamOptions.tools ? Object.fromEntries(
       Object.entries(streamOptions.tools).map(([id, tool]) => {
         const t = tool as any
@@ -869,6 +1038,15 @@ export async function* streamChatResponseWithTools(
       if (chunk.type === 'text-delta') {
         const _t = chunkAny.textDelta || chunkAny.delta || chunkAny.text || ''
         if (_t) console.log(`[AI Stream] text: "${_t}"`)
+      } else if (chunk.type === 'raw' && chunkAny.rawValue?.provider === 'codex') {
+        const rawType = chunkAny.rawValue?.type
+        if (rawType === 'encrypted-reasoning') {
+          console.log('[AI Stream] raw: codex encrypted reasoning redacted')
+        } else if (rawType === 'image-generation-result') {
+          console.log('[AI Stream] raw: codex image generation result redacted')
+        } else if (rawType === 'image-generation-start') {
+          console.log('[AI Stream] raw: codex image generation start')
+        }
       } else if (chunk.type !== 'reasoning-delta') {
         console.log(`[AI Stream] ${chunk.type}:`, JSON.stringify(chunkAny).substring(0, 200))
       }
@@ -888,6 +1066,56 @@ export async function* streamChatResponseWithTools(
           yield { type: 'reasoning', reasoning }
         }
         break
+
+      case 'raw': {
+        const rawValue = chunkAny.rawValue
+        if (rawValue?.provider !== 'codex') break
+        if (
+          rawValue.type === 'encrypted-reasoning' &&
+          typeof rawValue.encryptedContent === 'string' &&
+          rawValue.encryptedContent.length > 0
+        ) {
+          yield {
+            type: 'provider-data',
+            providerData: {
+              provider: 'codex',
+              type: 'encrypted-reasoning',
+              encryptedContent: rawValue.encryptedContent,
+            },
+          }
+        } else if (
+          rawValue.type === 'image-generation-start' &&
+          typeof rawValue.callId === 'string'
+        ) {
+          yield {
+            type: 'provider-data',
+            providerData: {
+              provider: 'codex',
+              type: 'image-generation-start',
+              callId: rawValue.callId,
+              status: typeof rawValue.status === 'string' ? rawValue.status : undefined,
+            },
+          }
+        } else if (
+          rawValue.type === 'image-generation-result' &&
+          typeof rawValue.callId === 'string' &&
+          typeof rawValue.result === 'string' &&
+          rawValue.result.length > 0
+        ) {
+          yield {
+            type: 'provider-data',
+            providerData: {
+              provider: 'codex',
+              type: 'image-generation-result',
+              callId: rawValue.callId,
+              status: typeof rawValue.status === 'string' ? rawValue.status : 'completed',
+              revisedPrompt: typeof rawValue.revisedPrompt === 'string' ? rawValue.revisedPrompt : undefined,
+              result: rawValue.result,
+            },
+          }
+        }
+        break
+      }
 
       case 'tool-call':
         yield {
@@ -943,20 +1171,9 @@ export async function* streamChatResponseWithTools(
         // Handle stream errors - throw to be caught by caller
         // OpenAI Responses API error structure: { type: 'error', error: { message, code, type } }
         const rawError = chunkAny.error || chunkAny
+        const streamError = createProviderStreamError(providerId, rawError)
         console.error(`[Provider] Stream error chunk received:`, rawError)
-
-        // Extract error message from various possible structures
-        const errorMessage = rawError?.message ||
-          rawError?.error?.message ||
-          (typeof rawError === 'string' ? rawError : 'Unknown stream error')
-        const errorCode = rawError?.code || rawError?.error?.code || rawError?.error?.type
-
-        console.error(`[Provider] Error message:`, errorMessage, `Code:`, errorCode)
-
-        // Create a proper Error with the message
-        const streamError = new Error(errorMessage)
-        ;(streamError as any).code = errorCode
-        ;(streamError as any).data = rawError
+        console.error(`[Provider] Error message:`, streamError.message, `Code:`, (streamError as any).code)
         throw streamError
     }
   }
@@ -1142,7 +1359,7 @@ export async function* streamChatWithUIMessages(
   }
 
   // Build streamText options
-  const streamOptions: Parameters<typeof streamText>[0] = {
+  let streamOptions: Parameters<typeof streamText>[0] = {
     model,
     messages: modelMessages,
     tools: Object.keys(aiTools).length > 0 ? aiTools : undefined,
@@ -1158,6 +1375,11 @@ export async function* streamChatWithUIMessages(
   if (options.abortSignal) {
     streamOptions.abortSignal = options.abortSignal
   }
+
+  streamOptions = prepareProviderCallOptions(providerId, config.model, streamOptions as any, {
+    mode: 'stream',
+    isReasoningModel: isReasoning,
+  }) as Parameters<typeof streamText>[0]
 
   console.log(`[Provider] Starting stream with UIMessages - model: ${config.model}`)
 
@@ -1227,20 +1449,9 @@ export async function* streamChatWithUIMessages(
       case 'error':
         // OpenAI Responses API error structure: { type: 'error', error: { message, code, type } }
         const rawStreamError = chunkAny.error || chunkAny
+        const uiStreamError = createProviderStreamError(providerId, rawStreamError)
         console.error(`[Provider] Stream error:`, rawStreamError)
-
-        // Extract error message from various possible structures
-        const streamErrorMessage = rawStreamError?.message ||
-          rawStreamError?.error?.message ||
-          (typeof rawStreamError === 'string' ? rawStreamError : 'Unknown stream error')
-        const streamErrorCode = rawStreamError?.code || rawStreamError?.error?.code || rawStreamError?.error?.type
-
-        console.error(`[Provider] Error message:`, streamErrorMessage, `Code:`, streamErrorCode)
-
-        // Create a proper Error with the message
-        const uiStreamError = new Error(streamErrorMessage)
-        ;(uiStreamError as any).code = streamErrorCode
-        ;(uiStreamError as any).data = rawStreamError
+        console.error(`[Provider] Error message:`, uiStreamError.message, `Code:`, (uiStreamError as any).code)
         throw uiStreamError
     }
   }

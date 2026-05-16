@@ -56,6 +56,9 @@ export interface ToolExecutionResult {
   commandType?: 'read-only' | 'dangerous' | 'forbidden'
   // For abort/cancel - set when user cancels the operation
   aborted?: boolean
+  // For permission rejection - set when the user rejects a permission request
+  rejected?: boolean
+  rejectionReason?: string
 }
 
 /**

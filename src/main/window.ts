@@ -1,10 +1,19 @@
-import { BrowserWindow, session, shell, Menu, app, nativeTheme } from 'electron'
+import { BrowserWindow, session, shell, Menu, app, nativeTheme, type Rectangle } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { getWindowStatePath, readJsonFile, writeJsonFile } from './stores/paths.js'
 import { getSettings } from './stores/settings.js'
 import { IPC_CHANNELS } from '../shared/ipc.js'
+import type { TodoPlanActivationMode, TodoPlanWindowActionRequest } from '../shared/ipc.js'
 import { getThemeBackgroundColor, initializeThemes } from './themes/index.js'
+import { isMainAppWindowUrl } from './search/window-target.js'
+import {
+  configureNonActivatingPanel,
+  hideNonActivatingPanel,
+  isNonActivatingPanelFrontmost,
+  setNonActivatingPanelPinned,
+  showNonActivatingPanel,
+} from './native/macos-panel.js'
 
 /**
  * Get the effective theme (resolves 'system' to actual theme)
@@ -209,21 +218,74 @@ interface WindowState {
   isMaximized?: boolean
 }
 
+interface WindowStateFile extends WindowState {
+  todoPlan?: WindowState
+}
+
+interface MainWindowVisibilitySnapshot {
+  window: BrowserWindow
+  visible: boolean
+}
+
+interface TodoPlanWindowActionOptions extends TodoPlanWindowActionRequest {
+  mainWindowVisibilitySnapshot?: MainWindowVisibilitySnapshot[]
+}
+
+interface NormalizedTodoPlanWindowActionOptions {
+  activation: TodoPlanActivationMode
+  preserveMainWindowVisibility: boolean
+  mainWindowVisibilitySnapshot?: MainWindowVisibilitySnapshot[]
+}
+
 const defaultWindowState: WindowState = {
   width: 1000,
   height: 800,
 }
 
-function getWindowState(): WindowState {
-  return readJsonFile(getWindowStatePath(), defaultWindowState)
+const defaultTodoPlanWindowState: WindowState = {
+  width: 460,
+  height: 640,
+}
+
+function sanitizeWindowState(state: Partial<WindowState> | null | undefined, fallback: WindowState): WindowState {
+  const width = Number(state?.width)
+  const height = Number(state?.height)
+  const x = Number(state?.x)
+  const y = Number(state?.y)
+
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : fallback.width,
+    height: Number.isFinite(height) && height > 0 ? height : fallback.height,
+    x: Number.isFinite(x) ? x : undefined,
+    y: Number.isFinite(y) ? y : undefined,
+    isMaximized: state?.isMaximized === true,
+  }
+}
+
+function getWindowState(): WindowStateFile {
+  const state = readJsonFile<WindowStateFile | null>(getWindowStatePath(), defaultWindowState)
+  const mainState = sanitizeWindowState(state, defaultWindowState)
+  const todoPlan = state?.todoPlan
+    ? sanitizeWindowState(state.todoPlan, defaultTodoPlanWindowState)
+    : undefined
+  return {
+    ...mainState,
+    todoPlan,
+  }
+}
+
+function getTodoPlanWindowState(): WindowState {
+  return getWindowState().todoPlan || defaultTodoPlanWindowState
 }
 
 function saveWindowState(window: BrowserWindow): void {
+  const current = getWindowState()
   if (window.isMaximized()) {
-    writeJsonFile(getWindowStatePath(), { ...getWindowState(), isMaximized: true })
+    writeJsonFile(getWindowStatePath(), { ...current, isMaximized: true })
   } else {
     const bounds = window.getBounds()
     writeJsonFile(getWindowStatePath(), {
+      ...current,
       width: bounds.width,
       height: bounds.height,
       x: bounds.x,
@@ -233,10 +295,171 @@ function saveWindowState(window: BrowserWindow): void {
   }
 }
 
+function saveTodoPlanWindowState(window: BrowserWindow | null, stableBounds?: Rectangle): void {
+  if (!window || window.isDestroyed() || window.isMinimized()) return
+  const bounds = stableBounds || window.getBounds()
+  writeJsonFile(getWindowStatePath(), {
+    ...getWindowState(),
+    todoPlan: {
+      width: bounds.width,
+      height: bounds.height,
+      x: bounds.x,
+      y: bounds.y,
+    },
+  })
+}
+
 // Keep track of the settings window
 let settingsWindow: BrowserWindow | null = null
 let todoPlanWindow: BrowserWindow | null = null
 let todoPlanPinned = false
+let isHidingTodoPlanWindow = false
+let isSyncingTodoPlanNativeFrame = false
+let todoPlanNativeFrameGuardToken = 0
+let suppressMainWindowActivationUntil = 0
+const AUXILIARY_CLOSE_ACTIVATION_SUPPRESSION_MS = 2500
+
+function isMainAppWindow(win: BrowserWindow | null | undefined): win is BrowserWindow {
+  if (!win || win.isDestroyed()) return false
+  const url = win.webContents.getURL()
+  return !url || isMainAppWindowUrl(url)
+}
+
+function captureMainWindowVisibility(): MainWindowVisibilitySnapshot[] {
+  return BrowserWindow.getAllWindows()
+    .filter(isMainAppWindow)
+    .map(window => ({
+      window,
+      visible: window.isVisible(),
+    }))
+}
+
+function restoreHiddenMainWindows(snapshot: MainWindowVisibilitySnapshot[]): void {
+  const hiddenMainWindows = snapshot.filter(item => !item.visible)
+  if (!hiddenMainWindows.length) return
+
+  const restore = () => {
+    for (const item of hiddenMainWindows) {
+      if (!item.window.isDestroyed() && item.window.isVisible()) {
+        item.window.hide()
+      }
+    }
+  }
+
+  for (const delay of [0, 80, 250, 600, 1200, 2400]) {
+    setTimeout(restore, delay)
+  }
+}
+
+function normalizeTodoPlanWindowActionOptions(
+  options: TodoPlanWindowActionOptions = {},
+): NormalizedTodoPlanWindowActionOptions {
+  return {
+    activation: options.activation || 'preserve-current-app',
+    preserveMainWindowVisibility: options.preserveMainWindowVisibility !== false,
+    mainWindowVisibilitySnapshot: options.mainWindowVisibilitySnapshot,
+  }
+}
+
+function shouldPreserveCurrentMacApp(options: NormalizedTodoPlanWindowActionOptions): boolean {
+  if (process.platform !== 'darwin') return false
+  if (options.activation === 'preserve-current-app') return true
+  return !BrowserWindow.getFocusedWindow()
+}
+
+function prepareTodoPlanWindowAction(options: TodoPlanWindowActionOptions = {}): {
+  options: NormalizedTodoPlanWindowActionOptions
+  mainWindowVisibilitySnapshot: MainWindowVisibilitySnapshot[]
+} {
+  const normalized = normalizeTodoPlanWindowActionOptions(options)
+  if (shouldPreserveCurrentMacApp(normalized)) {
+    suppressMainWindowActivationFromTodoPanel()
+  }
+
+  return {
+    options: normalized,
+    mainWindowVisibilitySnapshot: normalized.preserveMainWindowVisibility
+      ? normalized.mainWindowVisibilitySnapshot || captureMainWindowVisibility()
+      : [],
+  }
+}
+
+function suppressMainWindowActivationFromTodoPanel(): void {
+  if (process.platform !== 'darwin') return
+  suppressMainWindowActivationUntil = Date.now() + AUXILIARY_CLOSE_ACTIVATION_SUPPRESSION_MS
+}
+
+function runWithTodoPlanNativeFrameGuard<T>(action: () => T): T {
+  const token = ++todoPlanNativeFrameGuardToken
+  isSyncingTodoPlanNativeFrame = true
+  try {
+    return action()
+  } finally {
+    setTimeout(() => {
+      if (token === todoPlanNativeFrameGuardToken) {
+        isSyncingTodoPlanNativeFrame = false
+      }
+    }, 80)
+  }
+}
+
+function configureTodoPlanNativePanel(window: BrowserWindow): boolean {
+  if (process.platform !== 'darwin') return false
+  return runWithTodoPlanNativeFrameGuard(() => configureNonActivatingPanel(window))
+}
+
+function presentTodoPlanWindow(
+  window: BrowserWindow,
+  options: NormalizedTodoPlanWindowActionOptions,
+): void {
+  if (shouldPreserveCurrentMacApp(options)) {
+    const shownNatively = runWithTodoPlanNativeFrameGuard(() => showNonActivatingPanel(window))
+    if (!shownNatively) {
+      window.showInactive()
+      window.moveTop()
+    }
+    return
+  }
+
+  window.show()
+  window.focus()
+}
+
+function isTodoPlanWindowFrontmost(window: BrowserWindow): boolean {
+  if (process.platform === 'darwin') {
+    return isNonActivatingPanelFrontmost(window) || window.isFocused()
+  }
+  return window.isFocused()
+}
+
+export function shouldSuppressMainWindowActivation(): boolean {
+  return Date.now() < suppressMainWindowActivationUntil
+}
+
+function hideTodoPlanWindowPreservingBounds(): boolean {
+  if (!todoPlanWindow || todoPlanWindow.isDestroyed() || !todoPlanWindow.isVisible()) {
+    return false
+  }
+
+  const stableBounds = todoPlanWindow.getBounds()
+  isHidingTodoPlanWindow = true
+  try {
+    saveTodoPlanWindowState(todoPlanWindow, stableBounds)
+    const hiddenNatively = hideNonActivatingPanel(todoPlanWindow)
+    if (!hiddenNatively) {
+      todoPlanWindow.hide()
+    }
+  } finally {
+    isHidingTodoPlanWindow = false
+  }
+  return true
+}
+
+export function hideUnpinnedTodoPlanWindowForMainActivation(): boolean {
+  if (process.platform !== 'darwin') return false
+  if (todoPlanPinned) return false
+  return hideTodoPlanWindowPreservingBounds()
+}
 
 /**
  * Create or focus the settings window
@@ -312,11 +535,14 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
   return settingsWindow
 }
 
-export function openTodoPlanWindow() {
+export function openTodoPlanWindow(options: TodoPlanWindowActionOptions = {}) {
+  const prepared = prepareTodoPlanWindowAction(options)
+  const { mainWindowVisibilitySnapshot } = prepared
+
   if (todoPlanWindow && !todoPlanWindow.isDestroyed()) {
     if (todoPlanWindow.isMinimized()) todoPlanWindow.restore()
-    todoPlanWindow.show()
-    todoPlanWindow.focus()
+    presentTodoPlanWindow(todoPlanWindow, prepared.options)
+    restoreHiddenMainWindows(mainWindowVisibilitySnapshot)
     return todoPlanWindow
   }
 
@@ -325,16 +551,23 @@ export function openTodoPlanWindow() {
   const effectiveTheme = getEffectiveTheme()
   const themeId = getEffectiveThemeId(effectiveTheme)
   const backgroundColor = getThemeBackgroundColor(themeId, effectiveTheme)
+  const windowState = getTodoPlanWindowState()
 
   todoPlanWindow = new BrowserWindow({
-    width: 460,
-    height: 640,
+    width: windowState.width,
+    height: windowState.height,
+    x: windowState.x,
+    y: windowState.y,
     minWidth: 320,
-    minHeight: 360,
+    minHeight: 280,
     show: false,
+    type: isMac ? 'panel' : undefined,
+    focusable: true,
+    acceptFirstMouse: isMac ? true : undefined,
+    skipTaskbar: isMac,
     transparent: isMac,
     backgroundColor: isMac ? undefined : backgroundColor,
-    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    titleBarStyle: isMac ? 'customButtonsOnHover' : 'default',
     trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
     resizable: true,
     alwaysOnTop: false,
@@ -344,20 +577,33 @@ export function openTodoPlanWindow() {
       nodeIntegration: false,
     },
   })
+  if (isMac) configureTodoPlanNativePanel(todoPlanWindow)
+  restoreHiddenMainWindows(mainWindowVisibilitySnapshot)
 
   todoPlanWindow.once('ready-to-show', () => {
-    todoPlanWindow?.show()
-    todoPlanWindow?.focus()
+    if (todoPlanWindow && !todoPlanWindow.isDestroyed()) {
+      if (isMac) configureTodoPlanNativePanel(todoPlanWindow)
+      presentTodoPlanWindow(todoPlanWindow, prepared.options)
+    }
+    restoreHiddenMainWindows(mainWindowVisibilitySnapshot)
+  })
+
+  todoPlanWindow.on('resize', () => {
+    if (!isHidingTodoPlanWindow && !isSyncingTodoPlanNativeFrame) saveTodoPlanWindowState(todoPlanWindow)
+  })
+  todoPlanWindow.on('move', () => {
+    if (!isHidingTodoPlanWindow && !isSyncingTodoPlanNativeFrame) saveTodoPlanWindowState(todoPlanWindow)
+  })
+
+  todoPlanWindow.on('close', () => {
+    saveTodoPlanWindowState(todoPlanWindow)
+    if (shouldPreserveCurrentMacApp(prepared.options)) {
+      suppressMainWindowActivationFromTodoPanel()
+    }
   })
 
   todoPlanWindow.on('closed', () => {
     todoPlanWindow = null
-  })
-
-  todoPlanWindow.on('blur', () => {
-    if (!todoPlanPinned && todoPlanWindow && !todoPlanWindow.isDestroyed()) {
-      todoPlanWindow.hide()
-    }
   })
 
   const themeParams = `theme=${effectiveTheme}`
@@ -372,19 +618,42 @@ export function openTodoPlanWindow() {
   return todoPlanWindow
 }
 
-export function toggleTodoPlanWindow() {
-  if (todoPlanWindow && !todoPlanWindow.isDestroyed() && todoPlanWindow.isVisible() && todoPlanWindow.isFocused()) {
-    todoPlanWindow.hide()
-    return null
+export function hideTodoPlanWindow(options: TodoPlanWindowActionOptions = {}): boolean {
+  if (!todoPlanWindow || todoPlanWindow.isDestroyed() || !todoPlanWindow.isVisible()) {
+    return false
   }
-  return openTodoPlanWindow()
+
+  const { mainWindowVisibilitySnapshot } = prepareTodoPlanWindowAction(options)
+  const hidden = hideTodoPlanWindowPreservingBounds()
+  restoreHiddenMainWindows(mainWindowVisibilitySnapshot)
+  return hidden
+}
+
+export function toggleTodoPlanWindow(options: TodoPlanWindowActionOptions = {}) {
+  if (todoPlanWindow && !todoPlanWindow.isDestroyed() && todoPlanWindow.isVisible()) {
+    if (isTodoPlanWindowFrontmost(todoPlanWindow)) {
+      hideTodoPlanWindow(options)
+      return null
+    }
+    return openTodoPlanWindow(options)
+  }
+  return openTodoPlanWindow(options)
 }
 
 export function setTodoPlanWindowPinned(pinned: boolean): boolean {
   todoPlanPinned = pinned
   if (!todoPlanWindow || todoPlanWindow.isDestroyed()) return todoPlanPinned
-  todoPlanWindow.setAlwaysOnTop(pinned, pinned ? 'floating' : 'normal')
-  return todoPlanWindow.isAlwaysOnTop()
+  const pinnedNatively = runWithTodoPlanNativeFrameGuard(() => {
+    return setNonActivatingPanelPinned(todoPlanWindow!, pinned)
+  })
+  if (!pinnedNatively) {
+    todoPlanWindow.setAlwaysOnTop(pinned, pinned ? 'floating' : 'normal')
+    return todoPlanWindow.isAlwaysOnTop()
+  }
+  if (pinned && todoPlanWindow.isVisible()) {
+    presentTodoPlanWindow(todoPlanWindow, normalizeTodoPlanWindowActionOptions())
+  }
+  return todoPlanPinned
 }
 
 export function createWindow() {
@@ -434,6 +703,10 @@ export function createWindow() {
 
   // Show window only after content is ready (prevents white flash)
   mainWindow.once('ready-to-show', () => {
+    if (shouldSuppressMainWindowActivation()) {
+      mainWindow.hide()
+      return
+    }
     // Restore maximized state before showing
     if (windowState.isMaximized) {
       mainWindow.maximize()
@@ -445,6 +718,9 @@ export function createWindow() {
   mainWindow.on('resize', () => saveWindowState(mainWindow))
   mainWindow.on('move', () => saveWindowState(mainWindow))
   mainWindow.on('close', () => saveWindowState(mainWindow))
+  mainWindow.on('focus', () => {
+    hideUnpinnedTodoPlanWindowForMainActivation()
+  })
 
   // Handle external links - open in system browser instead of navigating away
   mainWindow.webContents.on('will-navigate', (event, url) => {
@@ -484,16 +760,24 @@ let imagePreviewWindow: BrowserWindow | null = null
 
 // Types for image preview
 type ImagePreviewData =
-  | { mode: 'single'; src: string; alt?: string }
+  | { mode: 'single'; previewId?: string; src?: string; alt?: string }
   | { mode: 'gallery'; mediaId: string }
 
 /**
  * Open or update the image preview window
- * - Single mode: for non-media images (attachments), data sent via IPC
+ * - Single mode: for non-media images (attachments), previewId passed in URL and data loaded via IPC pull
  * - Gallery mode: for media images, mediaId passed in URL, component loads data itself
  */
 export function openImagePreviewWindow(data: ImagePreviewData) {
-  console.log('[Window] openImagePreviewWindow called:', data)
+  console.log('[Window] openImagePreviewWindow called:', data.mode === 'single'
+    ? {
+        mode: data.mode,
+        previewId: data.previewId,
+        alt: data.alt,
+        hasInlineSrc: Boolean(data.src),
+        inlineSrcLength: data.src?.length,
+      }
+    : data)
 
   const isDevelopment = process.env.NODE_ENV === 'development'
   const isMac = process.platform === 'darwin'
@@ -503,13 +787,15 @@ export function openImagePreviewWindow(data: ImagePreviewData) {
   let urlParams = `theme=${effectiveTheme}&mode=${data.mode}`
   if (data.mode === 'gallery') {
     urlParams += `&mediaId=${data.mediaId}`
+  } else if (data.previewId) {
+    urlParams += `&previewId=${encodeURIComponent(data.previewId)}`
   }
 
   // If window already exists, navigate to new URL and focus
   if (imagePreviewWindow && !imagePreviewWindow.isDestroyed()) {
     console.log('[Window] Updating existing preview window')
     if (data.mode === 'single') {
-      // Single mode still uses IPC for src data (can be large base64)
+      // Single mode updates are small: the preview window pulls full data by previewId.
       imagePreviewWindow.webContents.send(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, data)
     } else {
       // Gallery mode: reload with new mediaId in URL
@@ -554,10 +840,10 @@ export function openImagePreviewWindow(data: ImagePreviewData) {
     },
   })
 
-  // For single mode, send data via IPC after dom-ready
+  // For single mode, send a small previewId update as a backup; the URL also contains previewId.
   if (data.mode === 'single') {
     imagePreviewWindow.webContents.once('dom-ready', () => {
-      console.log('[Window] Preview window dom-ready, sending single image data')
+      console.log('[Window] Preview window dom-ready, sending single image preview reference')
       setTimeout(() => {
         imagePreviewWindow?.webContents.send(IPC_CHANNELS.IMAGE_PREVIEW_UPDATE, data)
       }, 50)

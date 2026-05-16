@@ -22,17 +22,19 @@ import { Permission } from '../permission/index.js'
 import * as store from '../store.js'
 import {
   getEffectiveProviderConfig,
-  getApiKeyForProvider,
+  resolveProviderAuth,
   extractErrorDetails,
 } from './stream/provider-helpers.js'
 import { isProviderSupported, requiresOAuth, convertToolDefinitionsForAI } from '../providers/index.js'
-import { buildHistoryMessages, buildSystemPrompt, formatMessagesForLog } from './stream/message-helpers.js'
+import { buildHistoryMessages } from './stream/message-helpers.js'
 import { executeMessageStream, type ProviderConfigWithKey } from './stream/stream-executor.js'
 import { createStreamProcessor, type StreamContext } from './stream/stream-processor.js'
 import { runStream } from './stream/tool-loop.js'
+import { buildPromptContext, buildRequestMessages } from './prompt/index.js'
 import { getSkillsForSession } from '../ipc/skills.js'
 import { getEnabledToolsAsync, setInitContext, initializeAsyncTools } from '../tools/index.js'
 import { getMCPToolsForAI } from '../mcp/index.js'
+import { mediaLibraryService } from '../media/media-library-service.js'
 import * as modelRegistry from '../providers/model-registry.js'
 import { buildContextVariablesPromptText } from '../variables/index.js'
 import { buildProjectDirsPromptVars } from '../project-dirs/index.js'
@@ -180,6 +182,12 @@ export class StreamEngine {
         timestamp: Date.now(),
         attachments: attachments as MessageAttachment[] | undefined,
       }
+      mediaLibraryService.ingestMessageAttachments(
+        sessionId,
+        userMessage.id,
+        userMessage.role,
+        userMessage.attachments,
+      )
       store.addMessage(sessionId, userMessage)
 
       // Emit user message created event
@@ -365,7 +373,7 @@ export class StreamEngine {
 
   /**
    * Handle retry-message command (regenerate).
-   * Deletes old assistant message, creates new one, starts streaming.
+   * Truncates from the old assistant message, creates new one, starts streaming.
    */
   async handleRetryMessage(
     sessionId: string,
@@ -375,12 +383,28 @@ export class StreamEngine {
     const { messageId } = cmd
 
     try {
-      // 1. Delete the old assistant message
-      store.deleteMessage(sessionId, messageId)
+      // 1. Delete the old assistant response and any later conversation.
+      const sessionBeforeTruncate = store.getSession(sessionId)
+      const targetMessage = sessionBeforeTruncate?.messages.find(m => m.id === messageId)
+      if (!targetMessage) {
+        this.emitStreamError(sessionId, 'Message not found')
+        return
+      }
+      if (targetMessage.role !== 'assistant') {
+        this.emitStreamError(sessionId, 'Only assistant messages can be retried')
+        return
+      }
 
+      const truncated = store.deleteMessageAndTruncate(sessionId, messageId)
+      if (!truncated) {
+        this.emitStreamError(sessionId, 'Message not found')
+        return
+      }
+
+      const sessionAfterTruncate = store.getSession(sessionId)
       await this.eventBus?.emit(sessionId, {
-        type: 'message:deleted',
-        messageId,
+        type: 'messages:replaced',
+        messages: sessionAfterTruncate?.messages || [],
       })
 
       // 2. Resolve provider
@@ -487,18 +511,35 @@ export class StreamEngine {
 
       const supportsTools = await modelRegistry.modelSupportsTools(configWithApiKey.model, providerId)
       const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
+      const builtinToolsForAI = hasTools ? convertToolDefinitionsForAI(enabledTools) : {}
+      const toolsForAI = hasTools ? { ...builtinToolsForAI, ...mcpTools } : {}
 
       const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
-      const { text: systemPrompt, segments: systemPromptSegments } = buildSystemPrompt({
-        hasTools, skills: enabledSkills,
+      const promptContext = await buildPromptContext({
+        previousState: session.promptContext ?? undefined,
+        sessionId,
+        providerId,
+        providerConfig: configWithApiKey as unknown as Record<string, unknown>,
+        settings,
+        hasTools,
+        skills: enabledSkills,
         workingDirectory: session.workingDirectory,
         contextVariables: await buildContextVariablesPromptText(sessionId),
         activeProject: projectVars.active,
         knownProjects: projectVars.known,
+        toolNames: Object.keys(builtinToolsForAI),
+        mcpToolNames: Object.keys(mcpTools),
       })
+      store.updateSessionPromptContext(sessionId, promptContext.state)
+      const requestMessages = buildRequestMessages({
+        providerId,
+        promptContext: promptContext.state,
+        emittedFragments: promptContext.emittedFragments,
+        historyMessages: [],
+      })
+      const { systemPrompt, systemPromptSegments } = requestMessages
 
-      const conversationMessages: ToolChatMessage[] = []
-      conversationMessages.push({ role: 'system', content: systemPrompt })
+      const conversationMessages = [...requestMessages.messages] as ToolChatMessage[]
 
       for (const msg of historyWithoutCurrent) {
         if (msg.role === 'user') {
@@ -557,10 +598,7 @@ export class StreamEngine {
         console.log('[StreamEngine] Resuming tool loop after confirmation')
         const requestStartTime = Date.now()
 
-        const builtinToolsForAI = convertToolDefinitionsForAI(enabledTools)
-        const toolsForAI = { ...builtinToolsForAI, ...mcpTools }
-
-        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, processor, enabledSkills, ctx.steeringQueue, ctx.followUpQueue, systemPromptSegments)
+        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, [], processor, enabledSkills, ctx.steeringQueue, ctx.followUpQueue, systemPromptSegments)
 
         const requestDuration = (Date.now() - requestStartTime) / 1000
         console.log(`[StreamEngine] Resume completed in ${requestDuration.toFixed(2)}s`)
@@ -671,8 +709,8 @@ export class StreamEngine {
     const settings = store.getSettings()
     const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
 
-    const apiKey = await getApiKeyForProvider(providerId, providerConfig)
-    if (!apiKey) {
+    const authContext = await resolveProviderAuth(providerId, providerConfig)
+    if (!authContext) {
       const isOAuth = requiresOAuth(providerId)
       this.emitStreamError(sessionId, isOAuth
         ? `Not logged in to ${providerId}. Please login in settings.`
@@ -689,7 +727,9 @@ export class StreamEngine {
       ...providerConfig,
       model: effectiveModel,
       selectedModels: providerConfig?.selectedModels ?? [effectiveModel],
-      apiKey,
+      apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
+      authContext,
+      oauthToken: authContext.kind === 'oauth' ? authContext.token : providerConfig?.oauthToken,
     }
 
     return { configWithApiKey, providerId, settings }

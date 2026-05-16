@@ -35,6 +35,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { SkillDefinition } from '@/types'
 import type { PaletteItem } from '@/types/palette'
 import { filterPaletteItems } from '@/services/palette'
+import { refreshPluginCommands } from '@/services/commands'
 
 interface Props {
   visible: boolean
@@ -51,17 +52,31 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const selectedIndex = ref(0)
+const commandVersion = ref(0)
 
 // Filter commands and skills by query
 const filteredItems = computed(() => {
+  commandVersion.value
   return filterPaletteItems(props.query, props.skills || [])
 })
+
+async function loadPluginCommands() {
+  await refreshPluginCommands()
+  commandVersion.value += 1
+}
 
 // Reset selected index when query changes
 watch(
   () => [props.query, props.visible, filteredItems.value.length],
   () => {
     selectedIndex.value = 0
+  }
+)
+
+watch(
+  () => props.visible,
+  visible => {
+    if (visible) loadPluginCommands()
   }
 )
 
@@ -107,6 +122,7 @@ function getItemTooltip(item: PaletteItem) {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown, true)
+  loadPluginCommands()
 })
 
 onUnmounted(() => {

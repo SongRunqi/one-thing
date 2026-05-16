@@ -6,7 +6,8 @@
 
 export { default as AIProviderTab } from './AIProviderTab.vue'
 export { default as ProviderList } from './ProviderList.vue'
-export { default as ProviderOAuth } from './ProviderOAuth.vue'
+export { default as AuthCard } from './AuthCard.vue'
+export { default as ProviderUsageCard } from './ProviderUsageCard.vue'
 export { default as ProviderModels } from './ProviderModels.vue'
 export { default as GlobalDefaultSelector } from './GlobalDefaultSelector.vue'
 
@@ -17,3 +18,4 @@ export {
   type CodeEntryInfo,
   type ProviderSettingsReturn,
 } from './useProviderSettings'
+export { useProviderUsage } from './useProviderUsage'

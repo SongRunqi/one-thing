@@ -1,7 +1,7 @@
 import { BrowserWindow, globalShortcut } from 'electron'
 import type { KeyboardShortcut } from '../../shared/ipc.js'
 import { getSettings } from '../stores/settings.js'
-import { openTodoPlanWindow } from '../window.js'
+import { toggleTodoPlanWindow } from '../window.js'
 
 const registeredAccelerators = new Set<string>()
 
@@ -68,7 +68,10 @@ export function registerGlobalWindowShortcuts(_mainWindow?: BrowserWindow | null
   if (!shortcuts) return
 
   registerWindowShortcut('Todo Window', shortcuts.toggleTodoPlanWindow, () => {
-    openTodoPlanWindow()
+    toggleTodoPlanWindow({
+      activation: 'preserve-current-app',
+      preserveMainWindowVisibility: true,
+    })
   })
 }
 

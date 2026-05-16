@@ -33,11 +33,12 @@
       </div>
       <template
         v-for="(line, idx) in lines"
-        :key="idx"
+        :key="lineKey(line, idx)"
       >
         <div
           v-if="!(line.class === 'diff-hunk' && idx === 0)"
           :class="['diff-line', line.class]"
+          data-diff-line
         >
           <span
             v-if="diff.deletions"
@@ -77,9 +78,19 @@ const displayFileName = computed(() => basename(props.diff.filePath) || props.di
 const isLive = computed(() =>
   props.status === 'streaming-input' || props.status === 'executing',
 )
+const lineCount = computed(() => props.lines.length)
 const shouldUseFixedHeight = computed(() =>
   isLive.value || props.status === 'awaiting-confirmation',
 )
+
+function lineKey(line: ToolDiffLine, idx: number): string {
+  const oldNum = line.oldNum ?? ''
+  const newNum = line.newNum ?? ''
+  if (oldNum !== '' || newNum !== '') {
+    return `${line.class}:${oldNum}:${newNum}:${line.prefix}`
+  }
+  return `${line.class}:meta:${idx}:${line.prefix}:${line.content}`
+}
 
 function scrollToBottom() {
   if (!diffContentRef.value) return
@@ -87,13 +98,13 @@ function scrollToBottom() {
 }
 
 watch(
-  () => [props.lines, props.diff.additions, props.diff.deletions, props.status],
+  () => [lineCount.value, props.diff.additions, props.diff.deletions, props.status],
   async () => {
     if (!isLive.value) return
     await nextTick()
     scrollToBottom()
   },
-  { deep: true, flush: 'post' },
+  { flush: 'post' },
 )
 
 defineExpose({
@@ -199,6 +210,11 @@ defineExpose({
   padding: 1px 10px 1px 0;
   min-height: 21px;
   align-items: center;
+}
+
+.diff-line[data-diff-line] {
+  animation: none;
+  transform: none;
 }
 
 .line-number {

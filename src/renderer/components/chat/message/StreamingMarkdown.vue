@@ -13,7 +13,7 @@
       <div
         v-if="seg.type === 'markdown'"
         class="md-segment"
-        v-html="renderMd(seg.key, seg.content)"
+        v-html="renderMd(seg.key, seg.content, seg.complete)"
       />
       <StreamingCodeBlock
         v-else-if="seg.type === 'code'"
@@ -21,7 +21,7 @@
         :lang="seg.lang"
         :content="seg.content"
         :complete="seg.complete"
-        :is-streaming="effectiveStreaming"
+        :is-streaming="visualStreaming"
       />
       <StreamingTableBlock
         v-else
@@ -30,7 +30,7 @@
       />
     </template>
     <span
-      v-if="effectiveStreaming && !isUser"
+      v-if="visualStreaming && !isUser"
       class="stream-caret"
       data-stream-caret
       aria-hidden="true"
@@ -39,10 +39,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import { parseStreamingMarkdown, type MarkdownSegment } from '@/composables/parseStreamingMarkdown'
-import { advanceSmoothStreamingText } from '@/composables/smoothStreamingText'
+import { advanceStreamingReveal } from '@/composables/streamingReveal'
 import StreamingCodeBlock from './StreamingCodeBlock.vue'
 import StreamingTableBlock from './StreamingTableBlock.vue'
 import { enqueueMarkdownHydration } from './deferredMarkdownHydration'
@@ -57,22 +57,39 @@ interface Props {
   content: string
   isUser?: boolean
   isStreaming?: boolean
+  preserveLiveDom?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  preserveLiveDom: true,
+})
 
 const DEFER_MARKDOWN_CHAR_THRESHOLD = 4000
 const THROTTLE_MARKDOWN_CHAR_THRESHOLD = 2000
 const STREAMING_MARKDOWN_PARSE_INTERVAL_MS = 50
+const STREAM_SETTLE_MS = 220
+
+type RenderPhase = 'live' | 'settling' | 'stable'
 
 const displayedContent = ref(props.content)
 const parsedContent = ref(props.content)
-const effectiveStreaming = computed(() =>
-  Boolean(!props.isUser && (props.isStreaming || displayedContent.value !== props.content)),
-)
 const useStableAssistantPipeline = computed(() => !props.isUser)
 const markdownHydrated = ref(true)
+const prefersReducedMotion = ref(false)
+const settling = ref(false)
+const hasBeenVisuallyLive = ref(Boolean(!props.isUser && props.isStreaming))
+const preserveLiveDom = computed(() => props.preserveLiveDom !== false)
+const renderPhase = computed<RenderPhase>(() => {
+  if (props.isUser) return 'stable'
+  if (props.isStreaming || displayedContent.value !== props.content) return 'live'
+  return settling.value ? 'settling' : 'stable'
+})
+const visualStreaming = computed(() => renderPhase.value === 'live')
+const effectiveStreaming = computed(() =>
+  Boolean(!props.isUser && renderPhase.value !== 'stable'),
+)
 let hydrationToken = 0
+let reducedMotionQuery: MediaQueryList | null = null
 
 const raf = typeof requestAnimationFrame === 'function'
   ? requestAnimationFrame
@@ -83,6 +100,7 @@ const caf = typeof cancelAnimationFrame === 'function'
 
 let pendingFrame: number | null = null
 let pendingParseTimer: ReturnType<typeof setTimeout> | null = null
+let settleTimer: ReturnType<typeof setTimeout> | null = null
 let lastRevealTs = 0
 let lastParseCommitTs = 0
 
@@ -96,6 +114,14 @@ function cancelPendingParse() {
   if (pendingParseTimer === null) return
   clearTimeout(pendingParseTimer)
   pendingParseTimer = null
+}
+
+function cancelSettling() {
+  if (settleTimer !== null) {
+    clearTimeout(settleTimer)
+    settleTimer = null
+  }
+  settling.value = false
 }
 
 function commitParsedContent() {
@@ -134,10 +160,39 @@ function scheduleParsedContentUpdate() {
 
 function commitDisplayedContent() {
   cancelPendingFrame()
+  cancelSettling()
   displayedContent.value = props.content
   commitParsedContent()
   lastRevealTs = 0
   scheduleDeferredMarkdownHydration()
+}
+
+function prewarmStableMarkdownCache() {
+  if (props.isUser || !props.content) return
+  const content = props.content
+  enqueueMarkdownHydration(() => {
+    const key = `static:${contentCacheKey(content)}`
+    if (getCachedMarkdownHtml(key) !== undefined) return
+    cacheMarkdownHtml(key, renderMarkdown(content, false, { streaming: false }))
+  })
+}
+
+function beginSettling() {
+  if (!props.isUser) hasBeenVisuallyLive.value = true
+
+  if (props.isUser || !preserveLiveDom.value) {
+    settling.value = false
+    prewarmStableMarkdownCache()
+    return
+  }
+
+  settling.value = true
+  if (settleTimer !== null) clearTimeout(settleTimer)
+  settleTimer = setTimeout(() => {
+    settleTimer = null
+    settling.value = false
+    prewarmStableMarkdownCache()
+  }, STREAM_SETTLE_MS)
 }
 
 function revealDisplayedContent(ts: number) {
@@ -145,7 +200,9 @@ function revealDisplayedContent(ts: number) {
   const elapsed = lastRevealTs > 0 ? ts - lastRevealTs : 16
   lastRevealTs = ts
 
-  const next = advanceSmoothStreamingText(displayedContent.value, props.content, elapsed)
+  const next = advanceStreamingReveal(displayedContent.value, props.content, elapsed, {
+    reducedMotion: prefersReducedMotion.value,
+  }).content
   displayedContent.value = next
   scheduleParsedContentUpdate()
 
@@ -154,6 +211,7 @@ function revealDisplayedContent(ts: number) {
   } else {
     commitParsedContent()
     scheduleDeferredMarkdownHydration()
+    beginSettling()
   }
 }
 
@@ -177,6 +235,7 @@ function isContentFullyCached(): boolean {
 
 function shouldDeferMarkdown(): boolean {
   if (props.isUser || props.isStreaming) return false
+  if (preserveLiveDom.value && hasBeenVisuallyLive.value) return false
   if (props.content.length <= DEFER_MARKDOWN_CHAR_THRESHOLD) return false
   // Cache hit means render cost is ~free — skip the deferral so revisits don't flash raw text.
   return !isContentFullyCached()
@@ -214,13 +273,15 @@ function contentCacheKey(content: string): string {
 watch(
   () => props.content,
   () => {
-    if (props.isStreaming && !props.isUser) {
+    if (!props.isUser && (props.isStreaming || hasBeenVisuallyLive.value)) {
       if (!props.content.startsWith(displayedContent.value)) {
+        cancelSettling()
         displayedContent.value = props.content
         scheduleParsedContentUpdate()
         lastRevealTs = 0
         return
       }
+      cancelSettling()
       scheduleDisplayedContent()
     } else {
       commitDisplayedContent()
@@ -231,14 +292,27 @@ watch(
 watch(
   () => props.isStreaming,
   (isStreaming) => {
+    if (isStreaming && !props.isUser) {
+      hasBeenVisuallyLive.value = true
+      cancelSettling()
+      scheduleDisplayedContent()
+      return
+    }
     if (!isStreaming) {
       if (!props.isUser && props.content.startsWith(displayedContent.value)) {
+        if (props.content === displayedContent.value) {
+          commitParsedContent()
+          scheduleDeferredMarkdownHydration()
+          beginSettling()
+          return
+        }
         scheduleDisplayedContent()
       } else {
         commitDisplayedContent()
       }
     }
   },
+  { flush: 'sync' },
 )
 
 scheduleDeferredMarkdownHydration()
@@ -272,11 +346,11 @@ const segments = computed<MarkdownSegment[]>(() => {
   return parsed
 })
 
-function renderMd(key: string, content: string): string {
+function renderMd(key: string, content: string, complete: boolean): string {
   const streaming = useStableAssistantPipeline.value
   const cacheKey = `${props.isUser ? 'user' : 'assistant'}:${streaming ? '1' : '0'}:${key}:${contentCacheKey(content)}`
   const cached = getCachedMarkdownHtml(cacheKey)
-  if (cached) return cached
+  if (cached) return shouldWrapWords(complete) ? wrapStreamingWords(key, cached, shouldAnimateWords(complete)) : cached
 
   const started = performance.now()
   const html = renderMarkdown(content, props.isUser ?? false, { streaming })
@@ -290,14 +364,116 @@ function renderMd(key: string, content: string): string {
       streaming,
     })
   }
-  return html
+  return shouldWrapWords(complete) ? wrapStreamingWords(key, html, shouldAnimateWords(complete)) : html
 }
+
+function shouldWrapWords(complete: boolean): boolean {
+  return Boolean(
+    !props.isUser &&
+    !complete &&
+    !prefersReducedMotion.value &&
+    (renderPhase.value === 'live' || renderPhase.value === 'settling'),
+  )
+}
+
+function shouldAnimateWords(complete: boolean): boolean {
+  return shouldWrapWords(complete) && renderPhase.value === 'live'
+}
+
+const seenWordKeys = new Map<string, Set<string>>()
+
+function getSeenWords(segmentKey: string): Set<string> {
+  let seen = seenWordKeys.get(segmentKey)
+  if (!seen) {
+    seen = new Set()
+    seenWordKeys.set(segmentKey, seen)
+  }
+  return seen
+}
+
+function isSkippableTextParent(parent: ParentNode | null): boolean {
+  if (!(parent instanceof Element)) return false
+  return !!parent.closest('pre, code, script, style, mjx-container')
+}
+
+function wrapStreamingWords(segmentKey: string, html: string, animateNew: boolean): string {
+  if (typeof document === 'undefined') return html
+
+  const template = document.createElement('template')
+  template.innerHTML = html
+
+  const walker = document.createTreeWalker(template.content, 4)
+  const textNodes: Text[] = []
+  let current = walker.nextNode()
+  while (current) {
+    const node = current as Text
+    if (node.textContent && !isSkippableTextParent(node.parentNode)) {
+      textNodes.push(node)
+    }
+    current = walker.nextNode()
+  }
+
+  const seen = getSeenWords(segmentKey)
+  let wordIndex = 0
+  const wordPattern = /[\p{Script=Han}]|[\p{L}\p{N}]+(?:['’_-][\p{L}\p{N}]+)*/gu
+
+  for (const node of textNodes) {
+    const text = node.textContent || ''
+    wordPattern.lastIndex = 0
+    let lastIndex = 0
+    let match = wordPattern.exec(text)
+    if (!match) continue
+
+    const fragment = document.createDocumentFragment()
+    while (match) {
+      if (match.index > lastIndex) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)))
+      }
+
+      const word = match[0]
+      const wordKey = `${segmentKey}:${wordIndex}:${word}`
+      const span = document.createElement('span')
+      span.dataset.streamWord = ''
+      const isNew = animateNew && !seen.has(wordKey)
+      span.className = isNew ? 'stream-word is-new' : 'stream-word is-seen'
+      span.textContent = word
+      fragment.appendChild(span)
+      seen.add(wordKey)
+
+      wordIndex += 1
+      lastIndex = match.index + word.length
+      match = wordPattern.exec(text)
+    }
+
+    if (lastIndex < text.length) {
+      fragment.appendChild(document.createTextNode(text.slice(lastIndex)))
+    }
+    node.replaceWith(fragment)
+  }
+
+  return template.innerHTML
+}
+
+function updateReducedMotion() {
+  prefersReducedMotion.value = reducedMotionQuery?.matches ?? false
+}
+
+onMounted(() => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+  reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+  updateReducedMotion()
+  reducedMotionQuery.addEventListener?.('change', updateReducedMotion)
+})
 
 onBeforeUnmount(() => {
   hydrationToken++
+  reducedMotionQuery?.removeEventListener?.('change', updateReducedMotion)
+  reducedMotionQuery = null
   cancelPendingFrame()
   cancelPendingParse()
+  cancelSettling()
 })
+
 </script>
 
 <style scoped>
@@ -308,15 +484,43 @@ onBeforeUnmount(() => {
   display: contents;
 }
 
+.md-segment :deep(.stream-word) {
+  display: inline-block;
+  opacity: 1;
+  will-change: opacity;
+}
+
+.md-segment :deep(.stream-word.is-new) {
+  animation: streamWordFadeIn 180ms ease-out both;
+}
+
+@keyframes streamWordFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-segment :deep(.stream-word),
+  .md-segment :deep(.stream-word.is-new) {
+    animation: none;
+    will-change: auto;
+  }
+}
+
 .markdown-deferred {
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .stream-caret {
+  position: absolute;
   display: block;
-  width: 1px;
-  height: 1px;
+  width: 0;
+  height: 0;
   overflow: hidden;
   pointer-events: none;
 }

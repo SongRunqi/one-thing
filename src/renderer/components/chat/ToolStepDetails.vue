@@ -55,12 +55,13 @@
 
     <div
       v-if="view.step.error"
-      class="detail-section error"
+      class="detail-section"
+      :class="view.status === 'rejected' ? 'rejection' : 'error'"
     >
       <div class="detail-label">
-        Error
+        {{ view.status === 'rejected' ? 'Rejected' : 'Error' }}
       </div>
-      <pre class="error-text">{{ view.step.error }}</pre>
+      <pre :class="view.status === 'rejected' ? 'rejection-text' : 'error-text'">{{ view.step.error }}</pre>
     </div>
   </div>
 </template>
@@ -149,6 +150,12 @@ pre {
   color: var(--text-error);
   background: color-mix(in srgb, var(--color-danger) 8%, var(--bg-code-block));
   border-left: 2px solid color-mix(in srgb, var(--color-danger) 45%, transparent);
+}
+
+.rejection-text {
+  color: var(--text-warning);
+  background: color-mix(in srgb, var(--color-warning) 8%, var(--bg-code-block));
+  border-left: 2px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
 }
 
 </style>

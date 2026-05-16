@@ -37,6 +37,12 @@ export type {
   AttachmentMediaType,
   MessageAttachment,
   ChatMessage,
+  PromptContextRole,
+  BaseInstructions,
+  PromptContextMarker,
+  PromptContextFragment,
+  TurnContextSnapshot,
+  PromptContextState,
   // Session-level optimization (Phase 4: Metadata Separation)
   SessionMeta,
   SessionDetails,
@@ -75,9 +81,23 @@ export type {
   GetSessionUserMarkersResponse,
 } from './chat.js'
 
+// Media types
+export type {
+  MediaKind,
+  MediaSource,
+  MediaUsageTag,
+  MediaAssetLink,
+  MediaAssetMetadata,
+  MediaAsset,
+  MediaQuery,
+  MediaGalleryResponse,
+  MediaRebuildResponse,
+} from './media.js'
+
 // Provider types
 export type {
   AIProviderId,
+  ThinkingEffort,
   OAuthFlowType,
   OAuthToken,
   OpenRouterModel,
@@ -90,6 +110,12 @@ export type {
   ModelType,
   ModelInfo,
   GetProvidersResponse,
+  CodexUsageWindow,
+  CodexUsageCredits,
+  CodexUsageLimit,
+  CodexProviderUsage,
+  ProviderUsageRequest,
+  ProviderUsageResponse,
 } from './providers.js'
 
 export { AIProvider } from './providers.js'
@@ -160,6 +186,65 @@ export type {
   CreateSkillResponse,
 } from './skills.js'
 
+// Plugin types
+export type {
+  PluginCommandInfo,
+  GetPluginCommandsResponse,
+  ExecutePluginCommandRequest,
+  ExecutePluginCommandResponse,
+} from './plugins.js'
+
+// Memory panel types
+export type {
+  MemoryManagedFileKind,
+  MemoryManagedFile,
+  MemoryIndexStatus,
+  MemoryDreamingStatus,
+  MemoryCapturePending,
+  MemoryOverview,
+  MemoryReadRequest,
+  MemoryReadResponse,
+  MemorySearchHit,
+  MemorySearchRequest,
+  MemorySearchResponse,
+  MemoryAppendRequest,
+  MemoryAppendResponse,
+  MemoryOverviewResponse,
+  MemoryIndexResponse,
+  MemoryCaptureDecisionRequest,
+  MemoryCaptureDecisionResponse,
+  MemorySaveFileRequest,
+  MemorySaveFileResponse,
+  MemoryRunDreamingResponse,
+  CanonicalMemoryAuditEvent,
+  CanonicalMemoryKind,
+  CanonicalMemoryRecord,
+  MemoryProfileAuditRequest,
+  MemoryProfileAuditResponse,
+  MemoryProfileDeleteRequest,
+  MemoryProfileDeleteResponse,
+  MemoryProfileExportResponse,
+  MemoryProfileListRequest,
+  MemoryProfileListResponse,
+  MemoryProfileUpsertRequest,
+  MemoryProfileUpsertResponse,
+} from './memory.js'
+
+// Scheduler types
+export type {
+  SchedulerRunReason,
+  SchedulerSchedule,
+  SchedulerRunRecordDTO,
+  SchedulerTaskSnapshotDTO,
+  SchedulerListResponse,
+  SchedulerGetRequest,
+  SchedulerGetResponse,
+  SchedulerRunNowRequest,
+  SchedulerRunNowResponse,
+  SchedulerSetEnabledRequest,
+  SchedulerSetEnabledResponse,
+} from './scheduler.js'
+
 // Settings types
 export type {
   ColorTheme,
@@ -168,6 +253,16 @@ export type {
   KeyboardShortcut,
   ShortcutSettings,
   EditorSettings,
+  SoulMemoryActiveSettings,
+  SoulMemorySearchSettings,
+  SoulMemoryEmbeddingSettings,
+  SoulMemoryFlushSettings,
+  SoulMemoryCaptureSettings,
+  SoulMemoryCanonicalSettings,
+  SoulMemoryDreamingSettings,
+  SoulMemoryDailyContextSettings,
+  SoulMemoryReadSettings,
+  SoulMemorySettings,
   GeneralSettings,
   ChatSettings,
   NetworkSettings,
@@ -277,6 +372,8 @@ export type {
 // Todo / plan panel types
 export type {
   TodoPlanScope,
+  TodoPlanActivationMode,
+  TodoPlanWindowActionRequest,
   TodoPlanDocument,
   TodoPlanContext,
   TodoPlanSnapshot,

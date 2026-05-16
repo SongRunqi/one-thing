@@ -68,7 +68,7 @@ export function initializeIPCHub() {
         break
 
       case 'content:continuation':
-        store.handleStreamChunk({ type: 'continuation', sessionId, messageId: '', content: '' })
+        store.handleStreamChunk({ type: 'continuation', sessionId, messageId: '', content: '', turnIndex: event.turnIndex })
         break
 
       // Step events
@@ -164,7 +164,7 @@ export function initializeIPCHub() {
         break
 
       case 'reasoning-delta':
-        store.handleStreamChunk({ type: 'reasoning', sessionId, messageId: chunk.messageId || '', content: '', reasoning: chunk.reasoning, turnIndex: chunk.turnIndex })
+        store.handleStreamChunk({ type: 'reasoning', sessionId, messageId: chunk.messageId || '', content: '', reasoning: chunk.reasoning, turnIndex: chunk.turnIndex, placement: chunk.placement })
         break
 
       case 'tool-input-delta':

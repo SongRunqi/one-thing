@@ -74,7 +74,7 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
       }
     },
 
-    sendReasoningChunk(reasoning, turnIndex) {
+    sendReasoningChunk(reasoning, turnIndex, placement) {
       const s = stream()
       if (s) {
         try {
@@ -82,6 +82,7 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
             type: 'reasoning-delta',
             reasoning,
             ...(turnIndex !== undefined ? { turnIndex } : {}),
+            ...(placement ? { placement } : {}),
           })
         } catch (err) {
           console.error('[EventOnlyEmitter] StreamChannel error:', err)

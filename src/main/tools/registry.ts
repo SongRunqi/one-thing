@@ -19,6 +19,7 @@ import type {
 import { v4 as uuidv4 } from 'uuid'
 import type { ToolInfo, ToolContext, ToolInfoAsync, ToolInfoUnion, InitContext } from './core/tool.js'
 import { zodToJsonSchema, isAsyncTool, Tool } from './core/tool.js'
+import { Permission } from '../permission/index.js'
 
 // Static tool registry (Tool.define() tools)
 const toolRegistry: Map<string, ToolInfo> = new Map()
@@ -31,6 +32,24 @@ let initialized = false
 
 // Current init context for async tools
 let currentInitContext: InitContext | undefined
+
+function isPermissionRejectedError(error: unknown): error is Permission.RejectedError {
+  return error instanceof Permission.RejectedError ||
+    (error instanceof Error && error.name === 'PermissionRejectedError')
+}
+
+function toToolExecutionError(error: any): ToolExecutionResult {
+  if (isPermissionRejectedError(error)) {
+    return {
+      success: false,
+      error: error.message || 'User rejected this operation',
+      rejected: true,
+      rejectionReason: error.reason,
+    }
+  }
+
+  return { success: false, error: error.message || 'Unknown error during tool execution' }
+}
 
 /**
  * Register a tool (Tool.define() format - both static and async)
@@ -389,8 +408,12 @@ export async function executeTool(
         },
       }
     } catch (error: any) {
-      console.error(`[ToolRegistry] Tool "${toolId}" execution error:`, error)
-      return { success: false, error: error.message || 'Unknown error during tool execution' }
+      if (isPermissionRejectedError(error)) {
+        console.log(`[ToolRegistry] Tool "${toolId}" permission rejected`)
+      } else {
+        console.error(`[ToolRegistry] Tool "${toolId}" execution error:`, error)
+      }
+      return toToolExecutionError(error)
     }
   }
 
@@ -441,8 +464,12 @@ export async function executeTool(
         },
       }
     } catch (error: any) {
-      console.error(`[ToolRegistry] Async Tool "${toolId}" execution error:`, error)
-      return { success: false, error: error.message || 'Unknown error during tool execution' }
+      if (isPermissionRejectedError(error)) {
+        console.log(`[ToolRegistry] Async Tool "${toolId}" permission rejected`)
+      } else {
+        console.error(`[ToolRegistry] Async Tool "${toolId}" execution error:`, error)
+      }
+      return toToolExecutionError(error)
     }
   }
 

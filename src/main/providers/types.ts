@@ -6,6 +6,7 @@
 
 import type { LanguageModel } from 'ai'
 import type { OAuthFlowType, OAuthToken, OpenRouterModel } from '../../shared/ipc.js'
+import type { ProviderAuthContext } from '../auth/types.js'
 
 // Re-export from shared for consistency
 export type { OpenRouterModel } from '../../shared/ipc.js'
@@ -41,6 +42,8 @@ export interface ProviderConfig {
   baseUrl?: string
   /** OAuth token (for OAuth providers) */
   oauthToken?: OAuthToken
+  /** Resolved auth context for runtime provider adapters */
+  authContext?: ProviderAuthContext
 }
 
 /**
@@ -48,6 +51,23 @@ export interface ProviderConfig {
  */
 export interface ProviderInstance {
   createModel: (modelId: string) => LanguageModel
+}
+
+export type ProviderCallMode = 'stream' | 'generate'
+
+export interface ProviderCallOptions {
+  messages?: any[]
+  providerOptions?: Record<string, any>
+  tools?: any
+  toolChoice?: any
+  [key: string]: any
+}
+
+export interface ProviderCallPreparationContext {
+  providerId: string
+  modelId: string
+  mode: ProviderCallMode
+  isReasoningModel: boolean
 }
 
 /**
@@ -66,6 +86,11 @@ export interface ProviderDefinition {
   info: ProviderInfo
   /** Factory function to create provider instances */
   create: ProviderCreator
+  /** Optional provider-specific AI SDK call normalization before stream/generate. */
+  prepareCallOptions?: (
+    options: ProviderCallOptions,
+    context: ProviderCallPreparationContext,
+  ) => ProviderCallOptions | void
   /** Whether system messages should be merged into first user message (for APIs that don't support system role with tools) */
   requiresSystemMerge?: boolean
 }
