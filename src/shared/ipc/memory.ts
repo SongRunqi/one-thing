@@ -2,6 +2,81 @@ import type { SoulMemorySettings } from './settings.js'
 
 export type MemoryManagedFileKind = 'soul' | 'memory' | 'dreams' | 'daily'
 export type CanonicalMemoryKind = 'identity' | 'preference' | 'decision' | 'project' | 'constraint' | 'fact'
+export type MemoryGraphEntityType = 'user' | 'project' | 'tech' | 'component' | 'decision' | 'concept' | 'person' | 'organization'
+export type MemoryGraphObservationKind = CanonicalMemoryKind | 'summary' | 'episodic'
+export type MemoryGraphStatus = 'active' | 'superseded' | 'conflict' | 'deleted'
+export type MemoryGraphDuplicateStatus = 'pending' | 'merged' | 'ignored'
+export type MemoryDiagnosticLevel = 'debug' | 'info' | 'warn' | 'error'
+export type MemoryDiagnosticSubsystem =
+  | 'embedding'
+  | 'index'
+  | 'search'
+  | 'capture'
+  | 'graph'
+  | 'daily'
+  | 'active-memory'
+  | 'flush'
+  | 'dreaming'
+  | 'scheduler'
+  | 'ipc'
+export type MemoryDiagnosticStatus = 'started' | 'ok' | 'error' | 'skipped' | 'fallback'
+
+export interface MemoryDiagnosticLogEntry {
+  id: string
+  timestamp: number
+  level: MemoryDiagnosticLevel
+  subsystem: MemoryDiagnosticSubsystem
+  operation: string
+  stage: string
+  status: MemoryDiagnosticStatus
+  summary?: string
+  durationMs?: number
+  sessionId?: string
+  runId?: string
+  request?: Record<string, unknown>
+  response?: Record<string, unknown>
+  error?: Record<string, unknown>
+  metadata?: Record<string, unknown>
+}
+
+export interface MemoryLogsListRequest {
+  limit?: number
+  query?: string
+  level?: MemoryDiagnosticLevel | 'all'
+  subsystem?: MemoryDiagnosticSubsystem | 'all'
+  status?: MemoryDiagnosticStatus | 'all'
+  since?: number
+}
+
+export interface MemoryLogsListResponse {
+  success: boolean
+  entries?: MemoryDiagnosticLogEntry[]
+  total?: number
+  logDir?: string
+  error?: string
+}
+
+export interface MemoryLogsStatsResponse {
+  success: boolean
+  stats?: {
+    logDir: string
+    files: number
+    entriesInBuffer: number
+    retainedDays: number
+    oldestFile?: string
+    newestFile?: string
+    byLevel: Record<string, number>
+    bySubsystem: Record<string, number>
+    lastError?: string
+  }
+  error?: string
+}
+
+export interface MemoryLogsCleanupResponse {
+  success: boolean
+  deleted?: string[]
+  error?: string
+}
 
 export interface MemoryManagedFile {
   absolutePath: string
@@ -33,6 +108,14 @@ export interface MemoryIndexStatus {
   lastDreamingStatus?: string
   lastDreamingSourceFiles?: string[]
   lastDreamingNextRunAt?: number
+}
+
+export interface MemoryGraphOverview {
+  entities: number
+  observations: number
+  relations: number
+  pendingDuplicates: number
+  userEntity?: MemoryGraphEntity
 }
 
 export interface MemoryDreamingStatus {
@@ -84,6 +167,7 @@ export interface MemoryOverview {
   dreaming: MemoryDreamingStatus
   pendingCaptures: MemoryCapturePending[]
   canonicalCount?: number
+  graph?: MemoryGraphOverview
   files: MemoryManagedFile[]
 }
 
@@ -111,7 +195,7 @@ export interface MemoryReadResponse {
 export interface MemorySearchHit {
   id: string
   path: string
-  kind: 'memory' | 'daily' | 'canonical'
+  kind: 'memory' | 'daily' | 'canonical' | 'graph'
   date?: string
   chunkIndex: number
   startLine: number
@@ -135,7 +219,7 @@ export interface MemorySearchResponse {
 
 export interface MemoryAppendRequest {
   content: string
-  target?: 'daily' | 'memory'
+  target?: 'daily'
   heading?: string
 }
 
@@ -222,9 +306,192 @@ export interface CanonicalMemoryRecord {
 export interface CanonicalMemoryAuditEvent {
   id: string
   memoryId: string
-  action: 'create' | 'update' | 'delete' | 'restore' | 'duplicate' | 'migrate'
+  action: 'create' | 'update' | 'delete' | 'restore' | 'duplicate' | 'migrate' | 'conflict' | 'merge' | 'ignore'
   createdAt: number
   payload: Record<string, unknown>
+}
+
+export interface MemoryGraphEntity {
+  id: string
+  entityType: MemoryGraphEntityType
+  name: string
+  displayName: string
+  aliases: string[]
+  confidence: number
+  sensitivity: 'normal' | 'sensitive' | 'secret'
+  source: string
+  evidence?: string
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+}
+
+export interface MemoryGraphObservation {
+  id: string
+  entityId: string
+  entityDisplayName?: string
+  kind: MemoryGraphObservationKind
+  slot: string
+  value: string
+  text: string
+  confidence: number
+  sensitivity: 'normal' | 'sensitive' | 'secret'
+  source: string
+  evidence?: string
+  sessionId?: string
+  messageId?: string
+  status: MemoryGraphStatus
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+}
+
+export interface MemoryGraphRelation {
+  id: string
+  fromEntityId: string
+  fromDisplayName?: string
+  relationType: string
+  toEntityId: string
+  toDisplayName?: string
+  text: string
+  confidence: number
+  sensitivity: 'normal' | 'sensitive' | 'secret'
+  source: string
+  evidence?: string
+  sessionId?: string
+  messageId?: string
+  status: MemoryGraphStatus
+  createdAt: number
+  updatedAt: number
+  deletedAt?: number
+}
+
+export interface MemoryGraphDuplicate {
+  id: string
+  kind: 'entity' | 'observation' | 'relation'
+  sourceId: string
+  targetId: string
+  score: number
+  reason: string
+  status: MemoryGraphDuplicateStatus
+  createdAt: number
+  updatedAt: number
+}
+
+export interface MemoryGraphAuditEvent {
+  id: string
+  memoryId: string
+  action: CanonicalMemoryAuditEvent['action']
+  createdAt: number
+  payload: Record<string, unknown>
+}
+
+export interface MemoryGraphListRequest {
+  query?: string
+  includeDeleted?: boolean
+  limit?: number
+}
+
+export interface MemoryGraphEntityUpsertRequest {
+  id?: string
+  entityType: MemoryGraphEntityType
+  name: string
+  displayName?: string
+  aliases?: string[]
+  confidence?: number
+  sensitivity?: 'normal' | 'sensitive' | 'secret'
+  evidence?: string
+}
+
+export interface MemoryGraphObservationUpsertRequest {
+  id?: string
+  entityId: string
+  kind: MemoryGraphObservationKind
+  slot: string
+  value: string
+  text?: string
+  confidence?: number
+  sensitivity?: 'normal' | 'sensitive' | 'secret'
+  evidence?: string
+  status?: MemoryGraphStatus
+}
+
+export interface MemoryGraphRelationUpsertRequest {
+  id?: string
+  fromEntityId: string
+  relationType: string
+  toEntityId: string
+  text?: string
+  confidence?: number
+  sensitivity?: 'normal' | 'sensitive' | 'secret'
+  evidence?: string
+  status?: MemoryGraphStatus
+}
+
+export interface MemoryGraphDeleteRequest {
+  id: string
+}
+
+export interface MemoryGraphDuplicateDecisionRequest {
+  id: string
+}
+
+export interface MemoryGraphAuditRequest {
+  id: string
+}
+
+export interface MemoryGraphOverviewResponse {
+  success: boolean
+  overview?: MemoryGraphOverview
+  error?: string
+}
+
+export interface MemoryGraphEntitiesResponse {
+  success: boolean
+  entities?: MemoryGraphEntity[]
+  error?: string
+}
+
+export interface MemoryGraphEntityResponse {
+  success: boolean
+  entity?: MemoryGraphEntity
+  error?: string
+}
+
+export interface MemoryGraphObservationsResponse {
+  success: boolean
+  observations?: MemoryGraphObservation[]
+  error?: string
+}
+
+export interface MemoryGraphObservationResponse {
+  success: boolean
+  observation?: MemoryGraphObservation
+  error?: string
+}
+
+export interface MemoryGraphRelationsResponse {
+  success: boolean
+  relations?: MemoryGraphRelation[]
+  error?: string
+}
+
+export interface MemoryGraphRelationResponse {
+  success: boolean
+  relation?: MemoryGraphRelation
+  error?: string
+}
+
+export interface MemoryGraphDuplicatesResponse {
+  success: boolean
+  duplicates?: MemoryGraphDuplicate[]
+  error?: string
+}
+
+export interface MemoryGraphAuditResponse {
+  success: boolean
+  events?: MemoryGraphAuditEvent[]
+  error?: string
 }
 
 export interface MemoryProfileListRequest {

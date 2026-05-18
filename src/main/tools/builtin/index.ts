@@ -20,6 +20,7 @@ import { SkillTool } from './skill.js'
 import { FartTool } from './fart.js'
 import { VariableTool } from './variable.js'
 import { TodoPlanTool } from './todo-plan.js'
+import { TimeTool } from './time.js'
 import { ProjectDirsTool } from '../../project-dirs/index.js'
 
 // Web search
@@ -36,6 +37,7 @@ const builtinTools = [
   GrepTool,
   VariableTool,
   TodoPlanTool,
+  TimeTool,
   ProjectDirsTool,
   FartTool,
   // Web tools

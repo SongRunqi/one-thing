@@ -1,4 +1,5 @@
 import { embedMany } from 'ai'
+import crypto from 'node:crypto'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -6,6 +7,12 @@ import type { AppSettings, ProviderConfig } from '../../shared/ipc.js'
 import { AIProvider } from '../../shared/ipc.js'
 import { resolveSoulMemoryEmbeddingTarget } from '../../shared/embeddings/defaults.js'
 import { createBoundFetch } from '../providers/bound-fetch.js'
+import {
+  configureMemoryDiagnosticsLogger,
+  createMemoryDiagnosticsFetch,
+  logMemoryDiagnostic,
+  sanitizeUrlForMemoryLog,
+} from '../memory/diagnostics-logger.js'
 
 export interface EmbeddingRequest {
   settings: AppSettings
@@ -22,6 +29,7 @@ interface ResolvedEmbeddingProvider {
   providerId: string
   model: string
   provider: any
+  baseUrl?: string
 }
 
 function configForProvider(settings: AppSettings, providerId: string): ProviderConfig | undefined {
@@ -67,10 +75,19 @@ function createEmbeddingModel(provider: any, model: string): any {
   throw new Error('Embedding provider does not expose an embedding model factory')
 }
 
-function resolveConfiguredProvider(settings: AppSettings): ResolvedEmbeddingProvider | null {
+function embeddingFetch(runId: string, providerId: string, model: string): typeof fetch {
+  return createMemoryDiagnosticsFetch(createBoundFetch(), {
+    subsystem: 'embedding',
+    operation: 'provider-http',
+    runId,
+    providerId,
+    model,
+  })
+}
+
+function resolveConfiguredProvider(settings: AppSettings, runId: string): ResolvedEmbeddingProvider | null {
   const embeddingSettings = settings.general.soulMemory?.embeddings
   const providerId = embeddingSettings?.providerId || 'auto'
-  const fetch = createBoundFetch()
 
   if (providerId === 'auto') return null
   const target = resolveEmbeddingTarget(settings)
@@ -82,10 +99,10 @@ function resolveConfiguredProvider(settings: AppSettings): ResolvedEmbeddingProv
     const provider = createOpenAI({
       apiKey,
       baseURL: target.baseUrl,
-      fetch,
+      fetch: embeddingFetch(runId, 'openai', target.model),
     })
     const model = target.model
-    return { providerId: 'openai', model, provider: createEmbeddingModel(provider, model) }
+    return { providerId: 'openai', model, provider: createEmbeddingModel(provider, model), baseUrl: target.baseUrl }
   }
 
   if (providerId === 'openrouter') {
@@ -96,10 +113,10 @@ function resolveConfiguredProvider(settings: AppSettings): ResolvedEmbeddingProv
       name: 'openrouter',
       apiKey,
       baseURL: target.baseUrl,
-      fetch,
+      fetch: embeddingFetch(runId, 'openrouter', target.model),
     })
     const model = target.model
-    return { providerId: 'openrouter', model, provider: createEmbeddingModel(provider, model) }
+    return { providerId: 'openrouter', model, provider: createEmbeddingModel(provider, model), baseUrl: target.baseUrl }
   }
 
   if (providerId === 'gemini') {
@@ -109,10 +126,10 @@ function resolveConfiguredProvider(settings: AppSettings): ResolvedEmbeddingProv
     const provider = createGoogleGenerativeAI({
       apiKey,
       baseURL: target.baseUrl,
-      fetch,
+      fetch: embeddingFetch(runId, 'gemini', target.model),
     })
     const model = target.model
-    return { providerId: 'gemini', model, provider: createEmbeddingModel(provider, model) }
+    return { providerId: 'gemini', model, provider: createEmbeddingModel(provider, model), baseUrl: target.baseUrl }
   }
 
   if (providerId === 'custom') {
@@ -123,10 +140,10 @@ function resolveConfiguredProvider(settings: AppSettings): ResolvedEmbeddingProv
       name: custom?.id || 'custom',
       apiKey: normalizedOptional(embeddingSettings?.apiKey) || normalizedOptional(custom?.apiKey) || '',
       baseURL,
-      fetch,
+      fetch: embeddingFetch(runId, custom?.id || 'custom', target.model),
     })
     const model = target.model
-    return { providerId: custom?.id || 'custom', model, provider: createEmbeddingModel(provider, model) }
+    return { providerId: custom?.id || 'custom', model, provider: createEmbeddingModel(provider, model), baseUrl: target.baseUrl }
   }
 
   if (providerId === 'ollama') {
@@ -135,10 +152,10 @@ function resolveConfiguredProvider(settings: AppSettings): ResolvedEmbeddingProv
       name: 'ollama',
       apiKey: normalizedOptional(embeddingSettings?.apiKey) || 'ollama',
       baseURL,
-      fetch,
+      fetch: embeddingFetch(runId, 'ollama', target.model),
     })
     const model = target.model
-    return { providerId: 'ollama', model, provider: createEmbeddingModel(provider, model) }
+    return { providerId: 'ollama', model, provider: createEmbeddingModel(provider, model), baseUrl: target.baseUrl }
   }
 
   const custom = target.customProvider || firstOpenAICompatibleCustom(settings, providerId)
@@ -147,18 +164,17 @@ function resolveConfiguredProvider(settings: AppSettings): ResolvedEmbeddingProv
       name: custom?.id || providerId,
       apiKey: normalizedOptional(embeddingSettings?.apiKey) || normalizedOptional(custom?.apiKey) || '',
       baseURL: target.baseUrl,
-      fetch,
+      fetch: embeddingFetch(runId, custom?.id || providerId, target.model),
     })
     const model = target.model
-    return { providerId: custom?.id || providerId, model, provider: createEmbeddingModel(provider, model) }
+    return { providerId: custom?.id || providerId, model, provider: createEmbeddingModel(provider, model), baseUrl: target.baseUrl }
   }
 
   throw new Error(`Unknown embedding provider: ${providerId}`)
 }
 
-function resolveAutoProvider(settings: AppSettings): ResolvedEmbeddingProvider {
+function resolveAutoProvider(settings: AppSettings, runId: string): ResolvedEmbeddingProvider {
   const embeddingSettings = settings.general.soulMemory?.embeddings
-  const fetch = createBoundFetch()
   const target = resolveEmbeddingTarget(settings)
   if (!target.available) throw new Error('No embedding provider is available')
 
@@ -167,10 +183,10 @@ function resolveAutoProvider(settings: AppSettings): ResolvedEmbeddingProvider {
     const provider = createOpenAI({
       apiKey: openai.apiKey,
       baseURL: target.baseUrl,
-      fetch,
+      fetch: embeddingFetch(runId, 'openai', target.model),
     })
     const model = target.model
-    return { providerId: 'openai', model, provider: createEmbeddingModel(provider, model) }
+    return { providerId: 'openai', model, provider: createEmbeddingModel(provider, model), baseUrl: target.baseUrl }
   }
 
   const gemini = configForProvider(settings, AIProvider.Gemini)
@@ -178,10 +194,10 @@ function resolveAutoProvider(settings: AppSettings): ResolvedEmbeddingProvider {
     const provider = createGoogleGenerativeAI({
       apiKey: gemini.apiKey,
       baseURL: target.baseUrl,
-      fetch,
+      fetch: embeddingFetch(runId, 'gemini', target.model),
     })
     const model = target.model
-    return { providerId: 'gemini', model, provider: createEmbeddingModel(provider, model) }
+    return { providerId: 'gemini', model, provider: createEmbeddingModel(provider, model), baseUrl: target.baseUrl }
   }
 
   const custom = target.customProvider || firstOpenAICompatibleCustom(settings, embeddingSettings?.customProviderId)
@@ -191,10 +207,10 @@ function resolveAutoProvider(settings: AppSettings): ResolvedEmbeddingProvider {
       name: custom?.id || 'custom',
       apiKey: normalizedOptional(embeddingSettings?.apiKey) || normalizedOptional(custom?.apiKey) || '',
       baseURL: customBaseUrl,
-      fetch,
+      fetch: embeddingFetch(runId, custom?.id || 'custom', target.model),
     })
     const model = target.model
-    return { providerId: custom?.id || 'custom', model, provider: createEmbeddingModel(provider, model) }
+    return { providerId: custom?.id || 'custom', model, provider: createEmbeddingModel(provider, model), baseUrl: target.baseUrl }
   }
 
   throw new Error('No embedding provider is available')
@@ -211,22 +227,102 @@ function resolveEmbeddingProviderOptions(settings: AppSettings, resolved: Resolv
 }
 
 export async function embedTexts(request: EmbeddingRequest): Promise<EmbeddingResult> {
+  configureMemoryDiagnosticsLogger(request.settings.general.soulMemory?.logging)
+  const runId = crypto.randomUUID()
+  const startedAt = Date.now()
   const values = request.values.map(value => value.trim()).filter(Boolean)
   if (values.length === 0) {
+    logMemoryDiagnostic({
+      subsystem: 'embedding',
+      operation: 'embed-texts',
+      stage: 'validate',
+      status: 'skipped',
+      runId,
+      summary: 'No non-empty embedding inputs.',
+      metadata: { inputCount: request.values.length },
+    })
     return { vectors: [], providerId: 'none', model: 'none' }
   }
 
-  const configured = resolveConfiguredProvider(request.settings)
-  const resolved = configured || resolveAutoProvider(request.settings)
-  const result = await embedMany({
-    model: resolved.provider,
-    values,
-    providerOptions: resolveEmbeddingProviderOptions(request.settings, resolved),
-  })
+  try {
+    logMemoryDiagnostic({
+      subsystem: 'embedding',
+      operation: 'embed-texts',
+      stage: 'resolve',
+      status: 'started',
+      runId,
+      request: {
+        inputCount: values.length,
+        totalChars: values.reduce((sum, value) => sum + value.length, 0),
+        configuredProvider: request.settings.general.soulMemory?.embeddings?.providerId || 'auto',
+      },
+    })
+    const configured = resolveConfiguredProvider(request.settings, runId)
+    const resolved = configured || resolveAutoProvider(request.settings, runId)
+    logMemoryDiagnostic({
+      subsystem: 'embedding',
+      operation: 'embed-texts',
+      stage: 'resolve',
+      status: 'ok',
+      runId,
+      response: {
+        providerId: resolved.providerId,
+        model: resolved.model,
+        baseUrl: resolved.baseUrl ? sanitizeUrlForMemoryLog(resolved.baseUrl) : '',
+        mode: configured ? 'configured' : 'auto',
+      },
+    })
+    logMemoryDiagnostic({
+      subsystem: 'embedding',
+      operation: 'embed-texts',
+      stage: 'sdk-request',
+      status: 'started',
+      runId,
+      request: {
+        inputCount: values.length,
+        providerId: resolved.providerId,
+        model: resolved.model,
+        dimensions: request.settings.general.soulMemory?.embeddings?.dimensions || 0,
+      },
+    })
+    const result = await embedMany({
+      model: resolved.provider,
+      values,
+      providerOptions: resolveEmbeddingProviderOptions(request.settings, resolved),
+    })
 
-  return {
-    vectors: result.embeddings.map(vector => Array.from(vector)),
-    providerId: resolved.providerId,
-    model: resolved.model,
+    const vectors = result.embeddings.map(vector => Array.from(vector))
+    logMemoryDiagnostic({
+      subsystem: 'embedding',
+      operation: 'embed-texts',
+      stage: 'sdk-response',
+      status: 'ok',
+      durationMs: Date.now() - startedAt,
+      runId,
+      response: {
+        providerId: resolved.providerId,
+        model: resolved.model,
+        inputCount: values.length,
+        vectorCount: vectors.length,
+        dimensions: vectors[0]?.length || 0,
+      },
+    })
+    return {
+      vectors,
+      providerId: resolved.providerId,
+      model: resolved.model,
+    }
+  } catch (error) {
+    logMemoryDiagnostic({
+      subsystem: 'embedding',
+      operation: 'embed-texts',
+      stage: 'sdk-response',
+      status: 'error',
+      durationMs: Date.now() - startedAt,
+      runId,
+      error,
+      metadata: { inputCount: values.length },
+    })
+    throw error
   }
 }

@@ -167,7 +167,9 @@
           <div
             v-for="doc in filteredUserNotes"
             :key="doc.id"
-            :class="['note-option', { active: activeId === doc.id }]"
+            :class="['note-option', { active: activeId === doc.id, selected: switcherSelectedDocument?.id === doc.id }]"
+            :data-note-id="doc.id"
+            @mouseenter="selectSwitcherDocument(doc.id)"
           >
             <button
               class="note-option-main"
@@ -203,24 +205,30 @@
             </div>
           </div>
 
-          <div class="switcher-label">
+          <div
+            v-if="filteredSystemNotes.length"
+            class="switcher-label"
+          >
             System
           </div>
           <div
-            v-if="snapshot?.workspaceAiTodo"
-            :class="['note-option', 'system', { active: activeId === snapshot.workspaceAiTodo.id }]"
+            v-for="doc in filteredSystemNotes"
+            :key="doc.id"
+            :class="['note-option', 'system', { active: activeId === doc.id, selected: switcherSelectedDocument?.id === doc.id }]"
+            :data-note-id="doc.id"
+            @mouseenter="selectSwitcherDocument(doc.id)"
           >
             <button
               class="note-option-main"
               type="button"
-              @click="selectDocument(snapshot.workspaceAiTodo.id)"
+              @click="selectDocument(doc.id)"
             >
               <strong>AI Todo</strong>
               <small>
-                <i :class="{ current: activeId === snapshot.workspaceAiTodo.id }" />
-                {{ activeId === snapshot.workspaceAiTodo.id ? 'Current' : 'System' }}
+                <i :class="{ current: activeId === doc.id }" />
+                {{ activeId === doc.id ? 'Current' : 'System' }}
                 <b>•</b>
-                {{ snapshot.workspaceAiTodo.content.length }} Characters
+                {{ doc.content.length }} Characters
               </small>
             </button>
             <div class="note-option-actions">
@@ -556,6 +564,7 @@ const collapsed = ref(props.standalone ? false : readStorage('Collapsed', 'true'
 const panelHeight = ref(readStorageNumber('Height', 360))
 const switcherOpen = ref(false)
 const switcherQuery = ref('')
+const switcherSelectedIndex = ref(0)
 const actionPanelOpen = ref(false)
 const actionQuery = ref('')
 const formatBufferOpen = ref(false)
@@ -768,15 +777,6 @@ const todoActions = computed<TodoNotesAction[]>(() => {
     },
   ]
 })
-const filteredUserNotes = computed(() => {
-  const query = switcherQuery.value.trim().toLowerCase()
-  const notes = sortedUserNotes.value
-  if (!query) return notes
-  return notes.filter(note =>
-    note.title.toLowerCase().includes(query) ||
-    note.content.toLowerCase().includes(query)
-  )
-})
 const sortedUserNotes = computed(() => {
   const notes = snapshot.value?.userNotes || []
   return [...notes].sort((a, b) => {
@@ -785,12 +785,40 @@ const sortedUserNotes = computed(() => {
     return b.updatedAt - a.updatedAt || a.title.localeCompare(b.title)
   })
 })
+const filteredUserNotes = computed(() => {
+  const query = switcherQuery.value.trim().toLowerCase()
+  const notes = sortedUserNotes.value
+  if (!query) return notes
+  return notes.filter(note => documentMatchesQuery(note, query))
+})
+const filteredSystemNotes = computed(() => {
+  const document = snapshot.value?.workspaceAiTodo
+  if (!document) return []
+  const query = switcherQuery.value.trim().toLowerCase()
+  if (!query || documentMatchesQuery(document, query)) return [document]
+  return []
+})
+const switcherDocuments = computed(() => [
+  ...filteredUserNotes.value,
+  ...filteredSystemNotes.value,
+])
+const switcherSelectedDocument = computed(() => switcherDocuments.value[switcherSelectedIndex.value])
+const switcherDocumentSignature = computed(() => switcherDocuments.value.map(doc => doc.id).join('\u0000'))
+watch([switcherQuery, switcherDocumentSignature], () => {
+  if (!switcherOpen.value) return
+  resetSwitcherSelection()
+})
 const findMatches = computed(() => findMarkdownMatches(draft.value, findQuery.value))
 const findStatus = computed(() => {
   if (!findQuery.value.trim()) return '0/0'
   if (!findMatches.value.length) return '0/0'
   return `${activeFindIndex.value + 1}/${findMatches.value.length}`
 })
+
+function documentMatchesQuery(document: TodoPlanDocument, query: string): boolean {
+  return document.title.toLowerCase().includes(query) ||
+    document.content.toLowerCase().includes(query)
+}
 
 watch(activeDocument, (doc) => {
   if (!doc || doc.id === loadedDocumentId) return
@@ -987,14 +1015,50 @@ function openSwitcher() {
   formatBufferOpen.value = false
   switcherOpen.value = true
   switcherQuery.value = ''
+  resetSwitcherSelection()
   nextTick(() => {
     switcherInputRef.value?.focus()
     switcherInputRef.value?.select()
+    scrollSelectedSwitcherDocumentIntoView()
   })
 }
 
 function closeSwitcher() {
   switcherOpen.value = false
+}
+
+function resetSwitcherSelection() {
+  const documents = switcherDocuments.value
+  if (!documents.length) {
+    switcherSelectedIndex.value = 0
+    return
+  }
+  const activeIndex = documents.findIndex(doc => doc.id === activeId.value)
+  switcherSelectedIndex.value = activeIndex >= 0 ? activeIndex : 0
+  scrollSelectedSwitcherDocumentIntoView()
+}
+
+function moveSwitcherSelection(direction: number) {
+  const documents = switcherDocuments.value
+  if (!documents.length) return
+  switcherSelectedIndex.value = (switcherSelectedIndex.value + direction + documents.length) % documents.length
+  scrollSelectedSwitcherDocumentIntoView()
+}
+
+function selectSwitcherDocument(id: string) {
+  const index = switcherDocuments.value.findIndex(doc => doc.id === id)
+  if (index >= 0) switcherSelectedIndex.value = index
+}
+
+function scrollSelectedSwitcherDocumentIntoView() {
+  if (!switcherOpen.value) return
+  nextTick(() => {
+    const id = switcherSelectedDocument.value?.id
+    if (!id) return
+    const option = [...(switcherRef.value?.querySelectorAll<HTMLElement>('.note-option') || [])]
+      .find(element => element.dataset.noteId === id)
+    option?.scrollIntoView({ block: 'nearest' })
+  })
 }
 
 function openActionPanel() {
@@ -1089,11 +1153,20 @@ function handleSwitcherKeydown(event: KeyboardEvent) {
     closeSwitcher()
     return
   }
-  if (event.key !== 'Enter') return
-  const target = filteredUserNotes.value[0] || snapshot.value?.workspaceAiTodo
-  if (target) {
+  if (event.key === 'ArrowDown') {
     event.preventDefault()
-    selectDocument(target.id)
+    moveSwitcherSelection(1)
+    return
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    moveSwitcherSelection(-1)
+    return
+  }
+  if (event.key !== 'Enter') return
+  if (switcherSelectedDocument.value) {
+    event.preventDefault()
+    selectDocument(switcherSelectedDocument.value.id)
   }
 }
 
@@ -1772,9 +1845,14 @@ onUnmounted(() => {
   border-radius: 12px;
 }
 
-.note-option.active {
+.note-option.active,
+.note-option.selected {
   color: var(--todo-text);
   background: color-mix(in srgb, var(--todo-text) 9%, transparent);
+}
+
+.note-option.selected {
+  background: color-mix(in srgb, var(--todo-text) 12%, transparent);
 }
 
 .note-option.system {

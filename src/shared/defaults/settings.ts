@@ -17,6 +17,7 @@ import type {
   SoulMemoryFlushSettings,
   SoulMemoryCaptureSettings,
   SoulMemoryCanonicalSettings,
+  SoulMemoryLoggingSettings,
   SoulMemoryReadSettings,
   SoulMemorySearchSettings,
   SoulMemorySettings,
@@ -131,6 +132,14 @@ export const DEFAULT_SOUL_MEMORY_READ_SETTINGS: Required<SoulMemoryReadSettings>
   maxLines: 1000,
 }
 
+export const DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS: Required<SoulMemoryLoggingSettings> = {
+  enabled: true,
+  retentionDays: 7,
+  level: 'info',
+  maxPreviewChars: 600,
+  includeHttpErrorBody: true,
+}
+
 export const DEFAULT_SOUL_MEMORY_SETTINGS: Required<SoulMemorySettings> = {
   enabled: true,
   directoryMode: 'ai-note-dir',
@@ -145,6 +154,7 @@ export const DEFAULT_SOUL_MEMORY_SETTINGS: Required<SoulMemorySettings> = {
   dreaming: DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS,
   dailyContext: DEFAULT_SOUL_MEMORY_DAILY_CONTEXT_SETTINGS,
   read: DEFAULT_SOUL_MEMORY_READ_SETTINGS,
+  logging: DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS,
 }
 
 // ============================================================================
@@ -461,6 +471,7 @@ export function normalizeSoulMemorySettings(settings?: SoulMemorySettings): Requ
     dreaming: normalizeSoulMemoryDreamingSettings(settings?.dreaming),
     dailyContext: normalizeSoulMemoryDailyContextSettings(settings?.dailyContext),
     read: normalizeSoulMemoryReadSettings(settings?.read),
+    logging: normalizeSoulMemoryLoggingSettings(settings?.logging),
   }
 }
 
@@ -596,6 +607,34 @@ function normalizeSoulMemoryEmbeddingSettings(
   }
 }
 
+function normalizeSoulMemoryLoggingSettings(
+  settings?: SoulMemoryLoggingSettings,
+): Required<SoulMemoryLoggingSettings> {
+  const level = settings?.level === 'debug' ||
+    settings?.level === 'warn' ||
+    settings?.level === 'error' ||
+    settings?.level === 'info'
+    ? settings.level
+    : DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS.level
+  return {
+    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS.enabled,
+    retentionDays: clampNumber(
+      settings?.retentionDays,
+      1,
+      90,
+      DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS.retentionDays,
+    ),
+    level,
+    maxPreviewChars: clampNumber(
+      settings?.maxPreviewChars,
+      120,
+      4000,
+      DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS.maxPreviewChars,
+    ),
+    includeHttpErrorBody: settings?.includeHttpErrorBody ?? DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS.includeHttpErrorBody,
+  }
+}
+
 function normalizeSoulMemoryFlushSettings(
   settings?: SoulMemoryFlushSettings,
 ): Required<SoulMemoryFlushSettings> {
@@ -700,7 +739,7 @@ function normalizeSoulMemoryDreamingSettings(
   settings?: SoulMemoryDreamingSettings,
 ): Required<SoulMemoryDreamingSettings> {
   const frequency = settings?.frequency?.trim() || DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.frequency
-  const allowedSources = new Set(['daily', 'sessions', 'short-term', 'memory', 'recall'])
+  const allowedSources = new Set(['daily', 'sessions', 'short-term', 'recall'])
   const sources = Array.isArray(settings?.sources)
     ? settings.sources.filter(source => allowedSources.has(source))
     : DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.sources

@@ -43,6 +43,22 @@ describe('MessageThinking', () => {
     wrapper.unmount()
   })
 
+  it('shows memory retrieval status before content starts', () => {
+    const wrapper = mount(MessageThinking, {
+      props: {
+        isStreaming: true,
+        hasContent: false,
+        reasoning: '',
+        loadingMemory: true,
+      },
+    })
+
+    expect(wrapper.text()).toContain('Extracting memory')
+    expect(wrapper.text()).not.toContain('Waiting')
+
+    wrapper.unmount()
+  })
+
   it('auto-collapses reasoning when streaming ends', async () => {
     const wrapper = mount(MessageThinking, {
       props: {

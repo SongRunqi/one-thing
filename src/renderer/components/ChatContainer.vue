@@ -58,6 +58,7 @@
             :style="{ flex: panel.flex }"
             :show-settings="index === 0 && showSettings"
             :show-sidebar-toggle="sidebarCollapsed && !sidebarFloating"
+            :media-panel-open="mediaPanelOpen"
             :is-inspector-open="isInspectorOpen"
             @close="closePanel(panel.id)"
             @split="openSessionPicker(panel.id)"

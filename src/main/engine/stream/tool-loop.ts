@@ -49,6 +49,11 @@ import { IPC_CHANNELS } from '../../../shared/ipc.js'
 const DEBUG_STREAM = process.env.DEBUG_STREAM === '1' || process.env.DEBUG_STREAM === 'true'
 const CODEX_NATIVE_IMAGE_GENERATION_TOOL = 'image_generation'
 
+function shouldEmitActiveMemoryLoading(ctx: StreamContext): boolean {
+  const soulMemory = ctx.settings.general?.soulMemory
+  return soulMemory?.enabled !== false && soulMemory?.activeMemory?.enabled !== false
+}
+
 /**
  * Stream result indicating why the stream ended
  */
@@ -1141,6 +1146,18 @@ export async function executeStreamGeneration(
     const toolsForAI = hasTools ? { ...builtinToolsForAI, ...mcpTools } : {}
 
     const projectVars = buildProjectDirsPromptVars(sessionWorkingDir)
+    const contextVariables = await buildContextVariablesPromptText(ctx.sessionId)
+    const showActiveMemoryLoading = shouldEmitActiveMemoryLoading(ctx)
+    const promptContextStartedAt = Date.now()
+
+    if (showActiveMemoryLoading) {
+      const timeoutMs = ctx.settings.general?.soulMemory?.activeMemory?.timeoutMs ?? 15000
+      console.info(
+        `[ActiveMemory] ui loading-memory session=${ctx.sessionId.slice(0, 8)} timeoutMs=${timeoutMs}`,
+      )
+      emitter.sendContentPart({ type: 'loading-memory' })
+    }
+
     const promptContext = await buildPromptContext({
       previousState: session?.promptContext ?? undefined,
       sessionId: ctx.sessionId,
@@ -1150,12 +1167,20 @@ export async function executeStreamGeneration(
       hasTools,
       skills: enabledSkills,
       workingDirectory: sessionWorkingDir,
-      contextVariables: await buildContextVariablesPromptText(ctx.sessionId),
+      contextVariables,
       activeProject: projectVars.active,
       knownProjects: projectVars.known,
       toolNames: [...Object.keys(builtinToolsForAI), ...codexNativeTools],
       mcpToolNames: Object.keys(mcpTools),
     })
+
+    if (showActiveMemoryLoading) {
+      console.info(
+        `[ActiveMemory] ui waiting session=${ctx.sessionId.slice(0, 8)} promptContextDurationMs=${Date.now() - promptContextStartedAt}`,
+      )
+      emitter.sendContentPart({ type: 'waiting' })
+    }
+
     store.updateSessionPromptContext(ctx.sessionId, promptContext.state)
     const requestMessages = buildRequestMessages({
       providerId: ctx.providerId,

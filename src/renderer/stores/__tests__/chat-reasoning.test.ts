@@ -61,3 +61,36 @@ describe('chat store reasoning placement', () => {
     ])
   })
 })
+
+describe('chat store memory loading status', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('applies loading-memory and returns to waiting after recall finishes', () => {
+    const store = useChatStore()
+    store.setMessagesFromSession('s1', [assistantMessage()])
+
+    store.handleStreamChunk({
+      type: 'content_part',
+      sessionId: 's1',
+      messageId: 'm1',
+      content: '',
+      contentPart: { type: 'loading-memory' },
+    })
+
+    let message = store.getSessionState('s1').messages.value[0]
+    expect(message.contentParts).toEqual([{ type: 'loading-memory' }])
+
+    store.handleStreamChunk({
+      type: 'content_part',
+      sessionId: 's1',
+      messageId: 'm1',
+      content: '',
+      contentPart: { type: 'waiting' },
+    })
+
+    message = store.getSessionState('s1').messages.value[0]
+    expect(message.contentParts).toEqual([{ type: 'waiting' }])
+  })
+})

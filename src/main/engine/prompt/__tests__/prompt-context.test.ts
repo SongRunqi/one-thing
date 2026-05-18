@@ -115,11 +115,9 @@ describe('PromptContextBuilder', () => {
 
     expect(second.emittedFragments.map(item => item.source)).toEqual(['context/context-variables'])
     expect(second.emittedFragments[0].reason).toBe('changed')
-    expect(contextVariableSegments).toHaveLength(2)
-    expect(contextVariableSegments[0].reason).toBe('initial')
-    expect(contextVariableSegments[0].emittedThisTurn).not.toBe(true)
-    expect(contextVariableSegments[1].reason).toBe('changed')
-    expect(contextVariableSegments[1].emittedThisTurn).toBe(true)
+    expect(contextVariableSegments).toHaveLength(1)
+    expect(contextVariableSegments[0].reason).toBe('changed')
+    expect(contextVariableSegments[0].emittedThisTurn).toBe(true)
   })
 
   it('emits removal markers for context fragments that disappear', async () => {

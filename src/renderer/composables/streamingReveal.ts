@@ -4,6 +4,8 @@ export interface StreamingRevealOptions {
   maxUnitsPerFrame?: number
   maxCharsPerFrame?: number
   maxNewlinesPerFrame?: number
+  catchUpAfterMs?: number
+  catchUpRemainingChars?: number
   reducedMotion?: boolean
 }
 
@@ -135,6 +137,13 @@ export function advanceStreamingReveal(
 
   const remaining = target.length - currentContent.length
   if (remaining <= 0) {
+    return { content: target, done: true, replaced: false, unitsRevealed: 0 }
+  }
+  if (
+    options.catchUpAfterMs !== undefined &&
+    elapsedMs >= options.catchUpAfterMs &&
+    remaining >= (options.catchUpRemainingChars ?? 0)
+  ) {
     return { content: target, done: true, replaced: false, unitsRevealed: 0 }
   }
 

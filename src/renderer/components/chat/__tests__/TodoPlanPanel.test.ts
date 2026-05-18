@@ -131,8 +131,14 @@ function installElectronApi() {
 
 describe('TodoPlanPanel', () => {
   let storage: Record<string, string>
+  let scrollIntoView: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
+    scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    })
     mocks.editorFocus.mockClear()
     mocks.editorSetSelection.mockClear()
     mocks.editorSetValue.mockClear()
@@ -275,6 +281,44 @@ describe('TodoPlanPanel', () => {
     expect(wrapper.text()).toContain('AI Todo')
   })
 
+  it('moves the note switcher selection with arrow keys and keeps it visible', async () => {
+    const wrapper = mount(TodoPlanPanel, {
+      attachTo: document.body,
+      props: { sessionId: 'session-1', workingDirectory: '/repo' },
+    })
+    await settle()
+
+    wrapper.find('.todo-plan-panel').element.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'p',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    }))
+    await settle()
+    scrollIntoView.mockClear()
+
+    wrapper.find('.switcher-search input').element.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'ArrowDown',
+      bubbles: true,
+      cancelable: true,
+    }))
+    await settle()
+
+    expect(wrapper.find('.note-option.selected').text()).toContain('AI Todo')
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+
+    wrapper.find('.switcher-search input').element.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    }))
+    await settle()
+
+    expect(wrapper.find('.note-switcher').exists()).toBe(false)
+    expect(storage.todoPlanCardActiveId).toBe('workspace-ai-todo')
+    wrapper.unmount()
+  })
+
   it('opens the action panel on command-k and runs markdown commands', async () => {
     const wrapper = mount(TodoPlanPanel, {
       attachTo: document.body,
@@ -306,6 +350,34 @@ describe('TodoPlanPanel', () => {
 
     expect(mocks.editorApplyCommand).toHaveBeenCalledWith('bold')
     expect(wrapper.find('.todo-notes-action-panel').exists()).toBe(false)
+  })
+
+  it('moves the action panel selection with arrow keys and keeps it visible', async () => {
+    const wrapper = mount(TodoPlanPanel, {
+      attachTo: document.body,
+      props: { sessionId: 'session-1', workingDirectory: '/repo' },
+    })
+    await settle()
+
+    wrapper.find('.todo-plan-panel').element.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'k',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    }))
+    await settle()
+    scrollIntoView.mockClear()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'ArrowDown',
+      bubbles: true,
+      cancelable: true,
+    }))
+    await settle()
+
+    expect(wrapper.find('.action-row.selected').text()).toContain('Rename Note')
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+    wrapper.unmount()
   })
 
   it('opens the command panel from the top-right titlebar button', async () => {

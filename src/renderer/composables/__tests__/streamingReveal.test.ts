@@ -62,4 +62,26 @@ describe('streaming reveal', () => {
     expect(next.content.length).toBe(96)
     expect(next.done).toBe(false)
   })
+
+  it('catches up instead of replaying stale backlog after a long pause', () => {
+    const target = Array.from({ length: 200 }, (_, index) => `word${index}`).join(' ')
+    const next = advanceStreamingReveal('', target, 1000, {
+      catchUpAfterMs: 300,
+      catchUpRemainingChars: 1200,
+    })
+
+    expect(next.content).toBe(target)
+    expect(next.done).toBe(true)
+  })
+
+  it('keeps small paused backlogs animated', () => {
+    const target = Array.from({ length: 40 }, (_, index) => `w${index}`).join(' ')
+    const next = advanceStreamingReveal('', target, 1000, {
+      catchUpAfterMs: 300,
+      catchUpRemainingChars: 1200,
+    })
+
+    expect(next.content.length).toBeLessThan(target.length)
+    expect(next.done).toBe(false)
+  })
 })

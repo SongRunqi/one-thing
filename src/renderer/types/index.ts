@@ -126,6 +126,26 @@ import type {
   MemoryProfileListResponse,
   MemoryProfileUpsertRequest,
   MemoryProfileUpsertResponse,
+  MemoryGraphAuditRequest,
+  MemoryGraphAuditResponse,
+  MemoryGraphDeleteRequest,
+  MemoryGraphDuplicateDecisionRequest,
+  MemoryGraphDuplicatesResponse,
+  MemoryGraphEntitiesResponse,
+  MemoryGraphEntityResponse,
+  MemoryGraphEntityUpsertRequest,
+  MemoryGraphObservationResponse,
+  MemoryGraphObservationUpsertRequest,
+  MemoryGraphObservationsResponse,
+  MemoryGraphOverviewResponse,
+  MemoryGraphRelationResponse,
+  MemoryGraphRelationUpsertRequest,
+  MemoryGraphRelationsResponse,
+  MemoryGraphListRequest,
+  MemoryLogsCleanupResponse,
+  MemoryLogsListRequest,
+  MemoryLogsListResponse,
+  MemoryLogsStatsResponse,
   MemoryRunDreamingResponse,
   MemoryReadRequest,
   MemoryReadResponse,
@@ -262,6 +282,10 @@ export type {
   MemoryCaptureDecisionResponse,
   MemoryIndexResponse,
   MemoryOverviewResponse,
+  MemoryLogsCleanupResponse,
+  MemoryLogsListRequest,
+  MemoryLogsListResponse,
+  MemoryLogsStatsResponse,
   MemoryRunDreamingResponse,
   MemoryReadRequest,
   MemoryReadResponse,
@@ -596,6 +620,24 @@ export interface ElectronAPI {
   deleteMemoryProfile: (request: MemoryProfileDeleteRequest) => Promise<MemoryProfileDeleteResponse>
   getMemoryProfileAudit: (request: MemoryProfileAuditRequest) => Promise<MemoryProfileAuditResponse>
   exportMemoryProfile: () => Promise<MemoryProfileExportResponse>
+  getMemoryGraphOverview: () => Promise<MemoryGraphOverviewResponse>
+  listMemoryGraphEntities: (request?: MemoryGraphListRequest) => Promise<MemoryGraphEntitiesResponse>
+  upsertMemoryGraphEntity: (request: MemoryGraphEntityUpsertRequest) => Promise<MemoryGraphEntityResponse>
+  deleteMemoryGraphEntity: (request: MemoryGraphDeleteRequest) => Promise<{ success: boolean; error?: string }>
+  listMemoryGraphObservations: (request?: MemoryGraphListRequest & { entityId?: string }) => Promise<MemoryGraphObservationsResponse>
+  upsertMemoryGraphObservation: (request: MemoryGraphObservationUpsertRequest) => Promise<MemoryGraphObservationResponse>
+  deleteMemoryGraphObservation: (request: MemoryGraphDeleteRequest) => Promise<{ success: boolean; error?: string }>
+  listMemoryGraphRelations: (request?: MemoryGraphListRequest & { entityId?: string }) => Promise<MemoryGraphRelationsResponse>
+  upsertMemoryGraphRelation: (request: MemoryGraphRelationUpsertRequest) => Promise<MemoryGraphRelationResponse>
+  deleteMemoryGraphRelation: (request: MemoryGraphDeleteRequest) => Promise<{ success: boolean; error?: string }>
+  listMemoryGraphDuplicates: (request?: MemoryGraphListRequest) => Promise<MemoryGraphDuplicatesResponse>
+  mergeMemoryGraphDuplicate: (request: MemoryGraphDuplicateDecisionRequest) => Promise<{ success: boolean; error?: string }>
+  ignoreMemoryGraphDuplicate: (request: MemoryGraphDuplicateDecisionRequest) => Promise<{ success: boolean; error?: string }>
+  getMemoryGraphAudit: (request: MemoryGraphAuditRequest) => Promise<MemoryGraphAuditResponse>
+  listMemoryLogs: (request?: MemoryLogsListRequest) => Promise<MemoryLogsListResponse>
+  getMemoryLogStats: () => Promise<MemoryLogsStatsResponse>
+  openMemoryLogFolder: () => Promise<{ success: boolean; error?: string }>
+  cleanupMemoryLogs: () => Promise<MemoryLogsCleanupResponse>
   saveMemoryCapture: (request?: MemoryCaptureDecisionRequest) => Promise<MemoryCaptureDecisionResponse>
   discardMemoryCapture: (request?: MemoryCaptureDecisionRequest) => Promise<MemoryCaptureDecisionResponse>
   listSchedulerTasks: () => Promise<SchedulerListResponse>

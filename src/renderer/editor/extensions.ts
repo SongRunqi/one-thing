@@ -14,6 +14,7 @@ import {
 import { autocompletion } from '@codemirror/autocomplete'
 import { searchKeymap } from '@codemirror/search'
 import {
+  drawSelection,
   EditorView,
   keymap,
   placeholder as placeholderExtension,
@@ -112,6 +113,7 @@ export function buildEditorExtensions(options: BuildEditorExtensionsOptions): Ex
       ...historyKeymap,
       ...defaultKeymap,
     ]),
+    drawSelection(),
     options.compartments.theme.of(themeExtension(options.profile, options.spellcheck)),
     options.compartments.wrapping.of(wrappingExtension(options.settings.lineWrapping)),
     options.compartments.placeholder.of(placeholderExtensions(options.placeholder)),
@@ -194,20 +196,22 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
     '.cm-content': {
       minHeight: 'var(--editor-min-height)',
       padding: isComposer ? '12px 0 0 0' : '0',
-      caretColor: 'var(--accent)',
+      cursor: 'text',
       whiteSpace: 'pre-wrap',
       wordBreak: 'break-word',
     },
     '.cm-line': {
       padding: '0',
+      cursor: 'text',
     },
     '.cm-placeholder': {
       color: 'var(--text-input-placeholder, var(--text-muted))',
       userSelect: 'none',
       pointerEvents: 'none',
     },
-    '.cm-cursor': {
-      borderLeftColor: 'var(--accent)',
+    '.cm-cursor, .cm-dropCursor': {
+      borderLeft: '1.2px solid var(--editor-caret, var(--accent))',
+      marginLeft: '-0.6px',
     },
     '.cm-selectionBackground': {
       backgroundColor: 'rgba(var(--accent-rgb, 59, 130, 246), 0.22) !important',
@@ -218,7 +222,7 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
     '.cm-activeLine': {
       backgroundColor: 'transparent',
     },
-    '&[contenteditable="true"]': {
+    '.cm-content[contenteditable="true"]': {
       WebkitUserModify: spellcheck ? 'read-write' : 'read-write-plaintext-only',
     },
     '.cm-scroller::-webkit-scrollbar': {

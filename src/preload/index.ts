@@ -606,7 +606,7 @@ const electronAPI = {
   searchMemory: (request: { query: string; limit?: number | string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_SEARCH, request),
 
-  appendMemory: (request: { content: string; target?: 'daily' | 'memory'; heading?: string }) =>
+  appendMemory: (request: { content: string; target?: 'daily'; heading?: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_APPEND, request),
 
   saveMemoryFile: (request: { path: string; content: string }) =>
@@ -645,6 +645,97 @@ const electronAPI = {
 
   exportMemoryProfile: () =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_EXPORT),
+
+  getMemoryGraphOverview: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OVERVIEW),
+
+  listMemoryGraphEntities: (request?: { query?: string; includeDeleted?: boolean; limit?: number }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_LIST, request),
+
+  upsertMemoryGraphEntity: (request: {
+    id?: string
+    entityType: string
+    name: string
+    displayName?: string
+    aliases?: string[]
+    confidence?: number
+    sensitivity?: string
+    evidence?: string
+  }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_UPSERT, request),
+
+  deleteMemoryGraphEntity: (request: { id: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_DELETE, request),
+
+  listMemoryGraphObservations: (request?: { query?: string; includeDeleted?: boolean; limit?: number; entityId?: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_LIST, request),
+
+  upsertMemoryGraphObservation: (request: {
+    id?: string
+    entityId: string
+    kind: string
+    slot: string
+    value: string
+    text?: string
+    confidence?: number
+    sensitivity?: string
+    evidence?: string
+    status?: string
+  }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_UPSERT, request),
+
+  deleteMemoryGraphObservation: (request: { id: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_DELETE, request),
+
+  listMemoryGraphRelations: (request?: { query?: string; includeDeleted?: boolean; limit?: number; entityId?: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_LIST, request),
+
+  upsertMemoryGraphRelation: (request: {
+    id?: string
+    fromEntityId: string
+    relationType: string
+    toEntityId: string
+    text?: string
+    confidence?: number
+    sensitivity?: string
+    evidence?: string
+    status?: string
+  }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_UPSERT, request),
+
+  deleteMemoryGraphRelation: (request: { id: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_DELETE, request),
+
+  listMemoryGraphDuplicates: (request?: { query?: string; includeDeleted?: boolean; limit?: number }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_LIST, request),
+
+  mergeMemoryGraphDuplicate: (request: { id: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_MERGE, request),
+
+  ignoreMemoryGraphDuplicate: (request: { id: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_IGNORE, request),
+
+  getMemoryGraphAudit: (request: { id: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_AUDIT, request),
+
+  listMemoryLogs: (request?: {
+    limit?: number
+    query?: string
+    level?: string
+    subsystem?: string
+    status?: string
+    since?: number
+  }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LOGS_LIST, request),
+
+  getMemoryLogStats: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LOGS_STATS),
+
+  openMemoryLogFolder: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LOGS_OPEN_FOLDER),
+
+  cleanupMemoryLogs: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LOGS_CLEANUP),
 
   saveMemoryCapture: (request?: { id?: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_CAPTURE_SAVE, request),

@@ -42,7 +42,8 @@
         <span :class="['status-pill', { off: overview?.enabled === false }]">
           {{ overview?.enabled === false ? 'Off' : 'On' }}
         </span>
-        <span>{{ overview?.canonicalCount ?? 0 }} profile</span>
+        <span>{{ overview?.graph?.entities ?? 0 }} entities</span>
+        <span>{{ overview?.graph?.observations ?? 0 }} facts</span>
         <span>{{ overview?.files.length ?? 0 }} files</span>
         <span>{{ overview?.status.indexedChunks ?? 0 }} chunks</span>
         <span>{{ overview?.status.ftsTokenizer || 'FTS' }}</span>
@@ -217,13 +218,13 @@
         <div class="profile-toolbar">
           <form
             class="search-row"
-            @submit.prevent="loadProfile"
+            @submit.prevent="loadGraph"
           >
             <input
-              v-model="profileSearch"
+              v-model="graphSearch"
               class="memory-input"
               type="text"
-              placeholder="Search user profile..."
+              placeholder="Search graph memory..."
               spellcheck="false"
             >
             <button
@@ -242,143 +243,518 @@
             <button
               class="secondary-action inline"
               type="button"
-              @click="resetProfileForm"
+              @click="newGraphRecord"
             >
-              New
+              {{ graphView === 'entities' ? 'New entity' : graphView === 'relations' ? 'New relation' : 'New observation' }}
             </button>
             <button
               class="secondary-action inline"
               type="button"
               :disabled="profileLoading"
-              @click="exportProfile"
+              @click="loadGraph"
             >
-              Export
+              Refresh
             </button>
           </div>
         </div>
 
-        <div class="profile-layout">
+        <div class="segmented graph-tabs">
+          <button
+            :class="{ active: graphView === 'observations' }"
+            type="button"
+            @click="graphView = 'observations'"
+          >
+            Observations {{ graphObservations.length }}
+          </button>
+          <button
+            :class="{ active: graphView === 'relations' }"
+            type="button"
+            @click="graphView = 'relations'"
+          >
+            Relations {{ graphRelations.length }}
+          </button>
+          <button
+            :class="{ active: graphView === 'entities' }"
+            type="button"
+            @click="graphView = 'entities'"
+          >
+            Entities {{ graphEntities.length }}
+          </button>
+          <button
+            :class="{ active: graphView === 'duplicates' }"
+            type="button"
+            @click="graphView = 'duplicates'"
+          >
+            Duplicates {{ graphDuplicates.length }}
+          </button>
+        </div>
+
+        <div class="profile-layout graph-layout">
           <div class="profile-list">
-            <button
-              v-for="memory in profileRecords"
-              :key="memory.id"
-              :class="['profile-row', { active: profileForm.id === memory.id }]"
-              type="button"
-              @click="selectProfile(memory)"
-            >
-              <span class="profile-row-top">
-                <code>{{ memory.memoryKey }}</code>
-                <span>{{ memory.confidence.toFixed(2) }}</span>
-              </span>
-              <strong>{{ memory.text }}</strong>
-              <span>{{ memory.kind }} · {{ formatMaybeDate(memory.updatedAt) }}</span>
-            </button>
+            <template v-if="graphView === 'observations'">
+              <button
+                v-for="memory in graphObservations"
+                :key="memory.id"
+                :class="['profile-row', { active: graphObservationForm.id === memory.id }]"
+                type="button"
+                @click="selectGraphObservation(memory)"
+              >
+                <span class="profile-row-top">
+                  <code :title="`${memory.entityDisplayName || memory.entityId} / ${memory.slot}`">{{ memory.entityDisplayName || memory.entityId }} / {{ memory.slot }}</code>
+                  <span>{{ memory.confidence.toFixed(2) }}</span>
+                </span>
+                <strong>{{ memory.text }}</strong>
+                <span>{{ memory.kind }} · {{ memory.status }} · {{ formatMaybeDate(memory.updatedAt) }}</span>
+                <span
+                  v-if="graphObservationForm.id === memory.id"
+                  class="profile-expanded"
+                >
+                  <span class="profile-detail-grid">
+                    <span class="profile-detail-item">
+                      <span>Entity</span>
+                      <code>{{ memory.entityDisplayName || memory.entityId }}</code>
+                    </span>
+                    <span class="profile-detail-item">
+                      <span>Slot</span>
+                      <code>{{ memory.slot }}</code>
+                    </span>
+                    <span class="profile-detail-item">
+                      <span>Confidence</span>
+                      <strong>{{ memory.confidence.toFixed(2) }}</strong>
+                    </span>
+                    <span class="profile-detail-item">
+                      <span>Source</span>
+                      <code>{{ memory.source }}</code>
+                    </span>
+                  </span>
+                  <span class="profile-detail-text">
+                    <span>Value</span>
+                    <strong>{{ memory.value }}</strong>
+                  </span>
+                  <span class="profile-detail-text">
+                    <span>Text</span>
+                    <strong>{{ memory.text }}</strong>
+                  </span>
+                  <span
+                    v-if="memory.evidence"
+                    class="profile-detail-text"
+                  >
+                    <span>Evidence</span>
+                    <strong>{{ memory.evidence }}</strong>
+                  </span>
+                </span>
+              </button>
+            </template>
+            <template v-else-if="graphView === 'relations'">
+              <button
+                v-for="relation in graphRelations"
+                :key="relation.id"
+                :class="['profile-row', { active: graphRelationForm.id === relation.id }]"
+                type="button"
+                @click="selectGraphRelation(relation)"
+              >
+                <span class="profile-row-top">
+                  <code :title="`${relation.fromDisplayName || relation.fromEntityId} → ${relation.toDisplayName || relation.toEntityId}`">{{ relation.fromDisplayName || relation.fromEntityId }} → {{ relation.toDisplayName || relation.toEntityId }}</code>
+                  <span>{{ relation.confidence.toFixed(2) }}</span>
+                </span>
+                <strong>{{ relation.relationType }}</strong>
+                <span>{{ relation.text }}</span>
+                <span
+                  v-if="graphRelationForm.id === relation.id"
+                  class="profile-expanded"
+                >
+                  <span class="profile-detail-grid">
+                    <span class="profile-detail-item">
+                      <span>From</span>
+                      <code>{{ relation.fromDisplayName || relation.fromEntityId }}</code>
+                    </span>
+                    <span class="profile-detail-item">
+                      <span>Relation</span>
+                      <code>{{ relation.relationType }}</code>
+                    </span>
+                    <span class="profile-detail-item">
+                      <span>To</span>
+                      <code>{{ relation.toDisplayName || relation.toEntityId }}</code>
+                    </span>
+                    <span class="profile-detail-item">
+                      <span>Confidence</span>
+                      <strong>{{ relation.confidence.toFixed(2) }}</strong>
+                    </span>
+                  </span>
+                  <span class="profile-detail-text">
+                    <span>Text</span>
+                    <strong>{{ relation.text }}</strong>
+                  </span>
+                  <span
+                    v-if="relation.evidence"
+                    class="profile-detail-text"
+                  >
+                    <span>Evidence</span>
+                    <strong>{{ relation.evidence }}</strong>
+                  </span>
+                </span>
+              </button>
+            </template>
+            <template v-else-if="graphView === 'entities'">
+              <button
+                v-for="entity in graphEntities"
+                :key="entity.id"
+                :class="['profile-row', { active: graphEntityForm.id === entity.id }]"
+                type="button"
+                @click="selectGraphEntity(entity)"
+              >
+                <span class="profile-row-top">
+                  <code :title="entity.id">{{ entity.id }}</code>
+                  <span>{{ entity.confidence.toFixed(2) }}</span>
+                </span>
+                <strong>{{ entity.displayName }}</strong>
+                <span>{{ entity.entityType }} · {{ formatMaybeDate(entity.updatedAt) }}</span>
+                <span
+                  v-if="graphEntityForm.id === entity.id"
+                  class="profile-expanded"
+                >
+                  <span class="profile-detail-grid">
+                    <span class="profile-detail-item">
+                      <span>Entity id</span>
+                      <code>{{ entity.id }}</code>
+                    </span>
+                    <span class="profile-detail-item">
+                      <span>Type</span>
+                      <code>{{ entity.entityType }}</code>
+                    </span>
+                    <span class="profile-detail-item">
+                      <span>Confidence</span>
+                      <strong>{{ entity.confidence.toFixed(2) }}</strong>
+                    </span>
+                    <span class="profile-detail-item">
+                      <span>Source</span>
+                      <code>{{ entity.source }}</code>
+                    </span>
+                  </span>
+                  <span
+                    v-if="entity.aliases.length"
+                    class="profile-detail-text"
+                  >
+                    <span>Aliases</span>
+                    <strong>{{ entity.aliases.join(', ') }}</strong>
+                  </span>
+                  <span
+                    v-if="entity.evidence"
+                    class="profile-detail-text"
+                  >
+                    <span>Evidence</span>
+                    <strong>{{ entity.evidence }}</strong>
+                  </span>
+                </span>
+              </button>
+            </template>
+            <template v-else-if="graphView === 'duplicates'">
+              <div
+                v-for="duplicate in graphDuplicates"
+                :key="duplicate.id"
+                class="profile-row duplicate-row"
+              >
+                <span class="profile-row-top">
+                  <code>{{ duplicate.kind }}</code>
+                  <span>{{ duplicate.score.toFixed(2) }}</span>
+                </span>
+                <strong>{{ duplicate.sourceId }} → {{ duplicate.targetId }}</strong>
+                <span>{{ duplicate.reason }}</span>
+                <div class="action-row">
+                  <button
+                    class="secondary-action inline"
+                    type="button"
+                    @click="mergeGraphDuplicate(duplicate.id)"
+                  >
+                    Merge
+                  </button>
+                  <button
+                    class="secondary-action inline"
+                    type="button"
+                    @click="ignoreGraphDuplicate(duplicate.id)"
+                  >
+                    Ignore
+                  </button>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="notice compact">
+                Possible duplicates are review-only. Merge or ignore them from the list.
+              </div>
+            </template>
             <div
-              v-if="!profileLoading && profileRecords.length === 0"
+              v-if="!profileLoading && graphCurrentListCount === 0"
               class="notice compact"
             >
-              No canonical profile rows yet.
+              No graph memory rows yet.
             </div>
           </div>
 
           <section class="profile-editor memory-section">
-            <div class="profile-grid">
+            <template v-if="graphView === 'entities'">
               <label>
-                <span class="setting-label">Key</span>
+                <span class="setting-label">Entity id</span>
                 <input
-                  v-model="profileForm.memoryKey"
+                  v-model="graphEntityForm.id"
                   class="memory-input"
                   type="text"
-                  placeholder="user.preference.language"
+                  placeholder="project:onething"
                   spellcheck="false"
                 >
               </label>
-              <label>
-                <span class="setting-label">Kind</span>
-                <select
-                  v-model="profileForm.kind"
-                  class="memory-select"
-                >
-                  <option
-                    v-for="kind in profileKinds"
-                    :key="kind"
-                    :value="kind"
+              <div class="profile-grid">
+                <label>
+                  <span class="setting-label">Type</span>
+                  <select
+                    v-model="graphEntityForm.entityType"
+                    class="memory-select"
                   >
-                    {{ kind }}
-                  </option>
-                </select>
-              </label>
+                    <option
+                      v-for="type in graphEntityTypes"
+                      :key="type"
+                      :value="type"
+                    >
+                      {{ type }}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  <span class="setting-label">Name</span>
+                  <input
+                    v-model="graphEntityForm.name"
+                    class="memory-input"
+                    type="text"
+                    spellcheck="false"
+                  >
+                </label>
+              </div>
               <label>
-                <span class="setting-label">Subject</span>
+                <span class="setting-label">Display name</span>
                 <input
-                  v-model="profileForm.subject"
+                  v-model="graphEntityForm.displayName"
                   class="memory-input"
                   type="text"
+                  spellcheck="true"
+                >
+              </label>
+              <label>
+                <span class="setting-label">Aliases</span>
+                <input
+                  v-model="graphEntityAliases"
+                  class="memory-input"
+                  type="text"
+                  placeholder="comma separated"
                   spellcheck="false"
                 >
               </label>
+              <div class="action-row">
+                <button
+                  class="primary-btn"
+                  type="button"
+                  :disabled="profileSaving || !graphEntityForm.name.trim()"
+                  @click="saveGraphEntity"
+                >
+                  Save
+                </button>
+                <button
+                  class="secondary-action inline danger"
+                  type="button"
+                  :disabled="profileSaving || !graphEntityForm.id || graphEntityForm.id === 'user:self'"
+                  @click="deleteGraphEntity"
+                >
+                  Delete
+                </button>
+              </div>
+            </template>
+
+            <template v-else-if="graphView === 'relations'">
+              <div class="profile-grid">
+                <label>
+                  <span class="setting-label">From</span>
+                  <select
+                    v-model="graphRelationForm.fromEntityId"
+                    class="memory-select"
+                  >
+                    <option
+                      v-for="entity in graphEntities"
+                      :key="entity.id"
+                      :value="entity.id"
+                    >
+                      {{ entity.displayName }} · {{ entity.id }}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  <span class="setting-label">Relation</span>
+                  <input
+                    v-model="graphRelationForm.relationType"
+                    class="memory-input"
+                    type="text"
+                    placeholder="works_on"
+                    spellcheck="false"
+                  >
+                </label>
+                <label>
+                  <span class="setting-label">To</span>
+                  <select
+                    v-model="graphRelationForm.toEntityId"
+                    class="memory-select"
+                  >
+                    <option
+                      v-for="entity in graphEntities"
+                      :key="entity.id"
+                      :value="entity.id"
+                    >
+                      {{ entity.displayName }} · {{ entity.id }}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  <span class="setting-label">Confidence</span>
+                  <input
+                    v-model.number="graphRelationForm.confidence"
+                    class="memory-input"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                  >
+                </label>
+              </div>
               <label>
-                <span class="setting-label">Confidence</span>
+                <span class="setting-label">Text</span>
+                <textarea
+                  v-model="graphRelationForm.text"
+                  class="memory-textarea"
+                  spellcheck="true"
+                />
+              </label>
+              <div class="action-row">
+                <button
+                  class="primary-btn"
+                  type="button"
+                  :disabled="profileSaving || !graphRelationForm.fromEntityId || !graphRelationForm.relationType.trim() || !graphRelationForm.toEntityId"
+                  @click="saveGraphRelation"
+                >
+                  Save
+                </button>
+                <button
+                  class="secondary-action inline danger"
+                  type="button"
+                  :disabled="profileSaving || !graphRelationForm.id"
+                  @click="deleteGraphRelation"
+                >
+                  Delete
+                </button>
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="profile-grid">
+                <label>
+                  <span class="setting-label">Entity</span>
+                  <select
+                    v-model="graphObservationForm.entityId"
+                    class="memory-select"
+                  >
+                    <option
+                      v-for="entity in graphEntities"
+                      :key="entity.id"
+                      :value="entity.id"
+                    >
+                      {{ entity.displayName }} · {{ entity.id }}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  <span class="setting-label">Kind</span>
+                  <select
+                    v-model="graphObservationForm.kind"
+                    class="memory-select"
+                  >
+                    <option
+                      v-for="kind in graphObservationKinds"
+                      :key="kind"
+                      :value="kind"
+                    >
+                      {{ kind }}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  <span class="setting-label">Slot</span>
+                  <input
+                    v-model="graphObservationForm.slot"
+                    class="memory-input"
+                    type="text"
+                    placeholder="name"
+                    spellcheck="false"
+                  >
+                </label>
+                <label>
+                  <span class="setting-label">Confidence</span>
+                  <input
+                    v-model.number="graphObservationForm.confidence"
+                    class="memory-input"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                  >
+                </label>
+              </div>
+              <label>
+                <span class="setting-label">Value</span>
                 <input
-                  v-model.number="profileForm.confidence"
+                  v-model="graphObservationForm.value"
                   class="memory-input"
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.01"
+                  type="text"
+                  spellcheck="true"
                 >
               </label>
-            </div>
-            <label>
-              <span class="setting-label">Value</span>
-              <input
-                v-model="profileForm.value"
-                class="memory-input"
-                type="text"
-                spellcheck="true"
-              >
-            </label>
-            <label>
-              <span class="setting-label">Text</span>
-              <textarea
-                v-model="profileForm.text"
-                class="memory-textarea"
-                spellcheck="true"
-              />
-            </label>
-            <label>
-              <span class="setting-label">Evidence</span>
-              <textarea
-                v-model="profileForm.evidence"
-                class="memory-textarea compact-area"
-                spellcheck="true"
-              />
-            </label>
-            <div class="action-row">
-              <button
-                class="primary-btn"
-                type="button"
-                :disabled="profileSaving || !profileForm.value.trim()"
-                @click="saveProfile"
-              >
-                Save
-              </button>
-              <button
-                class="secondary-action inline danger"
-                type="button"
-                :disabled="profileSaving || !profileForm.id"
-                @click="deleteProfile"
-              >
-                Delete
-              </button>
-            </div>
+              <label>
+                <span class="setting-label">Text</span>
+                <textarea
+                  v-model="graphObservationForm.text"
+                  class="memory-textarea"
+                  spellcheck="true"
+                />
+              </label>
+              <label>
+                <span class="setting-label">Evidence</span>
+                <textarea
+                  v-model="graphObservationForm.evidence"
+                  class="memory-textarea compact-area"
+                  spellcheck="true"
+                />
+              </label>
+              <div class="action-row">
+                <button
+                  class="primary-btn"
+                  type="button"
+                  :disabled="profileSaving || !graphObservationForm.entityId || !graphObservationForm.slot.trim() || !graphObservationForm.value.trim()"
+                  @click="saveGraphObservation"
+                >
+                  Save
+                </button>
+                <button
+                  class="secondary-action inline danger"
+                  type="button"
+                  :disabled="profileSaving || !graphObservationForm.id"
+                  @click="deleteGraphObservation"
+                >
+                  Delete
+                </button>
+              </div>
+            </template>
             <div
-              v-if="profileAudit.length"
+              v-if="graphAudit.length"
               class="audit-list"
             >
               <strong>Audit</strong>
               <div
-                v-for="event in profileAudit"
+                v-for="event in graphAudit"
                 :key="event.id"
                 class="audit-row"
               >
@@ -386,12 +762,6 @@
                 <span>{{ formatMaybeDate(event.createdAt) }}</span>
               </div>
             </div>
-            <textarea
-              v-if="profileExportText"
-              v-model="profileExportText"
-              class="memory-textarea export-area"
-              readonly
-            />
           </section>
         </div>
       </template>
@@ -498,10 +868,7 @@
               class="memory-select"
             >
               <option value="daily">
-                Daily
-              </option>
-              <option value="memory">
-                MEMORY.md
+                Daily note
               </option>
             </select>
             <input
@@ -631,6 +998,163 @@
         </div>
       </template>
 
+      <template v-else-if="activeTab === 'logs'">
+        <div class="settings-stack">
+          <section class="memory-section">
+            <div class="setting-row">
+              <div>
+                <span class="setting-title">Diagnostics logs</span>
+                <span class="setting-meta">
+                  {{ memoryLogStats?.entriesInBuffer ?? memoryLogs.length }} buffered · {{ memoryLogStats?.files ?? 0 }} files · {{ memoryLogStats?.retainedDays ?? memorySettings.logging.retentionDays }} days
+                </span>
+              </div>
+              <div class="action-row compact-actions">
+                <button
+                  class="secondary-action inline"
+                  type="button"
+                  :disabled="logsLoading"
+                  @click="loadMemoryLogs"
+                >
+                  <RefreshCw
+                    :size="15"
+                    :stroke-width="1.8"
+                    :class="{ spinning: logsLoading }"
+                  />
+                  <span>Refresh</span>
+                </button>
+                <button
+                  class="secondary-action inline"
+                  type="button"
+                  @click="openLogFolder"
+                >
+                  <FolderOpen
+                    :size="15"
+                    :stroke-width="1.8"
+                  />
+                  <span>Open</span>
+                </button>
+                <button
+                  class="secondary-action inline"
+                  type="button"
+                  :disabled="logsLoading"
+                  @click="cleanupLogs"
+                >
+                  Clean
+                </button>
+              </div>
+            </div>
+            <div class="log-filter-grid">
+              <input
+                v-model="logQuery"
+                class="memory-input"
+                type="search"
+                placeholder="Search logs"
+                spellcheck="false"
+              >
+              <select
+                v-model="logSubsystem"
+                class="memory-select"
+              >
+                <option
+                  v-for="item in logSubsystemOptions"
+                  :key="item"
+                  :value="item"
+                >
+                  {{ item }}
+                </option>
+              </select>
+              <select
+                v-model="logLevel"
+                class="memory-select"
+              >
+                <option
+                  v-for="item in logLevelOptions"
+                  :key="item"
+                  :value="item"
+                >
+                  {{ item }}
+                </option>
+              </select>
+              <select
+                v-model="logStatus"
+                class="memory-select"
+              >
+                <option
+                  v-for="item in logStatusOptions"
+                  :key="item"
+                  :value="item"
+                >
+                  {{ item }}
+                </option>
+              </select>
+            </div>
+            <label class="mini-toggle log-auto-toggle">
+              <input
+                v-model="logAutoRefresh"
+                type="checkbox"
+              >
+              <span>Auto refresh</span>
+            </label>
+          </section>
+
+          <section class="memory-section log-layout">
+            <div class="log-list">
+              <button
+                v-for="group in logGroups"
+                :key="group.id"
+                :class="['log-row', group.level, { active: selectedLogGroupId === group.id }]"
+                type="button"
+                @click="selectLogGroup(group)"
+              >
+                <span class="log-time">{{ formatMaybeDate(group.latestAt) }}</span>
+                <span class="log-main">
+                  <strong>{{ group.subsystem }}</strong>
+                  <span>{{ group.operationLabel }}</span>
+                  <span class="log-chain">{{ group.count }} event{{ group.count === 1 ? '' : 's' }} · {{ group.stageLabel }}</span>
+                </span>
+                <code class="log-status">{{ group.status }}</code>
+                <span
+                  v-if="group.durationMs !== undefined"
+                  class="log-duration"
+                >
+                  {{ group.durationMs }}ms
+                </span>
+                <span class="log-summary">{{ group.summary }}</span>
+                <span
+                  v-if="selectedLogGroupId === group.id"
+                  class="log-timeline"
+                >
+                  <span
+                    v-for="event in group.entries"
+                    :key="event.id"
+                    class="log-event"
+                  >
+                    <span class="log-event-head">
+                      <code>{{ event.operation }} / {{ event.stage }}</code>
+                      <span>{{ event.status }}</span>
+                      <span v-if="event.durationMs !== undefined">{{ event.durationMs }}ms</span>
+                    </span>
+                    <span class="log-event-summary">{{ event.summary || event.error?.message || '' }}</span>
+                  </span>
+                </span>
+                <span
+                  v-if="selectedLogGroupId === group.id"
+                  class="log-inline-detail"
+                >
+                  {{ formatLogGroupDetails(group) }}
+                </span>
+              </button>
+              <div
+                v-if="!logsLoading && memoryLogs.length === 0"
+                class="notice compact"
+              >
+                No memory logs yet.
+              </div>
+            </div>
+          </section>
+        </div>
+      </template>
+
       <template v-else>
         <div class="settings-stack">
           <div class="settings-group-title">
@@ -641,7 +1165,7 @@
               <label class="toggle-row">
                 <span>
                   <span class="setting-title">Soul Memory plugin</span>
-                  <span class="setting-meta">Master switch · SOUL.md and canonical profile injection</span>
+                  <span class="setting-meta">Master switch · SOUL.md and graph profile injection</span>
                 </span>
                 <input
                   type="checkbox"
@@ -716,8 +1240,8 @@
             <div class="setting-row">
               <label class="toggle-row">
                 <span>
-                  <span class="setting-title">Canonical User Profile</span>
-                  <span class="setting-meta">SQLite source of truth · {{ overview?.canonicalCount ?? 0 }} rows</span>
+                  <span class="setting-title">Graph Memory</span>
+                  <span class="setting-meta">SQLite source of truth · {{ overview?.graph?.entities ?? 0 }} entities / {{ overview?.graph?.observations ?? 0 }} observations</span>
                 </span>
                 <input
                   type="checkbox"
@@ -728,7 +1252,7 @@
               </label>
             </div>
             <div class="behavior-note">
-              Stores durable user identity, preferences, facts, constraints, and accepted decisions. This is read into prompts as the canonical profile.
+              Stores durable user identity, preferences, facts, constraints, project relationships, and accepted decisions. This graph summary is read into prompts.
             </div>
             <div class="grid-two">
               <label class="field">
@@ -810,7 +1334,7 @@
                   @change="updateSoulMemory({ capture: { ...memorySettings.capture, targetPolicy: ($event.target as HTMLSelectElement).value as any } })"
                 >
                   <option value="canonical-first">
-                    Canonical first
+                    Graph first
                   </option>
                   <option value="daily-only">
                     Daily only
@@ -901,7 +1425,7 @@
               </label>
             </div>
             <div class="behavior-note">
-              Searches SQLite profile rows and Markdown notes before a request, then injects matching context as untrusted recall.
+              Searches SQLite graph memory and Markdown notes before a request, then injects matching context as untrusted recall.
             </div>
             <div class="grid-two">
               <label class="field">
@@ -1185,6 +1709,89 @@
                 @change="updateSoulMemory({ embeddings: { ...memorySettings.embeddings, baseUrl: ($event.target as HTMLInputElement).value } })"
               >
             </label>
+          </section>
+
+          <section class="memory-section">
+            <div class="setting-row">
+              <label class="toggle-row">
+                <span>
+                  <span class="setting-title">Diagnostics logging</span>
+                  <span class="setting-meta">{{ memorySettings.logging.level }} · {{ memorySettings.logging.retentionDays }} days · {{ memorySettings.logging.maxPreviewChars }} chars</span>
+                </span>
+                <input
+                  type="checkbox"
+                  :checked="memorySettings.logging.enabled !== false"
+                  :disabled="memorySettings.enabled === false"
+                  @change="updateSoulMemory({ logging: { ...memorySettings.logging, enabled: ($event.target as HTMLInputElement).checked } })"
+                >
+              </label>
+            </div>
+            <div class="behavior-note">
+              Records redacted memory and embedding diagnostics: API timing, provider/model, status, errors, fallback, and memory routing. API keys, full prompts, full user messages, and vectors are not saved.
+            </div>
+            <div class="grid-two">
+              <label class="field">
+                <span>Level</span>
+                <select
+                  class="memory-select"
+                  :value="memorySettings.logging.level"
+                  :disabled="memorySettings.enabled === false || memorySettings.logging.enabled === false"
+                  @change="updateSoulMemory({ logging: { ...memorySettings.logging, level: ($event.target as HTMLSelectElement).value as any } })"
+                >
+                  <option value="debug">
+                    debug
+                  </option>
+                  <option value="info">
+                    info
+                  </option>
+                  <option value="warn">
+                    warn
+                  </option>
+                  <option value="error">
+                    error
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Retention days</span>
+                <input
+                  class="memory-input"
+                  type="number"
+                  min="1"
+                  max="90"
+                  :value="memorySettings.logging.retentionDays"
+                  :disabled="memorySettings.enabled === false || memorySettings.logging.enabled === false"
+                  @change="updateSoulMemory({ logging: { ...memorySettings.logging, retentionDays: Number(($event.target as HTMLInputElement).value) || 7 } })"
+                >
+              </label>
+            </div>
+            <div class="grid-two">
+              <label class="field">
+                <span>Preview chars</span>
+                <input
+                  class="memory-input"
+                  type="number"
+                  min="120"
+                  max="4000"
+                  step="20"
+                  :value="memorySettings.logging.maxPreviewChars"
+                  :disabled="memorySettings.enabled === false || memorySettings.logging.enabled === false"
+                  @change="updateSoulMemory({ logging: { ...memorySettings.logging, maxPreviewChars: Number(($event.target as HTMLInputElement).value) || 600 } })"
+                >
+              </label>
+              <label class="field toggle-row">
+                <span>
+                  <span class="setting-title">HTTP error body</span>
+                  <span class="setting-meta">redacted preview only</span>
+                </span>
+                <input
+                  type="checkbox"
+                  :checked="memorySettings.logging.includeHttpErrorBody !== false"
+                  :disabled="memorySettings.enabled === false || memorySettings.logging.enabled === false"
+                  @change="updateSoulMemory({ logging: { ...memorySettings.logging, includeHttpErrorBody: ($event.target as HTMLInputElement).checked } })"
+                >
+              </label>
+            </div>
           </section>
 
           <div class="settings-group-title">
@@ -1478,9 +2085,16 @@ import {
 } from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
 import type {
-  CanonicalMemoryAuditEvent,
-  CanonicalMemoryKind,
-  CanonicalMemoryRecord,
+  MemoryGraphAuditEvent,
+  MemoryGraphDuplicate,
+  MemoryGraphEntity,
+  MemoryGraphEntityType,
+  MemoryGraphObservation,
+  MemoryGraphObservationKind,
+  MemoryGraphRelation,
+  MemoryGraphStatus,
+  MemoryDiagnosticLogEntry,
+  MemoryLogsStatsResponse,
   MemoryManagedFile,
   MemoryOverview,
   MemoryReadResponse,
@@ -1491,7 +2105,20 @@ import type {
 import { normalizeSoulMemorySettings } from '@shared/defaults/settings'
 import { resolveSoulMemoryEmbeddingTarget } from '@shared/embeddings/defaults'
 
-type TabId = 'overview' | 'profile' | 'ai-notes' | 'daily' | 'dreams' | 'search' | 'scheduler' | 'settings'
+type TabId = 'overview' | 'profile' | 'ai-notes' | 'daily' | 'dreams' | 'search' | 'scheduler' | 'logs' | 'settings'
+type MemoryLogGroup = {
+  id: string
+  subsystem: string
+  level: MemoryDiagnosticLogEntry['level']
+  status: MemoryDiagnosticLogEntry['status']
+  operationLabel: string
+  stageLabel: string
+  summary: string
+  count: number
+  latestAt: number
+  durationMs?: number
+  entries: MemoryDiagnosticLogEntry[]
+}
 
 const settingsStore = useSettingsStore()
 
@@ -1502,51 +2129,93 @@ const appending = ref(false)
 const savingFile = ref(false)
 const dreamingRunning = ref(false)
 const schedulerLoading = ref(false)
+const logsLoading = ref(false)
 const profileLoading = ref(false)
 const profileSaving = ref(false)
 const searched = ref(false)
 const error = ref('')
 const activeTab = ref<TabId>('overview')
-const selectedPath = ref('MEMORY.md')
+const selectedPath = ref('SOUL.md')
 const selectedFile = ref<MemoryReadResponse['file'] | null>(null)
 const selectedFileText = ref('')
 const searchQuery = ref('')
 const searchResults = ref<MemorySearchHit[]>([])
 const schedulerTasks = ref<SchedulerTaskSnapshotDTO[]>([])
-const profileRecords = ref<CanonicalMemoryRecord[]>([])
-const profileAudit = ref<CanonicalMemoryAuditEvent[]>([])
-const profileSearch = ref('')
-const profileExportText = ref('')
+const memoryLogs = ref<MemoryDiagnosticLogEntry[]>([])
+const memoryLogStats = ref<MemoryLogsStatsResponse['stats'] | null>(null)
+const selectedLogGroupId = ref('')
+const logQuery = ref('')
+const logLevel = ref('all')
+const logSubsystem = ref('all')
+const logStatus = ref('all')
+const logAutoRefresh = ref(false)
+const graphEntities = ref<MemoryGraphEntity[]>([])
+const graphObservations = ref<MemoryGraphObservation[]>([])
+const graphRelations = ref<MemoryGraphRelation[]>([])
+const graphDuplicates = ref<MemoryGraphDuplicate[]>([])
+const graphAudit = ref<MemoryGraphAuditEvent[]>([])
+const graphSearch = ref('')
+const graphView = ref<'observations' | 'relations' | 'entities' | 'duplicates'>('observations')
 const schedulerActionId = ref('')
-const appendTarget = ref<'daily' | 'memory'>('daily')
+const appendTarget = ref<'daily'>('daily')
 const appendHeading = ref('Manual memory')
 const appendContent = ref('')
-const dreamSourceOptions = ['daily', 'sessions', 'short-term', 'memory', 'recall'] as const
-const profileKinds: CanonicalMemoryKind[] = ['identity', 'preference', 'constraint', 'decision', 'project', 'fact']
-const profileForm = ref({
+const dreamSourceOptions = ['daily', 'sessions', 'short-term', 'recall'] as const
+const graphEntityTypes: MemoryGraphEntityType[] = ['user', 'project', 'tech', 'component', 'decision', 'concept', 'person', 'organization']
+const graphObservationKinds: MemoryGraphObservationKind[] = ['identity', 'preference', 'constraint', 'decision', 'project', 'fact', 'summary', 'episodic']
+const graphEntityAliases = ref('')
+const graphEntityForm = ref({
   id: '',
-  memoryKey: '',
-  kind: 'fact' as CanonicalMemoryKind,
-  subject: 'user',
-  value: '',
-  text: '',
+  entityType: 'project' as MemoryGraphEntityType,
+  name: '',
+  displayName: '',
+  aliases: [] as string[],
   confidence: 1,
   sensitivity: 'normal' as 'normal' | 'sensitive' | 'secret',
   evidence: '',
 })
+const graphObservationForm = ref({
+  id: '',
+  entityId: 'user:self',
+  kind: 'fact' as MemoryGraphObservationKind,
+  slot: '',
+  value: '',
+  text: '',
+  confidence: 1,
+  sensitivity: 'normal' as 'normal' | 'sensitive' | 'secret',
+  status: 'active' as MemoryGraphStatus,
+  evidence: '',
+})
+const graphRelationForm = ref({
+  id: '',
+  fromEntityId: 'user:self',
+  relationType: '',
+  toEntityId: '',
+  text: '',
+  confidence: 1,
+  sensitivity: 'normal' as 'normal' | 'sensitive' | 'secret',
+  status: 'active' as MemoryGraphStatus,
+  evidence: '',
+})
 let overviewRefreshTimer: number | null = null
 let dreamingPollTimer: number | null = null
+let logsPollTimer: number | null = null
 
 const tabs: Array<{ id: TabId; label: string; icon: Component }> = [
   { id: 'overview', label: 'Overview', icon: FileText },
-  { id: 'profile', label: 'User Profile', icon: Database },
+  { id: 'profile', label: 'Graph Memory', icon: Database },
   { id: 'ai-notes', label: 'AI Notes', icon: BookOpen },
   { id: 'daily', label: 'Daily', icon: Clock },
   { id: 'dreams', label: 'Dreams', icon: Brain },
   { id: 'search', label: 'Search', icon: Search },
   { id: 'scheduler', label: 'Scheduler', icon: Database },
+  { id: 'logs', label: 'Logs', icon: FileText },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
+
+const logSubsystemOptions = ['all', 'embedding', 'index', 'search', 'capture', 'graph', 'daily', 'active-memory', 'flush', 'dreaming', 'scheduler', 'ipc']
+const logLevelOptions = ['all', 'debug', 'info', 'warn', 'error']
+const logStatusOptions = ['all', 'started', 'ok', 'error', 'skipped', 'fallback']
 
 const memorySettings = computed(() =>
   normalizeSoulMemorySettings(settingsStore.settings.general.soulMemory),
@@ -1604,9 +2273,18 @@ const isFileTab = computed(() =>
   activeTab.value === 'dreams',
 )
 
+const graphCurrentListCount = computed(() => {
+  if (graphView.value === 'entities') return graphEntities.value.length
+  if (graphView.value === 'relations') return graphRelations.value.length
+  if (graphView.value === 'duplicates') return graphDuplicates.value.length
+  return graphObservations.value.length
+})
+
+const logGroups = computed(() => buildMemoryLogGroups(memoryLogs.value))
+
 const visibleFiles = computed(() => {
   const files = overview.value?.files || []
-  if (activeTab.value === 'ai-notes') return files.filter(file => file.kind === 'soul' || file.kind === 'memory')
+  if (activeTab.value === 'ai-notes') return files.filter(file => file.kind === 'soul')
   if (activeTab.value === 'daily') return files.filter(file => file.kind === 'daily')
   if (activeTab.value === 'dreams') return files.filter(file => file.kind === 'dreams')
   return []
@@ -1622,9 +2300,29 @@ watch(
       await loadScheduler()
     }
     if (tab === 'profile') {
-      await loadProfile()
+      await loadGraph()
+    }
+    if (tab === 'logs') {
+      await loadMemoryLogs()
+      syncLogsPolling()
+    } else {
+      stopLogsPolling()
     }
   },
+)
+
+watch(
+  () => [logQuery.value, logLevel.value, logSubsystem.value, logStatus.value],
+  () => {
+    if (activeTab.value === 'logs') {
+      void loadMemoryLogs()
+    }
+  },
+)
+
+watch(
+  () => logAutoRefresh.value,
+  () => syncLogsPolling(),
 )
 
 onMounted(async () => {
@@ -1640,6 +2338,7 @@ onBeforeUnmount(() => {
     window.clearTimeout(dreamingPollTimer)
     dreamingPollTimer = null
   }
+  stopLogsPolling()
 })
 
 async function loadOverview(): Promise<void> {
@@ -1652,7 +2351,7 @@ async function loadOverview(): Promise<void> {
     }
     overview.value = response.overview
     if (!overview.value.files.some(file => file.relativePath === selectedPath.value)) {
-      selectedPath.value = overview.value.files.find(file => file.relativePath === 'MEMORY.md')?.relativePath ||
+      selectedPath.value = overview.value.files.find(file => file.relativePath === 'SOUL.md')?.relativePath ||
         overview.value.files[0]?.relativePath ||
         ''
     }
@@ -1663,7 +2362,7 @@ async function loadOverview(): Promise<void> {
       await loadScheduler()
     }
     if (activeTab.value === 'profile') {
-      await loadProfile()
+      await loadGraph()
     }
     syncDreamingPolling()
   } catch (err) {
@@ -1739,22 +2438,27 @@ async function saveSelectedFile(): Promise<void> {
   }
 }
 
-async function loadProfile(): Promise<void> {
+async function loadGraph(): Promise<void> {
   profileLoading.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.listMemoryProfile({
-      query: profileSearch.value.trim() || undefined,
-      limit: 200,
-    })
-    if (!response.success || !response.memories) {
-      throw new Error(response.error || 'Failed to load user profile')
-    }
-    profileRecords.value = response.memories
-    if (!profileForm.value.id && response.memories[0]) {
-      await selectProfile(response.memories[0])
-    } else if (profileForm.value.id && !response.memories.some(memory => memory.id === profileForm.value.id)) {
-      resetProfileForm()
+    const query = graphSearch.value.trim() || undefined
+    const [entities, observations, relations, duplicates] = await Promise.all([
+      window.electronAPI.listMemoryGraphEntities({ query, limit: 250 }),
+      window.electronAPI.listMemoryGraphObservations({ query, limit: 250 }),
+      window.electronAPI.listMemoryGraphRelations({ query, limit: 250 }),
+      window.electronAPI.listMemoryGraphDuplicates({ query, limit: 100 }),
+    ])
+    if (!entities.success || !entities.entities) throw new Error(entities.error || 'Failed to load graph entities')
+    if (!observations.success || !observations.observations) throw new Error(observations.error || 'Failed to load graph observations')
+    if (!relations.success || !relations.relations) throw new Error(relations.error || 'Failed to load graph relations')
+    if (!duplicates.success || !duplicates.duplicates) throw new Error(duplicates.error || 'Failed to load graph duplicates')
+    graphEntities.value = entities.entities
+    graphObservations.value = observations.observations
+    graphRelations.value = relations.relations
+    graphDuplicates.value = duplicates.duplicates
+    if (!graphObservationForm.value.entityId && graphEntities.value[0]) {
+      graphObservationForm.value.entityId = graphEntities.value[0].id
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
@@ -1763,60 +2467,135 @@ async function loadProfile(): Promise<void> {
   }
 }
 
-async function selectProfile(memory: CanonicalMemoryRecord): Promise<void> {
-  profileExportText.value = ''
-  profileForm.value = {
-    id: memory.id,
-    memoryKey: memory.memoryKey,
-    kind: memory.kind,
-    subject: memory.subject,
-    value: memory.value,
-    text: memory.text,
-    confidence: memory.confidence,
-    sensitivity: memory.sensitivity,
-    evidence: memory.evidence || '',
-  }
-  const response = await window.electronAPI.getMemoryProfileAudit({ id: memory.id })
-  profileAudit.value = response.success && response.events ? response.events : []
+async function loadGraphAudit(id: string): Promise<void> {
+  const response = await window.electronAPI.getMemoryGraphAudit({ id })
+  graphAudit.value = response.success && response.events ? response.events : []
 }
 
-function resetProfileForm(): void {
-  profileExportText.value = ''
-  profileAudit.value = []
-  profileForm.value = {
+function selectGraphEntity(entity: MemoryGraphEntity): void {
+  graphAudit.value = []
+  graphEntityForm.value = {
+    id: entity.id,
+    entityType: entity.entityType,
+    name: entity.name,
+    displayName: entity.displayName,
+    aliases: entity.aliases,
+    confidence: entity.confidence,
+    sensitivity: entity.sensitivity,
+    evidence: entity.evidence || '',
+  }
+  graphEntityAliases.value = entity.aliases.join(', ')
+  void loadGraphAudit(entity.id)
+}
+
+function resetGraphEntityForm(): void {
+  graphAudit.value = []
+  graphEntityAliases.value = ''
+  graphEntityForm.value = {
     id: '',
-    memoryKey: '',
-    kind: 'fact',
-    subject: 'user',
-    value: '',
-    text: '',
+    entityType: 'project',
+    name: '',
+    displayName: '',
+    aliases: [],
     confidence: 1,
     sensitivity: 'normal',
     evidence: '',
   }
 }
 
-async function saveProfile(): Promise<void> {
+function selectGraphObservation(memory: MemoryGraphObservation): void {
+  graphAudit.value = []
+  graphObservationForm.value = {
+    id: memory.id,
+    entityId: memory.entityId,
+    kind: memory.kind,
+    slot: memory.slot,
+    value: memory.value,
+    text: memory.text,
+    confidence: memory.confidence,
+    sensitivity: memory.sensitivity,
+    status: memory.status,
+    evidence: memory.evidence || '',
+  }
+  void loadGraphAudit(memory.id)
+}
+
+function resetGraphObservationForm(): void {
+  graphAudit.value = []
+  graphObservationForm.value = {
+    id: '',
+    entityId: graphEntities.value.find(entity => entity.id === 'user:self')?.id || graphEntities.value[0]?.id || 'user:self',
+    kind: 'fact',
+    slot: '',
+    value: '',
+    text: '',
+    confidence: 1,
+    sensitivity: 'normal',
+    status: 'active',
+    evidence: '',
+  }
+}
+
+function selectGraphRelation(relation: MemoryGraphRelation): void {
+  graphAudit.value = []
+  graphRelationForm.value = {
+    id: relation.id,
+    fromEntityId: relation.fromEntityId,
+    relationType: relation.relationType,
+    toEntityId: relation.toEntityId,
+    text: relation.text,
+    confidence: relation.confidence,
+    sensitivity: relation.sensitivity,
+    status: relation.status,
+    evidence: relation.evidence || '',
+  }
+  void loadGraphAudit(relation.id)
+}
+
+function resetGraphRelationForm(): void {
+  graphAudit.value = []
+  graphRelationForm.value = {
+    id: '',
+    fromEntityId: graphEntities.value.find(entity => entity.id === 'user:self')?.id || graphEntities.value[0]?.id || 'user:self',
+    relationType: '',
+    toEntityId: graphEntities.value.find(entity => entity.id !== 'user:self')?.id || '',
+    text: '',
+    confidence: 1,
+    sensitivity: 'normal',
+    status: 'active',
+    evidence: '',
+  }
+}
+
+function newGraphRecord(): void {
+  if (graphView.value === 'entities') {
+    resetGraphEntityForm()
+  } else if (graphView.value === 'relations') {
+    resetGraphRelationForm()
+  } else {
+    graphView.value = 'observations'
+    resetGraphObservationForm()
+  }
+}
+
+async function saveGraphEntity(): Promise<void> {
   profileSaving.value = true
   error.value = ''
   try {
-    const form = profileForm.value
-    const response = await window.electronAPI.upsertMemoryProfile({
-      ...(form.id ? { id: form.id } : {}),
-      ...(form.memoryKey.trim() ? { memoryKey: form.memoryKey.trim() } : {}),
-      kind: form.kind,
-      subject: form.subject.trim() || undefined,
-      value: form.value.trim(),
-      text: form.text.trim() || form.value.trim(),
+    const form = graphEntityForm.value
+    const response = await window.electronAPI.upsertMemoryGraphEntity({
+      ...(form.id.trim() ? { id: form.id.trim() } : {}),
+      entityType: form.entityType,
+      name: form.name.trim(),
+      displayName: form.displayName.trim() || undefined,
+      aliases: graphEntityAliases.value.split(',').map(item => item.trim()).filter(Boolean),
       confidence: Math.max(0, Math.min(1, Number(form.confidence) || 0)),
       sensitivity: form.sensitivity,
       evidence: form.evidence.trim() || undefined,
     })
-    if (!response.success || !response.memory) {
-      throw new Error(response.error || 'Failed to save user profile')
-    }
-    await loadProfile()
-    await selectProfile(response.memory)
+    if (!response.success || !response.entity) throw new Error(response.error || 'Failed to save graph entity')
+    await loadGraph()
+    selectGraphEntity(response.entity)
     await loadOverview()
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
@@ -1825,16 +2604,16 @@ async function saveProfile(): Promise<void> {
   }
 }
 
-async function deleteProfile(): Promise<void> {
-  if (!profileForm.value.id) return
-  if (!window.confirm('Delete this canonical memory row?')) return
+async function deleteGraphEntity(): Promise<void> {
+  if (!graphEntityForm.value.id) return
+  if (!window.confirm('Delete this graph entity and its attached graph rows?')) return
   profileSaving.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.deleteMemoryProfile({ id: profileForm.value.id })
-    if (!response.success) throw new Error(response.error || 'Failed to delete user profile row')
-    resetProfileForm()
-    await loadProfile()
+    const response = await window.electronAPI.deleteMemoryGraphEntity({ id: graphEntityForm.value.id })
+    if (!response.success) throw new Error(response.error || 'Failed to delete graph entity')
+    resetGraphEntityForm()
+    await loadGraph()
     await loadOverview()
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
@@ -1843,18 +2622,115 @@ async function deleteProfile(): Promise<void> {
   }
 }
 
-async function exportProfile(): Promise<void> {
-  profileLoading.value = true
+async function saveGraphObservation(): Promise<void> {
+  profileSaving.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.exportMemoryProfile()
-    if (!response.success || !response.markdown) throw new Error(response.error || 'Failed to export profile')
-    profileExportText.value = response.markdown
+    const form = graphObservationForm.value
+    const response = await window.electronAPI.upsertMemoryGraphObservation({
+      ...(form.id ? { id: form.id } : {}),
+      entityId: form.entityId,
+      kind: form.kind,
+      slot: form.slot.trim(),
+      value: form.value.trim(),
+      text: form.text.trim() || form.value.trim(),
+      confidence: Math.max(0, Math.min(1, Number(form.confidence) || 0)),
+      sensitivity: form.sensitivity,
+      status: form.status,
+      evidence: form.evidence.trim() || undefined,
+    })
+    if (!response.success || !response.observation) throw new Error(response.error || 'Failed to save graph observation')
+    await loadGraph()
+    selectGraphObservation(response.observation)
+    await loadOverview()
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
-    profileLoading.value = false
+    profileSaving.value = false
   }
+}
+
+async function deleteGraphObservation(): Promise<void> {
+  if (!graphObservationForm.value.id) return
+  if (!window.confirm('Delete this graph observation?')) return
+  profileSaving.value = true
+  error.value = ''
+  try {
+    const response = await window.electronAPI.deleteMemoryGraphObservation({ id: graphObservationForm.value.id })
+    if (!response.success) throw new Error(response.error || 'Failed to delete graph observation')
+    resetGraphObservationForm()
+    await loadGraph()
+    await loadOverview()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    profileSaving.value = false
+  }
+}
+
+async function saveGraphRelation(): Promise<void> {
+  profileSaving.value = true
+  error.value = ''
+  try {
+    const form = graphRelationForm.value
+    const response = await window.electronAPI.upsertMemoryGraphRelation({
+      ...(form.id ? { id: form.id } : {}),
+      fromEntityId: form.fromEntityId,
+      relationType: form.relationType.trim(),
+      toEntityId: form.toEntityId,
+      text: form.text.trim() || undefined,
+      confidence: Math.max(0, Math.min(1, Number(form.confidence) || 0)),
+      sensitivity: form.sensitivity,
+      status: form.status,
+      evidence: form.evidence.trim() || undefined,
+    })
+    if (!response.success || !response.relation) throw new Error(response.error || 'Failed to save graph relation')
+    await loadGraph()
+    selectGraphRelation(response.relation)
+    await loadOverview()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    profileSaving.value = false
+  }
+}
+
+async function deleteGraphRelation(): Promise<void> {
+  if (!graphRelationForm.value.id) return
+  if (!window.confirm('Delete this graph relation?')) return
+  profileSaving.value = true
+  error.value = ''
+  try {
+    const response = await window.electronAPI.deleteMemoryGraphRelation({ id: graphRelationForm.value.id })
+    if (!response.success) throw new Error(response.error || 'Failed to delete graph relation')
+    resetGraphRelationForm()
+    await loadGraph()
+    await loadOverview()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    profileSaving.value = false
+  }
+}
+
+async function mergeGraphDuplicate(id: string): Promise<void> {
+  const response = await window.electronAPI.mergeMemoryGraphDuplicate({ id })
+  if (!response.success) {
+    error.value = response.error || 'Failed to merge possible duplicate'
+    return
+  }
+  await loadGraph()
+  await loadOverview()
+}
+
+async function ignoreGraphDuplicate(id: string): Promise<void> {
+  const response = await window.electronAPI.ignoreMemoryGraphDuplicate({ id })
+  if (!response.success) {
+    error.value = response.error || 'Failed to ignore possible duplicate'
+    return
+  }
+  await loadGraph()
+  await loadOverview()
 }
 
 async function runSearch(): Promise<void> {
@@ -1880,13 +2756,23 @@ async function runSearch(): Promise<void> {
 }
 
 async function openSearchHit(hit: MemorySearchHit): Promise<void> {
-  if (hit.kind === 'canonical') {
+  if (hit.kind === 'graph' || hit.kind === 'canonical') {
     activeTab.value = 'profile'
-    const key = hit.path.replace(/^profile:/, '')
-    profileSearch.value = key
-    await loadProfile()
-    const match = profileRecords.value.find(memory => memory.memoryKey === key || memory.id === hit.id)
-    if (match) await selectProfile(match)
+    graphSearch.value = hit.id
+    await loadGraph()
+    if (hit.path.startsWith('entity:')) {
+      graphView.value = 'entities'
+      const match = graphEntities.value.find(entity => entity.id === hit.id)
+      if (match) selectGraphEntity(match)
+    } else if (hit.path.startsWith('relation:')) {
+      graphView.value = 'relations'
+      const match = graphRelations.value.find(relation => relation.id === hit.id)
+      if (match) selectGraphRelation(match)
+    } else {
+      graphView.value = 'observations'
+      const match = graphObservations.value.find(memory => memory.id === hit.id)
+      if (match) selectGraphObservation(match)
+    }
     return
   }
   activeTab.value = hit.kind === 'daily' ? 'daily' : 'ai-notes'
@@ -2005,6 +2891,149 @@ async function setSchedulerEnabled(id: string, enabled: boolean): Promise<void> 
   }
 }
 
+async function loadMemoryLogs(): Promise<void> {
+  logsLoading.value = true
+  error.value = ''
+  try {
+    const response = await window.electronAPI.listMemoryLogs({
+      limit: 200,
+      query: logQuery.value.trim() || undefined,
+      level: logLevel.value as any,
+      subsystem: logSubsystem.value as any,
+      status: logStatus.value as any,
+    })
+    if (!response.success || !response.entries) throw new Error(response.error || 'Failed to load memory logs')
+    memoryLogs.value = response.entries
+    const groups = buildMemoryLogGroups(response.entries)
+    if (selectedLogGroupId.value && !groups.some(group => group.id === selectedLogGroupId.value)) {
+      selectedLogGroupId.value = ''
+    }
+    if (!selectedLogGroupId.value && groups[0]) {
+      selectedLogGroupId.value = groups[0].id
+    }
+    const stats = await window.electronAPI.getMemoryLogStats()
+    memoryLogStats.value = stats.success ? stats.stats || null : null
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+function syncLogsPolling(): void {
+  stopLogsPolling()
+  if (activeTab.value !== 'logs' || !logAutoRefresh.value) return
+  logsPollTimer = window.setTimeout(async () => {
+    logsPollTimer = null
+    await loadMemoryLogs()
+    syncLogsPolling()
+  }, 2000)
+}
+
+function stopLogsPolling(): void {
+  if (logsPollTimer) {
+    window.clearTimeout(logsPollTimer)
+    logsPollTimer = null
+  }
+}
+
+async function cleanupLogs(): Promise<void> {
+  logsLoading.value = true
+  error.value = ''
+  try {
+    const response = await window.electronAPI.cleanupMemoryLogs()
+    if (!response.success) throw new Error(response.error || 'Failed to clean memory logs')
+    await loadMemoryLogs()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+async function openLogFolder(): Promise<void> {
+  const response = await window.electronAPI.openMemoryLogFolder()
+  if (!response.success) {
+    error.value = response.error || 'Failed to open memory log folder'
+  }
+}
+
+function selectLogGroup(group: MemoryLogGroup): void {
+  selectedLogGroupId.value = selectedLogGroupId.value === group.id ? '' : group.id
+}
+
+function formatLogGroupDetails(group: MemoryLogGroup): string {
+  return JSON.stringify({
+    id: group.id,
+    subsystem: group.subsystem,
+    status: group.status,
+    operation: group.operationLabel,
+    events: group.entries,
+  }, null, 2)
+}
+
+function buildMemoryLogGroups(entries: MemoryDiagnosticLogEntry[]): MemoryLogGroup[] {
+  const byGroup = new Map<string, MemoryDiagnosticLogEntry[]>()
+  for (const entry of entries) {
+    const key = entry.runId
+      ? `${entry.subsystem}:${entry.runId}`
+      : `${entry.subsystem}:${entry.operation}:${entry.sessionId || 'global'}:${entry.id}`
+    const list = byGroup.get(key)
+    if (list) {
+      list.push(entry)
+    } else {
+      byGroup.set(key, [entry])
+    }
+  }
+  return Array.from(byGroup.entries())
+    .map(([id, groupEntries]) => summarizeLogGroup(id, groupEntries))
+    .sort((a, b) => b.latestAt - a.latestAt)
+}
+
+function summarizeLogGroup(id: string, entries: MemoryDiagnosticLogEntry[]): MemoryLogGroup {
+  const sorted = [...entries].sort((a, b) => a.timestamp - b.timestamp)
+  const latest = sorted[sorted.length - 1]
+  const terminal = [...sorted].reverse().find(entry =>
+    entry.status === 'error' ||
+    entry.status === 'ok' ||
+    entry.status === 'skipped' ||
+    entry.status === 'fallback',
+  ) || latest
+  const first = sorted[0]
+  const operations = Array.from(new Set(sorted.map(entry => entry.operation)))
+  const stages = Array.from(new Set(sorted.map(entry => entry.stage)))
+  const durationMs = typeof terminal.durationMs === 'number'
+    ? terminal.durationMs
+    : sorted.length > 1
+      ? Math.max(0, latest.timestamp - first.timestamp)
+      : undefined
+  return {
+    id,
+    subsystem: latest.subsystem,
+    level: sorted.reduce((level, entry) => logLevelWeight(entry.level) > logLevelWeight(level) ? entry.level : level, latest.level),
+    status: terminal.status,
+    operationLabel: operations.length === 1 ? operations[0] : `${operations[0]} -> ${operations[operations.length - 1]}`,
+    stageLabel: stages.join(' -> '),
+    summary: terminal.summary || logErrorMessage(terminal) || latest.summary || logErrorMessage(latest) || '',
+    count: sorted.length,
+    latestAt: latest.timestamp,
+    ...(durationMs !== undefined ? { durationMs } : {}),
+    entries: sorted,
+  }
+}
+
+function logErrorMessage(entry: MemoryDiagnosticLogEntry): string {
+  const message = entry.error?.message
+  return typeof message === 'string' ? message : ''
+}
+
+function logLevelWeight(level: MemoryDiagnosticLogEntry['level']): number {
+  if (level === 'error') return 4
+  if (level === 'warn') return 3
+  if (level === 'info') return 2
+  return 1
+}
+
 async function updateSoulMemory(patch: Partial<SoulMemorySettings>): Promise<void> {
   const nextSettings = {
     ...settingsStore.settings,
@@ -2102,13 +3131,16 @@ function formatMaybeDate(ms?: number): string {
 <style scoped>
 .memory-panel-content {
   height: 100%;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   color: var(--text);
+  overflow: hidden;
 }
 
 .memory-header {
+  min-width: 0;
   flex-shrink: 0;
   padding: 16px 4px 10px;
   display: flex;
@@ -2122,6 +3154,7 @@ function formatMaybeDate(ms?: number): string {
 .memory-tabs,
 .append-top,
 .inline-field {
+  min-width: 0;
   display: flex;
   align-items: center;
 }
@@ -2141,7 +3174,15 @@ function formatMaybeDate(ms?: number): string {
   font-weight: 650;
 }
 
+.memory-title span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .memory-actions {
+  flex: 0 0 auto;
   gap: 6px;
 }
 
@@ -2181,6 +3222,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .memory-stats span {
+  max-width: 100%;
   min-height: 22px;
   display: inline-flex;
   align-items: center;
@@ -2188,6 +3230,9 @@ function formatMaybeDate(ms?: number): string {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-elevated);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-pill {
@@ -2215,13 +3260,18 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .memory-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
   gap: 6px;
 }
 
 .memory-tab {
+  min-width: 0;
+  width: 100%;
   min-height: 30px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -2232,6 +3282,13 @@ function formatMaybeDate(ms?: number): string {
   cursor: pointer;
 }
 
+.memory-tab span {
+  min-width: 0;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
 .memory-tab.active {
   color: var(--accent);
   background: var(--active);
@@ -2240,8 +3297,10 @@ function formatMaybeDate(ms?: number): string {
 
 .memory-body {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0 4px 12px;
 }
 
@@ -2285,6 +3344,7 @@ function formatMaybeDate(ms?: number): string {
 .search-results,
 .settings-stack,
 .overview-stack {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2364,6 +3424,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .viewer {
+  min-width: 0;
   margin-top: 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -2372,6 +3433,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .viewer-header {
+  min-width: 0;
   min-height: 36px;
   display: flex;
   align-items: center;
@@ -2385,12 +3447,14 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .viewer-header span {
+  min-width: 0;
   margin-right: auto;
   overflow-wrap: anywhere;
 }
 
 .memory-editor {
   width: 100%;
+  max-width: 100%;
   min-height: 420px;
   margin: 0;
   padding: 12px;
@@ -2403,6 +3467,8 @@ function formatMaybeDate(ms?: number): string {
   font-size: 12px;
   line-height: 1.55;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .viewer pre {
@@ -2442,6 +3508,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .overview-grid {
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
@@ -2486,12 +3553,17 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .action-row {
+  min-width: 0;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   padding: 10px;
   border-top: 1px solid var(--border);
+}
+
+.action-row > * {
+  max-width: 100%;
 }
 
 .inline-error {
@@ -2508,10 +3580,16 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .search-row {
+  min-width: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.search-row .memory-input {
+  flex: 1 1 180px;
 }
 
 .memory-input,
@@ -2552,6 +3630,8 @@ function formatMaybeDate(ms?: number): string {
 
 .primary-btn,
 .secondary-action {
+  max-width: 100%;
+  min-width: 0;
   min-height: 34px;
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
   background: var(--accent);
@@ -2559,6 +3639,15 @@ function formatMaybeDate(ms?: number): string {
   padding: 0 12px;
   font-size: 12px;
   flex-shrink: 0;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+}
+
+.primary-btn span,
+.secondary-action span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .secondary-action {
@@ -2595,6 +3684,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .append-top {
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 8px;
 }
@@ -2602,6 +3692,10 @@ function formatMaybeDate(ms?: number): string {
 .append-top .memory-select {
   width: 118px;
   flex-shrink: 0;
+}
+
+.append-top .memory-input {
+  flex: 1 1 160px;
 }
 
 .result-row {
@@ -2616,6 +3710,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .profile-toolbar {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2632,9 +3727,14 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .profile-layout {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(180px, 0.9fr) minmax(260px, 1.15fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 10px;
+}
+
+.graph-layout {
+  align-items: start;
 }
 
 .profile-list {
@@ -2642,9 +3742,12 @@ function formatMaybeDate(ms?: number): string {
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+  max-height: 420px;
+  overflow: auto;
 }
 
 .profile-row {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -2665,12 +3768,30 @@ function formatMaybeDate(ms?: number): string {
 
 .profile-row-top,
 .audit-row {
+  min-width: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.profile-row-top code,
+.audit-row code {
+  flex: 1 1 140px;
+}
+
+.profile-row-top code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-row-top span,
+.audit-row span {
+  flex: 0 0 auto;
 }
 
 .profile-row code {
@@ -2683,14 +3804,73 @@ function formatMaybeDate(ms?: number): string {
   font-size: 12px;
   line-height: 1.4;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .profile-row > span:last-child {
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.profile-expanded {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+  cursor: default;
+}
+
+.profile-detail-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
+  gap: 8px;
+}
+
+.profile-detail-item,
+.profile-detail-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.profile-detail-item > span,
+.profile-detail-text > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.profile-detail-item strong,
+.profile-detail-text strong {
+  display: block;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.profile-detail-text {
+  max-height: 180px;
+  margin-top: 8px;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--hover);
 }
 
 .profile-editor {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -2698,6 +3878,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .profile-grid {
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
@@ -2721,6 +3902,8 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .memory-section {
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
@@ -2753,6 +3936,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .scheduler-task-main {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -2775,8 +3959,208 @@ function formatMaybeDate(ms?: number): string {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 
+.compact-actions {
+  justify-content: flex-end;
+  padding: 0;
+  border-top: 0;
+}
+
+.log-filter-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 128px), 1fr));
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.log-filter-grid .memory-input {
+  grid-column: 1 / -1;
+}
+
+.log-auto-toggle {
+  margin: 10px;
+}
+
+.log-layout {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-list {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.log-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+  gap: 4px 8px;
+  padding: 9px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.log-row:hover,
+.log-row.active {
+  background: var(--active);
+}
+
+.log-row.warn {
+  border-left: 3px solid #f59e0b;
+}
+
+.log-row.error {
+  border-left: 3px solid #ef4444;
+}
+
+.log-row strong,
+.log-row span,
+.log-row code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+
+.log-row strong {
+  color: var(--text);
+}
+
+.log-row span,
+.log-row code {
+  color: var(--muted);
+}
+
+.log-row code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.log-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.log-chain {
+  color: var(--muted);
+}
+
+.log-status {
+  justify-self: end;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--hover);
+}
+
+.log-duration {
+  justify-self: end;
+  color: var(--muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.log-time,
+.log-summary {
+  grid-column: 1 / -1;
+}
+
+.log-summary {
+  color: var(--text);
+}
+
+.log-timeline {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--hover) 68%, transparent);
+}
+
+.log-event {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.log-event:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.log-event-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.log-event-head code {
+  flex: 1 1 150px;
+}
+
+.log-event-summary {
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.log-inline-detail {
+  grid-column: 1 / -1;
+  display: block;
+  max-height: 320px;
+  margin-top: 6px;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--text);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.log-detail {
+  margin: 0;
+  padding: 10px;
+  max-width: 100%;
+  max-height: 420px;
+  overflow: auto;
+  color: var(--text);
+  background: var(--bg-elevated);
+  font-size: 11px;
+  line-height: 1.45;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .setting-row,
 .field {
+  min-width: 0;
   padding: 10px;
   border-bottom: 1px solid var(--border);
 }
@@ -2787,10 +4171,15 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .toggle-row {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.toggle-row > span {
+  min-width: 0;
 }
 
 .toggle-row input {
@@ -2811,6 +4200,7 @@ function formatMaybeDate(ms?: number): string {
   color: var(--text);
   font-size: 12px;
   font-weight: 620;
+  overflow-wrap: anywhere;
 }
 
 .setting-label,
@@ -2819,8 +4209,19 @@ function formatMaybeDate(ms?: number): string {
   margin-bottom: 7px;
 }
 
+.setting-meta {
+  overflow-wrap: anywhere;
+}
+
+.memory-select {
+  text-overflow: ellipsis;
+}
+
 .range-label {
+  min-width: 0;
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   justify-content: space-between;
 }
 
@@ -2830,6 +4231,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .segmented {
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
@@ -2840,13 +4242,26 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .segmented button {
+  min-width: 0;
   min-height: 30px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
   cursor: pointer;
+}
+
+.segmented.graph-tabs {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 8px;
+}
+
+.segmented.graph-tabs button {
+  min-height: 28px;
+  padding: 0 4px;
 }
 
 .segmented button.active {
@@ -2865,6 +4280,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .grid-two {
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -2878,6 +4294,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .mini-toggle {
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2887,6 +4304,11 @@ function formatMaybeDate(ms?: number): string {
   border-radius: 8px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.mini-toggle span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .mini-toggle input {
@@ -2900,6 +4322,7 @@ function formatMaybeDate(ms?: number): string {
 
 .embedding-target,
 .dreaming-status {
+  min-width: 0;
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr);
   gap: 6px 8px;
@@ -2926,14 +4349,28 @@ function formatMaybeDate(ms?: number): string {
   font-size: 11px;
 }
 
-@media (max-width: 520px) {
-  .grid-two,
-  .profile-grid,
+@media (max-width: 720px) {
   .profile-layout,
-  .overview-grid {
+  .log-layout {
     grid-template-columns: 1fr;
   }
 
+  .log-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 640px) {
+  .grid-two,
+  .profile-grid,
+  .log-filter-grid,
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
   .search-row {
     align-items: stretch;
     flex-direction: column;

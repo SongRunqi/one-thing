@@ -10,6 +10,7 @@
       :show-split-button="canClose !== undefined"
       :can-close="!!canClose"
       :is-inspector-open="isInspectorOpen"
+      :media-panel-open="mediaPanelOpen"
       @select-tab="activateTab"
       @close-tab="handleCloseTab"
       @move-tab="tabState.moveTab"
@@ -76,12 +77,14 @@ interface Props {
   sessionId?: string
   canClose?: boolean
   showSidebarToggle?: boolean
+  mediaPanelOpen?: boolean
   isInspectorOpen?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   showSettings: false,
   showSidebarToggle: false,
+  mediaPanelOpen: false,
 })
 
 const emit = defineEmits<{

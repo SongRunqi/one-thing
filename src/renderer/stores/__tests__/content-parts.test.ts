@@ -7,6 +7,7 @@ import {
   popTrailingTransient,
   pushDataStepsIfMissing,
   pushImageLoading,
+  pushLoadingMemory,
   pushWaiting,
   removeTransientIndicators,
   upsertToolCall,
@@ -369,6 +370,32 @@ describe('content-parts helpers', () => {
         { type: 'data-steps', turnIndex: 1 },
         { type: 'waiting', turnIndex: 2 },
       ])
+    })
+
+    it('replaces loading-memory with waiting when recall finishes', () => {
+      const parts: ContentPart[] = [{ type: 'loading-memory' }]
+      pushWaiting(parts)
+      expect(parts).toEqual([{ type: 'waiting' }])
+    })
+  })
+
+  describe('pushLoadingMemory', () => {
+    it('appends a loading-memory part', () => {
+      const parts: ContentPart[] = []
+      pushLoadingMemory(parts)
+      expect(parts).toEqual([{ type: 'loading-memory' }])
+    })
+
+    it('does not append duplicate adjacent loading-memory parts', () => {
+      const parts: ContentPart[] = [{ type: 'loading-memory' }]
+      pushLoadingMemory(parts)
+      expect(parts).toEqual([{ type: 'loading-memory' }])
+    })
+
+    it('replaces trailing waiting with loading-memory', () => {
+      const parts: ContentPart[] = [{ type: 'waiting' }]
+      pushLoadingMemory(parts)
+      expect(parts).toEqual([{ type: 'loading-memory' }])
     })
   })
 

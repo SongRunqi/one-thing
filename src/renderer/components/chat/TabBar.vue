@@ -1,5 +1,5 @@
 <template>
-  <header :class="['tab-bar', { 'with-traffic-lights': showSidebarToggle }]">
+  <header :class="['tab-bar', { 'with-traffic-lights': showSidebarToggle, 'media-panel-open': mediaPanelOpen }]">
     <!-- Left: traffic lights reserved + tabs -->
     <div class="tab-bar-left">
       <div
@@ -107,6 +107,7 @@ const props = defineProps<{
   sessionName: string
   isBranchSession: boolean
   showSidebarToggle: boolean
+  mediaPanelOpen?: boolean
   showSplitButton: boolean
   canClose: boolean
   isInspectorOpen?: boolean
@@ -160,6 +161,10 @@ const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').le
   width: 164px;
   flex-shrink: 0;
   -webkit-app-region: no-drag;
+}
+
+.tab-bar.media-panel-open .traffic-lights-reserved {
+  -webkit-app-region: drag;
 }
 
 /* ── Left: tabs ──────────────────── */

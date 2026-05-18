@@ -26,6 +26,7 @@ import {
   popTrailingTransient,
   pushImageLoading,
   pushDataStepsIfMissing,
+  pushLoadingMemory,
   pushWaiting,
   removeTransientIndicators,
   upsertToolCall,
@@ -738,6 +739,12 @@ export const useChatStore = defineStore('chat', () => {
         message.contentParts = [...parts]
       } else if (newPart.type === 'image-loading') {
         pushImageLoading(parts, newPart.turnIndex, newPart.label)
+        message.contentParts = [...parts]
+      } else if (newPart.type === 'loading-memory') {
+        pushLoadingMemory(parts)
+        message.contentParts = [...parts]
+      } else if (newPart.type === 'waiting') {
+        pushWaiting(parts, newPart.turnIndex)
         message.contentParts = [...parts]
       }
     }

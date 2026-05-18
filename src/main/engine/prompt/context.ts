@@ -361,7 +361,8 @@ export async function buildPromptContext(options: BuildPromptContextOptions): Pr
   const activeFragments = await buildActiveFragments(options)
   const snapshot = buildSnapshot(options, activeFragments)
   const previousHashes = options.previousState?.referenceSnapshot?.fragmentHashes
-  const previousItems = options.previousState?.items ?? []
+  const previousItems = (options.previousState?.items ?? [])
+    .filter(item => item.reason !== 'removed' && !item.source.endsWith(':removed'))
   const previousBySource = new Map(previousItems.map(item => [item.source, item]))
 
   const emittedFragments: PromptContextFragment[] = []
@@ -381,15 +382,35 @@ export async function buildPromptContext(options: BuildPromptContextOptions): Pr
     }
   }
 
+  const stateItems = previousHashes
+    ? reconcilePromptContextItems(previousItems, emittedFragments)
+    : emittedFragments
+
   const state: PromptContextState = {
     version: PROMPT_CONTEXT_VERSION,
     baseInstructions,
     referenceSnapshot: snapshot,
-    items: previousHashes ? [...previousItems, ...emittedFragments] : emittedFragments,
+    items: stateItems,
     updatedAt: Date.now(),
   }
 
   return { baseInstructions, state, emittedFragments, activeFragments }
+}
+
+function reconcilePromptContextItems(
+  previousItems: PromptContextFragment[],
+  emittedFragments: PromptContextFragment[],
+): PromptContextFragment[] {
+  const bySource = new Map(previousItems.map(item => [item.source, item]))
+  for (const item of emittedFragments) {
+    if (item.reason === 'removed') {
+      bySource.delete(item.source.replace(/:removed$/u, ''))
+      bySource.set(item.source, item)
+      continue
+    }
+    bySource.set(item.source, item)
+  }
+  return Array.from(bySource.values())
 }
 
 export function buildRequestMessages(options: {
@@ -405,14 +426,10 @@ export function buildRequestMessages(options: {
     hash: sha(fallbackBase ?? ''),
   }
   const baseSegment = segmentForBase(baseInstructions)
-  const emittedCount = Math.min(
-    options.emittedFragments?.length ?? 0,
-    options.promptContext.items.length,
-  )
-  const emittedStartIndex = options.promptContext.items.length - emittedCount
-  const contextItems = options.promptContext.items.map((item, index) => ({
+  const emittedKeys = new Set((options.emittedFragments ?? []).map(item => `${item.source}:${item.hash}`))
+  const contextItems = options.promptContext.items.map(item => ({
     item,
-    emittedThisTurn: emittedCount > 0 && index >= emittedStartIndex,
+    emittedThisTurn: emittedKeys.has(`${item.source}:${item.hash}`),
   }))
   const developerItems = contextItems.filter(entry => entry.item.role === 'developer')
   const userItems = contextItems.filter(entry => entry.item.role === 'user')

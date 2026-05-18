@@ -17,7 +17,10 @@
         >
       </label>
 
-      <div class="action-list">
+      <div
+        ref="listRef"
+        class="action-list"
+      >
         <template
           v-for="(group, groupIndex) in groupedActions"
           :key="group.name"
@@ -29,6 +32,7 @@
               v-for="item in group.items"
               :key="item.action.id"
               :class="['action-row', { selected: item.index === selectedIndex, disabled: item.action.enabled === false }]"
+              :data-action-index="item.index"
               type="button"
               :disabled="item.action.enabled === false"
               @mouseenter="selectedIndex = item.index"
@@ -95,6 +99,7 @@ const emit = defineEmits<{
 const selectedIndex = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
 const panelRef = ref<HTMLElement | null>(null)
+const listRef = ref<HTMLElement | null>(null)
 const surface = computed(() => props.surface || 'chat-floating-card')
 const isStandalone = computed(() => surface.value === 'standalone-window')
 
@@ -134,11 +139,18 @@ watch(
   () => {
     selectedIndex.value = firstEnabledIndex()
     if (props.visible) {
-      nextTick(() => inputRef.value?.focus())
+      nextTick(() => {
+        inputRef.value?.focus()
+        scrollSelectedActionIntoView()
+      })
     }
   },
   { immediate: true },
 )
+
+watch(selectedIndex, () => {
+  scrollSelectedActionIntoView()
+})
 
 function firstEnabledIndex(): number {
   const index = filteredActions.value.findIndex(action => action.enabled !== false)
@@ -156,6 +168,14 @@ function moveSelection(direction: number) {
       return
     }
   }
+}
+
+function scrollSelectedActionIntoView() {
+  if (!props.visible) return
+  nextTick(() => {
+    const row = listRef.value?.querySelector<HTMLElement>(`[data-action-index="${selectedIndex.value}"]`)
+    row?.scrollIntoView({ block: 'nearest' })
+  })
 }
 
 function selectAction(action?: TodoNotesAction) {

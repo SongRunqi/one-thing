@@ -130,7 +130,7 @@ export interface SoulMemoryDreamingSettings {
   frequency?: string
   timezone?: string
   model?: string
-  sources?: Array<'daily' | 'sessions' | 'short-term' | 'memory' | 'recall'>
+  sources?: Array<'daily' | 'sessions' | 'short-term' | 'recall'>
   lookbackDays?: number
   maxSourceFiles?: number
   maxSessions?: number
@@ -155,6 +155,16 @@ export interface SoulMemoryReadSettings {
   maxLines?: number
 }
 
+export type SoulMemoryLogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+export interface SoulMemoryLoggingSettings {
+  enabled?: boolean
+  retentionDays?: number
+  level?: SoulMemoryLogLevel
+  maxPreviewChars?: number
+  includeHttpErrorBody?: boolean
+}
+
 export interface SoulMemorySettings {
   enabled?: boolean
   directoryMode?: 'ai-note-dir' | 'custom'
@@ -169,6 +179,7 @@ export interface SoulMemorySettings {
   dreaming?: SoulMemoryDreamingSettings
   dailyContext?: SoulMemoryDailyContextSettings
   read?: SoulMemoryReadSettings
+  logging?: SoulMemoryLoggingSettings
 }
 
 export interface GeneralSettings {

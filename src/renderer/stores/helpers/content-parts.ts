@@ -152,10 +152,19 @@ export function pushWaiting(parts: ContentPart[], turnIndex?: number): void {
   if (parts.some(part => part.type === 'waiting' && part.turnIndex === turnIndex)) {
     return
   }
+  popTrailingTransient(parts)
   parts.push({
     type: 'waiting',
     ...(turnIndex !== undefined ? { turnIndex } : {}),
   })
+}
+
+/** Push a memory-loading indicator before the main provider request starts. */
+export function pushLoadingMemory(parts: ContentPart[]): void {
+  const last = parts[parts.length - 1]
+  if (last?.type === 'loading-memory') return
+  popTrailingTransient(parts)
+  parts.push({ type: 'loading-memory' })
 }
 
 /** Push an image-generation skeleton, avoiding duplicate adjacent skeletons. */

@@ -68,6 +68,8 @@ const DEFER_MARKDOWN_CHAR_THRESHOLD = 4000
 const THROTTLE_MARKDOWN_CHAR_THRESHOLD = 2000
 const STREAMING_MARKDOWN_PARSE_INTERVAL_MS = 50
 const STREAM_SETTLE_MS = 220
+const STALE_REVEAL_PAUSE_MS = 300
+const STALE_REVEAL_BACKLOG_CHARS = 1200
 
 type RenderPhase = 'live' | 'settling' | 'stable'
 
@@ -103,6 +105,7 @@ let pendingParseTimer: ReturnType<typeof setTimeout> | null = null
 let settleTimer: ReturnType<typeof setTimeout> | null = null
 let lastRevealTs = 0
 let lastParseCommitTs = 0
+let windowBlurred = false
 
 function cancelPendingFrame() {
   if (pendingFrame === null) return
@@ -167,6 +170,20 @@ function commitDisplayedContent() {
   scheduleDeferredMarkdownHydration()
 }
 
+function isDocumentHidden(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden'
+}
+
+function shouldBypassReveal(): boolean {
+  return Boolean(!props.isUser && (windowBlurred || isDocumentHidden()))
+}
+
+function syncDisplayedContentIfBackgrounded() {
+  if (shouldBypassReveal() && displayedContent.value !== props.content) {
+    commitDisplayedContent()
+  }
+}
+
 function prewarmStableMarkdownCache() {
   if (props.isUser || !props.content) return
   const content = props.content
@@ -201,6 +218,8 @@ function revealDisplayedContent(ts: number) {
   lastRevealTs = ts
 
   const next = advanceStreamingReveal(displayedContent.value, props.content, elapsed, {
+    catchUpAfterMs: STALE_REVEAL_PAUSE_MS,
+    catchUpRemainingChars: STALE_REVEAL_BACKLOG_CHARS,
     reducedMotion: prefersReducedMotion.value,
   }).content
   displayedContent.value = next
@@ -273,6 +292,15 @@ function contentCacheKey(content: string): string {
 watch(
   () => props.content,
   () => {
+    if (!props.isUser && props.isStreaming) {
+      hasBeenVisuallyLive.value = true
+    }
+
+    if (shouldBypassReveal()) {
+      commitDisplayedContent()
+      return
+    }
+
     if (!props.isUser && (props.isStreaming || hasBeenVisuallyLive.value)) {
       if (!props.content.startsWith(displayedContent.value)) {
         cancelSettling()
@@ -294,6 +322,14 @@ watch(
   (isStreaming) => {
     if (isStreaming && !props.isUser) {
       hasBeenVisuallyLive.value = true
+    }
+
+    if (shouldBypassReveal()) {
+      commitDisplayedContent()
+      return
+    }
+
+    if (isStreaming && !props.isUser) {
       cancelSettling()
       scheduleDisplayedContent()
       return
@@ -458,7 +494,36 @@ function updateReducedMotion() {
   prefersReducedMotion.value = reducedMotionQuery?.matches ?? false
 }
 
+function handleWindowBlur() {
+  windowBlurred = true
+  syncDisplayedContentIfBackgrounded()
+}
+
+function handleWindowFocus() {
+  windowBlurred = false
+  if (displayedContent.value !== props.content) {
+    commitDisplayedContent()
+  }
+}
+
+function handleVisibilityChange() {
+  if (isDocumentHidden()) {
+    syncDisplayedContentIfBackgrounded()
+    return
+  }
+  if (displayedContent.value !== props.content) {
+    commitDisplayedContent()
+  }
+}
+
 onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('blur', handleWindowBlur)
+    window.addEventListener('focus', handleWindowFocus)
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+  }
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
   reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
   updateReducedMotion()
@@ -467,6 +532,13 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   hydrationToken++
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('blur', handleWindowBlur)
+    window.removeEventListener('focus', handleWindowFocus)
+  }
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }
   reducedMotionQuery?.removeEventListener?.('change', updateReducedMotion)
   reducedMotionQuery = null
   cancelPendingFrame()
