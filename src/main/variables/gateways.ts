@@ -29,6 +29,9 @@ export const workdirGateway: WorkdirGateway = {
   read(sessionId) {
     return store.getSession(sessionId)?.workingDirectory ?? ''
   },
+  readRoots(sessionId) {
+    return store.getSession(sessionId)?.workingDirectoryRoots ?? []
+  },
   write(sessionId, workdir) {
     store.updateSessionWorkingDirectory(sessionId, workdir)
     // Auto-link into the global project directories list. Both AI
@@ -43,6 +46,10 @@ export const workdirGateway: WorkdirGateway = {
         console.error('[variables.gateway] project-dirs touch failed:', err)
       }
     }
+    notifyWorkdirChanged(sessionId)
+  },
+  writeRoots(sessionId, roots) {
+    store.updateSessionWorkingDirectoryRoots(sessionId, roots)
     notifyWorkdirChanged(sessionId)
   },
   expandPath,

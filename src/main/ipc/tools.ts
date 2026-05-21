@@ -71,12 +71,13 @@ export function registerToolHandlers() {
       // Set init context for async tools (like SkillTool)
       // Use the first session's working directory, or current directory if no sessions
       const sessionsList = store.getSessionsList()
-      const workingDirectory = sessionsList.length > 0
-        ? (store.getSession(sessionsList[0].id)?.workingDirectory ?? process.cwd())
-        : process.cwd()
+      const firstSession = sessionsList.length > 0 ? store.getSession(sessionsList[0].id) : undefined
+      const workingDirectory = firstSession?.workingDirectory ?? process.cwd()
+      const workingDirectoryRoots = firstSession?.workingDirectoryRoots ?? []
 
       setInitContext({
         workingDirectory,
+        workingDirectoryRoots,
       } as any)
 
       // Get all tools (static + async) and filter out MCP tools
@@ -109,11 +110,13 @@ export function registerToolHandlers() {
       // Get session's workingDirectory for sandbox boundary
       const session = store.getSession(sessionId)
       const workingDirectory = session?.workingDirectory
+      const workingDirectoryRoots = session?.workingDirectoryRoots
 
       const context: ToolExecutionContext = {
         sessionId,
         messageId,
         workingDirectory,
+        workingDirectoryRoots,
       }
 
       const result = await executeTool(toolId, args, context)

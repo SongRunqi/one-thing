@@ -9,7 +9,6 @@
         docked,
         collapsed,
         standalone: isStandalone,
-        'gutter-docked': canDockInRightGutter,
         'find-open': findOpen,
         'switcher-open': switcherOpen,
         'action-panel-open': actionPanelOpen,
@@ -63,7 +62,7 @@
             aria-label="Command Panel"
             @click="openActionPanel"
           >
-            <Command :size="isStandalone ? 19 : 15" />
+            <Command :size="isStandalone ? 14 : 15" />
           </button>
           <button
             ref="titleButtonRef"
@@ -73,7 +72,7 @@
             aria-label="Browse notes"
             @click="openSwitcher"
           >
-            <FileText :size="isStandalone ? 18 : 15" />
+            <FileText :size="isStandalone ? 14 : 15" />
           </button>
           <button
             class="icon-button"
@@ -82,29 +81,17 @@
             aria-label="New note"
             @click="createNote"
           >
-            <Plus :size="15" />
+            <Plus :size="isStandalone ? 14 : 15" />
           </button>
           <button
-            v-if="isStandalone"
             class="icon-button"
             :class="{ active: pinned }"
             type="button"
-            :title="pinned ? 'Do not keep window on top' : 'Keep window on top'"
-            :aria-label="pinned ? 'Do not keep window on top' : 'Keep window on top'"
+            :title="isStandalone ? (pinned ? 'Disable always on top' : 'Always on top') : (pinned ? 'Allow card to collapse' : 'Keep card open')"
+            :aria-label="isStandalone ? (pinned ? 'Disable always on top' : 'Always on top') : (pinned ? 'Allow card to collapse' : 'Keep card open')"
             @click="togglePinned"
           >
-            <Pin :size="15" />
-          </button>
-          <button
-            v-if="!isStandalone"
-            class="icon-button"
-            :class="{ active: pinned }"
-            type="button"
-            :title="pinned ? 'Allow card to collapse' : 'Keep card open'"
-            :aria-label="pinned ? 'Allow card to collapse' : 'Keep card open'"
-            @click="togglePinned"
-          >
-            <Pin :size="15" />
+            <Pin :size="isStandalone ? 14 : 15" />
           </button>
           <button
             v-if="!isStandalone"
@@ -291,6 +278,9 @@
           class="markdown-editor"
           surface="todo-notes"
           :document-id="activeDocument?.id || 'todo-notes'"
+          :document-path="activeDocument?.filePath || ''"
+          :workspace-root="snapshot?.directory || effectiveWorkingDirectory || ''"
+          :settings="editorSettings"
           :features="todoMarkdownFeatures"
           :toolbar="false"
           placeholder="# Untitled Note"
@@ -299,6 +289,9 @@
           :spellcheck="true"
           @update:model-value="handleDraftUpdate"
           @keydown="handleEditorKeydown"
+          @paste="handleMarkdownPaste"
+          @open-link="openMarkdownLink"
+          @open-image="openMarkdownImage"
           @cancel="handleEscape"
         />
       </div>
@@ -507,9 +500,12 @@ import {
   X,
 } from 'lucide-vue-next'
 import { useSessionsStore } from '@/stores/sessions'
+import { useSettingsStore } from '@/stores/settings'
 import type { TodoPlanDocument, TodoPlanSnapshot } from '@/types'
 import MarkdownDocumentEditor from '@/editor/MarkdownDocumentEditor.vue'
 import type { MarkdownCommand, MarkdownDocumentEditorHandle, MarkdownFeatureSet } from '@/editor/markdown-document'
+import { handleMarkdownAttachmentPaste } from '@/editor/markdown-attachments'
+import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 import TodoNotesActionPanel from './TodoNotesActionPanel.vue'
 import {
   findMarkdownMatches,
@@ -529,6 +525,7 @@ const props = defineProps<{
 }>()
 
 const sessionsStore = useSessionsStore()
+const settingsStore = useSettingsStore()
 const storagePrefix = props.standalone ? 'todoPlanWindow' : 'todoPlanCard'
 const legacyChatStorage: Record<string, string> = {
   ActiveId: 'todoPlanActiveId',
@@ -550,18 +547,31 @@ function readStorage(name: string, fallback = ''): string {
   return (legacyKey ? localStorage.getItem(legacyKey) : null) ?? fallback
 }
 
-function readStorageNumber(name: string, fallback: number): number {
-  const value = Number(readStorage(name, String(fallback)))
-  return Number.isFinite(value) ? value : fallback
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+const TODO_PANEL_DEFAULT_HEIGHT = 320
+const TODO_PANEL_LEGACY_DEFAULT_HEIGHT = 360
+const TODO_PANEL_MIN_HEIGHT = 220
+const TODO_PANEL_MAX_HEIGHT = 620
+
+function readPanelHeight(): number {
+  const raw = readStorage('Height')
+  if (!raw) return TODO_PANEL_DEFAULT_HEIGHT
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return TODO_PANEL_DEFAULT_HEIGHT
+  if (value === TODO_PANEL_LEGACY_DEFAULT_HEIGHT) return TODO_PANEL_DEFAULT_HEIGHT
+  return clampNumber(value, TODO_PANEL_MIN_HEIGHT, TODO_PANEL_MAX_HEIGHT)
 }
 
 const snapshot = ref<TodoPlanSnapshot | null>(null)
 const activeId = ref(readStorage('ActiveId'))
 const draft = ref('')
-const pinned = ref(readStorage('Pinned', 'false') === 'true')
+const pinned = ref(props.standalone ? true : readStorage('Pinned', 'false') === 'true')
 const docked = ref(!props.standalone && readStorage('Docked', 'false') === 'true')
 const collapsed = ref(props.standalone ? false : readStorage('Collapsed', 'true') !== 'false')
-const panelHeight = ref(readStorageNumber('Height', 360))
+const panelHeight = ref(readPanelHeight())
 const switcherOpen = ref(false)
 const switcherQuery = ref('')
 const switcherSelectedIndex = ref(0)
@@ -580,17 +590,12 @@ const switcherInputRef = ref<HTMLInputElement | null>(null)
 const findBarRef = ref<HTMLElement | null>(null)
 const findInputRef = ref<HTMLInputElement | null>(null)
 const editorRef = ref<MarkdownDocumentEditorHandle | null>(null)
-const canDockInRightGutter = ref(false)
 let cleanupChanged: (() => void) | undefined
-let resizeObserver: ResizeObserver | undefined
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let resizing = false
 let resizeStartY = 0
 let resizeStartHeight = 0
 let loadedDocumentId = ''
-
-const TODO_PANEL_WIDTH = 360
-const TODO_PANEL_GAP = 16
 const todoMarkdownFeatures: MarkdownFeatureSet = {
   tasks: true,
   tables: true,
@@ -599,6 +604,7 @@ const todoMarkdownFeatures: MarkdownFeatureSet = {
   codeBlocks: true,
   frontmatter: true,
 }
+const editorSettings = computed(() => settingsStore.settings.general.editor)
 
 const isStandalone = computed(() => props.standalone === true)
 const surface = computed<TodoPlanSurface>(() => {
@@ -734,16 +740,6 @@ const todoActions = computed<TodoNotesAction[]>(() => {
       icon: Search,
       keywords: ['search'],
       run: openFind,
-    },
-    {
-      id: 'keep-window-on-top',
-      title: pinned.value ? 'Disable Always on Top' : 'Keep Window on Top',
-      subtitle: 'Toggle standalone window pinning',
-      group: 'Window/Card',
-      icon: Pin,
-      visible: isStandalone.value,
-      keywords: ['pin', 'float', 'always on top'],
-      run: togglePinned,
     },
     {
       id: 'keep-card-open',
@@ -954,6 +950,10 @@ async function saveDraft() {
 
 function applyDocument(document: TodoPlanDocument) {
   if (!snapshot.value) return
+  const currentDocument = activeDocument.value
+  const isActiveDocument = currentDocument?.id === document.id
+  const hasLocalDraftChanges = isActiveDocument && draft.value !== (currentDocument.content || '')
+
   if (document.scope === 'user-note') {
     const nextNotes = snapshot.value.userNotes.some(note => note.id === document.id)
       ? snapshot.value.userNotes.map(note => note.id === document.id ? document : note)
@@ -961,6 +961,11 @@ function applyDocument(document: TodoPlanDocument) {
     snapshot.value = { ...snapshot.value, userNotes: nextNotes }
   } else if (document.scope === 'workspace-ai-todo') {
     snapshot.value = { ...snapshot.value, workspaceAiTodo: document }
+  }
+
+  if (isActiveDocument && !hasLocalDraftChanges) {
+    loadedDocumentId = document.id
+    draft.value = document.content || ''
   }
 }
 
@@ -1197,6 +1202,46 @@ function handleEditorKeydown(event: KeyboardEvent) {
   }
 }
 
+async function handleMarkdownPaste(event: ClipboardEvent) {
+  await handleMarkdownAttachmentPaste({
+    event,
+    editor: editorRef.value,
+    documentPath: activeDocument.value?.filePath,
+    workspaceRoot: snapshot.value?.directory || effectiveWorkingDirectory.value,
+  })
+}
+
+async function resolveMarkdownLink(href: string, asset?: MarkdownAssetResolution | null) {
+  if (asset) return asset
+  const documentPath = activeDocument.value?.filePath
+  if (!documentPath) return null
+  const response = await window.electronAPI.resolveMarkdownAsset({
+    documentPath,
+    workspaceRoot: snapshot.value?.directory || effectiveWorkingDirectory.value,
+    rawTarget: href,
+  })
+  return response.success ? response.asset || null : null
+}
+
+async function openMarkdownLink(payload: { href: string; asset?: MarkdownAssetResolution | null }) {
+  const asset = await resolveMarkdownLink(payload.href, payload.asset)
+  if (asset?.kind === 'external') {
+    await window.electronAPI.openExternal(asset.href || payload.href)
+    return
+  }
+  if (asset?.absolutePath) {
+    await window.electronAPI.openPath(asset.absolutePath)
+    return
+  }
+  if (/^[a-z][a-z\d+.-]*:/i.test(payload.href)) {
+    await window.electronAPI.openExternal(payload.href)
+  }
+}
+
+async function openMarkdownImage(payload: { src: string; alt: string; asset?: MarkdownAssetResolution | null }) {
+  await window.electronAPI.openImagePreview(payload.asset?.dataUrl || payload.src, payload.alt)
+}
+
 function handleShortcut(event: KeyboardEvent) {
   if (event.defaultPrevented || event.isComposing) return
   const target = event.target as Node | null
@@ -1316,7 +1361,11 @@ function startResize(event: PointerEvent) {
 
 function handleResize(event: PointerEvent) {
   if (!resizing) return
-  const nextHeight = Math.min(720, Math.max(260, resizeStartHeight + event.clientY - resizeStartY))
+  const nextHeight = clampNumber(
+    resizeStartHeight + event.clientY - resizeStartY,
+    TODO_PANEL_MIN_HEIGHT,
+    TODO_PANEL_MAX_HEIGHT,
+  )
   panelHeight.value = nextHeight
   localStorage.setItem(storageKey('Height'), String(nextHeight))
 }
@@ -1338,41 +1387,16 @@ function expandFromEdge() {
 
 function collapseToEdge() {
   if (isStandalone.value) return
-  if (pinned.value || docked.value || canDockInRightGutter.value) return
+  if (pinned.value || docked.value) return
   collapsed.value = true
 }
 
-function setStandaloneWindowButtonsVisible(visible: boolean) {
-  if (!isStandalone.value) return
-  window.electronAPI.setWindowButtonVisibility?.(visible).catch(() => {
-    // Auxiliary chrome control is best-effort during app startup and tests.
-  })
-}
-
 function handlePanelMouseEnter() {
-  setStandaloneWindowButtonsVisible(true)
   expandFromEdge()
 }
 
 function handlePanelMouseLeave() {
-  setStandaloneWindowButtonsVisible(false)
   collapseToEdge()
-}
-
-function updateRightGutterDocking() {
-  if (isStandalone.value) {
-    canDockInRightGutter.value = false
-    return
-  }
-  const chatPanel = panelRef.value?.closest('.chat-panel') as HTMLElement | null
-  if (!chatPanel) return
-  const messageContent = chatPanel.querySelector('.message-list-content') as HTMLElement | null
-  const panelRect = chatPanel.getBoundingClientRect()
-  const contentRect = messageContent?.getBoundingClientRect()
-  const rightGutter = contentRect
-    ? Math.max(0, panelRect.right - contentRect.right)
-    : 0
-  canDockInRightGutter.value = rightGutter >= TODO_PANEL_WIDTH + TODO_PANEL_GAP
 }
 
 function shouldRefreshChanged(data: { scope: string; sessionId?: string; workingDirectory?: string }) {
@@ -1385,13 +1409,6 @@ onMounted(() => {
   loadSnapshot()
   if (isStandalone.value) {
     window.electronAPI.setTodoPlanWindowPinned(pinned.value)
-    setStandaloneWindowButtonsVisible(false)
-  }
-  updateRightGutterDocking()
-  const chatPanel = panelRef.value?.closest('.chat-panel') as HTMLElement | null
-  if (chatPanel) {
-    resizeObserver = new ResizeObserver(updateRightGutterDocking)
-    resizeObserver.observe(chatPanel)
   }
   cleanupChanged = window.electronAPI.onTodoPlanChanged((data) => {
     if (!shouldRefreshChanged(data)) return
@@ -1410,7 +1427,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (saveTimer) clearTimeout(saveTimer)
-  resizeObserver?.disconnect()
   cleanupChanged?.()
   window.removeEventListener('keydown', handleShortcut)
   window.removeEventListener('pointerdown', handleOutsidePointerDown, true)
@@ -1433,8 +1449,7 @@ onUnmounted(() => {
   --todo-accent: var(--accent);
   --todo-accent-soft: rgba(var(--accent-rgb, 59, 130, 246), 0.14);
   --todo-accent-border: rgba(var(--accent-rgb, 59, 130, 246), 0.36);
-  --todo-plan-width: 360px;
-  --todo-plan-gap: 16px;
+  --todo-plan-width: 280px;
   --todo-popover-top: 44px;
   --todo-popover-width: min(430px, calc(100% - 18px));
   --todo-popover-radius: 12px;
@@ -1451,7 +1466,7 @@ onUnmounted(() => {
   right: 12px;
   z-index: calc(var(--z-dropdown, 100) + 2);
   width: min(var(--todo-plan-width), calc(100vw - var(--todo-plan-nav-gutter) - 18px));
-  min-height: 240px;
+  min-height: 220px;
   border: 1px solid var(--todo-rule);
   border-radius: 14px;
   background: var(--todo-card-bg);
@@ -1484,14 +1499,6 @@ onUnmounted(() => {
   bottom: 0;
   height: auto !important;
   border-radius: 12px 0 0 0;
-}
-
-.todo-plan-panel.gutter-docked:not(.collapsed) {
-  right: max(
-    12px,
-    calc((100% - var(--chat-content-width, min(70%, 800px))) / 2 - var(--todo-plan-width) - var(--todo-plan-gap))
-  );
-  width: var(--todo-plan-width);
 }
 
 .todo-plan-panel.standalone {
@@ -1579,14 +1586,13 @@ onUnmounted(() => {
 
 .window-title {
   position: absolute;
-  left: 50%;
-  right: auto;
-  width: max-content;
-  max-width: min(430px, calc(100% - 330px));
-  transform: translateX(-50%);
+  left: 108px;
+  right: 108px;
+  width: auto;
+  min-width: 0;
   overflow: hidden;
   color: color-mix(in srgb, var(--todo-text) 72%, transparent);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 650;
   text-align: center;
   text-overflow: ellipsis;
@@ -1600,7 +1606,7 @@ onUnmounted(() => {
 
 .todo-plan-panel.standalone .window-traffic-spacer {
   display: block;
-  flex: 0 0 78px;
+  flex: 0 0 82px;
   height: 100%;
   pointer-events: none;
 }
@@ -1655,22 +1661,9 @@ onUnmounted(() => {
 }
 
 .todo-plan-panel.standalone .panel-actions {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-1px);
-  transition:
-    opacity 0.12s ease,
-    transform 0.12s ease;
-}
-
-.todo-plan-panel.standalone:hover .panel-actions,
-.todo-plan-panel.standalone .panel-header:focus-within .panel-actions,
-.todo-plan-panel.standalone.find-open .panel-actions,
-.todo-plan-panel.standalone.switcher-open .panel-actions,
-.todo-plan-panel.standalone.action-panel-open .panel-actions {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
+  gap: 4px;
 }
 
 .icon-button,
@@ -1684,9 +1677,9 @@ onUnmounted(() => {
 }
 
 .todo-plan-panel.standalone .icon-button {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   color: color-mix(in srgb, var(--todo-text) 66%, transparent);
 }
 
@@ -1967,6 +1960,16 @@ onUnmounted(() => {
     --todo-action-popover-max-height: min(308px, calc(100vh - 84px));
   }
 
+  .todo-plan-panel.standalone .window-traffic-spacer {
+    flex-basis: 76px;
+  }
+
+  .todo-plan-panel.standalone .window-title {
+    left: 96px;
+    right: 96px;
+    font-size: 13px;
+  }
+
   .todo-plan-panel.standalone .switcher-header-row {
     height: 30px;
     font-size: 13px;
@@ -2019,7 +2022,7 @@ onUnmounted(() => {
 
 .panel-body {
   height: calc(100% - 88px);
-  min-height: 180px;
+  min-height: 132px;
   overflow: auto;
   background: var(--todo-card-bg);
 }
@@ -2035,6 +2038,7 @@ onUnmounted(() => {
   --editor-font-size: 14px;
   min-height: 96px;
   padding: 14px;
+  min-width: 0;
 }
 
 .todo-plan-panel.standalone .markdown-editor {
@@ -2045,6 +2049,12 @@ onUnmounted(() => {
 .markdown-editor :deep(.cm-editor),
 .markdown-editor :deep(.cm-scroller) {
   height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+.markdown-editor :deep(.cm-scroller) {
+  overflow: auto;
 }
 
 .note-footer {

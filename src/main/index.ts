@@ -1,7 +1,7 @@
 import { app, BrowserWindow, protocol, net } from 'electron'
 import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
-import { createWindow, hideUnpinnedTodoPlanWindowForMainActivation, shouldSuppressMainWindowActivation } from './window.js'
+import { createWindow, shouldSuppressMainWindowActivation, warmTodoPlanWindow } from './window.js'
 import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills } from './ipc/handlers.js'
 import { initializeStores, flushAllPendingSaves } from './store.js'
 import { initializeSettings } from './stores/settings.js'
@@ -116,6 +116,8 @@ app.on('ready', async () => {
   bootstrapPluginSystem(getEventBus(), getStreamEngine()).catch(err => {
     console.error('[Plugins] Bootstrap failed (non-blocking):', err)
   })
+  const { initializeUserSchedulerTasks } = await import('./scheduler/user-tasks.js')
+  initializeUserSchedulerTasks()
 
   // Initialize IPC handlers
   initializeIPC()
@@ -141,6 +143,12 @@ app.on('ready', async () => {
       warmSearchWindow(mainWindow)
     }
   }, 1200)
+  setTimeout(() => {
+    warmTodoPlanWindow({
+      activation: 'preserve-current-app',
+      preserveMainWindowVisibility: true,
+    })
+  }, 1600)
 
   // Initialize MCP system asynchronously (don't block startup)
   initializeMCP().catch(err => {
@@ -185,16 +193,15 @@ app.on('activate', () => {
         warmSearchWindow(mainWindow)
       }
     }, 1200)
+    setTimeout(() => {
+      warmTodoPlanWindow({
+        activation: 'preserve-current-app',
+        preserveMainWindowVisibility: true,
+      })
+    }, 1600)
   } else if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) {
     mainWindow.show()
     mainWindow.focus()
-  }
-
-  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
-    hideUnpinnedTodoPlanWindowForMainActivation()
-    setTimeout(() => {
-      hideUnpinnedTodoPlanWindowForMainActivation()
-    }, 80)
   }
 })
 

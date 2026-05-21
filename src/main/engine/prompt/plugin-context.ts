@@ -17,6 +17,7 @@ export interface PluginPromptContext {
   hasTools: boolean
   skills: SkillDefinition[]
   workingDirectory?: string
+  workingDirectoryRoots?: string[]
   contextVariables?: string
   activeProject?: PromptActiveProject
   knownProjects?: PromptKnownProjects

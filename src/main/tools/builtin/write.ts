@@ -11,7 +11,7 @@ import { z } from 'zod'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Tool } from '../core/tool.js'
-import { getSandboxBoundary, isPathContained, resolveToolPath } from '../core/sandbox.js'
+import { findSandboxRootForPath, getSandboxBoundary, resolveToolPath } from '../core/sandbox.js'
 import { Permission } from '../../permission/index.js'
 import { createTwoFilesPatch, diffLines } from 'diff'
 
@@ -73,7 +73,13 @@ Usage:
 
     // Check if path is outside sandbox boundary
     const boundary = getSandboxBoundary(ctx.workingDirectory)
-    const isExternal = !isPathContained(boundary, resolvedPath)
+    const matchedRoot = findSandboxRootForPath(
+      resolvedPath,
+      ctx.workingDirectory,
+      ctx.workingDirectoryRoots,
+    )
+    const permissionRoot = matchedRoot ?? boundary
+    const isExternal = !matchedRoot
 
     // Check if file exists and read current content for diff
     let fileExists = false
@@ -130,7 +136,7 @@ Usage:
       title: fileExists
         ? `Overwrite file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`
         : `Create new file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`,
-      workingDirectory: boundary,
+      workingDirectory: permissionRoot,
       metadata: {
         filePath: resolvedPath,
         diff,

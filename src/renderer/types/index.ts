@@ -2,6 +2,21 @@ import type {
   ChatMessage,
   ChatSession,
   ContextVariable,
+  AgentDefinition,
+  AgentsListResponse,
+  AgentCreateResponse,
+  AgentUpdateResponse,
+  AgentDeleteResponse,
+  UserPrompt,
+  PromptReferenceSnapshot,
+  PromptListResponse,
+  PromptGetResponse,
+  PromptCreateRequest,
+  PromptCreateResponse,
+  PromptUpdateRequest,
+  PromptUpdateResponse,
+  PromptDeleteRequest,
+  PromptDeleteResponse,
   SessionMeta,
   SessionDetails,
   GetSessionsListResponse,
@@ -43,6 +58,10 @@ import type {
   MediaQuery,
   MediaGalleryResponse,
   MediaRebuildResponse,
+  MarkdownResolveAssetRequest,
+  MarkdownResolveAssetResponse,
+  MarkdownSaveAttachmentsRequest,
+  MarkdownSaveAttachmentsResponse,
   GetChatHistoryResponse,
   GetSessionsResponse,
   CreateSessionResponse,
@@ -153,8 +172,20 @@ import type {
   MemorySaveFileResponse,
   MemorySearchRequest,
   MemorySearchResponse,
+  SchedulerSchedule,
+  SchedulerRunDetailDTO,
+  SchedulerTaskSnapshotDTO,
   SchedulerGetRequest,
   SchedulerGetResponse,
+  SchedulerCreateTaskRequest,
+  SchedulerUpdateTaskRequest,
+  SchedulerDeleteTaskRequest,
+  SchedulerWriteTaskResponse,
+  SchedulerDeleteTaskResponse,
+  SchedulerListRunsRequest,
+  SchedulerListRunsResponse,
+  SchedulerGetRunRequest,
+  SchedulerGetRunResponse,
   SchedulerListResponse,
   SchedulerRunNowRequest,
   SchedulerRunNowResponse,
@@ -200,6 +231,21 @@ export type {
   ChatMessage,
   ChatSession,
   ContextVariable,
+  AgentDefinition,
+  AgentsListResponse,
+  AgentCreateResponse,
+  AgentUpdateResponse,
+  AgentDeleteResponse,
+  UserPrompt,
+  PromptReferenceSnapshot,
+  PromptListResponse,
+  PromptGetResponse,
+  PromptCreateRequest,
+  PromptCreateResponse,
+  PromptUpdateRequest,
+  PromptUpdateResponse,
+  PromptDeleteRequest,
+  PromptDeleteResponse,
   SessionMeta,
   SessionDetails,
   GetSessionsListResponse,
@@ -241,6 +287,10 @@ export type {
   MediaQuery,
   MediaGalleryResponse,
   MediaRebuildResponse,
+  MarkdownResolveAssetRequest,
+  MarkdownResolveAssetResponse,
+  MarkdownSaveAttachmentsRequest,
+  MarkdownSaveAttachmentsResponse,
   ToolDefinition,
   ToolCall,
   ToolSettings,
@@ -293,8 +343,20 @@ export type {
   MemorySaveFileResponse,
   MemorySearchRequest,
   MemorySearchResponse,
+  SchedulerSchedule,
+  SchedulerRunDetailDTO,
+  SchedulerTaskSnapshotDTO,
   SchedulerGetRequest,
   SchedulerGetResponse,
+  SchedulerCreateTaskRequest,
+  SchedulerUpdateTaskRequest,
+  SchedulerDeleteTaskRequest,
+  SchedulerWriteTaskResponse,
+  SchedulerDeleteTaskResponse,
+  SchedulerListRunsRequest,
+  SchedulerListRunsResponse,
+  SchedulerGetRunRequest,
+  SchedulerGetRunResponse,
   SchedulerListResponse,
   SchedulerRunNowRequest,
   SchedulerRunNowResponse,
@@ -367,6 +429,7 @@ export interface ElectronAPI {
   createBranch: (parentSessionId: string, branchFromMessageId: string) => Promise<CreateBranchResponse>
   updateSessionPin: (sessionId: string, isPinned: boolean) => Promise<UpdateSessionPinResponse>
   updateSessionModel: (sessionId: string, provider: string, model: string) => Promise<{ success: boolean; error?: string }>
+  updateSessionAgent: (sessionId: string, agentId: string) => Promise<{ success: boolean; error?: string }>
   updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) => Promise<{ success: boolean; error?: string }>
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
   // Variables subsystem (scalar variables)
@@ -404,6 +467,17 @@ export interface ElectronAPI {
   getSystemTheme: () => Promise<{ success: boolean; theme?: 'light' | 'dark' }>
   testProxy: (proxy: ProxySettings) => Promise<{ success: boolean; error?: string; status?: number }>
   onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void
+  // Agent methods
+  listAgents: () => Promise<AgentsListResponse>
+  createAgent: (name: string, systemPrompt?: string) => Promise<AgentCreateResponse>
+  updateAgent: (agentId: string, updates: { name?: string; systemPrompt?: string }) => Promise<AgentUpdateResponse>
+  deleteAgent: (agentId: string) => Promise<AgentDeleteResponse>
+  // User prompt methods
+  listPrompts: () => Promise<PromptListResponse>
+  getPrompt: (request: { id: string }) => Promise<PromptGetResponse>
+  createPrompt: (request: PromptCreateRequest) => Promise<PromptCreateResponse>
+  updatePrompt: (request: PromptUpdateRequest) => Promise<PromptUpdateResponse>
+  deletePrompt: (request: PromptDeleteRequest) => Promise<PromptDeleteResponse>
   // Theme methods
   getThemes: () => Promise<GetThemesResponse>
   getTheme: (themeId: string) => Promise<GetThemeResponse>
@@ -467,6 +541,7 @@ export interface ElectronAPI {
 
   // Shell methods
   openPath: (filePath: string) => Promise<string>
+  openExternal: (url: string) => Promise<{ success: boolean }>
   getDataPath: () => Promise<string>
 
   // Media methods
@@ -577,6 +652,8 @@ export interface ElectronAPI {
   watchWorkspace: (root: string) => Promise<{ success: boolean; error?: string }>
   unwatchWorkspace: (root: string) => Promise<{ success: boolean }>
   onWorkspaceFileChanged: (callback: (data: { root: string; path: string; eventType: string }) => void) => () => void
+  resolveMarkdownAsset: (request: MarkdownResolveAssetRequest) => Promise<MarkdownResolveAssetResponse>
+  saveMarkdownAttachments: (request: MarkdownSaveAttachmentsRequest) => Promise<MarkdownSaveAttachmentsResponse>
 
   // Window methods
   setWindowButtonVisibility: (visible: boolean) => Promise<{ success: boolean }>
@@ -607,20 +684,20 @@ export interface ElectronAPI {
   ) => Promise<ExecutePluginCommandResponse>
 
   // Soul / Memory panel
-  getMemoryOverview: () => Promise<MemoryOverviewResponse>
+  getMemoryOverview: (agentId?: string) => Promise<MemoryOverviewResponse>
   readMemoryFile: (request: MemoryReadRequest) => Promise<MemoryReadResponse>
   searchMemory: (request: MemorySearchRequest) => Promise<MemorySearchResponse>
   appendMemory: (request: MemoryAppendRequest) => Promise<MemoryAppendResponse>
   saveMemoryFile: (request: MemorySaveFileRequest) => Promise<MemorySaveFileResponse>
-  rebuildMemoryIndex: () => Promise<MemoryIndexResponse>
-  runMemoryDreaming: () => Promise<MemoryRunDreamingResponse>
+  rebuildMemoryIndex: (agentId?: string) => Promise<MemoryIndexResponse>
+  runMemoryDreaming: (agentId?: string) => Promise<MemoryRunDreamingResponse>
   listMemoryProfile: (request?: MemoryProfileListRequest) => Promise<MemoryProfileListResponse>
   searchMemoryProfile: (request: MemoryProfileListRequest) => Promise<MemoryProfileListResponse>
   upsertMemoryProfile: (request: MemoryProfileUpsertRequest) => Promise<MemoryProfileUpsertResponse>
   deleteMemoryProfile: (request: MemoryProfileDeleteRequest) => Promise<MemoryProfileDeleteResponse>
   getMemoryProfileAudit: (request: MemoryProfileAuditRequest) => Promise<MemoryProfileAuditResponse>
-  exportMemoryProfile: () => Promise<MemoryProfileExportResponse>
-  getMemoryGraphOverview: () => Promise<MemoryGraphOverviewResponse>
+  exportMemoryProfile: (agentId?: string) => Promise<MemoryProfileExportResponse>
+  getMemoryGraphOverview: (agentId?: string) => Promise<MemoryGraphOverviewResponse>
   listMemoryGraphEntities: (request?: MemoryGraphListRequest) => Promise<MemoryGraphEntitiesResponse>
   upsertMemoryGraphEntity: (request: MemoryGraphEntityUpsertRequest) => Promise<MemoryGraphEntityResponse>
   deleteMemoryGraphEntity: (request: MemoryGraphDeleteRequest) => Promise<{ success: boolean; error?: string }>
@@ -644,6 +721,11 @@ export interface ElectronAPI {
   getSchedulerTask: (request: SchedulerGetRequest) => Promise<SchedulerGetResponse>
   runSchedulerTaskNow: (request: SchedulerRunNowRequest) => Promise<SchedulerRunNowResponse>
   setSchedulerTaskEnabled: (request: SchedulerSetEnabledRequest) => Promise<SchedulerSetEnabledResponse>
+  createSchedulerTask: (request: SchedulerCreateTaskRequest) => Promise<SchedulerWriteTaskResponse>
+  updateSchedulerTask: (request: SchedulerUpdateTaskRequest) => Promise<SchedulerWriteTaskResponse>
+  deleteSchedulerTask: (request: SchedulerDeleteTaskRequest) => Promise<SchedulerDeleteTaskResponse>
+  listSchedulerRuns: (request: SchedulerListRunsRequest) => Promise<SchedulerListRunsResponse>
+  getSchedulerRun: (request: SchedulerGetRunRequest) => Promise<SchedulerGetRunResponse>
 
   // App State
   getAppState: () => Promise<{

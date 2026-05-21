@@ -129,6 +129,60 @@ export class VariableRegistry {
   }
 
   /**
+   * Route an append to a provider-owned ordered variable.
+   */
+  async append(ctx: VariableContext, input: SetInput): Promise<ContextVariable> {
+    assertValidName(input.name)
+    assertValidValue(input.value)
+
+    return this.serialize(ctx.sessionId, async () => {
+      const provider = this.findClaimant(input.name, input.scope)
+      if (!provider) {
+        throw new VariableError(
+          'NO_PROVIDER',
+          `No provider accepts variable "${input.name}"`,
+        )
+      }
+      if (!provider.append) {
+        throw new VariableError(
+          'READONLY',
+          `Variable "${input.name}" does not support append`,
+        )
+      }
+      const result = await provider.append(ctx, input)
+      await this.emitForWrite(ctx, input.scope)
+      return result
+    })
+  }
+
+  /**
+   * Route a remove to a provider-owned ordered variable.
+   */
+  async remove(ctx: VariableContext, input: SetInput): Promise<ContextVariable> {
+    assertValidName(input.name)
+    assertValidValue(input.value)
+
+    return this.serialize(ctx.sessionId, async () => {
+      const provider = this.findClaimant(input.name, input.scope)
+      if (!provider) {
+        throw new VariableError(
+          'NO_PROVIDER',
+          `No provider accepts variable "${input.name}"`,
+        )
+      }
+      if (!provider.remove) {
+        throw new VariableError(
+          'READONLY',
+          `Variable "${input.name}" does not support remove`,
+        )
+      }
+      const result = await provider.remove(ctx, input)
+      await this.emitForWrite(ctx, input.scope)
+      return result
+    })
+  }
+
+  /**
    * Route a delete to the claiming provider. NOT_FOUND if nobody owns
    * the name; READONLY if the provider lacks a delete capability.
    */

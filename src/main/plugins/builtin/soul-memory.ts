@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import type { Stats } from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import Database from 'better-sqlite3'
@@ -53,9 +54,11 @@ import type {
   SoulMemoryLoggingSettings,
   SoulMemorySearchSettings,
   SoulMemorySettings,
+  SchedulerRunTimelineEntryDTO,
 } from '../../../shared/ipc.js'
+import { DEFAULT_AGENT_ID } from '../../../shared/ipc.js'
 import { normalizeSoulMemorySettings } from '../../../shared/defaults/settings.js'
-import { getStorePath } from '../../stores/paths.js'
+import { getAgentsDir, getStorePath } from '../../stores/paths.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { getVariablesStore } from '../../variables/index.js'
 import { expandPath, isPathContained } from '../../tools/core/sandbox.js'
@@ -105,6 +108,7 @@ type ResolvedSoulMemorySettings = Omit<
 
 interface MemoryWorkspace {
   settings: ResolvedSoulMemorySettings
+  agentId: string
   root: string
   memoryDir: string
   soulPath: string
@@ -129,6 +133,18 @@ interface MemoryChunk {
   embeddingProvider?: string
   embeddingModel?: string
   mtimeMs: number
+}
+
+interface MemoryIndexFile {
+  absolutePath: string
+  relativePath: string
+  kind: 'memory' | 'daily'
+  date?: string
+}
+
+interface MemoryIndexFileStat extends MemoryIndexFile {
+  mtimeMs: number
+  size: number
 }
 
 interface SearchHit {
@@ -344,6 +360,7 @@ Dreaming reads daily memory notes, short-term signals, and capped session summar
 
 const ACTIVE_MEMORY_CACHE = new Map<string, { expiresAt: number; content: string | null }>()
 const ACTIVE_MEMORY_TIMEOUTS = new Map<string, { count: number; cooldownUntil: number }>()
+let activeSoulMemoryPluginApi: PluginAPI | null = null
 const DREAMING_SCHEDULER_TASK_ID = 'memory-dreaming-promotion'
 const SCOPED_DREAMING_SCHEDULER_TASK_ID = `plugin:${SOUL_MEMORY_PLUGIN_ID}:${DREAMING_SCHEDULER_TASK_ID}`
 const CAPTURE_PENDING_STORE_KEY = 'pendingCaptures'
@@ -367,6 +384,48 @@ let db: Database.Database | null = null
 let dbPath = ''
 let ftsTokenizer = 'unknown'
 let lastStatus: IndexStatus = { ...DEFAULT_STATUS }
+let indexDirty = true
+let indexDirtyReason = 'startup'
+let indexDirtyRevision = 1
+let indexedRevision = 0
+let indexSyncInFlight: Promise<IndexStatus> | null = null
+let indexWatcher: fs.FSWatcher | null = null
+let indexWatcherRoot = ''
+let indexWatcherDebounce: NodeJS.Timeout | null = null
+
+function normalizeMemoryRelativePath(value: string): string {
+  return value.split(path.sep).join('/')
+}
+
+function isIndexableMarkdownPath(relativePath: string): boolean {
+  const normalized = normalizeMemoryRelativePath(relativePath)
+  return normalized.startsWith('memory/') &&
+    !normalized.startsWith('memory/.dreams/') &&
+    normalized.toLowerCase().endsWith('.md')
+}
+
+function markIndexDirty(reason: string, metadata?: Record<string, unknown>): void {
+  indexDirty = true
+  indexDirtyReason = reason
+  indexDirtyRevision += 1
+  logMemoryDiagnostic({
+    subsystem: 'index',
+    operation: 'dirty-state',
+    stage: 'mark',
+    status: 'ok',
+    summary: `Markdown memory index marked dirty: ${reason}`,
+    metadata: {
+      revision: indexDirtyRevision,
+      ...(metadata || {}),
+    },
+  })
+}
+
+function markIndexClean(revision: number): void {
+  indexedRevision = Math.max(indexedRevision, revision)
+  indexDirty = indexDirtyRevision > indexedRevision
+  if (!indexDirty) indexDirtyReason = ''
+}
 
 function todayString(): string {
   const now = new Date()
@@ -405,7 +464,19 @@ function resolveSettings(settings?: AppSettings): ResolvedSoulMemorySettings {
   return normalizeSoulMemorySettings(settings?.general?.soulMemory) as ResolvedSoulMemorySettings
 }
 
-function resolveRoot(settings: ResolvedSoulMemorySettings): string {
+function sanitizeAgentPathSegment(agentId: string): string {
+  return agentId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_AGENT_ID
+}
+
+function resolveSessionAgentId(sessionId?: string): string {
+  if (!sessionId) return DEFAULT_AGENT_ID
+  return store.getSession(sessionId)?.agentId || DEFAULT_AGENT_ID
+}
+
+function resolveRoot(settings: ResolvedSoulMemorySettings, agentId = DEFAULT_AGENT_ID): string {
+  if (agentId !== DEFAULT_AGENT_ID) {
+    return path.join(getAgentsDir(), sanitizeAgentPathSegment(agentId))
+  }
   if (settings.directoryMode === 'custom' && settings.customDirectory.trim()) {
     return path.resolve(expandPath(settings.customDirectory.trim()))
   }
@@ -413,14 +484,18 @@ function resolveRoot(settings: ResolvedSoulMemorySettings): string {
   return path.resolve(expandPath(aiNoteDir))
 }
 
-function getWorkspace(appSettings?: AppSettings): MemoryWorkspace {
+function getWorkspace(appSettings?: AppSettings, agentId = DEFAULT_AGENT_ID): MemoryWorkspace {
   const settings = resolveSettings(appSettings || getSettings())
-  const root = resolveRoot(settings)
+  const resolvedAgentId = agentId || DEFAULT_AGENT_ID
+  const root = resolveRoot(settings, resolvedAgentId)
   const memoryDir = path.join(root, 'memory')
   const today = todayString()
-  const dataDir = path.join(getStorePath(), 'plugin-data')
+  const dataDir = resolvedAgentId === DEFAULT_AGENT_ID
+    ? path.join(getStorePath(), 'plugin-data')
+    : path.join(root, 'plugin-data')
   return {
     settings,
+    agentId: resolvedAgentId,
     root,
     memoryDir,
     soulPath: path.join(root, 'SOUL.md'),
@@ -440,15 +515,118 @@ async function writeIfMissing(filePath: string, content: string): Promise<void> 
   }
 }
 
-async function ensureWorkspace(settings?: AppSettings): Promise<MemoryWorkspace> {
-  const workspace = getWorkspace(settings)
+async function ensureWorkspace(settings?: AppSettings, agentId = DEFAULT_AGENT_ID): Promise<MemoryWorkspace> {
+  const workspace = getWorkspace(settings, agentId)
   configureMemoryDiagnosticsLogger(workspace.settings.logging)
   await fsp.mkdir(workspace.root, { recursive: true })
   await fsp.mkdir(workspace.memoryDir, { recursive: true })
   await fsp.mkdir(path.dirname(workspace.dbPath), { recursive: true })
   await writeIfMissing(workspace.soulPath, SOUL_TEMPLATE)
   await writeIfMissing(workspace.todayPath, `# ${todayString()}\n\n`)
+  ensureIndexWatcher(workspace)
   return workspace
+}
+
+function ensureIndexWatcher(workspace: MemoryWorkspace): void {
+  if (indexWatcher && indexWatcherRoot === workspace.memoryDir) return
+  indexWatcher?.close()
+  indexWatcher = null
+  indexWatcherRoot = workspace.memoryDir
+
+  try {
+    indexWatcher = fs.watch(workspace.memoryDir, { recursive: true }, (eventType, filename) => {
+      if (!filename) return
+      const relativePath = normalizeMemoryRelativePath(path.join('memory', filename.toString()))
+      if (!isIndexableMarkdownPath(relativePath)) return
+      markIndexDirty('filesystem-change', { eventType, relativePath })
+      if (indexWatcherDebounce) clearTimeout(indexWatcherDebounce)
+      indexWatcherDebounce = setTimeout(() => {
+        scheduleIndexSync({
+          settings: getSettings(),
+          agentId: workspace.agentId,
+          reason: 'filesystem-change',
+        })
+      }, 750)
+    })
+  } catch (error) {
+    logMemoryDiagnostic({
+      subsystem: 'index',
+      operation: 'watcher',
+      stage: 'start',
+      status: 'fallback',
+      error,
+      summary: 'Could not start memory directory watcher; app writes will still mark the index dirty.',
+      metadata: { memoryDir: workspace.memoryDir },
+    })
+  }
+}
+
+function scheduleIndexSync(options: {
+  settings?: AppSettings
+  agentId?: string
+  force?: boolean
+  reason: string
+}): void {
+  if (!options.force && !indexDirty) return
+  if (indexSyncInFlight) {
+    logMemoryDiagnostic({
+      subsystem: 'index',
+      operation: 'sync-index',
+      stage: 'schedule',
+      status: 'skipped',
+      summary: 'Index sync is already running.',
+      metadata: {
+        reason: options.reason,
+        dirtyReason: indexDirtyReason,
+        revision: indexDirtyRevision,
+      },
+    })
+    return
+  }
+
+  logMemoryDiagnostic({
+    subsystem: 'index',
+    operation: 'sync-index',
+    stage: 'schedule',
+    status: 'started',
+    summary: `Background index sync scheduled: ${options.reason}`,
+    metadata: {
+      force: options.force === true,
+      dirtyReason: indexDirtyReason,
+      revision: indexDirtyRevision,
+    },
+  })
+
+  indexSyncInFlight = syncIndex({
+    settings: options.settings,
+    agentId: options.agentId,
+    force: options.force,
+  })
+    .catch(error => {
+      logMemoryDiagnostic({
+        subsystem: 'index',
+        operation: 'sync-index',
+        stage: 'background',
+        status: 'error',
+        error,
+        summary: 'Background index sync failed.',
+        metadata: { reason: options.reason },
+      })
+      throw error
+    })
+    .finally(() => {
+      indexSyncInFlight = null
+      if (indexDirty) {
+        setTimeout(() => {
+          scheduleIndexSync({
+            settings: options.settings,
+            reason: 'dirty-during-sync',
+          })
+        }, 750)
+      }
+    })
+
+  void indexSyncInFlight.catch(() => {})
 }
 
 function readLimited(filePath: string, maxChars: number): string {
@@ -472,11 +650,12 @@ async function replaceFileAtomic(filePath: string, content: string): Promise<voi
 
 async function updateSoulFile(options: {
   settings?: AppSettings
+  agentId?: string
   content: string
   mode?: 'replace' | 'append'
   heading?: string
 }): Promise<{ absolutePath: string; mode: 'replace' | 'append' }> {
-  const workspace = await ensureWorkspace(options.settings)
+  const workspace = await ensureWorkspace(options.settings, options.agentId)
   if (!workspace.settings.enabled) {
     throw new Error('Soul-memory is disabled in settings')
   }
@@ -497,6 +676,10 @@ function getDb(workspace: MemoryWorkspace): Database.Database {
   if (db && dbPath === workspace.dbPath) return db
   db?.close()
   dbPath = workspace.dbPath
+  ftsTokenizer = 'unknown'
+  indexDirty = true
+  indexDirtyReason = `workspace:${workspace.agentId}`
+  indexDirtyRevision++
   db = new Database(workspace.dbPath)
   db.pragma('journal_mode = WAL')
   db.exec(`
@@ -697,18 +880,8 @@ function ensureGraphFtsTable(database: Database.Database): void {
   }
 }
 
-async function listMemoryFiles(workspace: MemoryWorkspace): Promise<Array<{
-  absolutePath: string
-  relativePath: string
-  kind: 'memory' | 'daily'
-  date?: string
-}>> {
-  const files: Array<{
-    absolutePath: string
-    relativePath: string
-    kind: 'memory' | 'daily'
-    date?: string
-  }> = []
+async function listMemoryFiles(workspace: MemoryWorkspace): Promise<MemoryIndexFile[]> {
+  const files: MemoryIndexFile[] = []
 
   async function walk(dir: string): Promise<void> {
     let entries: fs.Dirent[]
@@ -827,12 +1000,73 @@ function cosine(left?: number[], right?: number[]): number {
   return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))
 }
 
+function readIndexCounts(database: Database.Database): Pick<IndexStatus, 'indexedFiles' | 'indexedChunks'> {
+  const countFiles = database.prepare('SELECT COUNT(*) AS count FROM files').get() as { count: number }
+  const countChunks = database.prepare('SELECT COUNT(*) AS count FROM chunks').get() as { count: number }
+  return {
+    indexedFiles: countFiles.count,
+    indexedChunks: countChunks.count,
+  }
+}
+
+function refreshIndexStatus(database: Database.Database): IndexStatus {
+  const counts = readIndexCounts(database)
+  lastStatus = {
+    ...lastStatus,
+    ...counts,
+    ftsTokenizer,
+  }
+  return lastStatus
+}
+
+async function inspectIndexFreshness(
+  database: Database.Database,
+  workspace: MemoryWorkspace,
+  files: MemoryIndexFile[],
+): Promise<{
+  files: MemoryIndexFileStat[]
+  changedFiles: MemoryIndexFileStat[]
+  deletedPaths: string[]
+}> {
+  const liveFiles = (await Promise.all(files.map(async file => {
+    const stat = await fsp.stat(file.absolutePath).catch(() => null)
+    if (!stat?.isFile()) return null
+    return {
+      ...file,
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+    }
+  }))).filter((file): file is MemoryIndexFileStat => Boolean(file))
+
+  const livePaths = new Set(liveFiles.map(file => file.relativePath))
+  const storedRows = database.prepare('SELECT path, mtime_ms, size FROM files').all() as Array<{
+    path: string
+    mtime_ms: number
+    size: number
+  }>
+  const storedByPath = new Map(storedRows.map(row => [row.path, row]))
+  const changedFiles = liveFiles.filter(file => {
+    const stored = storedByPath.get(file.relativePath)
+    return !stored || stored.size !== file.size || Math.abs(stored.mtime_ms - file.mtimeMs) > 0.5
+  })
+  const deletedPaths = storedRows
+    .filter(row => !livePaths.has(row.path))
+    .map(row => row.path)
+
+  return {
+    files: liveFiles,
+    changedFiles,
+    deletedPaths,
+  }
+}
+
 async function indexFile(
   database: Database.Database,
   workspace: MemoryWorkspace,
-  file: { absolutePath: string; relativePath: string; kind: 'memory' | 'daily'; date?: string },
+  file: MemoryIndexFile,
+  knownStat?: Pick<Stats, 'mtimeMs' | 'size'>,
 ): Promise<void> {
-  const stat = await fsp.stat(file.absolutePath)
+  const stat = knownStat || await fsp.stat(file.absolutePath)
   const content = await fsp.readFile(file.absolutePath, 'utf-8')
   const hash = sha(content)
   const existing = database.prepare('SELECT hash, mtime_ms, size FROM files WHERE path = ?').get(file.relativePath) as
@@ -972,10 +1206,11 @@ async function indexFile(
   })
 }
 
-async function syncIndex(options: { settings?: AppSettings; force?: boolean } = {}): Promise<IndexStatus> {
+async function syncIndex(options: { settings?: AppSettings; force?: boolean; agentId?: string } = {}): Promise<IndexStatus> {
   const startedAt = Date.now()
-  const workspace = await ensureWorkspace(options.settings)
+  const workspace = await ensureWorkspace(options.settings, options.agentId)
   const runId = sha(`index:${startedAt}:${workspace.root}`).slice(0, 16)
+  const syncRevision = indexDirtyRevision
   logMemoryDiagnostic({
     subsystem: 'index',
     operation: 'sync-index',
@@ -987,36 +1222,57 @@ async function syncIndex(options: { settings?: AppSettings; force?: boolean } = 
   try {
     const database = getDb(workspace)
     const files = await listMemoryFiles(workspace)
-    const livePaths = new Set(files.map(file => file.relativePath))
-    const storedPaths = database.prepare('SELECT path FROM files').all() as Array<{ path: string }>
+    const freshness = await inspectIndexFreshness(database, workspace, files)
     const deleteFile = database.prepare('DELETE FROM files WHERE path = ?')
     const deleteChunk = database.prepare('DELETE FROM chunks WHERE path = ?')
     const deleteFts = database.prepare('DELETE FROM chunks_fts WHERE path = ?')
-    for (const row of storedPaths) {
-      if (!livePaths.has(row.path)) {
-        deleteFts.run(row.path)
-        deleteChunk.run(row.path)
-        deleteFile.run(row.path)
-      }
+    for (const deletedPath of freshness.deletedPaths) {
+      deleteFts.run(deletedPath)
+      deleteChunk.run(deletedPath)
+      deleteFile.run(deletedPath)
     }
 
     if (options.force) {
       database.exec('DELETE FROM files; DELETE FROM chunks; DELETE FROM chunks_fts;')
     }
 
-    for (const file of files) {
-      await indexFile(database, workspace, file)
+    const filesToIndex = options.force ? freshness.files : freshness.changedFiles
+    if (!options.force && filesToIndex.length === 0 && freshness.deletedPaths.length === 0) {
+      const status = refreshIndexStatus(database)
+      markIndexClean(syncRevision)
+      logMemoryDiagnostic({
+        subsystem: 'index',
+        operation: 'sync-index',
+        stage: 'finish',
+        status: 'skipped',
+        durationMs: Date.now() - startedAt,
+        runId,
+        summary: 'Index is already current; no Markdown file changes detected.',
+        response: {
+          checkedFiles: freshness.files.length,
+          changedFiles: 0,
+          deletedFiles: 0,
+          indexedFiles: status.indexedFiles,
+          indexedChunks: status.indexedChunks,
+          ftsTokenizer,
+        },
+      })
+      return status
     }
 
-    const countFiles = database.prepare('SELECT COUNT(*) AS count FROM files').get() as { count: number }
-    const countChunks = database.prepare('SELECT COUNT(*) AS count FROM chunks').get() as { count: number }
+    for (const file of filesToIndex) {
+      await indexFile(database, workspace, file, file)
+    }
+
+    const counts = readIndexCounts(database)
     lastStatus = {
       ...lastStatus,
-      indexedFiles: countFiles.count,
-      indexedChunks: countChunks.count,
+      indexedFiles: counts.indexedFiles,
+      indexedChunks: counts.indexedChunks,
       ftsTokenizer,
       lastIndexedAt: Date.now(),
     }
+    markIndexClean(syncRevision)
     logMemoryDiagnostic({
       subsystem: 'index',
       operation: 'sync-index',
@@ -1025,8 +1281,11 @@ async function syncIndex(options: { settings?: AppSettings; force?: boolean } = 
       durationMs: Date.now() - startedAt,
       runId,
       response: {
-        indexedFiles: countFiles.count,
-        indexedChunks: countChunks.count,
+        checkedFiles: freshness.files.length,
+        changedFiles: filesToIndex.length,
+        deletedFiles: freshness.deletedPaths.length,
+        indexedFiles: counts.indexedFiles,
+        indexedChunks: counts.indexedChunks,
         ftsTokenizer,
         embeddingProvider: lastStatus.embeddingProvider || '',
         embeddingModel: lastStatus.embeddingModel || '',
@@ -1058,6 +1317,7 @@ function ftsQuery(query: string): string {
 
 async function searchMemory(options: {
   settings?: AppSettings
+  agentId?: string
   query: string
   limit?: number | string
   minScore?: number
@@ -1065,12 +1325,26 @@ async function searchMemory(options: {
   const startedAt = Date.now()
   const runId = sha(`search:${startedAt}:${options.query}`).slice(0, 16)
   const appSettings = options.settings || getSettings()
-  const workspace = await ensureWorkspace(appSettings)
+  const workspace = await ensureWorkspace(appSettings, options.agentId)
   if (!workspace.settings.enabled || !workspace.settings.search.enabled) return []
   await migrateGraphMemoryIfNeeded(workspace, appSettings)
-  await syncIndex({ settings: appSettings })
   const database = getDb(workspace)
   const limit = normalizeSearchLimit(options.limit, workspace.settings.search.maxResults)
+  if (indexDirty) {
+    logMemoryDiagnostic({
+      subsystem: 'search',
+      operation: 'memory-search',
+      stage: 'index',
+      status: 'skipped',
+      runId,
+      summary: 'Using existing Markdown index; dirty index sync is deferred off the chat request path.',
+      metadata: {
+        dirtyReason: indexDirtyReason,
+        revision: indexDirtyRevision,
+        inFlight: indexSyncInFlight !== null,
+      },
+    })
+  }
   logMemoryDiagnostic({
     subsystem: 'search',
     operation: 'memory-search',
@@ -1292,12 +1566,13 @@ async function readMemoryFileExcerpt(options: {
 
 async function appendMemory(options: {
   settings?: AppSettings
+  agentId?: string
   content: string
   target?: 'daily' | 'memory'
   filePath?: string
   heading?: string
 }): Promise<{ absolutePath: string; relativePath: string }> {
-  const workspace = await ensureWorkspace(options.settings)
+  const workspace = await ensureWorkspace(options.settings, options.agentId)
   if (!workspace.settings.enabled) {
     throw new Error('Soul-memory is disabled in settings')
   }
@@ -1329,7 +1604,14 @@ async function appendMemory(options: {
       contentPreview: previewLine(content, 180),
     },
   })
-  await syncIndex({ settings: options.settings, force: false })
+  if (isIndexableMarkdownPath(target.relativePath)) {
+    markIndexDirty('daily-note-write', { relativePath: target.relativePath })
+    scheduleIndexSync({
+      settings: options.settings,
+      agentId: workspace.agentId,
+      reason: 'daily-note-write',
+    })
+  }
   return target
 }
 
@@ -2653,6 +2935,7 @@ async function upsertGraphCandidates(options: {
 
 async function mergeGraphMemory(options: {
   settings?: AppSettings
+  agentId?: string
   candidates: Array<Pick<CaptureCandidate, 'kind' | 'text'> & Partial<CaptureCandidate>>
   source?: string
   evidence?: string
@@ -2661,7 +2944,7 @@ async function mergeGraphMemory(options: {
   action?: CanonicalMemoryAuditEvent['action']
 }): Promise<{ absolutePath: string; relativePath: string; applied: number; skipped: number; updated: number; conflicts: number }> {
   const startedAt = Date.now()
-  const workspace = await ensureWorkspace(options.settings)
+  const workspace = await ensureWorkspace(options.settings, options.agentId || resolveSessionAgentId(options.sessionId))
   if (!workspace.settings.enabled) {
     throw new Error('Soul-memory is disabled in settings')
   }
@@ -4312,8 +4595,10 @@ function setPendingCaptures(storeLike: CaptureStore, captures: MemoryCapturePend
   storeLike.set(CAPTURE_PENDING_STORE_KEY, captures.slice(0, CAPTURE_MAX_PENDING))
 }
 
-function publicPendingCaptures(): MemoryCapturePending[] {
+function publicPendingCaptures(agentId?: string): MemoryCapturePending[] {
+  const resolvedAgentId = agentId || DEFAULT_AGENT_ID
   return getPendingCaptures(new PluginStore(SOUL_MEMORY_PLUGIN_ID))
+    .filter(capture => (capture.agentId || DEFAULT_AGENT_ID) === resolvedAgentId)
 }
 
 function previewLine(value: string, maxChars = 220): string {
@@ -4331,6 +4616,7 @@ function makePendingCapture(
   return {
     id: sha(`${context.sessionId}:${context.assistantMessageId}:${createdAt}:${content}`),
     sessionId: context.sessionId,
+    agentId: workspace.agentId,
     createdAt,
     target: workspace.settings.capture.targetPolicy === 'daily-only' ? 'daily' : 'memory',
     heading: `Captured from chat ${new Date(createdAt).toLocaleString()}`,
@@ -4346,7 +4632,8 @@ function makePendingCapture(
 async function runMemoryCapture(api: PluginAPI, context: AfterAssistantResponseContext): Promise<void> {
   const startedAt = Date.now()
   const runId = sha(`capture:${context.sessionId}:${context.assistantMessageId}:${startedAt}`).slice(0, 16)
-  const workspace = await ensureWorkspace(context.settings)
+  const agentId = resolveSessionAgentId(context.sessionId)
+  const workspace = await ensureWorkspace(context.settings, agentId)
   const capture = workspace.settings.capture
   if (!workspace.settings.enabled || !capture.enabled || capture.mode === 'off') {
     logMemoryDiagnostic({
@@ -4552,6 +4839,7 @@ async function runMemoryCapture(api: PluginAPI, context: AfterAssistantResponseC
     const graph = longTermCandidates.length > 0
       ? await mergeGraphMemory({
         settings: context.settings,
+        agentId,
         candidates: longTermCandidates,
         source: 'capture',
         evidence: context.lastUserMessage,
@@ -4641,6 +4929,7 @@ async function savePendingCapture(id?: string): Promise<{ absolutePath: string; 
   if (!selected) throw new Error('No pending memory capture found')
   const target = selected.target === 'memory'
     ? await mergeGraphMemory({
+      agentId: selected.agentId,
       candidates: selected.content.split(/\r?\n/).map(line => ({
         kind: 'fact',
         text: line,
@@ -4653,6 +4942,7 @@ async function savePendingCapture(id?: string): Promise<{ absolutePath: string; 
       sessionId: selected.sessionId,
     })
     : await appendMemory({
+      agentId: selected.agentId,
       content: selected.content,
       target: selected.target,
       heading: selected.heading,
@@ -4840,14 +5130,21 @@ function buildPublicDreamingStatus(workspace: MemoryWorkspace): MemoryDreamingSt
   }
 }
 
-export async function getSoulMemoryOverview(): Promise<MemoryOverview> {
+export async function getSoulMemoryOverview(agentId = DEFAULT_AGENT_ID): Promise<MemoryOverview> {
   const settings = getSettings()
-  const workspace = await ensureWorkspace(settings)
+  const workspace = await ensureWorkspace(settings, agentId)
   const pluginStore = new PluginStore(SOUL_MEMORY_PLUGIN_ID)
   await migrateGraphMemoryIfNeeded(workspace, settings)
   let status: MemoryIndexStatus
   try {
-    status = await syncIndex({ settings, force: false })
+    status = refreshIndexStatus(getDb(workspace))
+    if (indexDirty && !indexSyncInFlight) {
+      scheduleIndexSync({
+        settings,
+        agentId,
+        reason: 'overview-refresh',
+      })
+    }
   } catch (error: any) {
     lastStatus.lastError = error?.message || String(error)
     status = lastStatus
@@ -4861,6 +5158,7 @@ export async function getSoulMemoryOverview(): Promise<MemoryOverview> {
   const files = await listManagedMemoryFiles(workspace)
   return {
     enabled: workspace.settings.enabled,
+    agentId: workspace.agentId,
     root: workspace.root,
     memoryDir: workspace.memoryDir,
     soulPath: workspace.soulPath,
@@ -4871,7 +5169,7 @@ export async function getSoulMemoryOverview(): Promise<MemoryOverview> {
     settings: workspace.settings,
     status,
     dreaming: buildPublicDreamingStatus(workspace),
-    pendingCaptures: publicPendingCaptures(),
+    pendingCaptures: publicPendingCaptures(workspace.agentId),
     canonicalCount: getCanonicalMemoryCount(workspace),
     graph: workspace.settings.canonicalMemory.enabled
       ? getGraphOverview(workspace)
@@ -4889,7 +5187,7 @@ export async function readSoulMemoryManagedFile(request: MemoryReadRequest): Pro
   truncated: boolean
 }> {
   if (!request.path?.trim()) throw new Error('Memory file path is required')
-  const workspace = await ensureWorkspace(getSettings())
+  const workspace = await ensureWorkspace(getSettings(), request.agentId)
   return readManagedMemoryFileExcerpt({
     workspace,
     inputPath: request.path,
@@ -4902,11 +5200,16 @@ export async function readSoulMemoryManagedFile(request: MemoryReadRequest): Pro
 
 export async function saveSoulMemoryManagedFile(request: MemorySaveFileRequest): Promise<MemoryManagedFile> {
   if (!request.path?.trim()) throw new Error('Memory file path is required')
-  const workspace = await ensureWorkspace(getSettings())
+  const workspace = await ensureWorkspace(getSettings(), request.agentId)
   const target = resolveManagedMemoryFile(workspace, request.path)
   await replaceFileAtomic(target.absolutePath, `${request.content.replace(/\s+$/u, '')}\n`)
-  if (target.relativePath === 'MEMORY.md' || target.relativePath.startsWith('memory/')) {
-    await syncIndex({ force: false })
+  if (isIndexableMarkdownPath(target.relativePath)) {
+    markIndexDirty('managed-file-save', { relativePath: target.relativePath })
+    scheduleIndexSync({
+      settings: getSettings(),
+      agentId: request.agentId,
+      reason: 'managed-file-save',
+    })
   }
   const kind: MemoryManagedFileKind =
     target.relativePath === 'SOUL.md'
@@ -4930,6 +5233,7 @@ export async function searchSoulMemoryPanel(request: MemorySearchRequest): Promi
   const query = request.query.trim()
   if (!query) return []
   return searchMemory({
+    agentId: request.agentId,
     query,
     limit: request.limit,
   })
@@ -4937,7 +5241,7 @@ export async function searchSoulMemoryPanel(request: MemorySearchRequest): Promi
 
 export async function listSoulMemoryProfile(request: MemoryProfileListRequest = {}): Promise<CanonicalMemoryRecord[]> {
   const settings = getSettings()
-  const workspace = await ensureWorkspace(settings)
+  const workspace = await ensureWorkspace(settings, request.agentId)
   await migrateCanonicalMemoryIfNeeded(workspace, settings)
   return listCanonicalMemories({
     workspace,
@@ -4953,7 +5257,7 @@ export async function searchSoulMemoryProfile(request: MemoryProfileListRequest)
 
 export async function upsertSoulMemoryProfile(request: MemoryProfileUpsertRequest): Promise<CanonicalMemoryRecord> {
   const settings = getSettings()
-  const workspace = await ensureWorkspace(settings)
+  const workspace = await ensureWorkspace(settings, request.agentId)
   const existing = request.id ? getCanonicalMemoryByIdOrKey(workspace, request.id, true) : null
   const memoryKey = existing?.memoryKey || request.memoryKey
   const input: CanonicalMemoryInput = {
@@ -4975,7 +5279,7 @@ export async function upsertSoulMemoryProfile(request: MemoryProfileUpsertReques
 }
 
 export async function deleteSoulMemoryProfile(request: MemoryProfileDeleteRequest): Promise<void> {
-  const workspace = await ensureWorkspace(getSettings())
+  const workspace = await ensureWorkspace(getSettings(), request.agentId)
   const existing = getCanonicalMemoryByIdOrKey(workspace, request.id, true)
   if (!existing) throw new Error('Canonical memory not found')
   const database = getDb(workspace)
@@ -4993,7 +5297,7 @@ export async function deleteSoulMemoryProfile(request: MemoryProfileDeleteReques
 }
 
 export async function getSoulMemoryProfileAudit(request: MemoryProfileAuditRequest): Promise<CanonicalMemoryAuditEvent[]> {
-  const workspace = await ensureWorkspace(getSettings())
+  const workspace = await ensureWorkspace(getSettings(), request.agentId)
   const existing = getCanonicalMemoryByIdOrKey(workspace, request.id, true)
   if (!existing) throw new Error('Canonical memory not found')
   const rows = getDb(workspace).prepare(`
@@ -5002,8 +5306,8 @@ export async function getSoulMemoryProfileAudit(request: MemoryProfileAuditReque
   return rows.map(rowToCanonicalAuditEvent)
 }
 
-export async function exportSoulMemoryProfile(): Promise<string> {
-  const workspace = await ensureWorkspace(getSettings())
+export async function exportSoulMemoryProfile(agentId?: string): Promise<string> {
+  const workspace = await ensureWorkspace(getSettings(), agentId)
   const memories = listCanonicalMemories({ workspace, limit: 500 })
   const lines = [
     '# Canonical User Profile',
@@ -5017,9 +5321,9 @@ export async function exportSoulMemoryProfile(): Promise<string> {
   return lines.join('\n')
 }
 
-export async function getSoulMemoryGraphOverview(): Promise<MemoryGraphOverview> {
+export async function getSoulMemoryGraphOverview(agentId?: string): Promise<MemoryGraphOverview> {
   const settings = getSettings()
-  const workspace = await ensureWorkspace(settings)
+  const workspace = await ensureWorkspace(settings, agentId)
   if (!workspace.settings.canonicalMemory.enabled) {
     return { entities: 0, observations: 0, relations: 0, pendingDuplicates: 0 }
   }
@@ -5029,7 +5333,7 @@ export async function getSoulMemoryGraphOverview(): Promise<MemoryGraphOverview>
 
 export async function listSoulMemoryGraphEntities(request: MemoryGraphListRequest = {}): Promise<MemoryGraphEntity[]> {
   const settings = getSettings()
-  const workspace = await ensureWorkspace(settings)
+  const workspace = await ensureWorkspace(settings, request.agentId)
   await migrateGraphMemoryIfNeeded(workspace, settings)
   return listGraphEntities({
     workspace,
@@ -5041,7 +5345,7 @@ export async function listSoulMemoryGraphEntities(request: MemoryGraphListReques
 
 export async function upsertSoulMemoryGraphEntity(request: MemoryGraphEntityUpsertRequest): Promise<MemoryGraphEntity> {
   const settings = getSettings()
-  const workspace = await ensureWorkspace(settings)
+  const workspace = await ensureWorkspace(settings, request.agentId)
   const result = upsertGraphEntity(workspace, {
     id: request.id,
     entityType: request.entityType,
@@ -5057,7 +5361,7 @@ export async function upsertSoulMemoryGraphEntity(request: MemoryGraphEntityUpse
 }
 
 export async function deleteSoulMemoryGraphEntity(request: MemoryGraphDeleteRequest): Promise<void> {
-  const workspace = await ensureWorkspace(getSettings())
+  const workspace = await ensureWorkspace(getSettings(), request.agentId)
   const entity = getGraphEntityById(workspace, request.id, true)
   if (!entity) throw new Error('Graph entity not found')
   if (entity.id === USER_SELF_ENTITY_ID) throw new Error('user:self cannot be deleted')
@@ -5077,7 +5381,7 @@ export async function listSoulMemoryGraphObservations(
   request: MemoryGraphListRequest & { entityId?: string } = {},
 ): Promise<MemoryGraphObservation[]> {
   const settings = getSettings()
-  const workspace = await ensureWorkspace(settings)
+  const workspace = await ensureWorkspace(settings, request.agentId)
   await migrateGraphMemoryIfNeeded(workspace, settings)
   return listGraphObservations({
     workspace,
@@ -5090,7 +5394,7 @@ export async function listSoulMemoryGraphObservations(
 
 export async function upsertSoulMemoryGraphObservation(request: MemoryGraphObservationUpsertRequest): Promise<MemoryGraphObservation> {
   const settings = getSettings()
-  const workspace = await ensureWorkspace(settings)
+  const workspace = await ensureWorkspace(settings, request.agentId)
   if (!getGraphEntityById(workspace, request.entityId, true)) {
     throw new Error(`Graph entity not found: ${request.entityId}`)
   }
@@ -5111,7 +5415,7 @@ export async function upsertSoulMemoryGraphObservation(request: MemoryGraphObser
 }
 
 export async function deleteSoulMemoryGraphObservation(request: MemoryGraphDeleteRequest): Promise<void> {
-  const workspace = await ensureWorkspace(getSettings())
+  const workspace = await ensureWorkspace(getSettings(), request.agentId)
   const observation = getGraphObservationById(workspace, request.id, true)
   if (!observation) throw new Error('Graph observation not found')
   const database = getDb(workspace)
@@ -5128,7 +5432,7 @@ export async function listSoulMemoryGraphRelations(
   request: MemoryGraphListRequest & { entityId?: string } = {},
 ): Promise<MemoryGraphRelation[]> {
   const settings = getSettings()
-  const workspace = await ensureWorkspace(settings)
+  const workspace = await ensureWorkspace(settings, request.agentId)
   await migrateGraphMemoryIfNeeded(workspace, settings)
   return listGraphRelations({
     workspace,
@@ -5141,7 +5445,7 @@ export async function listSoulMemoryGraphRelations(
 
 export async function upsertSoulMemoryGraphRelation(request: MemoryGraphRelationUpsertRequest): Promise<MemoryGraphRelation> {
   const settings = getSettings()
-  const workspace = await ensureWorkspace(settings)
+  const workspace = await ensureWorkspace(settings, request.agentId)
   if (!getGraphEntityById(workspace, request.fromEntityId, true)) throw new Error(`Graph entity not found: ${request.fromEntityId}`)
   if (!getGraphEntityById(workspace, request.toEntityId, true)) throw new Error(`Graph entity not found: ${request.toEntityId}`)
   const result = await upsertGraphRelation(workspace, {
@@ -5160,7 +5464,7 @@ export async function upsertSoulMemoryGraphRelation(request: MemoryGraphRelation
 }
 
 export async function deleteSoulMemoryGraphRelation(request: MemoryGraphDeleteRequest): Promise<void> {
-  const workspace = await ensureWorkspace(getSettings())
+  const workspace = await ensureWorkspace(getSettings(), request.agentId)
   const relation = getGraphRelationById(workspace, request.id, true)
   if (!relation) throw new Error('Graph relation not found')
   const database = getDb(workspace)
@@ -5175,7 +5479,7 @@ export async function deleteSoulMemoryGraphRelation(request: MemoryGraphDeleteRe
 
 export async function listSoulMemoryGraphDuplicates(request: MemoryGraphListRequest = {}): Promise<MemoryGraphDuplicate[]> {
   const settings = getSettings()
-  const workspace = await ensureWorkspace(settings)
+  const workspace = await ensureWorkspace(settings, request.agentId)
   await migrateGraphMemoryIfNeeded(workspace, settings)
   return listGraphDuplicates({
     workspace,
@@ -5185,7 +5489,7 @@ export async function listSoulMemoryGraphDuplicates(request: MemoryGraphListRequ
 }
 
 export async function mergeSoulMemoryGraphDuplicate(request: MemoryGraphDuplicateDecisionRequest): Promise<void> {
-  const workspace = await ensureWorkspace(getSettings())
+  const workspace = await ensureWorkspace(getSettings(), request.agentId)
   const database = getDb(workspace)
   const duplicate = database.prepare(`
     SELECT * FROM memory_possible_duplicates WHERE id = ? AND status = 'pending' LIMIT 1
@@ -5214,7 +5518,7 @@ export async function mergeSoulMemoryGraphDuplicate(request: MemoryGraphDuplicat
 }
 
 export async function ignoreSoulMemoryGraphDuplicate(request: MemoryGraphDuplicateDecisionRequest): Promise<void> {
-  const workspace = await ensureWorkspace(getSettings())
+  const workspace = await ensureWorkspace(getSettings(), request.agentId)
   const database = getDb(workspace)
   const duplicate = database.prepare(`
     SELECT * FROM memory_possible_duplicates WHERE id = ? AND status = 'pending' LIMIT 1
@@ -5230,7 +5534,7 @@ export async function ignoreSoulMemoryGraphDuplicate(request: MemoryGraphDuplica
 }
 
 export async function getSoulMemoryGraphAudit(request: MemoryGraphAuditRequest): Promise<MemoryGraphAuditEvent[]> {
-  const workspace = await ensureWorkspace(getSettings())
+  const workspace = await ensureWorkspace(getSettings(), request.agentId)
   const clean = request.id.replace(/^(entity|observation|relation):/i, '')
   const rows = getDb(workspace).prepare(`
     SELECT * FROM memory_events WHERE memory_id = ? ORDER BY created_at DESC LIMIT 200
@@ -5243,17 +5547,26 @@ export async function appendSoulMemoryPanel(request: MemoryAppendRequest): Promi
   relativePath: string
 }> {
   return appendMemory({
+    agentId: request.agentId,
     content: request.content,
     target: 'daily',
     heading: request.heading,
   })
 }
 
-export async function rebuildSoulMemoryIndex(): Promise<MemoryIndexStatus> {
-  return syncIndex({ force: true })
+export async function rebuildSoulMemoryIndex(agentId?: string): Promise<MemoryIndexStatus> {
+  return syncIndex({ force: true, agentId })
 }
 
-export async function runSoulMemoryDreamingNow(): Promise<DreamingRunResult | null> {
+export async function runSoulMemoryDreamingNow(agentId?: string): Promise<DreamingRunResult | null> {
+  const resolvedAgentId = agentId || DEFAULT_AGENT_ID
+  if (resolvedAgentId !== DEFAULT_AGENT_ID && activeSoulMemoryPluginApi) {
+    return runMemoryDreamingSweep(activeSoulMemoryPluginApi, {
+      agentId: resolvedAgentId,
+      reason: 'manual',
+      force: true,
+    })
+  }
   const record = await getScheduler().runNow(SCOPED_DREAMING_SCHEDULER_TASK_ID, {
     reason: 'manual',
     force: true,
@@ -5283,9 +5596,23 @@ type DreamingRunResult = {
   memory: string
   runAt: number
   nextRunAt?: number
+  timeline?: SchedulerRunTimelineEntryDTO[]
 }
 
 let dreamingRunInFlight: Promise<DreamingRunResult | null> | null = null
+
+function dreamingTimelineEntry(input: Omit<SchedulerRunTimelineEntryDTO, 'id' | 'timestamp'> & { timestamp?: number }): SchedulerRunTimelineEntryDTO {
+  return {
+    id: crypto.randomUUID(),
+    timestamp: input.timestamp ?? Date.now(),
+    type: input.type,
+    title: input.title,
+    ...(input.detail ? { detail: input.detail } : {}),
+    ...(typeof input.durationMs === 'number' ? { durationMs: input.durationMs } : {}),
+    ...(input.status ? { status: input.status } : {}),
+    ...(input.metadata ? { metadata: input.metadata } : {}),
+  }
+}
 
 function getDreamingNextRunAt(
   dreaming: ResolvedSoulMemorySettings['dreaming'],
@@ -5693,6 +6020,7 @@ async function promoteDreamingGraphMemory(
   })
   const result = await mergeGraphMemory({
     settings,
+    agentId: workspace.agentId,
     candidates,
     source: 'dreaming',
     evidence: `Promoted by scheduled dreaming sweep at ${runAt.toISOString()}.`,
@@ -5704,6 +6032,7 @@ async function promoteDreamingGraphMemory(
 
 async function runMemoryDreamingSweep(api: PluginAPI, options: {
   reason: SchedulerRunReason
+  agentId?: string
   force?: boolean
   settings?: AppSettings
   now?: Date
@@ -5712,8 +6041,16 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
   dreamingRunInFlight = (async () => {
     const startedAt = Date.now()
     const settings = options.settings || getSettings()
-    const workspace = await ensureWorkspace(settings)
+    const workspace = await ensureWorkspace(settings, options.agentId)
     const runId = sha(`dreaming:${options.reason}:${startedAt}`).slice(0, 16)
+    const timeline: SchedulerRunTimelineEntryDTO[] = [
+      dreamingTimelineEntry({
+        type: 'dreaming:start',
+        title: 'Dreaming sweep started',
+        detail: options.reason,
+        timestamp: startedAt,
+      }),
+    ]
     if (!workspace.settings.enabled) {
       logMemoryDiagnostic({
         subsystem: 'dreaming',
@@ -5755,6 +6092,14 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
     const pluginStore = new PluginStore(SOUL_MEMORY_PLUGIN_ID)
     const sourceResult = await collectDreamingSources(workspace, pluginStore)
     const sourceFiles = sourceResult.sources
+    timeline.push(dreamingTimelineEntry({
+      type: 'dreaming:sources',
+      title: 'Collected sources',
+      detail: `${sourceFiles.length} source file${sourceFiles.length === 1 ? '' : 's'}`,
+      metadata: {
+        sourceFiles: sourceFiles.map(file => file.relativePath),
+      },
+    }))
     const { nextRunAt: nextRun } = getDreamingNextRunAt(workspace.settings.dreaming, runAt)
     if (sourceFiles.length === 0) {
       const result: DreamingRunResult = {
@@ -5765,6 +6110,16 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
         memory: 'NONE',
         runAt: runAt.getTime(),
         nextRunAt: nextRun,
+        timeline: [
+          ...timeline,
+          dreamingTimelineEntry({
+            type: 'dreaming:finish',
+            title: 'Dreaming skipped',
+            detail: 'No eligible sources',
+            status: 'skipped',
+            durationMs: Date.now() - startedAt,
+          }),
+        ],
       }
       api.store.set('lastDreamingAt', result.runAt)
       api.store.set('lastDreamingApplied', 0)
@@ -5795,6 +6150,15 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
     const existingMemory = buildGraphProfileSummary(workspace) || '(empty)'
     const provider = await resolveDreamingProvider(settings, workspace.settings.dreaming)
     const modelRef = `${provider.providerId}/${provider.config.model}`
+    timeline.push(dreamingTimelineEntry({
+      type: 'dreaming:model',
+      title: 'Model sweep requested',
+      detail: modelRef,
+      metadata: {
+        inputChars: input.length,
+        sourceCount: sourceFiles.length,
+      },
+    }))
     logMemoryDiagnostic({
       subsystem: 'dreaming',
       operation: 'model-sweep',
@@ -5839,6 +6203,14 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
 
     const parsed = parseDreamingOutput(output)
     const promoted = await promoteDreamingGraphMemory(workspace, settings, parsed.memory, runAt)
+    timeline.push(dreamingTimelineEntry({
+      type: 'dreaming:promotion',
+      title: 'Promoted durable memory',
+      detail: `${promoted.applied} applied`,
+      metadata: {
+        reportPreview: previewLine(parsed.report, 240),
+      },
+    }))
     pluginStore.set(SESSION_INGESTION_STORE_KEY, sourceResult.nextSessionState)
     await appendDreamsReport(workspace, {
       runAt,
@@ -5849,7 +6221,11 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
       report: parsed.report,
       applied: promoted.applied,
     })
-    await syncIndex({ settings, force: false })
+    markIndexDirty('dreaming-report-write', { relativePath: 'DREAMS.md' })
+    scheduleIndexSync({
+      settings,
+      reason: 'dreaming-report-write',
+    })
 
     const result: DreamingRunResult = {
       status: promoted.applied > 0 ? 'applied' : 'none',
@@ -5859,6 +6235,15 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
       memory: promoted.block || parsed.memory || 'NONE',
       runAt: runAt.getTime(),
       nextRunAt: nextRun,
+      timeline: [
+        ...timeline,
+        dreamingTimelineEntry({
+          type: 'dreaming:finish',
+          title: 'Dreaming finished',
+          status: promoted.applied > 0 ? 'applied' : 'none',
+          durationMs: Date.now() - startedAt,
+        }),
+      ],
     }
     api.store.set('lastDreamingAt', result.runAt)
     api.store.set('lastDreamingApplied', result.applied)
@@ -6310,8 +6695,8 @@ function buildPromptStyleLines(style: ResolvedSoulMemorySettings['activeMemory']
   }
 }
 
-function activeMemoryKey(sessionId: string, query: string): string {
-  return sha(`${sessionId}\n${query}`)
+function activeMemoryKey(agentId: string, sessionId: string, query: string): string {
+  return sha(`${agentId}\n${sessionId}\n${query}`)
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -6349,6 +6734,7 @@ function clearActiveMemoryTimeout(key: string): void {
 
 async function activeMemoryRecall(options: {
   sessionId: string
+  agentId?: string
   settings: AppSettings
   providerId?: string
   providerConfig?: Record<string, unknown>
@@ -6357,6 +6743,7 @@ async function activeMemoryRecall(options: {
   const startedAt = Date.now()
   const runId = sha(`active-memory:${options.sessionId}:${startedAt}`).slice(0, 16)
   const resolved = resolveSettings(options.settings)
+  const agentId = options.agentId || resolveSessionAgentId(options.sessionId)
   const sessionLabel = options.sessionId.slice(0, 8)
   const providerLabel = options.providerId || 'unknown'
   const modelLabel = String(options.providerConfig?.model || 'unknown')
@@ -6390,7 +6777,7 @@ async function activeMemoryRecall(options: {
   const searchQuery = clampSearchQuery(query)
   if (!searchQuery) return null
   const timeoutMs = resolved.activeMemory.timeoutMs
-  const cacheKey = activeMemoryKey(options.sessionId, query)
+  const cacheKey = activeMemoryKey(agentId, options.sessionId, query)
   const cached = ACTIVE_MEMORY_CACHE.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) {
     console.info(
@@ -6452,6 +6839,7 @@ async function activeMemoryRecall(options: {
     const content = await withTimeout((async () => {
       const hits = await searchMemory({
         settings: options.settings,
+        agentId,
         query: searchQuery,
         limit: resolved.search.maxResults,
       })
@@ -6613,6 +7001,7 @@ async function buildRecentDailyContextFragment(
 }
 
 export default function soulMemoryPlugin(api: PluginAPI): void {
+  activeSoulMemoryPluginApi = api
   ensureWorkspace(getSettings()).then(workspace => migrateGraphMemoryIfNeeded(workspace, getSettings())).catch(error => {
     lastStatus.lastError = error?.message || String(error)
   })
@@ -6620,7 +7009,8 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
 
   api.registerPromptContextProvider('soul-memory', async context => {
     const settings = context.settings || getSettings()
-    const workspace = await ensureWorkspace(settings)
+    const agentId = resolveSessionAgentId(context.sessionId)
+    const workspace = await ensureWorkspace(settings, agentId)
     if (!workspace.settings.enabled) return []
     await migrateGraphMemoryIfNeeded(workspace, settings)
 
@@ -6674,6 +7064,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
     if (context.sessionId) {
       const recalled = await activeMemoryRecall({
         sessionId: context.sessionId,
+        agentId,
         settings,
         providerId: context.providerId,
         providerConfig: context.providerConfig,
@@ -6701,6 +7092,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
     const runId = sha(`flush:${context.sessionId}:${startedAt}`).slice(0, 16)
     const settings = context.settings
     const resolved = resolveSettings(settings)
+    const agentId = resolveSessionAgentId(context.sessionId)
     if (!resolved.enabled || !resolved.memoryFlush.enabled) {
       logMemoryDiagnostic({
         subsystem: 'flush',
@@ -6728,7 +7120,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
     }
 
     try {
-      const workspace = await ensureWorkspace(settings)
+      const workspace = await ensureWorkspace(settings, agentId)
       logMemoryDiagnostic({
         subsystem: 'flush',
         operation: 'before-context-compact',
@@ -6782,6 +7174,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
       const graph = routed.longTerm.length > 0
         ? await mergeGraphMemory({
           settings,
+          agentId,
           candidates: routed.longTerm,
           source: 'flush',
           evidence: formatted,
@@ -6864,8 +7257,8 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
     description: 'Read SOUL.md, the assistant voice and stance file. Use when the user asks to inspect or revise the assistant personality.',
     permissionGuard: 'safe',
     parameters: z.object({}),
-    async execute() {
-      const workspace = await ensureWorkspace(getSettings())
+    async execute(_args, ctx) {
+      const workspace = await ensureWorkspace(getSettings(), resolveSessionAgentId(ctx.sessionId))
       if (!workspace.settings.enabled) {
         return {
           title: 'Soul disabled',
@@ -6891,8 +7284,9 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
       mode: z.enum(['replace', 'append']).optional(),
       heading: z.string().optional(),
     }),
-    async execute(args) {
+    async execute(args, ctx) {
       const result = await updateSoulFile({
+        agentId: resolveSessionAgentId(ctx.sessionId),
         content: args.content,
         mode: args.mode || 'replace',
         heading: args.heading,
@@ -6915,8 +7309,9 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
       maxResults: z.coerce.number().int().min(1).max(20).optional(),
       minScore: z.number().min(0).max(1).optional(),
     }),
-    async execute(args) {
+    async execute(args, ctx) {
       const hits = await searchMemory({
+        agentId: resolveSessionAgentId(ctx.sessionId),
         query: args.query,
         limit: args.maxResults || args.limit,
         minScore: args.minScore,
@@ -6940,8 +7335,8 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
       from: z.number().int().min(1).optional(),
       lines: z.number().int().min(1).optional(),
     }),
-    async execute(args) {
-      const workspace = await ensureWorkspace(getSettings())
+    async execute(args, ctx) {
+      const workspace = await ensureWorkspace(getSettings(), resolveSessionAgentId(ctx.sessionId))
       if (!workspace.settings.enabled) {
         return {
           title: 'Memory disabled',
@@ -7008,8 +7403,9 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
       path: z.string().optional(),
       heading: z.string().optional(),
     }),
-    async execute(args) {
+    async execute(args, ctx) {
       const target = await appendMemory({
+        agentId: resolveSessionAgentId(ctx.sessionId),
         content: args.content,
         target: args.target,
         filePath: args.path,
@@ -7028,9 +7424,17 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
     description: 'Show soul-memory plugin status, paths, index counts, embedding fallback state, and dreaming schedule state.',
     permissionGuard: 'safe',
     parameters: z.object({}),
-    async execute() {
-      const workspace = await ensureWorkspace(getSettings())
-      const status = await syncIndex()
+    async execute(_args, ctx) {
+      const agentId = resolveSessionAgentId(ctx.sessionId)
+      const workspace = await ensureWorkspace(getSettings(), agentId)
+      const status = refreshIndexStatus(getDb(workspace))
+      if (indexDirty && !indexSyncInFlight) {
+        scheduleIndexSync({
+          settings: getSettings(),
+          agentId,
+          reason: 'memory-status',
+        })
+      }
       const dreaming = buildDreamingStatus(api, workspace)
       return {
         title: 'Memory status',
@@ -7171,7 +7575,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
           ctx.notify('Usage: /memory search <query>', 'warn')
           return
         }
-        const hits = await searchMemory({ query })
+        const hits = await searchMemory({ agentId: resolveSessionAgentId(ctx.sessionId), query })
         ctx.notify(formatHits(hits))
         return
       }
@@ -7181,7 +7585,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
           ctx.notify('Usage: /memory get <path>', 'warn')
           return
         }
-        const workspace = await ensureWorkspace(getSettings())
+        const workspace = await ensureWorkspace(getSettings(), resolveSessionAgentId(ctx.sessionId))
         const graph = getGraphMemoryByIdentifier(workspace, filePath)
         if (graph) {
           ctx.notify(graphSearchContent(workspace, graph))
@@ -7213,6 +7617,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
         }
         const target = await mergeGraphMemory({
           settings: getSettings(),
+          agentId: resolveSessionAgentId(ctx.sessionId),
           candidates: [{ kind: 'fact', text: content, confidence: 1, source: 'user', explicit: true }],
           source: 'command',
           evidence: content,
@@ -7221,12 +7626,20 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
         return
       }
       if (action === 'index') {
-        const status = await syncIndex({ force: true })
+        const status = await syncIndex({ agentId: resolveSessionAgentId(ctx.sessionId), force: true })
         ctx.notify(`Indexed ${status.indexedFiles} files / ${status.indexedChunks} chunks`)
         return
       }
-      const workspace = await ensureWorkspace(getSettings())
-      const status = await syncIndex()
+      const agentId = resolveSessionAgentId(ctx.sessionId)
+      const workspace = await ensureWorkspace(getSettings(), agentId)
+      const status = refreshIndexStatus(getDb(workspace))
+      if (indexDirty && !indexSyncInFlight) {
+        scheduleIndexSync({
+          settings: getSettings(),
+          agentId,
+          reason: 'memory-command-status',
+        })
+      }
       const graph = getGraphOverview(workspace)
       ctx.notify([
         `Root: ${workspace.root}`,
@@ -7254,7 +7667,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
     usage: '/soul status|show|path|rewrite <instruction>',
     async handler(args, ctx) {
       const [action = 'status', ...rest] = args.trim().split(/\s+/).filter(Boolean)
-      const workspace = await ensureWorkspace(getSettings())
+      const workspace = await ensureWorkspace(getSettings(), resolveSessionAgentId(ctx.sessionId))
       if (action === 'path' || action === 'status') {
         ctx.notify([
           `SOUL.md: ${workspace.soulPath}`,

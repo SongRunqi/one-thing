@@ -57,9 +57,12 @@ export interface DailyNoteSettings {
 export interface EditorSettings {
   tabSize?: number
   lineWrapping?: boolean
+  softWrapColumn?: number
   syntaxHighlighting?: boolean
   completionEnabled?: boolean
   composerMaxHeight?: number
+  markdownNoteAttachmentDirectory?: string
+  markdownProjectAttachmentDirectory?: string
 }
 
 export interface SoulMemoryActiveSettings {

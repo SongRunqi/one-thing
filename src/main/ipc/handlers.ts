@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { registerChatHandlers } from './chat.js'
 import { registerSessionHandlers } from './sessions.js'
 import { registerSettingsHandlers } from './settings.js'
+import { registerAgentHandlers } from './agents.js'
 import { registerModelsHandlers } from './models.js'
 import { registerProvidersHandlers } from './providers.js'
 import { registerToolHandlers } from './tools.js'
@@ -16,9 +17,11 @@ import { registerThemeHandlers, initializeThemeSystem } from './themes.js'
 import { registerVariableHandlers } from '../variables/ipc.js'
 import { registerProjectDirsHandlers } from '../project-dirs/index.js'
 import { registerPluginHandlers } from './plugins.js'
+import { registerPromptHandlers } from '../prompts/ipc.js'
 import { registerMemoryHandlers } from './memory.js'
 import { registerSchedulerHandlers } from './scheduler.js'
 import { registerFilesHandlers } from './files.js'
+import { registerMarkdownHandlers } from './markdown.js'
 import { registerSearchHandlers } from '../search/index.js'
 import { registerAppStateHandlers } from './app-state.js'
 import { registerTodoPlanHandlers } from '../todo-plan/ipc.js'
@@ -27,6 +30,7 @@ export function initializeIPC() {
   registerChatHandlers()
   registerSessionHandlers()
   registerSettingsHandlers()
+  registerAgentHandlers()
   registerModelsHandlers()
   registerProvidersHandlers()
   registerToolHandlers()
@@ -40,9 +44,11 @@ export function initializeIPC() {
   registerVariableHandlers()
   registerProjectDirsHandlers()
   registerPluginHandlers()
+  registerPromptHandlers()
   registerMemoryHandlers()
   registerSchedulerHandlers()
   registerFilesHandlers()
+  registerMarkdownHandlers()
   registerSearchHandlers()
   registerAppStateHandlers()
   registerTodoPlanHandlers()

@@ -2,69 +2,8 @@
   <div
     ref="composerWrapperRef"
     class="composer-wrapper"
+    :class="{ 'has-extension': activeExtensionVisible }"
   >
-    <!-- Quoted text context -->
-    <QuotedContext
-      :text="quotedText"
-      @clear="clearQuotedText"
-    />
-
-    <!-- Command Feedback -->
-    <Transition name="fade">
-      <div
-        v-if="commandFeedback"
-        :class="['command-feedback', commandFeedback.type]"
-      >
-        <Check
-          v-if="commandFeedback.type === 'success'"
-          :size="14"
-          :stroke-width="2.5"
-        />
-        <X
-          v-else
-          :size="14"
-          :stroke-width="2.5"
-        />
-        <span>{{ commandFeedback.message }}</span>
-      </div>
-    </Transition>
-
-    <!-- Command Picker -->
-    <CommandPicker
-      :visible="showCommandPicker"
-      :query="commandQuery"
-      :skills="enabledSkills"
-      @select="handleCommandSelect"
-      @close="handleCommandPickerClose"
-    />
-
-    <!-- Skill Picker -->
-    <SkillPicker
-      :visible="showSkillPicker"
-      :query="skillTriggerQuery"
-      :skills="enabledSkills"
-      @select="handleSkillSelect"
-      @close="handleSkillPickerClose"
-    />
-
-    <!-- File Picker -->
-    <FilePicker
-      :visible="showFilePicker"
-      :query="fileQuery"
-      :cwd="workingDirectory"
-      :session-id="effectiveSessionId || ''"
-      @select="handleFilePickerSelect"
-      @close="handleFilePickerClose"
-    />
-
-    <!-- Path Picker -->
-    <PathPicker
-      :visible="showPathPicker"
-      :path-input="pathQuery"
-      @select="handlePathPickerSelect"
-      @close="handlePathPickerClose"
-    />
-
     <TransitionGroup
       name="queued-message"
       tag="div"
@@ -127,11 +66,77 @@
       </div>
     </TransitionGroup>
 
+    <CommandPicker
+      :visible="activeExtension.type === 'palette'"
+      :items="activeExtension.items"
+      :selected-index="activeExtension.selectedIndex"
+      :query="activeExtension.query"
+      :loading="activeExtension.loading"
+      :error="activeExtension.error"
+      @select="handleCommandSelect"
+      @highlight="highlightActiveSelection"
+      @close="handleCommandPickerClose"
+    />
+
+    <FilePicker
+      :visible="activeExtension.type === 'files'"
+      :items="activeExtension.items"
+      :selected-index="activeExtension.selectedIndex"
+      :query="activeExtension.query"
+      :loading="activeExtension.loading"
+      :error="activeExtension.error"
+      @select="handleFilePickerSelect"
+      @highlight="highlightActiveSelection"
+      @close="handleFilePickerClose"
+    />
+
+    <PathPicker
+      :visible="activeExtension.type === 'paths'"
+      :items="activeExtension.items"
+      :selected-index="activeExtension.selectedIndex"
+      :path-input="activeExtension.query"
+      :loading="activeExtension.loading"
+      :error="activeExtension.error"
+      @select="handlePathPickerSelect"
+      @highlight="highlightActiveSelection"
+      @close="handlePathPickerClose"
+    />
+
     <div
       class="composer"
-      :class="{ focused: isFocused }"
+      :class="{ focused: isFocused, 'extension-open': activeExtensionVisible }"
       @click="focusEditor"
     >
+      <div
+        v-if="quotedText || commandFeedback"
+        class="composer-context-stack"
+        @click.stop
+      >
+        <Transition name="fade">
+          <div
+            v-if="commandFeedback"
+            :class="['command-feedback', commandFeedback.type]"
+          >
+            <Check
+              v-if="commandFeedback.type === 'success'"
+              :size="14"
+              :stroke-width="2.5"
+            />
+            <X
+              v-else
+              :size="14"
+              :stroke-width="2.5"
+            />
+            <span>{{ commandFeedback.message }}</span>
+          </div>
+        </Transition>
+
+        <QuotedContext
+          :text="quotedText"
+          @clear="clearQuotedText"
+        />
+      </div>
+
       <!-- Input area -->
       <div class="input-area">
         <TextEditor
@@ -142,6 +147,9 @@
           language="markdown"
           placeholder="Ask anything..."
           :settings="editorSettings"
+          :prompt-refs="promptsStore.prompts"
+          :skill-refs="enabledSkills"
+          :command-refs="commandRefs"
           :min-height="56"
           :max-height="composerMaxHeight"
           @keydown="handleKeyDown"
@@ -235,7 +243,7 @@
               :stroke-width="0"
             />
           </button>
-      </div>
+        </div>
       </div>
     </div>
   </div>
@@ -246,16 +254,16 @@ import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
+import { usePromptsStore } from '@/stores/prompts'
 // Sub-components
 import QuotedContext from './QuotedContext.vue'
-import SkillPicker from './SkillPicker.vue'
 import CommandPicker from './CommandPicker.vue'
 import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
 import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
 import { X, Square, Send, Check, CornerDownRight, Trash2, MoreHorizontal, FileText, Loader2 } from 'lucide-vue-next'
-import { findCommand, refreshPluginCommands } from '@/services/commands'
+import { findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
 import type { MessageAttachment } from '@/types'
@@ -266,6 +274,7 @@ import { usePickerOrchestration } from '@/composables/usePickerOrchestration'
 import { useCommandFeedback } from '@/composables/useCommandFeedback'
 import { useAttachments } from '@/composables/useAttachments'
 import type { AttachedFile } from '@/composables/useAttachments'
+import { createPromptToken } from '@shared/prompt-references'
 
 interface Props {
   isLoading?: boolean
@@ -287,6 +296,7 @@ const emit = defineEmits<Emits>()
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
+const promptsStore = usePromptsStore()
 
 // Core state
 const messageInput = ref('')
@@ -340,29 +350,24 @@ const {
 } = useInputHistory(effectiveSessionId, messageInput, editorRef, updateComposerHeight)
 
 const {
-  enabledSkills,
+  activeExtension,
+  activeExtensionVisible,
+  moveActiveSelection,
+  highlightActiveSelection,
+  confirmActiveExtension,
   loadSkills,
-  showSkillPicker,
-  skillTriggerQuery,
-  handleSkillSelect,
-  handleSkillPickerClose,
-  showCommandPicker,
-  commandQuery,
   handleCommandSelect,
   handleCommandPickerClose,
-  showFilePicker,
-  fileQuery,
   handleFilePickerSelect,
   handleFilePickerClose,
-  showPathPicker,
-  pathQuery,
   handlePathPickerSelect,
   handlePathPickerClose,
   anyPickerVisible,
   handleEditorSelectionChange,
   handleEditorTransaction,
   closeAllPickers,
-} = usePickerOrchestration(messageInput, workingDirectory, editorRef, updateComposerHeight, checkHistoryEdit)
+  enabledSkills,
+} = usePickerOrchestration(messageInput, workingDirectory, editorRef, updateComposerHeight, checkHistoryEdit, effectiveSessionId)
 
 const { commandFeedback, showCommandFeedback } = useCommandFeedback()
 const {
@@ -379,6 +384,7 @@ const {
 
 const hasMessageContent = computed(() => messageInput.value.trim().length > 0)
 const hasAttachments = computed(() => attachedFiles.value.length > 0)
+const commandRefs = ref(getCommands())
 const hasActiveGeneration = computed(() => {
   const sessionId = effectiveSessionId.value
   return !!props.isLoading || (sessionId ? chatStore.isSessionGenerating(sessionId) : false)
@@ -412,6 +418,15 @@ watch(hasActiveGeneration, (generating) => {
   }
 })
 
+watch(
+  () => [activeExtension.value.type, activeExtension.value.items],
+  () => {
+    if (activeExtension.value.type === 'palette') {
+      commandRefs.value = getCommands()
+    }
+  },
+)
+
 // --- ResizeObserver ---
 
 let composerResizeObserver: ResizeObserver | null = null
@@ -426,6 +441,7 @@ function handleDocumentMouseDown(event: MouseEvent) {
 onMounted(async () => {
   updateComposerHeight()
   await loadSkills()
+  await promptsStore.loadPrompts()
   document.addEventListener('mousedown', handleDocumentMouseDown)
 
   if (composerWrapperRef.value) {
@@ -485,22 +501,38 @@ async function handlePasteAttachments(event: ClipboardEvent) {
 function handleKeyDown(e: KeyboardEvent) {
   if (isComposing.value || e.isComposing) return
 
-  // Don't handle send shortcuts when any picker is visible
-  const pathPickerVisible = showPathPicker.value
-
-  if (anyPickerVisible.value && (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-    return
-  }
-
-  // PathPicker: Tab/Arrow/Escape handled by picker, but Enter sends the command
-  if (pathPickerVisible) {
-    if (e.key === 'Tab' || e.key === 'Escape' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+  if (anyPickerVisible.value) {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      moveActiveSelection(-1)
       return
     }
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      moveActiveSelection(1)
+      return
+    }
+    if (e.key === 'Escape') {
       e.preventDefault()
       closeAllPickers()
-      sendMessage()
+      return
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      void confirmActiveExtension()
+      return
+    }
+    if (e.key === 'Enter') {
+      if (activeExtension.value.type === 'paths') {
+        if (!e.shiftKey) {
+          e.preventDefault()
+          closeAllPickers()
+          sendMessage()
+        }
+        return
+      }
+      e.preventDefault()
+      void confirmActiveExtension()
       return
     }
   }
@@ -686,10 +718,26 @@ function setMessageInput(text: string) {
   })
 }
 
+function insertPromptReference(promptId: string) {
+  const token = `${createPromptToken(promptId)} `
+  const editor = editorRef.value
+  if (editor) {
+    const selection = editor.getSelection()
+    editor.replaceRange(selection.from, selection.to, token)
+  } else {
+    messageInput.value += token
+  }
+  nextTick(() => {
+    updateComposerHeight()
+    editorRef.value?.focus()
+  })
+}
+
 defineExpose({
   setQuotedText,
   clearQuotedText,
   setMessageInput,
+  insertPromptReference,
   focus: focusEditor,
   // Snapshot API for session switching
   getMessageInput: () => messageInput.value,
@@ -717,32 +765,42 @@ defineExpose({
   position: relative;
 }
 
-/* Command feedback - toast style */
-.command-feedback {
-  position: absolute;
-  top: -40px;
-  left: 50%;
-  transform: translateX(-50%);
+.composer-context-stack {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+
+.command-feedback {
+  display: inline-flex;
   align-items: center;
+  align-self: flex-start;
   gap: 6px;
-  padding: 6px 12px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 0.5px solid var(--border);
   border-radius: 8px;
+  background: rgba(var(--bg-rgb, 30, 30, 35), 0.48);
+  color: var(--text);
   font-size: 12px;
-  white-space: nowrap;
-  z-index: 100;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  line-height: 1.3;
 }
 
 .command-feedback.success {
-  background: rgba(34, 197, 94, 0.9);
-  color: white;
+  border-color: rgba(var(--color-success-rgb), 0.30);
+  color: var(--text-success, var(--text));
 }
 
 .command-feedback.error {
-  background: rgba(239, 68, 68, 0.9);
-  color: white;
+  border-color: rgba(var(--color-danger-rgb), 0.30);
+  color: var(--text-error, var(--text));
+}
+
+.command-feedback span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fade-enter-active,
@@ -877,6 +935,15 @@ defineExpose({
 .composer.focused {
   border-color: rgba(var(--accent-rgb), 0.35);
   box-shadow: 0 0 0 0.5px rgba(var(--accent-rgb), 0.2), 0 8px 32px rgba(0, 0, 0, 0.18), var(--shadow-glow);
+}
+
+.composer.extension-open {
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+}
+
+.composer-context-stack :deep(.quoted-context) {
+  margin-bottom: 0;
 }
 
 /* Input area */

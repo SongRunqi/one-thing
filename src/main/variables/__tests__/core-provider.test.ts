@@ -8,18 +8,26 @@ import { VariableError, type VariableContext } from '../types.js'
 
 const ctx: VariableContext = { sessionId: 'sess-a' }
 
-function fakeGateway(initial: Record<string, string> = {}): WorkdirGateway & {
+function fakeGateway(initial: Record<string, string> = {}, initialRoots: Record<string, string[]> = {}): WorkdirGateway & {
   changes: Array<[string, string]>
+  rootChanges: Array<[string, string[]]>
   fire: (sid: string) => void
 } {
   const state = new Map<string, string>(Object.entries(initial))
+  const roots = new Map<string, string[]>(Object.entries(initialRoots))
   const listeners = new Set<(sid: string) => void>()
   const changes: Array<[string, string]> = []
+  const rootChanges: Array<[string, string[]]> = []
   return {
     read: (sid) => state.get(sid) ?? '',
+    readRoots: (sid) => roots.get(sid) ?? [],
     write: (sid, wd) => {
       state.set(sid, wd)
       changes.push([sid, wd])
+    },
+    writeRoots: (sid, nextRoots) => {
+      roots.set(sid, nextRoots)
+      rootChanges.push([sid, nextRoots])
     },
     expandPath: (input) => input.startsWith('~')
       ? input.replace('~', os.homedir())
@@ -29,6 +37,7 @@ function fakeGateway(initial: Record<string, string> = {}): WorkdirGateway & {
       return () => listeners.delete(cb)
     },
     changes,
+    rootChanges,
     fire: (sid) => {
       for (const cb of listeners) cb(sid)
     },
@@ -48,8 +57,18 @@ describe('CoreProvider.list', () => {
     const gw = fakeGateway({ 'sess-a': '/proj' })
     const list = new CoreProvider(gw).list(ctx)
     expect(list).toEqual([
-      expect.objectContaining({ name: 'workdir', value: '/proj', readonly: false }),
+      expect.objectContaining({ name: 'workdir', value: '/proj', values: ['/proj'], readonly: false }),
     ])
+  })
+
+  it('returns ordered workdir values with extra roots', () => {
+    const gw = fakeGateway({ 'sess-a': '/proj' }, { 'sess-a': ['/skills/iva', '/shared'] })
+    const list = new CoreProvider(gw).list(ctx)
+    expect(list[0]).toEqual(expect.objectContaining({
+      name: 'workdir',
+      value: '/proj',
+      values: ['/proj', '/skills/iva', '/shared'],
+    }))
   })
 
   it('returns workdir with empty value when session has no workdir set', () => {
@@ -76,6 +95,7 @@ describe('CoreProvider.set', () => {
     const p = new CoreProvider(gw)
     const result = await p.set(ctx, { name: 'workdir', value: tmpDir })
     expect(result.value).toBe(tmpDir)
+    expect(result.values).toEqual([tmpDir])
     expect(gw.changes).toEqual([['sess-a', tmpDir]])
   })
 
@@ -86,6 +106,17 @@ describe('CoreProvider.set', () => {
     const result = await p.set(ctx, { name: 'workdir', value: '~' })
     expect(result.value).toBe(home)
     expect(gw.changes).toEqual([['sess-a', home]])
+  })
+
+  it('preserves extra roots and removes duplicates when setting active workdir', async () => {
+    const extra = await fs.mkdtemp(path.join(os.tmpdir(), 'core-provider-extra-'))
+    const gw = fakeGateway({ 'sess-a': extra }, { 'sess-a': [tmpDir, extra] })
+    const p = new CoreProvider(gw)
+    const result = await p.set(ctx, { name: 'workdir', value: tmpDir })
+    expect(result.value).toBe(tmpDir)
+    expect(result.values).toEqual([tmpDir, extra])
+    expect(gw.rootChanges[gw.rootChanges.length - 1]).toEqual(['sess-a', [extra]])
+    await fs.rm(extra, { recursive: true, force: true })
   })
 
   it('throws WORKDIR_NOT_FOUND when path does not exist', async () => {
@@ -112,6 +143,43 @@ describe('CoreProvider.set', () => {
     }
   })
 
+})
+
+describe('CoreProvider.append/remove', () => {
+  it('appends a valid existing directory as an extra root', async () => {
+    const gw = fakeGateway({ 'sess-a': tmpDir })
+    const extra = await fs.mkdtemp(path.join(os.tmpdir(), 'core-provider-extra-'))
+    const p = new CoreProvider(gw)
+    const result = await p.append(ctx, { name: 'workdir', value: extra })
+    expect(result.value).toBe(tmpDir)
+    expect(result.values).toEqual([tmpDir, extra])
+    expect(gw.rootChanges).toEqual([['sess-a', [extra]]])
+    await fs.rm(extra, { recursive: true, force: true })
+  })
+
+  it('deduplicates appended roots and the active cwd', async () => {
+    const gw = fakeGateway({ 'sess-a': tmpDir }, { 'sess-a': [tmpDir] })
+    const p = new CoreProvider(gw)
+    const result = await p.append(ctx, { name: 'workdir', value: tmpDir })
+    expect(result.values).toEqual([tmpDir])
+    expect(gw.rootChanges).toEqual([['sess-a', []]])
+  })
+
+  it('removes an extra root', async () => {
+    const extra = await fs.mkdtemp(path.join(os.tmpdir(), 'core-provider-extra-'))
+    const gw = fakeGateway({ 'sess-a': tmpDir }, { 'sess-a': [extra] })
+    const p = new CoreProvider(gw)
+    const result = await p.remove(ctx, { name: 'workdir', value: extra })
+    expect(result.values).toEqual([tmpDir])
+    expect(gw.rootChanges).toEqual([['sess-a', []]])
+    await fs.rm(extra, { recursive: true, force: true })
+  })
+
+  it('does not allow removing the active cwd', async () => {
+    const p = new CoreProvider(fakeGateway({ 'sess-a': tmpDir }))
+    await expect(p.remove(ctx, { name: 'workdir', value: tmpDir }))
+      .rejects.toMatchObject({ code: 'INVALID_VALUE' })
+  })
 })
 
 describe('CoreProvider in a registry', () => {

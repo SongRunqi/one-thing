@@ -5,3 +5,9 @@ Tool execution may require user approval before side effects. Approval can be gr
 
 Current working directory boundary: {{workingDirectory}}
 {{/if}}
+{{#if workingDirectoryRootDisplays}}
+Additional working directory boundaries:
+{{#each workingDirectoryRootDisplays}}
+- {{path}}
+{{/each}}
+{{/if}}

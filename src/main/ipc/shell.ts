@@ -14,6 +14,11 @@ export function registerShellHandlers() {
     return shell.openPath(filePath)
   })
 
+  ipcMain.handle('shell:open-external', async (_, url: string) => {
+    await shell.openExternal(url)
+    return { success: true }
+  })
+
   // Get the app data folder path
   ipcMain.handle('app:get-data-path', () => {
     return path.join(os.homedir(), '.onething')

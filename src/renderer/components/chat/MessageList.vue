@@ -58,8 +58,53 @@
       </div>
     </div>
 
+    <div
+      v-if="showNavModeToggle"
+      class="nav-mode-toggle"
+      role="group"
+      aria-label="Navigation mode"
+      @pointerdown.stop
+      @click.stop
+    >
+      <button
+        type="button"
+        class="nav-mode-button"
+        :class="{ active: effectiveNavRailMode === 'outline' }"
+        title="AI outline"
+        aria-label="Show AI outline"
+        :aria-pressed="effectiveNavRailMode === 'outline'"
+        @click="setNavRailMode('outline')"
+      >
+        <ListTree
+          :size="15"
+          :stroke-width="2"
+        />
+      </button>
+      <button
+        type="button"
+        class="nav-mode-button"
+        :class="{ active: effectiveNavRailMode === 'trail' }"
+        title="Message nav trail"
+        aria-label="Show message nav trail"
+        :aria-pressed="effectiveNavRailMode === 'trail'"
+        @click="setNavRailMode('trail')"
+      >
+        <MessagesSquare
+          :size="15"
+          :stroke-width="2"
+        />
+      </button>
+    </div>
+
+    <AssistantMessageNavRail
+      v-if="effectiveNavRailMode === 'outline'"
+      :markers="assistantOutlineMarkers"
+      :current-index="currentAssistantOutlineIndex"
+      @navigate="navigateToAssistantOutline"
+    />
+
     <UserMessageNavRail
-      v-if="displayNavMarkers.length > 1"
+      v-else-if="effectiveNavRailMode === 'trail'"
       :markers="displayNavMarkers"
       :current-index="currentUserMessageNavIndex"
       :total-count="displayNavMarkers.length"
@@ -150,8 +195,15 @@ import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, onUpdate
 import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import EmptyState from './EmptyState.vue'
+import AssistantMessageNavRail from './AssistantMessageNavRail.vue'
 import UserMessageNavRail, { type UserMessageNavMarker } from './UserMessageNavRail.vue'
-import { ArrowDown } from 'lucide-vue-next'
+import {
+  ASSISTANT_OUTLINE_ANCHOR_ATTR,
+  buildAssistantMessageOutlineMarkers,
+  shouldShowAssistantMessageOutline,
+  type AssistantMessageOutlineMarker,
+} from './assistant-message-outline'
+import { ArrowDown, ListTree, MessagesSquare } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
@@ -170,6 +222,8 @@ interface BranchInfo {
 }
 
 type NavMarker = UserMessageNavMarker
+type MessageScrollBehavior = 'auto' | 'instant' | 'smooth'
+type NavRailMode = 'outline' | 'trail'
 
 interface Props {
   messages: ChatMessage[]
@@ -197,6 +251,8 @@ const messageListRef = ref<HTMLElement | null>(null)
 const messageListContentRef = ref<HTMLElement | null>(null)
 const bottomSentinelRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
+const assistantOutlineMarkers = ref<AssistantMessageOutlineMarker[]>([])
+const preferredNavRailMode = ref<NavRailMode>('outline')
 const showScrollToBottomButton = ref(false)
 const searchHighlightedMessageId = ref<string | null>(null)
 let searchHighlightTimer: ReturnType<typeof setTimeout> | null = null
@@ -287,6 +343,7 @@ const messageListStyles = computed(() => {
 
 // Track current navigation position among user messages
 const currentUserMessageNavIndex = ref(-1)
+const currentAssistantOutlineIndex = ref(-1)
 
 // Track if user has actually navigated (to avoid showing highlight on session switch)
 const hasNavigated = ref(false)
@@ -296,9 +353,12 @@ const hasNavigated = ref(false)
 let isActivelyNavigating = false
 let navigationCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let navMarkerUpdateFrame: number | null = null
+let assistantOutlineUpdateFrame: number | null = null
 let visibleUserMessageFrame: number | null = null
 let measurementRefreshFrame: number | null = null
 let navResizeObserver: ResizeObserver | null = null
+let isAssistantOutlineNavigating = false
+let assistantOutlineCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let isPrependingHistory = false
 let renderMeasureStart: number | null = null
 let renderMeasureSessionId = ''
@@ -330,7 +390,6 @@ const follow = useFollowScroll({
   scroller: messageListRef,
   content: messageListContentRef,
   count: computed(() => props.messages.length),
-  maintainOnLayout: false,
 })
 
 const { isFollowing } = follow
@@ -421,6 +480,7 @@ watch(
     if (!el || typeof ResizeObserver === 'undefined') return
     navContentResizeObserver = new ResizeObserver(() => {
       scheduleNavMarkerUpdate()
+      scheduleAssistantOutlineUpdate()
       scheduleMeasurementRefresh()
       // Always notify the coordinator — it routes itself based on tail / anchor / idle.
       // Tail mode used to be skipped here, which let markdown hydration / code-block
@@ -480,6 +540,22 @@ const displayNavMarkers = computed<NavMarker[]>(() => {
   return fallbackMarkers.map(marker => markerMap.get(marker.messageId) || marker)
 })
 
+const hasAssistantOutlineNav = computed(() => assistantOutlineMarkers.value.length > 1)
+const hasUserNavTrail = computed(() => displayNavMarkers.value.length > 1)
+const showNavModeToggle = computed(() => hasAssistantOutlineNav.value && hasUserNavTrail.value)
+
+const effectiveNavRailMode = computed<NavRailMode | null>(() => {
+  if (preferredNavRailMode.value === 'outline' && hasAssistantOutlineNav.value) return 'outline'
+  if (preferredNavRailMode.value === 'trail' && hasUserNavTrail.value) return 'trail'
+  if (hasAssistantOutlineNav.value) return 'outline'
+  if (hasUserNavTrail.value) return 'trail'
+  return null
+})
+
+function setNavRailMode(mode: NavRailMode) {
+  preferredNavRailMode.value = mode
+}
+
 // Get the currently highlighted message ID for navigation
 // Only returns a value if user has actually navigated (not on session switch)
 const highlightedMessageId = computed(() => {
@@ -512,13 +588,17 @@ watch(
     // Schedule marker update after DOM renders
     nextTick(() => {
       scheduleMeasurementRefresh()
-      nextTick(() => scheduleNavMarkerUpdate())
+      nextTick(() => {
+        scheduleNavMarkerUpdate()
+        scheduleAssistantOutlineUpdate()
+      })
     })
   },
   { immediate: true, flush: 'post' }
 )
 
 watch(effectiveSessionId, () => {
+  clearAssistantOutline()
   renderMeasureStart = performance.now()
   renderMeasureSessionId = effectiveSessionId.value
   renderMeasureMessageCount = props.messages.length
@@ -607,6 +687,163 @@ async function navigateToUserMessage(navIndex: number) {
   isFollowing.value = false
   lockNavigationIndex(navIndex)
   scrollToUserMessage(navIndex)
+}
+
+function clearAssistantOutline() {
+  assistantOutlineMarkers.value = []
+  currentAssistantOutlineIndex.value = -1
+}
+
+function escapeCssAttributeValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+function getAssistantOutlineAnchor(marker: AssistantMessageOutlineMarker): HTMLElement | null {
+  const row = getMessageRowById(marker.messageId)
+  if (!row) return null
+  return row.querySelector<HTMLElement>(
+    `[${ASSISTANT_OUTLINE_ANCHOR_ATTR}="${escapeCssAttributeValue(marker.anchorId)}"]`,
+  )
+}
+
+function getScrollerRelativeTop(target: HTMLElement, scroller: HTMLElement): number {
+  const scrollerRect = scroller.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  return scroller.scrollTop + targetRect.top - scrollerRect.top
+}
+
+function areAssistantOutlinesEqual(
+  previous: AssistantMessageOutlineMarker[],
+  next: AssistantMessageOutlineMarker[],
+): boolean {
+  if (previous.length !== next.length) return false
+  return previous.every((marker, index) => {
+    const other = next[index]
+    return marker.anchorId === other.anchorId &&
+      marker.messageId === other.messageId &&
+      marker.label === other.label &&
+      marker.level === other.level &&
+      marker.kind === other.kind
+  })
+}
+
+function updateVisibleAssistantOutlineIndex() {
+  if (isAssistantOutlineNavigating) return
+  const scroller = messageListRef.value
+  const markers = assistantOutlineMarkers.value
+  if (!scroller || markers.length === 0) {
+    currentAssistantOutlineIndex.value = -1
+    return
+  }
+
+  const anchorY = scroller.scrollTop + scroller.clientHeight * 0.22
+  let nextIndex = markers[0]?.navIndex ?? -1
+
+  for (const marker of markers) {
+    const target = getAssistantOutlineAnchor(marker)
+    if (!target) continue
+    const top = getScrollerRelativeTop(target, scroller)
+    if (top <= anchorY + 1) {
+      nextIndex = marker.navIndex
+    } else {
+      break
+    }
+  }
+
+  currentAssistantOutlineIndex.value = nextIndex
+}
+
+function updateAssistantOutline() {
+  const scroller = messageListRef.value
+  if (!scroller || props.messages.length === 0) {
+    clearAssistantOutline()
+    return
+  }
+
+  const viewportTop = scroller.scrollTop
+  const viewportBottom = viewportTop + scroller.clientHeight
+  const viewportAnchor = viewportTop + scroller.clientHeight * 0.28
+  let best: {
+    messageId: string
+    markers: AssistantMessageOutlineMarker[]
+    score: number
+  } | null = null
+
+  for (const message of props.messages) {
+    if (message.role !== 'assistant' || message.isStreaming) continue
+    const row = getMessageRowById(message.id)
+    if (!row) continue
+
+    const rowTop = row.offsetTop
+    const rowBottom = rowTop + row.offsetHeight
+    if (rowBottom < viewportTop || rowTop > viewportBottom) continue
+
+    const markers = buildAssistantMessageOutlineMarkers(message.id, row)
+    if (!shouldShowAssistantMessageOutline(row, scroller, markers.length)) continue
+
+    const visiblePx = Math.max(0, Math.min(rowBottom, viewportBottom) - Math.max(rowTop, viewportTop))
+    const containsAnchor = rowTop <= viewportAnchor && rowBottom >= viewportAnchor
+    const anchorDistance = containsAnchor
+      ? 0
+      : Math.min(Math.abs(rowTop - viewportAnchor), Math.abs(rowBottom - viewportAnchor))
+    const score = (containsAnchor ? 1_000_000 : 0) + visiblePx - anchorDistance * 0.25
+
+    if (!best || score > best.score) {
+      best = {
+        messageId: message.id,
+        markers,
+        score,
+      }
+    }
+  }
+
+  if (!best) {
+    clearAssistantOutline()
+    return
+  }
+
+  if (!areAssistantOutlinesEqual(assistantOutlineMarkers.value, best.markers)) {
+    assistantOutlineMarkers.value = best.markers
+  }
+  updateVisibleAssistantOutlineIndex()
+}
+
+function scheduleAssistantOutlineUpdate() {
+  if (assistantOutlineUpdateFrame !== null) {
+    cancelAnimationFrame(assistantOutlineUpdateFrame)
+  }
+  assistantOutlineUpdateFrame = requestAnimationFrame(() => {
+    assistantOutlineUpdateFrame = null
+    updateAssistantOutline()
+  })
+}
+
+async function navigateToAssistantOutline(navIndex: number) {
+  const marker = assistantOutlineMarkers.value.find(item => item.navIndex === navIndex)
+  const scroller = messageListRef.value
+  if (!marker || !scroller) return
+
+  await nextTick()
+  const target = getAssistantOutlineAnchor(marker)
+  if (!target) return
+
+  isFollowing.value = false
+  scrollCoordinator.clear()
+  isAssistantOutlineNavigating = true
+  currentAssistantOutlineIndex.value = navIndex
+
+  if (assistantOutlineCooldownTimer) {
+    clearTimeout(assistantOutlineCooldownTimer)
+  }
+
+  const targetTop = getScrollerRelativeTop(target, scroller)
+  const viewportOffset = Math.round(scroller.clientHeight * NAV_VIEWPORT_OFFSET_RATIO)
+  scrollCoordinator.writeScrollTop(targetTop - viewportOffset, { behavior: 'smooth' })
+
+  assistantOutlineCooldownTimer = setTimeout(() => {
+    isAssistantOutlineNavigating = false
+    updateAssistantOutline()
+  }, 700)
 }
 
 function lockNavigationIndex(navIndex: number) {
@@ -754,6 +991,7 @@ async function loadOlderHistoryIfNeeded(force = false) {
       restoreTopAnchor(anchor)
       scheduleMeasurementRefresh()
       scheduleNavMarkerUpdate()
+      scheduleAssistantOutlineUpdate()
       scheduleVisibleUserMessageIndexUpdate()
     }
   } finally {
@@ -767,7 +1005,7 @@ async function scrollToMessage(
   messageId: string,
   options: {
     preserveNavigation?: boolean
-    behavior?: ScrollBehavior
+    behavior?: MessageScrollBehavior
     viewportOffsetRatio?: number
     lockDurationMs?: number
   } = {},
@@ -993,6 +1231,7 @@ function handleScroll() {
   }
   updateScrollToBottomButton()
   scheduleNavMarkerUpdate()
+  scheduleAssistantOutlineUpdate()
   scheduleVisibleUserMessageIndexUpdate()
   loadOlderHistoryIfNeeded()
 }
@@ -1069,6 +1308,7 @@ onMounted(() => {
     if (typeof ResizeObserver !== 'undefined') {
       navResizeObserver = new ResizeObserver(() => {
         scheduleNavMarkerUpdate()
+        scheduleAssistantOutlineUpdate()
         scheduleMeasurementRefresh()
       })
       navResizeObserver.observe(messageListRef.value)
@@ -1081,6 +1321,7 @@ onMounted(() => {
       scrollCoordinator.setTail()
     }
     scheduleNavMarkerUpdate()
+    scheduleAssistantOutlineUpdate()
     scheduleMeasurementRefresh()
   })
 })
@@ -1102,6 +1343,10 @@ onUnmounted(() => {
     cancelAnimationFrame(navMarkerUpdateFrame)
     navMarkerUpdateFrame = null
   }
+  if (assistantOutlineUpdateFrame !== null) {
+    cancelAnimationFrame(assistantOutlineUpdateFrame)
+    assistantOutlineUpdateFrame = null
+  }
   if (visibleUserMessageFrame !== null) {
     cancelAnimationFrame(visibleUserMessageFrame)
     visibleUserMessageFrame = null
@@ -1113,6 +1358,10 @@ onUnmounted(() => {
   if (followNudgeFrame !== null) {
     cancelAnimationFrame(followNudgeFrame)
     followNudgeFrame = null
+  }
+  if (assistantOutlineCooldownTimer) {
+    clearTimeout(assistantOutlineCooldownTimer)
+    assistantOutlineCooldownTimer = null
   }
   scrollCoordinator.clear()
   if (navResizeObserver) {
@@ -1173,7 +1422,10 @@ watch(
 watch(
   [messageListDensity, customLineHeight, chatFontSize],
   () => {
-    nextTick(() => scheduleNavMarkerUpdate())
+    nextTick(() => {
+      scheduleNavMarkerUpdate()
+      scheduleAssistantOutlineUpdate()
+    })
   }
 )
 
@@ -1549,6 +1801,7 @@ function finishSessionSwitchFromViewport() {
       scheduleMeasurementRefresh()
       scheduleVisibleUserMessageIndexUpdate()
       scheduleNavMarkerUpdate()
+      scheduleAssistantOutlineUpdate()
       updateScrollToBottomButton()
     })
   })
@@ -1682,6 +1935,57 @@ defineExpose({
 
 .scroll-to-bottom-btn:active {
   transform: translateX(-50%) scale(0.94);
+}
+
+.nav-mode-toggle {
+  position: absolute;
+  top: 16px;
+  right: 14px;
+  z-index: var(--z-dropdown);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 0.5px solid color-mix(in srgb, var(--border) 74%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-elevated, var(--bg-panel)) 82%, transparent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  pointer-events: auto;
+}
+
+.nav-mode-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted, var(--muted));
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.nav-mode-button:hover,
+.nav-mode-button:focus-visible {
+  color: var(--accent, #3b82f6);
+  outline: none;
+}
+
+.nav-mode-button.active {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 14%, transparent);
+  color: var(--accent, #3b82f6);
+}
+
+.nav-mode-button:active {
+  transform: scale(0.94);
 }
 
 .scroll-bottom-btn-enter-active,
@@ -1851,6 +2155,10 @@ defineExpose({
 }
 
 @media (max-width: 480px) {
+  .nav-mode-toggle {
+    display: none;
+  }
+
   .message-list {
     padding: 10px 8px;
     gap: 10px;

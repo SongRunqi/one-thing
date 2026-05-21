@@ -3,6 +3,7 @@
     ref="rootRef"
     class="markdown-document-editor"
     :data-surface="surface"
+    :data-source-mode="sourceMode ? 'source' : 'preview'"
   >
     <div
       v-if="toolbar && !readonly"
@@ -25,6 +26,21 @@
       </button>
     </div>
 
+    <button
+      v-if="sourceToggle"
+      class="markdown-source-toggle"
+      type="button"
+      :title="sourceMode ? 'Show live preview' : 'Show Markdown source'"
+      :aria-label="sourceMode ? 'Show live preview' : 'Show Markdown source'"
+      :aria-pressed="sourceMode ? 'true' : 'false'"
+      @click="toggleSourceMode"
+    >
+      <component
+        :is="sourceMode ? Eye : Code2"
+        :size="14"
+      />
+    </button>
+
     <TextEditor
       ref="editorRef"
       class="markdown-document-textarea"
@@ -36,7 +52,10 @@
       :min-height="minHeight"
       :max-height="maxHeight"
       :spellcheck="spellcheck"
-      :markdown-live-preview="true"
+      :markdown-live-preview="!sourceMode"
+      :markdown-live-preview-features="features"
+      :settings="settings"
+      :markdown-asset-context="markdownAssetContext"
       @update:model-value="emit('update:modelValue', $event)"
       @transaction="emit('transaction', $event)"
       @focus="emit('focus')"
@@ -53,6 +72,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   Bold,
   Code2,
+  Eye,
   Heading1,
   Heading2,
   Heading3,
@@ -83,7 +103,9 @@ import type {
   EditorSelection,
   EditorSetValueOptions,
   EditorTransaction,
+  EditorSettings,
 } from './types'
+import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 
 interface Props {
   modelValue: string
@@ -96,6 +118,10 @@ interface Props {
   minHeight?: number
   maxHeight?: number
   spellcheck?: boolean
+  sourceToggle?: boolean
+  settings?: EditorSettings
+  documentPath?: string
+  workspaceRoot?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -109,6 +135,10 @@ const props = withDefaults(defineProps<Props>(), {
   minHeight: 160,
   maxHeight: 100000,
   spellcheck: true,
+  sourceToggle: true,
+  settings: undefined,
+  documentPath: '',
+  workspaceRoot: '',
 })
 
 const emit = defineEmits<{
@@ -117,8 +147,8 @@ const emit = defineEmits<{
   focus: []
   blur: []
   command: [command: MarkdownCommand]
-  openLink: [href: string]
-  openImage: [payload: { src: string; alt: string }]
+  openLink: [payload: { href: string; asset?: MarkdownAssetResolution | null }]
+  openImage: [payload: { src: string; alt: string; absolutePath?: string; asset?: MarkdownAssetResolution | null }]
   keydown: [event: KeyboardEvent]
   paste: [event: ClipboardEvent]
   cancel: []
@@ -126,7 +156,12 @@ const emit = defineEmits<{
 
 const rootRef = ref<HTMLElement | null>(null)
 const editorRef = ref<EditorHandle | null>(null)
+const sourceMode = ref(false)
 const features = computed(() => normalizeMarkdownFeatures(props.features))
+const markdownAssetContext = computed(() => ({
+  documentPath: props.documentPath,
+  workspaceRoot: props.workspaceRoot,
+}))
 const toolbarItems = computed(() => {
   const items: Array<{ command: MarkdownCommand; title: string; icon: unknown }> = [
     { command: 'heading-1', title: 'Heading 1', icon: Heading1 },
@@ -189,19 +224,40 @@ function preventAndRun(event: KeyboardEvent, command: MarkdownCommand) {
   runCommand(command)
 }
 
+function setSourceMode(next: boolean) {
+  sourceMode.value = next
+}
+
+function toggleSourceMode() {
+  sourceMode.value = !sourceMode.value
+  nextTick(() => editorRef.value?.focus())
+}
+
 function handlePaste(event: ClipboardEvent) {
   emit('paste', event)
 }
 
 function handleOpenLink(event: Event) {
-  const detail = (event as CustomEvent<{ href?: string }>).detail
+  const detail = (event as CustomEvent<{ href?: string; asset?: MarkdownAssetResolution | null }>).detail
   const href = detail?.href
-  if (href) emit('openLink', href)
+  if (href) emit('openLink', { href, asset: detail.asset })
 }
 
 function handleOpenImage(event: Event) {
-  const detail = (event as CustomEvent<{ src?: string; alt?: string }>).detail
-  if (detail?.src) emit('openImage', { src: detail.src, alt: detail.alt || '' })
+  const detail = (event as CustomEvent<{
+    src?: string
+    alt?: string
+    absolutePath?: string
+    asset?: MarkdownAssetResolution | null
+  }>).detail
+  if (detail?.src) {
+    emit('openImage', {
+      src: detail.src,
+      alt: detail.alt || '',
+      absolutePath: detail.absolutePath,
+      asset: detail.asset,
+    })
+  }
 }
 
 function focus() {
@@ -282,11 +338,15 @@ defineExpose<MarkdownDocumentEditorHandle>({
   setScrollTop,
   getCursorLineInfo,
   applyCommand: runCommand,
+  setSourceMode,
+  toggleSourceMode,
+  getSourceMode: () => sourceMode.value,
 })
 </script>
 
 <style scoped>
 .markdown-document-editor {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -297,7 +357,7 @@ defineExpose<MarkdownDocumentEditorHandle>({
 .markdown-document-toolbar {
   flex: 0 0 auto;
   min-height: 34px;
-  padding: 0 2px 8px;
+  padding: 0 38px 8px 2px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -327,6 +387,42 @@ defineExpose<MarkdownDocumentEditorHandle>({
   color: var(--text);
   border-color: var(--border);
   background: color-mix(in srgb, var(--bg-elevated, var(--panel)) 72%, transparent);
+}
+
+.markdown-source-toggle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 6;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--text-muted, var(--muted)) 24%, transparent);
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-elevated, var(--panel)) 84%, transparent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.markdown-document-editor:hover .markdown-source-toggle,
+.markdown-document-editor:focus-within .markdown-source-toggle,
+.markdown-document-editor[data-source-mode="source"] .markdown-source-toggle {
+  opacity: 1;
+}
+
+.markdown-source-toggle:hover,
+.markdown-source-toggle:focus-visible,
+.markdown-source-toggle[aria-pressed="true"] {
+  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated, var(--panel)));
+  outline: none;
 }
 
 .markdown-document-textarea {

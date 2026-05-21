@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BuildPromptContextOptions } from '../context.js'
 import {
   buildPromptContext,
@@ -12,10 +12,27 @@ import {
 } from '../index.js'
 import type { PromptSegment } from '../types.js'
 
+const agentStoreMock = vi.hoisted(() => ({
+  getAgent: vi.fn(),
+}))
+
+const todoPlanStoreMock = vi.hoisted(() => ({
+  readTodoPlanSnapshot: vi.fn(),
+}))
+
 vi.mock('electron', () => ({
   app: {
     isPackaged: false,
   },
+}))
+
+vi.mock('../../../agents/index.js', () => ({
+  getAgent: agentStoreMock.getAgent,
+  DEFAULT_AGENT_ID: 'default',
+}))
+
+vi.mock('../../../todo-plan/store.js', () => ({
+  readTodoPlanSnapshot: todoPlanStoreMock.readTodoPlanSnapshot,
 }))
 
 const tempDirs: string[] = []
@@ -50,6 +67,40 @@ function fragmentSegments(request: ReturnType<typeof buildRequestMessages>): Pro
 
 beforeAll(async () => {
   await initializePromptManager()
+})
+
+beforeEach(() => {
+  agentStoreMock.getAgent.mockImplementation((agentId?: string) => ({
+    id: agentId || 'default',
+    name: agentId ? 'Custom Agent' : 'Default Agent',
+    systemPrompt: '',
+    isDefault: !agentId || undefined,
+    createdAt: 1,
+    updatedAt: 1,
+  }))
+  todoPlanStoreMock.readTodoPlanSnapshot.mockResolvedValue({
+    directory: '/tmp/todo-plan',
+    userNotes: [{
+      id: 'user-note-1',
+      scope: 'user-note',
+      title: 'Personal Errands',
+      role: 'user',
+      filePath: '/tmp/todo-plan/user-notes/personal-errands.md',
+      content: '# Personal Errands\n\n- [ ] Buy coffee',
+      updatedAt: 1,
+      totalTasks: 1,
+    }],
+    workspaceAiTodo: {
+      id: 'workspace-ai-todo',
+      scope: 'workspace-ai-todo',
+      title: 'AI Todo',
+      role: 'assistant',
+      filePath: '/tmp/todo-plan/workspaces/demo/ai-todo.md',
+      content: '# AI Todo\n\n## Now\n- [ ] Ship active todo autonomy\n\n## Later\n- [ ] Tighten heuristics',
+      updatedAt: 1,
+      totalTasks: 2,
+    },
+  })
 })
 
 afterEach(() => {
@@ -153,6 +204,100 @@ describe('PromptContextBuilder', () => {
     expect(second.emittedFragments).toHaveLength(1)
     expect(second.emittedFragments[0].source).toBe('plugins/test-plugin/memory:removed')
     expect(second.emittedFragments[0].reason).toBe('removed')
+  })
+
+  it('injects custom Agent system prompts as developer fragments', async () => {
+    agentStoreMock.getAgent.mockReturnValueOnce({
+      id: 'agent-research',
+      name: 'Research Lead',
+      systemPrompt: 'Prioritize crisp, source-backed reasoning.',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+
+    const result = await buildPromptContext(baseOptions({ agentId: 'agent-research' }))
+    const agentFragment = result.activeFragments.find(item => item.source === 'agents/agent-research/system-prompt')
+    const request = buildRequestMessages({
+      providerId: 'codex',
+      promptContext: result.state,
+      emittedFragments: result.emittedFragments,
+      historyMessages: [],
+    })
+
+    expect(result.state.referenceSnapshot?.agentId).toBe('agent-research')
+    expect(agentFragment?.role).toBe('developer')
+    expect(agentFragment?.content).toContain('# Agent: Research Lead')
+    expect(agentFragment?.content).toContain('Prioritize crisp, source-backed reasoning.')
+    expect(request.messages.some(message => (
+      message.role === 'developer' &&
+      String(message.content).includes('Prioritize crisp, source-backed reasoning.')
+    ))).toBe(true)
+  })
+
+  it('injects active workspace todo context when todo_plan is enabled', async () => {
+    const result = await buildPromptContext(baseOptions({
+      sessionId: 'session-1',
+      workingDirectory: '/repo',
+      toolNames: ['read', 'todo_plan'],
+      settings: {
+        general: {
+          todoPlan: {
+            enabled: true,
+            autonomy: 'active',
+          },
+        },
+      } as any,
+    }))
+    const todoFragment = result.activeFragments.find(item => item.source === 'context/todo-plan-autonomy')
+    const request = buildRequestMessages({
+      providerId: 'codex',
+      promptContext: result.state,
+      emittedFragments: result.emittedFragments,
+      historyMessages: [],
+    })
+
+    expect(todoPlanStoreMock.readTodoPlanSnapshot).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      workingDirectory: '/repo',
+    })
+    expect(todoFragment?.role).toBe('developer')
+    expect(todoFragment?.content).toContain('Mode: active')
+    expect(todoFragment?.content).toContain('workspace-ai-todo')
+    expect(todoFragment?.content).toContain('User todo capture policy')
+    expect(todoFragment?.content).toContain('Personal Errands')
+    expect(todoFragment?.content).toContain('Ship active todo autonomy')
+    expect(request.messages.some(message => (
+      message.role === 'developer' &&
+      String(message.content).includes('Todo / Notes Autonomy')
+    ))).toBe(true)
+  })
+
+  it('skips todo autonomy context when disabled or unavailable', async () => {
+    const disabled = await buildPromptContext(baseOptions({
+      toolNames: ['read', 'todo_plan'],
+      settings: {
+        general: {
+          todoPlan: {
+            enabled: true,
+            autonomy: 'off',
+          },
+        },
+      } as any,
+    }))
+    const withoutTool = await buildPromptContext(baseOptions({
+      toolNames: ['read'],
+      settings: {
+        general: {
+          todoPlan: {
+            enabled: true,
+            autonomy: 'active',
+          },
+        },
+      } as any,
+    }))
+
+    expect(disabled.activeFragments.some(item => item.source === 'context/todo-plan-autonomy')).toBe(false)
+    expect(withoutTool.activeFragments.some(item => item.source === 'context/todo-plan-autonomy')).toBe(false)
   })
 
   it('loads AGENTS instructions from project root to working directory with override priority', () => {

@@ -142,6 +142,7 @@ export interface MemoryDreamingStatus {
 export interface MemoryCapturePending {
   id: string
   sessionId: string
+  agentId?: string
   createdAt: number
   target: 'daily' | 'memory'
   heading: string
@@ -155,6 +156,7 @@ export interface MemoryCapturePending {
 
 export interface MemoryOverview {
   enabled: boolean
+  agentId?: string
   root: string
   memoryDir: string
   soulPath: string
@@ -173,6 +175,7 @@ export interface MemoryOverview {
 
 export interface MemoryReadRequest {
   path: string
+  agentId?: string
   startLine?: number
   endLine?: number
   lines?: number
@@ -208,6 +211,7 @@ export interface MemorySearchHit {
 
 export interface MemorySearchRequest {
   query: string
+  agentId?: string
   limit?: number | string
 }
 
@@ -219,6 +223,7 @@ export interface MemorySearchResponse {
 
 export interface MemoryAppendRequest {
   content: string
+  agentId?: string
   target?: 'daily'
   heading?: string
 }
@@ -260,6 +265,7 @@ export interface MemoryCaptureDecisionResponse {
 export interface MemorySaveFileRequest {
   path: string
   content: string
+  agentId?: string
 }
 
 export interface MemorySaveFileResponse {
@@ -387,12 +393,14 @@ export interface MemoryGraphAuditEvent {
 }
 
 export interface MemoryGraphListRequest {
+  agentId?: string
   query?: string
   includeDeleted?: boolean
   limit?: number
 }
 
 export interface MemoryGraphEntityUpsertRequest {
+  agentId?: string
   id?: string
   entityType: MemoryGraphEntityType
   name: string
@@ -404,6 +412,7 @@ export interface MemoryGraphEntityUpsertRequest {
 }
 
 export interface MemoryGraphObservationUpsertRequest {
+  agentId?: string
   id?: string
   entityId: string
   kind: MemoryGraphObservationKind
@@ -417,6 +426,7 @@ export interface MemoryGraphObservationUpsertRequest {
 }
 
 export interface MemoryGraphRelationUpsertRequest {
+  agentId?: string
   id?: string
   fromEntityId: string
   relationType: string
@@ -429,14 +439,17 @@ export interface MemoryGraphRelationUpsertRequest {
 }
 
 export interface MemoryGraphDeleteRequest {
+  agentId?: string
   id: string
 }
 
 export interface MemoryGraphDuplicateDecisionRequest {
+  agentId?: string
   id: string
 }
 
 export interface MemoryGraphAuditRequest {
+  agentId?: string
   id: string
 }
 
@@ -495,6 +508,7 @@ export interface MemoryGraphAuditResponse {
 }
 
 export interface MemoryProfileListRequest {
+  agentId?: string
   query?: string
   includeDeleted?: boolean
   limit?: number
@@ -507,6 +521,7 @@ export interface MemoryProfileListResponse {
 }
 
 export interface MemoryProfileUpsertRequest {
+  agentId?: string
   id?: string
   memoryKey?: string
   kind: CanonicalMemoryKind
@@ -525,6 +540,7 @@ export interface MemoryProfileUpsertResponse {
 }
 
 export interface MemoryProfileDeleteRequest {
+  agentId?: string
   id: string
 }
 
@@ -534,6 +550,7 @@ export interface MemoryProfileDeleteResponse {
 }
 
 export interface MemoryProfileAuditRequest {
+  agentId?: string
   id: string
 }
 

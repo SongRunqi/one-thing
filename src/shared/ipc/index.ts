@@ -9,6 +9,18 @@
 // IPC Channel Constants
 export { IPC_CHANNELS } from './channels.js'
 
+export { DEFAULT_AGENT_ID } from './agents.js'
+export type {
+  AgentDefinition,
+  AgentsListResponse,
+  AgentCreateRequest,
+  AgentCreateResponse,
+  AgentUpdateRequest,
+  AgentUpdateResponse,
+  AgentDeleteRequest,
+  AgentDeleteResponse,
+} from './agents.js'
+
 // IPC Router infrastructure
 export { defineRouter, getChannelName } from './router.js'
 export type { RouteConfig, DomainRoutes, Router, RouteHandlers, RouteAPI } from './router.js'
@@ -94,6 +106,18 @@ export type {
   MediaRebuildResponse,
 } from './media.js'
 
+// Markdown asset / attachment types
+export type {
+  MarkdownAssetKind,
+  MarkdownAssetResolution,
+  MarkdownResolveAssetRequest,
+  MarkdownResolveAssetResponse,
+  MarkdownAttachmentInput,
+  SavedMarkdownAttachment,
+  MarkdownSaveAttachmentsRequest,
+  MarkdownSaveAttachmentsResponse,
+} from './markdown.js'
+
 // Provider types
 export type {
   AIProviderId,
@@ -174,6 +198,7 @@ export type {
 export type {
   SkillSource,
   SkillDefinition,
+  SkillReferenceSnapshot,
   SkillFile,
   SkillSettings,
   GetSkillsResponse,
@@ -267,9 +292,17 @@ export type {
 // Scheduler types
 export type {
   SchedulerRunReason,
+  SchedulerTaskKind,
+  SchedulerTaskSource,
+  SchedulerRunStatus,
   SchedulerSchedule,
   SchedulerRunRecordDTO,
+  SchedulerRunTimelineEntryDTO,
+  SchedulerRunToolCallDTO,
+  SchedulerRunStepDTO,
+  SchedulerRunDetailDTO,
   SchedulerTaskSnapshotDTO,
+  SchedulerUserTaskDTO,
   SchedulerListResponse,
   SchedulerGetRequest,
   SchedulerGetResponse,
@@ -277,6 +310,15 @@ export type {
   SchedulerRunNowResponse,
   SchedulerSetEnabledRequest,
   SchedulerSetEnabledResponse,
+  SchedulerCreateTaskRequest,
+  SchedulerUpdateTaskRequest,
+  SchedulerDeleteTaskRequest,
+  SchedulerWriteTaskResponse,
+  SchedulerDeleteTaskResponse,
+  SchedulerListRunsRequest,
+  SchedulerListRunsResponse,
+  SchedulerGetRunRequest,
+  SchedulerGetRunResponse,
 } from './scheduler.js'
 
 // Settings types
@@ -405,10 +447,26 @@ export type {
   SearchResponse,
 } from './search.js'
 
+// User prompt snippet types
+export type {
+  UserPrompt,
+  PromptReferenceSnapshot,
+  PromptListResponse,
+  PromptGetRequest,
+  PromptGetResponse,
+  PromptCreateRequest,
+  PromptCreateResponse,
+  PromptUpdateRequest,
+  PromptUpdateResponse,
+  PromptDeleteRequest,
+  PromptDeleteResponse,
+} from './prompts.js'
+
 // Todo / plan panel types
 export type {
   TodoPlanScope,
   TodoPlanActivationMode,
+  TodoPlanAutonomyMode,
   TodoPlanWindowActionRequest,
   TodoPlanDocument,
   TodoPlanContext,

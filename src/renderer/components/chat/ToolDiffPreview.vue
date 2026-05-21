@@ -122,7 +122,8 @@ defineExpose({
   border: 1px solid var(--border-code);
   border-radius: var(--radius-sm, 8px);
   max-height: 240px;
-  overflow-y: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
   font-size: var(--font-size-sm, 12px);
   line-height: var(--line-height-normal, 1.5);
   font-family: var(--font-mono);
@@ -132,7 +133,6 @@ defineExpose({
 .diff-content.fixed {
   height: clamp(168px, 28vh, 260px);
   max-height: clamp(168px, 28vh, 260px);
-  overscroll-behavior: contain;
 }
 
 .diff-header {
@@ -207,6 +207,8 @@ defineExpose({
 .diff-line {
   display: flex;
   white-space: pre;
+  width: max-content;
+  min-width: 100%;
   padding: 1px 10px 1px 0;
   min-height: 21px;
   align-items: center;
@@ -241,9 +243,9 @@ defineExpose({
 }
 
 .line-content {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
+  flex: 0 0 auto;
+  min-width: max-content;
+  overflow: visible;
   padding-right: var(--space-2, 8px);
 }
 

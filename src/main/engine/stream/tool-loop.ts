@@ -43,6 +43,7 @@ import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 import { type PendingMessageQueue, type PendingMessage } from './message-queue.js'
 import { getAIToolName } from '../../providers/tool-name-alias.js'
 import { IPC_CHANNELS } from '../../../shared/ipc.js'
+import { resolvePromptReferences } from '../../prompts/resolver.js'
 
 // Gate per-chunk stream logs behind env flag. Running JSON.stringify on every
 // text/tool-input delta noticeably slows streaming, so default off.
@@ -999,18 +1000,24 @@ function injectPendingMessages(
   emitter: IPCEmitter,
   messages: PendingMessage[],
 ): void {
+  const session = store.getSession(ctx.sessionId)
+  const skillsEnabled = ctx.settings.skills?.enableSkills !== false
+  const skillsForRefs = skillsEnabled ? getSkillsForSession(session?.workingDirectory) : []
+
   for (const msg of messages) {
     console.log(`[ToolLoop] Steering: "${msg.content.slice(0, 80)}${msg.content.length > 80 ? '...' : ''}" (source=${msg.source})`)
+    const resolvedPromptRefs = resolvePromptReferences(msg.content, { skills: skillsForRefs })
 
     // Push into LLM conversation as a user message
-    conversationMessages.push({ role: 'user', content: msg.content })
+    conversationMessages.push({ role: 'user', content: resolvedPromptRefs.modelContent })
 
     // Persist as a user message in the store
     const userMsg: ChatMessage = {
       id: uuidv4(),
       role: 'user',
-      content: msg.content,
+      content: resolvedPromptRefs.modelContent,
       timestamp: msg.timestamp,
+      contentParts: resolvedPromptRefs.contentParts,
     }
     store.addMessage(ctx.sessionId, userMsg)
 
@@ -1070,6 +1077,7 @@ export async function executeStreamGeneration(
     const skillsSettings = ctx.settings.skills
     const skillsEnabled = skillsSettings?.enableSkills !== false
     const sessionWorkingDir = session?.workingDirectory
+    const sessionWorkingDirRoots = session?.workingDirectoryRoots
     const enabledSkills = skillsEnabled ? getSkillsForSession(sessionWorkingDir) : []
 
     if (sessionWorkingDir) {
@@ -1161,12 +1169,14 @@ export async function executeStreamGeneration(
     const promptContext = await buildPromptContext({
       previousState: session?.promptContext ?? undefined,
       sessionId: ctx.sessionId,
+      agentId: session?.agentId,
       providerId: ctx.providerId,
       providerConfig: ctx.providerConfig as unknown as Record<string, unknown>,
       settings: ctx.settings,
       hasTools,
       skills: enabledSkills,
       workingDirectory: sessionWorkingDir,
+      workingDirectoryRoots: sessionWorkingDirRoots,
       contextVariables,
       activeProject: projectVars.active,
       knownProjects: projectVars.known,

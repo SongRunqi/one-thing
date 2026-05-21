@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import InputBox from '../InputBox.vue'
@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   settingsStore: null as any,
   sessionsStore: null as any,
   chatStore: null as any,
+  promptsStore: null as any,
 }))
 
 vi.mock('@/stores/settings', () => ({
@@ -22,8 +23,20 @@ vi.mock('@/stores/chat', () => ({
   useChatStore: () => mocks.chatStore,
 }))
 
+vi.mock('@/stores/prompts', () => ({
+  usePromptsStore: () => mocks.promptsStore,
+}))
+
 vi.mock('@/services/commands', () => ({
   findCommand: vi.fn(() => null),
+  getCommands: vi.fn(() => [{
+    id: 'compact',
+    name: 'Compact Context',
+    description: 'Compact context',
+    usage: '/compact',
+    execute: vi.fn(),
+  }]),
+  refreshPluginCommands: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('@/editor/TextEditor.vue', () => ({
@@ -92,6 +105,16 @@ async function waitFor(predicate: () => boolean) {
   throw new Error('Timed out waiting for condition')
 }
 
+function dispatchKeydown(element: Element, key: string) {
+  const event = new KeyboardEvent('keydown', {
+    key,
+    bubbles: true,
+    cancelable: true,
+  })
+  element.dispatchEvent(event)
+  return event
+}
+
 function mountInputBox(props: Record<string, unknown> = {}) {
   return mount(InputBox, {
     attachTo: document.body,
@@ -113,6 +136,17 @@ function mountInputBox(props: Record<string, unknown> = {}) {
       },
     },
   })
+}
+
+async function setComposerValue(wrapper: VueWrapper, value: string) {
+  await wrapper.find('textarea').setValue(value)
+  wrapper.findComponent({ name: 'TextEditor' }).vm.$emit('transaction', {
+    value,
+    selection: { from: value.length, to: value.length },
+    docChanged: true,
+    selectionChanged: true,
+  })
+  await settle()
 }
 
 describe('InputBox paste attachments', () => {
@@ -144,6 +178,10 @@ describe('InputBox paste attachments', () => {
     mocks.chatStore = reactive({
       isSessionGenerating: vi.fn(() => false),
     })
+    mocks.promptsStore = reactive({
+      prompts: [],
+      loadPrompts: vi.fn().mockResolvedValue([]),
+    })
 
     vi.stubGlobal('ResizeObserver', class {
       observe() {}
@@ -160,6 +198,9 @@ describe('InputBox paste attachments', () => {
     vi.stubGlobal('window', Object.assign(window, {
       electronAPI: {
         getSkills: vi.fn().mockResolvedValue({ success: true, skills: [] }),
+        listVariables: vi.fn().mockResolvedValue({ success: true, variables: [] }),
+        listFiles: vi.fn().mockResolvedValue({ success: true, files: ['/repo/src/main.ts'] }),
+        listDirs: vi.fn().mockResolvedValue({ success: true, dirs: ['/repo/src'] }),
       },
     }))
   })
@@ -234,5 +275,35 @@ describe('InputBox paste attachments', () => {
     expect(emitted?.[0]).toBe('')
     expect(emitted?.[1]).toBe('send')
     expect(emitted?.[2]).toMatchObject([{ fileName: 'queued.txt' }])
+  })
+
+  it('keeps Enter inside the active palette instead of sending the draft', async () => {
+    const wrapper = mountInputBox()
+
+    await setComposerValue(wrapper, '/c')
+    dispatchKeydown(wrapper.find('textarea').element, 'Enter')
+    await settle()
+
+    expect(wrapper.emitted('sendMessage')).toBeUndefined()
+  })
+
+  it('keeps Enter inside the active file picker instead of sending the draft', async () => {
+    const wrapper = mountInputBox()
+
+    await setComposerValue(wrapper, '@')
+    dispatchKeydown(wrapper.find('textarea').element, 'Enter')
+    await settle()
+
+    expect(wrapper.emitted('sendMessage')).toBeUndefined()
+  })
+
+  it('lets /cd Enter flow through as the path confirmation action', async () => {
+    const wrapper = mountInputBox()
+
+    await setComposerValue(wrapper, '/cd /repo')
+    dispatchKeydown(wrapper.find('textarea').element, 'Enter')
+    await settle()
+
+    expect(wrapper.emitted('sendMessage')?.[0]?.[0]).toBe('/cd /repo')
   })
 })

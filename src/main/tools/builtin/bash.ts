@@ -307,6 +307,30 @@ function getSandboxBoundary(ctxWorkingDirectory?: string): string {
   return process.cwd()
 }
 
+function uniquePaths(paths: string[]): string[] {
+  const seen = new Set<string>()
+  const output: string[] = []
+  for (const item of paths) {
+    if (!item) continue
+    const resolved = path.resolve(expandPath(item))
+    if (seen.has(resolved)) continue
+    seen.add(resolved)
+    output.push(resolved)
+  }
+  return output
+}
+
+function getSandboxRoots(ctxWorkingDirectory?: string, ctxWorkingDirectoryRoots?: string[]): string[] {
+  return uniquePaths([
+    getSandboxBoundary(ctxWorkingDirectory),
+    ...(ctxWorkingDirectoryRoots ?? []),
+  ])
+}
+
+function findSandboxRoot(sandboxRoots: string[], targetPath: string): string | undefined {
+  return sandboxRoots.find(root => isPathContained(root, targetPath))
+}
+
 /**
  * Bash Tool Definition
  */
@@ -331,10 +355,16 @@ The sandbox restricts file access to allowed directories only.`,
 
     // Get sandbox boundary from session's workingDirectory (getSandboxBoundary expands ~)
     const sandboxBoundary = getSandboxBoundary(ctx.workingDirectory)
+    const sandboxRoots = getSandboxRoots(ctx.workingDirectory, ctx.workingDirectoryRoots)
 
     // Determine working directory (default to sandbox boundary)
     // Also expand ~ in working_directory parameter from LLM
-    const workingDir = working_directory ? expandPath(working_directory) : sandboxBoundary
+    let workingDir = working_directory ? expandPath(working_directory) : sandboxBoundary
+    if (!path.isAbsolute(workingDir)) {
+      workingDir = path.resolve(sandboxBoundary, workingDir)
+    }
+    const matchedRoot = findSandboxRoot(sandboxRoots, workingDir)
+    const permissionRoot = matchedRoot ?? sandboxBoundary
 
     // Classify the command
     const commandAction = classifyCommand(command)
@@ -357,7 +387,7 @@ The sandbox restricts file access to allowed directories only.`,
     }
 
     // Check if working directory is outside sandbox boundary
-    if (!isPathContained(sandboxBoundary, workingDir)) {
+    if (!matchedRoot) {
       await Permission.ask({
         type: 'external_directory',
         pattern: [workingDir, path.join(workingDir, '*')],
@@ -384,7 +414,7 @@ The sandbox restricts file access to allowed directories only.`,
         messageId: ctx.messageId,
         callId: ctx.toolCallId,
         title: command,
-        workingDirectory: sandboxBoundary,
+        workingDirectory: permissionRoot,
         metadata: {
           command,
           pattern,

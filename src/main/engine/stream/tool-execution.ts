@@ -97,7 +97,8 @@ export async function executeToolDirectly(
     sessionId: string
     messageId: string
     toolCallId?: string
-    workingDirectory?: string  // Session's working directory (sandbox boundary)
+    workingDirectory?: string  // Session's active working directory
+    workingDirectoryRoots?: string[] // Additional sandbox roots
     abortSignal?: AbortSignal
     onMetadata?: (update: { title?: string; metadata?: Record<string, unknown> }) => void
     // Step event callbacks for sub-agent tools (e.g., CustomAgent)
@@ -152,6 +153,7 @@ export async function executeToolDirectly(
       messageId: context.messageId,
       toolCallId: context.toolCallId,
       workingDirectory: context.workingDirectory,
+      workingDirectoryRoots: context.workingDirectoryRoots,
       abortSignal: context.abortSignal,
       onMetadata: context.onMetadata,
       // Forward step callbacks for sub-agent tools (e.g., CustomAgent)
@@ -287,6 +289,7 @@ export async function executeToolAndUpdate(
 
   // Get session's workingDirectory for sandbox boundary (reuse session from above)
   const workingDirectory = session?.workingDirectory
+  const workingDirectoryRoots = session?.workingDirectoryRoots
 
   // Execute tool directly (no LLM overhead)
   const result = await executeToolDirectly(
@@ -297,6 +300,7 @@ export async function executeToolAndUpdate(
       messageId: ctx.assistantMessageId,
       toolCallId: toolCall.id,
       workingDirectory,  // Pass session's working directory for sandbox
+      workingDirectoryRoots,
       abortSignal: ctx.abortSignal,
       // Tool metadata streaming callback
       onMetadata: (update) => {

@@ -169,6 +169,7 @@ import MessageThinking from './message/MessageThinking.vue'
 import MessageBubble from './message/MessageBubble.vue'
 import MessageActions from './message/MessageActions.vue'
 import SelectionToolbar from './message/SelectionToolbar.vue'
+import { rawTextFromPromptParts } from '@shared/prompt-references'
 
 interface BranchInfo {
   id: string
@@ -233,7 +234,7 @@ function formatTime(timestamp: number): string {
 
 // Edit handlers
 function startEdit() {
-  editContent.value = props.message.content
+  editContent.value = rawTextFromPromptParts(props.message.content, props.message.contentParts)
   isEditing.value = true
 }
 

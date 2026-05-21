@@ -1,10 +1,82 @@
-import { ref, computed, watch, type Ref } from 'vue'
-import { nextTick } from 'vue'
+import { computed, nextTick, onScopeDispose, ref, watch, type Ref } from 'vue'
 import type { SkillDefinition } from '@/types'
-import type { PaletteItem } from '@/types/palette'
+import type { PaletteItem, PaletteItemType } from '@/types/palette'
 import { filterPaletteItems } from '@/services/palette'
+import { refreshPluginCommands } from '@/services/commands'
+import { useSettingsStore } from '@/stores/settings'
 import type { EditorHandle, EditorSelection, EditorTransaction } from '@/editor'
 import { applyTriggerReplacement, parseEditorTrigger, type EditorTrigger } from '@/editor'
+import { usePromptsStore } from '@/stores/prompts'
+import { createPromptToken, createSkillToken } from '@shared/prompt-references'
+
+export type ComposerExtensionType = 'none' | 'palette' | 'files' | 'paths'
+export type ComposerExtensionItemKind = PaletteItemType | 'file' | 'path'
+
+export interface ComposerExtensionItem {
+  id: string
+  kind: ComposerExtensionItemKind
+  title: string
+  description?: string
+  meta?: string
+  value?: string
+  paletteItem?: PaletteItem
+}
+
+export interface ComposerExtensionState {
+  type: ComposerExtensionType
+  query: string
+  trigger: EditorTrigger | null
+  items: ComposerExtensionItem[]
+  loading: boolean
+  error: string | null
+  selectedIndex: number
+  paletteTypes?: PaletteItemType[]
+}
+
+interface NoteRoot {
+  path: string
+  label: string
+}
+
+function emptyExtension(): ComposerExtensionState {
+  return {
+    type: 'none',
+    query: '',
+    trigger: null,
+    items: [],
+    loading: false,
+    error: null,
+    selectedIndex: 0,
+  }
+}
+
+function normalizePath(filePath: string): string {
+  return filePath.replace(/\/+$/, '')
+}
+
+function basename(filePath: string): string {
+  return normalizePath(filePath).split('/').filter(Boolean).pop() || filePath
+}
+
+function dirname(filePath: string): string {
+  const normalized = normalizePath(filePath)
+  const parts = normalized.split('/').filter(Boolean)
+  if (parts.length <= 1) return normalized.startsWith('/') ? '/' : ''
+  return `${normalized.startsWith('/') ? '/' : ''}${parts.slice(0, -1).join('/')}`
+}
+
+function isPathInsideRoot(filePath: string, root: string): boolean {
+  const normalizedRoot = normalizePath(root)
+  return filePath === normalizedRoot || filePath.startsWith(`${normalizedRoot}/`)
+}
+
+function makeNoteLabel(value: string, name: string): string {
+  const dirName = basename(value)
+  if (dirName && dirName !== '/') return `notes/${dirName}`
+  if (name === 'ai_note_dir') return 'notes/ai'
+  if (name === 'work_note_dir') return 'notes/work'
+  return 'notes/personal'
+}
 
 export function usePickerOrchestration(
   messageInput: Ref<string>,
@@ -12,25 +84,22 @@ export function usePickerOrchestration(
   editorRef: Ref<EditorHandle | null>,
   adjustHeight: () => void,
   checkHistoryEdit: (newValue: string) => void,
+  sessionId?: Ref<string | undefined>,
 ) {
-  // Skills state
+  const promptsStore = usePromptsStore()
+  const settingsStore = useSettingsStore()
   const availableSkills = ref<SkillDefinition[]>([])
-  const showSkillPicker = ref(false)
-  const skillTriggerQuery = ref('')
-
-  // Commands state
-  const showCommandPicker = ref(false)
-  const commandQuery = ref('')
-
-  // File picker state
-  const showFilePicker = ref(false)
-  const fileQuery = ref('')
-
-  // Path picker state
-  const showPathPicker = ref(false)
-  const pathQuery = ref('')
+  const activeExtension = ref<ComposerExtensionState>(emptyExtension())
   const activeTrigger = ref<EditorTrigger | null>(null)
+  const variableWorkdir = ref('')
+  const noteRoots = ref<NoteRoot[]>([])
   let suppressedTriggerValue: string | null = null
+  let fileDebounceTimer: ReturnType<typeof setTimeout> | null = null
+  let pathDebounceTimer: ReturnType<typeof setTimeout> | null = null
+  let fileRequestRun = 0
+  let pathRequestRun = 0
+
+  const effectiveSessionId = computed(() => sessionId?.value || '')
 
   const enabledSkills = computed(() => {
     return availableSkills.value.filter(s => s.enabled)
@@ -47,31 +116,355 @@ export function usePickerOrchestration(
     }
   }
 
-  watch(workingDirectory, () => {
+  async function loadPrompts() {
+    await promptsStore.loadPrompts()
+    refreshPaletteItems()
+  }
+
+  async function loadPluginCommands() {
+    await refreshPluginCommands()
+    refreshPaletteItems()
+  }
+
+  watch([workingDirectory, effectiveSessionId], () => {
     loadSkills()
+    if (activeExtension.value.type === 'files') {
+      scheduleFileFetch(0)
+    }
   })
 
-  /** Returns true if any picker (except PathPicker) is visible */
-  const anyPickerVisible = computed(() =>
-    showCommandPicker.value || showSkillPicker.value || showFilePicker.value
-  )
+  const anyPickerVisible = computed(() => activeExtension.value.type !== 'none')
+  const activeExtensionVisible = anyPickerVisible
 
-  function clearPickerState() {
-    showCommandPicker.value = false
-    commandQuery.value = ''
-    showSkillPicker.value = false
-    skillTriggerQuery.value = ''
-    showFilePicker.value = false
-    fileQuery.value = ''
-    showPathPicker.value = false
-    pathQuery.value = ''
+  const showCommandPicker = computed(() => activeExtension.value.type === 'palette')
+  const commandQuery = computed(() => activeExtension.value.type === 'palette' ? activeExtension.value.query : '')
+  const commandPickerTypes = computed(() => activeExtension.value.type === 'palette'
+    ? activeExtension.value.paletteTypes
+    : undefined)
+  const showFilePicker = computed(() => activeExtension.value.type === 'files')
+  const fileQuery = computed(() => activeExtension.value.type === 'files' ? activeExtension.value.query : '')
+  const showPathPicker = computed(() => activeExtension.value.type === 'paths')
+  const pathQuery = computed(() => activeExtension.value.type === 'paths' ? activeExtension.value.query : '')
+  const showSkillPicker = computed(() => false)
+  const skillTriggerQuery = computed(() => '')
+
+  function clampSelectedIndex(index = activeExtension.value.selectedIndex, items = activeExtension.value.items): number {
+    if (items.length === 0) return 0
+    return Math.max(0, Math.min(items.length - 1, index))
+  }
+
+  function setActiveExtension(next: Partial<ComposerExtensionState> & { type: ComposerExtensionType }) {
+    activeExtension.value = {
+      ...emptyExtension(),
+      ...next,
+      selectedIndex: clampSelectedIndex(next.selectedIndex ?? 0, next.items ?? []),
+    }
+  }
+
+  function patchActiveExtension(patch: Partial<ComposerExtensionState>) {
+    const nextItems = patch.items ?? activeExtension.value.items
+    activeExtension.value = {
+      ...activeExtension.value,
+      ...patch,
+      selectedIndex: clampSelectedIndex(patch.selectedIndex ?? activeExtension.value.selectedIndex, nextItems),
+    }
+  }
+
+  function closeAllPickers() {
+    suppressedTriggerValue = null
     activeTrigger.value = null
+    clearFileTimer()
+    clearPathTimer()
+    setActiveExtension({ type: 'none' })
+  }
+
+  function clearFileTimer() {
+    if (fileDebounceTimer) {
+      clearTimeout(fileDebounceTimer)
+      fileDebounceTimer = null
+    }
+  }
+
+  function clearPathTimer() {
+    if (pathDebounceTimer) {
+      clearTimeout(pathDebounceTimer)
+      pathDebounceTimer = null
+    }
+  }
+
+  onScopeDispose(() => {
+    clearFileTimer()
+    clearPathTimer()
+  })
+
+  function getQuickCommandIds(): Set<string> {
+    const quickCommands = settingsStore.settings.general?.quickCommands || []
+    return new Set(
+      quickCommands
+        .filter(command => command.enabled)
+        .map(command => command.commandId),
+    )
+  }
+
+  function toPaletteExtensionItem(item: PaletteItem, quickCommandIds: Set<string>): ComposerExtensionItem {
+    const isQuick = !!item.command && quickCommandIds.has(item.command.id)
+    return {
+      id: item.id,
+      kind: item.type,
+      title: item.title,
+      description: item.description,
+      meta: isQuick ? 'Quick' : item.usage || item.type,
+      paletteItem: item,
+    }
+  }
+
+  function buildPaletteExtensionItems(query: string, types?: PaletteItemType[]): ComposerExtensionItem[] {
+    const items = filterPaletteItems(query, enabledSkills.value, promptsStore.prompts, types)
+    const quickCommandIds = getQuickCommandIds()
+    const shouldPromoteQuickCommands = !query.trim() && (!types || types.includes('command'))
+    const orderedItems = shouldPromoteQuickCommands
+      ? [
+          ...items.filter(item => item.command && quickCommandIds.has(item.command.id)),
+          ...items.filter(item => !item.command || !quickCommandIds.has(item.command.id)),
+        ]
+      : items
+
+    return orderedItems.map(item => toPaletteExtensionItem(item, quickCommandIds))
+  }
+
+  function refreshPaletteItems() {
+    if (activeExtension.value.type !== 'palette') return
+    const items = buildPaletteExtensionItems(activeExtension.value.query, activeExtension.value.paletteTypes)
+    const includesPrompts = !activeExtension.value.paletteTypes || activeExtension.value.paletteTypes.includes('prompt')
+    patchActiveExtension({
+      items,
+      loading: includesPrompts ? promptsStore.isLoading : false,
+      error: promptsStore.error,
+    })
+  }
+
+  async function loadNoteRoots() {
+    const sid = effectiveSessionId.value
+    if (!sid) {
+      variableWorkdir.value = ''
+      noteRoots.value = []
+      return
+    }
+
+    try {
+      const result = await window.electronAPI.listVariables(sid)
+      if (!result.success || !result.variables) {
+        variableWorkdir.value = ''
+        noteRoots.value = []
+        return
+      }
+
+      const noteNames = new Set(['ai_note_dir', 'user_note_dir', 'work_note_dir'])
+      const seen = new Set<string>()
+      variableWorkdir.value = result.variables.find(variable => variable.name === 'workdir')?.value || ''
+      noteRoots.value = result.variables
+        .filter(variable => noteNames.has(variable.name) && variable.value)
+        .map(variable => ({
+          path: normalizePath(variable.value),
+          label: makeNoteLabel(variable.value, variable.name),
+        }))
+        .filter(root => {
+          if (seen.has(root.path)) return false
+          seen.add(root.path)
+          return true
+        })
+        .sort((a, b) => b.path.length - a.path.length)
+    } catch (error) {
+      console.error('[ComposerExtension] Failed to load note roots:', error)
+      variableWorkdir.value = ''
+      noteRoots.value = []
+    }
+  }
+
+  function getRelativeFileLabel(absolutePath: string): string {
+    const workdir = variableWorkdir.value || workingDirectory.value
+    if (workdir && absolutePath.startsWith(workdir)) {
+      let relativePath = absolutePath.slice(workdir.length)
+      if (relativePath.startsWith('/')) relativePath = relativePath.slice(1)
+      return relativePath || absolutePath
+    }
+
+    const noteRoot = noteRoots.value.find(root => isPathInsideRoot(absolutePath, root.path))
+    if (noteRoot) {
+      let relativePath = absolutePath.slice(noteRoot.path.length)
+      if (relativePath.startsWith('/')) relativePath = relativePath.slice(1)
+      return relativePath ? `${noteRoot.label}/${relativePath}` : noteRoot.label
+    }
+
+    return absolutePath
+  }
+
+  function toFileExtensionItem(filePath: string): ComposerExtensionItem {
+    const title = getRelativeFileLabel(filePath)
+    const parent = dirname(filePath)
+    return {
+      id: `file:${filePath}`,
+      kind: 'file',
+      title,
+      description: title === filePath ? parent : filePath,
+      meta: 'File',
+      value: filePath,
+    }
+  }
+
+  function toPathExtensionItem(path: string): ComposerExtensionItem {
+    return {
+      id: `path:${path}`,
+      kind: 'path',
+      title: basename(path),
+      description: path,
+      meta: 'Directory',
+      value: path,
+    }
+  }
+
+  function scheduleFileFetch(delay = 150) {
+    clearFileTimer()
+    if (activeExtension.value.type !== 'files') return
+    patchActiveExtension({ loading: true, error: null })
+    fileDebounceTimer = setTimeout(() => {
+      fetchFiles()
+    }, delay)
+  }
+
+  function schedulePathFetch(delay = 150) {
+    clearPathTimer()
+    if (activeExtension.value.type !== 'paths') return
+    patchActiveExtension({ loading: true, error: null })
+    pathDebounceTimer = setTimeout(() => {
+      fetchDirs()
+    }, delay)
+  }
+
+  async function fetchFiles() {
+    const run = ++fileRequestRun
+    const query = activeExtension.value.type === 'files' ? activeExtension.value.query : ''
+    patchActiveExtension({ loading: true, error: null })
+
+    try {
+      await loadNoteRoots()
+      const cwd = variableWorkdir.value || workingDirectory.value
+      if (!cwd) {
+        if (run === fileRequestRun && activeExtension.value.type === 'files') {
+          patchActiveExtension({ items: [], loading: false })
+        }
+        return
+      }
+
+      const result = await window.electronAPI.listFiles({
+        cwd,
+        query,
+        limit: 50,
+      })
+
+      if (run !== fileRequestRun || activeExtension.value.type !== 'files' || activeExtension.value.query !== query) return
+      if (result.success) {
+        patchActiveExtension({
+          items: (result.files || []).map(toFileExtensionItem),
+          loading: false,
+          error: null,
+        })
+      } else {
+        patchActiveExtension({
+          items: [],
+          loading: false,
+          error: result.error || 'Failed to list files',
+        })
+      }
+    } catch (error) {
+      if (run !== fileRequestRun || activeExtension.value.type !== 'files') return
+      patchActiveExtension({
+        items: [],
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to list files',
+      })
+    }
+  }
+
+  async function fetchDirs() {
+    const run = ++pathRequestRun
+    const query = activeExtension.value.type === 'paths' ? activeExtension.value.query : ''
+    const pathToSearch = query.trim() || '~'
+    patchActiveExtension({ loading: true, error: null })
+
+    try {
+      const result = await window.electronAPI.listDirs({
+        basePath: pathToSearch,
+        limit: 50,
+      })
+
+      if (run !== pathRequestRun || activeExtension.value.type !== 'paths' || activeExtension.value.query !== query) return
+      if (result.success) {
+        patchActiveExtension({
+          items: (result.dirs || []).map(toPathExtensionItem),
+          loading: false,
+          error: null,
+        })
+      } else {
+        patchActiveExtension({
+          items: [],
+          loading: false,
+          error: result.error || 'Failed to list directories',
+        })
+      }
+    } catch (error) {
+      if (run !== pathRequestRun || activeExtension.value.type !== 'paths') return
+      patchActiveExtension({
+        items: [],
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to list directories',
+      })
+    }
+  }
+
+  function showPalette(trigger: EditorTrigger, types: PaletteItemType[]) {
+    setActiveExtension({
+      type: 'palette',
+      query: trigger.query,
+      trigger,
+      paletteTypes: types,
+      items: buildPaletteExtensionItems(trigger.query, types),
+      loading: types.includes('prompt') ? promptsStore.isLoading : false,
+      error: types.includes('prompt') ? promptsStore.error : null,
+    })
+    loadSkills()
+    if (types.includes('prompt')) {
+      void loadPrompts()
+    }
+    if (types.includes('command')) {
+      void loadPluginCommands()
+    }
+  }
+
+  function showFiles(trigger: EditorTrigger) {
+    setActiveExtension({
+      type: 'files',
+      query: trigger.query,
+      trigger,
+      loading: true,
+    })
+    scheduleFileFetch()
+  }
+
+  function showPaths(trigger: EditorTrigger) {
+    setActiveExtension({
+      type: 'paths',
+      query: trigger.query,
+      trigger,
+      loading: true,
+    })
+    schedulePathFetch()
   }
 
   function refreshTriggerState(value = messageInput.value, cursor?: number) {
     if (suppressedTriggerValue !== null) {
       if (value === suppressedTriggerValue) {
-        clearPickerState()
+        closeAllPickers()
         return
       }
       suppressedTriggerValue = null
@@ -84,101 +477,106 @@ export function usePickerOrchestration(
     activeTrigger.value = trigger
 
     if (trigger?.type === 'command') {
-      loadSkills()
-      const query = trigger.query
-      const items = filterPaletteItems(query, enabledSkills.value)
-      if (items.length > 0) {
-        commandQuery.value = query
-        showCommandPicker.value = true
-        showSkillPicker.value = false
-        showFilePicker.value = false
-        showPathPicker.value = false
-        skillTriggerQuery.value = ''
-        fileQuery.value = ''
-        pathQuery.value = ''
-        return
-      }
+      showPalette(trigger, ['command', 'skill', 'prompt'])
+      return
     }
-
-    // Close command picker if not matching command pattern
-    showCommandPicker.value = false
-    commandQuery.value = ''
 
     if (trigger?.type === 'path') {
-      pathQuery.value = trigger.query
-      showPathPicker.value = true
-      showFilePicker.value = false
-      showSkillPicker.value = false
-      skillTriggerQuery.value = ''
-      fileQuery.value = ''
+      showPaths(trigger)
       return
     }
-
-    // Close path picker if not matching /cd pattern
-    showPathPicker.value = false
-    pathQuery.value = ''
 
     if (trigger?.type === 'file') {
-      fileQuery.value = trigger.query
-      showFilePicker.value = true
-      showSkillPicker.value = false
-      skillTriggerQuery.value = ''
+      showFiles(trigger)
       return
     }
 
-    // Close file picker if not matching file pattern
-    showFilePicker.value = false
-    fileQuery.value = ''
+    if (trigger?.type === 'prompt') {
+      showPalette(trigger, ['prompt'])
+      return
+    }
 
-    showSkillPicker.value = false
-    skillTriggerQuery.value = ''
-    activeTrigger.value = null
+    closeAllPickers()
   }
 
-  // Watch messageInput to auto-detect picker triggers.
   watch(messageInput, (newValue) => {
     checkHistoryEdit(newValue)
     refreshTriggerState(newValue)
   })
 
-  // --- Picker event handlers ---
+  watch(
+    () => [
+      promptsStore.prompts.length,
+      enabledSkills.value.length,
+      promptsStore.isLoading,
+    ],
+    () => {
+      refreshPaletteItems()
+    },
+  )
+
+  function moveActiveSelection(delta: number): boolean {
+    const { items, selectedIndex } = activeExtension.value
+    if (activeExtension.value.type === 'none' || items.length === 0) return false
+    patchActiveExtension({ selectedIndex: selectedIndex + delta })
+    return true
+  }
+
+  function highlightActiveSelection(index: number): boolean {
+    if (activeExtension.value.type === 'none') return false
+    patchActiveExtension({ selectedIndex: index })
+    return true
+  }
+
+  async function confirmActiveExtension(): Promise<boolean> {
+    const state = activeExtension.value
+    const item = state.items[state.selectedIndex]
+    if (!item) return false
+
+    if (state.type === 'palette' && item.paletteItem) {
+      await handleCommandSelect(item.paletteItem)
+      return true
+    }
+
+    if (state.type === 'files' && item.value) {
+      await handleFilePickerSelect(item.value)
+      return true
+    }
+
+    if (state.type === 'paths' && item.value) {
+      await handlePathPickerSelect(item.value)
+      return true
+    }
+
+    return false
+  }
 
   async function handleSkillSelect(skill: SkillDefinition) {
-    showSkillPicker.value = false
-
-    try {
-      const inputContent = messageInput.value.replace(/^[/@]\w*\s*/, '')
-      const result = await window.electronAPI.executeSkill(skill.id, {
-        sessionId: '',
-        input: inputContent,
-      })
-
-      if (result.success && result.result?.output) {
-        setEditorValue(result.result.output)
-        await nextTick()
-        adjustHeight()
-        editorRef.value?.focus()
-      }
-    } catch (error) {
-      console.error('Failed to execute skill:', error)
-    }
+    replaceActiveTrigger(`${createSkillToken(skill.id)} `, 'command')
+    await nextTick()
+    adjustHeight()
+    editorRef.value?.focus()
   }
 
   function handleSkillPickerClose() {
-    showSkillPicker.value = false
+    closeAllPickers()
   }
 
   async function handleCommandSelect(item: PaletteItem) {
-    showCommandPicker.value = false
-
     if (item.type === 'skill' && item.skill) {
       await handleSkillSelect(item.skill)
       return
     }
 
     if (item.type === 'command' && item.command) {
-      const replacement = `/${item.command.id} `
-      replaceActiveTrigger(replacement, 'command')
+      replaceActiveTrigger(`/${item.command.id} `, 'command')
+    }
+
+    if (item.type === 'prompt' && item.prompt) {
+      replaceActiveTrigger(
+        `${createPromptToken(item.prompt.id)} `,
+        activeTrigger.value?.type === 'prompt' ? 'prompt' : 'command',
+      )
     }
 
     await nextTick()
@@ -187,36 +585,29 @@ export function usePickerOrchestration(
   }
 
   function handleCommandPickerClose() {
-    showCommandPicker.value = false
-    commandQuery.value = ''
+    closeAllPickers()
   }
 
   async function handleFilePickerSelect(filePath: string) {
-    showFilePicker.value = false
     replaceActiveTrigger(`@${filePath} `, 'file')
-    fileQuery.value = ''
     await nextTick()
     adjustHeight()
     editorRef.value?.focus()
   }
 
   function handleFilePickerClose() {
-    showFilePicker.value = false
-    fileQuery.value = ''
+    closeAllPickers()
   }
 
   async function handlePathPickerSelect(selectedPath: string) {
-    showPathPicker.value = false
     replaceActiveTrigger(`/cd ${selectedPath}`, 'path')
-    pathQuery.value = ''
     await nextTick()
     adjustHeight()
     editorRef.value?.focus()
   }
 
   function handlePathPickerClose() {
-    showPathPicker.value = false
-    pathQuery.value = ''
+    closeAllPickers()
   }
 
   function setEditorValue(value: string) {
@@ -243,9 +634,12 @@ export function usePickerOrchestration(
         messageInput.value = suppressedTriggerValue
       }
       activeTrigger.value = null
+      setActiveExtension({ type: 'none' })
       return
     }
     setEditorValue(replacement)
+    activeTrigger.value = null
+    setActiveExtension({ type: 'none' })
   }
 
   function handleEditorSelectionChange(selection: EditorSelection) {
@@ -256,35 +650,31 @@ export function usePickerOrchestration(
     refreshTriggerState(transaction.value, transaction.selection.from)
   }
 
-  function closeAllPickers() {
-    suppressedTriggerValue = null
-    clearPickerState()
-  }
-
   return {
-    // Skills
+    activeExtension,
+    activeExtensionVisible,
+    moveActiveSelection,
+    highlightActiveSelection,
+    confirmActiveExtension,
     enabledSkills,
     loadSkills,
     showSkillPicker,
     skillTriggerQuery,
     handleSkillSelect,
     handleSkillPickerClose,
-    // Commands
     showCommandPicker,
     commandQuery,
+    commandPickerTypes,
     handleCommandSelect,
     handleCommandPickerClose,
-    // File picker
     showFilePicker,
     fileQuery,
     handleFilePickerSelect,
     handleFilePickerClose,
-    // Path picker
     showPathPicker,
     pathQuery,
     handlePathPickerSelect,
     handlePathPickerClose,
-    // Utilities
     anyPickerVisible,
     refreshTriggerState,
     handleEditorSelectionChange,

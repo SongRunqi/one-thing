@@ -8,6 +8,14 @@ vi.mock('../ArchivedChatsContent.vue', () => ({
   default: { template: '<div />' },
 }))
 
+vi.mock('../memory/MemoryPanelContent.vue', () => ({
+  default: { template: '<div />' },
+}))
+
+vi.mock('../SchedulerPanelContent.vue', () => ({
+  default: { template: '<div />' },
+}))
+
 const storeState = vi.hoisted(() => ({
   mediaStore: {
     assets: [] as MediaAsset[],
@@ -96,6 +104,7 @@ describe('MediaPanel', () => {
 
     expect(wrapper.text()).toContain('Uploaded')
     expect(wrapper.text()).toContain('Generated')
+    expect(wrapper.text()).toContain('Tasks')
     expect(wrapper.findAll('.media-item')).toHaveLength(2)
   })
 

@@ -41,6 +41,7 @@ import { buildProjectDirsPromptVars } from '../project-dirs/index.js'
 import { getAIToolName } from '../providers/tool-name-alias.js'
 import { PendingMessageQueue, type PendingMessage } from './stream/message-queue.js'
 import { compactSessionContext, getContextCompactReason } from './context-compact.js'
+import { resolvePromptReferences } from '../prompts/resolver.js'
 
 /**
  * Generate a short title from user message content
@@ -117,6 +118,10 @@ export class StreamEngine {
     sender.on('destroyed', () => { this.sender = null })
   }
 
+  hasBoundSender(): boolean {
+    return Boolean(this.sender && !this.sender.isDestroyed())
+  }
+
   private subscribeToCommands(eventBus: EventBus): void {
     this.unsubs.push(
       eventBus.onAnySession('command:send-message', (envelope) => {
@@ -170,7 +175,13 @@ export class StreamEngine {
 
     try {
       // 1. Create and persist user message
-      const session = store.getSession(sessionId)
+      const sessionForRefs = store.getSession(sessionId)
+      const settingsForRefs = store.getSettings()
+      const skillsForRefs = settingsForRefs.skills?.enableSkills === false
+        ? []
+        : getSkillsForSession(sessionForRefs?.workingDirectory)
+      const resolvedPromptRefs = resolvePromptReferences(messageContent, { skills: skillsForRefs })
+      const session = sessionForRefs
       const isFirstUserMessage = session && session.messages.filter(m => m.role === 'user').length === 0
       const isBranchFirstMessage = session?.parentSessionId && session.messages.length > 0 &&
         !session.messages.some(m => m.role === 'user' && m.timestamp > session.createdAt)
@@ -178,9 +189,10 @@ export class StreamEngine {
       const userMessage: ChatMessage = {
         id: uuidv4(),
         role: 'user',
-        content: messageContent,
+        content: resolvedPromptRefs.modelContent,
         timestamp: Date.now(),
         attachments: attachments as MessageAttachment[] | undefined,
+        contentParts: resolvedPromptRefs.contentParts,
       }
       mediaLibraryService.ingestMessageAttachments(
         sessionId,
@@ -198,7 +210,7 @@ export class StreamEngine {
 
       // 2. Auto-rename session on first message
       if (isFirstUserMessage || isBranchFirstMessage) {
-        const newTitle = generateTitleFromMessage(messageContent)
+        const newTitle = generateTitleFromMessage(resolvedPromptRefs.displayContent)
         store.renameSession(sessionId, newTitle)
         await this.eventBus?.emit(sessionId, {
           type: 'session:renamed',
@@ -241,7 +253,7 @@ export class StreamEngine {
       const sessionName = sessionForHistory?.name
 
       await executeMessageStream({
-        sender, sessionId, assistantMessageId, messageContent,
+        sender, sessionId, assistantMessageId, messageContent: resolvedPromptRefs.modelContent,
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName,
       })
@@ -313,8 +325,16 @@ export class StreamEngine {
     const { messageId, newContent } = cmd
 
     try {
+      const sessionForRefs = store.getSession(sessionId)
+      const settingsForRefs = store.getSettings()
+      const skillsForRefs = settingsForRefs.skills?.enableSkills === false
+        ? []
+        : getSkillsForSession(sessionForRefs?.workingDirectory)
+      const resolvedPromptRefs = resolvePromptReferences(newContent, { skills: skillsForRefs })
       // 1. Truncate messages after the edited one and update content
-      const updated = store.updateMessageAndTruncate(sessionId, messageId, newContent)
+      const updated = store.updateMessageAndTruncate(sessionId, messageId, resolvedPromptRefs.modelContent, {
+        contentParts: resolvedPromptRefs.contentParts ?? null,
+      })
       if (!updated) {
         this.emitStreamError(sessionId, 'Message not found')
         return
@@ -361,7 +381,7 @@ export class StreamEngine {
 
       await executeMessageStream({
         sender, sessionId, assistantMessageId,
-        messageContent: newContent,
+        messageContent: resolvedPromptRefs.modelContent,
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName: session?.name,
       })
@@ -518,12 +538,14 @@ export class StreamEngine {
       const promptContext = await buildPromptContext({
         previousState: session.promptContext ?? undefined,
         sessionId,
+        agentId: session.agentId,
         providerId,
         providerConfig: configWithApiKey as unknown as Record<string, unknown>,
         settings,
         hasTools,
         skills: enabledSkills,
         workingDirectory: session.workingDirectory,
+        workingDirectoryRoots: session.workingDirectoryRoots,
         contextVariables: await buildContextVariablesPromptText(sessionId),
         activeProject: projectVars.active,
         knownProjects: projectVars.known,

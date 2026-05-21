@@ -62,14 +62,16 @@ new BrowserWindow({
   acceptFirstMouse: true,
   skipTaskbar: true,
   transparent: true,
-  titleBarStyle: 'customButtonsOnHover',
-  trafficLightPosition: { x: 16, y: 16 },
+  titleBarStyle: 'hidden',
+  trafficLightPosition: { x: 16, y: 9 },
   minWidth: 320,
   minHeight: 280,
 })
 ```
 
 这些选项负责 Electron 侧的基础形态；真正的 non-activating、置前、隐藏和 pin 逻辑在 native bridge 里完成。
+
+启动后 `warmTodoPlanWindow()` 会后台创建并加载一个隐藏的 Todo window。它只预热 renderer 和 native panel，不调用 native show / Electron show；首次快捷键打开时复用这个已加载窗口，从而避免把 CodeMirror、Markdown live preview 和 note snapshot 的初始化成本压到第一次显示那一下。
 
 窗口大小和位置保存在主窗口 state 文件的 `todoPlan` 字段下，和 main window 的 `width / height / x / y` 分开：
 
@@ -265,8 +267,8 @@ bun run build:native:mac
 - Todo visible 但 behind 时，toggle 调 native show，不隐藏。
 - Todo frontmost 时，toggle 隐藏。
 - Todo blur 时保持可见，不调用 native hide；pin on/off 不改变 blur 行为。
-- main focus 时未 pinned Todo 调 native hide/orderOut 临时收起；pinned Todo 不受影响。
 - open / hide / toggle 不破坏 main window 可见性。
+- warm Todo window 只创建隐藏窗口，不展示、不聚焦、不激活 app。
 - native configure / show / pin 期间不会保存 transient bounds。
 - hide 期间 move / resize 不污染 Todo window state。
 - pin on/off 后 toggle 语义保持一致。

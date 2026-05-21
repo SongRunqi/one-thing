@@ -9,11 +9,13 @@
 import './monaco-setup'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as monaco from 'monaco-editor'
+import type { EditorSettings } from './types'
 
 const props = defineProps<{
   model: monaco.editor.ITextModel | null
   viewState?: monaco.editor.ICodeEditorViewState | null
   readOnly?: boolean
+  settings?: EditorSettings
 }>()
 
 const emit = defineEmits<{
@@ -59,6 +61,8 @@ function createEditor() {
     minimap: { enabled: false },
     fontSize: 13,
     lineHeight: 20,
+    wordWrap: props.settings?.lineWrapping === false ? 'off' : 'wordWrapColumn',
+    wordWrapColumn: props.settings?.softWrapColumn ?? 88,
     scrollBeyondLastLine: false,
     theme: document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs',
   })
@@ -137,6 +141,16 @@ watch(() => props.model, async (model) => {
 watch(() => props.readOnly, (readOnly) => {
   editor?.updateOptions({ readOnly: !!readOnly })
 })
+
+watch(
+  () => [props.settings?.lineWrapping, props.settings?.softWrapColumn],
+  () => {
+    editor?.updateOptions({
+      wordWrap: props.settings?.lineWrapping === false ? 'off' : 'wordWrapColumn',
+      wordWrapColumn: props.settings?.softWrapColumn ?? 88,
+    })
+  }
+)
 
 defineExpose({
   focus,

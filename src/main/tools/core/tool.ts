@@ -50,6 +50,8 @@ export interface InitContext {
   }>
   /** Session's working directory */
   workingDirectory?: string
+  /** Additional sandbox roots */
+  workingDirectoryRoots?: string[]
   /** Provider ID */
   providerId?: string
   /** Provider configuration */
@@ -72,8 +74,10 @@ export interface ToolContext<M extends ToolMetadata = ToolMetadata> {
   messageId: string
   /** Current tool call ID - used for permission matching */
   toolCallId?: string
-  /** Session's working directory - used as sandbox boundary for file access */
+  /** Session's active working directory - used as default cwd for relative paths */
   workingDirectory?: string
+  /** Additional sandbox roots for file access */
+  workingDirectoryRoots?: string[]
   /** Abort signal for cancellation */
   abortSignal?: AbortSignal
   /**

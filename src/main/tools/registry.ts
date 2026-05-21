@@ -383,6 +383,7 @@ export async function executeTool(
         messageId: context.messageId,
         toolCallId: context.toolCallId,
         workingDirectory: context.workingDirectory,
+        workingDirectoryRoots: context.workingDirectoryRoots,
         abortSignal: context.abortSignal,
         metadata: (update) => {
           if (context.onMetadata) {
@@ -439,6 +440,7 @@ export async function executeTool(
         messageId: context.messageId,
         toolCallId: context.toolCallId,
         workingDirectory: context.workingDirectory,
+        workingDirectoryRoots: context.workingDirectoryRoots,
         abortSignal: context.abortSignal,
         metadata: (update) => {
           if (context.onMetadata) {

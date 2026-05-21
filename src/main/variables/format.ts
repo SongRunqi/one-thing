@@ -48,6 +48,22 @@ export function formatVariablesForPrompt(
   const lines: string[] = []
 
   for (const v of variables) {
+    if (v.name === 'workdir' && v.values && v.values.length > 0) {
+      const [current, ...roots] = v.values
+      const currentDisplay = truncate(home ? collapse(current, home) : current, opts.maxValueLength)
+      if (v.value) {
+        lines.push(`- workdir: ${currentDisplay} (current cwd; values[0])`)
+      } else {
+        lines.push(`- workdir: (unset current cwd)`)
+        roots.unshift(current)
+      }
+      for (const root of roots) {
+        const rootDisplay = truncate(home ? collapse(root, home) : root, opts.maxValueLength)
+        lines.push(`  - extra root: ${rootDisplay}`)
+      }
+      continue
+    }
+
     if (!v.value) continue
 
     const firstLine = v.value.split('\n')[0]

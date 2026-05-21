@@ -21,11 +21,27 @@ vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => mocks.sessionsStore,
 }))
 
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: () => ({
+    settings: {
+      general: {
+        editor: {
+          tabSize: 2,
+          lineWrapping: true,
+          softWrapColumn: 88,
+          markdownNoteAttachmentDirectory: '',
+          markdownProjectAttachmentDirectory: '',
+        },
+      },
+    },
+  }),
+}))
+
 vi.mock('@/editor/MarkdownDocumentEditor.vue', () => ({
   default: {
     name: 'MarkdownDocumentEditor',
-    props: ['features', 'modelValue', 'surface', 'documentId', 'toolbar'],
-    emits: ['update:modelValue', 'keydown', 'cancel'],
+    props: ['features', 'modelValue', 'surface', 'documentId', 'documentPath', 'workspaceRoot', 'settings', 'toolbar'],
+    emits: ['update:modelValue', 'keydown', 'cancel', 'paste', 'openLink', 'openImage'],
     setup(_props: unknown, { expose }: { expose: (exposed: Record<string, unknown>) => void }) {
       expose({
         focus: mocks.editorFocus,
@@ -87,6 +103,8 @@ const snapshot = {
   },
 }
 
+let todoPlanChangedHandler: ((data: any) => void) | undefined
+
 async function settle() {
   await nextTick()
   await Promise.resolve()
@@ -124,7 +142,12 @@ function installElectronApi() {
       toggleTodoPlanWindow: vi.fn(),
       setTodoPlanWindowPinned: vi.fn(),
       setWindowButtonVisibility: vi.fn().mockResolvedValue({ success: true }),
-      onTodoPlanChanged: vi.fn(() => vi.fn()),
+      onTodoPlanChanged: vi.fn((callback: (data: any) => void) => {
+        todoPlanChangedHandler = callback
+        return vi.fn(() => {
+          if (todoPlanChangedHandler === callback) todoPlanChangedHandler = undefined
+        })
+      }),
     },
   })
 }
@@ -159,6 +182,7 @@ describe('TodoPlanPanel', () => {
     vi.stubGlobal('ResizeObserver', ResizeObserverStub)
     localStorage.clear()
     localStorage.setItem('todoPlanCollapsed', 'false')
+    todoPlanChangedHandler = undefined
     installElectronApi()
   })
 
@@ -175,7 +199,7 @@ describe('TodoPlanPanel', () => {
     })
     await settle()
 
-    expect(wrapper.find('[title="Keep window on top"]').exists()).toBe(true)
+    expect(wrapper.find('[title="Keep window on top"]').exists()).toBe(false)
     expect(wrapper.find('[title="Command Panel"]').exists()).toBe(true)
     expect(wrapper.find('.panel-actions .icon-button').attributes('title')).toBe('Command Panel')
     expect(wrapper.find('[title="Browse notes"]').exists()).toBe(true)
@@ -203,6 +227,45 @@ describe('TodoPlanPanel', () => {
     expect(wrapper.find('[title="Dock card"]').exists()).toBe(true)
     expect(wrapper.find('[title="Open in window"]').exists()).toBe(true)
     expect(wrapper.find('[title="Keep window on top"]').exists()).toBe(false)
+  })
+
+  it('uses a shorter default floating card height', async () => {
+    const wrapper = mount(TodoPlanPanel, {
+      attachTo: document.body,
+      props: { sessionId: 'session-1', workingDirectory: '/repo' },
+    })
+    await settle()
+
+    expect((wrapper.find('.todo-plan-panel').element as HTMLElement).style.height).toBe('320px')
+  })
+
+  it('does not auto dock or stay fixed just because there is right-side space', async () => {
+    const wrapper = mount(TodoPlanPanel, {
+      attachTo: document.body,
+      props: { sessionId: 'session-1', workingDirectory: '/repo' },
+    })
+    await settle()
+
+    const panel = wrapper.find('.todo-plan-panel')
+    expect(panel.classes()).not.toContain('gutter-docked')
+    expect(panel.classes()).not.toContain('collapsed')
+
+    await panel.trigger('mouseleave')
+    await settle()
+
+    expect(panel.classes()).toContain('collapsed')
+  })
+
+  it('migrates the old floating card default height to the shorter height', async () => {
+    localStorage.setItem('todoPlanCardHeight', '360')
+
+    const wrapper = mount(TodoPlanPanel, {
+      attachTo: document.body,
+      props: { sessionId: 'session-1', workingDirectory: '/repo' },
+    })
+    await settle()
+
+    expect((wrapper.find('.todo-plan-panel').element as HTMLElement).style.height).toBe('320px')
   })
 
   it('uses one generic card title without duplicating the markdown document heading', async () => {
@@ -434,7 +497,7 @@ describe('TodoPlanPanel', () => {
     }))
     await settle()
 
-    expect(standalone.text()).toContain('Keep Window on Top')
+    expect(standalone.text()).not.toContain('Keep Window on Top')
     expect(standalone.text()).not.toContain('Open in Window')
     expect(standalone.text()).not.toContain('Dock Card')
     standalone.unmount()
@@ -506,6 +569,62 @@ describe('TodoPlanPanel', () => {
     expect(chatEditor.props('modelValue')).toContain('# User Todo')
   })
 
+  it('refreshes the active workspace todo when the todo tool broadcasts a matching change', async () => {
+    localStorage.setItem('todoPlanCardActiveId', 'workspace-ai-todo')
+    const wrapper = mount(TodoPlanPanel, {
+      attachTo: document.body,
+      props: { sessionId: 'session-1', workingDirectory: '/repo' },
+    })
+    await settle()
+
+    expect(wrapper.findComponent({ name: 'MarkdownDocumentEditor' }).props('modelValue')).toContain('Review work')
+
+    todoPlanChangedHandler?.({
+      scope: 'workspace-ai-todo',
+      sessionId: 'session-1',
+      workingDirectory: '/repo',
+      document: {
+        ...snapshot.workspaceAiTodo,
+        content: '# AI Todo\n\n## Now\n- [x] Review work\n- [ ] Ship the refresh fix',
+        updatedAt: 2,
+        totalTasks: 2,
+      },
+    })
+    await settle()
+
+    const editor = wrapper.findComponent({ name: 'MarkdownDocumentEditor' })
+    expect(editor.props('modelValue')).toContain('Ship the refresh fix')
+    expect(wrapper.text()).toContain('1 open task')
+  })
+
+  it('does not overwrite local draft edits with an incoming todo broadcast', async () => {
+    localStorage.setItem('todoPlanCardActiveId', 'workspace-ai-todo')
+    const wrapper = mount(TodoPlanPanel, {
+      attachTo: document.body,
+      props: { sessionId: 'session-1', workingDirectory: '/repo' },
+    })
+    await settle()
+
+    await wrapper.find('.mock-editor').setValue('# AI Todo\n\nLocal draft')
+    await settle()
+
+    todoPlanChangedHandler?.({
+      scope: 'workspace-ai-todo',
+      sessionId: 'session-1',
+      workingDirectory: '/repo',
+      document: {
+        ...snapshot.workspaceAiTodo,
+        content: '# AI Todo\n\nExternal tool update',
+        updatedAt: 2,
+      },
+    })
+    await settle()
+
+    const editor = wrapper.findComponent({ name: 'MarkdownDocumentEditor' })
+    expect(editor.props('modelValue')).toContain('Local draft')
+    expect(editor.props('modelValue')).not.toContain('External tool update')
+  })
+
   it('only registers card toggle events for chat cards', async () => {
     const addSpy = vi.spyOn(window, 'addEventListener')
 
@@ -533,7 +652,7 @@ describe('TodoPlanPanel', () => {
     expect(chatCard.classes()).toContain('collapsed')
   })
 
-  it('shows native macOS window buttons while hovering the standalone window', async () => {
+  it('leaves native macOS window buttons untouched in the standalone window (always visible via window config)', async () => {
     const wrapper = mount(TodoPlanPanel, {
       attachTo: document.body,
       props: { standalone: true },
@@ -541,15 +660,11 @@ describe('TodoPlanPanel', () => {
     await settle()
 
     const panel = wrapper.find('.todo-plan-panel')
-    expect(window.electronAPI.setWindowButtonVisibility).toHaveBeenCalledWith(false)
-
     panel.element.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
-    await settle()
-    expect(window.electronAPI.setWindowButtonVisibility).toHaveBeenLastCalledWith(true)
-
     panel.element.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
     await settle()
-    expect(window.electronAPI.setWindowButtonVisibility).toHaveBeenLastCalledWith(false)
+
+    expect(window.electronAPI.setWindowButtonVisibility).not.toHaveBeenCalled()
   })
 
   it('does not control native window buttons from chat card surfaces', async () => {

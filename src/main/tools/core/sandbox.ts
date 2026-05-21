@@ -2,7 +2,8 @@
  * Sandbox Utilities
  *
  * Provides shared boundary checking for file operations.
- * Uses OpenCode's simple boundary model: session.workingDirectory as single boundary.
+ * Uses the session's active workingDirectory for relative paths, plus
+ * optional additional workingDirectoryRoots as sandbox roots.
  */
 
 import * as path from 'path'
@@ -61,6 +62,39 @@ export function getSandboxBoundary(workingDirectory?: string): string {
   return process.cwd()
 }
 
+function uniquePaths(paths: string[]): string[] {
+  const seen = new Set<string>()
+  const output: string[] = []
+  for (const item of paths) {
+    if (!item) continue
+    const resolved = path.resolve(expandPath(item))
+    if (seen.has(resolved)) continue
+    seen.add(resolved)
+    output.push(resolved)
+  }
+  return output
+}
+
+export function getSandboxRoots(workingDirectory?: string, workingDirectoryRoots?: string[]): string[] {
+  return uniquePaths([
+    getSandboxBoundary(workingDirectory),
+    ...(workingDirectoryRoots ?? []),
+  ])
+}
+
+export function findSandboxRootForPath(
+  targetPath: string,
+  workingDirectory?: string,
+  workingDirectoryRoots?: string[],
+): string | undefined {
+  const expandedTarget = expandPath(targetPath)
+  const absoluteTarget = path.isAbsolute(expandedTarget)
+    ? expandedTarget
+    : path.resolve(getSandboxBoundary(workingDirectory), expandedTarget)
+  return getSandboxRoots(workingDirectory, workingDirectoryRoots)
+    .find(root => isPathContained(root, absoluteTarget))
+}
+
 /**
  * Check file path access and request permission if outside boundary
  *
@@ -76,6 +110,7 @@ export async function checkFileAccess(
     messageId: string
     toolCallId?: string
     workingDirectory?: string
+    workingDirectoryRoots?: string[]
   },
   operation: string,
   targetType: 'file' | 'directory' = 'file',
@@ -83,11 +118,16 @@ export async function checkFileAccess(
   // Ensure absolute path
   const absolutePath = resolveToolPath(filePath, ctx.workingDirectory)
 
-  // Get sandbox boundary
+  // Get sandbox roots
   const boundary = getSandboxBoundary(ctx.workingDirectory)
+  const matchingRoot = findSandboxRootForPath(
+    absolutePath,
+    ctx.workingDirectory,
+    ctx.workingDirectoryRoots,
+  )
 
-  // Check if path is within boundary
-  if (!isPathContained(boundary, absolutePath)) {
+  // Check if path is within any allowed root
+  if (!matchingRoot) {
     const pattern = targetType === 'directory'
       ? [absolutePath, path.join(absolutePath, '*')]
       : path.join(path.dirname(absolutePath), '*')

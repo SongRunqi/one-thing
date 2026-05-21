@@ -531,6 +531,23 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
+  async function updateSessionAgent(sessionId: string, agentId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const response = await window.electronAPI.updateSessionAgent(sessionId, agentId)
+      if (response.success) {
+        const session = sessions.value.find(s => s.id === sessionId)
+        if (session) {
+          session.agentId = agentId
+          sessions.value = [...sessions.value]
+        }
+      }
+      return response
+    } catch (error: any) {
+      console.error('Failed to update session agent:', error)
+      return { success: false, error: error?.message || 'Failed to update session agent' }
+    }
+  }
+
   /**
    * Update token-usage fields on a session in place. Called by ipc-hub
    * for `context:size-updated` (per-turn input tokens) and on
@@ -570,12 +587,16 @@ export const useSessionsStore = defineStore('sessions', () => {
     sessionId: string,
     payload: {
       workingDirectory?: string
+      workingDirectoryRoots?: string[]
       variables?: ContextVariable[]
     },
   ): void {
     const session = sessions.value.find((s) => s.id === sessionId) as any
     if (session && payload.workingDirectory !== undefined) {
       session.workingDirectory = payload.workingDirectory
+    }
+    if (session && payload.workingDirectoryRoots !== undefined) {
+      session.workingDirectoryRoots = payload.workingDirectoryRoots
     }
     if (payload.variables !== undefined) {
       sessionVariables.value.set(sessionId, payload.variables)
@@ -663,6 +684,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     renameSession,
     createBranch,
     updateSessionPin,
+    updateSessionAgent,
     updateSessionWorkingDirectory,
   }
 })

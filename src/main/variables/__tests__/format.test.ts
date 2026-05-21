@@ -44,6 +44,18 @@ describe('formatVariablesForPrompt', () => {
     expect(out).toBe(`- workdir: ${home}/foo`)
   })
 
+  it('renders ordered workdir values with extra roots', () => {
+    const home = os.homedir()
+    const out = formatVariablesForPrompt([
+      v({
+        name: 'workdir',
+        value: `${home}/project`,
+        values: [`${home}/project`, `${home}/.claude/skills/iva`],
+      }),
+    ])
+    expect(out).toBe('- workdir: ~/project (current cwd; values[0])\n  - extra root: ~/.claude/skills/iva')
+  })
+
   it('folds multi-line values to first line + (+N more lines)', () => {
     const out = formatVariablesForPrompt([
       v({ name: 'note', value: 'line1\nline2\nline3' }),

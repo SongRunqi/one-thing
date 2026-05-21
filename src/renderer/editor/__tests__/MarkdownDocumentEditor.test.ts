@@ -7,7 +7,7 @@ import MarkdownDocumentEditor from '../MarkdownDocumentEditor.vue'
 vi.mock('../TextEditor.vue', () => ({
   default: {
     name: 'TextEditor',
-    props: ['modelValue', 'markdownLivePreview'],
+    props: ['modelValue', 'markdownLivePreview', 'markdownLivePreviewFeatures'],
     emits: ['update:modelValue', 'keydown', 'transaction', 'focus', 'blur', 'paste', 'cancel'],
     setup(props: { modelValue: string }, { emit, expose }: { emit: (name: string, ...args: unknown[]) => void; expose: (value: Record<string, unknown>) => void }) {
       const value = ref(props.modelValue)
@@ -46,6 +46,14 @@ describe('MarkdownDocumentEditor', () => {
     })
 
     expect(wrapper.findComponent({ name: 'TextEditor' }).props('markdownLivePreview')).toBe(true)
+    expect(wrapper.findComponent({ name: 'TextEditor' }).props('markdownLivePreviewFeatures')).toMatchObject({
+      tasks: true,
+      tables: true,
+      images: true,
+      math: true,
+      codeBlocks: true,
+      frontmatter: true,
+    })
 
     await wrapper.find('[title="Bold"]').trigger('click')
     await nextTick()
@@ -62,6 +70,46 @@ describe('MarkdownDocumentEditor', () => {
     expect(wrapper.find('.markdown-document-toolbar').exists()).toBe(false)
   })
 
+  it('passes feature switches through to the live preview editor', () => {
+    const wrapper = mount(MarkdownDocumentEditor, {
+      props: {
+        modelValue: 'hello',
+        features: {
+          tables: false,
+          images: false,
+          math: false,
+          codeBlocks: false,
+          frontmatter: false,
+        },
+      },
+    })
+
+    expect(wrapper.findComponent({ name: 'TextEditor' }).props('markdownLivePreviewFeatures')).toMatchObject({
+      tasks: true,
+      tables: false,
+      images: false,
+      math: false,
+      codeBlocks: false,
+      frontmatter: false,
+    })
+  })
+
+  it('toggles full-source mode without replacing the document editor', async () => {
+    const wrapper = mount(MarkdownDocumentEditor, {
+      props: { modelValue: '# hello' },
+    })
+
+    const button = wrapper.find('.markdown-source-toggle')
+    expect(button.exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'TextEditor' }).props('markdownLivePreview')).toBe(true)
+
+    await button.trigger('click')
+    await nextTick()
+
+    expect(wrapper.findComponent({ name: 'TextEditor' }).props('markdownLivePreview')).toBe(false)
+    expect(button.attributes('aria-pressed')).toBe('true')
+  })
+
   it('emits explicit image open events from live-preview widgets', async () => {
     const wrapper = mount(MarkdownDocumentEditor, {
       props: { modelValue: '![alt](image.png)' },
@@ -73,6 +121,6 @@ describe('MarkdownDocumentEditor', () => {
     }))
     await nextTick()
 
-    expect(wrapper.emitted('openImage')?.[0]).toEqual([{ src: 'image.png', alt: 'alt' }])
+    expect(wrapper.emitted('openImage')?.[0]).toEqual([expect.objectContaining({ src: 'image.png', alt: 'alt' })])
   })
 })

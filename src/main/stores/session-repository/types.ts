@@ -23,7 +23,12 @@ export interface SessionRepository {
   createSession(sessionId: string, name: string): ChatSession
   addMessage(sessionId: string, message: ChatMessage): void
   updateMessage(sessionId: string, messageId: string, updates: Partial<ChatMessage>): boolean
-  updateMessageAndTruncate(sessionId: string, messageId: string, newContent: string): boolean
+  updateMessageAndTruncate(
+    sessionId: string,
+    messageId: string,
+    newContent: string,
+    options?: { contentParts?: ChatMessage['contentParts'] | null }
+  ): boolean
   updateSessionTokenUsage(sessionId: string, usage: TokenUsage, lastTurnUsage?: TurnUsage): void
   flushSessionSave(sessionId: string): Promise<void>
   flushAllPendingSaves(): Promise<void>

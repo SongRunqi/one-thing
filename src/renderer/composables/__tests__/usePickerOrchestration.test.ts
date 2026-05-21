@@ -1,8 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick, ref, type Ref } from 'vue'
 import { usePickerOrchestration } from '../usePickerOrchestration'
 import type { EditorCursorLineInfo, EditorHandle, EditorSelection } from '@/editor'
 import type { PaletteItem } from '@/types/palette'
+import { createPromptToken, createSkillToken } from '@shared/prompt-references'
+
+const storeMocks = vi.hoisted(() => ({
+  settingsStore: {
+    settings: {
+      general: {
+        quickCommands: [],
+      },
+    },
+  },
+}))
+
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: () => storeMocks.settingsStore,
+}))
 
 function makeEditorHandle(value: Ref<string>, cursor: Ref<number>): EditorHandle {
   function setSelection(from: number, to = from) {
@@ -43,6 +59,7 @@ function createHarness(initialValue: string) {
   const input = ref(initialValue)
   const cursor = ref(initialValue.length)
   const cwd = ref('/repo')
+  const sessionId = ref('session-1')
   const editor = ref<EditorHandle | null>(makeEditorHandle(input, cursor))
   const adjustHeight = vi.fn()
   const checkHistoryEdit = vi.fn()
@@ -53,6 +70,7 @@ function createHarness(initialValue: string) {
     editor,
     adjustHeight,
     checkHistoryEdit,
+    sessionId,
   ))
 
   if (!api) throw new Error('failed to create picker harness')
@@ -77,10 +95,25 @@ async function settleWatchers() {
 
 describe('usePickerOrchestration', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.stubGlobal('window', {
       electronAPI: {
         getSkills: vi.fn().mockResolvedValue({ success: true, skills: [] }),
         executeSkill: vi.fn(),
+        getPluginCommands: vi.fn().mockResolvedValue({ success: true, commands: [] }),
+        listVariables: vi.fn().mockResolvedValue({ success: true, variables: [] }),
+        listFiles: vi.fn().mockResolvedValue({ success: true, files: ['/repo/src/editor/TextEditor.vue'] }),
+        listDirs: vi.fn().mockResolvedValue({ success: true, dirs: ['/Users/me/My Project'] }),
+        listPrompts: vi.fn().mockResolvedValue({
+          success: true,
+          prompts: [{
+            id: 'prompt-1',
+            title: 'Review Prompt',
+            body: 'Review this.',
+            createdAt: 1,
+            updatedAt: 1,
+          }],
+        }),
       },
     })
   })
@@ -95,6 +128,11 @@ describe('usePickerOrchestration', () => {
 
     expect(harness.api.showCommandPicker.value).toBe(true)
     expect(harness.api.commandQuery.value).toBe('c')
+    expect(harness.api.activeExtension.value).toMatchObject({
+      type: 'palette',
+      query: 'c',
+      paletteTypes: ['command', 'skill', 'prompt'],
+    })
 
     await harness.api.handleCommandSelect({
       id: 'command:compact',
@@ -109,12 +147,80 @@ describe('usePickerOrchestration', () => {
     harness.scope.stop()
   })
 
+  it('replaces @prompts triggers with prompt reference tokens', async () => {
+    const harness = createHarness('use @prompts review')
+    await settleWatchers()
+
+    expect(harness.api.showCommandPicker.value).toBe(true)
+    expect(harness.api.commandQuery.value).toBe('review')
+    expect(harness.api.commandPickerTypes.value).toEqual(['prompt'])
+    expect(harness.api.activeExtension.value).toMatchObject({
+      type: 'palette',
+      query: 'review',
+      paletteTypes: ['prompt'],
+    })
+
+    await harness.api.handleCommandSelect({
+      id: 'prompt:prompt-1',
+      type: 'prompt',
+      title: 'Review Prompt',
+      description: 'Review this.',
+      prompt: {
+        id: 'prompt-1',
+        title: 'Review Prompt',
+        body: 'Review this.',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    } as PaletteItem)
+
+    expect(harness.input.value).toBe(`use ${createPromptToken('prompt-1')} `)
+    harness.scope.stop()
+  })
+
+  it('completes slash-selected skills into skill reference tokens', async () => {
+    vi.mocked(window.electronAPI.getSkills).mockResolvedValue({
+      success: true,
+      skills: [{
+        id: 'user:skill-development',
+        name: 'Skill Development',
+        description: 'Create or update skills',
+        source: 'user',
+        path: '/skills/skill-development/SKILL.md',
+        directoryPath: '/skills/skill-development',
+        enabled: true,
+        instructions: 'Build skills carefully.',
+      }],
+    })
+    const harness = createHarness('/sk')
+
+    await harness.api.loadSkills()
+    harness.api.refreshTriggerState(harness.input.value, harness.cursor.value)
+    await settleWatchers()
+
+    expect(harness.api.activeExtension.value.items[0]).toMatchObject({
+      kind: 'skill',
+      title: 'Skill Development',
+    })
+
+    await harness.api.confirmActiveExtension()
+
+    expect(harness.input.value).toBe(`${createSkillToken('user:skill-development')} `)
+    expect(window.electronAPI.executeSkill).not.toHaveBeenCalled()
+    harness.scope.stop()
+  })
+
   it('tracks /cd path triggers and replaces the exact path range', async () => {
     const harness = createHarness('/cd ~/wo')
     await settleWatchers()
 
     expect(harness.api.showPathPicker.value).toBe(true)
     expect(harness.api.pathQuery.value).toBe('~/wo')
+    expect(harness.api.activeExtension.value).toMatchObject({
+      type: 'paths',
+      query: '~/wo',
+      selectedIndex: 0,
+    })
 
     await harness.api.handlePathPickerSelect('/Users/me/My Project')
 
@@ -128,6 +234,7 @@ describe('usePickerOrchestration', () => {
     const harness = createHarness(value)
     await settleWatchers()
 
+    expect(harness.api.activeExtension.value.type).toBe('files')
     expect(harness.api.fileQuery.value).toBe('second')
 
     const firstTriggerEnd = 'read @first'.length
@@ -136,6 +243,10 @@ describe('usePickerOrchestration', () => {
     await settleWatchers()
 
     expect(harness.api.fileQuery.value).toBe('first')
+    expect(harness.api.activeExtension.value).toMatchObject({
+      type: 'files',
+      query: 'first',
+    })
 
     await harness.api.handleFilePickerSelect('/repo/first.md')
 
@@ -149,6 +260,10 @@ describe('usePickerOrchestration', () => {
 
     expect(harness.api.showFilePicker.value).toBe(true)
     expect(harness.api.fileQuery.value).toBe('src')
+    expect(harness.api.activeExtension.value).toMatchObject({
+      type: 'files',
+      query: 'src',
+    })
 
     harness.input.value = 'plain text'
     harness.cursor.value = 'plain text'.length
@@ -162,6 +277,7 @@ describe('usePickerOrchestration', () => {
 
     expect(harness.api.showFilePicker.value).toBe(false)
     expect(harness.api.fileQuery.value).toBe('')
+    expect(harness.api.activeExtension.value.type).toBe('none')
     expect(harness.checkHistoryEdit).toHaveBeenCalledWith('plain text')
     harness.scope.stop()
   })

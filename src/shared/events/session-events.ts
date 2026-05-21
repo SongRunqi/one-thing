@@ -99,6 +99,7 @@ export interface ContextCompactCompletedEvent {
 export interface SessionVariablesUpdatedEvent {
   type: 'session:variables-updated'
   workingDirectory?: string
+  workingDirectoryRoots?: string[]
   variables: ContextVariable[]
 }
 

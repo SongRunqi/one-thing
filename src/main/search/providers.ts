@@ -11,6 +11,7 @@ import { getCurrentSessionId } from '../stores/app-state.js'
 import { getSettings } from '../stores/settings.js'
 import { getVariablesStore } from '../variables/store/index.js'
 import { listFiles } from '../utils/ripgrep.js'
+import { listPrompts } from '../prompts/store.js'
 
 // ---------------------------------------------------------------------------
 // Actions registry
@@ -146,6 +147,75 @@ function searchActions(query: string, limit: number): SearchResult[] {
       shortcut: action.shortcut,
       matchRanges: matchRanges(action.name, q),
     }))
+}
+
+function createPromptTitleFromQuery(query: string): string {
+  const q = query.trim()
+    .replace(/^>/, '')
+    .replace(/^\//, '')
+    .trim()
+    .replace(/^create\s+prompt\s*/i, '')
+    .replace(/^new\s+prompt\s*/i, '')
+    .trim()
+  return q || 'Untitled Prompt'
+}
+
+function searchPrompts(query: string, limit: number, includeCreateShortcut = true): SearchResult[] {
+  const q = normalizeQuery(query)
+  const prompts = listPrompts()
+  const matched = prompts
+    .map(prompt => {
+      const searchable = [
+        prompt.title,
+        prompt.description,
+        prompt.body,
+        ...(prompt.tags || []),
+      ]
+      return {
+        prompt,
+        score: Math.max(
+          scoreText(prompt.title, q),
+          scoreText(prompt.description, q) * 0.8,
+          scoreText((prompt.tags || []).join(' '), q) * 0.7,
+          scoreText(prompt.body, q) * 0.45,
+        ),
+        searchable: searchable.join(' '),
+      }
+    })
+    .filter(item => !q || item.score > 0 || item.searchable.toLowerCase().includes(q))
+    .sort((a, b) => (b.score - a.score) || (b.prompt.updatedAt - a.prompt.updatedAt))
+    .slice(0, Math.max(0, includeCreateShortcut ? limit - 1 : limit))
+    .map(({ prompt }) => ({
+      id: `prompt:${prompt.id}`,
+      type: 'prompt' as const,
+      title: prompt.title,
+      subtitle: prompt.description || prompt.body.slice(0, 90),
+      detail: (prompt.tags || []).join(' · ') || 'Prompt',
+      actionId: `insert-prompt:${prompt.id}`,
+      timestamp: prompt.updatedAt,
+      matchRanges: matchRanges(prompt.title, q),
+    }))
+
+  const wantsCreate = q && (
+    matched.length === 0 ||
+    q.startsWith('create prompt') ||
+    q.startsWith('new prompt')
+  )
+  if (includeCreateShortcut && wantsCreate) {
+    const title = createPromptTitleFromQuery(query)
+    matched.unshift({
+      id: `prompt-create:${encodeURIComponent(title)}`,
+      type: 'prompt',
+      title: `Create prompt "${title}"`,
+      subtitle: 'Save a reusable prompt snippet',
+      detail: 'Prompt',
+      actionId: `create-prompt:${encodeURIComponent(title)}`,
+      timestamp: Date.now(),
+      matchRanges: matchRanges(title, q),
+    })
+  }
+
+  return matched.slice(0, limit)
 }
 
 // ---------------------------------------------------------------------------
@@ -616,22 +686,25 @@ export async function executeSearch(
       return searchMessages(query, limit)
     case 'actions':
       return searchActions(query, limit)
+    case 'prompts':
+      return searchPrompts(query, limit, true)
     case 'files':
       return searchFiles(query, limit)
     case 'daily':
       return searchDailyNotes(query, limit)
     case 'all': {
       const includeDaily = Boolean(normalizeQuery(query))
-      const [chats, messages, files, daily, actions] = await Promise.all([
+      const [chats, messages, files, daily, prompts, actions] = await Promise.all([
         Promise.resolve(searchChats(query, 6)),
         Promise.resolve(searchMessages(query, 5)),
         searchFiles(query, 10),
         includeDaily ? searchDailyNotes(query, 6) : Promise.resolve([]),
+        Promise.resolve(searchPrompts(query, 6, true)),
         Promise.resolve(searchActions(query, query.trim().startsWith('/') || query.trim().startsWith('>') ? 8 : 4)),
       ])
       const ordered = query.trim().startsWith('/') || query.trim().startsWith('>')
-        ? [...actions, ...chats, ...daily, ...files, ...messages]
-        : [...chats, ...daily, ...files, ...messages, ...actions]
+        ? [...actions, ...prompts, ...chats, ...daily, ...files, ...messages]
+        : [...chats, ...prompts, ...daily, ...files, ...messages, ...actions]
       return ordered.slice(0, limit)
     }
   }

@@ -15,5 +15,12 @@ grep, bash), `workdir` MUST be set:
    project listed in `project_dirs`**: switch first via the
    `variable` tool, then proceed.
 
-3. **The request is purely conversational** (a question, an
+3. **`workdir` is set and the request needs a non-project directory**
+   (for example a global skill/config path such as `~/.claude/skills/...`
+   or another explicit absolute directory): keep the current workdir and
+   call the `variable` tool with action=append, name=workdir,
+   value=<absolute directory> to add an extra workdir root. Prefer the
+   narrowest useful directory (for example one skill directory), not `~`.
+
+4. **The request is purely conversational** (a question, an
    explanation, advice without file/code work): no workdir needed.

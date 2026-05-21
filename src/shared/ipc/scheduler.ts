@@ -1,4 +1,7 @@
 export type SchedulerRunReason = 'startup' | 'scheduled' | 'manual'
+export type SchedulerTaskKind = 'agent' | 'plugin'
+export type SchedulerTaskSource = 'user' | 'plugin'
+export type SchedulerRunStatus = 'running' | 'succeeded' | 'failed' | 'blocked' | 'skipped' | 'cancelled'
 
 export type SchedulerSchedule =
   | {
@@ -17,6 +20,7 @@ export type SchedulerSchedule =
     }
 
 export interface SchedulerRunRecordDTO {
+  runId?: string
   taskId: string
   pluginId?: string
   reason: SchedulerRunReason
@@ -31,10 +35,65 @@ export interface SchedulerRunRecordDTO {
   result?: unknown
 }
 
+export interface SchedulerRunTimelineEntryDTO {
+  id: string
+  timestamp: number
+  type: string
+  title: string
+  detail?: string
+  durationMs?: number
+  toolCallId?: string
+  stepId?: string
+  status?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface SchedulerRunToolCallDTO {
+  id: string
+  toolName: string
+  status: string
+  startedAt?: number
+  finishedAt?: number
+  durationMs?: number
+  argumentsPreview?: string
+  resultPreview?: string
+  error?: string
+}
+
+export interface SchedulerRunStepDTO {
+  id: string
+  title: string
+  status: string
+  timestamp: number
+  finishedAt?: number
+  durationMs?: number
+  toolCallId?: string
+  resultPreview?: string
+  error?: string
+}
+
+export interface SchedulerRunDetailDTO extends SchedulerRunRecordDTO {
+  status: SchedulerRunStatus
+  agentId?: string
+  sessionId?: string
+  assistantMessageId?: string
+  resultPreview?: string
+  steps?: SchedulerRunStepDTO[]
+  toolCalls?: SchedulerRunToolCallDTO[]
+  timeline?: SchedulerRunTimelineEntryDTO[]
+}
+
 export interface SchedulerTaskSnapshotDTO {
   id: string
   name?: string
   pluginId?: string
+  kind: SchedulerTaskKind
+  source: SchedulerTaskSource
+  readonly: boolean
+  agentId?: string
+  prompt?: string
+  promptPreview?: string
+  workingDirectory?: string
   enabled: boolean
   userEnabled?: boolean
   schedule?: SchedulerSchedule
@@ -53,6 +112,18 @@ export interface SchedulerTaskSnapshotDTO {
   successCount: number
   failureCount: number
   recentRuns?: SchedulerRunRecordDTO[]
+}
+
+export interface SchedulerUserTaskDTO {
+  id: string
+  name: string
+  prompt: string
+  agentId: string
+  enabled: boolean
+  schedule: SchedulerSchedule
+  workingDirectory?: string
+  createdAt: number
+  updatedAt: number
 }
 
 export interface SchedulerListResponse {
@@ -90,5 +161,61 @@ export interface SchedulerSetEnabledRequest {
 export interface SchedulerSetEnabledResponse {
   success: boolean
   task?: SchedulerTaskSnapshotDTO
+  error?: string
+}
+
+export interface SchedulerCreateTaskRequest {
+  name: string
+  prompt: string
+  agentId: string
+  enabled?: boolean
+  schedule: SchedulerSchedule
+  workingDirectory?: string
+}
+
+export interface SchedulerUpdateTaskRequest {
+  id: string
+  name?: string
+  prompt?: string
+  agentId?: string
+  enabled?: boolean
+  schedule?: SchedulerSchedule
+  workingDirectory?: string | null
+}
+
+export interface SchedulerDeleteTaskRequest {
+  id: string
+}
+
+export interface SchedulerWriteTaskResponse {
+  success: boolean
+  task?: SchedulerTaskSnapshotDTO
+  error?: string
+}
+
+export interface SchedulerDeleteTaskResponse {
+  success: boolean
+  error?: string
+}
+
+export interface SchedulerListRunsRequest {
+  taskId: string
+  limit?: number
+}
+
+export interface SchedulerListRunsResponse {
+  success: boolean
+  runs?: SchedulerRunDetailDTO[]
+  error?: string
+}
+
+export interface SchedulerGetRunRequest {
+  taskId: string
+  runId: string
+}
+
+export interface SchedulerGetRunResponse {
+  success: boolean
+  run?: SchedulerRunDetailDTO
   error?: string
 }

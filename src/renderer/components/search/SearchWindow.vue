@@ -75,6 +75,68 @@
       </div>
     </div>
 
+    <div
+      v-if="showPromptCreate"
+      class="prompt-dialog-backdrop"
+      @click.self="closePromptCreate"
+    >
+      <form
+        class="prompt-dialog"
+        @submit.prevent="createPromptFromDialog"
+      >
+        <header class="prompt-dialog-header">
+          <h2>Create Prompt</h2>
+          <button
+            type="button"
+            class="prompt-dialog-close"
+            @click="closePromptCreate"
+          >
+            ×
+          </button>
+        </header>
+        <label>
+          <span>Name</span>
+          <input
+            v-model="promptForm.title"
+            type="text"
+            autofocus
+          >
+        </label>
+        <label>
+          <span>Description</span>
+          <input
+            v-model="promptForm.description"
+            type="text"
+          >
+        </label>
+        <label>
+          <span>Prompt</span>
+          <textarea
+            v-model="promptForm.body"
+            rows="7"
+          />
+        </label>
+        <div
+          v-if="promptFormError"
+          class="prompt-dialog-error"
+        >
+          {{ promptFormError }}
+        </div>
+        <footer>
+          <button
+            type="button"
+            class="secondary"
+            @click="closePromptCreate"
+          >
+            Cancel
+          </button>
+          <button type="submit">
+            Save
+          </button>
+        </footer>
+      </form>
+    </div>
+
     <!-- Footer hints -->
     <div class="search-footer">
       <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> Navigate</span>
@@ -104,6 +166,7 @@ const tabs = computed<{ id: SearchCategory; label: string }[]>(() => {
     items.push({ id: 'daily', label: 'Daily' })
   }
   items.push(
+    { id: 'prompts', label: 'Prompts' },
     { id: 'files', label: 'Files' },
     { id: 'messages', label: 'Messages' },
     { id: 'actions', label: 'Actions' },
@@ -119,6 +182,9 @@ const isLoading = ref(false)
 const searchError = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 const resultsRef = ref<HTMLElement | null>(null)
+const showPromptCreate = ref(false)
+const promptForm = ref({ title: '', description: '', body: '' })
+const promptFormError = ref('')
 
 // ── Grouped results for "All" tab ─────────────────
 interface ResultGroup {
@@ -137,11 +203,13 @@ const groupedResults = computed<ResultGroup[]>(() => {
   const groups: ResultGroup[] = []
   const chats = results.value.filter(r => r.type === 'chat')
   const daily = results.value.filter(r => r.type === 'daily')
+  const prompts = results.value.filter(r => r.type === 'prompt')
   const files = results.value.filter(r => r.type === 'file')
   const messages = results.value.filter(r => r.type === 'message')
   const actions = results.value.filter(r => r.type === 'action')
 
   if (chats.length) groups.push({ type: 'chat', label: 'Chats', items: chats })
+  if (prompts.length) groups.push({ type: 'prompt', label: 'Prompts', items: prompts })
   if (daily.length) groups.push({ type: 'daily', label: 'Daily Notes', items: daily })
   if (files.length) groups.push({ type: 'file', label: 'Files', items: files })
   if (messages.length) groups.push({ type: 'message', label: 'Messages', items: messages })
@@ -156,15 +224,17 @@ const totalResults = computed(() =>
 
 const inputPlaceholder = computed(() => {
   if (activeTab.value === 'actions') return 'Run a command...'
+  if (activeTab.value === 'prompts') return 'Search or create prompts...'
   if (activeTab.value === 'daily') return 'Find daily notes, or open today...'
   if (activeTab.value === 'files') return 'Search files in current workspace and notes...'
   if (activeTab.value === 'messages') return 'Search across chat messages...'
   if (activeTab.value === 'chats') return 'Search chats...'
-  return 'Search chats, daily notes, files, messages, and commands...'
+  return 'Search chats, prompts, daily notes, files, messages, and commands...'
 })
 
 const emptyText = computed(() => {
   if (query.value.trim()) return 'No results found'
+  if (activeTab.value === 'prompts') return 'Type to search or create prompts...'
   if (activeTab.value === 'daily') return 'No daily notes directory found'
   if (activeTab.value === 'files' || activeTab.value === 'messages') return 'Type to search...'
   return 'Start typing, or use / for commands'
@@ -229,7 +299,7 @@ watch([query, activeTab], () => {
 
 // ── Keyboard navigation ──────────────────────────
 function onInputKeydown(e: KeyboardEvent) {
-  if ((e.metaKey || e.ctrlKey) && /^[1-6]$/.test(e.key)) {
+  if ((e.metaKey || e.ctrlKey) && /^[1-7]$/.test(e.key)) {
     e.preventDefault()
     const tab = tabs.value[Number(e.key) - 1]
     if (tab) activeTab.value = tab.id
@@ -257,6 +327,10 @@ function onInputKeydown(e: KeyboardEvent) {
       break
     case 'Escape':
       e.preventDefault()
+      if (showPromptCreate.value) {
+        closePromptCreate()
+        return
+      }
       window.electronAPI.closeSearchWindow()
       break
     case 'Tab':
@@ -294,7 +368,11 @@ function confirmSelected() {
 }
 
 function confirmResult(item: SearchResult) {
-  if (item.type === 'action' && item.actionId) {
+  if (item.type === 'prompt' && item.actionId?.startsWith('create-prompt:')) {
+    openPromptCreate(decodeURIComponent(item.actionId.slice('create-prompt:'.length)))
+  } else if (item.type === 'prompt' && item.actionId) {
+    window.electronAPI.searchExecuteAction(item.actionId)
+  } else if (item.type === 'action' && item.actionId) {
     window.electronAPI.searchExecuteAction(item.actionId)
   } else if (item.type === 'daily' && item.actionId) {
     window.electronAPI.searchExecuteAction(item.actionId)
@@ -309,6 +387,43 @@ function confirmResult(item: SearchResult) {
   }
 }
 
+function openPromptCreate(title: string) {
+  promptForm.value = { title, description: '', body: '' }
+  promptFormError.value = ''
+  showPromptCreate.value = true
+}
+
+function closePromptCreate() {
+  showPromptCreate.value = false
+  promptFormError.value = ''
+  inputRef.value?.focus()
+}
+
+async function createPromptFromDialog() {
+  const title = promptForm.value.title.trim()
+  const body = promptForm.value.body.trim()
+  if (!title) {
+    promptFormError.value = 'Name is required'
+    return
+  }
+  if (!body) {
+    promptFormError.value = 'Prompt is required'
+    return
+  }
+
+  const response = await window.electronAPI.createPrompt({
+    title,
+    body,
+    description: promptForm.value.description.trim() || undefined,
+  })
+  if (!response.success || !response.prompt) {
+    promptFormError.value = response.error || 'Failed to create prompt'
+    return
+  }
+  showPromptCreate.value = false
+  window.electronAPI.searchExecuteAction(`insert-prompt:${response.prompt.id}`)
+}
+
 // ── Double Shift to close from within search window ──
 let lastShiftUp = 0
 let shiftClean = false
@@ -316,6 +431,10 @@ let shiftClean = false
 function onGlobalKeyDown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     e.preventDefault()
+    if (showPromptCreate.value) {
+      closePromptCreate()
+      return
+    }
     window.electronAPI.closeSearchWindow()
     return
   }
@@ -466,6 +585,100 @@ onUnmounted(() => {
 
 .search-state.error {
   color: var(--danger, #d14);
+}
+
+.prompt-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.22);
+  z-index: 20;
+}
+
+.prompt-dialog {
+  width: min(520px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel, var(--bg));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+}
+
+.prompt-dialog-header,
+.prompt-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.prompt-dialog h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.prompt-dialog-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.prompt-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.prompt-dialog input,
+.prompt-dialog textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  outline: none;
+  padding: 8px 9px;
+  resize: vertical;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.prompt-dialog button[type="submit"],
+.prompt-dialog .secondary {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.prompt-dialog .secondary {
+  background: transparent;
+  color: var(--text);
+}
+
+.prompt-dialog-error {
+  color: var(--danger, #d14);
+  font-size: 12px;
 }
 
 /* ── Footer ─────────────────────────── */

@@ -15,6 +15,8 @@ export type { ContextVariable }
 /** Per-call context. Currently just the session, but kept as a struct for forward-compat. */
 export interface VariableContext {
   sessionId: string
+  messageId?: string
+  toolCallId?: string
 }
 
 /** Inputs for a `set` operation. Description is optional metadata for the prompt/inspector. */
@@ -47,6 +49,8 @@ export interface VariableProvider {
   claims(name: string): boolean
 
   set?(ctx: VariableContext, input: SetInput): Promise<ContextVariable> | ContextVariable
+  append?(ctx: VariableContext, input: SetInput): Promise<ContextVariable> | ContextVariable
+  remove?(ctx: VariableContext, input: SetInput): Promise<ContextVariable> | ContextVariable
   delete?(ctx: VariableContext, name: string): Promise<void> | void
 
   /**

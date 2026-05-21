@@ -10,7 +10,7 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Tool } from '../core/tool.js'
 import { replace, normalizeLineEndings, trimDiff } from '../core/replacers.js'
-import { getSandboxBoundary, isPathContained, resolveToolPath } from '../core/sandbox.js'
+import { findSandboxRootForPath, getSandboxBoundary, resolveToolPath } from '../core/sandbox.js'
 import { Permission } from '../../permission/index.js'
 
 // Diff library for generating unified diffs
@@ -81,7 +81,13 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
 
     // Check if path is outside sandbox boundary
     const boundary = getSandboxBoundary(ctx.workingDirectory)
-    const isExternal = !isPathContained(boundary, resolvedPath)
+    const matchedRoot = findSandboxRootForPath(
+      resolvedPath,
+      ctx.workingDirectory,
+      ctx.workingDirectoryRoots,
+    )
+    const permissionRoot = matchedRoot ?? boundary
+    const isExternal = !matchedRoot
 
     // Validate old_string and new_string are different
     if (old_string === new_string) {
@@ -138,7 +144,7 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
         title: contentOld === ''
           ? `Create new file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`
           : `Replace entire content: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`,
-        workingDirectory: boundary,
+        workingDirectory: permissionRoot,
         metadata: {
           filePath: resolvedPath,
           diff,
@@ -234,7 +240,7 @@ The edit will FAIL if old_string is not unique in the file. Either provide a lar
       messageId: ctx.messageId,
       callId: ctx.toolCallId,
       title: `Edit file: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`,
-      workingDirectory: boundary,
+      workingDirectory: permissionRoot,
       metadata: {
         filePath: resolvedPath,
         diff,

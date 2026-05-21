@@ -76,6 +76,8 @@ export interface SystemPromptVariables {
 
   // Context
   workingDirectory?: string
+  workingDirectoryRoots?: string[]
+  workingDirectoryRootDisplays?: Array<{ path: string; displayPath: string }>
   displayPath?: string
   baseDirectory: string
   osType: OSType

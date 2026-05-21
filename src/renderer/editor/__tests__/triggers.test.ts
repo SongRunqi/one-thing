@@ -68,6 +68,19 @@ describe('editor trigger parsing', () => {
     })
   })
 
+  it('parses explicit @prompts triggers in the middle of a line', () => {
+    const value = 'use @prompts refactor before sending'
+    const cursor = 'use @prompts refactor'.length
+
+    expect(parseEditorTrigger(value, cursor)).toEqual({
+      type: 'prompt',
+      query: 'refactor',
+      from: 4,
+      to: cursor,
+      explicit: true,
+    })
+  })
+
   it('parses backward-compatible @path triggers', () => {
     expect(parseEditorTrigger('inspect @src/app')).toEqual({
       type: 'file',
@@ -113,5 +126,12 @@ describe('editor trigger parsing', () => {
     const trigger = parseEditorTrigger(value)
     expect(trigger).not.toBeNull()
     expect(applyTriggerReplacement(value, trigger!, '@/tmp/project/src/index.ts ')).toBe('open @/tmp/project/src/index.ts ')
+  })
+
+  it('applies prompt replacements using parser ranges', () => {
+    const value = 'use @prompts review'
+    const trigger = parseEditorTrigger(value)
+    expect(trigger).not.toBeNull()
+    expect(applyTriggerReplacement(value, trigger!, '{{prompt:p1}} ')).toBe('use {{prompt:p1}} ')
   })
 })

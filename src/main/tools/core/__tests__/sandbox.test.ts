@@ -14,7 +14,15 @@ vi.mock('../../../stores/settings.js', () => ({
   getSettings: vi.fn(() => ({})),
 }))
 
-import { expandPath, isPathContained, getSandboxBoundary, resolveToolPath, checkFileAccess } from '../sandbox'
+import {
+  expandPath,
+  isPathContained,
+  getSandboxBoundary,
+  getSandboxRoots,
+  findSandboxRootForPath,
+  resolveToolPath,
+  checkFileAccess,
+} from '../sandbox'
 import { Permission } from '../../../permission/index.js'
 import { getSettings } from '../../../stores/settings.js'
 
@@ -151,6 +159,27 @@ describe('sandbox', () => {
     })
   })
 
+  describe('getSandboxRoots()', () => {
+    it('returns active boundary followed by additional roots', () => {
+      expect(getSandboxRoots('/workspace', ['/skills/iva', '/shared'])).toEqual([
+        '/workspace',
+        '/skills/iva',
+        '/shared',
+      ])
+    })
+
+    it('deduplicates roots', () => {
+      expect(getSandboxRoots('/workspace', ['/workspace', '/shared', '/shared'])).toEqual([
+        '/workspace',
+        '/shared',
+      ])
+    })
+
+    it('finds the containing root for a target path', () => {
+      expect(findSandboxRootForPath('/skills/iva/SKILL.md', '/workspace', ['/skills/iva'])).toBe('/skills/iva')
+    })
+  })
+
   // ─── checkFileAccess ─────────────────────────────────────────────
 
   describe('checkFileAccess()', () => {
@@ -164,6 +193,16 @@ describe('sandbox', () => {
     it('should resolve absolute path inside boundary without permission', async () => {
       const result = await checkFileAccess('/workspace/src/file.ts', defaultCtx, 'read')
       expect(result).toBe('/workspace/src/file.ts')
+      expect(Permission.ask).not.toHaveBeenCalled()
+    })
+
+    it('should allow absolute paths inside additional roots without permission', async () => {
+      const result = await checkFileAccess(
+        '/skills/iva/references/code-templates.md',
+        { ...defaultCtx, workingDirectoryRoots: ['/skills/iva'] },
+        'read',
+      )
+      expect(result).toBe('/skills/iva/references/code-templates.md')
       expect(Permission.ask).not.toHaveBeenCalled()
     })
 

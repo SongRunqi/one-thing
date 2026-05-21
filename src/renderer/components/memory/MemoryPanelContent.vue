@@ -929,75 +929,6 @@
         </div>
       </template>
 
-      <template v-else-if="activeTab === 'scheduler'">
-        <div class="settings-stack">
-          <section class="memory-section">
-            <div class="setting-row">
-              <div>
-                <span class="setting-title">Scheduler</span>
-                <span class="setting-meta">{{ schedulerTasks.length }} registered tasks</span>
-              </div>
-              <button
-                class="secondary-action inline"
-                type="button"
-                :disabled="schedulerLoading"
-                @click="loadScheduler"
-              >
-                <RefreshCw
-                  :size="15"
-                  :stroke-width="1.8"
-                  :class="{ spinning: schedulerLoading }"
-                />
-                <span>Refresh</span>
-              </button>
-            </div>
-            <div
-              v-if="schedulerTasks.length === 0"
-              class="notice compact"
-            >
-              No scheduled tasks registered.
-            </div>
-            <div
-              v-for="task in schedulerTasks"
-              :key="task.id"
-              class="scheduler-task"
-            >
-              <div class="scheduler-task-main">
-                <strong>{{ task.name || task.id }}</strong>
-                <code>{{ task.id }}</code>
-                <span>{{ task.enabled ? 'enabled' : 'disabled' }} · {{ task.inFlight ? 'running' : 'idle' }}</span>
-              </div>
-              <div class="dreaming-status">
-                <span>Next</span>
-                <strong>{{ formatMaybeDate(task.nextRunAt) }}</strong>
-                <span>Last</span>
-                <strong>{{ formatMaybeDate(task.lastRunAt) }}</strong>
-                <span>Result</span>
-                <strong>{{ task.lastError || task.lastRunReason || 'none' }}</strong>
-              </div>
-              <div class="action-row">
-                <button
-                  class="secondary-action inline"
-                  type="button"
-                  :disabled="schedulerActionId === task.id || task.inFlight"
-                  @click="runSchedulerTask(task.id)"
-                >
-                  {{ task.inFlight ? 'Running...' : 'Run now' }}
-                </button>
-                <button
-                  class="secondary-action inline"
-                  type="button"
-                  :disabled="schedulerActionId === task.id"
-                  @click="setSchedulerEnabled(task.id, !task.enabled)"
-                >
-                  {{ task.enabled ? 'Disable' : 'Enable' }}
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
-      </template>
-
       <template v-else-if="activeTab === 'logs'">
         <div class="settings-stack">
           <section class="memory-section">
@@ -2084,6 +2015,7 @@ import {
   Sparkles,
 } from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
+import { useSessionsStore } from '@/stores/sessions'
 import type {
   MemoryGraphAuditEvent,
   MemoryGraphDuplicate,
@@ -2099,13 +2031,12 @@ import type {
   MemoryOverview,
   MemoryReadResponse,
   MemorySearchHit,
-  SchedulerTaskSnapshotDTO,
   SoulMemorySettings,
 } from '@shared/ipc'
 import { normalizeSoulMemorySettings } from '@shared/defaults/settings'
 import { resolveSoulMemoryEmbeddingTarget } from '@shared/embeddings/defaults'
 
-type TabId = 'overview' | 'profile' | 'ai-notes' | 'daily' | 'dreams' | 'search' | 'scheduler' | 'logs' | 'settings'
+type TabId = 'overview' | 'profile' | 'ai-notes' | 'daily' | 'dreams' | 'search' | 'logs' | 'settings'
 type MemoryLogGroup = {
   id: string
   subsystem: string
@@ -2121,6 +2052,8 @@ type MemoryLogGroup = {
 }
 
 const settingsStore = useSettingsStore()
+const sessionsStore = useSessionsStore()
+const activeAgentId = computed(() => sessionsStore.currentSession?.agentId || 'default')
 
 const overview = ref<MemoryOverview | null>(null)
 const loading = ref(false)
@@ -2128,7 +2061,6 @@ const searching = ref(false)
 const appending = ref(false)
 const savingFile = ref(false)
 const dreamingRunning = ref(false)
-const schedulerLoading = ref(false)
 const logsLoading = ref(false)
 const profileLoading = ref(false)
 const profileSaving = ref(false)
@@ -2140,7 +2072,6 @@ const selectedFile = ref<MemoryReadResponse['file'] | null>(null)
 const selectedFileText = ref('')
 const searchQuery = ref('')
 const searchResults = ref<MemorySearchHit[]>([])
-const schedulerTasks = ref<SchedulerTaskSnapshotDTO[]>([])
 const memoryLogs = ref<MemoryDiagnosticLogEntry[]>([])
 const memoryLogStats = ref<MemoryLogsStatsResponse['stats'] | null>(null)
 const selectedLogGroupId = ref('')
@@ -2156,7 +2087,6 @@ const graphDuplicates = ref<MemoryGraphDuplicate[]>([])
 const graphAudit = ref<MemoryGraphAuditEvent[]>([])
 const graphSearch = ref('')
 const graphView = ref<'observations' | 'relations' | 'entities' | 'duplicates'>('observations')
-const schedulerActionId = ref('')
 const appendTarget = ref<'daily'>('daily')
 const appendHeading = ref('Manual memory')
 const appendContent = ref('')
@@ -2208,7 +2138,6 @@ const tabs: Array<{ id: TabId; label: string; icon: Component }> = [
   { id: 'daily', label: 'Daily', icon: Clock },
   { id: 'dreams', label: 'Dreams', icon: Brain },
   { id: 'search', label: 'Search', icon: Search },
-  { id: 'scheduler', label: 'Scheduler', icon: Database },
   { id: 'logs', label: 'Logs', icon: FileText },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
@@ -2239,8 +2168,7 @@ const embeddingTarget = computed(() =>
 
 const isDreamingInFlight = computed(() =>
   dreamingRunning.value ||
-  overview.value?.dreaming.inFlight === true ||
-  schedulerTasks.value.some(task => task.id.includes('memory-dreaming') && task.inFlight),
+  overview.value?.dreaming.inFlight === true,
 )
 
 const dreamingStatusLabel = computed(() => {
@@ -2296,9 +2224,6 @@ watch(
     if (isFileTab.value && overview.value) {
       await ensureFileSelectionForTab()
     }
-    if (tab === 'scheduler') {
-      await loadScheduler()
-    }
     if (tab === 'profile') {
       await loadGraph()
     }
@@ -2325,6 +2250,13 @@ watch(
   () => syncLogsPolling(),
 )
 
+watch(
+  () => activeAgentId.value,
+  async () => {
+    await loadOverview()
+  },
+)
+
 onMounted(async () => {
   await loadOverview()
 })
@@ -2345,7 +2277,7 @@ async function loadOverview(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.getMemoryOverview()
+    const response = await window.electronAPI.getMemoryOverview(activeAgentId.value)
     if (!response.success || !response.overview) {
       throw new Error(response.error || 'Failed to load memory')
     }
@@ -2357,9 +2289,6 @@ async function loadOverview(): Promise<void> {
     }
     if (isFileTab.value && selectedPath.value) {
       await ensureFileSelectionForTab()
-    }
-    if (activeTab.value === 'scheduler') {
-      await loadScheduler()
     }
     if (activeTab.value === 'profile') {
       await loadGraph()
@@ -2376,7 +2305,7 @@ async function rebuildIndex(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.rebuildMemoryIndex()
+    const response = await window.electronAPI.rebuildMemoryIndex(activeAgentId.value)
     if (!response.success) throw new Error(response.error || 'Failed to rebuild memory index')
     await loadOverview()
   } catch (err) {
@@ -2408,6 +2337,7 @@ async function readSelectedFile(startLine?: number, full = false): Promise<void>
   if (!selectedPath.value) return
   const response = await window.electronAPI.readMemoryFile({
     path: selectedPath.value,
+    agentId: activeAgentId.value,
     ...(startLine ? { startLine } : {}),
     ...(full ? { full: true } : { lines: startLine ? 180 : 260 }),
   })
@@ -2427,6 +2357,7 @@ async function saveSelectedFile(): Promise<void> {
     const response = await window.electronAPI.saveMemoryFile({
       path: selectedPath.value,
       content: selectedFileText.value,
+      agentId: activeAgentId.value,
     })
     if (!response.success) throw new Error(response.error || 'Failed to save memory file')
     await loadOverview()
@@ -2442,12 +2373,13 @@ async function loadGraph(): Promise<void> {
   profileLoading.value = true
   error.value = ''
   try {
+    const agentId = activeAgentId.value
     const query = graphSearch.value.trim() || undefined
     const [entities, observations, relations, duplicates] = await Promise.all([
-      window.electronAPI.listMemoryGraphEntities({ query, limit: 250 }),
-      window.electronAPI.listMemoryGraphObservations({ query, limit: 250 }),
-      window.electronAPI.listMemoryGraphRelations({ query, limit: 250 }),
-      window.electronAPI.listMemoryGraphDuplicates({ query, limit: 100 }),
+      window.electronAPI.listMemoryGraphEntities({ agentId, query, limit: 250 }),
+      window.electronAPI.listMemoryGraphObservations({ agentId, query, limit: 250 }),
+      window.electronAPI.listMemoryGraphRelations({ agentId, query, limit: 250 }),
+      window.electronAPI.listMemoryGraphDuplicates({ agentId, query, limit: 100 }),
     ])
     if (!entities.success || !entities.entities) throw new Error(entities.error || 'Failed to load graph entities')
     if (!observations.success || !observations.observations) throw new Error(observations.error || 'Failed to load graph observations')
@@ -2468,7 +2400,7 @@ async function loadGraph(): Promise<void> {
 }
 
 async function loadGraphAudit(id: string): Promise<void> {
-  const response = await window.electronAPI.getMemoryGraphAudit({ id })
+  const response = await window.electronAPI.getMemoryGraphAudit({ agentId: activeAgentId.value, id })
   graphAudit.value = response.success && response.events ? response.events : []
 }
 
@@ -2584,6 +2516,7 @@ async function saveGraphEntity(): Promise<void> {
   try {
     const form = graphEntityForm.value
     const response = await window.electronAPI.upsertMemoryGraphEntity({
+      agentId: activeAgentId.value,
       ...(form.id.trim() ? { id: form.id.trim() } : {}),
       entityType: form.entityType,
       name: form.name.trim(),
@@ -2610,7 +2543,7 @@ async function deleteGraphEntity(): Promise<void> {
   profileSaving.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.deleteMemoryGraphEntity({ id: graphEntityForm.value.id })
+    const response = await window.electronAPI.deleteMemoryGraphEntity({ agentId: activeAgentId.value, id: graphEntityForm.value.id })
     if (!response.success) throw new Error(response.error || 'Failed to delete graph entity')
     resetGraphEntityForm()
     await loadGraph()
@@ -2628,6 +2561,7 @@ async function saveGraphObservation(): Promise<void> {
   try {
     const form = graphObservationForm.value
     const response = await window.electronAPI.upsertMemoryGraphObservation({
+      agentId: activeAgentId.value,
       ...(form.id ? { id: form.id } : {}),
       entityId: form.entityId,
       kind: form.kind,
@@ -2656,7 +2590,7 @@ async function deleteGraphObservation(): Promise<void> {
   profileSaving.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.deleteMemoryGraphObservation({ id: graphObservationForm.value.id })
+    const response = await window.electronAPI.deleteMemoryGraphObservation({ agentId: activeAgentId.value, id: graphObservationForm.value.id })
     if (!response.success) throw new Error(response.error || 'Failed to delete graph observation')
     resetGraphObservationForm()
     await loadGraph()
@@ -2674,6 +2608,7 @@ async function saveGraphRelation(): Promise<void> {
   try {
     const form = graphRelationForm.value
     const response = await window.electronAPI.upsertMemoryGraphRelation({
+      agentId: activeAgentId.value,
       ...(form.id ? { id: form.id } : {}),
       fromEntityId: form.fromEntityId,
       relationType: form.relationType.trim(),
@@ -2701,7 +2636,7 @@ async function deleteGraphRelation(): Promise<void> {
   profileSaving.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.deleteMemoryGraphRelation({ id: graphRelationForm.value.id })
+    const response = await window.electronAPI.deleteMemoryGraphRelation({ agentId: activeAgentId.value, id: graphRelationForm.value.id })
     if (!response.success) throw new Error(response.error || 'Failed to delete graph relation')
     resetGraphRelationForm()
     await loadGraph()
@@ -2714,7 +2649,7 @@ async function deleteGraphRelation(): Promise<void> {
 }
 
 async function mergeGraphDuplicate(id: string): Promise<void> {
-  const response = await window.electronAPI.mergeMemoryGraphDuplicate({ id })
+  const response = await window.electronAPI.mergeMemoryGraphDuplicate({ agentId: activeAgentId.value, id })
   if (!response.success) {
     error.value = response.error || 'Failed to merge possible duplicate'
     return
@@ -2724,7 +2659,7 @@ async function mergeGraphDuplicate(id: string): Promise<void> {
 }
 
 async function ignoreGraphDuplicate(id: string): Promise<void> {
-  const response = await window.electronAPI.ignoreMemoryGraphDuplicate({ id })
+  const response = await window.electronAPI.ignoreMemoryGraphDuplicate({ agentId: activeAgentId.value, id })
   if (!response.success) {
     error.value = response.error || 'Failed to ignore possible duplicate'
     return
@@ -2742,6 +2677,7 @@ async function runSearch(): Promise<void> {
   try {
     const response = await window.electronAPI.searchMemory({
       query,
+      agentId: activeAgentId.value,
       limit: memorySettings.value.search.maxResults,
     })
     if (!response.success || !response.hits) {
@@ -2798,6 +2734,7 @@ async function appendMemory(): Promise<void> {
   try {
     const response = await window.electronAPI.appendMemory({
       content,
+      agentId: activeAgentId.value,
       target: appendTarget.value,
       heading: appendHeading.value.trim() || undefined,
     })
@@ -2817,30 +2754,14 @@ async function runDreaming(): Promise<void> {
   error.value = ''
   syncDreamingPolling()
   try {
-    const response = await window.electronAPI.runMemoryDreaming()
+    const response = await window.electronAPI.runMemoryDreaming(activeAgentId.value)
     if (!response.success) throw new Error(response.error || 'Failed to run dreaming')
     await loadOverview()
-    if (activeTab.value === 'scheduler') await loadScheduler()
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
     dreamingRunning.value = false
     syncDreamingPolling()
-  }
-}
-
-async function loadScheduler(): Promise<void> {
-  schedulerLoading.value = true
-  error.value = ''
-  try {
-    const response = await window.electronAPI.listSchedulerTasks()
-    if (!response.success || !response.tasks) throw new Error(response.error || 'Failed to load scheduler tasks')
-    schedulerTasks.value = response.tasks
-    syncDreamingPolling()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
-  } finally {
-    schedulerLoading.value = false
   }
 }
 
@@ -2856,39 +2777,8 @@ function syncDreamingPolling(): void {
   dreamingPollTimer = window.setTimeout(async () => {
     dreamingPollTimer = null
     await loadOverview()
-    if (activeTab.value === 'scheduler') await loadScheduler()
     syncDreamingPolling()
   }, 1500)
-}
-
-async function runSchedulerTask(id: string): Promise<void> {
-  schedulerActionId.value = id
-  error.value = ''
-  try {
-    const response = await window.electronAPI.runSchedulerTaskNow({ id, force: true })
-    if (!response.success) throw new Error(response.error || 'Failed to run scheduled task')
-    await loadScheduler()
-    await loadOverview()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
-  } finally {
-    schedulerActionId.value = ''
-  }
-}
-
-async function setSchedulerEnabled(id: string, enabled: boolean): Promise<void> {
-  schedulerActionId.value = id
-  error.value = ''
-  try {
-    const response = await window.electronAPI.setSchedulerTaskEnabled({ id, enabled })
-    if (!response.success) throw new Error(response.error || 'Failed to update scheduled task')
-    await loadScheduler()
-    await loadOverview()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
-  } finally {
-    schedulerActionId.value = ''
-  }
 }
 
 async function loadMemoryLogs(): Promise<void> {
@@ -3924,39 +3814,6 @@ function formatMaybeDate(ms?: number): string {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.45;
-}
-
-.scheduler-task {
-  padding: 10px;
-  border-top: 1px solid var(--border);
-}
-
-.scheduler-task:first-of-type {
-  border-top: 0;
-}
-
-.scheduler-task-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-bottom: 8px;
-}
-
-.scheduler-task-main strong {
-  color: var(--text);
-  font-size: 13px;
-}
-
-.scheduler-task-main code,
-.scheduler-task-main span {
-  color: var(--muted);
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
-.scheduler-task-main code {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 
 .compact-actions {

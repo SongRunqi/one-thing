@@ -11,6 +11,7 @@ import type {
   SessionMeta,
   UserMessageMarker,
 } from '../../../shared/ipc.js'
+import { DEFAULT_AGENT_ID } from '../../../shared/ipc.js'
 import {
   getSessionPath,
   getStorePath,
@@ -47,6 +48,7 @@ interface SessionRow {
   name: string
   created_at: number
   updated_at: number
+  agent_id: string | null
   parent_session_id: string | null
   branch_from_message_id: string | null
   last_model: string | null
@@ -55,6 +57,7 @@ interface SessionRow {
   is_archived: number
   archived_at: number | null
   working_directory: string | null
+  working_directory_roots_json: string | null
   summary: string | null
   summary_up_to_message_id: string | null
   summary_created_at: number | null
@@ -133,20 +136,21 @@ export function upsertSessionMetadata(meta: SessionMeta | SessionDetails): void 
   database.prepare(`
     INSERT INTO sessions (
       id, name, created_at, updated_at, parent_session_id, branch_from_message_id,
-      last_model, last_provider, is_pinned, is_archived, archived_at,
-      working_directory, summary, summary_up_to_message_id, summary_created_at, prompt_context_json,
+      agent_id, last_model, last_provider, is_pinned, is_archived, archived_at,
+      working_directory, working_directory_roots_json, summary, summary_up_to_message_id, summary_created_at, prompt_context_json,
       migration_state, legacy_json_path
     )
     VALUES (
       @id, @name, @createdAt, @updatedAt, @parentSessionId, @branchFromMessageId,
-      @lastModel, @lastProvider, @isPinned, @isArchived, @archivedAt,
-      @workingDirectory, @summary, @summaryUpToMessageId, @summaryCreatedAt, @promptContextJson,
+      @agentId, @lastModel, @lastProvider, @isPinned, @isArchived, @archivedAt,
+      @workingDirectory, @workingDirectoryRootsJson, @summary, @summaryUpToMessageId, @summaryCreatedAt, @promptContextJson,
       COALESCE(@migrationState, 'pending'), @legacyJsonPath
     )
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       created_at = excluded.created_at,
       updated_at = excluded.updated_at,
+      agent_id = COALESCE(excluded.agent_id, sessions.agent_id),
       parent_session_id = excluded.parent_session_id,
       branch_from_message_id = excluded.branch_from_message_id,
       last_model = excluded.last_model,
@@ -155,6 +159,10 @@ export function upsertSessionMetadata(meta: SessionMeta | SessionDetails): void 
       is_archived = excluded.is_archived,
       archived_at = excluded.archived_at,
       working_directory = COALESCE(excluded.working_directory, sessions.working_directory),
+      working_directory_roots_json = CASE
+        WHEN @workingDirectoryRootsProvided THEN excluded.working_directory_roots_json
+        ELSE sessions.working_directory_roots_json
+      END,
       summary = COALESCE(excluded.summary, sessions.summary),
       summary_up_to_message_id = COALESCE(excluded.summary_up_to_message_id, sessions.summary_up_to_message_id),
       summary_created_at = COALESCE(excluded.summary_created_at, sessions.summary_created_at),
@@ -170,12 +178,17 @@ export function upsertSessionMetadata(meta: SessionMeta | SessionDetails): void 
     updatedAt: meta.updatedAt,
     parentSessionId: meta.parentSessionId ?? null,
     branchFromMessageId: meta.branchFromMessageId ?? null,
+    agentId: meta.agentId || DEFAULT_AGENT_ID,
     lastModel: meta.lastModel ?? null,
     lastProvider: meta.lastProvider ?? null,
     isPinned: boolInt(meta.isPinned),
     isArchived: boolInt(meta.isArchived),
     archivedAt: meta.archivedAt ?? null,
     workingDirectory: ('workingDirectory' in meta ? meta.workingDirectory : undefined) ?? null,
+    workingDirectoryRootsJson: 'workingDirectoryRoots' in meta
+      ? jsonOrNull(meta.workingDirectoryRoots ?? [])
+      : null,
+    workingDirectoryRootsProvided: 'workingDirectoryRoots' in meta ? 1 : 0,
     summary: ('summary' in meta ? meta.summary : undefined) ?? null,
     summaryUpToMessageId: ('summaryUpToMessageId' in meta ? meta.summaryUpToMessageId : undefined) ?? null,
     summaryCreatedAt: ('summaryCreatedAt' in meta ? meta.summaryCreatedAt : undefined) ?? null,
@@ -203,6 +216,7 @@ function rowToSessionDetails(row: SessionRow): SessionDetails {
     name: row.name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    agentId: row.agent_id || DEFAULT_AGENT_ID,
     parentSessionId: row.parent_session_id ?? undefined,
     branchFromMessageId: row.branch_from_message_id ?? undefined,
     lastModel: row.last_model ?? undefined,
@@ -211,6 +225,7 @@ function rowToSessionDetails(row: SessionRow): SessionDetails {
     isArchived: !!row.is_archived,
     archivedAt: row.archived_at ?? undefined,
     workingDirectory: row.working_directory ?? undefined,
+    workingDirectoryRoots: parseJson<string[]>(row.working_directory_roots_json) ?? undefined,
     summary: row.summary ?? undefined,
     summaryUpToMessageId: row.summary_up_to_message_id ?? undefined,
     summaryCreatedAt: row.summary_created_at ?? undefined,
@@ -497,11 +512,11 @@ function insertSession(database: DatabaseConnection, session: ChatSession): void
   database.prepare(`
     INSERT OR REPLACE INTO sessions (
       id, name, created_at, updated_at, parent_session_id, branch_from_message_id,
-      last_model, last_provider, is_pinned, is_archived, archived_at,
-      working_directory, summary, summary_up_to_message_id, summary_created_at,
+      agent_id, last_model, last_provider, is_pinned, is_archived, archived_at,
+      working_directory, working_directory_roots_json, summary, summary_up_to_message_id, summary_created_at,
       prompt_context_json, migration_state, migrated_from_json_at, legacy_json_path
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'migrating', NULL, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'migrating', NULL, ?)
   `).run(
     session.id,
     session.name,
@@ -509,12 +524,14 @@ function insertSession(database: DatabaseConnection, session: ChatSession): void
     session.updatedAt,
     session.parentSessionId ?? null,
     session.branchFromMessageId ?? null,
+    session.agentId || DEFAULT_AGENT_ID,
     session.lastModel ?? null,
     session.lastProvider ?? null,
     boolInt(session.isPinned),
     boolInt(session.isArchived),
     session.archivedAt ?? null,
     session.workingDirectory ?? null,
+    jsonOrNull(session.workingDirectoryRoots ?? []),
     session.summary ?? null,
     session.summaryUpToMessageId ?? null,
     session.summaryCreatedAt ?? null,
@@ -523,10 +540,20 @@ function insertSession(database: DatabaseConnection, session: ChatSession): void
   )
 }
 
+function preserveExistingAgentId(database: DatabaseConnection, session: ChatSession): ChatSession {
+  if (session.agentId) return session
+  const row = database
+    .prepare('SELECT agent_id FROM sessions WHERE id = ?')
+    .get(session.id) as { agent_id: string | null } | undefined
+  if (!row?.agent_id) return session
+  return { ...session, agentId: row.agent_id }
+}
+
 function migrateSession(session: ChatSession): void {
   const database = getSessionDatabase()
   const migrate = database.transaction(() => {
-    insertSession(database, session)
+    const sessionWithAgent = preserveExistingAgentId(database, session)
+    insertSession(database, sessionWithAgent)
     database.prepare('DELETE FROM session_usage WHERE session_id = ?').run(session.id)
     database.prepare('DELETE FROM session_variables WHERE session_id = ?').run(session.id)
     database.prepare('DELETE FROM messages WHERE session_id = ?').run(session.id)
@@ -546,7 +573,7 @@ function migrateSession(session: ChatSession): void {
       session.contextSize ?? 0,
     )
 
-    for (const variable of session.variables ?? []) {
+    for (const variable of sessionWithAgent.variables ?? []) {
       database.prepare(`
         INSERT OR REPLACE INTO session_variables (
           session_id, name, value, description, updated_at
@@ -561,8 +588,8 @@ function migrateSession(session: ChatSession): void {
       )
     }
 
-    session.messages.forEach((message, index) => {
-      insertMessage(database, session.id, message, index + 1)
+    sessionWithAgent.messages.forEach((message, index) => {
+      insertMessage(database, sessionWithAgent.id, message, index + 1)
     })
 
     database.prepare(`
@@ -579,7 +606,8 @@ export function syncFullSessionToSqlite(session: ChatSession): void {
   initializeSqliteSessionRepository()
   const database = getSessionDatabase()
   const sync = database.transaction(() => {
-    insertSession(database, session)
+    const sessionWithAgent = preserveExistingAgentId(database, session)
+    insertSession(database, sessionWithAgent)
     database.prepare('DELETE FROM session_usage WHERE session_id = ?').run(session.id)
     database.prepare('DELETE FROM session_variables WHERE session_id = ?').run(session.id)
     database.prepare('DELETE FROM messages WHERE session_id = ?').run(session.id)
@@ -599,7 +627,7 @@ export function syncFullSessionToSqlite(session: ChatSession): void {
       session.contextSize ?? 0,
     )
 
-    for (const variable of session.variables ?? []) {
+    for (const variable of sessionWithAgent.variables ?? []) {
       database.prepare(`
         INSERT OR REPLACE INTO session_variables (
           session_id, name, value, description, updated_at
@@ -614,8 +642,8 @@ export function syncFullSessionToSqlite(session: ChatSession): void {
       )
     }
 
-    session.messages.forEach((message, index) => {
-      insertMessage(database, session.id, message, index + 1)
+    sessionWithAgent.messages.forEach((message, index) => {
+      insertMessage(database, sessionWithAgent.id, message, index + 1)
     })
 
     database.prepare(`
@@ -643,6 +671,7 @@ export function syncSqliteSessionMetadata(session: ChatSession): void {
     archivedAt: session.archivedAt,
     messageCount: session.messages.length,
     workingDirectory: session.workingDirectory,
+    workingDirectoryRoots: session.workingDirectoryRoots ?? [],
     summary: session.summary,
     summaryUpToMessageId: session.summaryUpToMessageId,
     summaryCreatedAt: session.summaryCreatedAt,

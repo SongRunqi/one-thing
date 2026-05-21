@@ -2,6 +2,8 @@ export type TodoPlanScope = 'user-note' | 'workspace-ai-todo'
 
 export type TodoPlanActivationMode = 'preserve-current-app' | 'focus-if-app-active'
 
+export type TodoPlanAutonomyMode = 'off' | 'conservative' | 'active' | 'aggressive'
+
 export interface TodoPlanWindowActionRequest {
   activation?: TodoPlanActivationMode
   preserveMainWindowVisibility?: boolean
@@ -35,6 +37,7 @@ export interface TodoPlanSettings {
   cardHeight?: number
   pinned?: boolean
   docked?: boolean
+  autonomy?: TodoPlanAutonomyMode
 }
 
 export interface TodoPlanGetRequest extends TodoPlanContext {}

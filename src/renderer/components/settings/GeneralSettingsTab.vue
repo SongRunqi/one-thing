@@ -1,10 +1,7 @@
 <template>
   <div class="tab-content">
     <!-- Mode (Light/Dark/System) -->
-    <section class="settings-section">
-      <h3 class="section-title">
-        Mode
-      </h3>
+    <SettingsSection title="Mode">
 
       <div class="settings-card theme-cards">
         <div
@@ -54,22 +51,16 @@
           <span>Dark</span>
         </div>
       </div>
-    </section>
+    </SettingsSection>
 
     <!-- Theme Selection -->
-    <section class="settings-section">
-      <h3 class="section-title">
-        Theme
-      </h3>
+    <SettingsSection title="Theme">
       <ThemeSelectorPanel @theme-change="handleThemeChange" />
-    </section>
+    </SettingsSection>
 
     <!-- Typography -->
-    <section class="settings-section">
-      <h3 class="section-title">
-        Typography
-      </h3>
-      <div class="settings-card">
+    <SettingsSection title="Typography">
+      <SettingsGroup>
         <!-- Font Size -->
         <div class="card-row">
           <div class="form-group">
@@ -139,14 +130,11 @@
             </div>
           </div>
         </div>
-      </div>
-    </section>
+      </SettingsGroup>
+    </SettingsSection>
 
-    <section class="settings-section">
-      <h3 class="section-title">
-        Context Compact
-      </h3>
-      <div class="settings-card">
+    <SettingsSection title="Context Compact">
+      <SettingsGroup>
         <div class="card-row">
           <label class="toggle-row">
             <span>
@@ -208,14 +196,11 @@
             </div>
           </div>
         </div>
-      </div>
-    </section>
+      </SettingsGroup>
+    </SettingsSection>
 
-    <section class="settings-section">
-      <h3 class="section-title">
-        Daily Notes
-      </h3>
-      <div class="settings-card">
+    <SettingsSection title="Daily Notes">
+      <SettingsGroup>
         <div class="card-row">
           <label class="toggle-row">
             <span>
@@ -298,14 +283,11 @@
             >
           </div>
         </div>
-      </div>
-    </section>
+      </SettingsGroup>
+    </SettingsSection>
 
-    <section class="settings-section">
-      <h3 class="section-title">
-        Todo / Plan
-      </h3>
-      <div class="settings-card">
+    <SettingsSection title="Todo / Plan">
+      <SettingsGroup>
         <div class="card-row">
           <label class="toggle-row">
             <span>
@@ -341,8 +323,8 @@
             </div>
           </div>
         </div>
-      </div>
-    </section>
+      </SettingsGroup>
+    </SettingsSection>
   </div>
 </template>
 
@@ -353,6 +335,10 @@ import type { DailyNoteSettings } from '@shared/ipc/settings'
 import type { TodoPlanSettings } from '@shared/ipc/todo-plan'
 import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
 import { getFontsByLang, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '@shared/fonts'
+import {
+  SettingsGroup,
+  SettingsSection,
+} from './settings-primitives'
 
 const props = defineProps<{
   settings: AppSettings

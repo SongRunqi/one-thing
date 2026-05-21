@@ -43,6 +43,9 @@ export interface MarkdownCommandResult {
 
 export interface MarkdownDocumentEditorHandle extends EditorHandle {
   applyCommand: (command: MarkdownCommand) => void
+  setSourceMode: (enabled: boolean) => void
+  toggleSourceMode: () => void
+  getSourceMode: () => boolean
 }
 
 export interface MarkdownRenderOptions {

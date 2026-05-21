@@ -15,53 +15,41 @@
     >
       <header class="settings-titlebar">
         <div class="titlebar-title">
-          <span class="titlebar-mark">o</span>
-          <span>onething · Settings</span>
+          Settings
+        </div>
+        <div
+          class="titlebar-save-state"
+          :class="{ active: hasUnsavedChanges }"
+        >
+          {{ hasUnsavedChanges ? 'Saving...' : 'Saved' }}
         </div>
       </header>
 
       <div class="settings-layout">
         <!-- Sidebar navigation -->
         <aside class="settings-sidebar">
-          <div class="sidebar-identity">
-            <div class="brand-mark">
-              o
-            </div>
-            <div class="brand-copy">
-              <div class="brand-name">
-                onething
-              </div>
-              <div class="brand-subtitle">
-                Settings
-              </div>
-            </div>
+          <div class="sidebar-heading">
+            <h2>Settings</h2>
+            <p>Configure onething</p>
           </div>
 
           <label class="settings-search">
             <Search class="search-icon" />
             <input
+              ref="searchInputRef"
               v-model="searchQuery"
               placeholder="Search settings"
               type="search"
             >
-            <span
-              v-if="!searchQuery"
-              class="search-kbd"
-            >/</span>
           </label>
-
-          <div class="sidebar-group-label">
-            Workspace
-          </div>
 
           <nav class="sidebar-nav">
             <button
-              v-for="(item, index) in filteredNavItems"
+              v-for="item in filteredNavItems"
               :key="item.id"
               :class="['sidebar-item', { active: activeTab === item.id }]"
               @click="activeTab = item.id"
             >
-              <span class="sidebar-index">{{ String(index + 1).padStart(2, '0') }}</span>
               <component
                 :is="item.icon"
                 class="sidebar-icon"
@@ -71,38 +59,36 @@
                 <span class="sidebar-hint">{{ item.hint }}</span>
               </span>
             </button>
+            <div
+              v-if="filteredNavItems.length === 0"
+              class="sidebar-empty"
+            >
+              No matching settings
+            </div>
           </nav>
         </aside>
 
         <!-- Content Area -->
         <main class="settings-content">
-          <div class="content-strip">
-            <span class="breadcrumb">Settings / {{ currentNavItem?.label }}</span>
+          <header class="content-header">
+            <div class="content-header-copy">
+              <span class="breadcrumb">Settings</span>
+              <h1>{{ currentNavItem?.label }}</h1>
+              <p>{{ currentNavItem?.hint }}</p>
+            </div>
             <span
-              v-if="hasUnsavedChanges"
               class="save-state"
-            >Saving changes…</span>
-            <span
-              v-else
-              class="save-state"
-            >Changes save automatically</span>
-          </div>
+              :class="{ active: hasUnsavedChanges }"
+            >
+              {{ hasUnsavedChanges ? 'Saving changes...' : 'Changes save automatically' }}
+            </span>
+          </header>
 
           <div class="content-body">
             <div
               class="content-inner"
-              :class="{ 'content-inner-wide': activeTab === 'providers' }"
+              :class="{ 'content-inner-wide': activeTab === 'providers' || activeTab === 'prompts' }"
             >
-              <header class="section-hero">
-                <div class="section-eyebrow">
-                  {{ currentSectionNumber }} ──
-                </div>
-                <div>
-                  <h1>{{ currentNavItem?.label }}</h1>
-                  <p>{{ currentNavItem?.hint }}</p>
-                </div>
-              </header>
-
               <template v-if="localSettings">
                 <GeneralSettingsTab
                   v-if="activeTab === 'general'"
@@ -156,6 +142,10 @@
                   @update:settings="handleSkillsSettingsUpdate"
                 />
 
+                <PromptsSettingsPanel
+                  v-else-if="activeTab === 'prompts'"
+                />
+
                 <PluginsSettingsTab
                   v-else-if="activeTab === 'plugins'"
                   @plugins-changed="loadTools"
@@ -172,7 +162,6 @@
         </main>
       </div>
     </div>
-    <div class="settings-page-grain" />
 
     <!-- Custom Provider Dialog -->
     <CustomProviderDialog
@@ -200,6 +189,7 @@ import {
   Code2,
   Globe2,
   Keyboard,
+  NotebookPen,
   Plug,
   Search,
   Server,
@@ -221,6 +211,7 @@ import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
 import PluginsSettingsTab from './settings/PluginsSettingsTab.vue'
+import PromptsSettingsPanel from './settings/PromptsSettingsPanel.vue'
 
 // Dialogs
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
@@ -233,6 +224,7 @@ const isLoading = ref(true)
 const activeTab = ref('general')
 const localSettings = ref<AppSettings | null>(null)
 const originalSettings = ref<string>('')
+const searchInputRef = ref<HTMLInputElement | null>(null)
 const showCustomProviderDialog = ref(false)
 const editingProvider = ref<CustomProviderConfig | null>(null)
 const showUnsavedDialog = ref(false)
@@ -289,6 +281,12 @@ const navItems = [
     icon: Sparkles,
   },
   {
+    id: 'prompts',
+    label: 'Prompts',
+    hint: 'Reusable prompt snippets',
+    icon: NotebookPen,
+  },
+  {
     id: 'plugins',
     label: 'Plugins',
     hint: 'Installed extensions',
@@ -297,10 +295,6 @@ const navItems = [
 ]
 
 const currentNavItem = computed(() => navItems.find(item => item.id === activeTab.value))
-const currentSectionNumber = computed(() => {
-  const index = navItems.findIndex(item => item.id === activeTab.value)
-  return String(index + 1).padStart(2, '0')
-})
 const searchQuery = ref('')
 const filteredNavItems = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
@@ -490,6 +484,17 @@ function handleBeforeUnload(e: BeforeUnloadEvent) {
 // Handle keyboard shortcuts
 function handleKeydown(e: KeyboardEvent) {
   const closeShortcut = localSettings.value?.general?.shortcuts?.closeChat
+  const target = e.target as HTMLElement | null
+  const isTypingTarget = target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target?.isContentEditable
+
+  if (e.key === '/' && !isTypingTarget && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault()
+    searchInputRef.value?.focus()
+    return
+  }
+
   if (e.key === 'Escape' || matchShortcut(e, closeShortcut)) {
     e.preventDefault()
     window.close()
@@ -1064,6 +1069,234 @@ onUnmounted(() => {
   to { opacity: 1; transform: translateY(0); }
 }
 
+.settings-page {
+  --settings-paper: var(--bg-app, var(--bg));
+  --settings-paper-2: var(--bg-sidebar, var(--panel-2));
+  --settings-paper-3: var(--bg-elevated, var(--panel));
+  --settings-rule: var(--border-default, var(--border));
+  --settings-rule-soft: var(--border-subtle, var(--border));
+  --settings-ink: var(--text-primary, var(--text));
+  --settings-ink-2: var(--text-secondary, var(--text));
+  --settings-ink-3: var(--text-muted, var(--muted));
+  --settings-ink-4: var(--text-faint, var(--muted));
+  --settings-accent: var(--accent);
+  --settings-accent-soft: rgba(var(--accent-rgb), 0.14);
+  background: var(--settings-paper);
+}
+
+.settings-titlebar {
+  height: 34px;
+  padding: 0 12px;
+  background: var(--settings-paper-2);
+}
+
+.titlebar-title {
+  color: var(--settings-ink-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.titlebar-save-state {
+  margin-left: auto;
+  color: var(--settings-ink-4);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.titlebar-save-state.active {
+  color: var(--settings-accent);
+}
+
+.settings-sidebar {
+  width: 238px;
+  padding: 14px 10px 12px;
+  background: var(--settings-paper-2);
+}
+
+.sidebar-heading {
+  padding: 2px 8px 12px;
+}
+
+.sidebar-heading h2 {
+  margin: 0;
+  color: var(--settings-ink);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.sidebar-heading p {
+  margin: 3px 0 0;
+  color: var(--settings-ink-4);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.settings-search {
+  height: 30px;
+  box-sizing: border-box;
+  margin: 0 4px 12px;
+  padding: 0 9px;
+  border-color: var(--settings-rule-soft);
+  background: color-mix(in srgb, var(--settings-paper) 74%, transparent);
+}
+
+.sidebar-nav {
+  gap: 2px;
+}
+
+.sidebar-item {
+  gap: 9px;
+  min-height: 34px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  color: var(--settings-ink-3);
+}
+
+.sidebar-item.active {
+  border-color: var(--settings-rule-soft);
+  background: var(--settings-paper);
+  box-shadow: none;
+}
+
+.sidebar-item.active::before {
+  display: none;
+}
+
+.sidebar-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.sidebar-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sidebar-hint {
+  display: none;
+}
+
+.sidebar-empty {
+  padding: 12px 9px;
+  color: var(--settings-ink-4);
+  font-size: 12px;
+}
+
+.settings-content {
+  background: var(--settings-paper);
+}
+
+.content-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 32px 16px;
+  border-bottom: 1px solid var(--settings-rule-soft);
+  background: color-mix(in srgb, var(--settings-paper) 92%, var(--settings-paper-2));
+}
+
+.content-header-copy {
+  min-width: 0;
+}
+
+.breadcrumb {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--settings-ink-4);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.content-header h1 {
+  margin: 0;
+  color: var(--settings-ink);
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.18;
+}
+
+.content-header p {
+  margin: 5px 0 0;
+  color: var(--settings-ink-4);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.save-state {
+  flex-shrink: 0;
+  margin-top: 18px;
+  padding: 4px 8px;
+  border: 1px solid var(--settings-rule-soft);
+  border-radius: 999px;
+  background: var(--settings-paper-3);
+  color: var(--settings-ink-4);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  font-family: inherit;
+}
+
+.save-state.active {
+  border-color: color-mix(in srgb, var(--settings-accent) 28%, var(--settings-rule));
+  color: var(--settings-accent);
+}
+
+.content-body {
+  padding: 24px 32px 44px;
+}
+
+.content-inner {
+  width: min(100%, 920px);
+}
+
+.content-inner-wide {
+  width: min(100%, 1120px);
+}
+
+:deep(.settings-section),
+:deep(.detail-section) {
+  margin-bottom: 24px;
+}
+
+:deep(.settings-card),
+:deep(.settings-group) {
+  border-radius: 8px;
+  background: var(--settings-paper-3);
+}
+
+:deep(.card-row),
+:deep(.settings-row),
+:deep(.shortcut-row) {
+  padding: 12px 14px;
+}
+
+:deep(.form-input),
+:deep(.form-textarea),
+:deep(.row-input),
+:deep(.row-select) {
+  min-height: 32px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+:deep(.primary-action),
+:deep(.secondary-btn),
+:deep(.test-btn),
+:deep(.save-action),
+:deep(.prompt-primary-btn),
+:deep(.prompt-secondary-btn),
+:deep(.prompt-danger-btn) {
+  min-height: 30px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
 @media (max-width: 860px) {
   .settings-page {
     padding: 0;
@@ -1076,22 +1309,30 @@ onUnmounted(() => {
   }
 
   .settings-sidebar {
-    width: 220px;
+    width: 210px;
   }
 
-  .sidebar-hint,
-  .sidebar-index {
+  .sidebar-hint {
     display: none;
+  }
+
+  .content-header {
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 22px 14px;
+  }
+
+  .save-state {
+    margin-top: 0;
   }
 
   .content-body {
     padding: 24px 22px 44px;
   }
 
-  .section-hero {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
+  .content-inner-wide,
+  .content-inner {
+    width: 100%;
   }
 }
 </style>

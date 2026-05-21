@@ -43,6 +43,7 @@ export function buildSystemPrompt(options: {
   skills: SkillDefinition[]
   workspaceSystemPrompt?: string
   workingDirectory?: string
+  workingDirectoryRoots?: string[]
   contextVariables?: string
   activeProject?: import('./types.js').PromptActiveProject
   knownProjects?: import('./types.js').PromptKnownProjects
@@ -69,6 +70,11 @@ export function buildSystemPrompt(options: {
     hasTools: options.hasTools,
     workspaceSystemPrompt: options.workspaceSystemPrompt?.trim(),
     workingDirectory: options.workingDirectory,
+    workingDirectoryRoots: options.workingDirectoryRoots,
+    workingDirectoryRootDisplays: (options.workingDirectoryRoots ?? []).map(root => ({
+      path: root,
+      displayPath: root.startsWith(baseDir) ? root.replace(baseDir, '~') : root,
+    })),
     displayPath,
     baseDirectory: baseDir,
     osType,

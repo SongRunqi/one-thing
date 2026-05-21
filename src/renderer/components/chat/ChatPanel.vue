@@ -242,6 +242,10 @@ function focusInput() {
   inputBoxRef.value?.focus()
 }
 
+function insertPromptReference(promptId: string) {
+  inputBoxRef.value?.insertPromptReference(promptId)
+}
+
 function saveSnapshotForCurrentSession() {
   const sessionId = effectiveSessionId.value
   if (!sessionId) return false
@@ -262,6 +266,7 @@ async function scrollToMessage(messageId: string) {
 
 defineExpose({
   focusInput,
+  insertPromptReference,
   saveSnapshotForCurrentSession,
   restoreSnapshotForCurrentSession,
   scrollToMessage,

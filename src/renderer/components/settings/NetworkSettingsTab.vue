@@ -1,28 +1,28 @@
 <template>
   <div class="tab-content">
-    <section class="settings-section">
-      <h3 class="section-title">
-        Network Proxy
-      </h3>
-
-      <div class="settings-card">
-        <div class="card-row">
-          <label class="toggle-row">
-            <span>
-              <span class="toggle-title">Enable global proxy</span>
-              <span class="toggle-desc">Route AI requests, model refresh, web search, and login token requests through one proxy.</span>
-            </span>
+    <SettingsSection
+      title="Network Proxy"
+      description="Route outbound app traffic through a shared proxy when needed."
+    >
+      <SettingsGroup>
+        <SettingRow
+          label="Enable global proxy"
+          description="Route AI requests, model refresh, web search, and login token requests through one proxy."
+        >
+          <label class="native-toggle">
             <input
               type="checkbox"
               :checked="proxy.enabled"
               @change="updateProxy({ enabled: ($event.target as HTMLInputElement).checked })"
             >
           </label>
-        </div>
+        </SettingRow>
 
-        <div class="card-row">
-          <div class="form-group">
-            <label class="form-label">Proxy URL</label>
+        <SettingRow layout="stack">
+          <SettingsField
+            label="Proxy URL"
+            hint="Supports http, https, and socks5 proxies. Authentication can be included in the URL."
+          >
             <input
               class="form-input"
               :value="proxy.url"
@@ -30,15 +30,14 @@
               spellcheck="false"
               @input="updateProxy({ url: ($event.target as HTMLInputElement).value })"
             >
-            <p class="form-hint">
-              Supports http, https, and socks5 proxies. Authentication can be included in the URL.
-            </p>
-          </div>
-        </div>
+          </SettingsField>
+        </SettingRow>
 
-        <div class="card-row">
-          <div class="form-group">
-            <label class="form-label">Bypass Rules</label>
+        <SettingRow layout="stack">
+          <SettingsField
+            label="Bypass Rules"
+            hint="Separate hosts with semicolons or commas. Add a host here, such as api.deepseek.com, when that service should use direct connection."
+          >
             <input
               class="form-input"
               :value="proxy.bypassRules || ''"
@@ -46,13 +45,10 @@
               spellcheck="false"
               @input="updateProxy({ bypassRules: ($event.target as HTMLInputElement).value })"
             >
-            <p class="form-hint">
-              Separate hosts with semicolons or commas. Add a host here, such as api.deepseek.com, when that service should use direct connection.
-            </p>
-          </div>
-        </div>
+          </SettingsField>
+        </SettingRow>
 
-        <div class="card-row">
+        <SettingRow>
           <button
             class="test-btn"
             type="button"
@@ -67,15 +63,21 @@
           >
             {{ testMessage }}
           </span>
-        </div>
-      </div>
-    </section>
+        </SettingRow>
+      </SettingsGroup>
+    </SettingsSection>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, toRaw } from 'vue'
 import type { AppSettings, ProxySettings } from '@/types'
+import {
+  SettingRow,
+  SettingsField,
+  SettingsGroup,
+  SettingsSection,
+} from './settings-primitives'
 
 const props = defineProps<{
   settings: AppSettings
@@ -170,27 +172,18 @@ async function testProxy() {
   border-bottom: none;
 }
 
-.toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.toggle-title {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.toggle-desc,
 .form-hint {
   display: block;
   margin-top: 4px;
   font-size: 12px;
   line-height: 1.4;
   color: var(--text-muted);
+}
+
+.native-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--settings-accent, var(--accent));
 }
 
 .form-group {

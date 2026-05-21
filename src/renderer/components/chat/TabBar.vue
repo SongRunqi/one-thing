@@ -33,6 +33,11 @@
 
     <!-- Right: action buttons -->
     <div class="tab-bar-right">
+      <AgentSelector
+        v-if="activeTab?.type === 'chat' && sessionId"
+        :session-id="sessionId"
+      />
+
       <button
         v-if="isBranchSession"
         class="header-btn back-btn"
@@ -99,11 +104,13 @@
 import { ref, computed } from 'vue'
 import { ArrowLeft, Columns2, Equal, X, Radar } from 'lucide-vue-next'
 import TabItem from './TabItem.vue'
+import AgentSelector from './AgentSelector.vue'
 import type { Tab } from '@/types/tabs'
 
 const props = defineProps<{
   tabs: Tab[]
   activeTabId: string
+  sessionId?: string
   sessionName: string
   isBranchSession: boolean
   showSidebarToggle: boolean
@@ -127,6 +134,7 @@ defineEmits<{
 
 const dragFromId = ref<string | null>(null)
 const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').length)
+const activeTab = computed(() => props.tabs.find(tab => tab.id === props.activeTabId))
 </script>
 
 <style scoped>

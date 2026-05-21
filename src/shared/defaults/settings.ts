@@ -36,9 +36,12 @@ export const DEFAULT_CONTEXT_LENGTH = 128000
 export const DEFAULT_EDITOR_SETTINGS: Required<EditorSettings> = {
   tabSize: 2,
   lineWrapping: true,
+  softWrapColumn: 88,
   syntaxHighlighting: true,
   completionEnabled: true,
   composerMaxHeight: 200,
+  markdownNoteAttachmentDirectory: '',
+  markdownProjectAttachmentDirectory: '',
 }
 
 export const DEFAULT_SOUL_MEMORY_ACTIVE_SETTINGS: Required<SoulMemoryActiveSettings> = {
@@ -284,6 +287,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     cardHeight: 360,
     pinned: false,
     docked: false,
+    autonomy: 'active',
   },
   editor: DEFAULT_EDITOR_SETTINGS,
 }
@@ -440,6 +444,12 @@ export function normalizeEditorSettings(settings?: EditorSettings): Required<Edi
   return {
     tabSize: clampNumber(settings?.tabSize, 1, 8, DEFAULT_EDITOR_SETTINGS.tabSize),
     lineWrapping: settings?.lineWrapping ?? DEFAULT_EDITOR_SETTINGS.lineWrapping,
+    softWrapColumn: clampNumber(
+      settings?.softWrapColumn,
+      40,
+      200,
+      DEFAULT_EDITOR_SETTINGS.softWrapColumn,
+    ),
     syntaxHighlighting: settings?.syntaxHighlighting ?? DEFAULT_EDITOR_SETTINGS.syntaxHighlighting,
     completionEnabled: settings?.completionEnabled ?? DEFAULT_EDITOR_SETTINGS.completionEnabled,
     composerMaxHeight: clampNumber(
@@ -448,6 +458,8 @@ export function normalizeEditorSettings(settings?: EditorSettings): Required<Edi
       640,
       DEFAULT_EDITOR_SETTINGS.composerMaxHeight,
     ),
+    markdownNoteAttachmentDirectory: settings?.markdownNoteAttachmentDirectory ?? DEFAULT_EDITOR_SETTINGS.markdownNoteAttachmentDirectory,
+    markdownProjectAttachmentDirectory: settings?.markdownProjectAttachmentDirectory ?? DEFAULT_EDITOR_SETTINGS.markdownProjectAttachmentDirectory,
   }
 }
 

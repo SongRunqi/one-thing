@@ -145,6 +145,7 @@ export function initializeIPCHub() {
         import('@/stores/sessions').then(({ useSessionsStore }) => {
           useSessionsStore().updateSessionVariables(sessionId, {
             workingDirectory: (event as any).workingDirectory,
+            workingDirectoryRoots: (event as any).workingDirectoryRoots,
             variables: (event as any).variables,
           })
         })

@@ -27,6 +27,15 @@ export interface SkillDefinition {
   files?: SkillFile[]
 }
 
+export interface SkillReferenceSnapshot {
+  skillId: string
+  name: string
+  description: string
+  source: SkillSource
+  content: string
+  bodyHash: string
+}
+
 // Additional file in a skill directory
 export interface SkillFile {
   name: string

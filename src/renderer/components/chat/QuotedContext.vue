@@ -38,14 +38,13 @@ const emit = defineEmits<{
 .quoted-context {
   display: flex;
   gap: 10px;
-  padding: 12px 14px;
-  margin-bottom: 8px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  padding: 9px 10px;
+  margin-bottom: 0;
+  background: rgba(var(--bg-rgb, 30, 30, 35), 0.38);
+  border: 0.5px solid var(--border);
+  border-radius: 8px;
   position: relative;
   animation: slideInDown 0.2s ease-out;
-  box-shadow: var(--shadow-sm);
 }
 
 @keyframes slideInDown {
@@ -71,7 +70,7 @@ const emit = defineEmits<{
 .quoted-text {
   flex: 1;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.45;
   color: var(--text);
   opacity: 0.75;
   max-height: 80px;

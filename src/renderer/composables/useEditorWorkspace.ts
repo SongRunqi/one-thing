@@ -14,7 +14,9 @@ export interface EditorBuffer {
   filePath: string
   title: string
   model: monaco.editor.ITextModel | null
+  value: string
   content: string
+  isMarkdown: boolean
   dirty: boolean
   loading: boolean
   loadingSince: number
@@ -27,6 +29,7 @@ export interface EditorBuffer {
   encoding: string
   lastReadMtimeMs?: number
   viewState: monaco.editor.ICodeEditorViewState | null
+  scrollTop: number
   line: number
   column: number
   markers: monaco.editor.IMarker[]
@@ -67,12 +70,18 @@ function isPathInsideRoot(filePath: string, root: string): boolean {
   return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`)
 }
 
+function isMarkdownFile(filePath: string): boolean {
+  return /\.(md|markdown|mdx)$/i.test(filePath.split(/[?#]/)[0])
+}
+
 function createBuffer(filePath: string): EditorBuffer {
   return shallowReactive({
     filePath,
     title: basename(filePath),
     model: null,
+    value: '',
     content: '',
+    isMarkdown: isMarkdownFile(filePath),
     dirty: false,
     loading: false,
     loadingSince: 0,
@@ -85,6 +94,7 @@ function createBuffer(filePath: string): EditorBuffer {
     encoding: 'utf-8',
     lastReadMtimeMs: undefined,
     viewState: null,
+    scrollTop: 0,
     line: 1,
     column: 1,
     markers: [],
@@ -168,7 +178,8 @@ async function openFile(filePath: string, maxBytes = 1024 * 1024) {
     workspace.openEditors.push(filePath)
   }
   workspace.activePath = filePath
-  if (buffer.model) return buffer
+  buffer.isMarkdown = isMarkdownFile(filePath)
+  if (buffer.model || (buffer.isMarkdown && buffer.lastReadMtimeMs !== undefined)) return buffer
   if (buffer.loading) {
     const elapsed = Date.now() - buffer.loadingSince
     if (elapsed < 10_000) return buffer
@@ -189,12 +200,13 @@ async function openFile(filePath: string, maxBytes = 1024 * 1024) {
       return buffer
     }
     buffer.content = res.content || ''
+    buffer.value = buffer.content
     buffer.size = res.size || 0
     buffer.encoding = res.encoding || 'utf-8'
     buffer.lastReadMtimeMs = res.mtimeMs
     buffer.truncated = (res.size || 0) > maxBytes
     buffer.isBinary = !!res.isBinary
-    if (!buffer.truncated && !buffer.isBinary) {
+    if (!buffer.truncated && !buffer.isBinary && !buffer.isMarkdown) {
       const existing = monaco.editor.getModel(modelUri(filePath))
       buffer.model = markRaw(
         existing || monaco.editor.createModel(buffer.content, monacoLanguageFromPath(filePath), modelUri(filePath)),
@@ -215,16 +227,18 @@ function setActivePath(filePath: string) {
 
 function handleModelChange(filePath: string, value: string) {
   const buffer = getBuffer(filePath)
+  buffer.value = value
   buffer.dirty = value !== buffer.content
 }
 
 async function saveFile(filePath = workspace.activePath) {
   const buffer = workspace.buffers.get(filePath)
-  if (!buffer || !buffer.model || buffer.truncated || buffer.isBinary) return false
+  if (!buffer || buffer.truncated || buffer.isBinary) return false
+  if (!buffer.model && !buffer.isMarkdown) return false
   buffer.saving = true
   buffer.error = ''
   buffer.conflict = false
-  const value = buffer.model.getValue()
+  const value = buffer.model?.getValue() ?? buffer.value
   const res = await window.electronAPI.saveFileContent(filePath, value, buffer.lastReadMtimeMs)
   buffer.saving = false
   if (!res.success) {
@@ -234,6 +248,7 @@ async function saveFile(filePath = workspace.activePath) {
     return false
   }
   buffer.content = value
+  buffer.value = value
   buffer.dirty = false
   buffer.lastReadMtimeMs = res.mtimeMs ?? buffer.lastReadMtimeMs
   return true
@@ -337,6 +352,11 @@ function setViewState(filePath: string, state: monaco.editor.ICodeEditorViewStat
   if (buffer) buffer.viewState = state ? markRaw(state) : null
 }
 
+function setScrollTop(filePath: string, scrollTop: number) {
+  const buffer = workspace.buffers.get(filePath)
+  if (buffer) buffer.scrollTop = scrollTop
+}
+
 function setCursor(filePath: string, line: number, column: number) {
   const buffer = workspace.buffers.get(filePath)
   if (buffer) {
@@ -387,6 +407,7 @@ export function useEditorWorkspace() {
     deletePath,
     revealPath,
     setViewState,
+    setScrollTop,
     setCursor,
     setMarkers,
     getOpenEditorsForRoot,

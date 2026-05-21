@@ -12,6 +12,7 @@ import type {
   PromptContextState,
   UserMessageMarker,
 } from '../../shared/ipc.js'
+import { DEFAULT_AGENT_ID } from '../../shared/ipc.js'
 import {
   getSessionsDir,
   getSessionPath,
@@ -20,6 +21,7 @@ import {
   writeJsonFileAsync,
   deleteJsonFile,
 } from './paths.js'
+import { displayContentForMessage } from '../prompts/resolver.js'
 import { getCurrentSessionId, setCurrentSessionId } from './app-state.js'
 import { getSettings } from './settings.js'
 import { expandPath } from '../tools/core/sandbox.js'
@@ -49,6 +51,24 @@ import {
 // This prevents memory bloat when users have many sessions
 const SESSION_CACHE_SIZE = 10
 const sessionCache = new LRUCache<string, ChatSession>(SESSION_CACHE_SIZE)
+
+function normalizeWorkingDirectoryRoots(roots: unknown, active?: string): string[] | undefined {
+  if (!Array.isArray(roots)) return undefined
+
+  const activePath = active ? expandPath(active) : ''
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  for (const root of roots) {
+    if (typeof root !== 'string' || !root.trim()) continue
+    const expanded = expandPath(root.trim())
+    if (expanded === activePath || seen.has(expanded)) continue
+    seen.add(expanded)
+    normalized.push(expanded)
+  }
+
+  return normalized.length > 0 ? normalized : undefined
+}
 
 // ============ 异步节流落盘 ============
 // Streaming updates (每个 token) 会频繁触发 updateMessageContent 等写入,
@@ -447,7 +467,10 @@ export function getSessions(): ChatSession[] {
  * This is the optimized version for fast startup
  */
 export function getSessionsList(): SessionMeta[] {
-  return loadSessionsIndex()
+  return loadSessionsIndex().map(session => ({
+    ...session,
+    agentId: session.agentId || DEFAULT_AGENT_ID,
+  }))
 }
 
 export function initializeSessionRepositoryIndex(): void {
@@ -483,6 +506,7 @@ function mergeSessionDetails(
   return {
     ...meta,
     ...details,
+    agentId: details.agentId || meta?.agentId || DEFAULT_AGENT_ID,
     messageCount,
     totalInputTokens: (details as SessionDetails).totalInputTokens ?? 0,
     totalOutputTokens: (details as SessionDetails).totalOutputTokens ?? 0,
@@ -602,7 +626,9 @@ export function getSessionUserMessageMarkers(sessionId: string): UserMessageMark
 function extractSessionMeta(session: ChatSession): SessionMeta {
   // Get first user message as preview
   const firstUserMessage = session.messages.find(m => m.role === 'user')
-  const previewText = firstUserMessage?.content.slice(0, 100)
+  const previewText = firstUserMessage
+    ? displayContentForMessage(firstUserMessage).slice(0, 100)
+    : undefined
 
   return {
     id: session.id,
@@ -611,6 +637,7 @@ function extractSessionMeta(session: ChatSession): SessionMeta {
     updatedAt: session.updatedAt,
     parentSessionId: session.parentSessionId,
     branchFromMessageId: session.branchFromMessageId,
+    agentId: session.agentId || DEFAULT_AGENT_ID,
     lastModel: session.lastModel,
     lastProvider: session.lastProvider,
     isPinned: session.isPinned,
@@ -647,6 +674,10 @@ export function getSession(sessionId: string): ChatSession | undefined {
   if (session.workingDirectory) {
     session.workingDirectory = expandPath(session.workingDirectory)
   }
+  session.workingDirectoryRoots = normalizeWorkingDirectoryRoots(
+    session.workingDirectoryRoots,
+    session.workingDirectory,
+  )
 
   // Sanitize session to clean up interrupted states
   const sanitized = sanitizeSession(session)
@@ -734,6 +765,7 @@ export function createSession(sessionId: string, name: string): ChatSession {
     messages: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    agentId: DEFAULT_AGENT_ID,
     workingDirectory,
   }
 
@@ -749,6 +781,7 @@ export function createSession(sessionId: string, name: string): ChatSession {
     name: session.name,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
+    agentId: session.agentId || DEFAULT_AGENT_ID,
   })
   saveSessionsIndex(index)
 
@@ -802,7 +835,9 @@ export function createBranchSession(
     updatedAt: Date.now(),
     parentSessionId,
     branchFromMessageId,
+    agentId: parentSession?.agentId || DEFAULT_AGENT_ID,
     workingDirectory,
+    workingDirectoryRoots: normalizeWorkingDirectoryRoots(parentSession?.workingDirectoryRoots, workingDirectory),
     totalInputTokens,
     totalOutputTokens,
     totalTokens,
@@ -822,6 +857,7 @@ export function createBranchSession(
     updatedAt: session.updatedAt,
     parentSessionId,
     branchFromMessageId,
+    agentId: session.agentId || DEFAULT_AGENT_ID,
   })
   saveSessionsIndex(index)
 
@@ -970,8 +1006,23 @@ export function updateSessionWorkingDirectory(sessionId: string, workingDirector
     // Expand ~ to home directory before storing
     session.workingDirectory = expandPath(workingDirectory)
   }
+  session.workingDirectoryRoots = normalizeWorkingDirectoryRoots(
+    session.workingDirectoryRoots,
+    session.workingDirectory,
+  )
 
   // Save session file
+  saveSessionToFile(sessionId, session)
+  syncSessionToSqliteIfReady(session)
+  syncSessionMetadataToSqlite(session)
+}
+
+export function updateSessionWorkingDirectoryRoots(sessionId: string, roots: string[]): void {
+  const session = getSession(sessionId)
+  if (!session) return
+
+  session.workingDirectoryRoots = normalizeWorkingDirectoryRoots(roots, session.workingDirectory)
+
   saveSessionToFile(sessionId, session)
   syncSessionToSqliteIfReady(session)
   syncSessionMetadataToSqlite(session)
@@ -984,6 +1035,7 @@ export function updateSessionVariables(sessionId: string, variables: ContextVari
   session.variables = variables.map(v => ({
     name: v.name,
     value: v.value,
+    values: v.values,
     description: v.description,
     updatedAt: v.updatedAt ?? Date.now(),
   }))
@@ -1004,6 +1056,10 @@ export function inheritSessionWorkingDirectory(sessionId: string, workingDirecto
 
   // Expand ~ to home directory before storing
   session.workingDirectory = expandPath(workingDirectory)
+  session.workingDirectoryRoots = normalizeWorkingDirectoryRoots(
+    session.workingDirectoryRoots,
+    session.workingDirectory,
+  )
 
   // Save session file without updating timestamp
   saveSessionToFile(sessionId, session)
@@ -1218,7 +1274,8 @@ export function deleteMessageAndTruncate(sessionId: string, messageId: string): 
 export function updateMessageAndTruncate(
   sessionId: string,
   messageId: string,
-  newContent: string
+  newContent: string,
+  options?: { contentParts?: ChatMessage['contentParts'] | null }
 ): boolean {
   const session = getSession(sessionId)
   if (!session) return false
@@ -1232,6 +1289,13 @@ export function updateMessageAndTruncate(
 
   // Update the message content
   session.messages[messageIndex].content = newContent
+  if (options && Object.prototype.hasOwnProperty.call(options, 'contentParts')) {
+    if (options.contentParts && options.contentParts.length > 0) {
+      session.messages[messageIndex].contentParts = options.contentParts
+    } else {
+      delete session.messages[messageIndex].contentParts
+    }
+  }
   session.messages[messageIndex].timestamp = Date.now()
 
   // Remove all messages after this one
@@ -1567,6 +1631,25 @@ export function updateSessionModel(sessionId: string, provider: string, model: s
   if (meta) {
     meta.lastProvider = provider
     meta.lastModel = model
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
+
+export function updateSessionAgent(sessionId: string, agentId: string): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  session.agentId = agentId || DEFAULT_AGENT_ID
+
+  saveSessionToFile(sessionId, session)
+  syncSessionMetadataToSqlite(session)
+
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.agentId = session.agentId
     saveSessionsIndex(index)
   }
 

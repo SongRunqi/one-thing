@@ -11,8 +11,10 @@ import type {
   TurnContextSnapshot,
   SkillDefinition,
   AppSettings,
+  TodoPlanAutonomyMode,
 } from '../../../shared/ipc.js'
 import { getMacOSAutomationDocsPath, getToolUsageDocsPath } from '../../stores/paths.js'
+import { getAgent } from '../../agents/index.js'
 import { getPromptManager, PromptManager } from './prompt-manager.js'
 import type {
   PromptActiveProject,
@@ -21,19 +23,23 @@ import type {
   TemplateSkill,
 } from './types.js'
 import { collectPluginPromptContext } from './plugin-context.js'
+import { readTodoPlanSnapshot } from '../../todo-plan/store.js'
 
 const PROMPT_CONTEXT_VERSION = 1
 const AGENTS_MAX_BYTES = 32 * 1024
+const TODO_PLAN_CONTEXT_MAX_CHARS = 6000
 
 export interface BuildPromptContextOptions {
   previousState?: PromptContextState
   sessionId?: string
+  agentId?: string
   providerId?: string
   providerConfig?: Record<string, unknown>
   settings?: AppSettings
   hasTools: boolean
   skills: SkillDefinition[]
   workingDirectory?: string
+  workingDirectoryRoots?: string[]
   contextVariables?: string
   activeProject?: PromptActiveProject
   knownProjects?: PromptKnownProjects
@@ -191,6 +197,85 @@ function displayPath(workingDirectory: string | undefined, homeDir: string): str
     : workingDirectory
 }
 
+function displayRoots(roots: string[] | undefined, homeDir: string): Array<{ path: string; displayPath: string }> {
+  return (roots ?? []).map(root => ({
+    path: root,
+    displayPath: displayPath(root, homeDir) ?? root,
+  }))
+}
+
+function getTodoPlanAutonomyMode(settings?: AppSettings): TodoPlanAutonomyMode {
+  return settings?.general?.todoPlan?.autonomy ?? 'active'
+}
+
+function shouldInjectTodoPlanContext(options: BuildPromptContextOptions): boolean {
+  if (!options.hasTools) return false
+  if (options.settings?.general?.todoPlan?.enabled === false) return false
+  const mode = getTodoPlanAutonomyMode(options.settings)
+  if (mode === 'off') return false
+  return (options.toolNames ?? []).includes('todo_plan')
+}
+
+function truncateTodoPlanContent(content: string): string {
+  if (content.length <= TODO_PLAN_CONTEXT_MAX_CHARS) return content
+  return `${content.slice(0, TODO_PLAN_CONTEXT_MAX_CHARS).trimEnd()}\n\n<!-- Todo content truncated for prompt budget -->`
+}
+
+function formatUserTodoNoteIndex(userNotes: Array<{ id: string, title: string, totalTasks: number, content: string }>): string {
+  if (userNotes.length === 0) return '- No user notes yet.'
+  return userNotes
+    .map(note => `- ${note.title} (id: ${note.id}, tasks: ${note.totalTasks}, characters: ${note.content.length})`)
+    .join('\n')
+}
+
+async function buildTodoPlanContextFragment(options: BuildPromptContextOptions): Promise<PromptContextFragment | null> {
+  if (!shouldInjectTodoPlanContext(options)) return null
+
+  const mode = getTodoPlanAutonomyMode(options.settings)
+  try {
+    const snapshot = await readTodoPlanSnapshot({
+      sessionId: options.sessionId,
+      workingDirectory: options.workingDirectory,
+    })
+    return fragment('developer', 'context/todo-plan-autonomy', [
+      '# Todo / Notes Autonomy',
+      `Mode: ${mode}`,
+      '',
+      'Use the `todo_plan` tool as the assistant-owned work tracker for this workspace.',
+      '',
+      'Active-mode policy:',
+      '- For multi-step coding, debugging, research, implementation, planning, or follow-up work, keep `workspace-ai-todo` current without waiting for the user to ask.',
+      '- When a task becomes concrete, write it under `## Now`; when a step is completed, mark it checked or remove it if it no longer carries useful state.',
+      '- When new blockers, regressions, or follow-up work appear, add them instead of relying on memory.',
+      '- Before a final response for substantial work, update completed items and move unresolved follow-ups to `## Later`.',
+      '- Avoid todo updates for casual conversation, simple one-shot answers, or purely explanatory replies.',
+      '',
+      'User todo capture policy:',
+      '- User notes are for the user\'s own tasks, reminders, commitments, errands, meeting notes, and personal/project notes.',
+      '- When the user clearly asks you to remember, track, add, or update something for them, use `user-note` instead of `workspace-ai-todo`.',
+      '- When the user states a concrete future task or commitment that should be preserved, proactively add it to an appropriate `user-note`.',
+      '- If the intent or target note is ambiguous, ask before writing. If the intent is clear but the target note is unclear, use the note index below, list notes if needed, and update the most relevant note or create a concise new note.',
+      '- Never delete or rename `user-note` documents unless the user explicitly asks for that destructive or organizational action.',
+      '',
+      'Available user notes index:',
+      formatUserTodoNoteIndex(snapshot.userNotes),
+      '',
+      'Current `workspace-ai-todo` markdown snapshot:',
+      '```markdown',
+      truncateTodoPlanContent(snapshot.workspaceAiTodo.content),
+      '```',
+    ].join('\n'))
+  } catch (error) {
+    console.warn('[TodoPlan] Failed to build prompt context:', error)
+    return fragment('developer', 'context/todo-plan-autonomy', [
+      '# Todo / Notes Autonomy',
+      `Mode: ${mode}`,
+      '',
+      'Use the `todo_plan` tool proactively for substantial multi-step workspace work, but the current todo snapshot could not be loaded for this turn.',
+    ].join('\n'))
+  }
+}
+
 function findProjectRoot(startDir: string): string {
   let current = path.resolve(startDir)
   try {
@@ -260,6 +345,8 @@ async function buildActiveFragments(options: BuildPromptContextOptions): Promise
   const variables = {
     hasTools: options.hasTools,
     workingDirectory: options.workingDirectory,
+    workingDirectoryRoots: options.workingDirectoryRoots,
+    workingDirectoryRootDisplays: displayRoots(options.workingDirectoryRoots, homeDir),
     displayPath: displayPath(options.workingDirectory, homeDir),
     baseDirectory: homeDir,
     osType,
@@ -271,6 +358,13 @@ async function buildActiveFragments(options: BuildPromptContextOptions): Promise
   }
 
   const fragments: Array<PromptContextFragment | null> = []
+  const agent = getAgent(options.agentId)
+  if (agent.systemPrompt.trim()) {
+    fragments.push(fragment('developer', `agents/${agent.id}/system-prompt`, [
+      `# Agent: ${agent.name}`,
+      agent.systemPrompt.trim(),
+    ].join('\n\n')))
+  }
   fragments.push(fragment('user', 'partials/context/working-directory', renderPartial('context/working-directory', variables)))
   fragments.push(fragment('user', 'partials/context/active-project', renderPartial('context/active-project', variables)))
   fragments.push(fragment('user', 'partials/context/known-projects', renderPartial('context/known-projects', variables)))
@@ -303,6 +397,8 @@ async function buildActiveFragments(options: BuildPromptContextOptions): Promise
     ))
   }
 
+  fragments.push(await buildTodoPlanContextFragment(options))
+
   const agentsMd = loadAgentsMdInstructions(options.workingDirectory)
   if (agentsMd) {
     fragments.push(fragment('user', 'context/agents-md', agentsMd))
@@ -316,6 +412,7 @@ async function buildActiveFragments(options: BuildPromptContextOptions): Promise
     hasTools: options.hasTools,
     skills: options.skills,
     workingDirectory: options.workingDirectory,
+    workingDirectoryRoots: options.workingDirectoryRoots,
     contextVariables: options.contextVariables,
     activeProject: options.activeProject,
     knownProjects: options.knownProjects,
@@ -336,9 +433,11 @@ async function buildActiveFragments(options: BuildPromptContextOptions): Promise
 function buildSnapshot(options: BuildPromptContextOptions, activeFragments: PromptContextFragment[]): TurnContextSnapshot {
   return {
     createdAt: Date.now(),
+    agentId: options.agentId,
     hasTools: options.hasTools,
     osType: PromptManager.detectOSType(),
     workingDirectory: options.workingDirectory,
+    workingDirectoryRoots: options.workingDirectoryRoots,
     contextVariablesHash: options.contextVariables ? sha(options.contextVariables) : undefined,
     activeProjectHash: hashValue(options.activeProject),
     knownProjectsHash: hashValue(options.knownProjects),

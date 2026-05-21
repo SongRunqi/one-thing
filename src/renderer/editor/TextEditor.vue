@@ -20,10 +20,16 @@ import {
   normalizeEditorSettings,
   placeholderExtensions,
   readOnlyExtensions,
+  selectionExtensions,
   tabSizeExtensions,
   themeExtension,
   wrappingExtension,
 } from './extensions'
+import { promptCardExtension } from './prompt-cards'
+import type {
+  MarkdownLivePreviewFeatures,
+  MarkdownLivePreviewOptions,
+} from './markdown-live-preview'
 import type {
   EditorCursorLineInfo,
   EditorHandle,
@@ -34,6 +40,13 @@ import type {
   EditorTransaction,
   EditorSetValueOptions,
 } from './types'
+import type { SkillDefinition, UserPrompt } from '@shared/ipc'
+import type { CommandDefinition } from '@/types/commands'
+
+interface MarkdownAssetContext {
+  documentPath?: string
+  workspaceRoot?: string
+}
 
 interface Props {
   modelValue: string
@@ -46,8 +59,13 @@ interface Props {
   maxHeight?: number
   spellcheck?: boolean
   markdownLivePreview?: boolean
+  markdownLivePreviewFeatures?: MarkdownLivePreviewFeatures
   settings?: EditorSettings
   selectOnFocus?: boolean
+  promptRefs?: UserPrompt[]
+  skillRefs?: SkillDefinition[]
+  commandRefs?: CommandDefinition[]
+  markdownAssetContext?: MarkdownAssetContext
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -61,8 +79,13 @@ const props = withDefaults(defineProps<Props>(), {
   maxHeight: 200,
   spellcheck: true,
   markdownLivePreview: false,
+  markdownLivePreviewFeatures: undefined,
   settings: undefined,
   selectOnFocus: false,
+  promptRefs: () => [],
+  skillRefs: () => [],
+  commandRefs: () => [],
+  markdownAssetContext: undefined,
 })
 
 const emit = defineEmits<{
@@ -88,10 +111,24 @@ let heightFrame: number | null = null
 const compartments = createEditorCompartments()
 
 const effectiveSettings = computed(() => normalizeEditorSettings(props.settings))
+const markdownLivePreviewOptions = computed<MarkdownLivePreviewOptions>(() => ({
+  features: props.markdownLivePreviewFeatures,
+  resolveAsset: async (rawTarget) => {
+    const documentPath = props.markdownAssetContext?.documentPath
+    if (!documentPath || !window.electronAPI?.resolveMarkdownAsset) return null
+    const response = await window.electronAPI.resolveMarkdownAsset({
+      documentPath,
+      workspaceRoot: props.markdownAssetContext?.workspaceRoot,
+      rawTarget,
+    })
+    return response.success ? response.asset : { kind: 'missing', rawTarget, error: response.error }
+  },
+}))
 
 const editorStyle = computed(() => ({
   '--editor-min-height': `${props.minHeight}px`,
   '--editor-max-height': `${props.maxHeight}px`,
+  '--editor-soft-wrap-width': `${effectiveSettings.value.softWrapColumn}ch`,
 }))
 
 function createView() {
@@ -117,6 +154,12 @@ function createExtensions() {
     readOnly: props.readOnly,
     spellcheck: props.spellcheck,
     markdownLivePreview: props.markdownLivePreview,
+    markdownLivePreviewOptions: markdownLivePreviewOptions.value,
+    promptCards: promptCardExtension({
+      prompts: props.promptRefs,
+      skills: props.skillRefs,
+      commands: props.commandRefs,
+    }),
     settings: effectiveSettings.value,
     compartments,
     onTransaction: handleViewUpdate,
@@ -182,11 +225,20 @@ function reconfigureView() {
       compartments.tabSize.reconfigure(tabSizeExtensions(settings.tabSize)),
       compartments.readOnly.reconfigure(readOnlyExtensions(props.readOnly)),
       compartments.theme.reconfigure(themeExtension(props.profile, props.spellcheck)),
+      compartments.selection.reconfigure(selectionExtensions(props.markdownLivePreview)),
       compartments.wrapping.reconfigure(wrappingExtension(settings.lineWrapping)),
       compartments.placeholder.reconfigure(placeholderExtensions(props.placeholder)),
       compartments.language.reconfigure(languageExtensions(settings, props.language, props.path)),
       compartments.completion.reconfigure(completionExtensions(settings.completionEnabled)),
-      compartments.markdownLivePreview.reconfigure(markdownLivePreviewExtension(props.markdownLivePreview)),
+      compartments.markdownLivePreview.reconfigure(markdownLivePreviewExtension(
+        props.markdownLivePreview,
+        markdownLivePreviewOptions.value,
+      )),
+      compartments.promptCards.reconfigure(promptCardExtension({
+        prompts: props.promptRefs,
+        skills: props.skillRefs,
+        commands: props.commandRefs,
+      })),
     ],
   })
   view.contentDOM.setAttribute('spellcheck', props.spellcheck ? 'true' : 'false')
@@ -345,8 +397,15 @@ watch(
     props.readOnly,
     props.spellcheck,
     props.markdownLivePreview,
+    props.markdownLivePreviewFeatures,
+    props.promptRefs,
+    props.skillRefs,
+    props.commandRefs,
+    props.markdownAssetContext?.documentPath,
+    props.markdownAssetContext?.workspaceRoot,
     effectiveSettings.value.tabSize,
     effectiveSettings.value.lineWrapping,
+    effectiveSettings.value.softWrapColumn,
     effectiveSettings.value.syntaxHighlighting,
     effectiveSettings.value.completionEnabled,
   ],

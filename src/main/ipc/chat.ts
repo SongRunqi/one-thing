@@ -66,6 +66,7 @@ import {
   executeStreamGeneration,
 } from '../engine/stream/tool-loop.js'
 import { sanitizeMessagesForRenderer } from './message-sanitizer.js'
+import { resolvePromptReferences } from '../prompts/resolver.js'
 
 // ============================================
 // IPC Handlers
@@ -221,11 +222,26 @@ async function resolveConfigWithAuth(
   }
 }
 
+function resolveComposerReferencesForSession(sessionId: string, rawContent: string) {
+  const session = store.getSession(sessionId)
+  const settings = store.getSettings()
+  const skills = settings.skills?.enableSkills === false
+    ? []
+    : getSkillsForSession(session?.workingDirectory)
+  return {
+    session,
+    resolved: resolvePromptReferences(rawContent, { skills }),
+  }
+}
+
 // Edit a user message and resend to get new AI response
 async function handleEditAndResend(sessionId: string, messageId: string, newContent: string) {
   try {
+    const { resolved: resolvedPromptRefs } = resolveComposerReferencesForSession(sessionId, newContent)
     // Update the message and truncate messages after it
-    const updated = store.updateMessageAndTruncate(sessionId, messageId, newContent)
+    const updated = store.updateMessageAndTruncate(sessionId, messageId, resolvedPromptRefs.modelContent, {
+      contentParts: resolvedPromptRefs.contentParts ?? null,
+    })
     if (!updated) {
       return { success: false, error: 'Message not found' }
     }
@@ -307,8 +323,11 @@ async function handleEditAndResend(sessionId: string, messageId: string, newCont
 // Handle streaming edit and resend (similar to handleSendMessageStream but for edits)
 async function handleEditAndResendStream(sender: Electron.WebContents, sessionId: string, messageId: string, newContent: string) {
   try {
+    const { resolved: resolvedPromptRefs } = resolveComposerReferencesForSession(sessionId, newContent)
     // Update the message and truncate messages after it
-    const updated = store.updateMessageAndTruncate(sessionId, messageId, newContent)
+    const updated = store.updateMessageAndTruncate(sessionId, messageId, resolvedPromptRefs.modelContent, {
+      contentParts: resolvedPromptRefs.contentParts ?? null,
+    })
     if (!updated) {
       return { success: false, error: 'Message not found' }
     }
@@ -369,7 +388,7 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
           sender,
           sessionId,
           assistantMessageId,
-          messageContent: newContent,  // Use the edited content as prompt
+          messageContent: resolvedPromptRefs.modelContent,  // Use the edited content as prompt
           historyMessages,
           configWithApiKey,
           providerId,
@@ -408,8 +427,8 @@ function generateTitleFromMessage(content: string, maxLength: number = 30): stri
 
 async function handleSendMessage(sessionId: string, messageContent: string) {
   try {
+    const { session, resolved: resolvedPromptRefs } = resolveComposerReferencesForSession(sessionId, messageContent)
     // Get session to check if this is the first user message
-    const session = store.getSession(sessionId)
     const isFirstUserMessage = session && session.messages.filter(m => m.role === 'user').length === 0
 
     // For branch sessions, check if this is the first NEW user message (after inherited messages)
@@ -420,8 +439,9 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
     const userMessage: ChatMessage = {
       id: `temp-${Date.now()}`,
       role: 'user',
-      content: messageContent,
+      content: resolvedPromptRefs.modelContent,
       timestamp: Date.now(),
+      contentParts: resolvedPromptRefs.contentParts,
     }
     console.log('[Backend] Created user message with id:', userMessage.id)
 
@@ -429,7 +449,7 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
 
     // Auto-rename session based on first user message
     if (isFirstUserMessage || isBranchFirstMessage) {
-      const newTitle = generateTitleFromMessage(messageContent)
+      const newTitle = generateTitleFromMessage(resolvedPromptRefs.displayContent)
       store.renameSession(sessionId, newTitle)
     }
 
@@ -557,8 +577,8 @@ async function handleGenerateTitle(userMessage: string) {
 async function handleSendMessageStream(sender: Electron.WebContents, sessionId: string, messageContent: string, attachments?: MessageAttachment[]) {
   console.log(`[Backend] handleSendMessageStream called - BUILD_VERSION: 2025-01-05-v2`)
   try {
+    const { session, resolved: resolvedPromptRefs } = resolveComposerReferencesForSession(sessionId, messageContent)
     // Get session to check if this is the first user message
-    const session = store.getSession(sessionId)
     const isFirstUserMessage = session && session.messages.filter(m => m.role === 'user').length === 0
 
     // For branch sessions, check if this is the first NEW user message (after inherited messages)
@@ -569,9 +589,10 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
     const userMessage: ChatMessage = {
       id: `temp-${Date.now()}`,
       role: 'user',
-      content: messageContent,
+      content: resolvedPromptRefs.modelContent,
       timestamp: Date.now(),
       attachments: attachments, // Include file/image attachments
+      contentParts: resolvedPromptRefs.contentParts,
     }
     mediaLibraryService.ingestMessageAttachments(
       sessionId,
@@ -584,7 +605,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
 
     // Auto-rename session based on first user message
     if (isFirstUserMessage || isBranchFirstMessage) {
-      const newTitle = generateTitleFromMessage(messageContent)
+      const newTitle = generateTitleFromMessage(resolvedPromptRefs.displayContent)
       store.renameSession(sessionId, newTitle)
     }
 
@@ -649,7 +670,7 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
           sender,
           sessionId,
           assistantMessageId,
-          messageContent,
+          messageContent: resolvedPromptRefs.modelContent,
           historyMessages,
           configWithApiKey,
           providerId,
@@ -782,12 +803,14 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     const promptContext = await buildPromptContext({
       previousState: session.promptContext ?? undefined,
       sessionId,
+      agentId: session.agentId,
       providerId,
       providerConfig: providerConfig as unknown as Record<string, unknown> | undefined,
       settings,
       hasTools,
       skills: enabledSkills,
       workingDirectory: session.workingDirectory,
+      workingDirectoryRoots: session.workingDirectoryRoots,
       contextVariables: await buildContextVariablesPromptText(sessionId),
       activeProject: projectVars.active,
       knownProjects: projectVars.known,

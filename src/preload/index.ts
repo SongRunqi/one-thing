@@ -3,7 +3,18 @@ import { IPC_CHANNELS, AIProvider, MessageAttachment } from '../shared/ipc.js'
 import type {
   GetSessionMessagesPageRequest,
   MediaQuery,
+  MarkdownResolveAssetRequest,
+  MarkdownSaveAttachmentsRequest,
+  PromptCreateRequest,
+  PromptDeleteRequest,
+  PromptGetRequest,
+  PromptUpdateRequest,
   ProviderUsageResponse,
+  SchedulerCreateTaskRequest,
+  SchedulerDeleteTaskRequest,
+  SchedulerGetRunRequest,
+  SchedulerListRunsRequest,
+  SchedulerUpdateTaskRequest,
   TodoPlanWindowActionRequest,
   UIMessageStreamData,
 } from '../shared/ipc.js'
@@ -143,6 +154,9 @@ const electronAPI = {
   updateSessionModel: (sessionId: string, provider: string, model: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_MODEL, { sessionId, provider, model }),
 
+  updateSessionAgent: (sessionId: string, agentId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_AGENT, { sessionId, agentId }),
+
   updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) =>
     ipcRenderer.invoke(IPC_CHANNELS.UPDATE_SESSION_ARCHIVED, { sessionId, isArchived, archivedAt }),
 
@@ -276,6 +290,19 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.SYSTEM_THEME_CHANGED, listener)
   },
 
+  // Agent methods
+  listAgents: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENTS_LIST),
+
+  createAgent: (name: string, systemPrompt?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENTS_CREATE, { name, systemPrompt }),
+
+  updateAgent: (agentId: string, updates: { name?: string; systemPrompt?: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENTS_UPDATE, { agentId, ...updates }),
+
+  deleteAgent: (agentId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AGENTS_DELETE, { agentId }),
+
   // Theme methods
   getThemes: () =>
     ipcRenderer.invoke(IPC_CHANNELS.THEME_GET_ALL),
@@ -407,6 +434,9 @@ const electronAPI = {
   // Shell methods
   openPath: (filePath: string) =>
     ipcRenderer.invoke('shell:open-path', filePath),
+
+  openExternal: (url: string) =>
+    ipcRenderer.invoke('shell:open-external', url),
 
   getDataPath: () =>
     ipcRenderer.invoke('app:get-data-path'),
@@ -577,6 +607,12 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.FILE_WATCH_EVENT, listener)
   },
 
+  resolveMarkdownAsset: (request: MarkdownResolveAssetRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MARKDOWN_RESOLVE_ASSET, request),
+
+  saveMarkdownAttachments: (request: MarkdownSaveAttachmentsRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MARKDOWN_SAVE_ATTACHMENTS, request),
+
   // ── Plugin management ───────────────────────────
   getPlugins: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_LIST),
@@ -597,34 +633,35 @@ const electronAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_EXECUTE_COMMAND, { commandName, args, sessionId }),
 
   // ── Soul / Memory panel ────────────────────────
-  getMemoryOverview: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_OVERVIEW),
+  getMemoryOverview: (agentId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_OVERVIEW, { agentId }),
 
-  readMemoryFile: (request: { path: string; startLine?: number; endLine?: number; lines?: number; full?: boolean }) =>
+  readMemoryFile: (request: { path: string; agentId?: string; startLine?: number; endLine?: number; lines?: number; full?: boolean }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_READ, request),
 
-  searchMemory: (request: { query: string; limit?: number | string }) =>
+  searchMemory: (request: { query: string; agentId?: string; limit?: number | string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_SEARCH, request),
 
-  appendMemory: (request: { content: string; target?: 'daily'; heading?: string }) =>
+  appendMemory: (request: { content: string; agentId?: string; target?: 'daily'; heading?: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_APPEND, request),
 
-  saveMemoryFile: (request: { path: string; content: string }) =>
+  saveMemoryFile: (request: { path: string; content: string; agentId?: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_SAVE_FILE, request),
 
-  rebuildMemoryIndex: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_INDEX),
+  rebuildMemoryIndex: (agentId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_INDEX, { agentId }),
 
-  runMemoryDreaming: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_RUN_DREAMING),
+  runMemoryDreaming: (agentId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_RUN_DREAMING, { agentId }),
 
-  listMemoryProfile: (request?: { query?: string; includeDeleted?: boolean; limit?: number }) =>
+  listMemoryProfile: (request?: { agentId?: string; query?: string; includeDeleted?: boolean; limit?: number }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_LIST, request),
 
-  searchMemoryProfile: (request: { query?: string; includeDeleted?: boolean; limit?: number }) =>
+  searchMemoryProfile: (request: { agentId?: string; query?: string; includeDeleted?: boolean; limit?: number }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_SEARCH, request),
 
   upsertMemoryProfile: (request: {
+    agentId?: string
     id?: string
     memoryKey?: string
     kind: string
@@ -637,22 +674,23 @@ const electronAPI = {
   }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_UPSERT, request),
 
-  deleteMemoryProfile: (request: { id: string }) =>
+  deleteMemoryProfile: (request: { agentId?: string; id: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_DELETE, request),
 
-  getMemoryProfileAudit: (request: { id: string }) =>
+  getMemoryProfileAudit: (request: { agentId?: string; id: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_AUDIT, request),
 
-  exportMemoryProfile: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_EXPORT),
+  exportMemoryProfile: (agentId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_EXPORT, { agentId }),
 
-  getMemoryGraphOverview: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OVERVIEW),
+  getMemoryGraphOverview: (agentId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OVERVIEW, { agentId }),
 
-  listMemoryGraphEntities: (request?: { query?: string; includeDeleted?: boolean; limit?: number }) =>
+  listMemoryGraphEntities: (request?: { agentId?: string; query?: string; includeDeleted?: boolean; limit?: number }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_LIST, request),
 
   upsertMemoryGraphEntity: (request: {
+    agentId?: string
     id?: string
     entityType: string
     name: string
@@ -664,13 +702,14 @@ const electronAPI = {
   }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_UPSERT, request),
 
-  deleteMemoryGraphEntity: (request: { id: string }) =>
+  deleteMemoryGraphEntity: (request: { agentId?: string; id: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_DELETE, request),
 
-  listMemoryGraphObservations: (request?: { query?: string; includeDeleted?: boolean; limit?: number; entityId?: string }) =>
+  listMemoryGraphObservations: (request?: { agentId?: string; query?: string; includeDeleted?: boolean; limit?: number; entityId?: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_LIST, request),
 
   upsertMemoryGraphObservation: (request: {
+    agentId?: string
     id?: string
     entityId: string
     kind: string
@@ -684,13 +723,14 @@ const electronAPI = {
   }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_UPSERT, request),
 
-  deleteMemoryGraphObservation: (request: { id: string }) =>
+  deleteMemoryGraphObservation: (request: { agentId?: string; id: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_DELETE, request),
 
-  listMemoryGraphRelations: (request?: { query?: string; includeDeleted?: boolean; limit?: number; entityId?: string }) =>
+  listMemoryGraphRelations: (request?: { agentId?: string; query?: string; includeDeleted?: boolean; limit?: number; entityId?: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_LIST, request),
 
   upsertMemoryGraphRelation: (request: {
+    agentId?: string
     id?: string
     fromEntityId: string
     relationType: string
@@ -703,19 +743,19 @@ const electronAPI = {
   }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_UPSERT, request),
 
-  deleteMemoryGraphRelation: (request: { id: string }) =>
+  deleteMemoryGraphRelation: (request: { agentId?: string; id: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_DELETE, request),
 
-  listMemoryGraphDuplicates: (request?: { query?: string; includeDeleted?: boolean; limit?: number }) =>
+  listMemoryGraphDuplicates: (request?: { agentId?: string; query?: string; includeDeleted?: boolean; limit?: number }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_LIST, request),
 
-  mergeMemoryGraphDuplicate: (request: { id: string }) =>
+  mergeMemoryGraphDuplicate: (request: { agentId?: string; id: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_MERGE, request),
 
-  ignoreMemoryGraphDuplicate: (request: { id: string }) =>
+  ignoreMemoryGraphDuplicate: (request: { agentId?: string; id: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_IGNORE, request),
 
-  getMemoryGraphAudit: (request: { id: string }) =>
+  getMemoryGraphAudit: (request: { agentId?: string; id: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_AUDIT, request),
 
   listMemoryLogs: (request?: {
@@ -754,6 +794,37 @@ const electronAPI = {
 
   setSchedulerTaskEnabled: (request: { id: string; enabled: boolean }) =>
     ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_SET_ENABLED, request),
+
+  createSchedulerTask: (request: SchedulerCreateTaskRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_CREATE_TASK, request),
+
+  updateSchedulerTask: (request: SchedulerUpdateTaskRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_UPDATE_TASK, request),
+
+  deleteSchedulerTask: (request: SchedulerDeleteTaskRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_DELETE_TASK, request),
+
+  listSchedulerRuns: (request: SchedulerListRunsRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_LIST_RUNS, request),
+
+  getSchedulerRun: (request: SchedulerGetRunRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_GET_RUN, request),
+
+  // ── User Prompts ───────────────────────────────
+  listPrompts: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROMPTS_LIST),
+
+  getPrompt: (request: PromptGetRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROMPTS_GET, request),
+
+  createPrompt: (request: PromptCreateRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROMPTS_CREATE, request),
+
+  updatePrompt: (request: PromptUpdateRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROMPTS_UPDATE, request),
+
+  deletePrompt: (request: PromptDeleteRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROMPTS_DELETE, request),
 
   // ── App State (restore on startup) ─────────────
   getAppState: () =>

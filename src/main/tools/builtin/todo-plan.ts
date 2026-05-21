@@ -26,13 +26,17 @@ export const TodoPlanTool = Tool.define<typeof TodoPlanParameters>('todo_plan', 
   description: `Read or update the todo/plan panel shown in the chat UI.
 
 Scopes:
-- user-note: global user-owned markdown todo notes. Create or edit these only when the user asks to track their own tasks.
+- user-note: global user-owned markdown todo notes. Use these to help the user remember their own tasks, commitments, reminders, errands, meeting notes, and personal/project notes.
 - workspace-ai-todo: one assistant-owned todo list per workspace. Use this as the only AI work-tracking surface in the same working directory.
 
 Workspace AI Todo convention:
 - "## Now" is for the current round or currently active assistant work.
 - "## Later" is for follow-up items that should survive beyond the current round.
 - Preserve existing useful items and update the complete markdown document when changing it.
+- In active autonomy mode, use workspace-ai-todo proactively for multi-step coding, debugging, research, planning, or follow-up work: update it when you form or revise a plan, complete a meaningful step, discover a new blocker, or leave unfinished work.
+- In active autonomy mode, also use user-note proactively when the user clearly asks you to remember, track, or add something to their todo/notes, or when they state a concrete future task/commitment that should be preserved.
+- If the target user note is unclear, list notes first and update the most relevant note or create a concise new one. Ask before writing only when intent is ambiguous.
+- Never delete or rename user-note documents unless the user explicitly asks for that destructive/organizational action.
 
 All documents are markdown and render live in the todo/plan card and detached window.`,
   category: 'builtin',

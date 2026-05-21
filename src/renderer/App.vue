@@ -521,6 +521,12 @@ onMounted(async () => {
 
   // Listen for search action execution from Search Everywhere window
   unsubscribeSearchAction = window.electronAPI.onSearchAction(async (actionId: string) => {
+    if (actionId.startsWith('insert-prompt:')) {
+      const promptId = actionId.replace('insert-prompt:', '')
+      chatContainerRef.value?.insertPromptReference?.(promptId)
+      chatContainerRef.value?.focusInput?.()
+      return
+    }
     if (actionId.startsWith('switch-session:')) {
       const sessionId = actionId.replace('switch-session:', '')
       await sessionsStore.switchSession(sessionId)

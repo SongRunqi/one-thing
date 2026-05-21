@@ -441,6 +441,13 @@ function focusInput() {
   }
 }
 
+function insertPromptReference(promptId: string) {
+  const firstPanel = panels.value[0]
+  if (firstPanel && panelRefs.value[firstPanel.id]) {
+    panelRefs.value[firstPanel.id]?.insertPromptReference(promptId)
+  }
+}
+
 // Open a file in a new tab in the first panel
 function openFileTab(filePath: string) {
   const firstPanel = panels.value[0]
@@ -478,6 +485,7 @@ async function jumpToMessage(sessionId: string, messageId: string) {
 // Expose methods
 defineExpose({
   focusInput,
+  insertPromptReference,
   openFileTab,
   jumpToMessage,
 })

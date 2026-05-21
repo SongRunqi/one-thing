@@ -1,7 +1,7 @@
 import type { CommandDefinition } from './commands'
-import type { SkillDefinition } from '@shared/ipc'
+import type { SkillDefinition, UserPrompt } from '@shared/ipc'
 
-export type PaletteItemType = 'command' | 'skill' | 'action'
+export type PaletteItemType = 'command' | 'skill' | 'action' | 'prompt'
 
 export interface PaletteItem {
   id: string
@@ -12,4 +12,5 @@ export interface PaletteItem {
   keywords?: string[]
   command?: CommandDefinition
   skill?: SkillDefinition
+  prompt?: UserPrompt
 }

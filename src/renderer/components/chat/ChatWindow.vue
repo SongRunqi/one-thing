@@ -4,6 +4,7 @@
     <TabBar
       :tabs="tabsWithDirty"
       :active-tab-id="activeTabId"
+      :session-id="effectiveSessionId"
       :session-name="currentSession?.name || 'New Chat'"
       :is-branch-session="isBranchSession"
       :show-sidebar-toggle="showSidebarToggle"
@@ -219,6 +220,10 @@ function focusInput() {
   chatPanelRef.value?.focusInput()
 }
 
+function insertPromptReference(promptId: string) {
+  chatPanelRef.value?.insertPromptReference(promptId)
+}
+
 function saveChatSnapshotBeforeLeaving(nextType: Tab['type']) {
   if (activeTab.value?.type === 'chat' && nextType !== 'chat') {
     chatPanelRef.value?.saveSnapshotForCurrentSession()
@@ -318,6 +323,7 @@ async function scrollToMessage(messageId: string) {
 
 defineExpose({
   focusInput,
+  insertPromptReference,
   addFileTab,
   scrollToMessage,
 })

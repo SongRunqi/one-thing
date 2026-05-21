@@ -26,17 +26,20 @@ import {
 } from '@shared/defaults/settings'
 import { languageExtension } from './languages'
 import { markdownLivePreviewExtension } from './markdown-live-preview'
+import type { MarkdownLivePreviewOptions } from './markdown-live-preview'
 import type { EditorLanguage, EditorProfile, EditorSettings } from './types'
 
 export interface EditorCompartments {
   tabSize: Compartment
   readOnly: Compartment
   theme: Compartment
+  selection: Compartment
   wrapping: Compartment
   placeholder: Compartment
   language: Compartment
   completion: Compartment
   markdownLivePreview: Compartment
+  promptCards: Compartment
 }
 
 export interface BuildEditorExtensionsOptions {
@@ -47,6 +50,8 @@ export interface BuildEditorExtensionsOptions {
   readOnly: boolean
   spellcheck: boolean
   markdownLivePreview: boolean
+  markdownLivePreviewOptions?: MarkdownLivePreviewOptions
+  promptCards?: Extension[]
   settings: Required<EditorSettings>
   compartments: EditorCompartments
   onTransaction: (update: ViewUpdate) => void
@@ -66,11 +71,13 @@ export function createEditorCompartments(): EditorCompartments {
     tabSize: new Compartment(),
     readOnly: new Compartment(),
     theme: new Compartment(),
+    selection: new Compartment(),
     wrapping: new Compartment(),
     placeholder: new Compartment(),
     language: new Compartment(),
     completion: new Compartment(),
     markdownLivePreview: new Compartment(),
+    promptCards: new Compartment(),
   }
 }
 
@@ -113,7 +120,7 @@ export function buildEditorExtensions(options: BuildEditorExtensionsOptions): Ex
       ...historyKeymap,
       ...defaultKeymap,
     ]),
-    drawSelection(),
+    options.compartments.selection.of(selectionExtensions(options.markdownLivePreview)),
     options.compartments.theme.of(themeExtension(options.profile, options.spellcheck)),
     options.compartments.wrapping.of(wrappingExtension(options.settings.lineWrapping)),
     options.compartments.placeholder.of(placeholderExtensions(options.placeholder)),
@@ -123,7 +130,11 @@ export function buildEditorExtensions(options: BuildEditorExtensionsOptions): Ex
       options.path,
     )),
     options.compartments.completion.of(completionExtensions(options.settings.completionEnabled)),
-    options.compartments.markdownLivePreview.of(markdownLivePreviewExtension(options.markdownLivePreview)),
+    options.compartments.markdownLivePreview.of(markdownLivePreviewExtension(
+      options.markdownLivePreview,
+      options.markdownLivePreviewOptions,
+    )),
+    options.compartments.promptCards.of(options.promptCards || []),
   ]
 
   return extensions
@@ -134,6 +145,13 @@ export function tabSizeExtensions(tabSize: number): Extension[] {
     EditorState.tabSize.of(tabSize),
     indentUnit.of(' '.repeat(tabSize)),
   ]
+}
+
+export function selectionExtensions(markdownLivePreview: boolean): Extension[] {
+  // Rich Markdown preview behaves more like a document than a code buffer.
+  // CodeMirror's drawn selection intentionally fills rectangular line spans,
+  // which looks like selecting padding/widgets around live-preview blocks.
+  return markdownLivePreview ? [] : [drawSelection()]
 }
 
 export function readOnlyExtensions(readOnly: boolean): Extension[] {
@@ -189,7 +207,11 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
     },
     '.cm-scroller': {
       maxHeight: 'var(--editor-max-height)',
-      overflow: 'auto',
+      overflowX: 'auto',
+      overflowY: 'auto',
+      scrollbarWidth: 'thin',
+      scrollbarColor: 'color-mix(in srgb, var(--text-muted, var(--muted)) 42%, transparent) transparent',
+      scrollbarGutter: 'stable',
       fontFamily: 'inherit',
       lineHeight: 'inherit',
     },
@@ -197,12 +219,29 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       minHeight: 'var(--editor-min-height)',
       padding: isComposer ? '12px 0 0 0' : '0',
       cursor: 'text',
+      whiteSpace: 'pre',
+      wordBreak: 'normal',
+    },
+    '.cm-content.cm-lineWrapping': {
+      width: 'min(100%, var(--editor-soft-wrap-width, 88ch))',
+      maxWidth: '100%',
+      minWidth: '0',
+      boxSizing: 'border-box',
+      flexGrow: '0',
+      flexShrink: '1',
       whiteSpace: 'pre-wrap',
       wordBreak: 'break-word',
+      overflowWrap: 'anywhere',
+    },
+    '.cm-content.cm-lineWrapping .cm-line': {
+      maxWidth: '100%',
+      whiteSpace: 'inherit',
+      overflowWrap: 'inherit',
     },
     '.cm-line': {
       padding: '0',
       cursor: 'text',
+      boxSizing: 'border-box',
     },
     '.cm-placeholder': {
       color: 'var(--text-input-placeholder, var(--text-muted))',
@@ -225,15 +264,144 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
     '.cm-content[contenteditable="true"]': {
       WebkitUserModify: spellcheck ? 'read-write' : 'read-write-plaintext-only',
     },
+    '.prompt-ref-widget': {
+      position: 'relative',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '5px',
+      boxSizing: 'border-box',
+      minHeight: '24px',
+      maxWidth: '220px',
+      margin: '0 2px',
+      padding: '2px 7px',
+      border: '1px solid color-mix(in srgb, var(--accent) 28%, var(--border))',
+      borderRadius: '7px',
+      background: 'color-mix(in srgb, var(--accent) 9%, transparent)',
+      color: 'var(--text)',
+      verticalAlign: 'baseline',
+      cursor: 'default',
+      lineHeight: '18px',
+    },
+    '.prompt-ref-widget.is-skill': {
+      borderColor: 'color-mix(in srgb, var(--success, #2f8f5b) 24%, var(--border))',
+      background: 'color-mix(in srgb, var(--success, #2f8f5b) 8%, transparent)',
+    },
+    '.prompt-ref-widget.is-command': {
+      borderColor: 'color-mix(in srgb, var(--text-muted, var(--muted)) 24%, var(--border))',
+      background: 'color-mix(in srgb, var(--text-muted, var(--muted)) 7%, transparent)',
+    },
+    '.prompt-ref-widget-icon': {
+      width: '14px',
+      height: '14px',
+      borderRadius: '4px',
+      display: 'inline-grid',
+      placeItems: 'center',
+      background: 'color-mix(in srgb, var(--accent) 18%, transparent)',
+      color: 'var(--accent)',
+      fontSize: '9px',
+      fontWeight: '700',
+    },
+    '.prompt-ref-widget.is-skill .prompt-ref-widget-icon': {
+      background: 'color-mix(in srgb, var(--success, #2f8f5b) 16%, transparent)',
+      color: 'var(--success, #2f8f5b)',
+    },
+    '.prompt-ref-widget.is-command .prompt-ref-widget-icon': {
+      background: 'color-mix(in srgb, var(--text-muted, var(--muted)) 16%, transparent)',
+      color: 'var(--text-muted, var(--muted))',
+      fontSize: '11px',
+    },
+    '.prompt-ref-widget-title': {
+      minWidth: '0',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      fontSize: '0.92em',
+      fontWeight: '650',
+    },
+    '.prompt-ref-widget-close': {
+      width: '0',
+      height: '16px',
+      flexShrink: '0',
+      display: 'inline-grid',
+      placeItems: 'center',
+      marginLeft: '0',
+      padding: '0',
+      border: '0',
+      borderRadius: '5px',
+      background: 'transparent',
+      color: 'var(--muted)',
+      cursor: 'pointer',
+      font: 'inherit',
+      fontSize: '13px',
+      lineHeight: '1',
+      overflow: 'hidden',
+      opacity: '0',
+      transform: 'scale(0.92)',
+      pointerEvents: 'none',
+      transition: 'width 120ms ease, margin 120ms ease, opacity 120ms ease, transform 120ms ease, background 120ms ease, color 120ms ease',
+    },
+    '.prompt-ref-widget:hover .prompt-ref-widget-close, .prompt-ref-widget:focus-within .prompt-ref-widget-close': {
+      width: '16px',
+      marginLeft: '1px',
+      opacity: '1',
+      transform: 'scale(1)',
+      pointerEvents: 'auto',
+    },
+    '.prompt-ref-widget-close:hover': {
+      background: 'color-mix(in srgb, var(--danger, #d14) 12%, transparent)',
+      color: 'var(--danger, #d14)',
+    },
+    '.prompt-ref-widget-popover': {
+      position: 'absolute',
+      left: '0',
+      bottom: 'calc(100% + 8px)',
+      width: 'min(420px, 70vw)',
+      maxHeight: '260px',
+      display: 'none',
+      flexDirection: 'column',
+      gap: '7px',
+      padding: '10px 11px',
+      border: '1px solid var(--border)',
+      borderRadius: '8px',
+      background: 'var(--panel, var(--bg))',
+      color: 'var(--text)',
+      boxShadow: '0 16px 42px rgba(0, 0, 0, 0.2)',
+      zIndex: '50',
+      whiteSpace: 'normal',
+    },
+    '.prompt-ref-widget:hover .prompt-ref-widget-popover, .prompt-ref-widget:focus .prompt-ref-widget-popover': {
+      display: 'flex',
+    },
+    '.prompt-ref-widget-description': {
+      color: 'var(--muted)',
+      fontSize: '12px',
+    },
+    '.prompt-ref-widget-content': {
+      overflow: 'auto',
+      whiteSpace: 'pre-wrap',
+      fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+      fontSize: '12px',
+      lineHeight: '1.45',
+    },
     '.cm-scroller::-webkit-scrollbar': {
-      width: '4px',
+      width: '10px',
+      height: '10px',
     },
     '.cm-scroller::-webkit-scrollbar-track': {
       background: 'transparent',
     },
     '.cm-scroller::-webkit-scrollbar-thumb': {
-      background: 'var(--scrollbar-thumb)',
-      borderRadius: '2px',
+      background: 'color-mix(in srgb, var(--text-muted, var(--muted)) 42%, transparent)',
+      borderRadius: '999px',
+      border: '2px solid transparent',
+      backgroundClip: 'padding-box',
+    },
+    '.cm-scroller::-webkit-scrollbar-thumb:hover': {
+      background: 'color-mix(in srgb, var(--text-muted, var(--muted)) 62%, transparent)',
+      backgroundClip: 'padding-box',
+    },
+    '.cm-scroller::-webkit-scrollbar-corner': {
+      background: 'transparent',
     },
   })
 }

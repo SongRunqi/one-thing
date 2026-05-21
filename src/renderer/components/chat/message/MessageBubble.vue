@@ -153,6 +153,18 @@
                 :aria-label="part.label || 'Generating image'"
                 :title="part.label || 'Generating image'"
               />
+              <PromptReferenceCard
+                v-else-if="part.type === 'prompt-ref'"
+                :title="part.title"
+                :content="part.content"
+                :description="part.description"
+              />
+              <PromptReferenceCard
+                v-else-if="part.type === 'skill-ref'"
+                :title="part.name"
+                :content="part.content"
+                :description="part.description"
+              />
               <!-- Additional text parts (after the first one) -->
               <div
                 v-else-if="part.type === 'text'"
@@ -304,6 +316,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
+import PromptReferenceCard from '@/components/common/PromptReferenceCard.vue'
 import StreamingMarkdown from './StreamingMarkdown.vue'
 import StaticMarkdown from './StaticMarkdown.vue'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
@@ -420,6 +433,8 @@ function shouldUseStreamingMarkdown(isUser: boolean): boolean {
 function getOtherPartKey(part: ContentPart, index: number): string {
   if (part.type === 'text') return `text-other-${index}`
   if (part.type === 'reasoning') return inlineReasoningKey(part, index)
+  if (part.type === 'prompt-ref') return `prompt-ref-${part.promptId}-${part.bodyHash || index}`
+  if (part.type === 'skill-ref') return `skill-ref-${part.skillId}-${part.bodyHash || index}`
   if (part.type === 'tool-call') return `tool-call-${part.toolCalls.map(tc => tc.id).join('-') || index}`
   if (part.type === 'data-steps') return `steps-${part.turnIndex ?? index}`
   if (part.type === 'waiting') return `waiting-${part.turnIndex ?? index}`

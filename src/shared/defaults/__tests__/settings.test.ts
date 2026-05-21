@@ -30,9 +30,12 @@ describe('editor settings defaults', () => {
     expect(settings.general.editor).toEqual({
       tabSize: 2,
       lineWrapping: true,
+      softWrapColumn: 88,
       syntaxHighlighting: true,
       completionEnabled: true,
       composerMaxHeight: 200,
+      markdownNoteAttachmentDirectory: '',
+      markdownProjectAttachmentDirectory: '',
     })
   })
 
@@ -42,15 +45,21 @@ describe('editor settings defaults', () => {
         editor: {
           tabSize: 99,
           lineWrapping: false,
+          softWrapColumn: 999,
           composerMaxHeight: 10,
+          markdownNoteAttachmentDirectory: 'attachments',
+          markdownProjectAttachmentDirectory: 'assets',
         },
       } as any,
     })
 
     expect(settings.general.editor?.tabSize).toBe(8)
     expect(settings.general.editor?.lineWrapping).toBe(false)
+    expect(settings.general.editor?.softWrapColumn).toBe(200)
     expect(settings.general.editor?.syntaxHighlighting).toBe(true)
     expect(settings.general.editor?.composerMaxHeight).toBe(80)
+    expect(settings.general.editor?.markdownNoteAttachmentDirectory).toBe('attachments')
+    expect(settings.general.editor?.markdownProjectAttachmentDirectory).toBe('assets')
   })
 })
 
@@ -180,6 +189,27 @@ describe('shortcut settings defaults', () => {
     })
 
     expect(settings.general.shortcuts?.searchEverywhere).toEqual({ key: 'Shift', sequence: 'double-shift' })
+  })
+})
+
+describe('todo plan settings defaults', () => {
+  it('uses active todo autonomy by default', () => {
+    const settings = createDefaultSettings()
+
+    expect(settings.general.todoPlan?.enabled).toBe(true)
+    expect(settings.general.todoPlan?.autonomy).toBe('active')
+  })
+
+  it('merges active todo autonomy for older settings files', () => {
+    const settings = mergeWithDefaults({
+      general: {
+        todoPlan: {
+          enabled: true,
+        },
+      } as any,
+    })
+
+    expect(settings.general.todoPlan?.autonomy).toBe('active')
   })
 })
 

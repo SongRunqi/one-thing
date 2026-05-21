@@ -19,7 +19,7 @@ import {
   type ContextVariable,
 } from '../../variables/index.js'
 
-type VariableAction = 'list' | 'set' | 'delete'
+type VariableAction = 'list' | 'set' | 'append' | 'remove' | 'delete'
 
 interface VariableMetadata {
   action: VariableAction
@@ -29,9 +29,9 @@ interface VariableMetadata {
 }
 
 const VariableParameters = z.object({
-  action: z.enum(['list', 'set', 'delete']).describe('Operation to perform on context variables.'),
-  name: z.string().optional().describe('Variable name (required for set/delete).'),
-  value: z.string().optional().describe('Variable value (required for set; for workdir/note dirs, must be an existing directory).'),
+  action: z.enum(['list', 'set', 'append', 'remove', 'delete']).describe('Operation to perform on context variables.'),
+  name: z.string().optional().describe('Variable name (required for set/append/remove/delete).'),
+  value: z.string().optional().describe('Variable value (required for set/append/remove; for workdir/note dirs, must be an existing directory).'),
   scope: z.enum(['session', 'global']).optional().describe('Scope for custom variables. Defaults to session. Built-in note dirs are global; workdir is session.'),
   description: z.string().optional().describe('Short description, surfaced in the prompt and the Context inspector.'),
 })
@@ -49,6 +49,9 @@ function renderForOutput(snapshot: ContextVariable[]): string {
   return snapshot.map(v => {
     const flags = `${v.scope ? ` [${v.scope}]` : ''}${v.readonly ? ' [readonly]' : ''}`
     const desc = v.description ? ` — ${v.description}` : ''
+    if (v.values && v.values.length > 0) {
+      return `${v.name} = ${v.value || '(empty)'}\nvalues:\n${v.values.map((value, index) => `  [${index}] ${value}${index === 0 && v.value ? ' (current)' : ''}`).join('\n')}${flags}${desc}`
+    }
     const value = v.value || '(empty)'
     return `${v.name} = ${value}${flags}${desc}`
   }).join('\n')
@@ -70,7 +73,7 @@ export const VariableTool = Tool.define<typeof VariableParameters, VariableMetad
 Use this tool when the user asks to switch projects, change directories, remember a project hint, or adjust context for future tool calls.
 
 System variables:
-- workdir: current working directory and file-tool sandbox boundary. It can be changed with action=set but cannot be deleted.
+- workdir: ordered workdir list. The first value is the active cwd for relative paths, bash defaults, AGENTS.md, project skills, and project todo state. Later values are additional sandbox roots for file/bash tools. Use action=set to change the active cwd, action=append to add a root needed for the current task, and action=remove to remove an extra root. It cannot be deleted.
 - ai_note_dir: directory where the assistant stores its scratch notes (default ~/.onething/notes).
 - user_note_dir: directory where the user keeps personal notes. Read for context; only modify with explicit user permission.
 - work_note_dir: directory where work or project notes are kept. Read for context; only modify with explicit user permission.
@@ -87,19 +90,30 @@ Project directories (the "project_dirs" list) are managed by a separate tool —
 
   async execute(args, ctx) {
     const registry = getVariableRegistry()
-    const variableCtx = { sessionId: ctx.sessionId }
+    const variableCtx = {
+      sessionId: ctx.sessionId,
+      messageId: ctx.messageId,
+      toolCallId: ctx.toolCallId,
+    }
     const action: VariableAction = args.action
 
     try {
-      if (action === 'set') {
-        if (!args.name) throw new Error('name is required for set')
-        if (args.value === undefined) throw new Error('value is required for set')
-        await registry.set(variableCtx, {
+      if (action === 'set' || action === 'append' || action === 'remove') {
+        if (!args.name) throw new Error(`name is required for ${action}`)
+        if (args.value === undefined) throw new Error(`value is required for ${action}`)
+        const input = {
           name: args.name,
           value: args.value,
           scope: args.scope,
           description: args.description,
-        })
+        }
+        if (action === 'set') {
+          await registry.set(variableCtx, input)
+        } else if (action === 'append') {
+          await registry.append(variableCtx, input)
+        } else if (action === 'remove') {
+          await registry.remove(variableCtx, input)
+        }
       } else if (action === 'delete') {
         if (!args.name) throw new Error('name is required for delete')
         await registry.delete(variableCtx, args.name, args.scope)

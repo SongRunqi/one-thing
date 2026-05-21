@@ -106,6 +106,18 @@ export const SESSION_REPOSITORY_MIGRATIONS: SqliteMigration[] = [
       `ALTER TABLE sessions ADD COLUMN prompt_context_json TEXT`,
     ],
   },
+  {
+    version: 3,
+    statements: [
+      `ALTER TABLE sessions ADD COLUMN agent_id TEXT`,
+    ],
+  },
+  {
+    version: 4,
+    statements: [
+      `ALTER TABLE sessions ADD COLUMN working_directory_roots_json TEXT`,
+    ],
+  },
 ]
 
 export function getLatestSessionRepositorySchemaVersion(): number {

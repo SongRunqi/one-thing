@@ -4,6 +4,16 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ChatSession } from '../../../../shared/ipc.js'
 
+let sqliteNativeLoadError: string | null = null
+try {
+  const sqliteModule = await import('better-sqlite3')
+  const database = new sqliteModule.default(':memory:')
+  database.close()
+} catch (error) {
+  sqliteNativeLoadError = error instanceof Error ? error.message : String(error)
+}
+const sqliteIt = sqliteNativeLoadError ? it.skip : it
+
 function message(index: number) {
   return {
     id: `msg-${index}`,
@@ -14,7 +24,7 @@ function message(index: number) {
 }
 
 describe('sqlite session repository', () => {
-  it('migrates a legacy JSON session and serves message pages from SQLite', async () => {
+  sqliteIt('migrates a legacy JSON session and serves message pages from SQLite', async () => {
     const previousHome = process.env.HOME
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-sqlite-test-'))
     process.env.HOME = home
@@ -23,6 +33,7 @@ describe('sqlite session repository', () => {
       const { ensureStoreDirs, getSessionPath } = await import('../../paths.js')
       const {
         getSqliteMessagesPage,
+        getSqliteSessionDetails,
         importSessionIndexToSqlite,
         migrateSessionToSqliteNow,
         syncSqliteMessage,
@@ -47,6 +58,7 @@ describe('sqlite session repository', () => {
         name: session.name,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
+        agentId: 'agent-sqlite',
         messageCount: session.messages.length,
       }])
 
@@ -62,6 +74,16 @@ describe('sqlite session repository', () => {
       syncSqliteMessage('s1', { ...session.messages[3], content: 'updated in sqlite' }, 4)
       const updated = getSqliteMessagesPage({ sessionId: 's1', anchor: 'tail', limit: 1 })
       expect(updated?.messages?.[0]?.content).toBe('updated in sqlite')
+
+      expect(getSqliteSessionDetails('s1')?.agentId).toBe('agent-sqlite')
+
+      importSessionIndexToSqlite([{
+        id: 'legacy-agent-session',
+        name: 'Legacy Agent Session',
+        createdAt: 10,
+        updatedAt: 20,
+      }])
+      expect(getSqliteSessionDetails('legacy-agent-session')?.agentId).toBe('default')
     } finally {
       process.env.HOME = previousHome
     }

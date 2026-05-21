@@ -13,8 +13,20 @@ export function getSettingsPath(): string {
   return path.join(getStorePath(), 'settings.json')
 }
 
+export function getAgentsDir(): string {
+  return path.join(getStorePath(), 'agents')
+}
+
+export function getAgentsPath(): string {
+  return path.join(getStorePath(), 'agents.json')
+}
+
 export function getVariablesPath(): string {
   return path.join(getStorePath(), 'variables.json')
+}
+
+export function getPromptsPath(): string {
+  return path.join(getStorePath(), 'prompts.json')
 }
 
 export function getAppStatePath(): string {
@@ -80,6 +92,19 @@ export function getMediaIndexPath(): string {
   return path.join(getMediaDir(), 'index.json')
 }
 
+// Scheduler paths
+export function getSchedulerDir(): string {
+  return path.join(getStorePath(), 'scheduler')
+}
+
+export function getSchedulerTasksPath(): string {
+  return path.join(getSchedulerDir(), 'tasks.json')
+}
+
+export function getSchedulerRunsDir(): string {
+  return path.join(getSchedulerDir(), 'runs')
+}
+
 // Tool outputs directory (for large outputs that exceed inline limits)
 export function getToolOutputsDir(): string {
   return path.join(getStorePath(), 'tool-outputs')
@@ -137,6 +162,7 @@ export function ensureDir(dir: string): void {
 export function ensureStoreDirs(): void {
   const dirs = [
     getStorePath(),
+    getAgentsDir(),
     getSessionsDir(),
     getWorkspacesDir(),
     getWorkspaceAvatarsDir(),
@@ -145,6 +171,8 @@ export function ensureStoreDirs(): void {
     getMediaDir(),
     getMediaImagesDir(),
     getMediaFilesDir(),
+    getSchedulerDir(),
+    getSchedulerRunsDir(),
     getToolOutputsDir(),
     getPermissionsDir(),
   ]

@@ -100,9 +100,9 @@ async function withMemoryIpcLog<T>(
 }
 
 export function registerMemoryHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.MEMORY_OVERVIEW, async () => {
+  ipcMain.handle(IPC_CHANNELS.MEMORY_OVERVIEW, async (_event, request?: { agentId?: string }) => {
     try {
-      return { success: true, overview: await getSoulMemoryOverview() }
+      return { success: true, overview: await getSoulMemoryOverview(request?.agentId) }
     } catch (error) {
       console.error('[MemoryIPC] overview error:', error)
       return { success: false, error: errorMessage(error) }
@@ -164,18 +164,18 @@ export function registerMemoryHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.MEMORY_INDEX, async () => {
+  ipcMain.handle(IPC_CHANNELS.MEMORY_INDEX, async (_event, request?: { agentId?: string }) => {
     try {
-      return { success: true, status: await withMemoryIpcLog('memory-reindex', undefined, () => rebuildSoulMemoryIndex()) }
+      return { success: true, status: await withMemoryIpcLog('memory-reindex', request, () => rebuildSoulMemoryIndex(request?.agentId)) }
     } catch (error) {
       console.error('[MemoryIPC] index error:', error)
       return { success: false, error: errorMessage(error) }
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.MEMORY_RUN_DREAMING, async () => {
+  ipcMain.handle(IPC_CHANNELS.MEMORY_RUN_DREAMING, async (_event, request?: { agentId?: string }) => {
     try {
-      return { success: true, result: await withMemoryIpcLog('memory-run-dreaming', undefined, () => runSoulMemoryDreamingNow()) }
+      return { success: true, result: await withMemoryIpcLog('memory-run-dreaming', request, () => runSoulMemoryDreamingNow(request?.agentId)) }
     } catch (error) {
       console.error('[MemoryIPC] run dreaming error:', error)
       return { success: false, error: errorMessage(error) }
@@ -228,18 +228,18 @@ export function registerMemoryHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.MEMORY_PROFILE_EXPORT, async () => {
+  ipcMain.handle(IPC_CHANNELS.MEMORY_PROFILE_EXPORT, async (_event, request?: { agentId?: string }) => {
     try {
-      return { success: true, markdown: await exportSoulMemoryProfile() }
+      return { success: true, markdown: await exportSoulMemoryProfile(request?.agentId) }
     } catch (error) {
       console.error('[MemoryIPC] profile export error:', error)
       return { success: false, error: errorMessage(error) }
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.MEMORY_GRAPH_OVERVIEW, async () => {
+  ipcMain.handle(IPC_CHANNELS.MEMORY_GRAPH_OVERVIEW, async (_event, request?: { agentId?: string }) => {
     try {
-      return { success: true, overview: await getSoulMemoryGraphOverview() }
+      return { success: true, overview: await getSoulMemoryGraphOverview(request?.agentId) }
     } catch (error) {
       console.error('[MemoryIPC] graph overview error:', error)
       return { success: false, error: errorMessage(error) }

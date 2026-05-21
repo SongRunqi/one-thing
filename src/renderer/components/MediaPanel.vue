@@ -208,6 +208,7 @@
         </template>
 
         <MemoryPanelContent v-else-if="activeNav === 'memory'" />
+        <SchedulerPanelContent v-else-if="activeNav === 'tasks'" />
         <ArchivedChatsContent v-else-if="activeNav === 'archive'" />
       </div>
     </div>
@@ -218,11 +219,13 @@
 import { ref, computed, onMounted, onUnmounted, watch, type Component } from 'vue'
 import ArchivedChatsContent from './ArchivedChatsContent.vue'
 import MemoryPanelContent from './memory/MemoryPanelContent.vue'
+import SchedulerPanelContent from './SchedulerPanelContent.vue'
 import { useMediaStore } from '@/stores/media'
 import type { MediaAsset, MediaKind, MediaSource } from '@/types'
 import {
   Archive,
   Brain,
+  CalendarClock,
   FileText,
   Images,
   Music,
@@ -250,6 +253,7 @@ const activeSource = ref<SourceFilter>('all')
 const navItems = [
   { id: 'media', label: 'Media', icon: Images },
   { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'tasks', label: 'Tasks', icon: CalendarClock },
   { id: 'archive', label: 'Archived Chats', icon: Archive },
 ]
 

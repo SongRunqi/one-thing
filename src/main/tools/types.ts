@@ -28,7 +28,8 @@ export interface ToolExecutionContext {
   messageId: string
   toolCallId?: string  // ID of the tool call for metadata updates
   // Sandbox boundary for file access restrictions
-  workingDirectory?: string  // Session's working directory (sandbox boundary)
+  workingDirectory?: string  // Session's active working directory
+  workingDirectoryRoots?: string[] // Additional sandbox roots
   // Extended context for Tool Agent delegation
   providerId?: string
   providerConfig?: ProviderConfig

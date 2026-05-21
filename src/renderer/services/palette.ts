@@ -1,5 +1,6 @@
 import type { SkillDefinition } from '@/types'
-import type { PaletteItem } from '@/types/palette'
+import type { PaletteItem, PaletteItemType } from '@/types/palette'
+import type { UserPrompt } from '@shared/ipc'
 import { getCommands } from './commands'
 
 function normalizeQuery(query: string): string {
@@ -33,6 +34,7 @@ function itemMatchScore(item: PaletteItem, query: string): number {
     item.command?.id,
     item.command?.name,
     item.skill?.name,
+    item.prompt?.title,
   ]
 
   if (primaryFields.some(f => normalizeText(f) === query)) return 4
@@ -48,7 +50,12 @@ function itemMatchScore(item: PaletteItem, query: string): number {
   return searchable.includes(query) ? 1 : 0
 }
 
-export function getPaletteItems(skills: SkillDefinition[] = []): PaletteItem[] {
+export function getPaletteItems(
+  skills: SkillDefinition[] = [],
+  prompts: UserPrompt[] = [],
+  types?: PaletteItemType[],
+): PaletteItem[] {
+  const include = (type: PaletteItemType) => !types || types.includes(type)
   const commandItems: PaletteItem[] = getCommands().map(command => ({
     id: `command:${command.id}`,
     type: 'command',
@@ -69,12 +76,31 @@ export function getPaletteItems(skills: SkillDefinition[] = []): PaletteItem[] {
     skill,
   }))
 
-  return [...commandItems, ...skillItems]
+  const promptItems: PaletteItem[] = prompts.map(prompt => ({
+    id: `prompt:${prompt.id}`,
+    type: 'prompt',
+    title: prompt.title,
+    description: prompt.description || prompt.body.slice(0, 120),
+    usage: 'prompt',
+    keywords: [prompt.title, prompt.description || '', prompt.body, ...(prompt.tags || [])],
+    prompt,
+  }))
+
+  return [
+    ...(include('command') ? commandItems : []),
+    ...(include('skill') ? skillItems : []),
+    ...(include('prompt') ? promptItems : []),
+  ]
 }
 
-export function filterPaletteItems(query: string, skills: SkillDefinition[] = []): PaletteItem[] {
+export function filterPaletteItems(
+  query: string,
+  skills: SkillDefinition[] = [],
+  prompts: UserPrompt[] = [],
+  types?: PaletteItemType[],
+): PaletteItem[] {
   const normalized = normalizeQuery(query)
-  const scored = getPaletteItems(skills)
+  const scored = getPaletteItems(skills, prompts, types)
     .map((item, originalIndex) => ({ item, originalIndex, score: itemMatchScore(item, normalized) }))
     .filter(s => s.score > 0)
   scored.sort((a, b) => b.score - a.score || a.originalIndex - b.originalIndex)

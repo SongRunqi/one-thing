@@ -312,7 +312,7 @@ function saveTodoPlanWindowState(window: BrowserWindow | null, stableBounds?: Re
 // Keep track of the settings window
 let settingsWindow: BrowserWindow | null = null
 let todoPlanWindow: BrowserWindow | null = null
-let todoPlanPinned = false
+let todoPlanPinned = true
 let isHidingTodoPlanWindow = false
 let isSyncingTodoPlanNativeFrame = false
 let todoPlanNativeFrameGuardToken = 0
@@ -455,10 +455,91 @@ function hideTodoPlanWindowPreservingBounds(): boolean {
   return true
 }
 
-export function hideUnpinnedTodoPlanWindowForMainActivation(): boolean {
-  if (process.platform !== 'darwin') return false
-  if (todoPlanPinned) return false
-  return hideTodoPlanWindowPreservingBounds()
+function createTodoPlanBrowserWindow(
+  prepared: {
+    options: NormalizedTodoPlanWindowActionOptions
+    mainWindowVisibilitySnapshot: MainWindowVisibilitySnapshot[]
+  },
+  presentWhenReady: boolean,
+): BrowserWindow {
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  const isMac = process.platform === 'darwin'
+  const effectiveTheme = getEffectiveTheme()
+  const themeId = getEffectiveThemeId(effectiveTheme)
+  const backgroundColor = getThemeBackgroundColor(themeId, effectiveTheme)
+  const windowState = getTodoPlanWindowState()
+
+  todoPlanWindow = new BrowserWindow({
+    width: windowState.width,
+    height: windowState.height,
+    x: windowState.x,
+    y: windowState.y,
+    minWidth: 320,
+    minHeight: 280,
+    show: false,
+    type: isMac ? 'panel' : undefined,
+    focusable: true,
+    acceptFirstMouse: isMac ? true : undefined,
+    skipTaskbar: isMac,
+    transparent: isMac,
+    backgroundColor: isMac ? undefined : backgroundColor,
+    titleBarStyle: isMac ? 'hidden' : 'default',
+    trafficLightPosition: isMac ? { x: 16, y: 9 } : undefined,
+    resizable: true,
+    alwaysOnTop: false,
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+
+  if (isMac) configureTodoPlanNativePanel(todoPlanWindow)
+  setTodoPlanWindowPinned(true)
+  if (presentWhenReady) {
+    restoreHiddenMainWindows(prepared.mainWindowVisibilitySnapshot)
+  }
+
+  todoPlanWindow.once('ready-to-show', () => {
+    if (todoPlanWindow && !todoPlanWindow.isDestroyed()) {
+      if (isMac) configureTodoPlanNativePanel(todoPlanWindow)
+      if (presentWhenReady) {
+        presentTodoPlanWindow(todoPlanWindow, prepared.options)
+      }
+    }
+    if (presentWhenReady) {
+      restoreHiddenMainWindows(prepared.mainWindowVisibilitySnapshot)
+    }
+  })
+
+  todoPlanWindow.on('resize', () => {
+    if (!isHidingTodoPlanWindow && !isSyncingTodoPlanNativeFrame) saveTodoPlanWindowState(todoPlanWindow)
+  })
+  todoPlanWindow.on('move', () => {
+    if (!isHidingTodoPlanWindow && !isSyncingTodoPlanNativeFrame) saveTodoPlanWindowState(todoPlanWindow)
+  })
+
+  todoPlanWindow.on('close', () => {
+    saveTodoPlanWindowState(todoPlanWindow)
+    if (process.platform === 'darwin') {
+      suppressMainWindowActivationFromTodoPanel()
+    }
+  })
+
+  todoPlanWindow.on('closed', () => {
+    todoPlanWindow = null
+  })
+
+  const themeParams = `theme=${effectiveTheme}`
+  if (isDevelopment) {
+    todoPlanWindow.loadURL(`${getRendererDevUrl()}/#/todo-plan?${themeParams}`)
+  } else {
+    todoPlanWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      hash: `/todo-plan?${themeParams}`
+    })
+  }
+
+  return todoPlanWindow
 }
 
 /**
@@ -546,76 +627,18 @@ export function openTodoPlanWindow(options: TodoPlanWindowActionOptions = {}) {
     return todoPlanWindow
   }
 
-  const isDevelopment = process.env.NODE_ENV === 'development'
-  const isMac = process.platform === 'darwin'
-  const effectiveTheme = getEffectiveTheme()
-  const themeId = getEffectiveThemeId(effectiveTheme)
-  const backgroundColor = getThemeBackgroundColor(themeId, effectiveTheme)
-  const windowState = getTodoPlanWindowState()
+  return createTodoPlanBrowserWindow(prepared, true)
+}
 
-  todoPlanWindow = new BrowserWindow({
-    width: windowState.width,
-    height: windowState.height,
-    x: windowState.x,
-    y: windowState.y,
-    minWidth: 320,
-    minHeight: 280,
-    show: false,
-    type: isMac ? 'panel' : undefined,
-    focusable: true,
-    acceptFirstMouse: isMac ? true : undefined,
-    skipTaskbar: isMac,
-    transparent: isMac,
-    backgroundColor: isMac ? undefined : backgroundColor,
-    titleBarStyle: isMac ? 'customButtonsOnHover' : 'default',
-    trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
-    resizable: true,
-    alwaysOnTop: false,
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  })
-  if (isMac) configureTodoPlanNativePanel(todoPlanWindow)
-  restoreHiddenMainWindows(mainWindowVisibilitySnapshot)
-
-  todoPlanWindow.once('ready-to-show', () => {
-    if (todoPlanWindow && !todoPlanWindow.isDestroyed()) {
-      if (isMac) configureTodoPlanNativePanel(todoPlanWindow)
-      presentTodoPlanWindow(todoPlanWindow, prepared.options)
-    }
-    restoreHiddenMainWindows(mainWindowVisibilitySnapshot)
-  })
-
-  todoPlanWindow.on('resize', () => {
-    if (!isHidingTodoPlanWindow && !isSyncingTodoPlanNativeFrame) saveTodoPlanWindowState(todoPlanWindow)
-  })
-  todoPlanWindow.on('move', () => {
-    if (!isHidingTodoPlanWindow && !isSyncingTodoPlanNativeFrame) saveTodoPlanWindowState(todoPlanWindow)
-  })
-
-  todoPlanWindow.on('close', () => {
-    saveTodoPlanWindowState(todoPlanWindow)
-    if (shouldPreserveCurrentMacApp(prepared.options)) {
-      suppressMainWindowActivationFromTodoPanel()
-    }
-  })
-
-  todoPlanWindow.on('closed', () => {
-    todoPlanWindow = null
-  })
-
-  const themeParams = `theme=${effectiveTheme}`
-  if (isDevelopment) {
-    todoPlanWindow.loadURL(`${getRendererDevUrl()}/#/todo-plan?${themeParams}`)
-  } else {
-    todoPlanWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
-      hash: `/todo-plan?${themeParams}`
-    })
+export function warmTodoPlanWindow(options: TodoPlanWindowActionOptions = {}) {
+  if (todoPlanWindow && !todoPlanWindow.isDestroyed()) {
+    return todoPlanWindow
   }
 
-  return todoPlanWindow
+  return createTodoPlanBrowserWindow({
+    options: normalizeTodoPlanWindowActionOptions(options),
+    mainWindowVisibilitySnapshot: [],
+  }, false)
 }
 
 export function hideTodoPlanWindow(options: TodoPlanWindowActionOptions = {}): boolean {
@@ -719,9 +742,6 @@ export function createWindow() {
   mainWindow.on('resize', () => saveWindowState(mainWindow))
   mainWindow.on('move', () => saveWindowState(mainWindow))
   mainWindow.on('close', () => saveWindowState(mainWindow))
-  mainWindow.on('focus', () => {
-    hideUnpinnedTodoPlanWindowForMainActivation()
-  })
 
   // Handle external links - open in system browser instead of navigating away
   mainWindow.webContents.on('will-navigate', (event, url) => {

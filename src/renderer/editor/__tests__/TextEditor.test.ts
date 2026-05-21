@@ -4,6 +4,7 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import TextEditor from '../TextEditor.vue'
 import type { EditorHandle } from '../types'
+import { createSkillToken } from '@shared/prompt-references'
 
 class ResizeObserverStub {
   observe = vi.fn()
@@ -181,5 +182,79 @@ describe('TextEditor', () => {
 
     expect(editor.getValue()).toBe('# Title\n\n- [x] Task')
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['# Title\n\n- [x] Task'])
+  })
+
+  it('removes prompt reference widgets from the composer close button', async () => {
+    const { wrapper, editor } = await mountEditor({
+      modelValue: 'before {{prompt:p1}} after',
+      promptRefs: [{
+        id: 'p1',
+        title: 'Review Prompt',
+        body: 'Review this.',
+        createdAt: 1,
+        updatedAt: 1,
+      }],
+    })
+
+    await flushEditor()
+    const close = wrapper.element.querySelector('.prompt-ref-widget-close') as HTMLButtonElement | null
+
+    expect(close).not.toBeNull()
+    close?.click()
+    await flushEditor()
+
+    expect(editor.getValue()).toBe('before  after')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['before  after'])
+  })
+
+  it('renders prompt reference popovers outside editor clipping containers', async () => {
+    const { wrapper } = await mountEditor({
+      modelValue: '{{prompt:p1}}',
+      promptRefs: [{
+        id: 'p1',
+        title: 'Review Prompt',
+        body: 'Review this.',
+        createdAt: 1,
+        updatedAt: 1,
+      }],
+    })
+
+    const widget = wrapper.element.querySelector('.prompt-ref-widget') as HTMLElement | null
+    widget?.dispatchEvent(new window.Event('mouseenter'))
+    await flushEditor()
+
+    const popover = document.body.querySelector('.prompt-ref-widget-floating-popover')
+    expect(popover?.textContent).toContain('Review this.')
+    expect(wrapper.element.contains(popover)).toBe(false)
+  })
+
+  it('renders command and skill references as composer widgets', async () => {
+    const { wrapper } = await mountEditor({
+      modelValue: `/compact then ${createSkillToken('user:skill-development')}`,
+      commandRefs: [{
+        id: 'compact',
+        name: 'Compact Context',
+        description: 'Summarize older conversation history',
+        usage: '/compact',
+        execute: vi.fn(),
+      }],
+      skillRefs: [{
+        id: 'user:skill-development',
+        name: 'Skill Development',
+        description: 'Create or update skills',
+        source: 'user',
+        path: '/skills/skill-development/SKILL.md',
+        directoryPath: '/skills/skill-development',
+        enabled: true,
+        instructions: 'Build skills carefully.',
+      }],
+    })
+
+    await flushEditor()
+    const command = wrapper.element.querySelector('.prompt-ref-widget.is-command')
+    const skill = wrapper.element.querySelector('.prompt-ref-widget.is-skill')
+
+    expect(command?.textContent).toContain('/compact')
+    expect(skill?.textContent).toContain('Skill Development')
   })
 })

@@ -4,6 +4,8 @@
  */
 
 import type { ToolCall } from './tools.js'
+import type { PromptReferenceSnapshot } from './prompts.js'
+import type { SkillReferenceSnapshot } from './skills.js'
 
 /**
  * @deprecated Kept as a type alias for one version so old persisted
@@ -15,6 +17,7 @@ export type VariableLevel = 'system' | 'session'
 export interface ContextVariable {
   name: string
   value: string
+  values?: string[]
   scope?: 'global' | 'session'
   description?: string
   readonly?: boolean
@@ -24,6 +27,8 @@ export interface ContextVariable {
 // Content part types for sequential display
 export type ContentPart =
   | { type: 'text'; content: string; turnIndex?: number }
+  | ({ type: 'prompt-ref'; turnIndex?: number } & PromptReferenceSnapshot)
+  | ({ type: 'skill-ref'; turnIndex?: number } & SkillReferenceSnapshot)
   | { type: 'reasoning'; content: string; turnIndex?: number }
   | { type: 'tool-call'; toolCalls: ToolCall[] }
   | { type: 'waiting'; turnIndex?: number }      // Waiting for AI continuation after tool call
@@ -124,6 +129,7 @@ export interface SessionMeta {
   name: string
   createdAt: number
   updatedAt: number
+  agentId?: string
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string
@@ -142,6 +148,7 @@ export interface SessionMeta {
  */
 export interface SessionDetails extends SessionMeta {
   workingDirectory?: string
+  workingDirectoryRoots?: string[]
   variables?: ContextVariable[]
   summary?: string
   summaryUpToMessageId?: string
@@ -164,6 +171,7 @@ export interface ChatSession {
   messages: ChatMessage[]
   createdAt: number
   updatedAt: number
+  agentId?: string
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string
@@ -172,7 +180,8 @@ export interface ChatSession {
   isArchived?: boolean  // Archived (soft-deleted) session
   archivedAt?: number   // Timestamp when session was archived
   // Sandbox boundary - tools restrict file access to this directory
-  workingDirectory?: string  // Project directory for this session (sandbox boundary)
+  workingDirectory?: string  // Active project directory for this session
+  workingDirectoryRoots?: string[] // Additional sandbox roots for this session
   variables?: ContextVariable[] // Session-scoped context variables
   // Context compacting fields
   summary?: string              // Conversation summary for context window management
@@ -217,9 +226,11 @@ export interface PromptContextFragment {
 
 export interface TurnContextSnapshot {
   createdAt: number
+  agentId?: string
   hasTools: boolean
   osType: 'macos' | 'windows' | 'linux'
   workingDirectory?: string
+  workingDirectoryRoots?: string[]
   contextVariablesHash?: string
   activeProjectHash?: string
   knownProjectsHash?: string

@@ -1,62 +1,51 @@
 <template>
   <div class="tab-content">
     <!-- Enable Tool Calls -->
-    <section class="settings-section">
-      <h3 class="section-title">
-        Tool Settings
-      </h3>
-
-      <div class="settings-card">
-        <div class="card-row">
-          <div class="toggle-row">
-            <div>
-              <label class="form-label">Enable Tool Calls</label>
-              <p class="form-hint">
-                Allow AI to use tools during conversations
-              </p>
-            </div>
-            <label class="toggle">
-              <input
-                type="checkbox"
-                :checked="settings.tools.enableToolCalls"
-                @change="updateEnableToolCalls(($event.target as HTMLInputElement).checked)"
-              >
-              <span class="toggle-slider" />
-            </label>
-          </div>
-        </div>
-      </div>
-    </section>
+    <SettingsSection
+      title="Tool Settings"
+      description="Control which built-in capabilities the assistant may use during conversations."
+    >
+      <SettingsGroup>
+        <SettingRow
+          label="Enable Tool Calls"
+          description="Allow AI to use tools during conversations."
+        >
+          <label class="toggle">
+            <input
+              type="checkbox"
+              :checked="settings.tools.enableToolCalls"
+              @change="updateEnableToolCalls(($event.target as HTMLInputElement).checked)"
+            >
+            <span class="toggle-slider" />
+          </label>
+        </SettingRow>
+      </SettingsGroup>
+    </SettingsSection>
 
     <!-- Available Tools -->
-    <section
+    <SettingsSection
       v-if="settings.tools.enableToolCalls"
-      class="settings-section"
+      title="Available Tools"
     >
-      <h3 class="section-title">
-        Available Tools
-      </h3>
-
-      <div
+      <SettingsEmptyState
         v-if="displayTools.length === 0"
-        class="empty-state"
-      >
-        <p>No tools available</p>
-      </div>
+        title="No tools available"
+        description="Built-in tools will appear here when the main process exposes them."
+      />
 
-      <div
+      <SettingsGroup
         v-else
-        class="settings-card tools-list"
+        class="tools-list"
       >
-        <div
+        <SettingRow
           v-for="tool in displayTools"
           :key="tool.id"
-          class="card-row tool-item"
+          class="tool-item"
         >
-          <div class="tool-info">
+          <template #label>
             <span class="tool-name">{{ tool.name }}</span>
             <span :class="['tool-category', tool.category]">{{ tool.category }}</span>
-          </div>
+          </template>
           <div class="tool-controls">
             <label
               class="toggle small"
@@ -70,39 +59,33 @@
               <span class="toggle-slider" />
             </label>
           </div>
-        </div>
-      </div>
-    </section>
+        </SettingRow>
+      </SettingsGroup>
+    </SettingsSection>
 
     <!-- Web Search Settings -->
-    <section
+    <SettingsSection
       v-if="settings.tools.enableToolCalls && hasWebSearchTool"
-      class="settings-section"
+      title="Web Search"
+      description="Configure credentials for external search tools."
     >
-      <h3 class="section-title">
-        Web Search
-      </h3>
-      
-      <div class="form-group">
-        <label class="form-label">Brave Search API Key</label>
-        <input
-          type="password"
-          class="form-input"
-          :value="settings.tools.webSearch?.braveApiKey || ''"
-          placeholder="Enter your Brave Search API key"
-          @input="updateBraveApiKey(($event.target as HTMLInputElement).value)"
-        >
-        <p class="form-hint">
-          Get your free API key at 
-          <a
-            href="https://brave.com/search/api/"
-            target="_blank"
-            class="link"
-          >brave.com/search/api</a>
-          (2,000 queries/month free)
-        </p>
-      </div>
-    </section>
+      <SettingsGroup>
+        <SettingRow layout="stack">
+          <SettingsField
+            label="Brave Search API Key"
+            hint="Get your free API key at brave.com/search/api (2,000 queries/month free)."
+          >
+            <input
+              type="password"
+              class="form-input"
+              :value="settings.tools.webSearch?.braveApiKey || ''"
+              placeholder="Enter your Brave Search API key"
+              @input="updateBraveApiKey(($event.target as HTMLInputElement).value)"
+            >
+          </SettingsField>
+        </SettingRow>
+      </SettingsGroup>
+    </SettingsSection>
 
     <!-- Bash Tool Settings -->
     <BashSettingsPanel
@@ -118,6 +101,13 @@ import { computed } from 'vue'
 import type { AppSettings, ToolDefinition } from '@/types'
 import type { WebSearchSettings } from '@shared/ipc/tools'
 import BashSettingsPanel from './BashSettingsPanel.vue'
+import {
+  SettingRow,
+  SettingsEmptyState,
+  SettingsField,
+  SettingsGroup,
+  SettingsSection,
+} from './settings-primitives'
 
 const props = defineProps<{
   settings: AppSettings

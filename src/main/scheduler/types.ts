@@ -1,4 +1,7 @@
 export type SchedulerRunReason = 'startup' | 'scheduled' | 'manual'
+export type SchedulerTaskKind = 'agent' | 'plugin'
+export type SchedulerTaskSource = 'user' | 'plugin'
+export type SchedulerRunStatus = 'running' | 'succeeded' | 'failed' | 'blocked' | 'skipped' | 'cancelled'
 
 export type SchedulerSchedule =
   | {
@@ -17,6 +20,7 @@ export type SchedulerSchedule =
     }
 
 export interface SchedulerTaskContext {
+  runId: string
   taskId: string
   pluginId?: string
   reason: SchedulerRunReason
@@ -31,6 +35,13 @@ export interface SchedulerTaskRegistration {
   id: string
   name?: string
   pluginId?: string
+  kind?: SchedulerTaskKind
+  source?: SchedulerTaskSource
+  readonly?: boolean
+  agentId?: string
+  prompt?: string
+  promptPreview?: string
+  workingDirectory?: string
   enabled?: boolean | (() => boolean)
   schedule: SchedulerSchedule | (() => SchedulerSchedule | null | undefined)
   timeoutMs?: number | (() => number | undefined)
@@ -45,6 +56,7 @@ export interface SchedulerRunOptions {
 }
 
 export interface SchedulerRunRecord {
+  runId?: string
   taskId: string
   pluginId?: string
   reason: SchedulerRunReason
@@ -63,6 +75,13 @@ export interface SchedulerTaskSnapshot {
   id: string
   name?: string
   pluginId?: string
+  kind: SchedulerTaskKind
+  source: SchedulerTaskSource
+  readonly: boolean
+  agentId?: string
+  prompt?: string
+  promptPreview?: string
+  workingDirectory?: string
   enabled: boolean
   userEnabled?: boolean
   schedule?: SchedulerSchedule

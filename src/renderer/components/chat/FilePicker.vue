@@ -1,442 +1,105 @@
 <template>
-  <Transition name="picker-slide">
+  <ComposerExtensionPanel
+    :visible="visible"
+    title="Files"
+    :count="items.length"
+    :loading="loading"
+    :error="error"
+    :empty-text="emptyText"
+    loading-text="Searching files..."
+  >
+    <template #icon>
+      <FileText :size="14" />
+    </template>
+
     <div
-      v-if="visible && (files.length > 0 || isLoading)"
-      class="file-picker"
+      ref="listRef"
+      class="composer-extension-list"
     >
-      <div class="file-picker-header">
-        <span class="title">Files</span>
-        <span
-          v-if="!isLoading"
-          class="count"
-        >{{ files.length }}</span>
-        <span
-          v-else
-          class="loading-indicator"
-        >
-          <svg
-            class="spinner"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="10"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-dasharray="32"
-              stroke-linecap="round"
-            />
-          </svg>
-        </span>
-      </div>
       <div
-        v-if="files.length > 0"
-        class="file-list"
+        v-for="(item, index) in items"
+        :key="item.id"
+        :class="['composer-extension-row', { selected: index === selectedIndex }]"
+        :title="item.value"
+        @click="selectFile(item)"
+        @mouseenter="emit('highlight', index)"
       >
-        <div
-          v-for="(file, index) in files"
-          :key="file"
-          :class="['file-item', { selected: index === selectedIndex }]"
-          @click="selectFile(file)"
-          @mouseenter="selectedIndex = index"
-        >
-          <div class="file-icon">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
+        <div class="composer-extension-row-icon">
+          <FileText
+            :size="15"
+            :stroke-width="2"
+          />
+        </div>
+        <div class="composer-extension-row-main">
+          <div class="composer-extension-row-title path-title">
+            {{ item.title }}
           </div>
-          <div class="file-path">
-            {{ getRelativePath(file) }}
+          <div class="composer-extension-row-description">
+            {{ item.description }}
           </div>
         </div>
-      </div>
-      <div
-        v-else-if="!isLoading && query"
-        class="file-list-empty"
-      >
-        <span>No files found matching "{{ query }}"</span>
-      </div>
-      <div class="file-picker-hint">
-        <span>Press <kbd>Enter</kbd> to select</span>
-        <span><kbd>Esc</kbd> to close</span>
+        <div class="composer-extension-row-meta">
+          {{ item.meta }}
+        </div>
       </div>
     </div>
-  </Transition>
+  </ComposerExtensionPanel>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { FileText } from 'lucide-vue-next'
+import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
+import type { ComposerExtensionItem } from '@/composables/usePickerOrchestration'
 
-interface Props {
+const props = withDefaults(defineProps<{
   visible: boolean
-  query: string
-  cwd: string
-  sessionId?: string
-}
+  items: ComposerExtensionItem[]
+  selectedIndex: number
+  query?: string
+  loading?: boolean
+  error?: string | null
+}>(), {
+  query: '',
+  loading: false,
+  error: null,
+})
 
-interface Emits {
-  (e: 'select', filePath: string): void
-  (e: 'close'): void
-}
+const emit = defineEmits<{
+  select: [filePath: string]
+  highlight: [index: number]
+  close: []
+}>()
 
-const props = defineProps<Props>()
-const emit = defineEmits<Emits>()
+const listRef = ref<HTMLElement | null>(null)
 
-const files = ref<string[]>([])
-const selectedIndex = ref(0)
-const isLoading = ref(false)
-const variableWorkdir = ref('')
-const noteRoots = ref<Array<{ path: string; label: string }>>([])
+const emptyText = computed(() => {
+  const query = props.query.trim()
+  return query ? `No files found for "${query}"` : 'No files found'
+})
 
-// Debounce timer
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
-
-function normalizePath(filePath: string): string {
-  return filePath.replace(/\/+$/, '')
-}
-
-function basename(filePath: string): string {
-  return normalizePath(filePath).split('/').filter(Boolean).pop() || filePath
-}
-
-function isPathInsideRoot(filePath: string, root: string): boolean {
-  const normalizedRoot = normalizePath(root)
-  return filePath === normalizedRoot || filePath.startsWith(`${normalizedRoot}/`)
-}
-
-function makeNoteLabel(value: string, name: string): string {
-  const dirName = basename(value)
-  if (dirName && dirName !== '/') return `notes/${dirName}`
-  if (name === 'ai_note_dir') return 'notes/ai'
-  if (name === 'work_note_dir') return 'notes/work'
-  return 'notes/personal'
-}
-
-async function loadNoteRoots() {
-  try {
-    const result = await window.electronAPI.listVariables(props.sessionId || '')
-    if (!result.success || !result.variables) {
-      variableWorkdir.value = ''
-      noteRoots.value = []
-      return
-    }
-
-    const noteNames = new Set(['ai_note_dir', 'user_note_dir', 'work_note_dir'])
-    const seen = new Set<string>()
-    variableWorkdir.value = result.variables.find(variable => variable.name === 'workdir')?.value || ''
-    noteRoots.value = result.variables
-      .filter(variable => noteNames.has(variable.name) && variable.value)
-      .map(variable => ({
-        path: normalizePath(variable.value),
-        label: makeNoteLabel(variable.value, variable.name),
-      }))
-      .filter(root => {
-        if (seen.has(root.path)) return false
-        seen.add(root.path)
-        return true
-      })
-      .sort((a, b) => b.path.length - a.path.length)
-  } catch (error) {
-    console.error('[FilePicker] Failed to load note roots:', error)
-    variableWorkdir.value = ''
-    noteRoots.value = []
-  }
-}
-
-// Fetch files with debounce
-async function fetchFiles() {
-  isLoading.value = true
-
-  try {
-    if (props.sessionId && !variableWorkdir.value) {
-      await loadNoteRoots()
-    }
-
-    const result = await window.electronAPI.listFiles({
-      cwd: variableWorkdir.value || props.cwd,
-      query: props.query,
-      limit: 50,
-    })
-
-    if (result.success) {
-      files.value = result.files
-    } else {
-      console.error('[FilePicker] Failed to list files:', result.error)
-      files.value = []
-    }
-  } catch (error) {
-    console.error('[FilePicker] Error fetching files:', error)
-    files.value = []
-  } finally {
-    isLoading.value = false
-  }
-}
-
-// Watch for query changes with debounce
-watch(
-  () => [props.query, props.cwd, props.visible] as const,
-  ([_query, _cwd, visible]) => {
-    // Reset selection when query changes
-    selectedIndex.value = 0
-
-    // Clear previous timer
-    if (debounceTimer) {
-      clearTimeout(debounceTimer)
-    }
-
-    // Only fetch if visible
-    if (visible) {
-      // Debounce the search
-      debounceTimer = setTimeout(() => {
-        fetchFiles()
-      }, 150) // 150ms debounce
-    }
-  },
-  { immediate: true }
-)
-
-watch(
-  () => [props.visible, props.sessionId] as const,
-  ([_visible, _sessionId]) => {
-    if (props.visible) {
-      loadNoteRoots()
-    }
-  },
-  { immediate: true }
-)
-
-// Handle keyboard navigation
-function handleKeyDown(e: KeyboardEvent) {
-  if (!props.visible) return
-
-  switch (e.key) {
-    case 'ArrowUp':
-      e.preventDefault()
-      e.stopPropagation()
-      selectedIndex.value = Math.max(0, selectedIndex.value - 1)
-      scrollToSelected()
-      break
-    case 'ArrowDown':
-      e.preventDefault()
-      e.stopPropagation()
-      selectedIndex.value = Math.min(files.value.length - 1, selectedIndex.value + 1)
-      scrollToSelected()
-      break
-    case 'Tab':
-    case 'Enter':
-      if (files.value.length > 0) {
-        e.preventDefault()
-        e.stopPropagation()
-        selectFile(files.value[selectedIndex.value])
-      }
-      break
-    case 'Escape':
-      e.preventDefault()
-      e.stopPropagation()
-      emit('close')
-      break
+function selectFile(item: ComposerExtensionItem) {
+  if (item.value) {
+    emit('select', item.value)
   }
 }
 
 function scrollToSelected() {
-  const list = document.querySelector('.file-picker .file-list')
-  const selected = list?.querySelector('.file-item.selected')
-  if (selected) {
-    selected.scrollIntoView({ block: 'nearest' })
-  }
+  const selected = listRef.value?.querySelector('.composer-extension-row.selected')
+  selected?.scrollIntoView({ block: 'nearest' })
 }
 
-function selectFile(filePath: string) {
-  emit('select', filePath)
-}
-
-// Get relative path for display (keeps full path for selection)
-function getRelativePath(absolutePath: string): string {
-  const workdir = variableWorkdir.value || props.cwd
-  if (workdir && absolutePath.startsWith(workdir)) {
-    let relativePath = absolutePath.slice(workdir.length)
-    // Remove leading slash
-    if (relativePath.startsWith('/')) {
-      relativePath = relativePath.slice(1)
-    }
-    return relativePath || absolutePath
-  }
-
-  const noteRoot = noteRoots.value.find(root => isPathInsideRoot(absolutePath, root.path))
-  if (noteRoot) {
-    let relativePath = absolutePath.slice(noteRoot.path.length)
-    if (relativePath.startsWith('/')) {
-      relativePath = relativePath.slice(1)
-    }
-    return relativePath ? `${noteRoot.label}/${relativePath}` : noteRoot.label
-  }
-
-  return absolutePath
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown, true)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown, true)
-  if (debounceTimer) {
-    clearTimeout(debounceTimer)
-  }
-})
+watch(
+  () => [props.selectedIndex, props.visible, props.items.length],
+  () => {
+    nextTick(scrollToSelected)
+  },
+)
 </script>
 
 <style scoped>
-.file-picker {
-  margin-bottom: 8px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  overflow: hidden;
-  z-index: var(--z-dropdown);
-}
-
-.file-picker-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.file-picker-header .title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.file-picker-header .count {
-  font-size: 11px;
-  padding: 2px 6px;
-  background: var(--hover);
-  border-radius: 10px;
-  color: var(--muted);
-}
-
-.loading-indicator {
-  display: flex;
-  align-items: center;
-  color: var(--muted);
-}
-
-.spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.file-list {
-  max-height: 240px;
-  overflow-y: auto;
-  padding: 6px;
-}
-
-.file-list-empty {
-  padding: 20px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.file-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.1s ease;
-}
-
-.file-item:hover,
-.file-item.selected {
-  background: var(--hover);
-}
-
-.file-item.selected {
-  background: rgba(59, 130, 246, 0.15);
-}
-
-.file-icon {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--hover);
-  border-radius: 6px;
-  color: var(--muted);
-  flex-shrink: 0;
-}
-
-.file-item.selected .file-icon {
-  background: rgba(59, 130, 246, 0.2);
-  color: var(--accent);
-}
-
-.file-path {
-  flex: 1;
-  font-size: 13px;
-  font-family: 'SF Mono', 'Monaco', monospace;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-picker-hint {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.file-picker-hint kbd {
-  display: inline-block;
-  padding: 2px 5px;
-  background: var(--hover);
-  border-radius: 4px;
-  font-family: 'SF Mono', 'Monaco', monospace;
-  font-size: 10px;
-  margin: 0 2px;
-}
-
-/* Enter/leave transitions */
-.picker-slide-enter-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
-}
-.picker-slide-leave-active {
-  transition: opacity 0.1s ease, transform 0.1s ease;
-}
-.picker-slide-enter-from,
-.picker-slide-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
+.path-title {
+  font-family: var(--font-mono);
+  font-weight: 500;
 }
 </style>

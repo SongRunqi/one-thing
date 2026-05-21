@@ -68,11 +68,14 @@ export function bootstrapVariableSystem(): void {
     // Broadcasts (e.g. notes from a global state change) come with an
     // empty sessionId; we have no target to emit to in that case.
     if (!ctx.sessionId) return
-    const workdir = snapshot.find(v => v.name === 'workdir')?.value || undefined
+    const workdirVariable = snapshot.find(v => v.name === 'workdir')
+    const workdir = workdirVariable?.value || undefined
+    const workdirRoots = workdirVariable?.values?.slice(workdir ? 1 : 0)
     try {
       getEventBus().emit(ctx.sessionId, {
         type: 'session:variables-updated',
         workingDirectory: workdir,
+        workingDirectoryRoots: workdirRoots,
         variables: snapshot,
       }).catch(err =>
         console.error('[variables] EventBus emit failed:', err))

@@ -9,13 +9,15 @@
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
-    "dev": "bun run build:native:mac && electron-vite dev",
-    "start": "bun run build:native:mac && electron-vite preview",
+    "dev": "npm run build:native:mac && npm run rebuild:sqlite:electron && electron-vite dev",
+    "start": "npm run build:native:mac && npm run rebuild:sqlite:electron && electron-vite preview",
     "build:native:mac": "node scripts/build-macos-panel.mjs",
+    "rebuild:sqlite:node": "npm rebuild better-sqlite3",
+    "rebuild:sqlite:electron": "electron-rebuild -f -w better-sqlite3",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json --composite false",
-    "build": "bun run build:native:mac && electron-vite build",
+    "build": "npm run build:native:mac && npm run rebuild:sqlite:electron && electron-vite build",
     "build:check": "npm run typecheck && bun run build",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
@@ -26,9 +28,9 @@
     "migrate:sessions:sqlite": "node scripts/migrate-sessions-to-sqlite.mjs",
     "lint": "eslint . --fix",
     "lint:ci": "eslint . --max-warnings 200",
-    "test": "vitest run",
+    "test": "npm run rebuild:sqlite:node && vitest run",
     "test:streaming-scroll": "node scripts/streaming-scroll-harness.mjs",
-    "test:watch": "vitest"
+    "test:watch": "npm run rebuild:sqlite:node && vitest"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.17.1",

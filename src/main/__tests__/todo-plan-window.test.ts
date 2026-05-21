@@ -426,7 +426,7 @@ describe('todo plan standalone window controls', () => {
     expect(main.visible).toBe(false)
   })
 
-  it('uses native hover-only macOS window buttons for the standalone todo window', async () => {
+  it('uses always-visible macOS traffic lights aligned with the standalone todo header', async () => {
     const { openTodoPlanWindow } = await loadWindowModule()
     const win = openTodoPlanWindow() as unknown as InstanceType<typeof mocks.MockBrowserWindow>
 
@@ -438,11 +438,29 @@ describe('todo plan standalone window controls', () => {
       expect(win.options.type).toBe('panel')
       expect(win.options.acceptFirstMouse).toBe(true)
       expect(win.options.skipTaskbar).toBe(true)
-      expect(win.options.titleBarStyle).toBe('customButtonsOnHover')
-      expect(win.options.trafficLightPosition).toEqual({ x: 16, y: 16 })
+      expect(win.options.titleBarStyle).toBe('hidden')
+      expect(win.options.trafficLightPosition).toEqual({ x: 16, y: 9 })
     } else {
       expect(win.options.titleBarStyle).toBe('default')
     }
+  })
+
+  it('warms the standalone todo window without presenting it', async () => {
+    const { warmTodoPlanWindow } = await loadWindowModule()
+    const win = warmTodoPlanWindow() as unknown as InstanceType<typeof mocks.MockBrowserWindow>
+
+    expect(win.visible).toBe(false)
+    expect(mocks.MockBrowserWindow.instances).toHaveLength(1)
+    expect(mocks.configureNonActivatingPanel).toHaveBeenCalledWith(win)
+    expect(mocks.showNonActivatingPanel).not.toHaveBeenCalled()
+    expect(win.showInactive).not.toHaveBeenCalled()
+    expect(win.show).not.toHaveBeenCalled()
+    expect(win.focus).not.toHaveBeenCalled()
+
+    win.emit('ready-to-show')
+
+    expect(mocks.showNonActivatingPanel).not.toHaveBeenCalled()
+    expect(win.visible).toBe(false)
   })
 
   it('restores saved standalone todo window bounds', async () => {
@@ -662,6 +680,7 @@ describe('todo plan standalone window controls', () => {
     todo.visible = true
     todo.frontmost = false
     mocks.hideNonActivatingPanel.mockClear()
+    mocks.setNonActivatingPanelPinned.mockClear()
 
     todo.emit('blur')
 
@@ -682,7 +701,7 @@ describe('todo plan standalone window controls', () => {
     expect(mocks.setNonActivatingPanelPinned).toHaveBeenNthCalledWith(2, todo, false)
   })
 
-  it('parks an unpinned todo window when the main window gains focus', async () => {
+  it('does not park the todo window when the main window gains focus (auto-park removed)', async () => {
     const { createWindow, openTodoPlanWindow } = await loadWindowModule()
     const main = createWindow() as unknown as InstanceType<typeof mocks.MockBrowserWindow>
     main.visible = true
@@ -693,15 +712,9 @@ describe('todo plan standalone window controls', () => {
 
     main.emit('focus')
 
-    if (process.platform === 'darwin') {
-      expect(mocks.hideNonActivatingPanel).toHaveBeenCalledWith(todo)
-      expect(todo.visible).toBe(false)
-      expect(todo.frontmost).toBe(false)
-    } else {
-      expect(mocks.hideNonActivatingPanel).not.toHaveBeenCalled()
-      expect(todo.visible).toBe(true)
-    }
+    expect(mocks.hideNonActivatingPanel).not.toHaveBeenCalled()
     expect(todo.hide).not.toHaveBeenCalled()
+    expect(todo.visible).toBe(true)
   })
 
   it('does not park a pinned todo window when the main window gains focus', async () => {
@@ -728,6 +741,7 @@ describe('todo plan standalone window controls', () => {
     const todo = openTodoPlanWindow() as unknown as InstanceType<typeof mocks.MockBrowserWindow>
     todo.visible = true
     todo.frontmost = true
+    mocks.setNonActivatingPanelPinned.mockClear()
 
     expect(setTodoPlanWindowPinned(true)).toBe(true)
     expect(setTodoPlanWindowPinned(false)).toBe(false)

@@ -40,6 +40,7 @@ export const IPC_CHANNELS = {
   CREATE_BRANCH: 'sessions:create-branch',
   UPDATE_SESSION_PIN: 'sessions:update-pin',
   UPDATE_SESSION_MODEL: 'sessions:update-model',
+  UPDATE_SESSION_AGENT: 'sessions:update-agent',
   UPDATE_SESSION_ARCHIVED: 'sessions:update-archived',
   UPDATE_SESSION_WORKING_DIRECTORY: 'sessions:update-working-directory',
   GET_SESSION: 'sessions:get',
@@ -63,6 +64,19 @@ export const IPC_CHANNELS = {
   SETTINGS_CHANGED: 'settings:changed',
   GET_SYSTEM_THEME: 'settings:get-system-theme',
   SYSTEM_THEME_CHANGED: 'settings:system-theme-changed',
+
+  // Agents related
+  AGENTS_LIST: 'agents:list',
+  AGENTS_CREATE: 'agents:create',
+  AGENTS_UPDATE: 'agents:update',
+  AGENTS_DELETE: 'agents:delete',
+
+  // User prompt snippets
+  PROMPTS_LIST: 'prompts:list',
+  PROMPTS_GET: 'prompts:get',
+  PROMPTS_CREATE: 'prompts:create',
+  PROMPTS_UPDATE: 'prompts:update',
+  PROMPTS_DELETE: 'prompts:delete',
 
   // Network related
   TEST_PROXY: 'network:test-proxy',
@@ -176,6 +190,10 @@ export const IPC_CHANNELS = {
   FILE_WATCH_STOP: 'file:watch-stop',
   FILE_WATCH_EVENT: 'file:watch-event',
 
+  // Markdown asset / attachment related
+  MARKDOWN_RESOLVE_ASSET: 'markdown:resolve-asset',
+  MARKDOWN_SAVE_ATTACHMENTS: 'markdown:save-attachments',
+
   // Unified event-driven channels (Phase 4)
   SESSION_EVENT: 'session:event',
   SESSION_STREAM: 'session:stream',
@@ -241,6 +259,11 @@ export const IPC_CHANNELS = {
   SCHEDULER_GET: 'scheduler:get',
   SCHEDULER_RUN_NOW: 'scheduler:run-now',
   SCHEDULER_SET_ENABLED: 'scheduler:set-enabled',
+  SCHEDULER_CREATE_TASK: 'scheduler:create-task',
+  SCHEDULER_UPDATE_TASK: 'scheduler:update-task',
+  SCHEDULER_DELETE_TASK: 'scheduler:delete-task',
+  SCHEDULER_LIST_RUNS: 'scheduler:list-runs',
+  SCHEDULER_GET_RUN: 'scheduler:get-run',
 
   // App State (restore on startup)
   GET_APP_STATE: 'app-state:get',

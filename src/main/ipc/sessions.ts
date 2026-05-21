@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { TokenUsage, SessionTokenUsage } from '../../shared/ipc.js'
 import * as store from '../store.js'
+import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
 import { workdirGateway } from '../variables/gateways.js'
 import {
   sanitizeMessagesForRenderer,
@@ -225,6 +226,18 @@ export function registerSessionHandlers() {
   // 更新会话模型
   ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_MODEL, async (_event, { sessionId, provider, model }) => {
     const success = store.updateSessionModel(sessionId, provider, model)
+    if (!success) {
+      return { success: false, error: 'Session not found' }
+    }
+    return { success: true }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_AGENT, async (_event, { sessionId, agentId }) => {
+    const nextAgentId = agentId || DEFAULT_AGENT_ID
+    if (!agentExists(nextAgentId)) {
+      return { success: false, error: 'Agent not found' }
+    }
+    const success = store.updateSessionAgent(sessionId, nextAgentId)
     if (!success) {
       return { success: false, error: 'Session not found' }
     }

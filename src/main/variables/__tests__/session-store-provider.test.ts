@@ -170,7 +170,9 @@ describe('SessionStoreProvider end-to-end with registry + core', () => {
     const coreState = new Map<string, string>()
     reg.register(new CoreProvider({
       read: (sid) => coreState.get(sid) ?? '',
+      readRoots: () => [],
       write: (sid, wd) => { coreState.set(sid, wd) },
+      writeRoots: () => undefined,
       expandPath: (s) => s,
     }))
     const sessGw = gateway()
@@ -188,7 +190,9 @@ describe('SessionStoreProvider end-to-end with registry + core', () => {
     const reg = new VariableRegistry()
     reg.register(new CoreProvider({
       read: () => '/work',
+      readRoots: () => [],
       write: () => undefined,
+      writeRoots: () => undefined,
       expandPath: (s) => s,
     }))
     reg.register(new SessionStoreProvider(gateway({

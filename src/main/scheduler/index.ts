@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { getStorePath } from '../stores/paths.js'
 import {
   cronRunKey,
@@ -357,6 +358,7 @@ export class Scheduler {
     options: { reason: SchedulerRunReason; scheduledFor: number; force: boolean },
   ): Promise<SchedulerRunRecord> {
     const state = this.getOrCreateState(task.id)
+    const runId = randomUUID()
     const startedAt = nowMs()
     const schedule = state.schedule
     const baseEnabled = resolveBoolean(task.enabled, true)
@@ -386,6 +388,7 @@ export class Scheduler {
     let timer: NodeJS.Timeout | undefined
     try {
       const context: SchedulerTaskContext = {
+        runId,
         taskId: task.id,
         ...(task.pluginId ? { pluginId: task.pluginId } : {}),
         reason: options.reason,
@@ -416,6 +419,7 @@ export class Scheduler {
       delete state.lastErrorAt
       state.nextRunAt = schedule ? this.computeFollowingNextRunAt(schedule, options.scheduledFor) : undefined
       const record: SchedulerRunRecord = {
+        runId,
         taskId: task.id,
         ...(task.pluginId ? { pluginId: task.pluginId } : {}),
         reason: options.reason,
@@ -441,6 +445,7 @@ export class Scheduler {
       state.failureCount = (state.failureCount || 0) + 1
       state.nextRunAt = schedule ? this.computeFollowingNextRunAt(schedule, options.scheduledFor) : undefined
       const record: SchedulerRunRecord = {
+        runId,
         taskId: task.id,
         ...(task.pluginId ? { pluginId: task.pluginId } : {}),
         reason: options.reason,
@@ -469,6 +474,7 @@ export class Scheduler {
     const finishedAt = nowMs()
     const state = this.getOrCreateState(task.id)
     const record: SchedulerRunRecord = {
+      runId: randomUUID(),
       taskId: task.id,
       ...(task.pluginId ? { pluginId: task.pluginId } : {}),
       reason: options.reason,
@@ -494,6 +500,13 @@ export class Scheduler {
       id: task.id,
       ...(task.name ? { name: task.name } : {}),
       ...(task.pluginId ? { pluginId: task.pluginId } : {}),
+      kind: task.kind || (task.pluginId ? 'plugin' : 'agent'),
+      source: task.source || (task.pluginId ? 'plugin' : 'user'),
+      readonly: task.readonly ?? Boolean(task.pluginId),
+      ...(task.agentId ? { agentId: task.agentId } : {}),
+      ...(task.prompt ? { prompt: task.prompt } : {}),
+      ...(task.promptPreview ? { promptPreview: task.promptPreview } : {}),
+      ...(task.workingDirectory ? { workingDirectory: task.workingDirectory } : {}),
       enabled: state.enabled ?? false,
       ...(typeof state.userEnabled === 'boolean' ? { userEnabled: state.userEnabled } : {}),
       ...(state.schedule ? { schedule: state.schedule } : {}),
