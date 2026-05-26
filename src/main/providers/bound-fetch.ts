@@ -14,6 +14,9 @@ import { getSettings } from '../stores/settings.js'
 type FetchFn = typeof globalThis.fetch
 
 const dispatcherCache = new Map<string, Dispatcher>()
+// AI streams can legitimately pause for more than Undici's 300s default while
+// a reasoning model works; callers still cancel through AbortSignal.
+const APP_FETCH_BODY_TIMEOUT_MS = 0
 
 export function validateProxyUrl(url: string): { valid: true; normalizedUrl: string } | { valid: false; error: string } {
   const trimmed = url.trim()
@@ -101,14 +104,19 @@ export function getAppDispatcher(proxy?: ProxySettings): Dispatcher {
 
   if (proxy) {
     if (proxy.url.toLowerCase().startsWith('socks5:')) {
-      dispatcher = new Socks5ProxyAgent(proxy.url)
+      dispatcher = new Socks5ProxyAgent(proxy.url, {
+        bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
+      })
     } else {
       dispatcher = new ProxyAgent({
         uri: proxy.url,
+        bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
       } as any)
     }
   } else {
-    dispatcher = new Agent()
+    dispatcher = new Agent({
+      bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
+    })
   }
 
   dispatcherCache.set(key, dispatcher)

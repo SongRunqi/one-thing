@@ -13,7 +13,10 @@
       v-else
       class="settings-window"
     >
-      <header class="settings-titlebar">
+      <header
+        class="settings-titlebar"
+        aria-label="Settings window"
+      >
         <div class="titlebar-title">
           Settings
         </div>
@@ -43,22 +46,57 @@
             >
           </label>
 
-          <nav class="sidebar-nav">
-            <button
+          <nav
+            class="sidebar-nav"
+            role="tree"
+          >
+            <div
               v-for="item in filteredNavItems"
               :key="item.id"
-              :class="['sidebar-item', { active: activeTab === item.id }]"
-              @click="activeTab = item.id"
+              class="sidebar-entry"
             >
-              <component
-                :is="item.icon"
-                class="sidebar-icon"
-              />
-              <span class="sidebar-copy">
-                <span class="sidebar-label">{{ item.label }}</span>
-                <span class="sidebar-hint">{{ item.hint }}</span>
-              </span>
-            </button>
+              <div
+                :class="['sidebar-item', { active: activeTab === item.id }]"
+                role="treeitem"
+                tabindex="0"
+                :aria-current="activeTab === item.id ? 'page' : undefined"
+                :aria-expanded="isNavExpanded(item.id)"
+                @click="selectNavItem(item.id)"
+                @keydown.enter.prevent="selectNavItem(item.id)"
+                @keydown.space.prevent="toggleNavExpanded(item.id)"
+              >
+                <button
+                  class="sidebar-disclosure-button"
+                  type="button"
+                  :aria-label="`${isNavExpanded(item.id) ? 'Collapse' : 'Expand'} ${item.label}`"
+                  :aria-expanded="isNavExpanded(item.id)"
+                  @click.stop="toggleNavExpanded(item.id)"
+                  @keydown.stop
+                >
+                  <component
+                    :is="isNavExpanded(item.id) ? ChevronDown : ChevronRight"
+                    class="sidebar-disclosure"
+                  />
+                </button>
+                <span class="sidebar-copy">
+                  <span class="sidebar-label">{{ item.label }}</span>
+                  <span class="sidebar-hint">{{ item.hint }}</span>
+                </span>
+              </div>
+              <div
+                v-if="isNavExpanded(item.id) && item.sections.length > 0"
+                class="sidebar-subnav"
+              >
+                <button
+                  v-for="section in item.sections"
+                  :key="section"
+                  class="sidebar-subitem"
+                  @click="selectNavSection(item.id, section)"
+                >
+                  {{ section }}
+                </button>
+              </div>
+            </div>
             <div
               v-if="filteredNavItems.length === 0"
               class="sidebar-empty"
@@ -71,10 +109,24 @@
         <!-- Content Area -->
         <main class="settings-content">
           <header class="content-header">
+            <div class="content-topline">
+              <div class="settings-scope">
+                <span class="scope-badge">User</span>
+                <span class="scope-name">onething</span>
+              </div>
+              <button
+                class="json-settings-button"
+                type="button"
+                @click="openSettingsJson"
+              >
+                Edit in settings.json
+              </button>
+            </div>
             <div class="content-header-copy">
-              <span class="breadcrumb">Settings</span>
               <h1>{{ currentNavItem?.label }}</h1>
-              <p>{{ currentNavItem?.hint }}</p>
+              <p class="content-hint">
+                {{ currentNavItem?.hint }}
+              </p>
             </div>
             <span
               class="save-state"
@@ -120,6 +172,12 @@
 
                 <NetworkSettingsTab
                   v-else-if="activeTab === 'network'"
+                  :settings="localSettings"
+                  @update:settings="handleSettingsUpdate"
+                />
+
+                <VoiceSettingsTab
+                  v-else-if="activeTab === 'voice'"
                   :settings="localSettings"
                   @update:settings="handleSettingsUpdate"
                 />
@@ -183,12 +241,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import {
   Boxes,
+  ChevronDown,
+  ChevronRight,
   Code2,
   Globe2,
   Keyboard,
+  Mic,
   NotebookPen,
   Plug,
   Search,
@@ -207,6 +268,7 @@ import EditorSettingsTab from './settings/EditorSettingsTab.vue'
 import { AIProviderTab } from './settings/provider'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
 import NetworkSettingsTab from './settings/NetworkSettingsTab.vue'
+import VoiceSettingsTab from './settings/VoiceSettingsTab.vue'
 import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
@@ -222,6 +284,7 @@ const settingsStore = useSettingsStore()
 // State
 const isLoading = ref(true)
 const activeTab = ref('general')
+const expandedNavItems = ref<Set<string>>(new Set(['general']))
 const localSettings = ref<AppSettings | null>(null)
 const originalSettings = ref<string>('')
 const searchInputRef = ref<HTMLInputElement | null>(null)
@@ -237,60 +300,77 @@ const navItems = [
     label: 'General',
     hint: 'Appearance, themes, and typography',
     icon: Settings,
+    sections: ['Mode', 'Theme', 'Typography', 'Fonts', 'Context Compact', 'Daily Notes', 'Todo / Plan'],
   },
   {
     id: 'editor',
     label: 'Editor',
     hint: 'Tabs and file preview limits',
     icon: Code2,
+    sections: ['Tabs', 'Text Editor', 'File Preview'],
   },
   {
     id: 'providers',
     label: 'Providers',
     hint: 'Models, API keys, and defaults',
     icon: Boxes,
+    sections: ['Providers', 'API Configuration', 'Models', 'Temperature', 'Max Output'],
   },
   {
     id: 'tools',
     label: 'Tools',
     hint: 'Built-in capabilities and search keys',
     icon: Wrench,
+    sections: ['Tool Settings', 'Available Tools', 'Web Search', 'Bash'],
   },
   {
     id: 'network',
     label: 'Network',
     hint: 'Global proxy for outbound requests',
     icon: Globe2,
+    sections: ['Network Proxy'],
+  },
+  {
+    id: 'voice',
+    label: 'Voice',
+    hint: 'Mic input, transcription, and speech playback',
+    icon: Mic,
+    sections: ['Voice Input', 'Advanced Recording', 'Speech Providers'],
   },
   {
     id: 'shortcuts',
     label: 'Shortcuts',
     hint: 'Keyboard bindings',
     icon: Keyboard,
+    sections: ['Keyboard Shortcuts'],
   },
   {
     id: 'mcp',
     label: 'MCP Servers',
     hint: 'External context servers',
     icon: Server,
+    sections: ['Servers', 'Configuration'],
   },
   {
     id: 'skills',
     label: 'Skills',
     hint: 'Reusable agent workflows',
     icon: Sparkles,
+    sections: ['Skills'],
   },
   {
     id: 'prompts',
     label: 'Prompts',
     hint: 'Reusable prompt snippets',
     icon: NotebookPen,
+    sections: ['Prompts'],
   },
   {
     id: 'plugins',
     label: 'Plugins',
     hint: 'Installed extensions',
     icon: Plug,
+    sections: ['Plugins'],
   },
 ]
 
@@ -301,7 +381,7 @@ const filteredNavItems = computed(() => {
   if (!query) return navItems
 
   return navItems.filter(item =>
-    `${item.label} ${item.hint}`.toLowerCase().includes(query)
+    `${item.label} ${item.hint} ${item.sections.join(' ')}`.toLowerCase().includes(query)
   )
 })
 
@@ -372,6 +452,51 @@ function handleSkillsSettingsUpdate(skillsSettings: any) {
     ...localSettings.value,
     skills: skillsSettings
   }
+}
+
+async function selectNavItem(tabId: string) {
+  activeTab.value = tabId
+  setNavExpanded(tabId, true)
+  await nextTick()
+  document.querySelector('.content-body')?.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function isNavExpanded(tabId: string) {
+  return expandedNavItems.value.has(tabId)
+}
+
+function setNavExpanded(tabId: string, expanded: boolean) {
+  const next = new Set(expandedNavItems.value)
+  if (expanded) {
+    next.add(tabId)
+  } else {
+    next.delete(tabId)
+  }
+  expandedNavItems.value = next
+}
+
+function toggleNavExpanded(tabId: string) {
+  setNavExpanded(tabId, !isNavExpanded(tabId))
+}
+
+async function selectNavSection(tabId: string, sectionLabel: string) {
+  activeTab.value = tabId
+  setNavExpanded(tabId, true)
+  await nextTick()
+
+  const contentBody = document.querySelector('.content-body')
+  if (!contentBody) return
+
+  const normalize = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim()
+  const headings = Array.from(contentBody.querySelectorAll('h2, h3'))
+  const heading = headings.find(element => normalize(element.textContent).startsWith(sectionLabel))
+
+  if (!heading) {
+    contentBody.scrollTo({ top: 0, behavior: 'smooth' })
+    return
+  }
+
+  heading.scrollIntoView({ block: 'start', behavior: 'smooth' })
 }
 
 // Auto-save when settings change (with debounce)
@@ -498,6 +623,19 @@ function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' || matchShortcut(e, closeShortcut)) {
     e.preventDefault()
     window.close()
+  }
+}
+
+async function openSettingsJson() {
+  try {
+    const dataPath = await window.electronAPI.getDataPath()
+    const normalizedPath = dataPath.endsWith('/') ? dataPath.slice(0, -1) : dataPath
+    const result = await window.electronAPI.openPath(`${normalizedPath}/settings.json`)
+    if (result) {
+      console.warn('Failed to open settings.json:', result)
+    }
+  } catch (error) {
+    console.error('Failed to open settings.json:', error)
   }
 }
 
@@ -1039,6 +1177,7 @@ onUnmounted(() => {
 :deep(.row-input),
 :deep(.form-input),
 :deep(.form-textarea),
+:deep(.form-select),
 :deep(.row-select) {
   border-color: var(--settings-rule);
   background-color: var(--settings-paper);
@@ -1278,6 +1417,7 @@ onUnmounted(() => {
 
 :deep(.form-input),
 :deep(.form-textarea),
+:deep(.form-select),
 :deep(.row-input),
 :deep(.row-select) {
   min-height: 32px;
@@ -1333,6 +1473,626 @@ onUnmounted(() => {
   .content-inner-wide,
   .content-inner {
     width: 100%;
+  }
+}
+
+/* IDE-style settings page refresh, inspired by compact desktop preferences. */
+.settings-page {
+  --settings-paper: var(--bg-app, var(--bg));
+  --settings-paper-2: color-mix(in srgb, var(--bg-sidebar, var(--panel-2)) 88%, var(--bg-app, var(--bg)));
+  --settings-paper-3: color-mix(in srgb, var(--bg-elevated, var(--panel)) 76%, var(--settings-paper));
+  --settings-rule: color-mix(in srgb, var(--border-default, var(--border)) 82%, transparent);
+  --settings-rule-soft: color-mix(in srgb, var(--border-subtle, var(--border)) 66%, transparent);
+  --settings-ink: var(--text-primary, var(--text));
+  --settings-ink-2: color-mix(in srgb, var(--text-primary, var(--text)) 90%, var(--text-secondary, var(--muted)));
+  --settings-ink-3: var(--text-secondary, var(--muted));
+  --settings-ink-4: var(--text-muted, var(--muted));
+  --settings-ink-5: color-mix(in srgb, var(--text-muted, var(--muted)) 72%, transparent);
+  --settings-accent-soft: color-mix(in srgb, var(--settings-accent) 16%, transparent);
+
+  background: var(--settings-paper);
+}
+
+.settings-titlebar {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.settings-window {
+  background: var(--settings-paper);
+}
+
+.settings-layout {
+  height: 100vh;
+}
+
+.settings-sidebar {
+  width: 214px;
+  padding: 38px 10px 14px;
+  border-right: 1px solid var(--settings-rule);
+  background: var(--settings-paper-2);
+  -webkit-app-region: drag;
+}
+
+.sidebar-heading {
+  display: none;
+}
+
+.settings-search,
+.sidebar-nav {
+  -webkit-app-region: no-drag;
+}
+
+.settings-search {
+  height: 31px;
+  margin: 0 0 16px;
+  padding: 0 9px;
+  border-color: var(--settings-rule);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--settings-paper) 56%, transparent);
+  color: var(--settings-ink-4);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink) 2%, transparent);
+}
+
+.settings-search input {
+  height: 100%;
+  font-size: 13.5px;
+  line-height: 1;
+}
+
+.settings-search:focus-within {
+  border-color: color-mix(in srgb, var(--settings-accent) 48%, var(--settings-rule));
+  background: color-mix(in srgb, var(--settings-paper) 72%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-accent) 18%, transparent), 0 0 0 2px var(--settings-accent-soft);
+}
+
+.settings-search input:focus,
+.settings-search input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.search-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.sidebar-nav {
+  gap: 0;
+  padding-right: 8px;
+}
+
+.sidebar-entry {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-item {
+  gap: 8px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--settings-ink-4);
+  font: inherit;
+  outline: none;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.sidebar-item:hover {
+  background: color-mix(in srgb, var(--settings-paper) 46%, transparent);
+  color: var(--settings-ink-2);
+}
+
+.sidebar-item:focus-visible {
+  outline: 2px solid var(--settings-accent);
+  outline-offset: 2px;
+}
+
+.sidebar-item.active {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--settings-paper) 72%, var(--settings-accent-soft));
+  color: var(--settings-ink);
+  box-shadow: none;
+}
+
+.sidebar-disclosure-button {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--settings-ink-4);
+  cursor: pointer;
+}
+
+.sidebar-disclosure-button:hover {
+  background: color-mix(in srgb, var(--settings-paper) 52%, transparent);
+  color: var(--settings-ink-2);
+}
+
+.sidebar-disclosure {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.sidebar-item.active .sidebar-disclosure-button {
+  color: var(--settings-ink-3);
+}
+
+.sidebar-icon {
+  display: none;
+}
+
+.sidebar-copy {
+  display: block;
+}
+
+.sidebar-label {
+  font-size: 14px;
+  font-weight: 560;
+  line-height: 1.25;
+}
+
+.sidebar-hint {
+  display: none;
+}
+
+.sidebar-subnav {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 2px 0 6px 14px;
+  padding: 1px 0 1px 14px;
+}
+
+.sidebar-subnav::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  bottom: 1px;
+  width: 1px;
+  background: var(--settings-rule-soft);
+}
+
+.sidebar-subitem {
+  min-height: 25px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--settings-ink-4);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.sidebar-subitem:hover {
+  background: color-mix(in srgb, var(--settings-paper) 42%, transparent);
+  color: var(--settings-ink-2);
+}
+
+.sidebar-empty {
+  padding: 10px 8px;
+  color: var(--settings-ink-4);
+  font-size: 12.5px;
+}
+
+.settings-content {
+  background: var(--settings-paper);
+}
+
+.content-header {
+  display: block;
+  position: relative;
+  padding: 23px 30px 14px;
+  border-bottom: 0;
+  background: var(--settings-paper);
+  -webkit-app-region: drag;
+}
+
+.content-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 26px;
+}
+
+.settings-scope {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--settings-ink);
+}
+
+.scope-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  padding: 0 8px;
+  border-radius: 5px;
+  background: var(--settings-accent-soft);
+  color: var(--settings-accent);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.scope-name {
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.json-settings-button {
+  min-height: 31px;
+  flex-shrink: 0;
+  padding: 0 10px;
+  border: 1px solid var(--settings-rule);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--settings-paper-3) 84%, transparent);
+  color: var(--settings-ink-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 560;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.json-settings-button:hover {
+  border-color: color-mix(in srgb, var(--settings-accent) 42%, var(--settings-rule));
+  background: color-mix(in srgb, var(--settings-paper-3) 92%, var(--settings-accent-soft));
+  color: var(--settings-ink);
+}
+
+.content-header-copy {
+  min-width: 0;
+}
+
+.content-header h1 {
+  margin: 0;
+  color: var(--settings-ink);
+  font-size: 22px;
+  font-weight: 620;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.content-hint,
+.breadcrumb {
+  display: none;
+}
+
+.save-state {
+  display: none;
+  position: absolute;
+  right: 30px;
+  bottom: 16px;
+  margin: 0;
+  border-radius: 5px;
+  background: transparent;
+}
+
+.save-state.active {
+  display: inline-flex;
+}
+
+.content-body {
+  padding: 0 30px 60px;
+  background: var(--settings-paper);
+}
+
+.content-inner,
+.content-inner-wide {
+  width: 100%;
+  max-width: 930px;
+  margin: 0;
+}
+
+.content-inner-wide {
+  max-width: 1120px;
+}
+
+:deep(.tab-content) {
+  animation: settingsFade 140ms ease;
+}
+
+:deep(.settings-section),
+:deep(.detail-section) {
+  margin-bottom: 38px;
+}
+
+:deep(.settings-section-header) {
+  align-items: center;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--settings-rule);
+}
+
+:deep(.settings-section-title),
+:deep(.section-label),
+:deep(.section-title) {
+  margin: 0;
+  color: var(--settings-ink-4);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.35;
+  text-transform: none;
+}
+
+:deep(.section-label::after),
+:deep(.section-title::after) {
+  background: var(--settings-rule);
+}
+
+:deep(.settings-section-description) {
+  display: none;
+}
+
+:deep(.settings-group),
+:deep(.settings-card) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+:deep(.settings-card.theme-cards) {
+  display: grid;
+  gap: 12px;
+}
+
+:deep(.theme-card) {
+  border-color: var(--settings-rule);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--settings-paper-3) 82%, transparent);
+}
+
+:deep(.theme-card.active) {
+  border-color: color-mix(in srgb, var(--settings-accent) 56%, var(--settings-rule));
+  box-shadow: 0 0 0 2px var(--settings-accent-soft);
+}
+
+:deep(.setting-row),
+:deep(.card-row),
+:deep(.settings-row),
+:deep(.shortcut-row) {
+  min-height: 68px;
+  padding: 17px 0;
+  border-bottom: 1px solid var(--settings-rule-soft);
+  background: transparent;
+}
+
+:deep(.setting-row:last-child),
+:deep(.card-row:last-child),
+:deep(.settings-row:last-child),
+:deep(.shortcut-row:last-child) {
+  border-bottom: 1px solid var(--settings-rule-soft);
+}
+
+:deep(.setting-row-title),
+:deep(.toggle-title),
+:deep(.row-label),
+:deep(.shortcut-name),
+:deep(.form-label),
+:deep(.settings-field-label) {
+  color: var(--settings-ink-2);
+  font-size: 14.5px;
+  font-weight: 560;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+:deep(.setting-row-description),
+:deep(.toggle-desc),
+:deep(.form-hint),
+:deep(.settings-field-hint),
+:deep(.shortcut-desc) {
+  max-width: 620px;
+  margin-top: 4px;
+  color: var(--settings-ink-4);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+:deep(.setting-row-split) {
+  gap: 28px;
+}
+
+:deep(.setting-row-control) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+:deep(.form-input),
+:deep(.form-textarea),
+:deep(.form-select),
+:deep(.row-input),
+:deep(.row-select) {
+  min-height: 32px;
+  border: 1px solid var(--settings-rule);
+  border-radius: 5px;
+  background-color: color-mix(in srgb, var(--settings-paper-3) 84%, transparent);
+  color: var(--settings-ink);
+  font-size: 13px;
+}
+
+:deep(.form-input:focus),
+:deep(.form-textarea:focus),
+:deep(.form-select:focus),
+:deep(.row-input:focus),
+:deep(.row-select:focus) {
+  border-color: color-mix(in srgb, var(--settings-accent) 48%, var(--settings-rule));
+  background-color: var(--settings-paper-3);
+  box-shadow: 0 0 0 2px var(--settings-accent-soft);
+}
+
+:deep(.segmented-control) {
+  border-color: var(--settings-rule);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--settings-paper-3) 72%, transparent);
+}
+
+:deep(.segment-btn),
+:deep(.secondary-btn),
+:deep(.test-btn),
+:deep(.save-action),
+:deep(.primary-action),
+:deep(.prompt-primary-btn),
+:deep(.prompt-secondary-btn),
+:deep(.prompt-danger-btn) {
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+:deep(.secondary-btn),
+:deep(.test-btn),
+:deep(.prompt-secondary-btn) {
+  border-color: var(--settings-rule);
+  background: color-mix(in srgb, var(--settings-paper-3) 84%, transparent);
+}
+
+:deep(.form-slider) {
+  height: 4px;
+  background: var(--settings-rule);
+}
+
+:deep(.form-slider::-webkit-slider-thumb) {
+  width: 15px;
+  height: 15px;
+}
+
+:deep(.toggle-row input[type="checkbox"]),
+:deep(.native-toggle input[type="checkbox"]) {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--settings-rule);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--settings-paper-3) 72%, transparent);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+:deep(.toggle-row input[type="checkbox"]::before),
+:deep(.native-toggle input[type="checkbox"]::before) {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--settings-ink-4);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+:deep(.toggle-row input[type="checkbox"]:checked),
+:deep(.native-toggle input[type="checkbox"]:checked) {
+  border-color: color-mix(in srgb, var(--settings-accent) 44%, var(--settings-rule));
+  background: color-mix(in srgb, var(--settings-accent) 42%, var(--settings-paper-3));
+}
+
+:deep(.toggle-row input[type="checkbox"]:checked::before),
+:deep(.native-toggle input[type="checkbox"]:checked::before) {
+  transform: translateX(14px);
+  background: color-mix(in srgb, white 86%, var(--settings-accent));
+}
+
+:deep(.toggle-row input[type="checkbox"]:disabled),
+:deep(.native-toggle input[type="checkbox"]:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+:deep(.provider-rows) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+:deep(.provider-row) {
+  min-height: 62px;
+  padding: 14px 0;
+  border-top-color: var(--settings-rule-soft);
+}
+
+:deep(.provider-row:hover),
+:deep(.provider-row.active) {
+  background: transparent;
+}
+
+:deep(.provider-configure),
+:deep(.provider-row-edit),
+:deep(.provider-pill),
+:deep(.provider-icon-tile) {
+  border-radius: 5px;
+}
+
+:deep(.detail-title) {
+  font-size: 20px;
+  font-weight: 620;
+}
+
+:deep(.content-inner-wide .provider-tab-wrapper) {
+  width: 100%;
+}
+
+@media (max-width: 860px) {
+  .settings-sidebar {
+    width: 204px;
+    padding: 38px 8px 12px;
+  }
+
+  .content-header {
+    padding: 23px 24px 14px;
+  }
+
+  .content-topline {
+    margin-bottom: 24px;
+  }
+
+  .content-body {
+    padding: 0 24px 54px;
+  }
+
+  .scope-name {
+    max-width: 190px;
+  }
+}
+
+@media (max-width: 720px) {
+  .json-settings-button {
+    display: none;
   }
 }
 </style>

@@ -4,6 +4,7 @@
  */
 
 import { AIProvider } from '../ipc/providers.js'
+import { DEFAULT_AGENT_ID } from '../ipc/agents.js'
 import type {
   AppSettings,
   GeneralSettings,
@@ -22,6 +23,7 @@ import type {
   SoulMemorySearchSettings,
   SoulMemorySettings,
 } from '../ipc/settings.js'
+import type { VoiceSettings } from '../ipc/voice.js'
 import type { ProviderConfig, AISettings } from '../ipc/providers.js'
 import type { ToolSettings } from '../ipc/tools.js'
 
@@ -303,7 +305,7 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   presencePenalty: 0,
   frequencyPenalty: 0,
   branchOpenInSplitScreen: true,
-  chatFontSize: 14,
+  chatFontSize: 15,
   contextCompactEnabled: true,
   contextCompactThreshold: 85,
   contextCompactKeepRecentTurns: 6,
@@ -336,6 +338,78 @@ export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
   },
 }
 
+export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
+  enabled: false,
+  alwaysOn: false,
+  bargeIn: true,
+  conversation: {
+    defaultAgentId: DEFAULT_AGENT_ID,
+    endpointing: 'fast',
+    speakProtocol: 'speak-blocks',
+  },
+  wake: {
+    enabled: false,
+    phrase: 'hey onething',
+    provider: 'porcupine-web',
+    accessKey: '',
+    keywordPath: '',
+    modelPath: '',
+  },
+  vad: {
+    provider: 'silero-web',
+    silenceMs: 650,
+    maxRecordingMs: 20000,
+    energyThreshold: 0.012,
+  },
+  asr: {
+    provider: 'funasr-stream',
+    openai: {
+      apiKey: '',
+      model: 'gpt-4o-transcribe',
+      language: '',
+    },
+    openrouter: {
+      apiKey: '',
+      model: 'openai/whisper-1',
+      language: '',
+    },
+    funasr: {
+      url: '',
+      language: 'auto',
+      hotwords: '',
+      mode: '2pass',
+      chunkSize: [5, 10, 5],
+      chunkInterval: 10,
+    },
+  },
+  tts: {
+    provider: 'system-tts',
+    autoSpeak: true,
+    system: {
+      voice: '',
+      language: '',
+      rate: 1,
+      pitch: 1,
+    },
+    openrouter: {
+      apiKey: '',
+      model: 'openai/gpt-4o-mini-tts-2025-12-15',
+      voice: 'alloy',
+    },
+    openai: {
+      apiKey: '',
+      model: 'gpt-4o-mini-tts',
+      voice: 'alloy',
+    },
+    qwen: {
+      apiKey: '',
+      baseUrl: '',
+      model: 'cosyvoice-v1',
+      voice: 'longxiaochun',
+    },
+  },
+}
+
 // ============================================================================
 // Complete Default Settings Factory
 // ============================================================================
@@ -351,6 +425,7 @@ export function createDefaultSettings(): AppSettings {
     general: JSON.parse(JSON.stringify(DEFAULT_GENERAL_SETTINGS)),
     chat: JSON.parse(JSON.stringify(DEFAULT_CHAT_SETTINGS)),
     tools: JSON.parse(JSON.stringify(DEFAULT_TOOL_SETTINGS)),
+    voice: JSON.parse(JSON.stringify(DEFAULT_VOICE_SETTINGS)),
     network: JSON.parse(JSON.stringify(DEFAULT_NETWORK_SETTINGS)),
   }
 }
@@ -426,6 +501,7 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         ...settings.network?.proxy,
       },
     },
+    voice: normalizeVoiceSettings(settings.voice),
     mcp: settings.mcp,
     skills: settings.skills,
   }
@@ -438,6 +514,72 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
   }
 
   return merged as AppSettings
+}
+
+export function normalizeVoiceSettings(settings?: VoiceSettings): VoiceSettings {
+  return {
+    ...DEFAULT_VOICE_SETTINGS,
+    ...settings,
+    wake: {
+      ...DEFAULT_VOICE_SETTINGS.wake,
+      ...settings?.wake,
+      phrase: (settings?.wake?.phrase || DEFAULT_VOICE_SETTINGS.wake.phrase).trim(),
+    },
+    conversation: {
+      ...DEFAULT_VOICE_SETTINGS.conversation,
+      ...settings?.conversation,
+      defaultAgentId: (settings?.conversation?.defaultAgentId || DEFAULT_VOICE_SETTINGS.conversation.defaultAgentId).trim(),
+      endpointing: ['fast', 'balanced', 'patient', 'custom'].includes(settings?.conversation?.endpointing as string)
+        ? settings!.conversation!.endpointing
+        : DEFAULT_VOICE_SETTINGS.conversation.endpointing,
+      speakProtocol: 'speak-blocks',
+    },
+    vad: {
+      ...DEFAULT_VOICE_SETTINGS.vad,
+      ...settings?.vad,
+      silenceMs: clampNumber(settings?.vad?.silenceMs, 300, 10000, DEFAULT_VOICE_SETTINGS.vad.silenceMs),
+      maxRecordingMs: clampNumber(settings?.vad?.maxRecordingMs, 3000, 120000, DEFAULT_VOICE_SETTINGS.vad.maxRecordingMs),
+      energyThreshold: clampNumber(settings?.vad?.energyThreshold, 0.001, 0.25, DEFAULT_VOICE_SETTINGS.vad.energyThreshold),
+    },
+    asr: {
+      ...DEFAULT_VOICE_SETTINGS.asr,
+      ...settings?.asr,
+      openai: {
+        ...DEFAULT_VOICE_SETTINGS.asr.openai,
+        ...settings?.asr?.openai,
+      },
+      openrouter: {
+        ...DEFAULT_VOICE_SETTINGS.asr.openrouter,
+        ...settings?.asr?.openrouter,
+      },
+      funasr: {
+        ...DEFAULT_VOICE_SETTINGS.asr.funasr,
+        ...settings?.asr?.funasr,
+      },
+    },
+    tts: {
+      ...DEFAULT_VOICE_SETTINGS.tts,
+      ...settings?.tts,
+      system: {
+        ...DEFAULT_VOICE_SETTINGS.tts.system,
+        ...settings?.tts?.system,
+        rate: clampNumber(settings?.tts?.system?.rate, 0.5, 2, DEFAULT_VOICE_SETTINGS.tts.system.rate),
+        pitch: clampNumber(settings?.tts?.system?.pitch, 0, 2, DEFAULT_VOICE_SETTINGS.tts.system.pitch),
+      },
+      openrouter: {
+        ...DEFAULT_VOICE_SETTINGS.tts.openrouter,
+        ...settings?.tts?.openrouter,
+      },
+      openai: {
+        ...DEFAULT_VOICE_SETTINGS.tts.openai,
+        ...settings?.tts?.openai,
+      },
+      qwen: {
+        ...DEFAULT_VOICE_SETTINGS.tts.qwen,
+        ...settings?.tts?.qwen,
+      },
+    },
+  }
 }
 
 export function normalizeEditorSettings(settings?: EditorSettings): Required<EditorSettings> {

@@ -5,6 +5,7 @@
  *   1. Install the font package (e.g., bun add @fontsource-variable/xxx)
  *   2. Import it in src/renderer/styles/main.css
  *   3. Add an entry here
+ * System font stacks can be added directly without a package import.
  */
 
 export interface FontDefinition {
@@ -17,6 +18,24 @@ export interface FontDefinition {
 }
 
 export const FONT_REGISTRY: FontDefinition[] = [
+  // --- System fonts ---
+  {
+    id: 'system-ui',
+    name: 'System UI',
+    family: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI"',
+    category: 'sans-serif',
+    lang: 'en',
+    preview: 'The quick brown fox jumps over the lazy dog',
+  },
+  {
+    id: 'system-cjk',
+    name: '系统字体 System Chinese',
+    family: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC"',
+    category: 'sans-serif',
+    lang: 'zh',
+    preview: '你好世界 Hello World',
+  },
+
   // --- Sans-serif ---
   {
     id: 'public-sans',
@@ -73,6 +92,8 @@ export const FONT_REGISTRY: FontDefinition[] = [
 /** Defaults */
 export const DEFAULT_FONT_EN = 'public-sans'
 export const DEFAULT_FONT_ZH = 'noto-sans-sc'
+export const SYSTEM_FONT_EN = 'system-ui'
+export const SYSTEM_FONT_ZH = 'system-cjk'
 
 /** Get a font definition by ID */
 export function getFontById(id: string): FontDefinition | undefined {

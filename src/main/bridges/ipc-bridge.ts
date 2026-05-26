@@ -22,7 +22,7 @@ import type { Unsubscribe } from '../events/types.js'
 import { getEventBus, getStreamChannel } from '../events/index.js'
 
 type BufferedStreamChunk =
-  | { type: 'text-delta'; text: string; turnIndex?: number }
+  | { type: 'text-delta'; text: string; turnIndex?: number; voiceSpeakText?: string }
   | { type: 'reasoning-delta'; reasoning: string; turnIndex?: number; placement?: ReasoningPlacement }
   | { type: 'tool-input-delta'; toolCallId: string; argsTextDelta: string }
 
@@ -42,11 +42,15 @@ export function appendStreamBufferChunk(buffer: StreamBuffer, chunk: StreamChunk
   if (chunk.type === 'text-delta') {
     if (last?.type === 'text-delta' && last.turnIndex === chunk.turnIndex) {
       last.text += chunk.text
+      if (chunk.voiceSpeakText !== undefined || last.voiceSpeakText !== undefined) {
+        last.voiceSpeakText = `${last.voiceSpeakText ?? ''}${chunk.voiceSpeakText ?? ''}`
+      }
     } else {
       buffer.chunks.push({
         type: 'text-delta',
         text: chunk.text,
         ...(chunk.turnIndex !== undefined ? { turnIndex: chunk.turnIndex } : {}),
+        ...(chunk.voiceSpeakText !== undefined ? { voiceSpeakText: chunk.voiceSpeakText } : {}),
       })
     }
     return true

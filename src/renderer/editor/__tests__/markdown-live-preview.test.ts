@@ -1283,6 +1283,36 @@ describe('markdown live preview helpers', () => {
     view.destroy()
   })
 
+  it('keeps Obsidian wiki syntax literal inside code', () => {
+    const doc = [
+      'active',
+      '',
+      '`[[attatch/]]`',
+      '``[[double-delimited]]``',
+      '```md',
+      '[[codeblock]]',
+      '```',
+      '[[docs/spec.pdf]]',
+    ].join('\n')
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: 0 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    const fileWidgets = Array.from(view.dom.querySelectorAll('.md-live-file-widget'))
+      .map(widget => widget.textContent)
+    expect(fileWidgets).toEqual(['spec.pdf'])
+    expect(view.dom.textContent).toContain('[[attatch/]]')
+    expect(view.dom.textContent).toContain('[[double-delimited]]')
+    expect(view.dom.textContent).toContain('[[codeblock]]')
+
+    view.destroy()
+  })
+
   it('does not expose fold controls for long Markdown lists', () => {
     const doc = [
       '- one',

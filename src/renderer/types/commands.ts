@@ -39,6 +39,8 @@ export interface CommandDefinition {
   description: string
   /** Usage pattern, e.g., '/cd <path>' */
   usage: string
+  /** Whether the composer should clear as soon as the command is submitted */
+  consumesInputImmediately?: boolean
   /** Execute the command */
   execute: (context: CommandContext) => Promise<CommandResult>
 }

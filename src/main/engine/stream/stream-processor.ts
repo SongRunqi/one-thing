@@ -106,6 +106,10 @@ export interface StreamContext {
   steeringQueue?: PendingMessageQueue
   /** Follow-up message queue — messages injected only after agent would stop */
   followUpQueue?: PendingMessageQueue
+  /** The current generation is answering a spoken user turn. */
+  voiceConversation?: boolean
+  /** The current assistant text should be treated as TTS-ready visible text. */
+  speakMode?: boolean
 }
 
 /**
@@ -115,7 +119,7 @@ export interface StreamProcessor {
   accumulatedContent: string
   accumulatedReasoning: string
   toolCalls: ToolCall[]
-  handleTextChunk(text: string, turnContent?: { value: string }, turnIndex?: number): void
+  handleTextChunk(text: string, turnContent?: { value: string }, turnIndex?: number): string
   handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }, turnIndex?: number, placement?: ReasoningPlacement): void
   handleToolCallChunk(toolCallData: {
     toolCallId: string
@@ -153,10 +157,13 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
     get toolCalls() { return toolCalls },
 
     handleTextChunk(text: string, turnContent?: { value: string }, turnIndex?: number) {
+      if (!text) return ''
+
       accumulatedContent += text
       if (turnContent) turnContent.value += text
       store.updateMessageContent(ctx.sessionId, ctx.assistantMessageId, accumulatedContent)
       emitter.sendTextChunk(text, turnIndex)
+      return text
     },
 
     handleReasoningChunk(reasoning: string, turnReasoning?: { value: string }, turnIndex?: number, placement: ReasoningPlacement = 'top') {

@@ -145,7 +145,7 @@
           class="composer-input"
           profile="composer"
           language="markdown"
-          placeholder="Ask anything..."
+          :placeholder="composerPlaceholder"
           :settings="editorSettings"
           :prompt-refs="promptsStore.prompts"
           :skill-refs="enabledSkills"
@@ -162,6 +162,52 @@
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
         />
+      </div>
+
+      <div
+        v-if="voiceCaptureVisible"
+        class="voice-capture-bar"
+        :class="{ recording: isVoiceRecordingActive, transcribing: isVoiceTranscribingActive }"
+        :title="voiceCaptureHint"
+        aria-live="polite"
+        @click.stop
+      >
+        <span class="voice-capture-visual">
+          <Loader2
+            v-if="isVoiceTranscribingActive"
+            class="voice-spinner"
+            :size="14"
+            :stroke-width="2"
+          />
+          <span
+            v-else
+            class="voice-wave"
+            aria-hidden="true"
+          >
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+          </span>
+        </span>
+        <span class="voice-capture-main">
+          <span class="voice-capture-title">{{ voiceCaptureTitle }}</span>
+          <span class="voice-capture-detail">{{ voiceCaptureDetail }}</span>
+        </span>
+        <button
+          v-if="isVoiceRecordingActive"
+          class="voice-capture-stop"
+          type="button"
+          title="Stop recording and transcribe"
+          @click="handleVoiceButton"
+        >
+          <Square
+            :size="12"
+            :stroke-width="2.4"
+          />
+          <span>Stop</span>
+        </button>
       </div>
 
       <div
@@ -225,6 +271,34 @@
           @click.stop
         >
           <button
+            class="voice-btn"
+            :class="{
+              active: isVoiceRecordingActive,
+              transcribing: isVoiceTranscribingActive,
+              'needs-setup': !!voiceConfigurationError && !voiceStore.isRecording,
+            }"
+            type="button"
+            :title="voiceButtonTitle"
+            @click="handleVoiceButton"
+          >
+            <Square
+              v-if="isVoiceRecordingActive"
+              :size="14"
+              :stroke-width="2.4"
+            />
+            <Loader2
+              v-else-if="isVoiceTranscribingActive"
+              class="voice-spinner"
+              :size="16"
+              :stroke-width="2"
+            />
+            <Mic
+              v-else
+              :size="17"
+              :stroke-width="2"
+            />
+          </button>
+          <button
             class="send-btn"
             :class="{ 'stop-btn': shouldShowStopAction }"
             :disabled="isPrimaryActionDisabled"
@@ -254,6 +328,7 @@ import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
+import { useVoiceStore } from '@/stores/voice'
 import { usePromptsStore } from '@/stores/prompts'
 // Sub-components
 import QuotedContext from './QuotedContext.vue'
@@ -262,11 +337,12 @@ import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
 import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
-import { X, Square, Send, Check, CornerDownRight, Trash2, MoreHorizontal, FileText, Loader2 } from 'lucide-vue-next'
+import { X, Square, Send, Check, CornerDownRight, Trash2, MoreHorizontal, FileText, Loader2, Mic } from 'lucide-vue-next'
 import { findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
 import type { MessageAttachment } from '@/types'
+import { DEFAULT_VOICE_SETTINGS } from '@shared/defaults/settings'
 
 // Composables
 import { useInputHistory } from '@/composables/useInputHistory'
@@ -296,6 +372,7 @@ const emit = defineEmits<Emits>()
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
+const voiceStore = useVoiceStore()
 const promptsStore = usePromptsStore()
 
 // Core state
@@ -408,8 +485,101 @@ const primaryActionTitle = computed(() => {
   if (hasActiveGeneration.value) return 'Queue message after current response'
   return 'Send message'
 })
+const voiceSettings = computed(() => settingsStore.settings.voice ?? DEFAULT_VOICE_SETTINGS)
+const voiceStatus = computed(() => voiceStore.status ?? 'idle')
+const isVoiceRecordingActive = computed(() => voiceStatus.value === 'recording')
+const isVoiceTranscribingActive = computed(() => voiceStatus.value === 'transcribing')
+const voiceCaptureVisible = computed(() => isVoiceRecordingActive.value || isVoiceTranscribingActive.value)
+const voiceRecordingElapsedMs = ref(0)
+let voiceRecordingTimer: number | null = null
+
+const voiceConfigurationError = computed(() => {
+  const voice = voiceSettings.value
+  if (!voice?.enabled) return 'Enable Voice in Settings'
+  if (!effectiveSessionId.value) return 'Open a chat before using voice'
+  if (voice.asr.provider === 'funasr-stream') {
+    const url = voice.asr.funasr.url.trim()
+    if (!url) return 'Add a FunASR WebSocket URL in Voice settings'
+    if (!/^wss?:\/\//i.test(url)) return 'FunASR streaming ASR needs a ws:// or wss:// URL'
+  }
+  if (voice.asr.provider === 'openrouter-transcribe') {
+    const voiceKey = voice.asr.openrouter.apiKey?.trim()
+    const globalKey = (settingsStore.settings.ai.providers.openrouter as any)?.apiKey?.trim()
+    if (!voiceKey && !globalKey) return 'Add an OpenRouter API key in Voice settings'
+  }
+  if (voice.asr.provider === 'funasr-server' && !voice.asr.funasr.url.trim()) {
+    return 'Add a FunASR server URL in Advanced voice settings'
+  }
+  if (voice.asr.provider === 'openai-transcribe') {
+    const voiceKey = voice.asr.openai.apiKey?.trim()
+    const globalKey = (settingsStore.settings.ai.providers.openai as any)?.apiKey?.trim()
+    if (!voiceKey && !globalKey) return 'OpenAI transcription is selected, but no OpenAI API key is configured'
+  }
+  return ''
+})
+const voiceButtonTitle = computed(() => {
+  if (isVoiceRecordingActive.value) return 'Stop and transcribe'
+  if (isVoiceTranscribingActive.value) return 'Transcribing voice input'
+  if (voiceConfigurationError.value) return `${voiceConfigurationError.value}. Click to set up.`
+  return 'Start voice input'
+})
+const composerPlaceholder = computed(() => {
+  if (isVoiceRecordingActive.value) return 'Listening...'
+  if (isVoiceTranscribingActive.value) return 'Transcribing...'
+  return 'Ask anything...'
+})
+
+const formattedVoiceElapsed = computed(() => {
+  const totalSeconds = Math.floor(voiceRecordingElapsedMs.value / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = String(totalSeconds % 60).padStart(2, '0')
+  return `${minutes}:${seconds}`
+})
+
+const voiceCaptureTitle = computed(() => {
+  if (isVoiceTranscribingActive.value) return 'Transcribing'
+  return 'Listening'
+})
+
+const voiceCaptureDetail = computed(() => {
+  if (isVoiceRecordingActive.value && voiceStore.lastTranscript) return voiceStore.lastTranscript
+  if (isVoiceTranscribingActive.value && voiceStore.lastTranscript) return voiceStore.lastTranscript
+  if (isVoiceTranscribingActive.value) return 'Speech to text'
+  return formattedVoiceElapsed.value
+})
+
+const voiceCaptureHint = computed(() => {
+  const silenceSeconds = Math.max(0.5, voiceSettings.value.vad.silenceMs / 1000)
+  if (isVoiceTranscribingActive.value) return 'Converting speech to text'
+  return `Auto-stops after about ${silenceSeconds.toFixed(1)}s of silence. Press Stop to send now.`
+})
+
+function stopVoiceRecordingTimer() {
+  if (voiceRecordingTimer !== null) {
+    window.clearInterval(voiceRecordingTimer)
+    voiceRecordingTimer = null
+  }
+}
+
+function startVoiceRecordingTimer() {
+  stopVoiceRecordingTimer()
+  const startedAt = Date.now()
+  voiceRecordingElapsedMs.value = 0
+  voiceRecordingTimer = window.setInterval(() => {
+    voiceRecordingElapsedMs.value = Date.now() - startedAt
+  }, 250)
+}
 
 // --- Watchers ---
+
+watch(isVoiceRecordingActive, (recording) => {
+  if (recording) {
+    startVoiceRecordingTimer()
+  } else {
+    stopVoiceRecordingTimer()
+    voiceRecordingElapsedMs.value = 0
+  }
+}, { immediate: true })
 
 // Send the next queued follow-up when the active generation completes.
 watch(hasActiveGeneration, (generating) => {
@@ -455,6 +625,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleDocumentMouseDown)
+  stopVoiceRecordingTimer()
 
   if (composerResizeObserver) {
     composerResizeObserver.disconnect()
@@ -600,14 +771,8 @@ async function sendMessage() {
     }
 
     if (command) {
-      const result = await command.execute({
-        sessionId: effectiveSessionId.value,
-        args: argsString.split(/\s+/).filter(Boolean),
-        rawArgs: argsString,
-      })
-
-      if (result.success) {
-          showCommandFeedback('success', result.message || 'Done')
+      const consumeInputImmediately = command.consumesInputImmediately
+      if (consumeInputImmediately) {
         messageInput.value = ''
         resetHistoryNavigation()
         closeAllPickers()
@@ -615,9 +780,28 @@ async function sendMessage() {
           updateComposerHeight()
           editorRef.value?.focus()
         })
+      }
+
+      const result = await command.execute({
+        sessionId: effectiveSessionId.value,
+        args: argsString.split(/\s+/).filter(Boolean),
+        rawArgs: argsString,
+      })
+
+      if (result.success) {
+        showCommandFeedback('success', result.message || 'Done')
+        if (!consumeInputImmediately) {
+          messageInput.value = ''
+          resetHistoryNavigation()
+          closeAllPickers()
+          nextTick(() => {
+            updateComposerHeight()
+            editorRef.value?.focus()
+          })
+        }
       } else {
         showCommandFeedback('error', result.error || `/${commandId} failed`)
-        closeAllPickers()
+        if (!consumeInputImmediately) closeAllPickers()
         nextTick(() => {
           updateComposerHeight()
           editorRef.value?.focus()
@@ -668,6 +852,103 @@ function handlePrimaryAction() {
     return
   }
   sendMessage()
+}
+
+async function prepareVoiceInput() {
+  const currentSettings = settingsStore.settings
+  const nextVoice = JSON.parse(JSON.stringify(currentSettings.voice ?? DEFAULT_VOICE_SETTINGS))
+  let changed = false
+  let switchedToRecommended = false
+
+  if (!nextVoice.enabled) {
+    nextVoice.enabled = true
+    changed = true
+  }
+
+  if (nextVoice.asr.provider === 'openai-transcribe') {
+    const openAIKey = nextVoice.asr.openai.apiKey?.trim()
+    const globalOpenAIKey = (currentSettings.ai.providers.openai as any)?.apiKey?.trim()
+    if (!openAIKey && !globalOpenAIKey) {
+      nextVoice.asr.provider = 'funasr-stream'
+      changed = true
+      switchedToRecommended = true
+    }
+  }
+
+  if (nextVoice.asr.provider === 'funasr-server' && !nextVoice.asr.funasr.url.trim()) {
+    nextVoice.asr.provider = 'funasr-stream'
+    changed = true
+    switchedToRecommended = true
+  }
+
+  if (changed) {
+    await settingsStore.saveSettings({
+      ...currentSettings,
+      voice: nextVoice,
+    })
+  }
+
+  if (nextVoice.asr.provider === 'funasr-stream') {
+    const url = nextVoice.asr.funasr.url.trim()
+    if (!/^wss?:\/\//i.test(url)) {
+      void window.electronAPI.openSettingsWindow()
+      return {
+        success: false,
+        error: switchedToRecommended
+          ? 'Voice was reset to streaming ASR. Add a FunASR ws:// URL in Voice settings.'
+          : 'Add a FunASR ws:// URL in Voice settings.',
+      }
+    }
+  }
+
+  if (nextVoice.asr.provider === 'openrouter-transcribe') {
+    const globalOpenRouterKey = (currentSettings.ai.providers.openrouter as any)?.apiKey?.trim()
+    const openRouterVoiceKey = nextVoice.asr.openrouter.apiKey?.trim()
+    const hasOpenRouterKey = Boolean(openRouterVoiceKey || globalOpenRouterKey)
+    if (!hasOpenRouterKey) {
+      void window.electronAPI.openSettingsWindow()
+      return {
+        success: false,
+        error: 'Add an OpenRouter API key in Voice settings.',
+      }
+    }
+  }
+
+  if (nextVoice.asr.provider === 'funasr-server' && !nextVoice.asr.funasr.url.trim()) {
+    void window.electronAPI.openSettingsWindow()
+    return {
+      success: false,
+      error: 'Add a FunASR server URL in Voice settings.',
+    }
+  }
+
+  if (switchedToRecommended) {
+    showCommandFeedback('success', 'Voice input reset to streaming ASR')
+  }
+
+  return { success: true }
+}
+
+async function handleVoiceButton() {
+  if (!effectiveSessionId.value) {
+    showCommandFeedback('error', 'Open a chat before using voice')
+    return
+  }
+  if (isVoiceTranscribingActive.value) return
+  if (isVoiceRecordingActive.value || voiceStore.isRecording) {
+    void voiceStore.stop('mic-button', true)
+    return
+  }
+  const ready = await prepareVoiceInput()
+  if (!ready.success) {
+    showCommandFeedback('error', ready.error || 'Voice input needs setup')
+    return
+  }
+
+  const response = await voiceStore.startListening(effectiveSessionId.value)
+  if (response && !response.success) {
+    showCommandFeedback('error', response.error || 'Voice input could not start')
+  }
 }
 
 function steerQueuedMessage(id: string) {
@@ -1069,10 +1350,113 @@ defineExpose({
   animation: attachment-spin 0.8s linear infinite;
 }
 
+.voice-capture-bar {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0 12px 8px;
+  min-height: 36px;
+  padding: 7px 8px 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-tertiary, var(--hover)) 86%, transparent);
+  color: var(--text);
+}
+
+.voice-capture-bar.recording {
+  border-color: color-mix(in srgb, #ef4444 36%, var(--border));
+  background: color-mix(in srgb, #ef4444 8%, var(--bg-tertiary, var(--hover)));
+}
+
+.voice-capture-bar.transcribing {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary, var(--hover)));
+}
+
+.voice-capture-visual {
+  width: 20px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.voice-wave {
+  width: 20px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.voice-wave span {
+  width: 2px;
+  height: 7px;
+  border-radius: 999px;
+  background: #ef4444;
+  animation: voice-wave 0.9s ease-in-out infinite;
+}
+
+.voice-wave span:nth-child(2) { animation-delay: 0.08s; }
+.voice-wave span:nth-child(3) { animation-delay: 0.16s; }
+.voice-wave span:nth-child(4) { animation-delay: 0.24s; }
+.voice-wave span:nth-child(5) { animation-delay: 0.32s; }
+
+.voice-capture-main {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.voice-capture-title {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.voice-capture-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+.voice-capture-stop {
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, #ef4444 42%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, #ef4444 9%, transparent);
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.voice-capture-stop:hover {
+  background: color-mix(in srgb, #ef4444 15%, transparent);
+}
+
 @keyframes attachment-spin {
   to {
     transform: rotate(360deg);
   }
+}
+
+@keyframes voice-wave {
+  0%, 100% { height: 5px; opacity: 0.58; }
+  50% { height: 15px; opacity: 1; }
 }
 
 /* Bottom toolbar */
@@ -1129,6 +1513,60 @@ defineExpose({
 
 .toolbar-btn:disabled {
   opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.voice-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--hover);
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease, border-color 0.16s ease;
+}
+
+.voice-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--active);
+  transform: translateY(-1px);
+}
+
+.voice-btn.needs-setup {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--hover));
+}
+
+.voice-btn.needs-setup:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 56%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--hover));
+}
+
+.voice-btn.active {
+  color: #ef4444;
+  border-color: color-mix(in srgb, #ef4444 45%, var(--border));
+  background: color-mix(in srgb, #ef4444 10%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, #ef4444 10%, transparent);
+}
+
+.voice-btn.transcribing {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.voice-spinner {
+  animation: attachment-spin 0.8s linear infinite;
+}
+
+.voice-btn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -1204,6 +1642,15 @@ defineExpose({
   .input-area { padding: 10px 12px 0; }
   .composer-toolbar { padding: 6px 8px; }
   .composer-input { font-size: 15px; }
+  .voice-capture-bar {
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    margin: 0 8px 6px;
+  }
+  .voice-capture-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
   .send-btn { width: 34px; height: 34px; }
 }
 </style>

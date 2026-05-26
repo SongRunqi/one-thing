@@ -207,7 +207,6 @@
               >
             </div>
           </div>
-
         </section>
 
         <!-- Models Section -->
@@ -271,18 +270,17 @@
             class="settings-group"
             :class="{ 'is-disabled': !providerSettings.activeModelSupportsTemperature.value }"
           >
-            <div class="slider-row">
-              <input
-                :value="providerSettings.currentTemperature.value"
-                type="range"
-                min="0"
-                max="2"
-                step="0.1"
-                class="form-slider"
+            <div class="stepper-row">
+              <NumberStepper
+                :model-value="providerSettings.currentTemperature.value"
+                :min="0"
+                :max="2"
+                :step="0.1"
                 :disabled="!providerSettings.activeModelSupportsTemperature.value"
-                @input="providerSettings.updateProviderTemperature(($event.target as HTMLInputElement).valueAsNumber)"
-              >
-              <div class="slider-labels">
+                aria-label="temperature"
+                @update:model-value="providerSettings.updateProviderTemperature"
+              />
+              <div class="stepper-labels">
                 <span>Precise</span>
                 <span v-if="providerSettings.activeModelId.value">
                   for <code>{{ providerSettings.activeModelId.value }}</code>
@@ -327,27 +325,17 @@
             class="settings-group"
             :class="{ 'is-disabled': !providerSettings.activeModelMaxLimit.value }"
           >
-            <div class="slider-row">
-              <!--
-                Remount the range input whenever the active model or its
-                known max limit changes. models.dev data arrives async, so
-                the first render has limit=0 → max=1 and the DOM clamps
-                value to 1; later patches to :value can't always unstick
-                it across browsers. A fresh mount sets min/max/value in
-                one shot and avoids the clamp.
-              -->
-              <input
-                :key="`${providerSettings.activeModelId.value}-${providerSettings.activeModelMaxLimit.value}`"
-                :value="providerSettings.activeModelMaxOutput.value"
-                type="range"
-                min="1"
+            <div class="stepper-row">
+              <NumberStepper
+                :model-value="providerSettings.activeModelMaxOutput.value"
+                :min="1"
                 :max="Math.max(1, providerSettings.activeModelMaxLimit.value)"
                 :step="providerSettings.activeModelMaxOutputStep.value"
-                class="form-slider"
                 :disabled="!providerSettings.activeModelMaxLimit.value"
-                @input="providerSettings.updateActiveModelMaxOutput(($event.target as HTMLInputElement).valueAsNumber)"
-              >
-              <div class="slider-labels">
+                aria-label="max output tokens"
+                @update:model-value="providerSettings.updateActiveModelMaxOutput"
+              />
+              <div class="stepper-labels">
                 <span>1</span>
                 <span v-if="providerSettings.activeModelId.value">
                   for <code>{{ providerSettings.activeModelId.value }}</code>
@@ -374,6 +362,7 @@ import ProviderUsageCard from './ProviderUsageCard.vue'
 import ProviderModels from './ProviderModels.vue'
 import { useProviderSettings } from './useProviderSettings'
 import { useProviderUsage } from './useProviderUsage'
+import NumberStepper from '../NumberStepper.vue'
 
 const props = defineProps<{
   settings: AppSettings
@@ -838,8 +827,15 @@ onUnmounted(() => {
   color: var(--settings-ink, var(--text));
 }
 
+.stepper-row,
 .slider-row {
   padding: 16px 16px 14px;
+}
+
+.stepper-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .form-slider {
@@ -861,6 +857,7 @@ onUnmounted(() => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
+.stepper-labels,
 .slider-labels {
   display: flex;
   justify-content: space-between;
@@ -871,6 +868,7 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.stepper-labels code,
 .slider-labels code {
   font-family: var(--font-mono, 'SF Mono', monospace);
   font-size: 10px;

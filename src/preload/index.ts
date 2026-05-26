@@ -276,6 +276,52 @@ const electronAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.SETTINGS_CHANGED, listener)
   },
 
+  // Voice methods
+  voiceGetState: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_GET_STATE),
+
+  voiceStart: (request?: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_START, request || {}),
+
+  voiceStop: (request?: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_STOP, request || {}),
+
+  voiceSubmitUtterance: (request: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_SUBMIT_UTTERANCE, request),
+
+  voiceSubmitTranscript: (request: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_SUBMIT_TRANSCRIPT, request),
+
+  voiceSynthesize: (request: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_SYNTHESIZE, request),
+
+  voiceTestASR: (request: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_TEST_ASR, request),
+
+  voiceTestTTS: (request: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_TEST_TTS, request),
+
+  voiceGetTTSModels: (request?: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_GET_TTS_MODELS, request || {}),
+
+  onVoiceEvent: (callback: (event: any) => void) => {
+    const listener = (_event: any, event: any) => callback(event)
+    ipcRenderer.on(IPC_CHANNELS.VOICE_EVENT, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.VOICE_EVENT, listener)
+  },
+
+  voiceRuntimeReady: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_RUNTIME_READY),
+
+  voiceRuntimeEvent: (event: any) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_RUNTIME_EVENT, event),
+
+  onVoiceRuntimeCommand: (callback: (command: any) => void) => {
+    const listener = (_event: any, command: any) => callback(command)
+    ipcRenderer.on(IPC_CHANNELS.VOICE_RUNTIME_COMMAND, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.VOICE_RUNTIME_COMMAND, listener)
+  },
+
   getSystemTheme: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SYSTEM_THEME),
 

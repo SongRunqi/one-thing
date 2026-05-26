@@ -234,6 +234,28 @@ describe('PromptContextBuilder', () => {
     ))).toBe(true)
   })
 
+  it('injects speak mode guidance only for voice conversations', async () => {
+    const voice = await buildPromptContext(baseOptions({ speakMode: true, voiceConversation: true }))
+    const voiceFragment = voice.activeFragments.find(item => item.source === 'context/voice-speak-mode')
+    const voiceRequest = buildRequestMessages({
+      providerId: 'codex',
+      promptContext: voice.state,
+      emittedFragments: voice.emittedFragments,
+      historyMessages: [],
+    })
+
+    expect(voiceFragment?.role).toBe('developer')
+    expect(voiceFragment?.content).toContain('The assistant reply will be spoken aloud through TTS.')
+    expect(voiceFragment?.content).toContain('Do not output special speech markup tags.')
+    expect(voiceRequest.messages.some(message => (
+      message.role === 'developer' &&
+      String(message.content).includes('Voice Speak Mode')
+    ))).toBe(true)
+
+    const text = await buildPromptContext(baseOptions({ voiceConversation: false }))
+    expect(text.activeFragments.some(item => item.source === 'context/voice-speak-mode')).toBe(false)
+  })
+
   it('injects active workspace todo context when todo_plan is enabled', async () => {
     const result = await buildPromptContext(baseOptions({
       sessionId: 'session-1',

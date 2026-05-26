@@ -3,26 +3,17 @@
     <!-- Tabs -->
     <SettingsSection title="Tabs">
       <SettingsGroup>
-        <SettingRow layout="stack">
-          <SettingsField
-            label="Max Open Tabs"
-            :value="currentMaxTabs"
-          >
-            <input
-              type="range"
-              class="form-slider"
-              :min="3"
-              :max="30"
-              :step="1"
-              :value="currentMaxTabs"
-              @input="updateGeneral('maxTabs', Number(($event.target as HTMLInputElement).value))"
-            >
-            <div class="slider-labels">
-              <span>3</span>
-              <span>15</span>
-              <span>30</span>
-            </div>
-          </SettingsField>
+        <SettingRow
+          label="Max Open Tabs"
+          description="Maximum number of tabs kept open in a panel."
+        >
+          <NumberStepper
+            :model-value="currentMaxTabs"
+            :min="3"
+            :max="30"
+            aria-label="max open tabs"
+            @update:model-value="updateGeneral('maxTabs', $event)"
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -30,26 +21,17 @@
     <!-- Text Editor -->
     <SettingsSection title="Text Editor">
       <SettingsGroup>
-        <SettingRow layout="stack">
-          <SettingsField
-            label="Tab Size"
-            :value="currentEditor.tabSize"
-          >
-            <input
-              type="range"
-              class="form-slider"
-              :min="1"
-              :max="8"
-              :step="1"
-              :value="currentEditor.tabSize"
-              @input="updateEditor({ tabSize: Number(($event.target as HTMLInputElement).value) })"
-            >
-            <div class="slider-labels">
-              <span>1</span>
-              <span>4</span>
-              <span>8</span>
-            </div>
-          </SettingsField>
+        <SettingRow
+          label="Tab Size"
+          description="Number of spaces used for each tab stop."
+        >
+          <NumberStepper
+            :model-value="currentEditor.tabSize"
+            :min="1"
+            :max="8"
+            aria-label="tab size"
+            @update:model-value="updateEditor({ tabSize: $event })"
+          />
         </SettingRow>
 
         <SettingRow label="Line Wrapping">
@@ -62,26 +44,17 @@
           </label>
         </SettingRow>
 
-        <SettingRow layout="stack">
-          <SettingsField
-            label="Soft Wrap Column"
-            :value="`${currentEditor.softWrapColumn}ch`"
-          >
-            <input
-              type="range"
-              class="form-slider"
-              :min="40"
-              :max="200"
-              :step="4"
-              :value="currentEditor.softWrapColumn"
-              @input="updateEditor({ softWrapColumn: Number(($event.target as HTMLInputElement).value) })"
-            >
-            <div class="slider-labels">
-              <span>40</span>
-              <span>88</span>
-              <span>200</span>
-            </div>
-          </SettingsField>
+        <SettingRow
+          label="Soft Wrap Column"
+          description="Preferred text width before soft wrapping."
+        >
+          <NumberStepper
+            :model-value="currentEditor.softWrapColumn"
+            :values="softWrapColumnOptionsWithCurrent"
+            suffix="ch"
+            aria-label="soft wrap column"
+            @update:model-value="updateEditor({ softWrapColumn: $event })"
+          />
         </SettingRow>
 
         <SettingRow label="Syntax Highlighting">
@@ -104,26 +77,17 @@
           </label>
         </SettingRow>
 
-        <SettingRow layout="stack">
-          <SettingsField
-            label="Composer Height"
-            :value="`${currentEditor.composerMaxHeight}px`"
-          >
-            <input
-              type="range"
-              class="form-slider"
-              :min="80"
-              :max="640"
-              :step="20"
-              :value="currentEditor.composerMaxHeight"
-              @input="updateEditor({ composerMaxHeight: Number(($event.target as HTMLInputElement).value) })"
-            >
-            <div class="slider-labels">
-              <span>80px</span>
-              <span>360px</span>
-              <span>640px</span>
-            </div>
-          </SettingsField>
+        <SettingRow
+          label="Composer Height"
+          description="Maximum height of the message composer."
+        >
+          <NumberStepper
+            :model-value="currentEditor.composerMaxHeight"
+            :values="composerHeightOptionsWithCurrent"
+            suffix="px"
+            aria-label="composer height"
+            @update:model-value="updateEditor({ composerMaxHeight: $event })"
+          />
         </SettingRow>
 
         <SettingRow layout="stack">
@@ -155,26 +119,17 @@
     <!-- File Preview -->
     <SettingsSection title="File Preview">
       <SettingsGroup>
-        <SettingRow layout="stack">
-          <SettingsField
-            label="Preview Size Limit"
-            :value="`${currentMaxFilePreviewKB}KB`"
-          >
-            <input
-              type="range"
-              class="form-slider"
-              :min="64"
-              :max="1024"
-              :step="64"
-              :value="currentMaxFilePreviewKB"
-              @input="updateGeneral('maxFilePreviewKB', Number(($event.target as HTMLInputElement).value))"
-            >
-            <div class="slider-labels">
-              <span>64KB</span>
-              <span>512KB</span>
-              <span>1MB</span>
-            </div>
-          </SettingsField>
+        <SettingRow
+          label="Preview Size Limit"
+          description="Maximum file size to render in the preview."
+        >
+          <NumberStepper
+            :model-value="currentMaxFilePreviewKB"
+            :values="previewSizeOptionsWithCurrent"
+            suffix="KB"
+            aria-label="preview size limit"
+            @update:model-value="updateGeneral('maxFilePreviewKB', $event)"
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -190,6 +145,7 @@ import {
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'
+import NumberStepper from './NumberStepper.vue'
 
 const props = defineProps<{
   settings: AppSettings
@@ -211,6 +167,24 @@ const currentEditor = computed<Required<EditorSettings>>(() => ({
   markdownNoteAttachmentDirectory: props.settings.general.editor?.markdownNoteAttachmentDirectory ?? '',
   markdownProjectAttachmentDirectory: props.settings.general.editor?.markdownProjectAttachmentDirectory ?? '',
 }))
+
+const softWrapColumnOptions = [40, 60, 72, 80, 88, 100, 120, 140, 160, 180, 200]
+const composerHeightOptions = [80, 120, 160, 200, 240, 280, 320, 360, 400, 480, 560, 640]
+const previewSizeOptions = [64, 128, 256, 384, 512, 768, 1024]
+
+function withCurrentOption(options: number[], current: number): number[] {
+  return Array.from(new Set([...options, current])).sort((a, b) => a - b)
+}
+
+const softWrapColumnOptionsWithCurrent = computed(() =>
+  withCurrentOption(softWrapColumnOptions, currentEditor.value.softWrapColumn)
+)
+const composerHeightOptionsWithCurrent = computed(() =>
+  withCurrentOption(composerHeightOptions, currentEditor.value.composerMaxHeight)
+)
+const previewSizeOptionsWithCurrent = computed(() =>
+  withCurrentOption(previewSizeOptions, currentMaxFilePreviewKB.value)
+)
 
 function updateGeneral(key: string, value: number) {
   emit('update:settings', {
@@ -336,6 +310,25 @@ function updateEditor(patch: EditorSettings) {
   color: var(--text-primary);
   background: var(--bg-input, var(--bg));
   font: inherit;
+}
+
+.form-select {
+  min-height: 34px;
+  padding: 0 34px 0 10px;
+  border: 1px solid var(--settings-rule, var(--border));
+  border-radius: 7px;
+  outline: 0;
+  color: var(--text-primary);
+  background: var(--bg-input, var(--bg));
+  font: inherit;
+}
+
+.prefer-select {
+  min-width: 154px;
+}
+
+.form-select:focus {
+  border-color: var(--accent);
 }
 
 .form-input:focus {

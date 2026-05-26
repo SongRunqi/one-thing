@@ -48,6 +48,25 @@ import type {
   ChatSettings,
   ProxySettings,
   NetworkSettings,
+  VoiceEndpointingMode,
+  VoiceEvent,
+  VoiceLatencyMilestone,
+  VoiceLatencyMilestoneName,
+  VoiceRuntimeCommand,
+  VoiceRuntimeState,
+  VoiceSettings,
+  VoiceStartRequest,
+  VoiceStopRequest,
+  VoiceSubmitUtteranceRequest,
+  VoiceSubmitTranscriptRequest,
+  VoiceSynthesizeRequest,
+  VoiceTestASRRequest,
+  VoiceTestTTSRequest,
+  VoiceGetStateResponse,
+  VoiceSubmitUtteranceResponse,
+  VoiceSynthesizeResponse,
+  VoiceTTSModel,
+  VoiceTTSModelsResponse,
   MessageAttachment,
   AttachmentMediaType,
   MediaKind,
@@ -277,6 +296,24 @@ export type {
   ChatSettings,
   ProxySettings,
   NetworkSettings,
+  VoiceEndpointingMode,
+  VoiceEvent,
+  VoiceLatencyMilestone,
+  VoiceLatencyMilestoneName,
+  VoiceRuntimeCommand,
+  VoiceRuntimeState,
+  VoiceSettings,
+  VoiceStartRequest,
+  VoiceStopRequest,
+  VoiceSubmitUtteranceRequest,
+  VoiceSynthesizeRequest,
+  VoiceTestASRRequest,
+  VoiceTestTTSRequest,
+  VoiceGetStateResponse,
+  VoiceSubmitUtteranceResponse,
+  VoiceSynthesizeResponse,
+  VoiceTTSModel,
+  VoiceTTSModelsResponse,
   MessageAttachment,
   AttachmentMediaType,
   MediaKind,
@@ -464,6 +501,19 @@ export interface ElectronAPI {
   saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>
   openSettingsWindow: () => Promise<{ success: boolean }>
   onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void
+  voiceGetState: () => Promise<VoiceGetStateResponse>
+  voiceStart: (request?: VoiceStartRequest) => Promise<{ success: boolean; error?: string }>
+  voiceStop: (request?: VoiceStopRequest) => Promise<{ success: boolean; error?: string }>
+  voiceSubmitUtterance: (request: VoiceSubmitUtteranceRequest) => Promise<VoiceSubmitUtteranceResponse>
+  voiceSubmitTranscript: (request: VoiceSubmitTranscriptRequest) => Promise<VoiceSubmitUtteranceResponse>
+  voiceSynthesize: (request: VoiceSynthesizeRequest) => Promise<VoiceSynthesizeResponse>
+  voiceTestASR: (request: VoiceTestASRRequest) => Promise<VoiceSubmitUtteranceResponse>
+  voiceTestTTS: (request: VoiceTestTTSRequest) => Promise<{ success: boolean; error?: string; mimeType?: string }>
+  voiceGetTTSModels: (request?: { force?: boolean }) => Promise<VoiceTTSModelsResponse>
+  onVoiceEvent: (callback: (event: VoiceEvent) => void) => () => void
+  voiceRuntimeReady: () => Promise<{ success: boolean }>
+  voiceRuntimeEvent: (event: VoiceEvent) => Promise<{ success: boolean }>
+  onVoiceRuntimeCommand: (callback: (command: VoiceRuntimeCommand) => void) => () => void
   getSystemTheme: () => Promise<{ success: boolean; theme?: 'light' | 'dark' }>
   testProxy: (proxy: ProxySettings) => Promise<{ success: boolean; error?: string; status?: number }>
   onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void

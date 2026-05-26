@@ -46,6 +46,7 @@ const commands: CommandDefinition[] = [
     name: 'Compact Context',
     description: 'Summarize older conversation history to reduce context usage',
     usage: '/compact',
+    consumesInputImmediately: true,
     async execute(context) {
       const requestId = globalThis.crypto?.randomUUID?.() || `compact-${Date.now()}-${Math.random().toString(36).slice(2)}`
       const completion = waitForCompactCompletion(context.sessionId, requestId)

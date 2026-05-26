@@ -12,6 +12,7 @@ export interface ContextCompactResult {
   summary?: string
   message?: ChatMessage
   compactedThroughMessageId?: string
+  retainedContextSize?: number
   error?: string
 }
 
@@ -148,6 +149,9 @@ export async function compactSessionContext(options: {
     })
 
     store.updateSessionSummary(options.sessionId, summary, plan.cutoffMessage.id)
+    // A compact changes the prompt shape. The previous provider input-token count
+    // no longer describes the next request, so clear it until the provider reports
+    // fresh usage for the next turn.
     store.updateSessionContextSize(options.sessionId, 0)
     store.updateSessionPromptContext(options.sessionId, null)
     store.updateMessageContent(options.sessionId, compactMessage.id, finalContent)
@@ -158,6 +162,7 @@ export async function compactSessionContext(options: {
       summary,
       message: { ...compactMessage, content: finalContent },
       compactedThroughMessageId: plan.cutoffMessage.id,
+      retainedContextSize: 0,
     }
   } catch (error: any) {
     console.error('[ContextCompact] Failed to compact session:', error)
@@ -197,7 +202,7 @@ export function getContextCompactReason(options: {
 }): 'threshold' | 'hard-limit' | null {
   const threshold = Math.max(50, Math.min(100, options.thresholdPercent || 85))
   const contextLength = options.modelContextLength > 0 ? options.modelContextLength : 128000
-  const inputContextSize = options.session.contextSize || options.session.lastInputTokens || 0
+  const inputContextSize = options.session.contextSize ?? options.session.lastInputTokens ?? 0
   if (inputContextSize <= 0) return null
 
   const reservedOutputTokens = Math.max(0, options.reservedOutputTokens || 0)

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import os from 'os'
 import path from 'path'
+import fs from 'fs/promises'
 import { WriteTool } from '../write'
 import { EditTool } from '../edit'
 import { Permission } from '../../../permission/index.js'
@@ -16,20 +17,20 @@ describe('builtin file tool path expansion', () => {
     vi.clearAllMocks()
   })
 
-  function createContext() {
+  function createContext(beforeSideEffect: () => Promise<void> = vi.fn(async (): Promise<void> => {
+    throw new Error('stop before write')
+  })) {
     return {
       sessionId: 'test-session',
       messageId: 'test-message',
       toolCallId: 'test-call',
       workingDirectory: '/workspace',
       metadata: vi.fn(),
-      beforeSideEffect: vi.fn(async () => {
-        throw new Error('stop before write')
-      }),
+      beforeSideEffect,
     }
   }
 
-  it('write expands ~ before metadata and permission', async () => {
+  it('write expands ~ before waiting for ordered write gate', async () => {
     const ctx = createContext()
     const fileName = `.onething-write-path-expansion-${Date.now()}.txt`
     const expectedPath = path.join(os.homedir(), fileName)
@@ -45,16 +46,10 @@ describe('builtin file tool path expansion', () => {
         }),
       })
     )
-    expect(Permission.ask).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          filePath: expectedPath,
-        }),
-      })
-    )
+    expect(Permission.ask).not.toHaveBeenCalled()
   })
 
-  it('edit expands ~ before metadata and permission', async () => {
+  it('edit expands ~ before waiting for ordered edit gate', async () => {
     const ctx = createContext()
     const fileName = `.onething-edit-path-expansion-${Date.now()}.txt`
     const expectedPath = path.join(os.homedir(), fileName)
@@ -75,12 +70,44 @@ describe('builtin file tool path expansion', () => {
         }),
       })
     )
-    expect(Permission.ask).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          filePath: expectedPath,
-        }),
-      })
-    )
+    expect(Permission.ask).not.toHaveBeenCalled()
+  })
+
+  it('edit reads original content after the ordered edit gate', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'onething-edit-gate-'))
+    const filePath = path.join(dir, 'note.txt')
+    await fs.writeFile(filePath, 'before\n', 'utf-8')
+
+    const ctx = createContext(vi.fn(async () => {
+      await fs.writeFile(filePath, 'after\n', 'utf-8')
+    }))
+
+    const result = await EditTool.execute({
+      file_path: filePath,
+      old_string: 'after',
+      new_string: 'done',
+      replace_all: false,
+    }, ctx)
+
+    await expect(fs.readFile(filePath, 'utf-8')).resolves.toBe('done\n')
+    expect(result.metadata.originalContent).toBe('after\n')
+  })
+
+  it('write reads original content after the ordered write gate', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'onething-write-gate-'))
+    const filePath = path.join(dir, 'note.txt')
+    await fs.writeFile(filePath, 'before\n', 'utf-8')
+
+    const ctx = createContext(vi.fn(async () => {
+      await fs.writeFile(filePath, 'latest\n', 'utf-8')
+    }))
+
+    const result = await WriteTool.execute({
+      file_path: filePath,
+      content: 'final\n',
+    }, ctx)
+
+    await expect(fs.readFile(filePath, 'utf-8')).resolves.toBe('final\n')
+    expect(result.metadata.originalContent).toBe('latest\n')
   })
 })

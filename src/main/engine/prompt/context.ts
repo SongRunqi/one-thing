@@ -45,6 +45,8 @@ export interface BuildPromptContextOptions {
   knownProjects?: PromptKnownProjects
   toolNames?: string[]
   mcpToolNames?: string[]
+  speakMode?: boolean
+  voiceConversation?: boolean
 }
 
 export interface PromptContextBuildResult {
@@ -364,6 +366,16 @@ async function buildActiveFragments(options: BuildPromptContextOptions): Promise
       `# Agent: ${agent.name}`,
       agent.systemPrompt.trim(),
     ].join('\n\n')))
+  }
+  if (options.speakMode ?? options.voiceConversation) {
+    fragments.push(fragment('developer', 'context/voice-speak-mode', [
+      '## Voice Speak Mode',
+      'This turn came from spoken input. The assistant reply will be spoken aloud through TTS.',
+      'Write naturally for listening: short sentences, conversational wording, and clear next steps.',
+      'Avoid long lists, raw paths, logs, code blocks, dense citations, or implementation details unless the user explicitly needs them.',
+      'If tool work or detailed output is needed, give a brief spoken-friendly summary first, then keep any detailed text compact and scannable.',
+      'Do not output special speech markup tags. Write the actual reply text directly.',
+    ].join('\n')))
   }
   fragments.push(fragment('user', 'partials/context/working-directory', renderPartial('context/working-directory', variables)))
   fragments.push(fragment('user', 'partials/context/active-project', renderPartial('context/active-project', variables)))

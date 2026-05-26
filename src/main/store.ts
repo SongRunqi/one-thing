@@ -48,6 +48,7 @@ export {
   updateSessionContextSize,
   updateSessionPromptContext,
   getSessionTokenUsage,
+  deriveRetainedContextSize,
   // Optimized session loading (Phase 4: Metadata Separation)
   getSessionsList,
   getSessionDetails,

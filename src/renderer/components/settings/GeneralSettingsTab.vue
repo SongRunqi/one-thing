@@ -2,7 +2,6 @@
   <div class="tab-content">
     <!-- Mode (Light/Dark/System) -->
     <SettingsSection title="Mode">
-
       <div class="settings-card theme-cards">
         <div
           :class="['theme-card', { active: settings.theme === 'system' }]"
@@ -62,73 +61,28 @@
     <SettingsSection title="Typography">
       <SettingsGroup>
         <!-- Font Size -->
-        <div class="card-row">
-          <div class="form-group">
-            <label class="form-label">
-              Font Size
-              <span class="label-value">{{ currentFontSize }}px</span>
-            </label>
-            <input
-              type="range"
-              class="form-slider"
-              :min="12"
-              :max="20"
-              :step="1"
-              :value="currentFontSize"
-              @input="updateFontSize(Number(($event.target as HTMLInputElement).value))"
-            >
-            <div class="slider-labels">
-              <span>12</span>
-              <span>16</span>
-              <span>20</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- English Font -->
-        <div class="card-row">
-          <div class="form-group">
-            <label class="form-label">English Font</label>
-            <div class="font-options">
+        <div class="card-row setting-control-row">
+          <div class="setting-copy">
+            <span class="setting-title-row">
+              <span class="toggle-title">Font Size</span>
               <button
-                v-for="font in enFonts"
-                :key="font.id"
-                :class="['font-option', { active: currentFontEn === font.id }]"
-                @click="updateFontEn(font.id)"
+                class="reset-inline"
+                type="button"
+                title="Reset font size"
+                @click="updateFontSize(defaultFontSize)"
               >
-                <span
-                  class="font-preview"
-                  :style="{ fontFamily: font.family }"
-                >
-                  {{ font.preview || 'Aa' }}
-                </span>
-                <span class="font-name">{{ font.name }}</span>
+                <RotateCcw :size="14" />
               </button>
-            </div>
+            </span>
+            <span class="toggle-desc">Font size for chat text.</span>
           </div>
-        </div>
-
-        <!-- Chinese Font -->
-        <div class="card-row">
-          <div class="form-group">
-            <label class="form-label">中文字体</label>
-            <div class="font-options">
-              <button
-                v-for="font in zhFonts"
-                :key="font.id"
-                :class="['font-option', { active: currentFontZh === font.id }]"
-                @click="updateFontZh(font.id)"
-              >
-                <span
-                  class="font-preview"
-                  :style="{ fontFamily: font.family }"
-                >
-                  {{ font.preview || '你好' }}
-                </span>
-                <span class="font-name">{{ font.name }}</span>
-              </button>
-            </div>
-          </div>
+          <NumberStepper
+            :model-value="currentFontSize"
+            :min="minFontSize"
+            :max="maxFontSize"
+            aria-label="font size"
+            @update:model-value="updateFontSize"
+          />
         </div>
       </SettingsGroup>
     </SettingsSection>
@@ -149,52 +103,84 @@
           </label>
         </div>
 
-        <div class="card-row">
-          <div class="form-group">
-            <label class="form-label">
-              Auto compact threshold
-              <span class="label-value">{{ contextCompactThreshold }}%</span>
-            </label>
-            <input
-              type="range"
-              class="form-slider"
-              :min="50"
-              :max="100"
-              :step="5"
-              :value="contextCompactThreshold"
-              :disabled="!contextCompactEnabled"
-              @input="updateContextCompactThreshold(Number(($event.target as HTMLInputElement).value))"
-            >
-            <div class="slider-labels">
-              <span>50</span>
-              <span>85</span>
-              <span>100</span>
-            </div>
+        <div class="card-row setting-control-row">
+          <div class="setting-copy">
+            <span class="toggle-title">Auto compact threshold</span>
+            <span class="toggle-desc">Compact older chat history when context usage reaches this percentage.</span>
           </div>
+          <NumberStepper
+            :model-value="contextCompactThreshold"
+            :min="50"
+            :max="100"
+            :step="5"
+            suffix="%"
+            :disabled="!contextCompactEnabled"
+            aria-label="auto compact threshold"
+            @update:model-value="updateContextCompactThreshold"
+          />
         </div>
 
-        <div class="card-row">
-          <div class="form-group">
-            <label class="form-label">
-              Keep recent turns
-              <span class="label-value">{{ contextCompactKeepRecentTurns }}</span>
-            </label>
-            <input
-              type="range"
-              class="form-slider"
-              :min="1"
-              :max="20"
-              :step="1"
-              :value="contextCompactKeepRecentTurns"
-              :disabled="!contextCompactEnabled"
-              @input="updateContextCompactKeepRecentTurns(Number(($event.target as HTMLInputElement).value))"
-            >
-            <div class="slider-labels">
-              <span>1</span>
-              <span>6</span>
-              <span>20</span>
-            </div>
+        <div class="card-row setting-control-row">
+          <div class="setting-copy">
+            <span class="toggle-title">Keep recent turns</span>
+            <span class="toggle-desc">Keep this many recent turns verbatim before summarizing older context.</span>
           </div>
+          <NumberStepper
+            :model-value="contextCompactKeepRecentTurns"
+            :min="1"
+            :max="20"
+            :disabled="!contextCompactEnabled"
+            aria-label="recent turns to keep"
+            @update:model-value="updateContextCompactKeepRecentTurns"
+          />
+        </div>
+      </SettingsGroup>
+    </SettingsSection>
+
+    <!-- English Font -->
+    <SettingsSection title="Fonts">
+      <SettingsGroup>
+        <div class="card-row setting-control-row">
+          <div class="setting-copy">
+            <span class="toggle-title">English Font</span>
+            <span class="toggle-desc">Primary Latin text face.</span>
+          </div>
+          <select
+            class="form-select font-select"
+            :value="currentFontEn"
+            @change="updateFontEn(($event.target as HTMLSelectElement).value)"
+          >
+            <option
+              v-for="font in enFonts"
+              :key="font.id"
+              :value="font.id"
+              :style="{ fontFamily: font.family }"
+            >
+              {{ font.name }}
+            </option>
+          </select>
+        </div>
+
+        <!-- Chinese Font -->
+        <div class="card-row setting-control-row">
+          <div class="setting-copy">
+            <span class="toggle-title">中文字体</span>
+            <span class="toggle-desc">Primary CJK text face.</span>
+          </div>
+          <select
+            class="form-select font-select"
+            :value="currentFontZh"
+            @change="updateFontZh(($event.target as HTMLSelectElement).value)"
+          >
+            <option
+              v-for="font in zhFonts"
+              :key="font.id"
+              :value="font.id"
+              :style="{ fontFamily: font.family }"
+            >
+              {{ font.name }}
+            </option>
+          </select>
         </div>
       </SettingsGroup>
     </SettingsSection>
@@ -330,10 +316,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { RotateCcw } from 'lucide-vue-next'
 import type { AppSettings } from '@/types'
 import type { DailyNoteSettings } from '@shared/ipc/settings'
 import type { TodoPlanSettings } from '@shared/ipc/todo-plan'
 import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
+import NumberStepper from './NumberStepper.vue'
 import { getFontsByLang, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '@shared/fonts'
 import {
   SettingsGroup,
@@ -352,8 +340,11 @@ const emit = defineEmits<{
 // Available fonts by language
 const enFonts = getFontsByLang('en')
 const zhFonts = getFontsByLang('zh')
+const minFontSize = 12
+const maxFontSize = 20
+const defaultFontSize = 15
 
-const currentFontSize = computed(() => props.settings.chat?.chatFontSize ?? 14)
+const currentFontSize = computed(() => props.settings.chat?.chatFontSize ?? defaultFontSize)
 const currentFontEn = computed(() => props.settings.chat?.chatFontEn ?? DEFAULT_FONT_EN)
 const currentFontZh = computed(() => props.settings.chat?.chatFontZh ?? DEFAULT_FONT_ZH)
 const contextCompactEnabled = computed(() => props.settings.chat?.contextCompactEnabled !== false)
@@ -398,7 +389,7 @@ function updateFontSize(size: number) {
     ...props.settings,
     chat: {
       ...props.settings.chat!,
-      chatFontSize: size,
+      chatFontSize: Math.max(minFontSize, Math.min(maxFontSize, size)),
     },
   })
 }
@@ -538,6 +529,106 @@ async function chooseTodoPlanDirectory() {
   border-bottom: none;
 }
 
+.setting-control-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  align-items: center;
+  column-gap: 32px;
+}
+
+.setting-copy {
+  min-width: 0;
+  max-width: 620px;
+}
+
+.setting-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reset-inline {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--settings-ink-4, var(--text-muted));
+  cursor: pointer;
+}
+
+.reset-inline:hover {
+  background: var(--hover);
+  color: var(--settings-ink, var(--text-primary));
+}
+
+.number-stepper {
+  flex-shrink: 0;
+  justify-self: end;
+  display: inline-grid;
+  grid-template-columns: 44px minmax(72px, auto) 44px;
+  min-height: 34px;
+  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--settings-paper-2, var(--bg));
+}
+
+.stepper-btn {
+  border: 0;
+  background: transparent;
+  color: var(--settings-ink-2, var(--text-primary));
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.stepper-btn:not(:last-child) {
+  border-right: 1px solid var(--settings-rule, var(--border-subtle));
+}
+
+.stepper-btn:last-child {
+  border-left: 1px solid var(--settings-rule, var(--border-subtle));
+}
+
+.stepper-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.stepper-btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.stepper-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 0 12px;
+  color: var(--settings-ink, var(--text-primary));
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.prefer-select {
+  width: 176px;
+  min-width: 154px;
+  max-width: 100%;
+  flex-shrink: 0;
+  justify-self: end;
+}
+
+.font-select {
+  width: 320px;
+  min-width: 220px;
+  max-width: 100%;
+  justify-self: end;
+}
+
 .settings-section:last-child {
   margin-bottom: 0;
 }
@@ -595,6 +686,20 @@ async function chooseTodoPlanDirectory() {
   font-size: var(--type-body-size);
   padding: 7px 10px;
   outline: none;
+}
+
+.form-select.prefer-select {
+  width: 176px;
+  min-width: 154px;
+  max-width: 100%;
+  justify-self: end;
+}
+
+.form-select.font-select {
+  width: 320px;
+  min-width: 220px;
+  max-width: 100%;
+  justify-self: end;
 }
 
 .form-select:focus {
@@ -968,6 +1073,31 @@ async function chooseTodoPlanDirectory() {
 @media (max-width: 480px) {
   .theme-cards {
     grid-template-columns: 1fr;
+  }
+
+  .setting-control-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    row-gap: 10px;
+  }
+
+  .setting-copy {
+    max-width: none;
+  }
+
+  .number-stepper {
+    justify-self: start;
+  }
+
+  .form-select.prefer-select {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .form-select.font-select {
+    width: 100%;
+    min-width: 0;
+    justify-self: stretch;
   }
 
   .color-theme-grid {

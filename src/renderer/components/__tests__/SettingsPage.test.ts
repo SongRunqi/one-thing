@@ -113,4 +113,29 @@ describe('SettingsPage shell', () => {
     const labels = wrapper.findAll('.sidebar-label').map(label => label.text())
     expect(labels).toEqual(['Prompts'])
   })
+
+  it('expands and collapses sidebar sections independently', async () => {
+    const wrapper = mountSettingsPage()
+    await settle()
+
+    const subnavText = () => wrapper.findAll('.sidebar-subnav').map(nav => nav.text()).join(' ')
+    const entryByLabel = (label: string) =>
+      wrapper.findAll('.sidebar-entry').find(entry => entry.find('.sidebar-label').text() === label)!
+
+    expect(subnavText()).toContain('Theme')
+    expect(subnavText()).not.toContain('Text Editor')
+
+    await entryByLabel('Editor').find('.sidebar-disclosure-button').trigger('click')
+    await settle()
+
+    expect(wrapper.find('.content-header h1').text()).toBe('General')
+    expect(subnavText()).toContain('Theme')
+    expect(subnavText()).toContain('Text Editor')
+
+    await entryByLabel('General').find('.sidebar-disclosure-button').trigger('click')
+    await settle()
+
+    expect(subnavText()).not.toContain('Theme')
+    expect(subnavText()).toContain('Text Editor')
+  })
 })

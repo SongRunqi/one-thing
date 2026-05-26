@@ -302,17 +302,17 @@
                     :size="10"
                     class="out-icon"
                   />
-                  <input
-                    class="model-out-input"
-                    type="number"
-                    inputmode="numeric"
-                    min="1"
-                    :placeholder="getPlaceholder(model)"
-                    :value="maxOutputs[model.id] ?? ''"
+                  <NumberStepper
+                    class="model-out-stepper"
+                    size="compact"
+                    :model-value="getMaxOutputValue(model)"
+                    :min="1"
+                    :max="getModelMaxLimit(model) || undefined"
+                    :step="getModelMaxOutputStep(model)"
+                    :aria-label="`max output for ${model.name || model.id}`"
                     @click.stop
-                    @input.stop="onMaxOutInput($event, model.id)"
-                    @change.stop="onMaxOutInput($event, model.id)"
-                  >
+                    @update:model-value="onMaxOutStep(model.id, $event)"
+                  />
                   <button
                     v-if="maxOutputs[model.id] != null"
                     class="model-out-clear"
@@ -362,6 +362,7 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { Eye, Image, Wrench, Brain, ArrowDownToLine, ArrowUpFromLine, SlidersHorizontal, AudioLines } from 'lucide-vue-next'
 import type { OpenRouterModel, ModelCapabilityOverride } from '@/types'
 import Tooltip from '@/components/common/Tooltip.vue'
+import NumberStepper from '../NumberStepper.vue'
 
 // Capability keys exposed in the per-model override editor.
 // Order here drives the popover order.
@@ -442,6 +443,19 @@ function getDefaultMaxOutput(model: OpenRouterModel): number {
   return Math.max(1, Math.floor(limit / 2))
 }
 
+function getMaxOutputValue(model: OpenRouterModel): number {
+  return (props.maxOutputs[model.id] ?? getDefaultMaxOutput(model)) || 1
+}
+
+function getModelMaxOutputStep(model: OpenRouterModel): number {
+  const limit = getModelMaxLimit(model)
+  if (limit <= 1024) return 1
+  if (limit <= 8192) return 64
+  if (limit <= 32_768) return 128
+  if (limit <= 131_072) return 256
+  return 1024
+}
+
 function getMaxOutputTooltip(model: OpenRouterModel): string {
   const limit = getModelMaxLimit(model)
   const def = getDefaultMaxOutput(model)
@@ -464,31 +478,14 @@ function getMaxOutputTooltip(model: OpenRouterModel): string {
     'Max output tokens (per-model)',
     limitLine,
     defLine,
-    'Type to override; values above the limit are capped.',
+    'Edit or step to override; values above the limit are capped.',
   ].filter(Boolean).join('\n')
 }
 
-function onMaxOutInput(event: Event, modelId: string) {
-  const target = event.target as HTMLInputElement
-  const raw = target.value.trim()
-  if (raw === '') {
-    emit('update-max-output', modelId, null)
-    return
-  }
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n <= 0) {
-    emit('update-max-output', modelId, null)
-    return
-  }
-  // Cap at the model's hard limit if known, so users can't accidentally save
-  // a value the API will reject.
+function onMaxOutStep(modelId: string, value: number) {
   const limit = getModelMaxLimit(findModel(modelId))
-  const capped = limit > 0 ? Math.min(Math.floor(n), limit) : Math.floor(n)
-  // Reflect the capped value back into the input so the user sees what was stored.
-  if (capped !== Math.floor(n)) {
-    target.value = String(capped)
-  }
-  emit('update-max-output', modelId, capped)
+  const capped = limit > 0 ? Math.min(Math.floor(value), limit) : Math.floor(value)
+  emit('update-max-output', modelId, Math.max(1, capped))
 }
 
 function findModel(modelId: string): OpenRouterModel {
@@ -633,13 +630,6 @@ function onUpdateCapability(
 function onResetCapabilities(modelId: string) {
   emit('reset-capabilities', modelId)
   capabilityEditorOpenFor.value = null
-}
-
-// Placeholder shows the resolved default (half of limit) — empty string when
-// we have no data so the input doesn't display a misleading "—".
-function getPlaceholder(model: OpenRouterModel): string {
-  const def = getDefaultMaxOutput(model)
-  return def > 0 ? String(def) : '—'
 }
 
 const listRef = ref<HTMLElement | null>(null)
@@ -962,38 +952,9 @@ watch(() => props.filteredModels.length, () => {
   opacity: 1;
 }
 
-.model-out-input {
-  width: 52px;
-  padding: 0;
-  border: none;
+.model-out-stepper {
+  border: 0;
   background: transparent;
-  color: var(--settings-ink, var(--text));
-  font-size: 11px;
-  font-family: var(--font-mono, 'SF Mono', monospace);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  outline: none;
-  /* Hide spinner arrows */
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-.model-out-input::-webkit-outer-spin-button,
-.model-out-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.model-out-input::placeholder {
-  color: var(--settings-ink-4, var(--muted));
-  opacity: 0.55;
-  font-style: italic;
-}
-
-.model-out-wrap.overridden .model-out-input {
-  color: var(--settings-accent, var(--accent));
-  font-weight: 600;
-  font-style: normal;
 }
 
 .model-out-clear {

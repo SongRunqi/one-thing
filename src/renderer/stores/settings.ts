@@ -35,6 +35,10 @@ const defaultSettings: AppSettings = {
   theme: initialTheme,
 }
 
+interface ApplyAppearanceOptions {
+  refreshSystemTheme?: boolean
+}
+
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>(JSON.parse(JSON.stringify(defaultSettings)))
   const availableProviders = ref<ProviderInfo[]>([])
@@ -71,7 +75,7 @@ export const useSettingsStore = defineStore('settings', () => {
     systemTheme.value = theme
     // Only apply if current setting is 'system'
     if (settings.value.theme === 'system') {
-      applyTheme()
+      void applyAppearanceFromSettings()
     }
   })
 
@@ -83,11 +87,25 @@ export const useSettingsStore = defineStore('settings', () => {
     return settings.value.theme
   })
 
-  // Apply theme to document
-  function applyTheme() {
+  // Apply appearance to document and JSON theme variables from the current settings.
+  async function applyAppearanceFromSettings(
+    nextSettings?: AppSettings,
+    options: ApplyAppearanceOptions = {}
+  ): Promise<void> {
+    if (nextSettings) {
+      settings.value = JSON.parse(JSON.stringify(toRaw(nextSettings))) as AppSettings
+      if (!settings.value.ai.customProviders) {
+        settings.value.ai.customProviders = []
+      }
+    }
+
+    if (settings.value.theme === 'system' && options.refreshSystemTheme) {
+      await fetchSystemTheme()
+    }
+
     const theme = effectiveTheme.value
     const currentTheme = document.documentElement.getAttribute('data-theme')
-    console.log('[Theme] applyTheme called:', {
+    console.log('[Theme] applyAppearanceFromSettings called:', {
       effectiveTheme: theme,
       currentDataTheme: currentTheme,
       settingsTheme: settings.value.theme,
@@ -100,27 +118,29 @@ export const useSettingsStore = defineStore('settings', () => {
     applyColorTheme()
     applyBaseTheme()
 
-    // Skip base theme update if already correct (avoid unnecessary DOM changes)
-    if (currentTheme === theme) {
-      console.log('[Theme] Skipping base theme - already correct:', theme)
-      // Still reapply JSON theme in case mode changed (e.g., system mode)
-      reapplyJsonTheme()
-      return
+    if (currentTheme !== theme) {
+      document.documentElement.setAttribute('data-theme', theme)
+      // Cache effective theme to localStorage for instant startup
+      localStorage.setItem('cached-theme', theme)
+    } else {
+      console.log('[Theme] Base theme already correct:', theme)
     }
-    document.documentElement.setAttribute('data-theme', theme)
-    // Cache effective theme to localStorage for instant startup
-    localStorage.setItem('cached-theme', theme)
 
     // Reapply JSON theme to match the new mode
-    reapplyJsonTheme()
+    await reapplyJsonTheme()
+  }
+
+  // Backward-compatible fire-and-forget wrapper for existing call sites.
+  function applyTheme() {
+    void applyAppearanceFromSettings()
   }
 
   // Helper to reapply JSON theme (avoids circular import)
-  function reapplyJsonTheme() {
-    import('./themes').then(({ useThemeStore }) => {
-      const themeStore = useThemeStore()
-      themeStore.reapplyTheme()
-    })
+  async function reapplyJsonTheme(): Promise<void> {
+    const { useThemeStore } = await import('./themes')
+    const themeStore = useThemeStore()
+    themeStore.syncThemeIdsFromSettings(settings.value.general)
+    await themeStore.reapplyTheme()
   }
 
   // Apply color theme to document
@@ -162,11 +182,9 @@ export const useSettingsStore = defineStore('settings', () => {
         if (!settings.value.ai.customProviders) {
           settings.value.ai.customProviders = []
         }
-        // If theme is 'system', fetch system theme first before applying
-        if (settings.value.theme === 'system') {
-          await fetchSystemTheme()
-        }
-        applyTheme()
+        await applyAppearanceFromSettings(undefined, {
+          refreshSystemTheme: settings.value.theme === 'system',
+        })
       }
 
       if (providersResponse.success && providersResponse.providers) {
@@ -224,7 +242,10 @@ export const useSettingsStore = defineStore('settings', () => {
       const themeChanged =
         settings.value.theme !== plainSettings.theme ||
         settings.value.general?.colorTheme !== plainSettings.general?.colorTheme ||
-        settings.value.general?.baseTheme !== plainSettings.general?.baseTheme
+        settings.value.general?.baseTheme !== plainSettings.general?.baseTheme ||
+        settings.value.general?.themeId !== plainSettings.general?.themeId ||
+        settings.value.general?.darkThemeId !== plainSettings.general?.darkThemeId ||
+        settings.value.general?.lightThemeId !== plainSettings.general?.lightThemeId
 
       // Detect changes to the customProviders list so we can rebuild
       // availableProviders — otherwise the InputBox ModelSelector and the
@@ -239,7 +260,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
       // Only apply theme if theme-related settings actually changed
       if (themeChanged) {
-        applyTheme()
+        await applyAppearanceFromSettings(undefined, {
+          refreshSystemTheme: plainSettings.theme === 'system',
+        })
       }
 
       if (customProvidersChanged) {
@@ -271,13 +294,9 @@ export const useSettingsStore = defineStore('settings', () => {
   async function updateTheme(theme: 'light' | 'dark' | 'system') {
     settings.value.theme = theme
 
-    // If switching to 'system' mode, fetch the current OS theme first
-    // This ensures systemTheme.value has the correct value before applyTheme() uses it
-    if (theme === 'system') {
-      await fetchSystemTheme()
-    }
-
-    applyTheme()
+    await applyAppearanceFromSettings(undefined, {
+      refreshSystemTheme: theme === 'system',
+    })
   }
 
   function updateSendShortcut(shortcut: 'enter' | 'ctrl-enter' | 'cmd-enter') {
@@ -615,6 +634,7 @@ export const useSettingsStore = defineStore('settings', () => {
     updateCustomProvider,
     deleteCustomProvider,
     refreshAvailableProviders,
+    applyAppearanceFromSettings,
     applyTheme,
     applyColorTheme,
     applyBaseTheme,

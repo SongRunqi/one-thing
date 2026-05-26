@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatMessage } from '../../../shared/ipc.js'
-import { buildHistoryMessages } from '../stream/message-helpers.js'
+import { buildHistoryMessages, sanitizeToolResultForAI } from '../stream/message-helpers.js'
 
 function message(index: number, role: 'user' | 'assistant'): ChatMessage {
   return {
@@ -51,5 +51,45 @@ describe('buildHistoryMessages', () => {
     expect(history).toHaveLength(2)
     expect(history[0]).toMatchObject({ role: 'user', content: 'user 1' })
     expect(history[1]).toMatchObject({ role: 'assistant', content: 'assistant 2' })
+  })
+})
+
+describe('sanitizeToolResultForAI', () => {
+  it('removes file rollback content and hashes recursively', () => {
+    const result = sanitizeToolResultForAI({
+      title: 'Edited file',
+      metadata: {
+        originalContent: 'secret file contents',
+        originalContentHash: 'sha256',
+        diff: 'diff text',
+        nested: {
+          originalContent: 'nested secret',
+          originalContentHash: 'nested hash',
+          keep: true,
+        },
+      },
+      list: [
+        {
+          originalContent: 'array secret',
+          originalContentHash: 'array hash',
+          keep: 'value',
+        },
+      ],
+    })
+
+    expect(result).toEqual({
+      title: 'Edited file',
+      metadata: {
+        diff: 'diff text',
+        nested: {
+          keep: true,
+        },
+      },
+      list: [
+        {
+          keep: 'value',
+        },
+      ],
+    })
   })
 })

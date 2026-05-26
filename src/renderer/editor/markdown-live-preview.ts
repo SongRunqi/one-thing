@@ -1860,6 +1860,7 @@ function addObsidianLinkDecorations(
   options: MarkdownLivePreviewOptions,
   folded: ReadonlySet<string>,
 ): void {
+  const inlineCodeRanges = collectInlineCodeRanges(text, lineFrom)
   OBSIDIAN_LINK_RE.lastIndex = 0
   for (const match of text.matchAll(OBSIDIAN_LINK_RE)) {
     if (match.index === undefined || !match[1]) continue
@@ -1868,6 +1869,7 @@ function addObsidianLinkDecorations(
     const display = displayTargetLabel(target)
     const from = lineFrom + match.index
     const to = from + raw.length
+    if (inlineCodeRanges.some(range => rangesOverlap(from, to, range.from, range.to))) continue
     const embed = raw.startsWith('![[')
     const image = embed && isLikelyImageTarget(target)
     const foldKey = image ? markdownAssetFoldKey(raw) : ''
@@ -1878,6 +1880,39 @@ function addObsidianLinkDecorations(
       inclusive: false,
     }).range(from, to))
   }
+}
+
+function collectInlineCodeRanges(text: string, lineFrom: number): Array<{ from: number; to: number }> {
+  const ranges: Array<{ from: number; to: number }> = []
+  let index = 0
+
+  while (index < text.length) {
+    if (text[index] !== '`') {
+      index += 1
+      continue
+    }
+
+    let delimiterLength = 1
+    while (text[index + delimiterLength] === '`') delimiterLength += 1
+
+    const delimiter = '`'.repeat(delimiterLength)
+    const closeIndex = text.indexOf(delimiter, index + delimiterLength)
+    if (closeIndex < 0) {
+      index += delimiterLength
+      continue
+    }
+
+    const from = lineFrom + index
+    const to = lineFrom + closeIndex + delimiterLength
+    if (to > from + delimiterLength * 2) ranges.push({ from, to })
+    index = closeIndex + delimiterLength
+  }
+
+  return ranges
+}
+
+function rangesOverlap(from: number, to: number, otherFrom: number, otherTo: number): boolean {
+  return from < otherTo && to > otherFrom
 }
 
 function addEmojiDecorations(

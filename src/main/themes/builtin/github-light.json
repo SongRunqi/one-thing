@@ -82,7 +82,7 @@
       "primary": "fg",
       "secondary": "fgMuted",
       "muted": "fgSubtle",
-      "faint": "borderDefault",
+      "faint": "fgSubtle",
       "error": "red",
       "warning": "orange",
       "success": "green",
@@ -96,11 +96,11 @@
       "ai": {
         "primary": "fgMuted",
         "secondary": "fgSubtle",
-        "thinking": "borderDefault"
+        "thinking": "fgMuted"
       },
       "tool": {
         "name": "purple",
-        "args": "borderDefault",
+        "args": "fgMuted",
         "result": "fgSubtle",
         "error": "red"
       },
@@ -109,10 +109,10 @@
         "item": "fgSubtle",
         "itemActive": "blue",
         "itemHover": "fg",
-        "muted": "borderDefault"
+        "muted": "fgSubtle"
       },
       "input": "fg",
-      "inputPlaceholder": "borderDefault",
+      "inputPlaceholder": "fgSubtle",
       "btn": {
         "primary": "bg",
         "secondary": "fg",
@@ -134,10 +134,10 @@
         "item": "fgSubtle",
         "itemHover": "fg",
         "itemActive": "blue",
-        "header": "borderDefault"
+        "header": "fgSubtle"
       },
       "label": "fgSubtle",
-      "helper": "borderDefault"
+      "helper": "fgSubtle"
     },
 
     "border": {

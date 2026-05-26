@@ -40,7 +40,7 @@ import { buildContextVariablesPromptText } from '../variables/index.js'
 import { buildProjectDirsPromptVars } from '../project-dirs/index.js'
 import { getAIToolName } from '../providers/tool-name-alias.js'
 import { PendingMessageQueue, type PendingMessage } from './stream/message-queue.js'
-import { compactSessionContext, getContextCompactReason } from './context-compact.js'
+import { compactSessionContext, getContextCompactReason, type ContextCompactResult } from './context-compact.js'
 import { resolvePromptReferences } from '../prompts/resolver.js'
 
 /**
@@ -54,6 +54,7 @@ function generateTitleFromMessage(content: string, maxLength: number = 30): stri
 
 export class StreamEngine {
   private activeStreams = new Map<string, AbortController>()
+  private activeCompactions = new Set<string>()
   private sessionChannels = new Map<string, string>()
   private eventBus: EventBus | null = null
   private sender: WebContents | null = null
@@ -193,6 +194,8 @@ export class StreamEngine {
         timestamp: Date.now(),
         attachments: attachments as MessageAttachment[] | undefined,
         contentParts: resolvedPromptRefs.contentParts,
+        source: cmd.source || (cmd.channel === 'voice' ? 'voice' : 'text'),
+        voice: cmd.voice,
       }
       mediaLibraryService.ingestMessageAttachments(
         sessionId,
@@ -256,6 +259,8 @@ export class StreamEngine {
         sender, sessionId, assistantMessageId, messageContent: resolvedPromptRefs.modelContent,
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName,
+        voiceConversation: userMessage.source === 'voice',
+        speakMode: userMessage.source === 'voice',
       })
     } catch (error: any) {
       console.error('[StreamEngine] handleSendMessage error:', error)
@@ -276,6 +281,15 @@ export class StreamEngine {
       })
       return
     }
+    if (this.activeCompactions.has(sessionId)) {
+      await this.eventBus?.emit(sessionId, {
+        type: 'context:compact-completed',
+        requestId: cmd.requestId,
+        success: false,
+        error: 'Context compact is already running.',
+      })
+      return
+    }
 
     const resolved = await this.resolveProvider(sessionId)
     if (!resolved) {
@@ -288,7 +302,7 @@ export class StreamEngine {
       return
     }
 
-    const result = await compactSessionContext({
+    const result = await this.runContextCompact({
       sessionId,
       providerId: resolved.providerId,
       configWithApiKey: resolved.configWithApiKey,
@@ -308,7 +322,7 @@ export class StreamEngine {
     })
 
     if (result.success && !result.skipped) {
-      this.emitContextSizeReset(sessionId)
+      this.emitContextSizeUpdated(sessionId, result.retainedContextSize ?? 0)
     }
   }
 
@@ -535,6 +549,9 @@ export class StreamEngine {
       const toolsForAI = hasTools ? { ...builtinToolsForAI, ...mcpTools } : {}
 
       const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
+      const voiceConversation = [...session.messages]
+        .reverse()
+        .find(message => message.role === 'user')?.source === 'voice'
       const promptContext = await buildPromptContext({
         previousState: session.promptContext ?? undefined,
         sessionId,
@@ -551,6 +568,8 @@ export class StreamEngine {
         knownProjects: projectVars.known,
         toolNames: Object.keys(builtinToolsForAI),
         mcpToolNames: Object.keys(mcpTools),
+        voiceConversation,
+        speakMode: voiceConversation,
       })
       store.updateSessionPromptContext(sessionId, promptContext.state)
       const requestMessages = buildRequestMessages({
@@ -609,6 +628,7 @@ export class StreamEngine {
         providerId, toolSettings: settings.tools,
         steeringQueue: this.getSteeringQueue(sessionId),
         followUpQueue: this.getFollowUpQueue(sessionId),
+        speakMode: voiceConversation,
       }
 
       const processor = createStreamProcessor(ctx, {
@@ -765,13 +785,16 @@ export class StreamEngine {
   ): Promise<boolean> {
     const compactSettings = settings.chat
     if (compactSettings?.contextCompactEnabled === false) return true
+    if (this.activeCompactions.has(sessionId)) {
+      this.emitStreamError(sessionId, 'Context compact is already running. Please wait for it to finish before sending another message.')
+      return false
+    }
 
     let modelContextLength = 128000
     let reservedOutputTokens = settings.chat?.maxTokens || 4096
     try {
-      const modelInfo = await modelRegistry.getModelById(configWithApiKey.model)
-      modelContextLength = modelInfo?.context_length || modelInfo?.top_provider?.context_length || modelContextLength
-      const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(configWithApiKey.model)
+      modelContextLength = await modelRegistry.getModelContextLength(configWithApiKey.model, providerId)
+      const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(configWithApiKey.model, providerId)
       const perModelOverride = configWithApiKey.maxOutputByModel?.[configWithApiKey.model]
       const halfDefault = modelMaxOutputTokens > 0 ? Math.max(1, Math.floor(modelMaxOutputTokens / 2)) : 0
       const requested = perModelOverride ?? (halfDefault > 0 ? halfDefault : reservedOutputTokens)
@@ -806,7 +829,7 @@ export class StreamEngine {
         reason,
       })
 
-      const result = await compactSessionContext({
+      const result = await this.runContextCompact({
         sessionId,
         providerId,
         configWithApiKey,
@@ -825,10 +848,14 @@ export class StreamEngine {
       })
 
       if (result.success && !result.skipped) {
-        this.emitContextSizeReset(sessionId)
+        this.emitContextSizeUpdated(sessionId, result.retainedContextSize ?? 0)
       }
 
       if (!result.success) {
+        if (result.error === 'Context compact is already running.') {
+          this.emitStreamError(sessionId, 'Context compact is already running. Please wait for it to finish before sending another message.')
+          return false
+        }
         console.warn('[StreamEngine] Auto compact failed; continuing send:', result.error)
         return true
       }
@@ -853,7 +880,7 @@ export class StreamEngine {
       reservedOutputTokens,
     })
     if (finalReason === 'hard-limit') {
-      const lastKnownInputTokens = latestSession.contextSize || latestSession.lastInputTokens || 0
+      const lastKnownInputTokens = latestSession.contextSize ?? latestSession.lastInputTokens ?? 0
       const message = [
         'Context is still too large after compacting down to the latest turn.',
         `Last known provider input ${lastKnownInputTokens.toLocaleString()} + reserved output ${reservedOutputTokens.toLocaleString()} exceeds model context ${modelContextLength.toLocaleString()}.`,
@@ -864,6 +891,30 @@ export class StreamEngine {
     }
 
     return true
+  }
+
+  private async runContextCompact(options: {
+    sessionId: string
+    providerId: string
+    configWithApiKey: ProviderConfigWithKey
+    settings: AppSettings
+    keepRecentTurns?: number
+    onMessageCreated?: (message: ChatMessage) => Promise<void>
+    onMessageUpdated?: (messageId: string, updates: Partial<ChatMessage>) => Promise<void>
+  }): Promise<ContextCompactResult> {
+    if (this.activeCompactions.has(options.sessionId)) {
+      return {
+        success: false,
+        error: 'Context compact is already running.',
+      }
+    }
+
+    this.activeCompactions.add(options.sessionId)
+    try {
+      return await compactSessionContext(options)
+    } finally {
+      this.activeCompactions.delete(options.sessionId)
+    }
   }
 
   private emitStreamError(sessionId: string, error: string): void {
@@ -894,10 +945,10 @@ export class StreamEngine {
     })
   }
 
-  private emitContextSizeReset(sessionId: string): void {
+  private emitContextSizeUpdated(sessionId: string, contextSize: number): void {
     this.eventBus?.emit(sessionId, {
       type: 'context:size-updated',
-      contextSize: 0,
+      contextSize,
     }).catch(err => console.error('[StreamEngine] context:size-updated emit failed:', err))
   }
 }

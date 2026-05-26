@@ -65,6 +65,21 @@ export const IPC_CHANNELS = {
   GET_SYSTEM_THEME: 'settings:get-system-theme',
   SYSTEM_THEME_CHANGED: 'settings:system-theme-changed',
 
+  // Voice related
+  VOICE_GET_STATE: 'voice:get-state',
+  VOICE_START: 'voice:start',
+  VOICE_STOP: 'voice:stop',
+  VOICE_SUBMIT_UTTERANCE: 'voice:submit-utterance',
+  VOICE_SUBMIT_TRANSCRIPT: 'voice:submit-transcript',
+  VOICE_SYNTHESIZE: 'voice:synthesize',
+  VOICE_TEST_ASR: 'voice:test-asr',
+  VOICE_TEST_TTS: 'voice:test-tts',
+  VOICE_GET_TTS_MODELS: 'voice:get-tts-models',
+  VOICE_EVENT: 'voice:event',
+  VOICE_RUNTIME_COMMAND: 'voice:runtime-command',
+  VOICE_RUNTIME_EVENT: 'voice:runtime-event',
+  VOICE_RUNTIME_READY: 'voice:runtime-ready',
+
   // Agents related
   AGENTS_LIST: 'agents:list',
   AGENTS_CREATE: 'agents:create',

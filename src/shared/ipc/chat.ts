@@ -6,6 +6,7 @@
 import type { ToolCall } from './tools.js'
 import type { PromptReferenceSnapshot } from './prompts.js'
 import type { SkillReferenceSnapshot } from './skills.js'
+import type { VoiceTranscriptMetadata } from './voice.js'
 
 /**
  * @deprecated Kept as a type alias for one version so old persisted
@@ -108,6 +109,8 @@ export interface ChatMessage {
   skillUsed?: string  // Name of the skill used by the assistant (e.g., "agent-plan")
   steps?: Step[]  // Steps showing AI reasoning process
   attachments?: MessageAttachment[]  // File/image attachments
+  source?: 'text' | 'voice' | 'api' | string
+  voice?: VoiceTranscriptMetadata
   // Token usage for this message (for assistant messages)
   usage?: {
     inputTokens: number

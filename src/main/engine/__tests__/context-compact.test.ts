@@ -93,6 +93,36 @@ describe('selectCompactPlan', () => {
       'assistant-4',
     ])
   })
+
+  it('continues from the previous summary anchor when compact markers are in the timeline', () => {
+    const compactMarker: ChatMessage = {
+      id: 'compact-1',
+      role: 'system',
+      content: '{"type":"context-compact","status":"completed","summary":"Earlier"}',
+      timestamp: 5,
+    }
+    const messages = [
+      message(1, 'user'),
+      message(2, 'assistant'),
+      message(3, 'user'),
+      message(4, 'assistant'),
+      compactMarker,
+      message(6, 'user'),
+      message(7, 'assistant'),
+      message(8, 'user'),
+      message(9, 'assistant'),
+      message(10, 'user'),
+      message(11, 'assistant'),
+    ]
+
+    const plan = selectCompactPlan(session(messages, 'assistant-4'), 2)
+
+    expect(plan?.previousSummary).toBe('Previous summary')
+    expect(plan?.messagesToSummarize.map(m => m.id)).toEqual([
+      'user-6',
+      'assistant-7',
+    ])
+  })
 })
 
 describe('shouldAutoCompactBeforeSend', () => {

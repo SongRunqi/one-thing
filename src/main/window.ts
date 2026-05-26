@@ -1,4 +1,4 @@
-import { BrowserWindow, session, shell, Menu, app, nativeTheme, type Rectangle } from 'electron'
+import { BrowserWindow, session, shell, Menu, app, nativeTheme, type Rectangle, type Session, type WebContents } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { getWindowStatePath, readJsonFile, writeJsonFile } from './stores/paths.js'
@@ -7,6 +7,7 @@ import { IPC_CHANNELS } from '../shared/ipc.js'
 import type { TodoPlanActivationMode, TodoPlanWindowActionRequest } from '../shared/ipc.js'
 import { getThemeBackgroundColor, initializeThemes } from './themes/index.js'
 import { isMainAppWindowUrl } from './search/window-target.js'
+import { shouldHideMainWindowForVoice } from './voice/tray.js'
 import {
   configureNonActivatingPanel,
   hideNonActivatingPanel,
@@ -80,6 +81,8 @@ function setupContentSecurityPolicy() {
       "font-src 'self' data:",
       // Connect: allow API calls to various AI providers
       "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.deepseek.com https://api.moonshot.cn https://open.bigmodel.cn https://*.zhipuai.cn ws://127.0.0.1:* http://127.0.0.1:*",
+      // Media: voice playback can use generated blobs or data URLs
+      "media-src 'self' blob: data: file:",
       // Workers: self
       "worker-src 'self' blob:",
       // Frame: none (no iframes)
@@ -99,6 +102,37 @@ function setupContentSecurityPolicy() {
       },
     })
   })
+}
+
+let mediaPermissionHandlersRegistered = false
+
+function setupMediaPermissions() {
+  if (mediaPermissionHandlersRegistered) return
+  const defaultSession = session.defaultSession as Partial<Pick<Session, 'setPermissionRequestHandler' | 'setPermissionCheckHandler'>>
+  if (
+    typeof defaultSession.setPermissionRequestHandler !== 'function'
+    || typeof defaultSession.setPermissionCheckHandler !== 'function'
+  ) {
+    return
+  }
+  mediaPermissionHandlersRegistered = true
+
+  defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(permission === 'media' && isAppWebContents(webContents))
+  })
+
+  defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    return permission === 'media' && isAppWebContents(webContents)
+  })
+}
+
+function isAppWebContents(webContents: WebContents | null): boolean {
+  if (!webContents) return false
+  const url = webContents.getURL()
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  return isDevelopment
+    ? url.startsWith(getRendererDevUrl())
+    : url.startsWith('file://')
 }
 
 const __filename = fileURLToPath(import.meta.url)
@@ -682,6 +716,7 @@ export function setTodoPlanWindowPinned(pinned: boolean): boolean {
 export function createWindow() {
   // Setup Content Security Policy before creating window
   setupContentSecurityPolicy()
+  setupMediaPermissions()
 
   // Initialize themes before getting background color
   initializeThemes()
@@ -741,7 +776,13 @@ export function createWindow() {
   // Save window state on resize and move
   mainWindow.on('resize', () => saveWindowState(mainWindow))
   mainWindow.on('move', () => saveWindowState(mainWindow))
-  mainWindow.on('close', () => saveWindowState(mainWindow))
+  mainWindow.on('close', (event) => {
+    saveWindowState(mainWindow)
+    if (shouldHideMainWindowForVoice()) {
+      event.preventDefault()
+      mainWindow.hide()
+    }
+  })
 
   // Handle external links - open in system browser instead of navigating away
   mainWindow.webContents.on('will-navigate', (event, url) => {

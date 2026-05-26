@@ -3,11 +3,13 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import InputBox from '../InputBox.vue'
+import { createDefaultSettings } from '../../../../shared/defaults/settings'
 
 const mocks = vi.hoisted(() => ({
   settingsStore: null as any,
   sessionsStore: null as any,
   chatStore: null as any,
+  voiceStore: null as any,
   promptsStore: null as any,
 }))
 
@@ -21,6 +23,10 @@ vi.mock('@/stores/sessions', () => ({
 
 vi.mock('@/stores/chat', () => ({
   useChatStore: () => mocks.chatStore,
+}))
+
+vi.mock('@/stores/voice', () => ({
+  useVoiceStore: () => mocks.voiceStore,
 }))
 
 vi.mock('@/stores/prompts', () => ({
@@ -151,20 +157,15 @@ async function setComposerValue(wrapper: VueWrapper, value: string) {
 
 describe('InputBox paste attachments', () => {
   beforeEach(() => {
+    const baseSettings = createDefaultSettings()
+    baseSettings.ai.provider = 'openai'
+    baseSettings.ai.providers.openai.model = 'gpt-vision'
+
     mocks.settingsStore = reactive({
-      settings: {
-        general: {
-          editor: { composerMaxHeight: 200 },
-          shortcuts: { sendMessage: { key: 'Enter' } },
-          sendShortcut: 'enter',
-        },
-        ai: {
-          provider: 'openai',
-          providers: {
-            openai: { model: 'gpt-vision' },
-          },
-        },
-      },
+      settings: baseSettings,
+      saveSettings: vi.fn(async (newSettings) => {
+        mocks.settingsStore.settings = newSettings
+      }),
       getCachedModels: vi.fn(() => [{
         id: 'gpt-vision',
         architecture: { input_modalities: ['text', 'image'] },
@@ -177,6 +178,13 @@ describe('InputBox paste attachments', () => {
     })
     mocks.chatStore = reactive({
       isSessionGenerating: vi.fn(() => false),
+    })
+    mocks.voiceStore = reactive({
+      isEnabled: false,
+      isRecording: false,
+      status: 'idle',
+      startListening: vi.fn().mockResolvedValue({ success: true }),
+      stop: vi.fn(),
     })
     mocks.promptsStore = reactive({
       prompts: [],
@@ -201,6 +209,7 @@ describe('InputBox paste attachments', () => {
         listVariables: vi.fn().mockResolvedValue({ success: true, variables: [] }),
         listFiles: vi.fn().mockResolvedValue({ success: true, files: ['/repo/src/main.ts'] }),
         listDirs: vi.fn().mockResolvedValue({ success: true, dirs: ['/repo/src'] }),
+        openSettingsWindow: vi.fn().mockResolvedValue({ success: true }),
       },
     }))
   })
@@ -305,5 +314,92 @@ describe('InputBox paste attachments', () => {
     await settle()
 
     expect(wrapper.emitted('sendMessage')?.[0]?.[0]).toBe('/cd /repo')
+  })
+
+  it('keeps the voice button clickable and repairs an incomplete advanced ASR choice', async () => {
+    mocks.settingsStore.settings.voice.enabled = true
+    mocks.settingsStore.settings.voice.asr.provider = 'openai-transcribe'
+    mocks.settingsStore.settings.voice.asr.openai.apiKey = ''
+    mocks.settingsStore.settings.ai.providers.openai.apiKey = ''
+    mocks.settingsStore.settings.ai.providers.openrouter.apiKey = ''
+
+    const wrapper = mountInputBox()
+    const voiceButton = wrapper.find('.voice-btn')
+
+    expect(voiceButton.attributes('disabled')).toBeUndefined()
+
+    await voiceButton.trigger('click')
+    await settle()
+
+    const savedSettings = mocks.settingsStore.saveSettings.mock.calls.at(-1)?.[0]
+    expect(savedSettings.voice.asr.provider).toBe('funasr-stream')
+    expect(window.electronAPI.openSettingsWindow).toHaveBeenCalled()
+    expect(mocks.voiceStore.startListening).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Voice was reset to streaming ASR')
+  })
+
+  it('enables the recommended voice path from the mic button when FunASR streaming is configured', async () => {
+    mocks.settingsStore.settings.voice.enabled = false
+    mocks.settingsStore.settings.voice.asr.provider = 'funasr-stream'
+    mocks.settingsStore.settings.voice.asr.funasr.url = 'ws://127.0.0.1:10095'
+
+    const wrapper = mountInputBox()
+
+    await wrapper.find('.voice-btn').trigger('click')
+    await settle()
+
+    const savedSettings = mocks.settingsStore.saveSettings.mock.calls.at(-1)?.[0]
+    expect(savedSettings.voice.enabled).toBe(true)
+    expect(savedSettings.voice.asr.provider).toBe('funasr-stream')
+    expect(window.electronAPI.openSettingsWindow).not.toHaveBeenCalled()
+    expect(mocks.voiceStore.startListening).toHaveBeenCalledWith('session-1')
+  })
+
+  it('submits the current recording when the mic button is clicked again', async () => {
+    mocks.voiceStore.isRecording = true
+
+    const wrapper = mountInputBox()
+
+    await wrapper.find('.voice-btn').trigger('click')
+    await settle()
+
+    expect(mocks.voiceStore.stop).toHaveBeenCalledWith('mic-button', true)
+    expect(mocks.voiceStore.startListening).not.toHaveBeenCalled()
+  })
+
+  it('shows an inline recording status with an explicit stop action', async () => {
+    mocks.voiceStore.isRecording = true
+    mocks.voiceStore.status = 'recording'
+    mocks.settingsStore.settings.voice.vad.silenceMs = 1200
+
+    const wrapper = mountInputBox()
+    await settle()
+
+    const statusBar = wrapper.find('.voice-capture-bar')
+    expect(statusBar.exists()).toBe(true)
+    expect(statusBar.text()).toContain('Listening')
+    expect(statusBar.text()).toContain('0:00')
+    expect(statusBar.attributes('title')).toContain('Auto-stops after about 1.2s of silence')
+    expect(statusBar.find('.voice-capture-stop').exists()).toBe(true)
+
+    await statusBar.find('.voice-capture-stop').trigger('click')
+    await settle()
+
+    expect(mocks.voiceStore.stop).toHaveBeenCalledWith('mic-button', true)
+  })
+
+  it('shows an inline transcribing status while speech is sent to ASR', async () => {
+    mocks.voiceStore.isRecording = true
+    mocks.voiceStore.status = 'transcribing'
+
+    const wrapper = mountInputBox()
+    await settle()
+
+    const statusBar = wrapper.find('.voice-capture-bar')
+    expect(statusBar.exists()).toBe(true)
+    expect(statusBar.text()).toContain('Transcribing')
+    expect(statusBar.text()).toContain('Speech to text')
+    expect(statusBar.find('.voice-capture-stop').exists()).toBe(false)
+    expect(wrapper.find('.voice-btn').classes()).toContain('transcribing')
   })
 })

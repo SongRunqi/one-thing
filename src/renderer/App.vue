@@ -11,6 +11,9 @@
   <!-- Todo / Plan Window Mode -->
   <TodoPlanWindow v-else-if="isTodoPlanWindow" />
 
+  <!-- Hidden Voice Runtime Window Mode -->
+  <VoiceRuntimeWindow v-else-if="isVoiceRuntimeWindow" />
+
   <!-- Main App Mode -->
   <ErrorBoundary v-else-if="appReady">
     <div class="app-shell">
@@ -122,6 +125,8 @@
             @close="inspectorOpen = false"
           />
         </Transition>
+
+        <VoiceOverlay />
       </div>
 
       <!-- Old search overlay removed — replaced by Search Everywhere window -->
@@ -135,6 +140,7 @@ import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
 import { useThemeStore } from '@/stores/themes'
+import { useVoiceStore } from '@/stores/voice'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { Sidebar } from '@/components/sidebar'
 import ChatContainer from '@/components/ChatContainer.vue'
@@ -145,6 +151,8 @@ import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
 import ChatInspectorPanel from '@/components/chat/ChatInspectorPanel.vue'
 import SearchWindow from '@/components/search/SearchWindow.vue'
 import TodoPlanWindow from '@/components/TodoPlanWindow.vue'
+import VoiceRuntimeWindow from '@/components/voice/VoiceRuntimeWindow.vue'
+import VoiceOverlay from '@/components/voice/VoiceOverlay.vue'
 import { PanelLeftClose, PanelLeftOpen, Search, SquarePen } from 'lucide-vue-next'
 import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
@@ -165,11 +173,13 @@ const isSettingsWindow = computed(() => currentHash.value.startsWith('#/settings
 const isImagePreviewWindow = computed(() => currentHash.value.startsWith('#/image-preview'))
 const isSearchWindow = computed(() => currentHash.value.startsWith('#/search'))
 const isTodoPlanWindow = computed(() => currentHash.value.startsWith('#/todo-plan'))
+const isVoiceRuntimeWindow = computed(() => currentHash.value.startsWith('#/voice-runtime'))
 const isAuxiliaryWindow = computed(() =>
   isSettingsWindow.value ||
   isImagePreviewWindow.value ||
   isSearchWindow.value ||
-  isTodoPlanWindow.value
+  isTodoPlanWindow.value ||
+  isVoiceRuntimeWindow.value
 )
 
 function syncCurrentHash() {
@@ -180,6 +190,7 @@ const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const themeStore = useThemeStore()
+const voiceStore = useVoiceStore()
 
 const appReady = ref(false)
 const showSettings = ref(false)
@@ -398,14 +409,9 @@ function openSearch() {
 }
 
 // Double Shift to open search (only in main window)
-if (!isSettingsWindow.value && !isImagePreviewWindow.value && !isSearchWindow.value) {
+if (!isSettingsWindow.value && !isImagePreviewWindow.value && !isSearchWindow.value && !isVoiceRuntimeWindow.value) {
   useDoubleShift(() => openSearch())
 }
-
-// Re-apply theme when mode (light/dark) changes
-watch(() => settingsStore.effectiveTheme, () => {
-  themeStore.reapplyTheme()
-})
 
 // Create new chat, reusing an existing empty session if available
 async function createNewChat() {
@@ -436,6 +442,7 @@ onMounted(async () => {
   // Load initial data
   await sessionsStore.loadSessions()
   await settingsStore.loadSettings()
+  await voiceStore.initialize()
 
   // Initialize theme system (must be after settings load)
   await themeStore.initialize()
@@ -470,41 +477,28 @@ onMounted(async () => {
   unsubscribeSettingsChanged = window.electronAPI.onSettingsChanged((newSettings) => {
     console.log('[App] Settings changed from another window')
 
-    // Update settings store
-    settingsStore.settings = newSettings
+    void (async () => {
+      // Update settings and apply appearance through the same path used by
+      // local saves and system theme changes.
+      await settingsStore.applyAppearanceFromSettings(newSettings, {
+        refreshSystemTheme: newSettings.theme === 'system',
+      })
 
-    // Per-window model metadata cache: the Settings window may have just
-    // refreshed or added models. `settings.selectedModels` is synced via
-    // this broadcast, but `providerModels` (the capabilities/metadata Map)
-    // is local to each renderer. Drop it so the next ModelSelectorPanel
-    // open re-fetches — main has a disk cache, so the round-trip is cheap.
-    settingsStore.clearModelsCache()
+      // Per-window model metadata cache: the Settings window may have just
+      // refreshed or added models. `settings.selectedModels` is synced via
+      // this broadcast, but `providerModels` (the capabilities/metadata Map)
+      // is local to each renderer. Drop it so the next ModelSelectorPanel
+      // open re-fetches — main has a disk cache, so the round-trip is cheap.
+      settingsStore.clearModelsCache()
 
-    // Re-build `availableProviders` from the new settings — direct settings
-    // assignment doesn't rebuild it, so a custom provider added in the
-    // Settings window would otherwise stay invisible to the InputBox model
-    // picker until restart. Fire-and-forget; the IPC round-trip just refetches
-    // built-ins and merges current customProviders.
-    settingsStore.loadProviders().catch((err) => {
-      console.warn('[App] Failed to refresh providers after settings change:', err)
+      // Re-build `availableProviders` from the new settings so custom providers
+      // added in the Settings window appear in the main window immediately.
+      settingsStore.loadProviders().catch((err) => {
+        console.warn('[App] Failed to refresh providers after settings change:', err)
+      })
+    })().catch((err) => {
+      console.warn('[App] Failed to apply settings change:', err)
     })
-
-    // Apply light/dark mode theme
-    settingsStore.applyTheme()
-
-    // For cross-window sync: explicitly update theme refs from the received settings
-    // Since reapplyTheme() no longer syncs from settings (to prevent race conditions),
-    // we must manually update refs here for cross-window synchronization
-    const general = newSettings.general
-    if (general?.darkThemeId) {
-      themeStore.darkThemeId = general.darkThemeId
-    }
-    if (general?.lightThemeId) {
-      themeStore.lightThemeId = general.lightThemeId
-    }
-
-    // Now reapply theme with updated refs
-    themeStore.reapplyTheme()
   })
 
   // Listen for menu shortcuts

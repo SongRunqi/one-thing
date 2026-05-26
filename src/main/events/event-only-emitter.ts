@@ -59,7 +59,7 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
   return {
     // ── Stream Chunks → StreamChannel ───────────
 
-    sendTextChunk(text, turnIndex) {
+    sendTextChunk(text, turnIndex, voiceSpeakText) {
       const s = stream()
       if (s) {
         try {
@@ -67,6 +67,7 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
             type: 'text-delta',
             text,
             ...(turnIndex !== undefined ? { turnIndex } : {}),
+            ...(voiceSpeakText !== undefined ? { voiceSpeakText } : {}),
           })
         } catch (err) {
           console.error('[EventOnlyEmitter] StreamChannel error:', err)

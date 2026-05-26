@@ -14,6 +14,7 @@ import type {
 } from '../../../shared/ipc.js'
 import type { ProviderCallOptions, ProviderCallPreparationContext, ProviderDefinition } from '../types.js'
 import { createBoundFetch, createRequiredAppFetch } from '../bound-fetch.js'
+import { dumpProviderRequest } from '../request-dump.js'
 
 export const CODEX_PROVIDER_ID = 'codex'
 export const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
@@ -1395,6 +1396,17 @@ export function createCodexModel(
 
     async doStream(options: CodexCallOptions) {
       const { body, warnings } = buildCodexRequest(modelId, options)
+      await dumpProviderRequest({
+        providerId: CODEX_PROVIDER_ID,
+        model: modelId,
+        mode: 'codex-http',
+        metadata: {
+          url: `${baseUrl}/responses`,
+          method: 'POST',
+          warningCount: warnings.length,
+        },
+        requestBody: body,
+      })
       const response = await fetchImpl(`${baseUrl}/responses`, {
         method: 'POST',
         headers: {

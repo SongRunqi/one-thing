@@ -41,6 +41,8 @@ export interface StreamExecutionParams {
   settings: AppSettings
   toolSettings?: ToolSettings
   sessionName?: string
+  voiceConversation?: boolean
+  speakMode?: boolean
 }
 
 /**
@@ -75,6 +77,8 @@ export async function executeMessageStream(
     settings,
     toolSettings,
     sessionName,
+    voiceConversation,
+    speakMode,
   } = params
 
   const engine = getStreamEngine()
@@ -128,6 +132,8 @@ export async function executeMessageStream(
         providerConfig: configWithApiKey,
         providerId,
         toolSettings,
+        voiceConversation,
+        speakMode: speakMode ?? voiceConversation,
         steeringQueue: engine.getSteeringQueue(sessionId),
         followUpQueue: engine.getFollowUpQueue(sessionId),
       }

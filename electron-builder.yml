@@ -39,6 +39,8 @@ win:
     - portable
 
 mac:
+  extendInfo:
+    NSMicrophoneUsageDescription: onething uses the microphone only when Voice is enabled or when you click the microphone button.
   target:
     - dmg
     - zip

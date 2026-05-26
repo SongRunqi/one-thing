@@ -21,6 +21,7 @@ import { updateSessionUsage } from '../../ipc/sessions.js'
 import { triggerManager, type TriggerContext } from '../triggers/index.js'
 import { runAfterAssistantResponseHooks } from '../../plugins/lifecycle.js'
 import * as modelRegistry from '../../providers/model-registry.js'
+import { compactSessionContext, getContextCompactReason, type ContextCompactResult } from '../context-compact.js'
 
 import { v4 as uuidv4 } from 'uuid'
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
@@ -31,13 +32,14 @@ import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import { getEventBus } from '../../events/index.js'
 import { saveMediaImage } from '../../ipc/media.js'
 import { sendUIMessageFinish } from './stream-helpers.js'
-import { sanitizeToolResultForAI, type HistoryMessage } from './message-helpers.js'
+import { buildHistoryMessages, sanitizeToolResultForAI, type HistoryMessage } from './message-helpers.js'
 import { getTextFromContent } from './message-helpers.js'
 import { buildPromptContext, buildRequestMessages } from '../prompt/index.js'
+import type { PromptSegment } from '../prompt/types.js'
 import { getProviderApiType } from './provider-helpers.js'
 import { executeToolAndUpdate } from './tool-execution.js'
 import { OrderedSideEffectQueue, needsOrderedSideEffectGate } from './tool-execution-order.js'
-import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages } from './chat-logger.js'
+import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages, logMessageBodyShape } from './chat-logger.js'
 import { buildContextVariablesPromptText } from '../../variables/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 import { type PendingMessageQueue, type PendingMessage } from './message-queue.js'
@@ -80,6 +82,17 @@ interface ToolExecutionJob {
   toolCall: ToolCall
   promise: Promise<void>
   settled: boolean
+}
+
+interface ToolLoopCompactOptions {
+  ctx: StreamContext
+  processor: StreamProcessor
+  conversationMessages: ToolChatMessage[]
+  modelContextLength: number
+  reservedOutputTokens: number
+  toolsForAI: Record<string, any>
+  codexNativeTools: string[]
+  enabledSkills: SkillDefinition[]
 }
 
 /**
@@ -135,7 +148,7 @@ async function getCodexNativeToolsForTurn(
   if (!supportsTools) return []
   if (!providerUsesCodexOAuth(ctx)) return []
 
-  const modelInfo = await modelRegistry.getModelById(ctx.providerConfig.model)
+  const modelInfo = await modelRegistry.getModelById(ctx.providerConfig.model, ctx.providerId)
   const codexMetadata = modelInfo?.providerMetadata?.codex as Record<string, unknown> | undefined
   const nativeTools = Array.isArray(codexMetadata?.nativeTools)
     ? codexMetadata.nativeTools.filter((tool): tool is string => typeof tool === 'string')
@@ -349,6 +362,234 @@ async function createNextAssistantTurn(
   }
 }
 
+async function emitContextCompactResult(
+  ctx: StreamContext,
+  result: ContextCompactResult,
+): Promise<void> {
+  try {
+    const eventBus = getEventBus()
+    await eventBus.emit(ctx.sessionId, {
+      type: 'context:compact-completed',
+      success: result.success,
+      skipped: result.skipped,
+      summary: result.summary,
+      error: result.error,
+    })
+    if (result.success && !result.skipped) {
+      await eventBus.emit(ctx.sessionId, {
+        type: 'context:size-updated',
+        contextSize: result.retainedContextSize ?? 0,
+      })
+    }
+  } catch (err) {
+    console.error('[ToolLoop] context compact event emit error:', err)
+  }
+}
+
+async function rebuildConversationMessagesFromSession(options: {
+  ctx: StreamContext
+  conversationMessages: ToolChatMessage[]
+  toolsForAI: Record<string, any>
+  codexNativeTools: string[]
+  enabledSkills: SkillDefinition[]
+}): Promise<{ systemPrompt: string; systemPromptSegments: PromptSegment[] }> {
+  const session = store.getSession(options.ctx.sessionId)
+  if (!session) {
+    return { systemPrompt: '', systemPromptSegments: [] }
+  }
+
+  const historyMessages = buildHistoryMessages(session.messages, session)
+  const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
+  const toolNames = Object.keys(options.toolsForAI).filter(name => !name.startsWith('mcp_'))
+  const mcpToolNames = Object.keys(options.toolsForAI).filter(name => name.startsWith('mcp_'))
+  const promptContext = await buildPromptContext({
+    previousState: session.promptContext ?? undefined,
+    sessionId: options.ctx.sessionId,
+    agentId: session.agentId,
+    providerId: options.ctx.providerId,
+    providerConfig: options.ctx.providerConfig as unknown as Record<string, unknown>,
+    settings: options.ctx.settings,
+    hasTools: Object.keys(options.toolsForAI).length > 0 || options.codexNativeTools.length > 0,
+    skills: options.enabledSkills,
+    workingDirectory: session.workingDirectory,
+    workingDirectoryRoots: session.workingDirectoryRoots,
+    contextVariables: await buildContextVariablesPromptText(options.ctx.sessionId),
+    activeProject: projectVars.active,
+    knownProjects: projectVars.known,
+    toolNames: [...toolNames, ...options.codexNativeTools],
+    mcpToolNames,
+    voiceConversation: options.ctx.voiceConversation,
+    speakMode: options.ctx.speakMode ?? options.ctx.voiceConversation,
+  })
+  store.updateSessionPromptContext(options.ctx.sessionId, promptContext.state)
+
+  const requestMessages = buildRequestMessages({
+    providerId: options.ctx.providerId,
+    promptContext: promptContext.state,
+    emittedFragments: promptContext.emittedFragments,
+    historyMessages,
+  })
+
+  options.conversationMessages.splice(
+    0,
+    options.conversationMessages.length,
+    ...(requestMessages.messages as ToolChatMessage[]),
+  )
+
+  return {
+    systemPrompt: requestMessages.systemPrompt,
+    systemPromptSegments: requestMessages.systemPromptSegments,
+  }
+}
+
+async function maybeCompactToolLoopContext(options: ToolLoopCompactOptions): Promise<{
+  compacted: boolean
+  systemPrompt?: string
+  systemPromptSegments?: PromptSegment[]
+  blockedError?: string
+}> {
+  if (options.ctx.settings.chat?.contextCompactEnabled === false) return { compacted: false }
+
+  const compactSettings = options.ctx.settings.chat
+  const configuredKeepTurns = compactSettings?.contextCompactKeepRecentTurns ?? 6
+  let keepRecentTurns = configuredKeepTurns
+  let compactedResult: ContextCompactResult | null = null
+
+  for (let pass = 1; pass <= configuredKeepTurns; pass++) {
+    const session = store.getSession(options.ctx.sessionId)
+    if (!session) return { compacted: false }
+
+    const reason = getContextCompactReason({
+      session,
+      modelContextLength: options.modelContextLength,
+      thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
+      reservedOutputTokens: options.reservedOutputTokens,
+    })
+    if (!reason) break
+
+    console.log('[ToolLoop] Context compact triggered between tool turns', {
+      sessionId: options.ctx.sessionId,
+      model: options.ctx.providerConfig.model,
+      modelContextLength: options.modelContextLength,
+      reservedOutputTokens: options.reservedOutputTokens,
+      keepRecentTurns,
+      pass,
+      reason,
+    })
+
+    const result = await compactSessionContext({
+      sessionId: options.ctx.sessionId,
+      providerId: options.ctx.providerId,
+      configWithApiKey: options.ctx.providerConfig as any,
+      settings: options.ctx.settings,
+      keepRecentTurns,
+      onMessageCreated: async message => {
+        await getEventBus().emit(options.ctx.sessionId, {
+          type: 'message:user-created',
+          message,
+        })
+      },
+      onMessageUpdated: async (messageId, updates) => {
+        await getEventBus().emit(options.ctx.sessionId, {
+          type: 'message:updated',
+          messageId,
+          updates,
+        })
+      },
+    })
+
+    if (!result.success) {
+      await emitContextCompactResult(options.ctx, result)
+      console.warn('[ToolLoop] Context compact failed during tool loop:', result.error)
+      return { compacted: false }
+    }
+
+    if (result.skipped) {
+      await emitContextCompactResult(options.ctx, result)
+      keepRecentTurns--
+      if (keepRecentTurns <= 0) break
+      continue
+    }
+
+    compactedResult = result
+    if (reason === 'hard-limit') {
+      keepRecentTurns--
+      if (keepRecentTurns <= 0) break
+      continue
+    }
+    break
+  }
+
+  if (!compactedResult) {
+    const latestSession = store.getSession(options.ctx.sessionId)
+    const finalReason = latestSession ? getContextCompactReason({
+      session: latestSession,
+      modelContextLength: options.modelContextLength,
+      thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
+      reservedOutputTokens: options.reservedOutputTokens,
+    }) : null
+    if (latestSession && finalReason === 'hard-limit') {
+      return {
+        compacted: false,
+        blockedError: buildContextHardLimitError(
+          latestSession.contextSize ?? latestSession.lastInputTokens ?? 0,
+          options.reservedOutputTokens,
+          options.modelContextLength,
+        ),
+      }
+    }
+    return { compacted: false }
+  }
+
+  await markAssistantTurnComplete(options.ctx, options.processor)
+  store.updateSessionContextSize(options.ctx.sessionId, 0)
+  await emitContextCompactResult(options.ctx, { ...compactedResult, retainedContextSize: 0 })
+
+  const finalSession = store.getSession(options.ctx.sessionId)
+  const finalReason = finalSession ? getContextCompactReason({
+    session: finalSession,
+    modelContextLength: options.modelContextLength,
+    thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
+    reservedOutputTokens: options.reservedOutputTokens,
+  }) : null
+  if (finalSession && finalReason === 'hard-limit') {
+    return {
+      compacted: true,
+      blockedError: buildContextHardLimitError(
+        finalSession.contextSize ?? finalSession.lastInputTokens ?? 0,
+        options.reservedOutputTokens,
+        options.modelContextLength,
+      ),
+    }
+  }
+
+  const rebuilt = await rebuildConversationMessagesFromSession({
+    ctx: options.ctx,
+    conversationMessages: options.conversationMessages,
+    toolsForAI: options.toolsForAI,
+    codexNativeTools: options.codexNativeTools,
+    enabledSkills: options.enabledSkills,
+  })
+
+  return {
+    compacted: true,
+    systemPrompt: rebuilt.systemPrompt,
+    systemPromptSegments: rebuilt.systemPromptSegments,
+  }
+}
+
+function buildContextHardLimitError(
+  inputTokens: number,
+  reservedOutputTokens: number,
+  modelContextLength: number,
+): string {
+  return [
+    'Context is still too large after compacting during the tool loop.',
+    `Last known provider input ${inputTokens.toLocaleString()} + reserved output ${reservedOutputTokens.toLocaleString()} exceeds model context ${modelContextLength.toLocaleString()}.`,
+    'Reduce the latest message/tool context or lower max output tokens before retrying.',
+  ].join(' ')
+}
+
 /**
  * Unified stream execution function
  * Handles both tool-enabled and simple streaming in a single code path
@@ -366,7 +607,7 @@ export async function runStream(
   enabledSkills: SkillDefinition[],
   steeringQueue?: PendingMessageQueue,
   followUpQueue?: PendingMessageQueue,
-  systemPromptSegments?: import('../prompt/types.js').PromptSegment[],
+  systemPromptSegments?: PromptSegment[],
   onWriterChanged?: (writer: { ctx: StreamContext; processor: StreamProcessor; emitter: IPCEmitter }) => void,
 ): Promise<StreamResult> {
   const MAX_TOOL_TURNS = 100
@@ -384,10 +625,7 @@ export async function runStream(
   // Get model context length for logging
   let modelContextLength = 128000
   try {
-    const modelInfo = await modelRegistry.getModelById(ctx.providerConfig.model)
-    if (modelInfo?.context_length) {
-      modelContextLength = modelInfo.context_length
-    }
+    modelContextLength = await modelRegistry.getModelContextLength(ctx.providerConfig.model, ctx.providerId)
   } catch (error) {
     console.warn('[ToolLoop] Failed to get model context length:', error)
   }
@@ -395,6 +633,7 @@ export async function runStream(
   // ── Double-loop: inner = tool calls + steering, outer = follow-up ──
   // Check for queued messages at start (may have been queued before stream began)
   let pendingSteering: PendingMessage[] = steeringQueue?.drain() || []
+  let needsAssistantAfterCompact = false
 
   while (currentTurn < MAX_TOOL_TURNS) {
     let hasMoreToolCalls = true
@@ -406,7 +645,9 @@ export async function runStream(
       // 1. Inject pending steering messages before the next LLM call
       if (pendingSteering.length > 0) {
         if (currentTurn > 0) {
-          await markAssistantTurnComplete(ctx, processor)
+          if (!needsAssistantAfterCompact) {
+            await markAssistantTurnComplete(ctx, processor)
+          }
           injectPendingMessages(ctx, conversationMessages, emitter, pendingSteering)
           const next = await createNextAssistantTurn(ctx)
           ctx = next.ctx
@@ -414,10 +655,21 @@ export async function runStream(
           emitter = next.emitter
           onWriterChanged?.(next)
           assistantTurn = 0
+          needsAssistantAfterCompact = false
         } else {
           injectPendingMessages(ctx, conversationMessages, emitter, pendingSteering)
         }
         pendingSteering = []
+      }
+
+      if (needsAssistantAfterCompact) {
+        const next = await createNextAssistantTurn(ctx)
+        ctx = next.ctx
+        processor = next.processor
+        emitter = next.emitter
+        onWriterChanged?.(next)
+        assistantTurn = 0
+        needsAssistantAfterCompact = false
       }
 
       currentTurn++
@@ -443,7 +695,7 @@ export async function runStream(
     //   3. Global chat.maxTokens setting (only when models.dev has no data).
     // The resolved value is always hard-capped at the model's actual limit so the
     // request never exceeds what the API will accept.
-    const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(ctx.providerConfig.model)
+    const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(ctx.providerConfig.model, ctx.providerId)
     const perModelOverride = ctx.providerConfig.maxOutputByModel?.[ctx.providerConfig.model]
     const globalMax = ctx.settings.chat?.maxTokens || 4096
     const halfDefault = modelMaxOutputTokens > 0
@@ -615,6 +867,17 @@ export async function runStream(
       // Event system not initialized — ignore.
     }
 
+    logMessageBodyShape('[ToolLoop] provider request body before stream', conversationMessages as Array<Record<string, any>>, {
+      sessionId: ctx.sessionId,
+      providerId: ctx.providerId,
+      model,
+      turn: currentTurn,
+      systemPromptChars: systemPrompt.length,
+      maxTokens: effectiveMaxTokens,
+      hasSummary: Boolean(store.getSession(ctx.sessionId)?.summary),
+      summaryUpToMessageId: store.getSession(ctx.sessionId)?.summaryUpToMessageId,
+    })
+
     const stream = streamChatResponseWithTools(
       ctx.providerId,
       {
@@ -635,6 +898,8 @@ export async function runStream(
         thinkingEffort,
         serviceTier,
         codexNativeTools: activeCodexNativeTools,
+        debugSessionId: ctx.sessionId,
+        debugTurn: currentTurn,
       }
     )
 
@@ -729,8 +994,8 @@ export async function runStream(
       const markdown = buildGeneratedImageMarkdown(mediaItem.id, data.revisedPrompt)
       const prefix = turn.content.value && !turn.content.value.endsWith('\n') ? '\n\n' : ''
       const content = `${prefix}${markdown}`
-      processor.handleTextChunk(content, turn.content, currentTurn)
-      appendOrderedPart(turn.orderedParts, { type: 'text', content, turnIndex: currentTurn })
+      const displayContent = processor.handleTextChunk(content, turn.content, currentTurn)
+      if (displayContent) appendOrderedPart(turn.orderedParts, { type: 'text', content: displayContent, turnIndex: currentTurn })
 
       if (!ctx.sender.isDestroyed()) {
         ctx.sender.send(IPC_CHANNELS.IMAGE_GENERATED, {
@@ -828,8 +1093,8 @@ export async function runStream(
         }
 
         if (chunk.type === 'text' && chunk.text) {
-          processor.handleTextChunk(chunk.text, turn.content, currentTurn)
-          appendOrderedPart(turn.orderedParts, { type: 'text', content: chunk.text, turnIndex: currentTurn })
+          const displayContent = processor.handleTextChunk(chunk.text, turn.content, currentTurn)
+          if (displayContent) appendOrderedPart(turn.orderedParts, { type: 'text', content: displayContent, turnIndex: currentTurn })
         }
 
         if (chunk.type === 'reasoning' && chunk.reasoning) {
@@ -951,9 +1216,30 @@ export async function runStream(
     } else {
       // All tools executed successfully — build continuation for next inner loop iteration
       hasMoreToolCalls = true
-      buildContinuationMessages(turn, conversationMessages, currentTurn)
-      appendedContinuation = true
-      lastTurnInConversation = true
+      const compacted = await maybeCompactToolLoopContext({
+        ctx,
+        processor,
+        conversationMessages,
+        modelContextLength,
+        reservedOutputTokens: effectiveMaxTokens,
+        toolsForAI,
+        codexNativeTools: activeCodexNativeTools,
+        enabledSkills,
+      })
+
+      if (compacted.blockedError) {
+        throw new Error(compacted.blockedError)
+      } else if (compacted.compacted) {
+        if (compacted.systemPrompt !== undefined) systemPrompt = compacted.systemPrompt
+        if (compacted.systemPromptSegments !== undefined) systemPromptSegments = compacted.systemPromptSegments
+        needsAssistantAfterCompact = true
+        appendedContinuation = true
+        lastTurnInConversation = true
+      } else {
+        buildContinuationMessages(turn, conversationMessages, currentTurn)
+        appendedContinuation = true
+        lastTurnInConversation = true
+      }
     }
 
     // After turn settles, drain steering queue for the next inner loop iteration
@@ -1182,6 +1468,8 @@ export async function executeStreamGeneration(
       knownProjects: projectVars.known,
       toolNames: [...Object.keys(builtinToolsForAI), ...codexNativeTools],
       mcpToolNames: Object.keys(mcpTools),
+      voiceConversation: ctx.voiceConversation,
+      speakMode: ctx.speakMode ?? ctx.voiceConversation,
     })
 
     if (showActiveMemoryLoading) {

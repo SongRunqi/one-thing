@@ -18,6 +18,8 @@ import { bootstrapProjectDirs } from './project-dirs/index.js'
 import { warmSearchWindow } from './search/index.js'
 import { applyNetworkProxySettings } from './network/proxy.js'
 import { registerGlobalWindowShortcuts, unregisterGlobalWindowShortcuts } from './shortcuts/global-shortcuts.js'
+import { getVoiceService } from './voice/service.js'
+import { attachVoiceTrayMainWindow, markVoiceQuitRequested } from './voice/tray.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -124,6 +126,7 @@ app.on('ready', async () => {
 
   // Create window first for fast startup
   mainWindow = createWindow()
+  attachVoiceTrayMainWindow(mainWindow)
   registerGlobalWindowShortcuts(mainWindow)
 
   // Initialize IPCBridge — the single exit point for all renderer IPC
@@ -137,6 +140,8 @@ app.on('ready', async () => {
     getStreamEngineSafe()?.abortAll()
     mainWindow = null
   })
+  getVoiceService().attachMainWindow(mainWindow)
+  getVoiceService().applySettings()
 
   setTimeout(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -168,6 +173,9 @@ app.on('ready', async () => {
 })
 
 app.on('window-all-closed', () => {
+  if (getVoiceService().getState().enabled) {
+    return
+  }
   if (process.platform !== 'darwin') {
     app.quit()
   }
@@ -180,6 +188,7 @@ app.on('activate', () => {
 
   if (mainWindow === null) {
     mainWindow = createWindow()
+    attachVoiceTrayMainWindow(mainWindow)
     registerGlobalWindowShortcuts(mainWindow)
     initializeIPCBridge(mainWindow.webContents)
     getStreamEngine().bind(mainWindow.webContents)
@@ -188,6 +197,7 @@ app.on('activate', () => {
       getStreamEngineSafe()?.abortAll()
       mainWindow = null
     })
+    getVoiceService().attachMainWindow(mainWindow)
     setTimeout(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         warmSearchWindow(mainWindow)
@@ -207,6 +217,8 @@ app.on('activate', () => {
 
 // Cleanup on quit
 app.on('before-quit', async () => {
+  markVoiceQuitRequested()
+  getVoiceService().shutdown()
   // Stop template watcher
   stopTemplateWatcher()
   unregisterGlobalWindowShortcuts()

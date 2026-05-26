@@ -46,7 +46,7 @@ describe('assistant-message-outline', () => {
     expect(row.querySelector('.code-block-container')?.getAttribute(ASSISTANT_OUTLINE_ANCHOR_ATTR)).toBeNull()
   })
 
-  it('adds code, table, and image landmarks when headings are sparse', () => {
+  it('only builds heading markers when headings are sparse', () => {
     const row = element(`
       <div class="content">
         <h2>Only heading</h2>
@@ -58,13 +58,11 @@ describe('assistant-message-outline', () => {
 
     const markers = buildAssistantMessageOutlineMarkers('m2', row)
 
-    expect(markers.map(marker => marker.label)).toEqual([
-      'Only heading',
-      'Code - python',
-      'Table',
-      'Image - Generated architecture diagram',
-    ])
-    expect(markers.map(marker => marker.kind)).toEqual(['heading', 'code', 'table', 'image'])
+    expect(markers.map(marker => marker.label)).toEqual(['Only heading'])
+    expect(markers.map(marker => marker.kind)).toEqual(['heading'])
+    expect(row.querySelector('.code-block-container')?.getAttribute(ASSISTANT_OUTLINE_ANCHOR_ATTR)).toBeNull()
+    expect(row.querySelector('table')?.getAttribute(ASSISTANT_OUTLINE_ANCHOR_ATTR)).toBeNull()
+    expect(row.querySelector('img')?.getAttribute(ASSISTANT_OUTLINE_ANCHOR_ATTR)).toBeNull()
   })
 
   it('requires enough markers and a tall row before showing the outline', () => {
@@ -80,4 +78,3 @@ describe('assistant-message-outline', () => {
     expect(shouldShowAssistantMessageOutline(row, scroller, 2)).toBe(false)
   })
 })
-

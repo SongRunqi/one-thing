@@ -151,6 +151,9 @@ vi.mock('electron', () => ({
 
 vi.mock('../stores/paths.js', () => ({
   getWindowStatePath: vi.fn(() => '/tmp/window-state.json'),
+  getMediaIndexPath: vi.fn(() => '/tmp/media/index.json'),
+  getMediaImagesDir: vi.fn(() => '/tmp/media/images'),
+  getMediaFilesDir: vi.fn(() => '/tmp/media/files'),
   readJsonFile: mocks.readJsonFile,
   writeJsonFile: mocks.writeJsonFile,
 }))

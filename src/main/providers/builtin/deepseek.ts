@@ -135,6 +135,17 @@ function stringifyToolResult(output: unknown): string {
   return JSON.stringify(output)
 }
 
+function isCompleteToolArguments(input: string): boolean {
+  const trimmed = input.trim()
+  if (!trimmed) return false
+  try {
+    const parsed = JSON.parse(trimmed)
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+  } catch {
+    return false
+  }
+}
+
 /**
  * Convert AI SDK v2 prompt parts into DeepSeek wire messages. Crucially,
  * `{ type: 'reasoning' }` parts on assistant messages are aggregated into
@@ -352,7 +363,7 @@ function createDeepSeekModel(
         const textId = 'text-0'
         const toolsInProgress = new Map<
           number,
-          { id: string; name: string; arguments: string; started: boolean }
+          { id: string; name: string; arguments: string; started: boolean; ended: boolean }
         >()
         // We defer the `finish` event until the stream actually ends.
         // Per DeepSeek docs, with `stream_options.include_usage: true`,
@@ -462,6 +473,7 @@ function createDeepSeekModel(
                       name: tc.function?.name || '',
                       arguments: tc.function?.arguments || '',
                       started: false,
+                      ended: false,
                     }
                     toolsInProgress.set(idx, entry)
                   } else {
@@ -494,6 +506,14 @@ function createDeepSeekModel(
                       toolCallId: entry.id,
                       inputTextDelta: tc.function.arguments,
                     } as any
+                  }
+
+                  if (entry.started && !entry.ended && isCompleteToolArguments(entry.arguments)) {
+                    yield {
+                      type: 'tool-input-end',
+                      toolCallId: entry.id,
+                    } as any
+                    entry.ended = true
                   }
                 }
               }

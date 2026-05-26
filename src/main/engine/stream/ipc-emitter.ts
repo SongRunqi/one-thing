@@ -41,7 +41,7 @@ export interface IPCEmitter {
   // ========== Stream Chunk Events ==========
 
   /** Send a text chunk to the frontend */
-  sendTextChunk(text: string, turnIndex?: number): void
+  sendTextChunk(text: string, turnIndex?: number, voiceSpeakText?: string): void
 
   /** Send a reasoning chunk to the frontend */
   sendReasoningChunk(reasoning: string, turnIndex?: number, placement?: ReasoningPlacement): void

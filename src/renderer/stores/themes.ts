@@ -5,7 +5,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ThemeMeta, Theme, GetThemesResponse, ApplyThemeResponse } from '../../shared/ipc'
+import type { ThemeMeta, Theme, GetThemesResponse, ApplyThemeResponse, GeneralSettings } from '../../shared/ipc'
 import { useSettingsStore } from './settings'
 
 export const useThemeStore = defineStore('themes', () => {
@@ -365,6 +365,15 @@ export const useThemeStore = defineStore('themes', () => {
   }
 
   /**
+   * Sync the mode-specific theme ids from persisted settings.
+   * This is used when settings arrive from another renderer window.
+   */
+  function syncThemeIdsFromSettings(general?: GeneralSettings): void {
+    darkThemeId.value = general?.darkThemeId || general?.themeId || 'flexoki'
+    lightThemeId.value = general?.lightThemeId || general?.themeId || 'flexoki'
+  }
+
+  /**
    * Initialize theme store (called on app startup)
    */
   async function initialize(): Promise<void> {
@@ -372,14 +381,8 @@ export const useThemeStore = defineStore('themes', () => {
     const general = settingsStore.settings.general
 
     // Handle migration from old single themeId to dual theme IDs
-    if (general?.darkThemeId || general?.lightThemeId) {
-      // New format: use darkThemeId and lightThemeId
-      darkThemeId.value = general.darkThemeId || 'flexoki'
-      lightThemeId.value = general.lightThemeId || 'flexoki'
-    } else if (general?.themeId) {
-      // Old format: migrate themeId to both
-      darkThemeId.value = general.themeId
-      lightThemeId.value = general.themeId
+    if (general?.darkThemeId || general?.lightThemeId || general?.themeId) {
+      syncThemeIdsFromSettings(general)
     } else {
       // Check localStorage cache
       const cachedDark = localStorage.getItem('cached-dark-theme-id')
@@ -440,6 +443,7 @@ export const useThemeStore = defineStore('themes', () => {
     confirmPreview,
     refreshThemes,
     openThemesFolder,
+    syncThemeIdsFromSettings,
     initialize,
     reapplyTheme,
   }

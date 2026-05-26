@@ -5,6 +5,7 @@ import { openSettingsWindow } from '../window.js'
 import { invalidateProviderCache } from '../providers/registry.js'
 import { applyNetworkProxySettings, testProxy } from '../network/proxy.js'
 import { registerGlobalWindowShortcuts } from '../shortcuts/global-shortcuts.js'
+import { getVoiceServiceSafe } from '../voice/service.js'
 
 export function registerSettingsHandlers() {
   // Open settings window
@@ -44,6 +45,7 @@ export function registerSettingsHandlers() {
     invalidateProviderCache()
     await applyNetworkProxySettings(settings.network?.proxy)
     registerGlobalWindowShortcuts()
+    getVoiceServiceSafe()?.applySettings(settings)
 
     // Get the sender's webContents ID to exclude from broadcast
     const senderWebContentsId = event.sender.id

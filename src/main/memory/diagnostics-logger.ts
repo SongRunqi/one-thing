@@ -275,8 +275,12 @@ export class MemoryDiagnosticsLogger {
       if (!match) continue
       const fileTime = new Date(`${match[1]}T00:00:00`).getTime()
       if (Number.isFinite(fileTime) && fileTime < cutoff) {
-        await fsp.unlink(filePath)
-        deleted.push(name)
+        try {
+          await fsp.unlink(filePath)
+          deleted.push(name)
+        } catch (error) {
+          if (!isNodeErrorCode(error, 'ENOENT')) throw error
+        }
       }
     }
     return deleted
@@ -370,6 +374,13 @@ export class MemoryDiagnosticsLogger {
     }
     return true
   }
+}
+
+function isNodeErrorCode(error: unknown, code: string): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && (error as { code?: unknown }).code === code
 }
 
 export const memoryDiagnosticsLogger = new MemoryDiagnosticsLogger()

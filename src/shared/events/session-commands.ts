@@ -9,12 +9,16 @@
  * Phase 3b+: IPC handlers will emit commands, StreamEngine will subscribe.
  */
 
+import type { VoiceTranscriptMetadata } from '../ipc/voice.js'
+
 export interface SendMessageCommand {
   type: 'command:send-message'
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   content: string
   attachments?: unknown[]
+  source?: 'text' | 'voice' | 'api' | string
+  voice?: VoiceTranscriptMetadata
 }
 
 export interface EditAndResendCommand {

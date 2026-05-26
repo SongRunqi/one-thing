@@ -25,6 +25,7 @@ import { registerMarkdownHandlers } from './markdown.js'
 import { registerSearchHandlers } from '../search/index.js'
 import { registerAppStateHandlers } from './app-state.js'
 import { registerTodoPlanHandlers } from '../todo-plan/ipc.js'
+import { registerVoiceHandlers } from '../voice/ipc.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -52,6 +53,7 @@ export function initializeIPC() {
   registerSearchHandlers()
   registerAppStateHandlers()
   registerTodoPlanHandlers()
+  registerVoiceHandlers()
   registerCommandHandler()
 }
 

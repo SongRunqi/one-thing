@@ -8,6 +8,7 @@ import type { ToolSettings } from './tools.js'
 import type { MCPSettings } from './mcp.js'
 import type { SkillSettings } from './skills.js'
 import type { TodoPlanSettings } from './todo-plan.js'
+import type { VoiceSettings } from './voice.js'
 
 export type ColorTheme = 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'cyan' | 'red'
 
@@ -234,9 +235,9 @@ export interface ChatSettings {
   presencePenalty?: number     // -2 to 2, default 0
   frequencyPenalty?: number    // -2 to 2, default 0
   branchOpenInSplitScreen?: boolean  // Whether branches open in split screen, default true
-  chatFontSize?: number        // Chat font size in px, 12-20, default 14
-  chatFontEn?: string          // English body font ID (e.g., 'public-sans', 'lora')
-  chatFontZh?: string          // Chinese body font ID (e.g., 'noto-sans-sc', 'lxgw-wenkai')
+  chatFontSize?: number        // Chat font size in px, 12-20, default 15
+  chatFontEn?: string          // English body font registry ID (e.g., 'system-ui', 'public-sans', 'lora')
+  chatFontZh?: string          // Chinese body font registry ID (e.g., 'system-cjk', 'noto-sans-sc', 'lxgw-wenkai')
   contextCompactEnabled?: boolean  // Enable automatic context compacting, default true
   contextCompactThreshold?: number  // Context usage % to trigger compacting, 50-100, default 85
   contextCompactKeepRecentTurns?: number  // Recent user/assistant turns to keep verbatim, default 6
@@ -256,6 +257,7 @@ export interface AppSettings {
   ai: AISettings
   theme: 'light' | 'dark' | 'system'
   general: GeneralSettings
+  voice?: VoiceSettings
   chat?: ChatSettings
   tools: ToolSettings
   network?: NetworkSettings

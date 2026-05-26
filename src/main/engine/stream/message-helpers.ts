@@ -7,6 +7,7 @@ import type { ChatMessage } from '../../../shared/ipc.js'
 import type { AIMessageContent } from '../../providers/index.js'
 import { getAIToolName } from '../../providers/tool-name-alias.js'
 import { buildSystemPrompt } from '../prompt/index.js'
+import { logMessageBodyShape } from './chat-logger.js'
 
 /**
  * Format messages for logging without full base64 data
@@ -105,10 +106,40 @@ export function sanitizeToolResultForAI(result: unknown): unknown {
 
   const sanitized: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(result as Record<string, unknown>)) {
-    if (key === 'originalContent') continue
+    if (key === 'originalContent' || key === 'originalContentHash') continue
     sanitized[key] = sanitizeToolResultForAI(value)
   }
   return sanitized
+}
+
+function jsonLength(value: unknown): number {
+  try {
+    return JSON.stringify(value ?? '').length
+  } catch {
+    return String(value ?? '').length
+  }
+}
+
+function summarizeRetainedMessagesForLog(messages: ChatMessage[], startIndex: number): Array<Record<string, unknown>> {
+  return messages.map((message, offset) => {
+    const completedToolCalls = message.toolCalls?.filter(
+      toolCall => toolCall.status === 'completed' || toolCall.status === 'failed',
+    ) ?? []
+    return {
+      index: startIndex + offset,
+      id: message.id,
+      role: message.role,
+      contentChars: message.content?.length ?? 0,
+      toolCalls: completedToolCalls.length,
+      toolArgChars: completedToolCalls.reduce((sum, toolCall) => sum + jsonLength(toolCall.arguments ?? {}), 0),
+      toolResultChars: completedToolCalls.reduce(
+        (sum, toolCall) => sum + jsonLength(toolCall.status === 'completed' ? toolCall.result : { error: toolCall.error }),
+        0,
+      ),
+      usageInputTokens: message.usage?.inputTokens,
+      isStreaming: message.isStreaming === true,
+    }
+  })
 }
 
 function getCodexEncryptedReasoning(message: ChatMessage): string[] {
@@ -239,7 +270,15 @@ export function buildHistoryMessages(
         }
       }
 
-      console.log(`[buildHistoryMessages] Using summary + ${recentMessages.length} recent messages`)
+      logMessageBodyShape('[buildHistoryMessages] compacted history body', result as Array<Record<string, any>>, {
+        sessionId: session.id,
+        summaryUpToMessageId: session.summaryUpToMessageId,
+        summaryIndex,
+        totalSessionMessages: messages.length,
+        recentSessionMessages: recentMessages.length,
+        summaryChars: session.summary.length,
+        retainedMessages: summarizeRetainedMessagesForLog(recentMessages, summaryIndex + 1),
+      })
       return result
     }
 

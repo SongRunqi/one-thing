@@ -1,58 +1,68 @@
 <template>
-  <div class="context-compact-panel">
-    <div class="panel-header">
-      <div :class="['header-icon', { spinning: isCompacting, failed: isFailed }]">
-        <Archive :size="18" />
-      </div>
-      <div class="header-content">
-        <span class="header-title">{{ title }}</span>
-        <span class="header-subtitle">{{ subtitle }}</span>
-      </div>
+  <div :class="['context-compact-event', statusClass]">
+    <div class="event-row">
+      <span
+        class="event-mark"
+        aria-hidden="true"
+      >
+        <span
+          v-if="isCompacting"
+          class="event-dot"
+        />
+        <AlertCircle
+          v-else-if="isFailed"
+          :size="14"
+          :stroke-width="2"
+        />
+        <Archive
+          v-else
+          :size="14"
+          :stroke-width="2"
+        />
+      </span>
+
       <button
-        v-if="!isCompacting && !isFailed"
-        class="toggle-btn"
-        :title="isExpanded ? 'Collapse' : 'Expand'"
+        v-if="canExpand"
+        class="event-toggle"
+        type="button"
+        :aria-expanded="isExpanded"
+        :title="isExpanded ? 'Hide summary' : 'Show summary'"
         @click="isExpanded = !isExpanded"
       >
+        <span class="event-text">
+          <span class="event-title">{{ title }}</span>
+          <span class="event-meta">{{ meta }}</span>
+        </span>
         <ChevronDown
-          :size="16"
-          :class="{ rotated: !isExpanded }"
+          class="event-chevron"
+          :class="{ expanded: isExpanded }"
+          :size="14"
+          :stroke-width="2"
         />
       </button>
+
+      <div
+        v-else
+        class="event-static"
+      >
+        <span class="event-title">{{ title }}</span>
+        <span class="event-meta">{{ meta }}</span>
+      </div>
     </div>
 
-    <Transition name="expand">
+    <Transition name="summary">
       <div
-        v-if="isExpanded"
-        class="panel-body"
-      >
-        <div
-          v-if="isCompacting"
-          class="compact-waiting"
-        >
-          <span class="pulse-dot" />
-          <span class="pulse-line" />
-          <span class="pulse-line short" />
-        </div>
-        <div
-          v-else-if="isFailed"
-          class="compact-error"
-        >
-          {{ error || 'Context compact failed.' }}
-        </div>
-        <div
-          v-else
-          class="summary-content"
-          v-html="renderedSummary"
-        />
-      </div>
+        v-if="canExpand && isExpanded"
+        class="summary-content"
+        v-html="renderedSummary"
+      />
     </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Archive, ChevronDown } from 'lucide-vue-next'
+import { AlertCircle, Archive, ChevronDown } from 'lucide-vue-next'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 
 interface Props {
@@ -64,181 +74,163 @@ interface Props {
 
 const props = defineProps<Props>()
 
-const isExpanded = ref(true)
+const isExpanded = ref(false)
 const isCompacting = computed(() => props.status === 'compacting')
 const isFailed = computed(() => props.status === 'failed')
+const canExpand = computed(() => !isCompacting.value && !isFailed.value && props.summary.trim().length > 0)
+
+const statusClass = computed(() => ({
+  compacting: isCompacting.value,
+  failed: isFailed.value,
+  completed: !isCompacting.value && !isFailed.value,
+}))
 
 const title = computed(() => {
-  if (isCompacting.value) return 'Compacting Context'
-  if (isFailed.value) return 'Context Compact Failed'
-  return 'Context Compacted'
+  if (isCompacting.value) return 'Compacting context'
+  if (isFailed.value) return 'Context compact failed'
+  return 'Context compacted'
 })
 
-const subtitle = computed(() => {
+const meta = computed(() => {
   if (isCompacting.value) {
     return props.compactedMessageCount
-      ? `Summarizing ${props.compactedMessageCount} older messages. Previous messages stay visible.`
-      : 'Summarizing older messages. Previous messages stay visible.'
+      ? `Summarizing ${props.compactedMessageCount} older messages...`
+      : 'Summarizing older messages...'
   }
-  if (isFailed.value) return 'The original conversation history was left unchanged'
+  if (isFailed.value) return props.error || 'Conversation history was left unchanged'
   return props.compactedMessageCount
-    ? `Summarized ${props.compactedMessageCount} older messages; the original messages remain above`
-    : 'Conversation history has been summarized; original messages remain above'
+    ? `${props.compactedMessageCount} older messages summarized`
+    : 'Older messages summarized'
 })
 
-const renderedSummary = computed(() => {
-  return renderMarkdown(props.summary, false)
-})
+const renderedSummary = computed(() => renderMarkdown(props.summary, false))
 </script>
 
 <style scoped>
-.context-compact-panel {
-  width: min(860px, 100%);
-  border-radius: 12px;
-  border: 1px solid rgba(139, 92, 246, 0.25);
-  background: rgba(139, 92, 246, 0.08);
-  overflow: hidden;
+.context-compact-event {
+  width: min(760px, 100%);
+  margin: 16px auto 18px;
+  color: var(--muted);
   animation: fadeIn 0.18s ease-out;
 }
 
-.panel-header {
+.event-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: rgba(139, 92, 246, 0.12);
-  border-bottom: 1px solid rgba(139, 92, 246, 0.15);
-}
-
-.header-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(139, 92, 246, 0.2);
-  color: rgb(139, 92, 246);
-  flex-shrink: 0;
-}
-
-.header-icon.spinning svg {
-  animation: compactSpin 1.1s linear infinite;
-}
-
-.header-icon.failed {
-  background: rgba(239, 68, 68, 0.15);
-  color: rgb(239, 68, 68);
-}
-
-.header-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.header-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.header-subtitle {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.toggle-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-}
-
-.toggle-btn:hover {
-  background: rgba(139, 92, 246, 0.15);
-  color: var(--text);
-}
-
-.toggle-btn svg {
-  transition: transform 0.2s ease;
-}
-
-.toggle-btn svg.rotated {
-  transform: rotate(-90deg);
-}
-
-.panel-body {
-  padding: 14px;
-}
-
-.compact-waiting {
-  display: grid;
-  grid-template-columns: 10px minmax(120px, 1fr) minmax(70px, 0.45fr);
-  align-items: center;
-  gap: 10px;
+  gap: 9px;
   min-height: 28px;
 }
 
-.pulse-dot,
-.pulse-line {
-  display: block;
-  background: rgba(139, 92, 246, 0.22);
-  animation: compactPulse 1.25s ease-in-out infinite;
+.event-mark {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--muted) 82%, var(--text) 18%);
 }
 
-.pulse-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.pulse-line {
-  height: 10px;
+.event-dot {
+  width: 6px;
+  height: 6px;
   border-radius: 999px;
+  background: currentColor;
+  animation: compactBreath 1.35s ease-in-out infinite;
 }
 
-.pulse-line.short {
-  animation-delay: 0.18s;
-}
-
-.compact-error {
+.context-compact-event.failed .event-mark {
   color: rgb(220, 38, 38);
-  font-size: 13px;
-  line-height: 1.5;
+}
+
+.event-toggle,
+.event-static {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+}
+
+.event-toggle {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.event-toggle:hover .event-title {
+  color: var(--text);
+}
+
+.event-text {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.event-title {
+  color: color-mix(in srgb, var(--text) 72%, var(--muted) 28%);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.event-meta {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.context-compact-event.compacting .event-meta {
+  animation: textBreath 1.8s ease-in-out infinite;
+}
+
+.context-compact-event.failed .event-title {
+  color: rgb(220, 38, 38);
+}
+
+.event-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transform: rotate(-90deg);
+  transition: transform 0.16s ease, color 0.16s ease;
+}
+
+.event-chevron.expanded {
+  transform: rotate(0deg);
+}
+
+.event-toggle:hover .event-chevron {
+  color: var(--text);
 }
 
 .summary-content {
+  margin: 8px 0 0 27px;
+  padding: 9px 0 2px 12px;
+  border-left: 1px solid color-mix(in srgb, var(--muted) 28%, transparent);
+  color: color-mix(in srgb, var(--text) 86%, var(--muted) 14%);
   font-size: 13px;
-  color: var(--text);
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
-/* Markdown styles */
 .summary-content :deep(h1),
 .summary-content :deep(h2),
 .summary-content :deep(h3),
 .summary-content :deep(h4) {
-  margin: 0.8em 0 0.4em 0;
-  font-weight: 600;
+  margin: 0.75em 0 0.35em;
   color: var(--text);
+  font-size: 1em;
+  font-weight: 600;
 }
 
-.summary-content :deep(h1) { font-size: 1.1em; }
-.summary-content :deep(h2) { font-size: 1.05em; }
-.summary-content :deep(h3) { font-size: 1em; }
-.summary-content :deep(h4) { font-size: 0.95em; }
-
 .summary-content :deep(p) {
-  margin: 0 0 0.6em 0;
+  margin: 0 0 0.58em;
 }
 
 .summary-content :deep(p:last-child) {
@@ -247,57 +239,53 @@ const renderedSummary = computed(() => {
 
 .summary-content :deep(ul),
 .summary-content :deep(ol) {
-  margin: 0.5em 0;
-  padding-left: 1.4em;
+  margin: 0.45em 0;
+  padding-left: 1.25em;
 }
 
 .summary-content :deep(li) {
-  margin: 0.25em 0;
+  margin: 0.2em 0;
 }
 
 .summary-content :deep(strong) {
-  font-weight: 600;
   color: var(--text);
+  font-weight: 600;
 }
 
 .summary-content :deep(.inline-code) {
-  background: rgba(139, 92, 246, 0.15);
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: 4px;
+  background: color-mix(in srgb, var(--muted) 16%, transparent);
+  color: var(--text);
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 0.9em;
 }
 
-/* Expand/collapse animation */
-.expand-enter-active,
-.expand-leave-active {
-  transition: all 0.2s ease;
-  overflow: hidden;
+.summary-enter-active,
+.summary-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
-.expand-enter-from,
-.expand-leave-to {
+.summary-enter-from,
+.summary-leave-to {
   opacity: 0;
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
+  transform: translateY(-2px);
 }
 
-.expand-enter-to,
-.expand-leave-from {
-  opacity: 1;
-  max-height: 500px;
-}
-
-@keyframes compactSpin {
-  to {
-    transform: rotate(360deg);
+@keyframes compactBreath {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1);
   }
 }
 
-@keyframes compactPulse {
+@keyframes textBreath {
   0%, 100% {
-    opacity: 0.42;
+    opacity: 0.62;
   }
   50% {
     opacity: 1;
@@ -307,7 +295,7 @@ const renderedSummary = computed(() => {
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -315,18 +303,15 @@ const renderedSummary = computed(() => {
   }
 }
 
-/* Light theme adjustments */
-html[data-theme='light'] .context-compact-panel {
-  border-color: rgba(139, 92, 246, 0.3);
-  background: rgba(139, 92, 246, 0.06);
-}
+@media (max-width: 640px) {
+  .context-compact-event {
+    margin: 14px auto 16px;
+  }
 
-html[data-theme='light'] .panel-header {
-  background: rgba(139, 92, 246, 0.1);
-  border-bottom-color: rgba(139, 92, 246, 0.2);
-}
-
-html[data-theme='light'] .summary-content :deep(.inline-code) {
-  background: rgba(139, 92, 246, 0.12);
+  .event-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
 }
 </style>

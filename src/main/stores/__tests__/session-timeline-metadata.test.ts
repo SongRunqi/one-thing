@@ -106,6 +106,18 @@ describe('session timeline metadata repair', () => {
     expect(testSession.lastInputTokens).toBe(0)
   })
 
+  it('derives context from retained assistant usage after a valid summary anchor', () => {
+    const testSession = session([
+      user(1),
+      assistant(2, 300),
+      user(3),
+      assistant(4, 180),
+      user(5),
+    ], 'assistant-2')
+
+    expect(deriveRetainedContextSize(testSession)).toBe(180)
+  })
+
   it('sets context to zero after truncation when no retained provider usage exists', () => {
     const testSession = session([user(1)])
     testSession.contextSize = 999

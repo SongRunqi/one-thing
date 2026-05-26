@@ -11,7 +11,8 @@ import type { OpenRouterModel } from '../../shared/ipc.js'
 import type { ModelCapabilityOverride, ProviderConfig, ModelCapabilityEntry } from '../../shared/ipc/providers.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
 import { createRequiredAppFetch } from './bound-fetch.js'
-import { getCodexFallbackModels } from './builtin/codex.js'
+import { getCodexFallbackModel, getCodexFallbackModels } from './builtin/codex.js'
+import { detectModelCapabilities } from './builtin/github-copilot.js'
 
 // ============================================================================
 // Constants
@@ -82,7 +83,11 @@ function getProviderModels(providerId: string): Record<string, ModelCapabilityEn
   return getProviderConfig(providerId)?.models
 }
 
-function getModelEntry(modelId: string): ModelCapabilityEntry | undefined {
+function getProviderModelEntry(modelId: string, providerId: string): ModelCapabilityEntry | undefined {
+  return getProviderConfig(providerId)?.models?.[modelId]
+}
+
+function getAnyModelEntry(modelId: string): ModelCapabilityEntry | undefined {
   // Search across all providers
   const providers = getSettings()?.ai?.providers
   if (!providers) return undefined
@@ -90,6 +95,50 @@ function getModelEntry(modelId: string): ModelCapabilityEntry | undefined {
     const models = (providers[pid] as ProviderConfig)?.models
     if (models?.[modelId]) return models[modelId]
   }
+  return undefined
+}
+
+function getModelEntry(modelId: string, providerId?: string): ModelCapabilityEntry | undefined {
+  if (providerId) return getProviderModelEntry(modelId, providerId)
+  return getAnyModelEntry(modelId)
+}
+
+function getProviderDirectFallbackModel(modelId: string, providerId?: string): OpenRouterModel | undefined {
+  if (providerId === 'codex') {
+    return getCodexFallbackModel(modelId)
+  }
+
+  if (providerId === 'github-copilot') {
+    const caps = detectModelCapabilities(modelId)
+    const inputModalities = ['text']
+    const outputModalities = ['text']
+    const supportedParams: string[] = []
+    if (caps.hasVision) inputModalities.push('image')
+    if (caps.hasImageGeneration) outputModalities.push('image')
+    if (caps.hasTools) supportedParams.push('tools')
+    if (caps.hasReasoning) supportedParams.push('reasoning')
+
+    return {
+      id: modelId,
+      name: modelId,
+      description: '',
+      context_length: caps.contextLength,
+      architecture: {
+        modality: caps.hasImageGeneration ? 'image' : 'text',
+        input_modalities: inputModalities,
+        output_modalities: outputModalities,
+        tokenizer: 'unknown',
+      },
+      pricing: { prompt: '0', completion: '0', request: '0', image: '0' },
+      top_provider: {
+        context_length: caps.contextLength,
+        max_completion_tokens: 16384,
+        is_moderated: false,
+      },
+      supported_parameters: supportedParams,
+    }
+  }
+
   return undefined
 }
 
@@ -382,13 +431,26 @@ export async function searchModels(query: string, providerId?: string): Promise<
   )
 }
 
-export async function getModelById(modelId: string): Promise<OpenRouterModel | undefined> {
-  const entry = getModelEntry(modelId)
-  return entry ? toOpenRouterModel(entry) : undefined
+export async function getModelById(modelId: string, providerId?: string): Promise<OpenRouterModel | undefined> {
+  const entry = getModelEntry(modelId, providerId)
+  if (entry) return toOpenRouterModel(entry)
+  return getProviderDirectFallbackModel(modelId, providerId)
 }
 
-export async function getModelMaxOutputTokens(modelId: string): Promise<number> {
-  return getModelEntry(modelId)?.maxOutputTokens || 4096
+export async function getModelContextLength(modelId: string, providerId?: string): Promise<number> {
+  const entry = getModelEntry(modelId, providerId)
+  if (entry?.contextLength) return entry.contextLength
+
+  const fallback = getProviderDirectFallbackModel(modelId, providerId)
+  return fallback?.context_length || fallback?.top_provider?.context_length || 128000
+}
+
+export async function getModelMaxOutputTokens(modelId: string, providerId?: string): Promise<number> {
+  const entry = getModelEntry(modelId, providerId)
+  if (entry?.maxOutputTokens) return entry.maxOutputTokens
+
+  const fallback = getProviderDirectFallbackModel(modelId, providerId)
+  return fallback?.top_provider?.max_completion_tokens || 4096
 }
 
 // ============================================================================
@@ -399,7 +461,7 @@ export async function modelSupportsTools(modelId: string, providerId?: string): 
   const override = getCapabilityOverride(modelId, providerId, 'tools')
   if (override !== undefined) return override
 
-  const entry = getModelEntry(modelId)
+  const entry = getModelEntry(modelId, providerId)
   if (entry) return entry.supportsTools
 
   const lower = modelId.toLowerCase()
@@ -407,8 +469,8 @@ export async function modelSupportsTools(modelId: string, providerId?: string): 
   return true
 }
 
-export async function modelSupportsTemperature(modelId: string, _providerId?: string): Promise<boolean> {
-  const entry = getModelEntry(modelId)
+export async function modelSupportsTemperature(modelId: string, providerId?: string): Promise<boolean> {
+  const entry = getModelEntry(modelId, providerId)
   if (entry) return entry.supportsTemperature
   return true
 }
@@ -417,7 +479,7 @@ export async function modelSupportsReasoning(modelId: string, providerId?: strin
   const override = getCapabilityOverride(modelId, providerId, 'reasoning')
   if (override !== undefined) return override
 
-  const entry = getModelEntry(modelId)
+  const entry = getModelEntry(modelId, providerId)
   if (entry) return entry.supportsReasoning
 
   const lower = modelId.toLowerCase()
@@ -428,7 +490,7 @@ export function modelSupportsReasoningSync(modelId: string, providerId?: string)
   const override = getCapabilityOverride(modelId, providerId, 'reasoning')
   if (override !== undefined) return override
 
-  const entry = getModelEntry(modelId)
+  const entry = getModelEntry(modelId, providerId)
   if (entry) return entry.supportsReasoning
 
   const lower = modelId.toLowerCase()
@@ -445,7 +507,7 @@ export async function modelSupportsImageGeneration(modelId: string, providerId?:
   if (lower.includes('gemini') && lower.includes('image')) return true
   if (['dall-e', 'dalle', 'imagen', 'gpt-image', 'flux', 'stable-diffusion', 'midjourney'].some(p => lower.includes(p))) return true
 
-  const entry = getModelEntry(modelId)
+  const entry = getModelEntry(modelId, providerId)
   if (entry) return entry.supportsImageOutput
 
   return false

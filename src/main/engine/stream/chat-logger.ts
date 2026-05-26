@@ -64,6 +64,96 @@ export function logRequestStart(ctx: {
   console.log(`[Chat] ${DOUBLE_LINE}`)
 }
 
+function jsonLength(value: unknown): number {
+  try {
+    return JSON.stringify(value ?? '').length
+  } catch {
+    return String(value ?? '').length
+  }
+}
+
+function contentTextLength(content: unknown): number {
+  if (typeof content === 'string') return content.length
+  if (Array.isArray(content)) {
+    return content.reduce((total, part) => {
+      if (!part || typeof part !== 'object') return total
+      const item = part as Record<string, unknown>
+      if (typeof item.text === 'string') return total + item.text.length
+      if (typeof item.content === 'string') return total + item.content.length
+      if (typeof item.data === 'string') return total + item.data.length
+      if (typeof item.image === 'string') return total + item.image.length
+      return total + jsonLength(item)
+    }, 0)
+  }
+  return jsonLength(content)
+}
+
+export function logMessageBodyShape(
+  label: string,
+  messages: Array<Record<string, any>>,
+  extra: Record<string, unknown> = {},
+): void {
+  const roleCounts = messages.reduce<Record<string, number>>((counts, message) => {
+    const role = typeof message.role === 'string' ? message.role : 'unknown'
+    counts[role] = (counts[role] ?? 0) + 1
+    return counts
+  }, {})
+
+  const rows = messages.map((message, index) => {
+    const base = {
+      index,
+      role: message.role,
+      contentChars: contentTextLength(message.content),
+    }
+
+    if (message.role === 'assistant') {
+      const toolCalls = Array.isArray(message.toolCalls) ? message.toolCalls : []
+      return {
+        ...base,
+        toolCalls: toolCalls.length,
+        toolArgChars: toolCalls.reduce((sum: number, call: any) => sum + jsonLength(call?.args ?? {}), 0),
+        reasoningChars: typeof message.reasoningContent === 'string' ? message.reasoningContent.length : 0,
+      }
+    }
+
+    if (message.role === 'tool') {
+      const toolResults = Array.isArray(message.content) ? message.content : []
+      return {
+        ...base,
+        toolResults: toolResults.length,
+        resultChars: toolResults.reduce((sum: number, result: any) => sum + jsonLength(result?.result), 0),
+      }
+    }
+
+    return base
+  })
+
+  const totals = rows.reduce((acc, row: any) => {
+    acc.contentChars += row.contentChars ?? 0
+    acc.toolCalls += row.toolCalls ?? 0
+    acc.toolArgChars += row.toolArgChars ?? 0
+    acc.toolResults += row.toolResults ?? 0
+    acc.toolResultChars += row.resultChars ?? 0
+    acc.reasoningChars += row.reasoningChars ?? 0
+    return acc
+  }, {
+    contentChars: 0,
+    toolCalls: 0,
+    toolArgChars: 0,
+    toolResults: 0,
+    toolResultChars: 0,
+    reasoningChars: 0,
+  })
+
+  console.log(`[Chat] ${label}`, {
+    ...extra,
+    messageCount: messages.length,
+    roleCounts,
+    totals,
+    rows,
+  })
+}
+
 // Track turn start times for speed calculation
 const turnStartTimes = new Map<number, number>()
 

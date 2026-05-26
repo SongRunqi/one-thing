@@ -29,6 +29,7 @@ import { modelSupportsReasoningSync } from './model-registry.js'
 import type { ProviderCallMode, ProviderCallOptions, ProviderConfig, ProviderInfo } from './types.js'
 import { oauthManager } from '../providers/auth/oauth-manager.js'
 import { createAIToolName } from './tool-name-alias.js'
+import { dumpProviderRequest, type ProviderRequestDumpMode } from './request-dump.js'
 
 type RuntimeProviderConfig = ProviderConfig & {
   model: string
@@ -63,6 +64,53 @@ function formatMessagesForLog(messages: unknown[]): unknown[] {
       }
     }
     return m
+  })
+}
+
+function serializeToolsForRequestDump(tools: unknown): Record<string, unknown> | undefined {
+  if (!tools || typeof tools !== 'object') return undefined
+  return Object.fromEntries(
+    Object.entries(tools as Record<string, any>).map(([id, tool]) => {
+      const inputSchema = tool?.inputSchema
+      let parameters: unknown = null
+      try {
+        parameters = inputSchema?.toJSONSchema
+          ? inputSchema.toJSONSchema()
+          : inputSchema
+      } catch (error) {
+        parameters = {
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
+      return [id, {
+        description: tool?.description,
+        parameters,
+      }]
+    }),
+  )
+}
+
+async function dumpAISDKRequest(
+  providerId: string,
+  modelId: string,
+  mode: ProviderRequestDumpMode,
+  options: Record<string, any>,
+  fallbackMessages: unknown[],
+  metadata?: Record<string, unknown>,
+): Promise<void> {
+  await dumpProviderRequest({
+    providerId,
+    model: modelId,
+    mode,
+    metadata,
+    requestBody: {
+      model: modelId,
+      messages: options.messages ?? fallbackMessages,
+      tools: serializeToolsForRequestDump(options.tools),
+      temperature: options.temperature,
+      maxOutputTokens: options.maxOutputTokens,
+      providerOptions: options.providerOptions,
+    },
   })
 }
 
@@ -402,6 +450,8 @@ export async function* streamChatResponse(
     isReasoningModel: isReasoning,
   }) as Parameters<typeof streamText>[0]
 
+  await dumpAISDKRequest(providerId, config.model, 'stream', streamOptions as any, messages)
+
   const stream = await streamText(streamOptions)
 
   // Always use textStream for this function (simpler interface)
@@ -466,6 +516,8 @@ export async function* streamChatResponseWithReasoning(
 
   console.log(`[Provider] streamChatResponseWithReasoning - providerId: ${providerId}, model: ${config.model}`)
   console.log(`[Provider] Messages being sent:`, JSON.stringify(formatMessagesForLog((streamOptions as any).messages ?? convertedMessages), null, 2))
+
+  await dumpAISDKRequest(providerId, config.model, 'stream-reasoning', streamOptions as any, convertedMessages)
 
   const stream = await streamText(streamOptions)
 
@@ -619,6 +671,8 @@ export async function generateChatResponseWithReasoning(
     isReasoningModel: isReasoning,
   }) as Parameters<typeof generateText>[0]
 
+  await dumpAISDKRequest(providerId, config.model, 'generate', generateOptions as any, convertedMessages)
+
   const result = await generateText(generateOptions)
 
   // Extract reasoning content if available (for other providers that might support it)
@@ -756,6 +810,10 @@ export async function* streamChatResponseWithTools(
     serviceTier?: string
     /** Provider-native Codex tools such as ChatGPT backend image generation. */
     codexNativeTools?: string[]
+    /** Debug-only session correlation written to provider request dump files. */
+    debugSessionId?: string
+    /** Debug-only tool loop turn correlation written to provider request dump files. */
+    debugTurn?: number
   } = {}
 ): AsyncGenerator<StreamChunkWithTools, void, unknown> {
   const provider = createProvider(providerId, config)
@@ -1011,22 +1069,13 @@ export async function* streamChatResponseWithTools(
     isReasoningModel: isReasoning,
   }) as Parameters<typeof streamText>[0]
 
-  // Log complete request body being sent to AI
-  const requestBodyForLog = {
-    model: config.model,
-    messages: (streamOptions as any).messages ?? convertedMessages,
-    tools: streamOptions.tools ? Object.fromEntries(
-      Object.entries(streamOptions.tools).map(([id, tool]) => {
-        const t = tool as any
-        return [id, {
-          description: t.description,
-          parameters: t.inputSchema?.toJSONSchema ? t.inputSchema.toJSONSchema() : null,
-        }]
-      })
-    ) : undefined,
-    temperature: streamOptions.temperature,
-    maxOutputTokens: streamOptions.maxOutputTokens,
-  }
+  await dumpAISDKRequest(providerId, config.model, 'stream-tools', streamOptions as any, convertedMessages, {
+    sessionId: options.debugSessionId,
+    turn: options.debugTurn,
+    originalMessageCount: messages.length,
+    convertedMessageCount: convertedMessages.length,
+  })
+
   const stream = await streamText(streamOptions)
 
   // Process the full stream to capture all types of chunks
@@ -1382,6 +1431,11 @@ export async function* streamChatWithUIMessages(
   }) as Parameters<typeof streamText>[0]
 
   console.log(`[Provider] Starting stream with UIMessages - model: ${config.model}`)
+
+  await dumpAISDKRequest(providerId, config.model, 'stream-ui-messages', streamOptions as any, modelMessages, {
+    uiMessageCount: uiMessages.length,
+    modelMessageCount: modelMessages.length,
+  })
 
   const stream = await streamText(streamOptions)
 

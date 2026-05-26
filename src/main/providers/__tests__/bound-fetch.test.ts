@@ -1,5 +1,21 @@
-import { describe, expect, it } from 'vitest'
-import { getAppDispatcher, shouldBypassProxy, validateProxyUrl } from '../bound-fetch.js'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { clearAppDispatcherCache, getAppDispatcher, shouldBypassProxy, validateProxyUrl } from '../bound-fetch.js'
+
+function getDispatcherOptions(dispatcher: unknown): Record<string, unknown> | undefined {
+  const optionsSymbol = Object.getOwnPropertySymbols(dispatcher as object)
+    .find(symbol => symbol.description === 'options')
+  return optionsSymbol ? (dispatcher as any)[optionsSymbol] : undefined
+}
+
+function getProxyInnerAgent(dispatcher: unknown): unknown {
+  const proxyAgentSymbol = Object.getOwnPropertySymbols(dispatcher as object)
+    .find(symbol => symbol.description === 'proxy agent')
+  return proxyAgentSymbol ? (dispatcher as any)[proxyAgentSymbol] : dispatcher
+}
+
+beforeEach(() => {
+  clearAppDispatcherCache()
+})
 
 describe('proxy URL validation', () => {
   it('accepts supported proxy protocols', () => {
@@ -36,5 +52,22 @@ describe('dispatcher cache keys', () => {
 
     expect(same).toBe(first)
     expect(differentProxy).not.toBe(first)
+  })
+})
+
+describe('dispatcher timeouts', () => {
+  it('disables body inactivity timeout for long-running direct streams', () => {
+    const dispatcher = getAppDispatcher()
+
+    expect(getDispatcherOptions(dispatcher)?.bodyTimeout).toBe(0)
+  })
+
+  it('disables body inactivity timeout for long-running proxied streams', () => {
+    const dispatcher = getAppDispatcher({
+      enabled: true,
+      url: 'http://127.0.0.1:7890',
+    })
+
+    expect(getDispatcherOptions(getProxyInnerAgent(dispatcher))?.bodyTimeout).toBe(0)
   })
 })

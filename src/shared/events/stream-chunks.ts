@@ -16,6 +16,7 @@ export interface TextDeltaChunk {
   type: 'text-delta'
   text: string
   turnIndex?: number
+  voiceSpeakText?: string
 }
 
 // ── Reasoning delta ─────────────────────────────
