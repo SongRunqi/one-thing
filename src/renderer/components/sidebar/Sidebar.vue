@@ -8,17 +8,16 @@
       class="sidebar-content"
       :class="{ 'content-hidden': collapsed && !floating }"
     >
-      <!-- Sidebar Header: Traffic lights space -->
+      <!-- Sidebar Header: traffic lights space -->
       <SidebarHeader />
 
-      <!-- Session List -->
+      <!-- Session List: workspace actions live inside the same scroll panel -->
       <SessionList
-        :sessions="flatSessions"
+        :groups="groupedSessions"
         :current-session-id="sessionsStore.currentSessionId"
         :is-session-generating="chatStore.isSessionGenerating"
         :editing-session-id="editingSessionId"
         :editing-name="editingName"
-        :pending-delete-id="pendingDeleteId"
         @create-new-chat="$emit('create-new-chat')"
         @session-click="handleSessionClick"
         @context-menu="openContextMenu"
@@ -26,22 +25,32 @@
         @start-rename="startInlineRename"
         @confirm-rename="confirmInlineRename"
         @cancel-rename="cancelInlineRename"
-        @delete="deleteSessionById"
         @overflow-change="handleOverflowChange"
-      />
+      >
+        <template #before>
+          <div class="sidebar-workspace-actions">
+            <button
+              v-for="action in workspaceActions"
+              :key="action.id"
+              type="button"
+              class="workspace-action"
+              :class="{ active: activeWorkspacePanel === action.id }"
+              @click="$emit('open-workspace-panel', action.id)"
+            >
+              <component
+                :is="action.icon"
+                :size="16"
+                :stroke-width="1.8"
+                class="workspace-action-icon"
+              />
+              <span class="workspace-action-title">{{ action.label }}</span>
+            </button>
+          </div>
+        </template>
+      </SessionList>
 
       <!-- Bottom bar -->
       <div class="sidebar-bottom">
-        <button
-          class="sidebar-bottom-btn"
-          title="Media"
-          @click="$emit('toggle-media-panel')"
-        >
-          <Image
-            :size="18"
-            :stroke-width="1.5"
-          />
-        </button>
         <div class="sidebar-bottom-spacer" />
         <button
           class="sidebar-bottom-btn"
@@ -82,13 +91,12 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
-import { Settings, Image } from 'lucide-vue-next'
+import { Brain, CalendarClock, Images, Settings } from 'lucide-vue-next'
 import SidebarHeader from './SidebarHeader.vue'
 import SessionList from './SessionList.vue'
 import SessionContextMenu from './SessionContextMenu.vue'
 import SidebarResizeHandle from './SidebarResizeHandle.vue'
 import { useSessionOrganizer, type SessionWithBranches } from './useSessionOrganizer'
-import type { ChatSession } from '@/types'
 
 interface Props {
   collapsed?: boolean
@@ -96,6 +104,7 @@ interface Props {
   floatingClosing?: boolean
   noTransition?: boolean
   mediaPanelOpen?: boolean
+  activeWorkspacePanel?: 'memory' | 'media' | 'tasks' | null
   width?: number
 }
 
@@ -110,6 +119,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   toggleCollapse: []
   'toggle-media-panel': []
+  'open-workspace-panel': [panel: 'memory' | 'media' | 'tasks']
   'create-new-chat': []
   'open-search': []
   'open-settings': []
@@ -119,6 +129,12 @@ const emit = defineEmits<{
 // Stores
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
+
+const workspaceActions = [
+  { id: 'memory' as const, label: 'Memory', icon: Brain },
+  { id: 'media' as const, label: 'Media', icon: Images },
+  { id: 'tasks' as const, label: 'Tasks', icon: CalendarClock },
+]
 
 // Composable
 const sessionOrganizer = useSessionOrganizer()
@@ -139,10 +155,6 @@ const showContent = computed(() => !props.collapsed || props.floating)
 // Inline editing state
 const editingSessionId = ref<string | null>(null)
 const editingName = ref('')
-
-// Delete confirmation state
-const pendingDeleteId = ref<string | null>(null)
-let deleteConfirmTimer: ReturnType<typeof setTimeout> | null = null
 
 // Context menu state
 const contextMenu = ref({
@@ -183,8 +195,8 @@ const filteredSessions = computed(() => {
   )
 })
 
-const flatSessions = computed(() => {
-  return sessionOrganizer.getFlatSessions(filteredSessions.value)
+const groupedSessions = computed(() => {
+  return sessionOrganizer.getGroupedSessions(filteredSessions.value)
 })
 
 // Session click handler
@@ -229,7 +241,7 @@ async function handleContextPin() {
 
 async function handleContextDelete() {
   if (contextMenu.value.session) {
-    await deleteSessionById(contextMenu.value.session.id)
+    await sessionsStore.deleteSession(contextMenu.value.session.id)
   }
 }
 
@@ -259,32 +271,6 @@ async function confirmInlineRename(sessionId: string, newName: string) {
   }
 }
 
-// Delete handler with two-click confirmation
-async function deleteSessionById(sessionId: string) {
-  // If already pending deletion for this session, confirm delete
-  if (pendingDeleteId.value === sessionId) {
-    if (deleteConfirmTimer) {
-      clearTimeout(deleteConfirmTimer)
-      deleteConfirmTimer = null
-    }
-    pendingDeleteId.value = null
-    await sessionsStore.deleteSession(sessionId)
-    return
-  }
-
-  // First click - set pending state
-  pendingDeleteId.value = sessionId
-
-  // Auto-reset after 3 seconds if not confirmed
-  if (deleteConfirmTimer) {
-    clearTimeout(deleteConfirmTimer)
-  }
-  deleteConfirmTimer = setTimeout(() => {
-    pendingDeleteId.value = null
-    deleteConfirmTimer = null
-  }, 3000)
-}
-
 // Window resize handler
 function handleWindowResize() {
   if (window.innerWidth < 768) {
@@ -300,10 +286,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleWindowResize)
-  if (deleteConfirmTimer) {
-    clearTimeout(deleteConfirmTimer)
-    deleteConfirmTimer = null
-  }
 })
 </script>
 
@@ -412,6 +394,62 @@ onUnmounted(() => {
   overflow: hidden;
   border: none;
   box-shadow: none;
+}
+
+.sidebar-workspace-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 4px 8px 0;
+  margin: 0 4px 4px 0;
+  flex-shrink: 0;
+}
+
+.workspace-action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.workspace-action:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.workspace-action.active {
+  background: color-mix(in srgb, var(--accent-sub, var(--accent-light)) 38%, transparent);
+  color: var(--accent-main, var(--accent));
+  font-weight: 500;
+}
+
+.workspace-action-icon {
+  flex: 0 0 auto;
+  color: currentColor;
+  opacity: 0.78;
+}
+
+.workspace-action.active .workspace-action-icon {
+  opacity: 1;
+}
+
+.workspace-action-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-bottom {

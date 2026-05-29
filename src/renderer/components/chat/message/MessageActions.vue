@@ -232,6 +232,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { useTTS } from '@/composables/useTTS'
 import { stripMarkdown } from '@/composables/useMarkdownRenderer'
+import { copyTextToClipboard } from '@/utils/clipboard'
 import {
   Copy,
   Check,
@@ -314,16 +315,17 @@ async function handleSpeak() {
 const copied = ref(false)
 
 async function handleCopy() {
-  try {
-    await navigator.clipboard.writeText(props.content)
-    copied.value = true
-    emit('copy')
-    setTimeout(() => {
-      copied.value = false
-    }, 2000)
-  } catch (err) {
-    console.error('Failed to copy:', err)
+  const success = await copyTextToClipboard(props.content)
+  if (!success) {
+    console.warn('Failed to copy')
+    return
   }
+
+  copied.value = true
+  emit('copy')
+  setTimeout(() => {
+    copied.value = false
+  }, 2000)
 }
 
 // Branch menu

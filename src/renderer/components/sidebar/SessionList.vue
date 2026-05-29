@@ -10,27 +10,67 @@
       role="list"
       @scroll="checkOverflow"
     >
-      <!-- Session list -->
-      <SessionItem
-        v-for="session in sessions"
-        :key="session.id"
-        :session="session"
-        :is-active="session.id === currentSessionId"
-        :is-generating="isSessionGenerating(session.id)"
-        :is-editing="editingSessionId === session.id"
-        :editing-name="editingName"
-        :is-pending-delete="pendingDeleteId === session.id"
-        @click="(e) => handleSessionClick(e, session)"
-        @context-menu="(e) => $emit('context-menu', e, session)"
-        @toggle-collapse="$emit('toggle-collapse', session.id)"
-        @start-rename="$emit('start-rename', session)"
-        @confirm-rename="(name) => $emit('confirm-rename', session.id, name)"
-        @cancel-rename="$emit('cancel-rename')"
-        @delete="$emit('delete', session.id)"
-      />
+      <slot name="before" />
+
+      <!-- Temporal groups -->
+      <div
+        v-for="group in groups"
+        :key="group.key"
+        class="session-group"
+      >
+        <button
+          class="session-group-header"
+          @click="toggleGroup(group.key)"
+        >
+          <svg
+            class="group-chevron"
+            :class="{ collapsed: isGroupCollapsed(group.key) }"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+          <span class="group-label">{{ group.label }}</span>
+          <span
+            v-if="isGroupCollapsed(group.key)"
+            class="group-count"
+          >{{ rootCount(group) }}</span>
+        </button>
+
+        <template v-if="!isGroupCollapsed(group.key)">
+          <SessionItem
+            v-for="session in visibleSessions(group)"
+            :key="session.id"
+            :session="session"
+            :is-active="session.id === currentSessionId"
+            :is-generating="isSessionGenerating(session.id)"
+            :is-editing="editingSessionId === session.id"
+            :editing-name="editingName"
+            @click="(e) => handleSessionClick(e, session)"
+            @context-menu="(e) => $emit('context-menu', e, session)"
+            @toggle-collapse="$emit('toggle-collapse', session.id)"
+            @start-rename="$emit('start-rename', session)"
+            @confirm-rename="(name) => $emit('confirm-rename', session.id, name)"
+            @cancel-rename="$emit('cancel-rename')"
+          />
+          <button
+            v-if="hasMore(group)"
+            class="load-more-btn"
+            @click="loadMore(group.key)"
+          >
+            显示更多
+          </button>
+        </template>
+      </div>
 
       <div
-        v-if="sessions.length === 0"
+        v-if="groups.length === 0"
         class="empty-sessions"
       >
         <span>No chats yet</span>
@@ -42,15 +82,14 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import SessionItem from './SessionItem.vue'
-import type { SessionWithBranches } from './useSessionOrganizer'
+import type { SessionWithBranches, SessionGroup } from './useSessionOrganizer'
 
 interface Props {
-  sessions: SessionWithBranches[]
+  groups: SessionGroup[]
   currentSessionId: string | null
   isSessionGenerating: (sessionId: string) => boolean
   editingSessionId: string | null
   editingName: string
-  pendingDeleteId: string | null
 }
 
 interface Emits {
@@ -60,7 +99,6 @@ interface Emits {
   (e: 'start-rename', session: SessionWithBranches): void
   (e: 'confirm-rename', sessionId: string, name: string): void
   (e: 'cancel-rename'): void
-  (e: 'delete', sessionId: string): void
   (e: 'overflow-change', isOverflowing: boolean, hasContentBelow: boolean): void
 }
 
@@ -70,6 +108,82 @@ const emit = defineEmits<Emits>()
 const listRef = ref<HTMLElement | null>(null)
 const isOverflowing = ref(false)
 const hasContentBelow = ref(false)
+
+// Per-group display state (keyed by stable group.key)
+const DEFAULT_VISIBLE = 5   // root sessions shown per group by default
+const LOAD_STEP = 10        // additional roots revealed per "show more" click
+const collapsedGroups = ref<Set<string>>(new Set(['older']))
+const groupLimits = ref<Record<string, number>>({})
+
+// Count top-level (root) sessions in a group; branches ride along with their root
+function rootCount(group: SessionGroup): number {
+  let n = 0
+  for (const s of group.sessions) if (s.depth === 0) n++
+  return n
+}
+
+function limitFor(key: string): number {
+  return groupLimits.value[key] ?? DEFAULT_VISIBLE
+}
+
+// Slice the flattened list to the first N roots, keeping each root's full subtree
+function visibleSessions(group: SessionGroup): SessionWithBranches[] {
+  const max = limitFor(group.key)
+  const result: SessionWithBranches[] = []
+  let roots = 0
+  for (const s of group.sessions) {
+    if (s.depth === 0) {
+      roots++
+      if (roots > max) break
+    }
+    result.push(s)
+  }
+  return result
+}
+
+function hasMore(group: SessionGroup): boolean {
+  return rootCount(group) > limitFor(group.key)
+}
+
+function loadMore(key: string) {
+  groupLimits.value = { ...groupLimits.value, [key]: limitFor(key) + LOAD_STEP }
+}
+
+function isGroupCollapsed(key: string): boolean {
+  return collapsedGroups.value.has(key)
+}
+
+function toggleGroup(key: string) {
+  const next = new Set(collapsedGroups.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedGroups.value = next
+}
+
+// Make sure the active session is actually rendered: expand its group and raise
+// its limit far enough to include it. Runs on deliberate switches + first load.
+function ensureActiveVisible() {
+  const id = props.currentSessionId
+  if (!id) return
+  for (const group of props.groups) {
+    let rootIdx = -1
+    let found = false
+    for (const s of group.sessions) {
+      if (s.depth === 0) rootIdx++
+      if (s.id === id) { found = true; break }
+    }
+    if (!found) continue
+    if (collapsedGroups.value.has(group.key)) {
+      const next = new Set(collapsedGroups.value)
+      next.delete(group.key)
+      collapsedGroups.value = next
+    }
+    if (limitFor(group.key) < rootIdx + 1) {
+      groupLimits.value = { ...groupLimits.value, [group.key]: rootIdx + 1 }
+    }
+    break
+  }
+}
 // Suppress CSS transitions on initial mount so collapsed branches don't visibly
 // animate as the organizer settles its hierarchy / active-session expansion.
 const suppressAnim = ref(true)
@@ -127,12 +241,31 @@ function handleSessionClick(event: MouseEvent, session: SessionWithBranches) {
   emit('session-click', event, session)
 }
 
-// Watch sessions count to recheck overflow
+// Watch total session count to recheck overflow
 watch(
-  () => props.sessions.length,
+  () => props.groups.reduce((n, g) => n + g.sessions.length, 0),
   () => {
     nextTick(checkOverflow)
   }
+)
+
+// Keep the active session visible on deliberate navigation
+watch(
+  () => props.currentSessionId,
+  () => nextTick(ensureActiveVisible)
+)
+
+// And once on the first load after groups are populated
+let initialActiveApplied = false
+watch(
+  () => props.groups.length,
+  (len) => {
+    if (len > 0 && !initialActiveApplied) {
+      initialActiveApplied = true
+      nextTick(ensureActiveVisible)
+    }
+  },
+  { immediate: true }
 )
 
 onMounted(() => {
@@ -218,10 +351,93 @@ onUnmounted(() => {
   overflow-x: hidden;
   min-height: 0;
   min-width: 0;
-  padding: 6px 0 60px 8px;
+  padding: 2px 0 60px 8px;
   scrollbar-gutter: stable;
   contain: strict;
   content-visibility: auto;
+}
+
+/* Each temporal section: sticky header + its rows */
+.session-group {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Temporal group header — chunking cue, clickable to collapse, sticks while scrolling */
+.session-group-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 4px;
+  padding: 15px 8px 5px;
+  border: none;
+  background: var(--sidebar-bg);
+  font-size: 11px;
+  font-weight: var(--font-weight-normal);
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--text-faint) 76%, transparent);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.session-group-header:hover {
+  color: var(--text-muted);
+}
+
+/* First section header sits flush at the top */
+.session-group:first-child .session-group-header {
+  padding-top: 4px;
+}
+
+.group-chevron {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  opacity: 0.75;
+  transition: transform 0.18s ease;
+}
+
+.group-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+.group-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-count {
+  flex-shrink: 0;
+  font-weight: var(--font-weight-normal);
+  color: var(--text-faint);
+  opacity: 0.48;
+}
+
+/* Show-more affordance per section */
+.load-more-btn {
+  margin: 2px 4px 4px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-faint) 72%, transparent);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.load-more-btn:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 
 /* Kill child transitions while initial state settles to avoid the

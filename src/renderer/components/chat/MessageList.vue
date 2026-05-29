@@ -137,7 +137,7 @@
         >
           <div class="reject-dialog">
             <div class="reject-dialog-header">
-              <span class="reject-dialog-title">拒绝原因</span>
+              <span class="reject-dialog-title">Reject reason</span>
               <button
                 class="reject-dialog-close"
                 @click="cancelReject"
@@ -159,14 +159,14 @@
                 ref="rejectReasonInputRef"
                 v-model="rejectReason"
                 class="reject-reason-input"
-                placeholder="请输入拒绝原因（可选）..."
+                placeholder="Reason for rejection (optional)..."
                 rows="3"
                 @keydown.enter.ctrl="confirmReject"
                 @keydown.enter.meta="confirmReject"
                 @keydown.escape="cancelReject"
               />
               <div class="reject-dialog-hint">
-                按 Ctrl+Enter 确认，Esc 取消
+                Ctrl+Enter to confirm · Esc to cancel
               </div>
             </div>
             <div class="reject-dialog-footer">
@@ -174,13 +174,13 @@
                 class="reject-dialog-btn reject-dialog-btn-cancel"
                 @click="cancelReject"
               >
-                取消
+                Cancel
               </button>
               <button
                 class="reject-dialog-btn reject-dialog-btn-confirm"
                 @click="confirmReject"
               >
-                确认拒绝
+                Reject
               </button>
             </div>
           </div>
@@ -220,6 +220,13 @@ interface BranchInfo {
   id: string
   name: string
 }
+
+// Shared stable reference for messages without branches. Returning a fresh `[]`
+// per call gives every MessageItem a new `branches` prop on each list re-render,
+// which defeats Vue's "skip unchanged child" optimization and re-renders the
+// whole list on every send (cost scales with conversation length). This array
+// is read-only by all consumers (MessageActions only iterates / reads length).
+const EMPTY_BRANCHES: BranchInfo[] = []
 
 type NavMarker = UserMessageNavMarker
 type MessageScrollBehavior = 'auto' | 'instant' | 'smooth'
@@ -1173,7 +1180,7 @@ const messageBranches = computed(() => {
 
 // Get branches for a specific message
 function getBranchesForMessage(messageId: string): BranchInfo[] {
-  return messageBranches.value.get(messageId) || []
+  return messageBranches.value.get(messageId) ?? EMPTY_BRANCHES
 }
 
 // Find which user message is currently most visible in the viewport
@@ -1900,6 +1907,7 @@ defineExpose({
   flex-direction: column;
   position: relative;
   min-height: 0;
+  container-type: inline-size;
   /* Inherit parent's bottom border-radius for proper clipping */
   border-bottom-left-radius: var(--radius-lg);
   border-bottom-right-radius: var(--radius-lg);
@@ -2152,6 +2160,18 @@ defineExpose({
     border-radius: 14px;
   }
 
+}
+
+@container (max-width: 560px) {
+  .nav-mode-toggle,
+  .assistant-nav-rail,
+  .user-nav-rail {
+    display: none;
+  }
+
+  .scroll-to-bottom-btn {
+    bottom: 20px;
+  }
 }
 
 @media (max-width: 480px) {

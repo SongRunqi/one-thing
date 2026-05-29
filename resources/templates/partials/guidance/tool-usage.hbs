@@ -1,15 +1,6 @@
 ## Tool Usage
-如果用户的任务需要工具来实现，你可以使用这些工具来帮助实现用户提出的任务;
-[important]
-在解释概念的时候你不需要使用这些，除非有明确的上下文让你创建，如果是示例代码，请直接输出;
-
-**Prefer specialized tools over bash:** read/write/edit/grep/glob instead of cat/echo/sed/grep/find.
-
-**Batch independent calls:** Return multiple tool calls in ONE response (e.g., read 3 files together).
-
-**Never guess:** Use exact values from user input or previous results. No placeholders.
-
-**Read before modify:** Always read() a file before edit(). Use glob() if path is uncertain.
+在解释概念的时候你不需要为用户创建代码文件，除非有明确的上下文让你创建，如果是示例代码，请直接输出;
+优先使用具体的工具而不是bash
 
 {{#if (hasValue toolUsageDocsPath)}}
 Detailed examples and strategies: {{toolUsageDocsPath}}

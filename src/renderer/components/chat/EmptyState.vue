@@ -13,25 +13,26 @@
  * Uses async component loading for code splitting.
  */
 
-import { computed, defineAsyncComponent } from 'vue'
+import { computed, defineAsyncComponent, type Component } from 'vue'
 import { useHolidayTheme } from './empty-state-themes/useHolidayTheme'
+import type { HolidayId } from './empty-state-themes'
 
 const { currentHoliday } = useHolidayTheme()
 
-// Theme components map - async loaded for code splitting
-const themeComponents = {
-  'new-year': defineAsyncComponent(() => import('./empty-state-themes/NewYearTheme.vue')),
-  'spring-festival': defineAsyncComponent(() => import('./empty-state-themes/NewYearTheme.vue')), // TODO: Create SpringFestivalTheme
-  'valentine': defineAsyncComponent(() => import('./empty-state-themes/DefaultTheme.vue')), // TODO: Create ValentineTheme
-  'dragon-boat': defineAsyncComponent(() => import('./empty-state-themes/DefaultTheme.vue')), // TODO: Create DragonBoatTheme
-  'mid-autumn': defineAsyncComponent(() => import('./empty-state-themes/DefaultTheme.vue')), // TODO: Create MidAutumnTheme
-  'halloween': defineAsyncComponent(() => import('./empty-state-themes/DefaultTheme.vue')), // TODO: Create HalloweenTheme
-  'christmas': defineAsyncComponent(() => import('./empty-state-themes/DefaultTheme.vue')), // TODO: Create ChristmasTheme
-  'default': defineAsyncComponent(() => import('./empty-state-themes/DefaultTheme.vue')),
-} as const
+// Async-loaded for code splitting.
+const DefaultTheme = defineAsyncComponent(() => import('./empty-state-themes/DefaultTheme.vue'))
+const NewYearTheme = defineAsyncComponent(() => import('./empty-state-themes/NewYearTheme.vue'))
 
-const themeComponent = computed(() => {
-  return themeComponents[currentHoliday.value] || themeComponents['default']
+// Only holidays with a dedicated visual are mapped. Any holiday without a
+// bespoke theme (and `default`) falls through to DefaultTheme below, so we
+// don't keep placeholder entries that just re-point at the default.
+const themeComponents: Partial<Record<HolidayId, Component>> = {
+  'new-year': NewYearTheme,
+  'spring-festival': NewYearTheme, // reuses the New Year visual until a dedicated one exists
+}
+
+const themeComponent = computed<Component>(() => {
+  return themeComponents[currentHoliday.value] ?? DefaultTheme
 })
 
 defineEmits<{

@@ -44,6 +44,9 @@ import {
   syncSqliteSessionMetadata,
   syncSqliteSessionUsage,
   syncSqliteSessionVariables,
+  deleteSqliteMessage,
+  deleteSqliteMessageAndAfter,
+  upsertSqliteMessageAndTruncate,
 } from './session-repository/sqlite-repository.js'
 
 // ============ Session 内存缓存 (LRU) ============
@@ -931,7 +934,6 @@ export function renameSession(sessionId: string, newName: string): void {
 
   // Save session file
   saveSessionToFile(sessionId, session)
-  syncSessionToSqliteIfReady(session)
   syncSessionMetadataToSqlite(session)
 
   // Update index (only name, not updatedAt)
@@ -952,7 +954,6 @@ export function updateSessionPin(sessionId: string, isPinned: boolean): void {
 
   // Save session file
   saveSessionToFile(sessionId, session)
-  syncSessionToSqliteIfReady(session)
   syncSessionMetadataToSqlite(session)
 
   // Update index
@@ -978,7 +979,6 @@ export function updateSessionArchived(sessionId: string, isArchived: boolean, ar
 
   // Save session file
   saveSessionToFile(sessionId, session)
-  syncSessionToSqliteIfReady(session)
   syncSessionMetadataToSqlite(session)
 
   // Update index
@@ -1013,7 +1013,6 @@ export function updateSessionWorkingDirectory(sessionId: string, workingDirector
 
   // Save session file
   saveSessionToFile(sessionId, session)
-  syncSessionToSqliteIfReady(session)
   syncSessionMetadataToSqlite(session)
 }
 
@@ -1024,7 +1023,6 @@ export function updateSessionWorkingDirectoryRoots(sessionId: string, roots: str
   session.workingDirectoryRoots = normalizeWorkingDirectoryRoots(roots, session.workingDirectory)
 
   saveSessionToFile(sessionId, session)
-  syncSessionToSqliteIfReady(session)
   syncSessionMetadataToSqlite(session)
 }
 
@@ -1086,9 +1084,9 @@ export function updateSessionTokenUsage(
   // Context size = input tokens only (context window limit applies to input)
   session.contextSize = turnUsage.inputTokens
 
-  // Save session file
+  // Save session file. Only usage columns changed, so sync the session_usage
+  // table incrementally instead of rewriting the whole session.
   saveSessionToFile(sessionId, session)
-  syncSessionToSqliteIfReady(session)
   try {
     if (isSqliteSessionReady(sessionId)) syncSqliteSessionUsage(session)
     else scheduleSessionSqliteMigration(sessionId)
@@ -1104,8 +1102,8 @@ export function updateSessionContextSize(sessionId: string, contextSize: number)
   session.lastInputTokens = Math.max(0, contextSize)
   session.contextSize = Math.max(0, contextSize)
 
+  // Only usage columns changed — sync session_usage incrementally.
   saveSessionToFile(sessionId, session)
-  syncSessionToSqliteIfReady(session)
   try {
     if (isSqliteSessionReady(sessionId)) syncSqliteSessionUsage(session)
     else scheduleSessionSqliteMigration(sessionId)
@@ -1162,9 +1160,13 @@ export function addMessage(sessionId: string, message: ChatMessage): void {
   }
   session.updatedAt = Date.now()
 
-  // Save session file
+  // Save session file (async/throttled) and sync only the newly appended row to
+  // SQLite. Using the full-session sync here did a synchronous DELETE + re-INSERT
+  // of every message on each append — O(n) and blocking the event loop right
+  // before `message:user-created` is emitted, which delayed the user bubble by
+  // ~0.5-0.8s in long conversations. Incremental upsert is O(1).
   saveSessionToFile(sessionId, session)
-  syncSessionToSqliteIfReady(session)
+  syncMessageToSqliteIfReady(session, message)
 
   // Update index timestamp
   const index = loadSessionsIndex()
@@ -1211,9 +1213,19 @@ export function deleteMessage(sessionId: string, messageId: string): boolean {
   session.messages.splice(index, 1)
   session.updatedAt = Date.now()
 
-  // Save session file
+  // Save session file. Delete the single row + renumber incrementally instead
+  // of rewriting the whole session; metadata sync persists updatedAt.
   saveSessionToFile(sessionId, session)
-  syncSessionToSqliteIfReady(session)
+  try {
+    if (isSqliteSessionReady(sessionId)) {
+      deleteSqliteMessage(sessionId, messageId)
+      syncSqliteSessionMetadata(session)
+    } else {
+      scheduleSessionSqliteMigration(sessionId)
+    }
+  } catch (error) {
+    console.error('[Sessions] Failed to delete message from SQLite:', error)
+  }
 
   return true
 }
@@ -1256,8 +1268,21 @@ export function deleteMessageAndTruncate(sessionId: string, messageId: string): 
   repairSessionTimelineMetadata(session, { recomputeContextSize: true })
   session.updatedAt = Date.now()
 
+  // Tail-truncate the SQLite rows + sync the changed session-level fields
+  // (updatedAt/summary via metadata, totals/contextSize via usage) instead of a
+  // full session rewrite.
   saveSessionToFile(sessionId, session)
-  syncSessionToSqliteIfReady(session)
+  try {
+    if (isSqliteSessionReady(sessionId)) {
+      deleteSqliteMessageAndAfter(sessionId, messageId)
+      syncSqliteSessionMetadata(session)
+      syncSqliteSessionUsage(session)
+    } else {
+      scheduleSessionSqliteMigration(sessionId)
+    }
+  } catch (error) {
+    console.error('[Sessions] Failed to truncate messages in SQLite:', error)
+  }
 
   const index = loadSessionsIndex()
   const meta = index.find((s) => s.id === sessionId)
@@ -1303,9 +1328,20 @@ export function updateMessageAndTruncate(
   repairSessionTimelineMetadata(session, { recomputeContextSize: true })
   session.updatedAt = Date.now()
 
-  // Save session file
+  // Save session file. Upsert the edited message at its seq and tail-truncate
+  // the rest incrementally; sync changed session-level fields. No full rewrite.
   saveSessionToFile(sessionId, session)
-  syncSessionToSqliteIfReady(session)
+  try {
+    if (isSqliteSessionReady(sessionId)) {
+      upsertSqliteMessageAndTruncate(sessionId, session.messages[messageIndex], messageIndex + 1)
+      syncSqliteSessionMetadata(session)
+      syncSqliteSessionUsage(session)
+    } else {
+      scheduleSessionSqliteMigration(sessionId)
+    }
+  } catch (error) {
+    console.error('[Sessions] Failed to update+truncate messages in SQLite:', error)
+  }
 
   // Update index timestamp
   const index = loadSessionsIndex()

@@ -594,6 +594,9 @@ export interface ElectronAPI {
   openExternal: (url: string) => Promise<{ success: boolean }>
   getDataPath: () => Promise<string>
 
+  // Clipboard methods
+  writeClipboardText: (text: string) => Promise<{ success: boolean; error?: string }> | { success: boolean; error?: string }
+
   // Media methods
   saveImage: (data: { url?: string; base64?: string; prompt: string; revisedPrompt?: string; model: string; sessionId: string; messageId: string }) => Promise<{ id: string; type: 'image'; filePath: string; prompt: string; revisedPrompt?: string; model: string; createdAt: number; sessionId: string; messageId: string }>
   loadAllMedia: () => Promise<{ id: string; type: 'image'; filePath: string; prompt: string; revisedPrompt?: string; model: string; createdAt: number; sessionId: string; messageId: string }[]>

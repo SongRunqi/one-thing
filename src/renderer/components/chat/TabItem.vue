@@ -19,7 +19,8 @@
     <div class="tab-surface">
       <component
         :is="icon"
-        :size="13"
+        :size="15"
+        :stroke-width="2"
         class="tab-icon"
       />
       <span class="tab-title">
@@ -114,21 +115,22 @@ function onDrop(e: DragEvent) {
 <style scoped>
 .tab-item {
   --tab-active-bg: var(--bg-panel);
-  --tab-radius: 13px;
-  --tab-corner-size: 12px;
-  --tab-height: 32px;
-  --tab-width: 156px;
+  --tab-radius: 8px;
+  --tab-height: 28px;
+  --tab-min-width: 72px;
+  --tab-max-width: 190px;
   position: relative;
-  flex: 0 0 var(--tab-width);
-  width: var(--tab-width);
+  flex: 0 1 auto;
+  min-width: var(--tab-min-width);
+  max-width: var(--tab-max-width);
   height: var(--tab-height);
-  margin-bottom: -1px;
+  margin-bottom: 0;
   box-sizing: border-box;
   cursor: pointer;
   white-space: nowrap;
   font-family: var(--type-label-font);
   font-size: 13px;
-  font-weight: var(--font-weight-medium);
+  font-weight: 400;
   line-height: 1;
   color: var(--muted);
   background: transparent;
@@ -140,29 +142,18 @@ function onDrop(e: DragEvent) {
   -webkit-app-region: no-drag;
 }
 
-.tab-item:not(.active)::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: 9px;
-  width: 1px;
-  height: 14px;
-  background: rgba(var(--accent-rgb), 0.36);
-  opacity: 0.62;
-}
-
 .tab-surface {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) 18px;
+  grid-template-columns: 15px minmax(0, max-content) 18px;
   align-items: center;
   gap: 7px;
   width: 100%;
   height: 100%;
-  padding: 0 10px;
+  padding: 0 9px;
   box-sizing: border-box;
-  border: 1px solid transparent;
+  border: 0.5px solid transparent;
   border-bottom-color: transparent;
   border-radius: 10px;
   background: transparent;
@@ -173,83 +164,44 @@ function onDrop(e: DragEvent) {
     box-shadow var(--duration-fast) var(--ease-default);
 }
 
-.tab-surface::before,
-.tab-surface::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  display: none;
-  width: var(--tab-corner-size);
-  height: var(--tab-corner-size);
-  pointer-events: none;
-}
-
 .tab-item:not(.closable) .tab-surface {
-  grid-template-columns: 14px minmax(0, 1fr) 0;
+  grid-template-columns: 15px minmax(0, max-content) 0;
 }
 
 .tab-item:hover .tab-surface {
-  background: color-mix(in srgb, var(--bg-elevated) 32%, transparent);
+  background: var(--ot-hover-bg, color-mix(in srgb, var(--bg-elevated) 32%, transparent));
   color: var(--text);
-}
-
-.tab-item:hover::after,
-.tab-item.hide-divider::after,
-.tab-item.drag-over::after {
-  opacity: 0;
 }
 
 .tab-item.active {
-  color: var(--text);
+  color: var(--ot-active-text, var(--text));
+  font-weight: 500;
 }
 
 .tab-item.active .tab-surface {
-  background: var(--tab-active-bg);
-  border-color: color-mix(in srgb, var(--border-subtle) 58%, transparent);
-  border-bottom-color: transparent;
-  border-radius: var(--tab-radius) var(--tab-radius) 0 0;
-  box-shadow: 0 -0.5px 0 color-mix(in srgb, var(--bg-floating) 20%, transparent);
-}
-
-.tab-item.active .tab-surface::before,
-.tab-item.active .tab-surface::after {
-  display: block;
-}
-
-.tab-item.active .tab-surface::before {
-  left: calc(var(--tab-corner-size) * -1);
-  background:
-    radial-gradient(
-      circle at 0 0,
-      transparent 0 calc(var(--tab-corner-size) - 0.75px),
-      color-mix(in srgb, var(--border-subtle) 58%, transparent) calc(var(--tab-corner-size) - 0.75px) var(--tab-corner-size),
-      var(--tab-active-bg) var(--tab-corner-size)
-    );
-}
-
-.tab-item.active .tab-surface::after {
-  right: calc(var(--tab-corner-size) * -1);
-  background:
-    radial-gradient(
-      circle at 100% 0,
-      transparent 0 calc(var(--tab-corner-size) - 0.75px),
-      color-mix(in srgb, var(--border-subtle) 58%, transparent) calc(var(--tab-corner-size) - 0.75px) var(--tab-corner-size),
-      var(--tab-active-bg) var(--tab-corner-size)
-    );
+  background: var(--ot-active-bg, color-mix(in srgb, var(--accent) 13%, transparent));
+  border-color: transparent;
+  border-radius: var(--tab-radius);
+  box-shadow: none;
 }
 
 .tab-item.drag-over {
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--border-subtle, var(--border)) 80%, transparent);
 }
 
 .tab-item.drag-over .tab-surface {
-  border-left-color: var(--accent);
+  border-left-color: color-mix(in srgb, var(--border-subtle, var(--border)) 80%, transparent);
 }
 
 .tab-icon {
   flex-shrink: 0;
   justify-self: center;
-  color: color-mix(in srgb, currentColor 64%, var(--accent));
+  color: currentColor;
+  opacity: 0.72;
+}
+
+.tab-item.active .tab-icon {
+  opacity: 1;
 }
 
 .tab-title {

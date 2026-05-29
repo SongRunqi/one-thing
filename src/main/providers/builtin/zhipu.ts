@@ -21,6 +21,17 @@ function supportsThinking(modelId: string): boolean {
   return lower.includes('glm-4.5') || lower.includes('glm-4.6') || lower.includes('glm-4.7')
 }
 
+function isCompleteToolArguments(input: string): boolean {
+  const trimmed = input.trim()
+  if (!trimmed) return false
+  try {
+    const parsed = JSON.parse(trimmed)
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+  } catch {
+    return false
+  }
+}
+
 // Zhipu API message types
 interface ZhipuMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -299,7 +310,7 @@ function createZhipuModel(modelId: string, apiKey: string, baseUrl: string, fetc
         let buffer = ''
         const toolCallsInProgress: Map<
           number,
-          { id: string; name: string; arguments: string }
+          { id: string; name: string; arguments: string; started: boolean; ended: boolean }
         > = new Map()
         let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
         let reasoningStarted = false
@@ -376,46 +387,54 @@ function createZhipuModel(modelId: string, apiKey: string, baseUrl: string, fetc
                 if (delta.tool_calls) {
                   for (const tc of delta.tool_calls) {
                     const index = tc.index
+                    let entry = toolCallsInProgress.get(index)
+                    const argsDelta = tc.function?.arguments || ''
 
-                    if (!toolCallsInProgress.has(index)) {
-                      // New tool call - emit tool-input-start
-                      const toolCallId = tc.id || `tool-${index}`
-                      const toolName = tc.function?.name || ''
-                      const initialArgs = tc.function?.arguments || ''
-                      toolCallsInProgress.set(index, {
-                        id: toolCallId,
-                        name: toolName,
-                        arguments: initialArgs,
-                      })
-                      if (toolName) {
-                        yield {
-                          type: 'tool-input-start',
-                          toolCallId,
-                          toolName,
-                        } as any
-                        // Also emit initial arguments if present
-                        if (initialArgs) {
-                          yield {
-                            type: 'tool-input-delta',
-                            toolCallId,
-                            inputTextDelta: initialArgs,
-                          } as any
-                        }
+                    if (!entry) {
+                      entry = {
+                        id: tc.id || `tool-${index}`,
+                        name: tc.function?.name || '',
+                        arguments: argsDelta,
+                        started: false,
+                        ended: false,
                       }
+                      toolCallsInProgress.set(index, entry)
                     } else {
-                      // Continue existing tool call
-                      const existing = toolCallsInProgress.get(index)!
-                      if (tc.id) existing.id = tc.id
-                      if (tc.function?.name) existing.name += tc.function.name
-                      if (tc.function?.arguments) {
-                        existing.arguments += tc.function.arguments
-                        // Emit tool-input-delta for argument chunks
+                      if (tc.id) entry.id = tc.id
+                      if (tc.function?.name) entry.name += tc.function.name
+                      if (argsDelta) entry.arguments += argsDelta
+                    }
+
+                    // Defer tool-input-start until we have both id and name,
+                    // and emit any buffered argument deltas in order.
+                    if (!entry.started && entry.id && entry.name) {
+                      yield {
+                        type: 'tool-input-start',
+                        toolCallId: entry.id,
+                        toolName: entry.name,
+                      } as any
+                      entry.started = true
+                      if (entry.arguments) {
                         yield {
                           type: 'tool-input-delta',
-                          toolCallId: existing.id,
-                          inputTextDelta: tc.function.arguments,
+                          toolCallId: entry.id,
+                          inputTextDelta: entry.arguments,
                         } as any
                       }
+                    } else if (entry.started && argsDelta) {
+                      yield {
+                        type: 'tool-input-delta',
+                        toolCallId: entry.id,
+                        inputTextDelta: argsDelta,
+                      } as any
+                    }
+
+                    if (entry.started && !entry.ended && isCompleteToolArguments(entry.arguments)) {
+                      yield {
+                        type: 'tool-input-end',
+                        toolCallId: entry.id,
+                      } as any
+                      entry.ended = true
                     }
                   }
                 }

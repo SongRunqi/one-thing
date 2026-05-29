@@ -3,22 +3,48 @@
     <!-- Left: traffic lights reserved + tabs -->
     <div class="tab-bar-left">
       <div
-        v-if="showSidebarToggle"
-        class="traffic-lights-reserved"
+        :class="[
+          'topbar-sidebar-actions-slot',
+          {
+            reserved: showSidebarToggle || reserveSidebarActions,
+            'media-panel-open': mediaPanelOpen,
+          },
+        ]"
+        aria-hidden="true"
       />
       <div
         class="tab-list"
         role="tablist"
       >
         <TabItem
-          v-for="(tab, index) in tabs"
+          v-for="(tab, index) in chatTabs"
           :key="tab.id"
           :tab="tab"
           :active="tab.id === activeTabId"
           :closable="tab.type !== 'chat' || chatTabCount > 1"
           :is-first="index === 0"
-          :hide-trailing-divider="tab.id === activeTabId || tabs[index + 1]?.id === activeTabId"
+          :hide-trailing-divider="shouldHideTrailingDivider(chatTabs, index)"
           :session-name="tab.type === 'chat' ? sessionName : undefined"
+          @select="$emit('selectTab', tab.id)"
+          @close="$emit('closeTab', tab.id)"
+          @drag-start="(id) => dragFromId = id"
+          @drop-on="(id) => { $emit('moveTab', dragFromId!, id); dragFromId = null }"
+        />
+
+        <div
+          v-if="resourceTabs.length > 0"
+          class="tab-group-divider"
+          aria-hidden="true"
+        />
+
+        <TabItem
+          v-for="(tab, index) in resourceTabs"
+          :key="tab.id"
+          :tab="tab"
+          :active="tab.id === activeTabId"
+          :closable="true"
+          :hide-trailing-divider="shouldHideTrailingDivider(resourceTabs, index)"
+          :session-name="undefined"
           @select="$emit('selectTab', tab.id)"
           @close="$emit('closeTab', tab.id)"
           @drag-start="(id) => dragFromId = id"
@@ -118,6 +144,7 @@ const props = defineProps<{
   showSplitButton: boolean
   canClose: boolean
   isInspectorOpen?: boolean
+  reserveSidebarActions?: boolean
 }>()
 
 defineEmits<{
@@ -125,6 +152,8 @@ defineEmits<{
   closeTab: [id: string]
   moveTab: [fromId: string, toId: string]
   toggleSidebar: []
+  openSearch: []
+  createNewChat: []
   goToParent: []
   split: []
   equalize: []
@@ -133,23 +162,32 @@ defineEmits<{
 }>()
 
 const dragFromId = ref<string | null>(null)
-const chatTabCount = computed(() => props.tabs.filter(t => t.type === 'chat').length)
+const chatTabs = computed(() => props.tabs.filter(t => t.type === 'chat'))
+const resourceTabs = computed(() => props.tabs.filter(t => t.type !== 'chat'))
+const chatTabCount = computed(() => chatTabs.value.length)
 const activeTab = computed(() => props.tabs.find(tab => tab.id === props.activeTabId))
+
+function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
+  return group[index]?.id === props.activeTabId || group[index + 1]?.id === props.activeTabId
+}
 </script>
 
 <style scoped>
 .tab-bar {
+  --ot-active-bg: color-mix(in srgb, var(--accent-sub, var(--accent-light)) 42%, transparent);
+  --ot-active-text: var(--accent-main, var(--accent));
+  --ot-hover-bg: color-mix(in srgb, var(--text) 4.5%, transparent);
+  --ot-divider: color-mix(in srgb, var(--border-subtle, var(--border)) 70%, var(--muted));
+
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 38px;
-  padding: 0 10px 0 0;
+  height: 40px;
+  padding: 0 8px 0 0;
   user-select: none;
   flex-shrink: 0;
   position: relative;
-  background:
-    linear-gradient(rgba(var(--accent-rgb), 0.04), rgba(var(--accent-rgb), 0.04)),
-    var(--bg-app);
+  background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg-floating) 20%, transparent);
 }
 
@@ -165,20 +203,40 @@ const activeTab = computed(() => props.tabs.find(tab => tab.id === props.activeT
   z-index: 0;
 }
 
-.traffic-lights-reserved {
-  width: 164px;
+/*
+  Layout-bound sidebar action reservation.
+  This slot is always mounted and animates width, so Chat/Project/File tabs
+  reflow with the main panel instead of being translated or covered.
+  Expanded sidebar: slot width 0, panel is pushed by sidebar width.
+  Collapsed sidebar: slot reserves titlebar/traffic-light + action-group space.
+*/
+.topbar-sidebar-actions-slot {
+  width: 0;
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
+  overflow: hidden;
+  padding-left: 0;
   -webkit-app-region: no-drag;
+  transition:
+    width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.tab-bar.media-panel-open .traffic-lights-reserved {
-  -webkit-app-region: drag;
+.topbar-sidebar-actions-slot.reserved {
+  width: 164px;
+  padding-left: 78px;
+}
+
+.topbar-sidebar-actions-slot.reserved.media-panel-open {
+  width: 90px;
+  padding-left: 8px;
 }
 
 /* ── Left: tabs ──────────────────── */
 .tab-bar-left {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   flex: 1;
   min-width: 0;
   align-self: stretch;
@@ -187,20 +245,30 @@ const activeTab = computed(() => props.tabs.find(tab => tab.id === props.activeT
 }
 
 .tab-list {
-  --tab-corner-size: 12px;
   display: flex;
-  align-items: flex-end;
-  gap: 0;
+  align-items: center;
+  gap: 4px;
   overflow-x: auto;
   overflow-y: visible;
   scrollbar-width: none;
-  padding: 2px var(--tab-corner-size) 0 calc(var(--tab-corner-size) + 4px);
+  padding: 0 8px 0 12px;
   min-width: 0;
   -webkit-app-region: no-drag;
 }
 
 .tab-list::-webkit-scrollbar {
   display: none;
+}
+
+.tab-group-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  flex: 0 0 1px;
+  background: var(--ot-divider);
+  opacity: 0.86;
+  transform: scaleX(0.5);
+  transform-origin: center;
 }
 
 .tab-bar-drag-spacer {

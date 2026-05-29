@@ -244,10 +244,10 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 9px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle, var(--border)) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-elevated) 42%, transparent);
   color: var(--muted);
   font-size: 12px;
   cursor: pointer;

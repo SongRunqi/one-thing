@@ -101,8 +101,8 @@
     <!-- Reasoning expand: in document flow, smooth grid-rows animation -->
     <!-- User-triggered expand, so pushing content down is expected -->
     <div
-      ref="reasoningWrapperRef"
       v-if="reasoning"
+      ref="reasoningWrapperRef"
       class="thinking-reasoning-wrapper"
       :class="{ expanded: isExpanded }"
     >

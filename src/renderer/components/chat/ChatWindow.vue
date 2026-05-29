@@ -12,10 +12,13 @@
       :can-close="!!canClose"
       :is-inspector-open="isInspectorOpen"
       :media-panel-open="mediaPanelOpen"
+      :reserve-sidebar-actions="reserveSidebarActions"
       @select-tab="activateTab"
       @close-tab="handleCloseTab"
       @move-tab="tabState.moveTab"
       @toggle-sidebar="emit('toggleSidebar')"
+      @open-search="emit('openSearch')"
+      @create-new-chat="emit('createNewChat')"
       @go-to-parent="goToParentSession"
       @split="emit('split')"
       @equalize="emit('equalize')"
@@ -80,6 +83,7 @@ interface Props {
   showSidebarToggle?: boolean
   mediaPanelOpen?: boolean
   isInspectorOpen?: boolean
+  reserveSidebarActions?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -96,6 +100,8 @@ const emit = defineEmits<{
   equalize: []
   splitWithBranch: [sessionId: string]
   toggleSidebar: []
+  openSearch: []
+  createNewChat: []
   toggleInspector: []
 }>()
 

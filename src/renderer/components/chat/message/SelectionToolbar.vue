@@ -87,6 +87,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { copyTextToClipboard } from '@/utils/clipboard'
 
 interface Props {
   visible: boolean
@@ -106,15 +107,16 @@ const emit = defineEmits<{
 const copied = ref(false)
 
 async function handleCopy() {
-  try {
-    await navigator.clipboard.writeText(props.selectedText)
-    copied.value = true
-    setTimeout(() => {
-      copied.value = false
-    }, 1500)
-  } catch (err) {
-    console.error('Failed to copy selection:', err)
+  const success = await copyTextToClipboard(props.selectedText)
+  if (!success) {
+    console.warn('Failed to copy selection')
+    return
   }
+
+  copied.value = true
+  setTimeout(() => {
+    copied.value = false
+  }, 1500)
 }
 
 function handleQuote() {

@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/utils/clipboard'
 import { perfMark, perfMeasure } from '@/utils/perf'
 import { replaceEmojiShortcodes } from '@/editor/markdown-emoji'
 import type { MarkdownRenderOptions } from '@/editor/markdown-document'
@@ -99,13 +100,14 @@ function ensureCodeCopyHandler(): void {
     const button = target?.closest?.('.code-block-copy[data-code]') as HTMLButtonElement | null
     if (!button) return
     const encoded = button.getAttribute('data-code') || ''
-    try {
-      await navigator.clipboard?.writeText(decodeURIComponent(encoded))
-      button.classList.add('copied')
-      window.setTimeout(() => button.classList.remove('copied'), 1500)
-    } catch (error) {
-      console.error('Failed to copy code block:', error)
+    const copied = await copyTextToClipboard(decodeURIComponent(encoded))
+    if (!copied) {
+      console.warn('Failed to copy code block')
+      return
     }
+
+    button.classList.add('copied')
+    window.setTimeout(() => button.classList.remove('copied'), 1500)
   })
 }
 

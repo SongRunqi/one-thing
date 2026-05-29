@@ -52,17 +52,6 @@
             :stroke-width="2"
           />
         </button>
-        <button
-          class="queued-message-icon-btn"
-          type="button"
-          title="More actions"
-          @click.stop
-        >
-          <MoreHorizontal
-            :size="16"
-            :stroke-width="2"
-          />
-        </button>
       </div>
     </TransitionGroup>
 
@@ -337,7 +326,7 @@ import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
 import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
-import { X, Square, Send, Check, CornerDownRight, Trash2, MoreHorizontal, FileText, Loader2, Mic } from 'lucide-vue-next'
+import { X, Square, Send, Check, CornerDownRight, Trash2, FileText, Loader2, Mic } from 'lucide-vue-next'
 import { findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
@@ -410,10 +399,9 @@ const editorSettings = computed(() => settingsStore.settings.general.editor)
 const composerMaxHeight = computed(() => editorSettings.value?.composerMaxHeight ?? 200)
 
 function updateComposerHeight() {
-  const height = composerWrapperRef.value?.getBoundingClientRect().height ?? 0
-  if (height > 0) {
-    document.documentElement.style.setProperty('--composer-height', `${height + 40}px`)
-  }
+  // No-op: the composer is a flex sibling of the message list, so its height
+  // no longer needs to be published as a CSS var. Kept as a callback hook for
+  // composables (history / pickers) that fire it when the editor reflows.
 }
 
 function handleEditorHeightChange() {
@@ -597,10 +585,6 @@ watch(
   },
 )
 
-// --- ResizeObserver ---
-
-let composerResizeObserver: ResizeObserver | null = null
-
 function handleDocumentMouseDown(event: MouseEvent) {
   const wrapper = composerWrapperRef.value
   if (!wrapper) return
@@ -609,28 +593,14 @@ function handleDocumentMouseDown(event: MouseEvent) {
 }
 
 onMounted(async () => {
-  updateComposerHeight()
   await loadSkills()
   await promptsStore.loadPrompts()
   document.addEventListener('mousedown', handleDocumentMouseDown)
-
-  if (composerWrapperRef.value) {
-    composerResizeObserver = new ResizeObserver((entries) => {
-      const height = entries[0].contentRect.height
-      document.documentElement.style.setProperty('--composer-height', `${height + 40}px`)
-    })
-    composerResizeObserver.observe(composerWrapperRef.value)
-  }
 })
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleDocumentMouseDown)
   stopVoiceRecordingTimer()
-
-  if (composerResizeObserver) {
-    composerResizeObserver.disconnect()
-    composerResizeObserver = null
-  }
 })
 
 // --- Core handlers ---
@@ -1108,17 +1078,17 @@ defineExpose({
 .queued-message-card {
   min-height: 42px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   padding: 7px 14px;
-  border: 0.5px solid var(--border);
+  border: 0.5px solid color-mix(in srgb, var(--border) 72%, transparent);
   border-radius: 12px 12px 7px 7px;
-  background: rgba(var(--bg-rgb, 30, 30, 35), 0.5);
+  background: color-mix(in srgb, var(--bg-panel, var(--bg)) 88%, transparent);
   color: var(--text-muted);
-  box-shadow: 0 -1px 12px rgba(0, 0, 0, 0.06);
-  backdrop-filter: blur(18px) saturate(1.08);
-  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.035);
+  backdrop-filter: blur(8px) saturate(1.02);
+  -webkit-backdrop-filter: blur(8px) saturate(1.02);
   pointer-events: auto;
 }
 
@@ -1204,18 +1174,18 @@ defineExpose({
   display: flex;
   flex-direction: column;
   border-radius: 16px;
-  border: 0.5px solid var(--border, rgba(255, 255, 255, 0.08));
-  background: rgba(var(--bg-rgb, 30, 30, 35), 0.65);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
-  backdrop-filter: blur(24px) saturate(1.2);
-  -webkit-backdrop-filter: blur(24px) saturate(1.2);
-  transition: border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 0.5px solid color-mix(in srgb, var(--border) 78%, transparent);
+  background: color-mix(in srgb, var(--bg-panel, var(--bg)) 92%, var(--bg-elevated, var(--bg)) 8%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.055);
+  backdrop-filter: blur(6px) saturate(1.02);
+  -webkit-backdrop-filter: blur(6px) saturate(1.02);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
   overflow: hidden;
 }
 
 .composer.focused {
-  border-color: rgba(var(--accent-rgb), 0.35);
-  box-shadow: 0 0 0 0.5px rgba(var(--accent-rgb), 0.2), 0 8px 32px rgba(0, 0, 0, 0.18), var(--shadow-glow);
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.07);
 }
 
 .composer.extension-open {
@@ -1576,26 +1546,26 @@ defineExpose({
   height: 38px;
   border-radius: 12px;
   border: none;
-  background: var(--gradient-accent);
+  background: var(--accent);
   color: var(--text-btn-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
   flex-shrink: 0;
-  box-shadow: var(--shadow-glow-accent);
+  box-shadow: 0 1px 4px rgba(var(--accent-rgb), 0.22);
 }
 
 .send-btn:hover:not(:disabled) {
   background: var(--bg-btn-primary-hover);
-  transform: translateY(-1px) scale(1.02);
-  box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.24);
 }
 
 .send-btn:active:not(:disabled) {
-  transform: scale(0.96);
-  box-shadow: 0 1px 4px rgba(var(--accent-rgb), 0.2);
+  transform: scale(0.97);
+  box-shadow: 0 1px 3px rgba(var(--accent-rgb), 0.18);
 }
 
 .send-btn:disabled {

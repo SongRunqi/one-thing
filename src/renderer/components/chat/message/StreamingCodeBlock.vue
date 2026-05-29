@@ -53,6 +53,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { renderTokenSpans } from '@/composables/codeTokenizer'
+import { copyTextToClipboard } from '@/utils/clipboard'
 
 interface Props {
   lang: string
@@ -169,15 +170,16 @@ onBeforeUnmount(() => {
 })
 
 async function handleCopy() {
-  try {
-    await navigator.clipboard.writeText(props.content)
-    copied.value = true
-    setTimeout(() => {
-      copied.value = false
-    }, 1500)
-  } catch (err) {
-    console.error('[StreamingCodeBlock] copy failed', err)
+  const success = await copyTextToClipboard(props.content)
+  if (!success) {
+    console.warn('[StreamingCodeBlock] copy failed')
+    return
   }
+
+  copied.value = true
+  setTimeout(() => {
+    copied.value = false
+  }, 1500)
 }
 </script>
 

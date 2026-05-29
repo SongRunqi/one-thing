@@ -737,6 +737,69 @@ export function syncSqliteMessage(sessionId: string, message: ChatMessage, seq: 
   upsertMessage(getSessionDatabase(), sessionId, message, seq)
 }
 
+/**
+ * Delete a single message and renumber the rows after it so `seq` stays
+ * contiguous (1-based, == position). Pagination relies on this invariant — see
+ * getSqliteMessagesPage / hasMoreAfter. Avoids the O(n) full-session rewrite.
+ *
+ * The renumber is done via a negate two-step so it never transiently violates
+ * the UNIQUE(session_id, seq) constraint regardless of row-processing order.
+ */
+export function deleteSqliteMessage(sessionId: string, messageId: string): void {
+  initializeSqliteSessionRepository()
+  if (!isSqliteSessionReady(sessionId)) return
+  const database = getSessionDatabase()
+  const run = database.transaction(() => {
+    const row = database
+      .prepare('SELECT seq FROM messages WHERE session_id = ? AND id = ?')
+      .get(sessionId, messageId) as { seq: number } | undefined
+    if (!row) return
+    database.prepare('DELETE FROM messages WHERE session_id = ? AND id = ?').run(sessionId, messageId)
+    // Step 1: move every later row to a unique negative slot (seq-1, negated).
+    database
+      .prepare('UPDATE messages SET seq = -(seq - 1) WHERE session_id = ? AND seq > ?')
+      .run(sessionId, row.seq)
+    // Step 2: flip them back to positive — now contiguous from the freed slot.
+    database
+      .prepare('UPDATE messages SET seq = -seq WHERE session_id = ? AND seq < 0')
+      .run(sessionId)
+  })
+  run()
+}
+
+/**
+ * Delete the given message and every message after it (tail truncate). Retained
+ * rows keep their contiguous 1-based seq, so no renumber is needed.
+ */
+export function deleteSqliteMessageAndAfter(sessionId: string, messageId: string): void {
+  initializeSqliteSessionRepository()
+  if (!isSqliteSessionReady(sessionId)) return
+  const database = getSessionDatabase()
+  const run = database.transaction(() => {
+    const row = database
+      .prepare('SELECT seq FROM messages WHERE session_id = ? AND id = ?')
+      .get(sessionId, messageId) as { seq: number } | undefined
+    if (!row) return
+    database.prepare('DELETE FROM messages WHERE session_id = ? AND seq >= ?').run(sessionId, row.seq)
+  })
+  run()
+}
+
+/**
+ * Upsert one message at `seq` and delete every message after it. Used by
+ * edit-and-resend; atomic so the edited row and the truncate land together.
+ */
+export function upsertSqliteMessageAndTruncate(sessionId: string, message: ChatMessage, seq: number): void {
+  initializeSqliteSessionRepository()
+  if (!isSqliteSessionReady(sessionId)) return
+  const database = getSessionDatabase()
+  const run = database.transaction(() => {
+    upsertMessage(database, sessionId, message, seq)
+    database.prepare('DELETE FROM messages WHERE session_id = ? AND seq > ?').run(sessionId, seq)
+  })
+  run()
+}
+
 export function deleteSqliteSessions(sessionIds: string[]): void {
   initializeSqliteSessionRepository()
   const database = getSessionDatabase()

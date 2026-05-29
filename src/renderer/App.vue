@@ -18,18 +18,7 @@
   <ErrorBoundary v-else-if="appReady">
     <div class="app-shell">
       <!-- Main Content - No Header -->
-      <div
-        class="app-content"
-        :style="{
-          '--app-toolbar-left': toolbarLeft + 'px',
-        }"
-      >
-        <!-- Media Panel (left side) -->
-        <MediaPanel
-          :visible="showMediaPanel"
-          @close="closeMediaPanel"
-        />
-
+      <div class="app-content">
         <!-- Floating sidebar overlay backdrop -->
         <!--      <div-->
         <!--        v-if="sidebarFloating"-->
@@ -43,74 +32,57 @@
           :floating-closing="sidebarFloatingClosing"
           :no-transition="sidebarNoTransition"
           :width="sidebarWidth"
-          :media-panel-open="showMediaPanel"
+          :media-panel-open="workspacePanelOpen"
+          :active-workspace-panel="activeWorkspacePanel"
           @open-settings="openSettingsWindow"
           @toggle-collapse="handleSidebarToggle"
           @open-search="openSearch"
           @create-new-chat="createNewChat"
-          @toggle-media-panel="toggleMediaPanel"
+          @toggle-media-panel="openWorkspacePanel('media')"
+          @open-workspace-panel="openWorkspacePanel"
           @resize="handleSidebarResize"
           @mouseleave="handleSidebarMouseLeave"
         />
 
-        <!-- Toolbar buttons: animate between sidebar header (right) and traffic lights (left) -->
         <div
-          v-show="!showMediaPanel"
-          class="app-toolbar"
-          :class="{ transitioning: toolbarAnimating }"
-          :style="{ left: toolbarLeft + 'px' }"
+          class="app-sidebar-actions"
+          :class="{ transitioning: sidebarActionAnimating }"
+          :style="{ left: sidebarActionLeft + 'px' }"
         >
-          <button
-            class="app-toolbar-btn"
-            title="Toggle sidebar"
-            @click="handleSidebarToggle"
-          >
-            <PanelLeftClose
-              v-if="!sidebarCollapsed || sidebarFloating"
-              :size="14"
-              :stroke-width="1.5"
-            />
-            <PanelLeftOpen
-              v-else
-              :size="14"
-              :stroke-width="1.5"
-            />
-          </button>
-          <button
-            class="app-toolbar-btn"
-            title="Search"
-            @click="openSearch"
-          >
-            <Search
-              :size="14"
-              :stroke-width="1.5"
-            />
-          </button>
-          <button
-            class="app-toolbar-btn"
-            title="New chat"
-            @click="createNewChat"
-          >
-            <SquarePen
-              :size="14"
-              :stroke-width="1.5"
-            />
-          </button>
+          <SidebarActionGroup
+            :sidebar-visible="!sidebarCollapsed || sidebarFloating"
+            variant="docked"
+            @toggle-sidebar="handleSidebarToggle"
+            @open-search="openSearch"
+            @create-new-chat="createNewChat"
+          />
         </div>
 
+        <MediaPanel
+          v-if="activeWorkspacePanel"
+          mode="main"
+          :visible="true"
+          :initial-tab="activeWorkspacePanel"
+          @close="closeWorkspacePanel"
+        />
+
         <ChatContainer
+          v-show="!activeWorkspacePanel"
           ref="chatContainerRef"
           :show-settings="showSettings"
           :sidebar-collapsed="sidebarCollapsed"
           :sidebar-floating="sidebarFloating"
-          :show-hover-trigger="sidebarCollapsed && !sidebarFloating && !showMediaPanel"
-          :media-panel-open="showMediaPanel"
+          :show-hover-trigger="sidebarCollapsed && !sidebarFloating"
+          :media-panel-open="workspacePanelOpen"
           :show-diff-overlay="showDiffOverlay"
           :diff-overlay-data="diffOverlayData"
           :is-inspector-open="inspectorOpen"
+          :reserve-sidebar-actions="reserveSidebarActions"
           @close-settings="showSettings = false"
           @open-settings="showSettings = true"
           @toggle-sidebar="handleSidebarToggle"
+          @open-search="openSearch"
+          @create-new-chat="createNewChat"
           @show-floating-sidebar="handleTriggerEnter"
           @hide-floating-sidebar="handleTriggerLeave"
           @close-diff-overlay="closeDiffOverlay"
@@ -143,6 +115,7 @@ import { useThemeStore } from '@/stores/themes'
 import { useVoiceStore } from '@/stores/voice'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { Sidebar } from '@/components/sidebar'
+import SidebarActionGroup from '@/components/sidebar/SidebarActionGroup.vue'
 import ChatContainer from '@/components/ChatContainer.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import MediaPanel from '@/components/MediaPanel.vue'
@@ -153,7 +126,6 @@ import SearchWindow from '@/components/search/SearchWindow.vue'
 import TodoPlanWindow from '@/components/TodoPlanWindow.vue'
 import VoiceRuntimeWindow from '@/components/voice/VoiceRuntimeWindow.vue'
 import VoiceOverlay from '@/components/voice/VoiceOverlay.vue'
-import { PanelLeftClose, PanelLeftOpen, Search, SquarePen } from 'lucide-vue-next'
 import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 
@@ -204,8 +176,13 @@ function handleSidebarResize(width: number) {
   localStorage.setItem('sidebarWidth', String(width))
 }
 
-// Media Panel state
-const showMediaPanel = ref(false)
+type WorkspacePanel = 'memory' | 'media' | 'tasks'
+
+// Main workspace panel state. These panels are launched from the sidebar
+// actions area and occupy the main content region instead of expanding from
+// the left edge.
+const activeWorkspacePanel = ref<WorkspacePanel | null>(null)
+const workspacePanelOpen = computed(() => activeWorkspacePanel.value !== null)
 
 // Diff overlay state
 const showDiffOverlay = ref(false)
@@ -223,30 +200,19 @@ function closeDiffOverlay() {
 }
 
 
-function toggleMediaPanel() {
-  if (showMediaPanel.value) {
-    closeMediaPanel()
-  } else {
-    // 关闭 floating sidebar
-    if (sidebarFloating.value) {
-      sidebarFloating.value = false
-    }
-    showMediaPanel.value = true
-    sidebarCollapsed.value = true
+function openWorkspacePanel(panel: WorkspacePanel) {
+  if (sidebarFloating.value) {
+    closeFloatingSidebar()
   }
+  activeWorkspacePanel.value = activeWorkspacePanel.value === panel ? null : panel
+}
+
+function closeWorkspacePanel() {
+  activeWorkspacePanel.value = null
 }
 
 function openSettingsWindow() {
   window.electronAPI.openSettingsWindow()
-}
-
-function closeMediaPanel() {
-  showMediaPanel.value = false
-  sidebarCollapsed.value = false
-  floatingCooldown.value = true
-  setTimeout(() => {
-    floatingCooldown.value = false
-  }, 400)
 }
 
 
@@ -290,21 +256,17 @@ const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true'
 const sidebarFloating = ref(false)
 const sidebarFloatingClosing = ref(false)
 const sidebarNoTransition = ref(false) // Disable transition during/after floating
+const reserveSidebarActions = ref(false)
+const sidebarActionAnimating = ref(false)
 const floatingCooldown = ref(false) // Prevent re-expansion after toggle
 const floatingShowTimer = ref<ReturnType<typeof setTimeout> | null>(null) // Delay before showing floating sidebar
-const TOOLBAR_SLOT_WIDTH = 80
-
-// Toolbar position — single set of buttons, animated between sidebar right and traffic lights
-const toolbarLeft = computed(() => {
-  if (sidebarCollapsed.value && !sidebarFloating.value) return 84
-  if (sidebarFloating.value) return 300 - TOOLBAR_SLOT_WIDTH
-  return sidebarWidth.value - TOOLBAR_SLOT_WIDTH
-})
-
-const toolbarAnimating = ref(false)
-watch([sidebarCollapsed, sidebarFloating], () => {
-  toolbarAnimating.value = true
-  setTimeout(() => toolbarAnimating.value = false, 350)
+const SIDEBAR_ACTION_GROUP_WIDTH = 80
+const SIDEBAR_ACTION_COLLAPSED_LEFT = 84
+const SIDEBAR_FLOATING_WIDTH = 300
+const sidebarActionLeft = computed(() => {
+  if (sidebarCollapsed.value && !sidebarFloating.value) return SIDEBAR_ACTION_COLLAPSED_LEFT
+  const activeSidebarWidth = sidebarFloating.value ? SIDEBAR_FLOATING_WIDTH : sidebarWidth.value
+  return Math.max(SIDEBAR_ACTION_COLLAPSED_LEFT, activeSidebarWidth - SIDEBAR_ACTION_GROUP_WIDTH)
 })
 
 // Close floating sidebar with animation
@@ -326,20 +288,19 @@ function closeFloatingSidebar() {
 
 // Handle sidebar toggle - if floating, just close floating mode
 function handleSidebarToggle() {
-  // If MediaPanel is open, close it instead of toggling sidebar
-  if (showMediaPanel.value) {
-    showMediaPanel.value = false
-    return
-  }
   if (sidebarFloating.value) {
     closeFloatingSidebar()
   } else {
-    // Prevent floating from triggering during collapse animation
+    // Prevent floating from triggering during collapse animation.
+    // The top-bar reserved slot animates its width with the Sidebar width,
+    // so tabs reflow instead of jumping or being covered.
     floatingCooldown.value = true
+    sidebarActionAnimating.value = true
     sidebarCollapsed.value = !sidebarCollapsed.value
     setTimeout(() => {
+      sidebarActionAnimating.value = false
       floatingCooldown.value = false
-    }, 400)
+    }, 340)
   }
 }
 
@@ -392,7 +353,7 @@ watch(sidebarCollapsed, (collapsed) => {
 })
 
 // Persist sidebar collapsed state and always show traffic lights
-watch([sidebarCollapsed, sidebarFloating, showMediaPanel], ([collapsed]) => {
+watch([sidebarCollapsed, sidebarFloating, activeWorkspacePanel], ([collapsed]) => {
   localStorage.setItem('sidebarCollapsed', String(collapsed))
   // Auxiliary windows own their chrome behavior. Todo/Notes uses native hover-only buttons.
   if (isSettingsWindow.value || isImagePreviewWindow.value || isSearchWindow.value || isTodoPlanWindow.value) return
@@ -598,6 +559,21 @@ onUnmounted(() => {
   position: relative;
 }
 
+.app-sidebar-actions {
+  position: fixed;
+  top: 12px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  z-index: 600;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.app-sidebar-actions.transitioning {
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* Session Lens slide transition */
 .lens-pop-enter-active,
 .lens-pop-leave-active {
@@ -637,54 +613,6 @@ html[data-theme='light'] .sidebar-floating-backdrop {
 @keyframes fadeOut {
   from { opacity: 1; }
   to { opacity: 0; }
-}
-
-/* App toolbar — single set of buttons that slides between sidebar right and traffic lights */
-.app-toolbar {
-  position: fixed;
-  top: 12px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  z-index: 600;
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
-}
-
-.app-toolbar::before {
-  content: '';
-  position: absolute;
-  inset: -3px -6px;
-  border-radius: 8px;
-  z-index: 0;
-  -webkit-app-region: no-drag;
-}
-
-.app-toolbar.transitioning {
-  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.app-toolbar-btn {
-  position: relative;
-  z-index: 1;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  border-radius: 6px;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.app-toolbar-btn:hover {
-  background: var(--hover);
-  color: var(--text);
 }
 
 /* Agent Dialog Overlay */

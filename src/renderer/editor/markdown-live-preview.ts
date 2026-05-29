@@ -2061,6 +2061,13 @@ function sanitizeFenceLanguage(value: string): string {
 
 async function copyText(text: string): Promise<boolean> {
   try {
+    const result = await window.electronAPI?.writeClipboardText?.(text)
+    if (result && result.success !== false) return true
+  } catch {
+    // Fall back to the browser clipboard paths below.
+  }
+
+  try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text)
       return true

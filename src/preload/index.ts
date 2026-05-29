@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { clipboard, contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS, AIProvider, MessageAttachment } from '../shared/ipc.js'
 import type {
   GetSessionMessagesPageRequest,
@@ -490,6 +490,16 @@ const electronAPI = {
   // Window methods
   setWindowButtonVisibility: (visible: boolean) =>
     ipcRenderer.invoke('window:set-button-visibility', visible),
+
+  // Clipboard methods
+  writeClipboardText: (text: string) => {
+    try {
+      clipboard.writeText(String(text ?? ''))
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  },
 
   // Media methods
   saveImage: (data: {

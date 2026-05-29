@@ -23,8 +23,14 @@
         :title="voice.lastError ? 'Dismiss' : 'Stop voice playback'"
         @click="handleOverlayAction"
       >
-        <X v-if="voice.lastError" :size="14" />
-        <Volume2 v-else :size="14" />
+        <X
+          v-if="voice.lastError"
+          :size="14"
+        />
+        <Volume2
+          v-else
+          :size="14"
+        />
       </button>
     </div>
   </Transition>

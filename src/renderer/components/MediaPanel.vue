@@ -3,8 +3,12 @@
     <div
       v-if="visible"
       class="media-panel"
+      :class="`mode-${mode}`"
     >
-      <div class="media-nav">
+      <div
+        v-if="mode !== 'main'"
+        class="media-nav"
+      >
         <div class="traffic-lights-space" />
         <div class="nav-items">
           <button
@@ -56,6 +60,39 @@
       </div>
 
       <div class="media-content">
+        <div
+          v-if="mode === 'main'"
+          class="main-panel-header"
+        >
+          <div class="main-panel-title">
+            <component
+              :is="currentNavItem?.icon"
+              :size="17"
+              :stroke-width="1.8"
+            />
+            <span>{{ currentNavItem?.label }}</span>
+          </div>
+          <button
+            class="main-panel-close"
+            type="button"
+            title="Close"
+            @click="$emit('close')"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+
         <template v-if="activeNav === 'media'">
           <div class="content-header">
             <input
@@ -233,10 +270,13 @@ import {
   Video,
 } from 'lucide-vue-next'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   visible: boolean
   initialTab?: string
-}>()
+  mode?: 'side' | 'main'
+}>(), {
+  mode: 'side',
+})
 
 defineEmits<{
   close: []
@@ -256,6 +296,8 @@ const navItems = [
   { id: 'tasks', label: 'Tasks', icon: CalendarClock },
   { id: 'archive', label: 'Archived Chats', icon: Archive },
 ]
+
+const currentNavItem = computed(() => navItems.find(item => item.id === activeNav.value) || navItems[0])
 
 const kindTabs: Array<{ id: MediaKind; label: string; icon: Component }> = [
   { id: 'image', label: 'Images', icon: Images },
@@ -411,6 +453,13 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.media-panel.mode-main {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  background: var(--bg-panel, var(--bg));
+}
+
 .media-nav {
   display: flex;
   flex-direction: column;
@@ -515,6 +564,55 @@ html[data-theme='light'] .media-nav {
   overflow: hidden;
   padding: 12px;
   padding-top: 0;
+}
+
+.mode-main .media-content {
+  padding: 0;
+}
+
+.main-panel-header {
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 0 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle, var(--border)) 62%, transparent);
+  background: var(--bg-panel, var(--bg));
+  -webkit-app-region: drag;
+}
+
+.main-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.main-panel-title svg {
+  color: var(--accent-main, var(--accent));
+}
+
+.main-panel-close {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.main-panel-close:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 
 .content-header {
@@ -809,5 +907,16 @@ html[data-theme='light'] .media-nav {
 .media-panel-enter-from,
 .media-panel-leave-to {
   width: 0;
+}
+
+.media-panel.mode-main.media-panel-enter-active,
+.media-panel.mode-main.media-panel-leave-active {
+  transition: opacity 0.12s ease;
+}
+
+.media-panel.mode-main.media-panel-enter-from,
+.media-panel.mode-main.media-panel-leave-to {
+  width: auto;
+  opacity: 0;
 }
 </style>

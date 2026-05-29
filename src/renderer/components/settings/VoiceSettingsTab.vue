@@ -74,10 +74,18 @@
                 :value="voice.conversation.endpointing"
                 @change="setEndpointing(value($event) as any)"
               >
-                <option value="fast">Fast response</option>
-                <option value="balanced">Balanced</option>
-                <option value="patient">Patient</option>
-                <option value="custom">Custom</option>
+                <option value="fast">
+                  Fast response
+                </option>
+                <option value="balanced">
+                  Balanced
+                </option>
+                <option value="patient">
+                  Patient
+                </option>
+                <option value="custom">
+                  Custom
+                </option>
               </select>
             </SettingsField>
           </div>
@@ -180,10 +188,18 @@
                   :value="voice.tts.provider"
                   @change="updateTTS({ provider: value($event) as any })"
                 >
-                  <option value="system-tts">System voice (no key)</option>
-                  <option value="openrouter-tts">OpenRouter TTS</option>
-                  <option value="openai-tts">OpenAI TTS</option>
-                  <option value="qwen-tts">Qwen / CosyVoice</option>
+                  <option value="system-tts">
+                    System voice (no key)
+                  </option>
+                  <option value="openrouter-tts">
+                    OpenRouter TTS
+                  </option>
+                  <option value="openai-tts">
+                    OpenAI TTS
+                  </option>
+                  <option value="qwen-tts">
+                    Qwen / CosyVoice
+                  </option>
                 </select>
               </SettingsField>
 
@@ -473,8 +489,12 @@
               :value="voice.vad.provider"
               @change="updateVAD({ provider: value($event) as any })"
             >
-              <option value="silero-web">Silero Web</option>
-              <option value="energy">Energy fallback</option>
+              <option value="silero-web">
+                Silero Web
+              </option>
+              <option value="energy">
+                Energy fallback
+              </option>
             </select>
           </SettingsField>
           <SettingsField label="Silence ms">
@@ -528,10 +548,18 @@
               :value="voice.asr.provider"
               @change="updateASR({ provider: value($event) as any })"
             >
-              <option value="funasr-stream">FunASR Streaming</option>
-              <option value="openai-transcribe">OpenAI Transcribe</option>
-              <option value="openrouter-transcribe">OpenRouter Whisper</option>
-              <option value="funasr-server">FunASR HTTP Server</option>
+              <option value="funasr-stream">
+                FunASR Streaming
+              </option>
+              <option value="openai-transcribe">
+                OpenAI Transcribe
+              </option>
+              <option value="openrouter-transcribe">
+                OpenRouter Whisper
+              </option>
+              <option value="funasr-server">
+                FunASR HTTP Server
+              </option>
             </select>
           </SettingsField>
           <SettingsField label="OpenAI ASR model">
@@ -585,7 +613,6 @@
             >
           </SettingsField>
         </SettingRow>
-
       </SettingsGroup>
     </SettingsSection>
   </div>

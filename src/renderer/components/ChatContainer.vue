@@ -60,6 +60,7 @@
             :show-sidebar-toggle="sidebarCollapsed && !sidebarFloating"
             :media-panel-open="mediaPanelOpen"
             :is-inspector-open="isInspectorOpen"
+            :reserve-sidebar-actions="reserveSidebarActions"
             @close="closePanel(panel.id)"
             @split="openSessionPicker(panel.id)"
             @equalize="equalizeAllPanels"
@@ -67,6 +68,8 @@
             @close-settings="$emit('close-settings')"
             @open-settings="$emit('open-settings')"
             @toggle-sidebar="$emit('toggle-sidebar')"
+            @open-search="$emit('open-search')"
+            @create-new-chat="$emit('create-new-chat')"
             @toggle-inspector="$emit('toggle-inspector')"
           />
         </template>
@@ -229,12 +232,15 @@ const props = defineProps<{
   showDiffOverlay?: boolean
   diffOverlayData?: DiffOverlayData | null
   isInspectorOpen?: boolean
+  reserveSidebarActions?: boolean
 }>()
 
 const emit = defineEmits<{
   'close-settings': []
   'open-settings': []
   'toggle-sidebar': []
+  'open-search': []
+  'create-new-chat': []
   'show-floating-sidebar': []
   'hide-floating-sidebar': []
   'close-diff-overlay': []

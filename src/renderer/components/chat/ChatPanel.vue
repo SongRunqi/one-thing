@@ -206,7 +206,10 @@ async function handleSendMessage(
   attachments?: MessageAttachment[],
 ) {
   if (!currentSession.value) return
-  messageListRef.value?.scrollToBottom()
+  // Note: do not scroll here. This runs before the message is in state, so it
+  // would smooth-scroll against stale content and then fight MessageList's
+  // new-user-message watcher (force-follow + instant setTail), producing a
+  // visible "smooth then snap" double scroll. The watcher owns follow-on-send.
   if (mode === 'steer') {
     await chatSteerMessage(message)
   } else if (mode === 'followup') {

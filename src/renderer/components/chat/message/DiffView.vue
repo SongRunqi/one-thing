@@ -121,6 +121,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { FileDiff, parsePatchFiles } from '@pierre/diffs'
+import { copyTextToClipboard } from '@/utils/clipboard'
 import type {
   FileDiffOptions,
   ParsedPatch,
@@ -393,24 +394,25 @@ function toggleDiffStyle() {
 async function copyDiffContent() {
   if (!props.diff) return
 
-  try {
-    await navigator.clipboard.writeText(props.diff)
-    copied.value = true
+  const success = await copyTextToClipboard(props.diff)
+  if (!success) {
+    console.warn('[DiffView] Failed to copy diff content')
+    return
+  }
 
-    // If file header is enabled, re-render to update button state
+  copied.value = true
+
+  // If file header is enabled, re-render to update button state
+  if (props.showFileHeader) {
+    renderDiff()
+  }
+
+  setTimeout(() => {
+    copied.value = false
     if (props.showFileHeader) {
       renderDiff()
     }
-
-    setTimeout(() => {
-      copied.value = false
-      if (props.showFileHeader) {
-        renderDiff()
-      }
-    }, 2000)
-  } catch (err) {
-    console.error('[DiffView] Failed to copy diff content:', err)
-  }
+  }, 2000)
 }
 
 /** Update theme when it changes */

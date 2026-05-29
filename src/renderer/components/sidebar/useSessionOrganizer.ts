@@ -4,7 +4,7 @@
  * Manages hierarchical organization, collapse state, time formatting, etc. for sessions
  */
 
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, watch } from 'vue'
 import type { ChatSession, SessionMeta } from '@/types'
 import { useSessionsStore } from '@/stores/sessions'
 
@@ -23,6 +23,53 @@ export interface SessionWithBranches extends SessionBase {
   isHidden: boolean
   lastBranchUpdate: number
   ancestorsLastChild: boolean[]
+}
+
+// A temporal (or pinned) section of the session list
+export interface SessionGroup {
+  key: string
+  label: string
+  sessions: SessionWithBranches[]
+}
+
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+const DAY_MS = 86_400_000
+
+function startOfToday(): number {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+/**
+ * Relative timestamp for a session row (supporting text).
+ * 刚刚 → 14:20 (today) → 昨天 → 周二 (within 7 days) → 4月12日 (older)
+ */
+export function formatRelativeTime(ts: number): string {
+  if (!ts) return ''
+  const now = Date.now()
+  const date = new Date(ts)
+
+  if (now - ts < 60_000) return '刚刚'
+
+  const todayStart = startOfToday()
+  if (ts >= todayStart) {
+    const h = String(date.getHours()).padStart(2, '0')
+    const m = String(date.getMinutes()).padStart(2, '0')
+    return `${h}:${m}`
+  }
+  if (ts >= todayStart - DAY_MS) return '昨天'
+  if (ts >= todayStart - 6 * DAY_MS) return WEEKDAYS[date.getDay()]
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+// Bucket a root session's activity time into a temporal group key
+function temporalKey(ts: number): 'today' | 'yesterday' | 'week' | 'older' {
+  const todayStart = startOfToday()
+  if (ts >= todayStart) return 'today'
+  if (ts >= todayStart - DAY_MS) return 'yesterday'
+  if (ts >= todayStart - 6 * DAY_MS) return 'week'
+  return 'older'
 }
 
 export function useSessionOrganizer() {
@@ -283,6 +330,52 @@ export function useSessionOrganizer() {
     return [...pinned, ...unpinned]
   }
 
+  // Group sessions into temporal sections (置顶 / 今天 / 昨天 / 过去7天 / 更早).
+  // Each root session keeps its branch subtree together inside its section.
+  function getGroupedSessions(filteredSessions: SessionBase[]): SessionGroup[] {
+    const organized = organizeSessionsWithBranches(filteredSessions)
+
+    // Chunk the flattened list into per-root blocks (root + its descendant rows)
+    type Block = { root: SessionWithBranches; rows: SessionWithBranches[] }
+    const blocks: Block[] = []
+    for (const session of organized) {
+      if (session.depth === 0) {
+        blocks.push({ root: session, rows: [session] })
+      } else {
+        blocks[blocks.length - 1]?.rows.push(session)
+      }
+    }
+
+    const buckets: Record<string, Block[]> = {
+      pinned: [], today: [], yesterday: [], week: [], older: [],
+    }
+    for (const block of blocks) {
+      const key = block.root.isPinned ? 'pinned' : temporalKey(block.root.lastBranchUpdate)
+      buckets[key].push(block)
+    }
+
+    // Most recent activity first within each section
+    for (const key of Object.keys(buckets)) {
+      buckets[key].sort((a, b) => b.root.lastBranchUpdate - a.root.lastBranchUpdate)
+    }
+
+    const order: { key: string; label: string }[] = [
+      { key: 'pinned', label: '置顶' },
+      { key: 'today', label: '今天' },
+      { key: 'yesterday', label: '昨天' },
+      { key: 'week', label: '过去 7 天' },
+      { key: 'older', label: '更早' },
+    ]
+
+    const groups: SessionGroup[] = []
+    for (const { key, label } of order) {
+      const sectionBlocks = buckets[key]
+      if (sectionBlocks.length === 0) continue
+      groups.push({ key, label, sessions: sectionBlocks.flatMap(b => b.rows) })
+    }
+    return groups
+  }
+
   // Get session preview text
   function getSessionPreview(session: SessionBase): string {
     if (!session.messages || session.messages.length === 0) {
@@ -332,6 +425,7 @@ export function useSessionOrganizer() {
     getBranchDepth,
     organizeSessionsWithBranches,
     getFlatSessions,
+    getGroupedSessions,
     getSessionPreview,
     formatModelName,
   }

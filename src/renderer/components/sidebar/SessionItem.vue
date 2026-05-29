@@ -67,68 +67,54 @@
       {{ session.branchCount }}
     </button>
 
-    <!-- 右侧状态区域 (固定宽度，始终占位) -->
+    <!-- 右侧状态区域：相对时间 + generating dot，hover 时隐藏让位给 ⋯ -->
     <div class="status-area">
       <!-- Generating dot - 始终存在，用 class 控制显隐 -->
       <div :class="['generating-dot', { active: isGenerating }]" />
-      <!-- Pin icon -->
+      <!-- Relative timestamp (supporting text) -->
+      <span
+        v-if="!isEditing"
+        class="session-time"
+      >{{ relativeTime }}</span>
+    </div>
+
+    <!-- Hover action: progressive disclosure menu -->
+    <button
+      class="more-btn"
+      title="More"
+      @click.stop="$emit('context-menu', $event)"
+    >
       <svg
-        v-if="session.isPinned && session.depth === 0"
-        class="pin-icon"
-        width="12"
-        height="12"
+        width="16"
+        height="16"
         viewBox="0 0 24 24"
         fill="currentColor"
         stroke="none"
       >
-        <path d="M12 2v8M7 10h10M9 10v7l-2 3h10l-2-3v-7" />
+        <circle
+          cx="5"
+          cy="12"
+          r="1.6"
+        />
+        <circle
+          cx="12"
+          cy="12"
+          r="1.6"
+        />
+        <circle
+          cx="19"
+          cy="12"
+          r="1.6"
+        />
       </svg>
-    </div>
-
-    <!-- Hover actions -->
-    <div class="session-actions">
-      <button
-        :class="['action-btn', 'danger', { 'confirm': isPendingDelete }]"
-        :title="deleteTitle"
-        @click.stop="$emit('delete')"
-      >
-        <svg
-          v-if="!isPendingDelete"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M18 6L6 18M6 6l12 12" />
-        </svg>
-        <template v-else>
-          <span
-            v-if="session.hasBranches"
-            class="delete-count"
-          >{{ session.branchCount + 1 }}</span>
-          <svg
-            v-else
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M5 13l4 4L19 7" />
-          </svg>
-        </template>
-      </button>
-    </div>
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import Tooltip from '@/components/common/Tooltip.vue'
-import type { SessionWithBranches } from './useSessionOrganizer'
+import { formatRelativeTime, type SessionWithBranches } from './useSessionOrganizer'
 
 interface Props {
   session: SessionWithBranches
@@ -136,7 +122,6 @@ interface Props {
   isGenerating: boolean
   isEditing: boolean
   editingName: string
-  isPendingDelete: boolean
 }
 
 interface Emits {
@@ -146,7 +131,6 @@ interface Emits {
   (e: 'start-rename'): void
   (e: 'confirm-rename', name: string): void
   (e: 'cancel-rename'): void
-  (e: 'delete'): void
 }
 
 const props = defineProps<Props>()
@@ -170,18 +154,7 @@ watch(() => props.isEditing, (isEditing) => {
   }
 })
 
-const deleteTitle = computed(() => {
-  if (props.isPendingDelete) {
-    if (props.session.hasBranches) {
-      return `Click to delete ${props.session.branchCount + 1} chats`
-    }
-    return 'Click to confirm delete'
-  }
-  if (props.session.hasBranches) {
-    return `Delete (includes ${props.session.branchCount} branch${props.session.branchCount > 1 ? 'es' : ''})`
-  }
-  return 'Delete'
-})
+const relativeTime = computed(() => formatRelativeTime(props.session.updatedAt))
 
 function handleClick(event: MouseEvent) {
   if (props.isEditing) return
@@ -208,13 +181,13 @@ function cancelRename() {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 7px 10px;
   margin: 1px 4px;
   border-radius: 6px;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  max-height: 60px;
+  max-height: 44px;
   transition:
     background 0.15s ease,
     max-height 0.25s ease,
@@ -309,7 +282,8 @@ function cancelRename() {
   display: flex;
   align-items: center;
   gap: 4px;
-  min-width: 20px;
+  width: 42px;
+  min-width: 42px;
   flex-shrink: 0;
   justify-content: flex-end;
 }
@@ -373,17 +347,27 @@ function cancelRename() {
 }
 
 
-/* Pin indicator - 默认隐藏，hover 或 pinned 时显示 */
-.pin-icon {
+/* Relative timestamp (supporting text) - subordinate metadata, hidden on hover */
+.session-time {
+  display: block;
+  width: 100%;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-faint);
+  opacity: 0.58;
+  text-align: right;
+  white-space: nowrap;
   flex-shrink: 0;
-  color: var(--muted);
-  opacity: 0;
-  transition: opacity 0.15s ease;
+  font-variant-numeric: tabular-nums;
+  transition: opacity 0.12s ease;
 }
 
-.session-item:hover .pin-icon,
-.session-item.pinned .pin-icon {
-  opacity: 0.5;
+.session-item:hover .session-time {
+  opacity: 0;
+}
+
+.session-item.active .session-time {
+  opacity: 0.62;
 }
 
 /* Session name tooltip wrapper - override default tooltip-wrapper styles */
@@ -431,78 +415,34 @@ function cancelRename() {
   outline: none;
 }
 
-/* Hover actions */
-.session-actions {
+/* Hover action: progressive disclosure (⋯ → context menu) */
+.more-btn {
   position: absolute;
-  right: 8px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
-  display: flex;
-  gap: 2px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-}
-
-.session-item:hover .session-actions {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.action-btn {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, background 0.15s ease, color 0.15s ease;
 }
 
-.action-btn:hover {
+.session-item:hover .more-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.more-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
-}
-
-.action-btn.danger:hover {
-  background: rgba(var(--color-danger-rgb), 0.15);
-  color: var(--text-error);
-}
-
-.action-btn.confirm {
-  background: var(--text-error);
-  color: var(--text-btn-danger);
-  animation: shake 0.4s ease;
-}
-
-.action-btn.confirm:hover {
-  background: var(--bg-btn-danger-hover);
-  color: var(--text-btn-danger);
-}
-
-.delete-count {
-  font-size: 10px;
-  font-weight: var(--font-weight-bold);
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-2px); }
-  40% { transform: translateX(2px); }
-  60% { transform: translateX(-2px); }
-  80% { transform: translateX(2px); }
-}
-
-/* Pending delete state for session item */
-.session-item:has(.action-btn.confirm) {
-  background: rgba(var(--color-danger-rgb), 0.08) !important;
-}
-
-.session-item:has(.action-btn.confirm) .session-name {
-  color: var(--text-error);
 }
 </style>

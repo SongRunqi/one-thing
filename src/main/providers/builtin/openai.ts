@@ -56,6 +56,17 @@ function stringifyToolResult(output: unknown): string {
   return JSON.stringify(output)
 }
 
+function isCompleteToolArguments(input: string): boolean {
+  const trimmed = input.trim()
+  if (!trimmed) return false
+  try {
+    const parsed = JSON.parse(trimmed)
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+  } catch {
+    return false
+  }
+}
+
 /**
  * Convert AI SDK v2 prompt parts into OpenAI Chat Completions messages.
  * Handles multimodal user content (text + image) and assistant tool calls.
@@ -245,7 +256,7 @@ function createOpenAIModel(
         const textId = 'text-0'
         const toolsInProgress = new Map<
           number,
-          { id: string; name: string; arguments: string; started: boolean }
+          { id: string; name: string; arguments: string; started: boolean; ended: boolean }
         >()
         let pendingFinishReason: string | null = null
         let toolCallsEmitted = false
@@ -304,6 +315,7 @@ function createOpenAIModel(
                     name: tc.function?.name || '',
                     arguments: tc.function?.arguments || '',
                     started: false,
+                    ended: false,
                   }
                   toolsInProgress.set(idx, entry)
                 } else {
@@ -336,6 +348,14 @@ function createOpenAIModel(
                     toolCallId: entry.id,
                     inputTextDelta: tc.function.arguments,
                   } as any
+                }
+
+                if (entry.started && !entry.ended && isCompleteToolArguments(entry.arguments)) {
+                  yield {
+                    type: 'tool-input-end',
+                    toolCallId: entry.id,
+                  } as any
+                  entry.ended = true
                 }
               }
             }

@@ -501,6 +501,7 @@ import {
 } from 'lucide-vue-next'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
+import { copyTextToClipboard } from '@/utils/clipboard'
 import type { TodoPlanDocument, TodoPlanSnapshot } from '@/types'
 import MarkdownDocumentEditor from '@/editor/MarkdownDocumentEditor.vue'
 import type { MarkdownCommand, MarkdownDocumentEditorHandle, MarkdownFeatureSet } from '@/editor/markdown-document'
@@ -1126,7 +1127,10 @@ async function revealNotesFolder() {
 }
 
 async function copyMarkdown() {
-  await navigator.clipboard?.writeText(draft.value)
+  const success = await copyTextToClipboard(draft.value)
+  if (!success) {
+    console.warn('[TodoPlanPanel] Failed to copy markdown')
+  }
 }
 
 function moveFind(direction: number) {

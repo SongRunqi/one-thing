@@ -416,6 +416,17 @@ onUnmounted(() => {
   margin-top: 6px;
   padding: 0 4px;
   min-height: 28px;
+  /* Keep the footer (timestamp + actions) quiet until the message is
+     hovered or a control inside it is focused. min-height reserves the
+     space so revealing it never shifts layout. */
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.message:hover .message-footer,
+.message:focus-within .message-footer,
+.message.highlighted .message-footer {
+  opacity: 1;
 }
 
 /* User messages: position actions at bottom-right */
