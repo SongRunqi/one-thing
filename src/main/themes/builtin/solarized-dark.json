@@ -70,8 +70,8 @@
       "menuItemHover": "base01",
       "tooltip": "base1",
       "modal": "base03",
-      "selected": "rgba(38, 139, 210, 0.2)",
-      "selectedHover": "rgba(38, 139, 210, 0.25)",
+      "selected": "rgba(38, 139, 210, 0.14)",
+      "selectedHover": "rgba(38, 139, 210, 0.2)",
       "highlight": "rgba(181, 137, 0, 0.2)",
       "hover": "rgba(131, 148, 150, 0.05)",
       "active": "rgba(131, 148, 150, 0.1)"
@@ -106,7 +106,7 @@
       "sidebar": {
         "title": "base1",
         "item": "base0",
-        "itemActive": "blue",
+        "itemActive": "base2",
         "itemHover": "base1",
         "muted": "base01"
       },

@@ -30,11 +30,11 @@
 
     "bg": {
       "app": "bgDarker",
-      "sidebar": "background",
+      "sidebar": "bgLighter",
       "chat": "background",
-      "panel": "background",
+      "panel": "bgLighter",
       "elevated": "currentLine",
-      "floating": "bgLighter",
+      "floating": "currentLine",
       "message": {
         "user": "currentLine",
         "userSolid": "currentLine",

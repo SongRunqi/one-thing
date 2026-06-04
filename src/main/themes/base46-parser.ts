@@ -13,6 +13,17 @@ import type {
   ThemeHighlights,
   ThemeUITokens,
 } from '../../shared/ipc/themes.js'
+import type { ThemeColorScheme } from './role-mapping.js'
+import {
+  deriveSurfaceRoles,
+  firstDefinedColor,
+  mixCssColors,
+  neutralOverlay,
+  parseCssColor,
+  readableColor,
+  relativeLuminance,
+  rgbaFromCssColor,
+} from './role-mapping.js'
 
 const BASE46_HIGHLIGHT_ALIASES: Record<string, SemanticHighlightToken> = {
   Normal: 'syntax.plain',
@@ -182,8 +193,6 @@ function buildBase46Highlights(
   }
 }
 
-type ThemeColorScheme = 'dark' | 'light'
-
 interface Base46AppRoles {
   accent: string
   accentSub: string
@@ -191,6 +200,7 @@ interface Base46AppRoles {
   sidebarBg: string
   chatBg: string
   panelBg: string
+  tabBarBg: string
   elevatedBg: string
   floatingBg: string
   primaryText: string
@@ -210,104 +220,6 @@ interface Base46AppRoles {
   selectedHoverBg: string
 }
 
-function firstDefinedColor(...candidates: Array<string | undefined>): string | undefined {
-  return candidates.find(color => typeof color === 'string' && color.length > 0)
-}
-
-function parseHexColor(hex: string | undefined): [number, number, number] | null {
-  if (!hex) return null
-  const normalized = hex.trim().replace('#', '')
-  const expanded = normalized.length === 3
-    ? normalized.split('').map(channel => channel + channel).join('')
-    : normalized
-
-  if (!/^[0-9a-f]{6}$/i.test(expanded)) return null
-
-  return [
-    parseInt(expanded.slice(0, 2), 16),
-    parseInt(expanded.slice(2, 4), 16),
-    parseInt(expanded.slice(4, 6), 16),
-  ]
-}
-
-function rgbToHex([red, green, blue]: [number, number, number]): string {
-  return `#${[red, green, blue]
-    .map(channel => Math.round(channel).toString(16).padStart(2, '0'))
-    .join('')
-    .toUpperCase()}`
-}
-
-function mixHexColors(
-  foreground: string,
-  background: string,
-  foregroundWeight: number
-): string {
-  const foregroundRgb = parseHexColor(foreground)
-  const backgroundRgb = parseHexColor(background)
-  if (!foregroundRgb || !backgroundRgb) return foreground
-
-  const weight = Math.min(1, Math.max(0, foregroundWeight))
-  return rgbToHex([
-    (foregroundRgb[0] * weight) + (backgroundRgb[0] * (1 - weight)),
-    (foregroundRgb[1] * weight) + (backgroundRgb[1] * (1 - weight)),
-    (foregroundRgb[2] * weight) + (backgroundRgb[2] * (1 - weight)),
-  ])
-}
-
-function contrastRatio(foreground: string, background: string): number | null {
-  if (!parseHexColor(foreground) || !parseHexColor(background)) return null
-
-  const foregroundLuminance = getLuminance(foreground)
-  const backgroundLuminance = getLuminance(background)
-  const lighter = Math.max(foregroundLuminance, backgroundLuminance)
-  const darker = Math.min(foregroundLuminance, backgroundLuminance)
-  return (lighter + 0.05) / (darker + 0.05)
-}
-
-function colorMeetsContrast(
-  foreground: string | undefined,
-  background: string,
-  minContrast: number
-): foreground is string {
-  if (!foreground) return false
-  const ratio = contrastRatio(foreground, background)
-  return ratio !== null && ratio >= minContrast
-}
-
-function readableColor(
-  background: string,
-  candidates: Array<string | undefined>,
-  fallback: string,
-  minContrast = 4.5,
-  preferredWeight = 0.72
-): string {
-  for (const candidate of candidates) {
-    if (colorMeetsContrast(candidate, background, minContrast)) return candidate
-  }
-
-  const base = firstDefinedColor(...candidates) || fallback
-  if (!parseHexColor(base) || !parseHexColor(background)) return fallback
-
-  for (let weight = preferredWeight; weight <= 1; weight += 0.04) {
-    const mixed = mixHexColors(base, background, weight)
-    if (colorMeetsContrast(mixed, background, minContrast)) return mixed
-  }
-
-  return fallback
-}
-
-function rgbaFromHex(hex: string, alpha: number, fallbackRgb = '67, 133, 190'): string {
-  const rgb = parseHexColor(hex)
-  if (!rgb) return `rgba(${fallbackRgb}, ${alpha})`
-  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`
-}
-
-function neutralOverlay(colorScheme: ThemeColorScheme, alpha: number): string {
-  return colorScheme === 'dark'
-    ? `rgba(255, 255, 255, ${alpha})`
-    : `rgba(0, 0, 0, ${alpha})`
-}
-
 function deriveBase46AppRoles(
   b30: Partial<Base46Base30>,
   b16: Partial<Base46Base16>,
@@ -319,14 +231,34 @@ function deriveBase46AppRoles(
   const defaultAccent = colorScheme === 'dark' ? '#4385BE' : '#2563EB'
 
   const baseBg = firstDefinedColor(b30.black, b16.base00, defaultBg) || defaultBg
-  const appBg = firstDefinedColor(b30.darker_black, b16.base00, baseBg) || baseBg
-  const sidebarBg = firstDefinedColor(b30.black, b16.base00, appBg) || appBg
-  const chatBg = firstDefinedColor(b30.darker_black, b30.black, b16.base00, appBg) || appBg
-  const panelBg = firstDefinedColor(b30.one_bg, b16.base01, sidebarBg) || sidebarBg
-  const elevatedBg = firstDefinedColor(b30.one_bg2, b16.base02, panelBg) || panelBg
-  const floatingBg = firstDefinedColor(b30.one_bg3, b16.base03, elevatedBg) || elevatedBg
+  const rawAppBg = firstDefinedColor(b30.darker_black, b16.base00, baseBg) || baseBg
+  const rawChatBg = firstDefinedColor(b30.darker_black, b30.black, b16.base00, rawAppBg) || rawAppBg
+  const rawSidebarBg = firstDefinedColor(b30.black, b16.base00, rawAppBg) || rawAppBg
+  const rawPanelBg = firstDefinedColor(b30.one_bg, b16.base01, rawSidebarBg) || rawSidebarBg
+  const rawElevatedBg = firstDefinedColor(b30.one_bg2, b16.base02, rawPanelBg) || rawPanelBg
+  const rawFloatingBg = firstDefinedColor(b30.one_bg3, b16.base03, rawElevatedBg) || rawElevatedBg
   const accent = firstDefinedColor(b30.blue, b16.base0D, defaultAccent) || defaultAccent
   const accentSub = firstDefinedColor(b30.nord_blue, b30.cyan, b16.base0C, accent) || accent
+
+  const surfaces = deriveSurfaceRoles({
+    colorScheme,
+    app: rawAppBg,
+    sidebar: rawSidebarBg,
+    chat: rawChatBg,
+    panel: rawPanelBg,
+    elevated: rawElevatedBg,
+    floating: rawFloatingBg,
+    primaryText: firstDefinedColor(b30.white, b16.base05, b30.light_grey, b16.base06, defaultText),
+  })
+  const {
+    appBg,
+    sidebarBg,
+    chatBg,
+    panelBg,
+    tabBarBg,
+    elevatedBg,
+    floatingBg,
+  } = surfaces
 
   const primaryText = readableColor(
     chatBg,
@@ -385,6 +317,7 @@ function deriveBase46AppRoles(
     sidebarBg,
     chatBg,
     panelBg,
+    tabBarBg,
     elevatedBg,
     floatingBg,
     primaryText,
@@ -395,13 +328,13 @@ function deriveBase46AppRoles(
     sidebarItemText,
     sidebarMutedText,
     placeholderText,
-    borderDefault: firstDefinedColor(b30.line, b30.grey, b16.base02, mixHexColors(primaryText, panelBg, 0.18)) || '#44475A',
-    borderSubtle: firstDefinedColor(b30.one_bg2, b16.base01, mixHexColors(primaryText, panelBg, 0.12)) || '#343331',
-    borderStrong: firstDefinedColor(b30.grey_fg, b16.base03, mixHexColors(primaryText, panelBg, 0.28)) || '#575653',
+    borderDefault: firstDefinedColor(b30.line, b30.grey, b16.base02, mixCssColors(primaryText, panelBg, 0.18)) || '#44475A',
+    borderSubtle: firstDefinedColor(b30.one_bg2, b16.base01, mixCssColors(primaryText, panelBg, 0.12)) || '#343331',
+    borderStrong: firstDefinedColor(b30.grey_fg, b16.base03, mixCssColors(primaryText, panelBg, 0.28)) || '#575653',
     hoverBg: neutralOverlay(colorScheme, colorScheme === 'dark' ? 0.05 : 0.06),
     activeBg: neutralOverlay(colorScheme, colorScheme === 'dark' ? 0.09 : 0.1),
-    selectedBg: rgbaFromHex(accent, colorScheme === 'dark' ? 0.14 : 0.12),
-    selectedHoverBg: rgbaFromHex(accent, colorScheme === 'dark' ? 0.2 : 0.17),
+    selectedBg: rgbaFromCssColor(accent, colorScheme === 'dark' ? 0.14 : 0.12),
+    selectedHoverBg: rgbaFromCssColor(accent, colorScheme === 'dark' ? 0.2 : 0.17),
   }
 }
 
@@ -439,7 +372,7 @@ function buildBase46UI(roles: Base46AppRoles): ThemeUITokens {
       'ui.sidebar.itemMuted': { fg: roles.sidebarMutedText },
       'ui.sidebar.header': { fg: roles.sidebarTitleText },
       'ui.sidebar.action': { fg: roles.sidebarItemText, bg: 'transparent' },
-      'ui.tabBar.surface': { bg: roles.panelBg, border: roles.borderSubtle },
+      'ui.tabBar.surface': { bg: roles.tabBarBg, border: roles.borderSubtle },
       'ui.tabBar.item': { fg: roles.mutedText },
       'ui.tabBar.itemActive': { bg: roles.selectedBg, fg: roles.primaryText, border: 'transparent' },
       'ui.editor.placeholder': { fg: roles.placeholderText },
@@ -683,9 +616,9 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
  * Convert hex color to RGB values string
  */
 function hexToRgb(hex: string): string {
-  const rgb = parseHexColor(hex)
-  if (!rgb) return '67, 133, 190'
-  return `${rgb[0]}, ${rgb[1]}, ${rgb[2]}`
+  const color = parseCssColor(hex)
+  if (!color) return '67, 133, 190'
+  return `${Math.round(color.red)}, ${Math.round(color.green)}, ${Math.round(color.blue)}`
 }
 
 /**
@@ -693,18 +626,8 @@ function hexToRgb(hex: string): string {
  * Returns value 0-1, where 0 is black and 1 is white
  */
 function getLuminance(hex: string): number {
-  const rgb = parseHexColor(hex)
-  if (!rgb) return 0
-
-  const r = rgb[0] / 255
-  const g = rgb[1] / 255
-  const b = rgb[2] / 255
-
-  // sRGB to linear RGB conversion
-  const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
-
-  // Relative luminance formula (WCAG 2.1)
-  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
+  const color = parseCssColor(hex)
+  return color ? relativeLuminance(color) : 0
 }
 
 /**

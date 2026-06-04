@@ -30,9 +30,9 @@
 
     "bg": {
       "app": "bgDark",
-      "sidebar": "bg",
+      "sidebar": "bgHighlight",
       "chat": "bg",
-      "panel": "bg",
+      "panel": "bgHighlight",
       "elevated": "bgHighlight",
       "floating": "gutter",
       "message": {

@@ -34,9 +34,9 @@
 
     "bg": {
       "app": "bgInset",
-      "sidebar": "bg",
+      "sidebar": "bgSubtle",
       "chat": "bg",
-      "panel": "bg",
+      "panel": "bgSubtle",
       "elevated": "bgSubtle",
       "floating": "bgEmphasis",
       "message": {

@@ -16,6 +16,13 @@ import type {
   ThemeUIGroup,
   UIStyle,
 } from '../../shared/ipc/themes.js'
+import type { ThemeSurfaceRoles } from './role-mapping.js'
+import {
+  colorToRgbString,
+  deriveSurfaceRoles,
+  readableAgainst,
+  resolveColorOverBackground,
+} from './role-mapping.js'
 
 type ResolvedColorValue = string | { dark: string; light: string }
 
@@ -566,7 +573,8 @@ function getResolvedThemeValue(
 
 function fallbackUIStyle(
   resolvedTheme: Record<string, string>,
-  token: SemanticUIToken
+  token: SemanticUIToken,
+  surfaceRoles: ThemeSurfaceRoles
 ): ResolvedUIStyle {
   const get = (...paths: string[]) => getResolvedThemeValue(resolvedTheme, ...paths)
 
@@ -576,70 +584,81 @@ function fallbackUIStyle(
     case 'ui.accent.subtle':
       return { fg: get('accentSub', 'accentLight', 'accent') }
     case 'ui.surface.app':
-      return { bg: get('bg.app') }
+      return { bg: surfaceRoles.appBg }
     case 'ui.surface.sidebar':
-      return { bg: get('bg.sidebar', 'bg.panel', 'bg.app') }
+      return { bg: surfaceRoles.sidebarBg }
     case 'ui.surface.chat':
-      return { bg: get('bg.chat', 'bg.app') }
+      return { bg: surfaceRoles.chatBg }
     case 'ui.surface.panel':
-      return { bg: get('bg.panel', 'bg.chat', 'bg.app') }
+      return { bg: surfaceRoles.panelBg }
     case 'ui.surface.elevated':
       return {
-        bg: get('bg.elevated', 'bg.panel', 'bg.app'),
+        bg: surfaceRoles.elevatedBg,
         shadow: get('shadow.elevated', 'shadow.md', 'shadow.sm'),
       }
     case 'ui.surface.floating':
       return {
-        bg: get('bg.floating', 'bg.elevated', 'bg.panel'),
+        bg: surfaceRoles.floatingBg,
         shadow: get('shadow.floating', 'shadow.lg', 'shadow.md'),
       }
     case 'ui.surface.overlay':
       return { bg: get('bg.modalOverlay', 'effects.overlayActive') }
     case 'ui.surface.menu':
-      return { bg: get('bg.menu', 'bg.floating', 'bg.panel') }
+      return { bg: get('bg.menu') || surfaceRoles.floatingBg }
     case 'ui.surface.menuHover':
       return { bg: get('bg.menuItemHover', 'bg.hover') }
     case 'ui.surface.input':
       return {
-        bg: get('bg.input', 'bg.panel'),
+        bg: get('bg.input') || surfaceRoles.panelBg,
         border: get('border.input', 'border.default'),
       }
     case 'ui.surface.inputFocus':
       return {
-        bg: get('bg.inputFocus', 'bg.input', 'bg.panel'),
+        bg: get('bg.inputFocus', 'bg.input') || surfaceRoles.elevatedBg,
         border: get('border.inputFocus', 'border.accent', 'accent'),
         ring: get('border.inputFocus', 'border.accent', 'accent'),
       }
     case 'ui.surface.codeInline':
       return {
-        bg: get('bg.code.inline', 'bg.elevated', 'bg.panel'),
+        bg: get('bg.code.inline') || surfaceRoles.elevatedBg,
         fg: get('text.code.inline', 'text.primary'),
         border: get('border.code', 'border.subtle'),
       }
     case 'ui.surface.codeBlock':
       return {
-        bg: get('bg.code.block', 'bg.panel'),
+        bg: get('bg.code.block') || surfaceRoles.panelBg,
         fg: get('text.code.block', 'text.primary'),
         border: get('border.code', 'border.subtle'),
       }
     case 'ui.surface.codeHeader':
-      return { bg: get('bg.code.header', 'bg.elevated', 'bg.panel') }
+      return { bg: get('bg.code.header') || surfaceRoles.elevatedBg }
     case 'ui.surface.tooltip':
-      return {
-        bg: get('bg.tooltip', 'bg.floating'),
-        fg: get('text.tooltip', 'text.inverse', 'text.primary'),
-        border: get('border.strong', 'border.default'),
+      {
+        const bg = get('bg.tooltip') || surfaceRoles.floatingBg
+        return {
+          bg,
+          fg: readableAgainst(bg, [
+            get('text.tooltip'),
+            get('text.btn.primary'),
+            surfaceRoles.appBg,
+            surfaceRoles.panelBg,
+            get('text.primary'),
+            get('text.secondary'),
+          ], get('text.primary'), 4.5),
+          border: get('border.strong', 'border.default'),
+          shadow: get('shadow.floating', 'shadow.lg', 'shadow.md'),
+        }
       }
     case 'ui.surface.modal':
       return {
-        bg: get('bg.modal', 'bg.floating', 'bg.panel'),
+        bg: get('bg.modal') || surfaceRoles.floatingBg,
         fg: get('text.modalBody', 'text.primary'),
         border: get('border.default'),
         shadow: get('shadow.floating', 'shadow.xl', 'shadow.lg'),
       }
     case 'ui.surface.note':
       return {
-        bg: get('color.warningLight', 'bg.elevated', 'bg.panel'),
+        bg: get('color.warningLight') || surfaceRoles.elevatedBg,
         fg: get('text.primary'),
         border: get('border.warning', 'border.subtle', 'border.default'),
       }
@@ -691,7 +710,7 @@ function fallbackUIStyle(
       }
     case 'ui.action.secondary':
       return {
-        bg: get('bg.btn.secondary', 'bg.elevated', 'bg.panel'),
+        bg: get('bg.btn.secondary') || surfaceRoles.elevatedBg,
         fg: get('text.btn.secondary', 'text.primary'),
         border: get('border.subtle', 'border.default'),
       }
@@ -761,68 +780,179 @@ function fallbackUIStyle(
         border: get('border.subtle', 'border.default'),
       }
     case 'ui.sidebar.surface':
-      return {
-        bg: get('bg.sidebar', 'bg.panel', 'bg.app'),
-        fg: get('text.sidebar.item', 'text.secondary', 'text.primary'),
-        border: get('border.divider', 'border.subtle', 'border.default'),
+      {
+        const bg = surfaceRoles.sidebarBg
+        return {
+          bg,
+          fg: readableAgainst(bg, [
+            get('text.sidebar.item'),
+            get('text.secondary'),
+            get('text.primary'),
+          ], get('text.primary'), 4.5),
+          border: get('border.divider', 'border.subtle', 'border.default'),
+        }
       }
     case 'ui.sidebar.item':
-      return { fg: get('text.sidebar.item', 'text.secondary', 'text.primary') }
+      {
+        const bg = surfaceRoles.sidebarBg
+        return {
+          fg: readableAgainst(bg, [
+            get('text.sidebar.item'),
+            get('text.secondary'),
+            get('text.primary'),
+          ], get('text.primary'), 4.5),
+        }
+      }
     case 'ui.sidebar.itemHover':
-      return {
-        bg: get('bg.hover', 'effects.overlayHover'),
-        fg: get('text.sidebar.itemHover', 'text.primary'),
+      {
+        const bg = surfaceRoles.sidebarBg
+        return {
+          bg: get('bg.hover', 'effects.overlayHover'),
+          fg: readableAgainst(bg, [
+            get('text.sidebar.itemHover'),
+            get('text.primary'),
+            get('text.sidebar.item'),
+            get('text.secondary'),
+          ], get('text.primary'), 4.5),
+        }
       }
     case 'ui.sidebar.itemActive':
-      return {
-        bg: get('bg.selected'),
-        fg: get('text.primary'),
-        border: get('border.accent', 'accent'),
+      {
+        const bg = surfaceRoles.sidebarBg
+        const activeBg = get('bg.selected')
+        const activeSurface = colorToRgbString(resolveColorOverBackground(activeBg, bg)) || activeBg || bg
+        return {
+          bg: activeBg,
+          fg: readableAgainst(activeSurface, [
+            get('text.primary'),
+            get('text.sidebar.itemActive'),
+            get('text.sidebar.itemHover'),
+            get('text.secondary'),
+          ], get('text.primary'), 4.5),
+          border: get('border.accent', 'accent'),
+        }
       }
     case 'ui.sidebar.itemMuted':
-      return { fg: get('text.sidebar.muted', 'text.sidebar.count', 'text.faint', 'text.muted') }
+      {
+        const bg = surfaceRoles.sidebarBg
+        return {
+          fg: readableAgainst(bg, [
+            get('text.sidebar.muted'),
+            get('text.sidebar.count'),
+            get('text.muted'),
+            get('text.secondary'),
+            get('text.primary'),
+          ], get('text.secondary', 'text.primary'), 3.5),
+        }
+      }
     case 'ui.sidebar.header':
-      return { fg: get('text.sidebar.title', 'text.faint', 'text.muted') }
+      {
+        const bg = surfaceRoles.sidebarBg
+        return {
+          fg: readableAgainst(bg, [
+            get('text.sidebar.title'),
+            get('text.faint'),
+            get('text.muted'),
+            get('text.secondary'),
+            get('text.primary'),
+          ], get('text.secondary', 'text.primary'), 3.5),
+        }
+      }
     case 'ui.sidebar.action':
-      return {
-        fg: get('text.sidebar.item', 'text.secondary', 'text.primary'),
-        bg: 'transparent',
+      {
+        const bg = surfaceRoles.sidebarBg
+        return {
+          fg: readableAgainst(bg, [
+            get('text.sidebar.item'),
+            get('text.secondary'),
+            get('text.primary'),
+          ], get('text.secondary', 'text.primary'), 3.5),
+          bg: 'transparent',
+        }
       }
     case 'ui.sidebar.actionHover':
-      return {
-        bg: get('bg.hover', 'effects.overlayHover'),
-        fg: get('text.sidebar.itemHover', 'text.primary'),
+      {
+        const bg = surfaceRoles.sidebarBg
+        return {
+          bg: get('bg.hover', 'effects.overlayHover'),
+          fg: readableAgainst(bg, [
+            get('text.sidebar.itemHover'),
+            get('text.primary'),
+            get('text.sidebar.item'),
+            get('text.secondary'),
+          ], get('text.primary'), 4.5),
+        }
       }
     case 'ui.sidebar.border':
       return { border: get('border.divider', 'border.subtle', 'border.default') }
     case 'ui.tabBar.surface':
       return {
-        bg: get('bg.panel', 'bg.elevated', 'bg.chat'),
-        border: get('border.subtle', 'border.default'),
-        shadow: 'inset 0 1px 0 color-mix(in srgb, var(--ui-surface-floating-bg, var(--bg-floating)) 20%, transparent)',
+        bg: surfaceRoles.tabBarBg,
+        border: get('border.divider', 'border.subtle', 'border.default'),
+        shadow: 'none',
       }
     case 'ui.tabBar.divider':
       return { border: 'color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 70%, var(--ui-text-muted-fg, var(--muted)))' }
     case 'ui.tabBar.item':
-      return { fg: get('text.muted', 'text.secondary') }
+      {
+        const bg = surfaceRoles.tabBarBg
+        return {
+          fg: readableAgainst(bg, [
+            get('text.muted'),
+            get('text.secondary'),
+            get('text.primary'),
+          ], get('text.secondary', 'text.primary'), 3.5),
+        }
+      }
     case 'ui.tabBar.itemHover':
-      return {
-        bg: 'color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4.5%, transparent)',
-        fg: get('text.primary'),
+      {
+        const bg = surfaceRoles.tabBarBg
+        return {
+          bg: get('bg.hover', 'effects.overlayHover'),
+          fg: readableAgainst(bg, [
+            get('text.primary'),
+            get('text.secondary'),
+          ], get('text.primary'), 4.5),
+        }
       }
     case 'ui.tabBar.itemActive':
-      return {
-        bg: 'color-mix(in srgb, var(--ui-accent-subtle-fg, var(--accent-sub, var(--accent-light))) 42%, transparent)',
-        fg: get('text.primary'),
-        border: 'transparent',
+      {
+        const bg = surfaceRoles.tabBarBg
+        const activeBg = get('bg.selected', 'accentSub')
+        const activeSurface = colorToRgbString(resolveColorOverBackground(activeBg, bg)) || activeBg || bg
+        return {
+          bg: activeBg,
+          fg: readableAgainst(activeSurface, [
+            get('text.primary'),
+            get('text.sidebar.itemActive'),
+            get('text.secondary'),
+            get('text.btn.secondary'),
+          ], get('text.primary'), 4.5),
+          border: 'transparent',
+        }
       }
     case 'ui.tabBar.action':
-      return { fg: get('text.muted', 'text.secondary') }
+      {
+        const bg = surfaceRoles.tabBarBg
+        return {
+          fg: readableAgainst(bg, [
+            get('text.muted'),
+            get('text.secondary'),
+            get('text.primary'),
+          ], get('text.secondary', 'text.primary'), 3.5),
+        }
+      }
     case 'ui.tabBar.actionHover':
-      return {
-        bg: get('bg.elevated', 'bg.hover'),
-        fg: get('text.primary'),
-        border: get('border.subtle', 'border.default'),
+      {
+        const bg = surfaceRoles.elevatedBg
+        return {
+          bg,
+          fg: readableAgainst(bg, [
+            get('text.primary'),
+            get('text.secondary'),
+          ], get('text.primary'), 4.5),
+          border: get('border.subtle', 'border.default'),
+        }
       }
     case 'ui.tabBar.danger':
       return {
@@ -866,10 +996,20 @@ function fallbackUIStyle(
         border: get('border.messageUser', 'border.message', 'border.subtle'),
       }
     case 'ui.message.assistant':
-      return {
-        bg: get('bg.message.ai') || 'transparent',
-        fg: get('text.ai.primary', 'text.primary'),
-        border: get('border.message', 'border.subtle'),
+      {
+        const bg = get('bg.message.ai') || 'transparent'
+        const surface = bg === 'transparent'
+          ? surfaceRoles.chatBg
+          : (colorToRgbString(resolveColorOverBackground(bg, surfaceRoles.chatBg)) || surfaceRoles.chatBg)
+        return {
+          bg,
+          fg: readableAgainst(surface, [
+            get('text.ai.primary'),
+            get('text.primary'),
+            get('text.secondary'),
+          ], get('text.primary'), 4.5),
+          border: get('border.message', 'border.subtle'),
+        }
       }
     case 'ui.message.system':
       return {
@@ -921,11 +1061,41 @@ function fallbackUIStyle(
         border: get('border.success', 'color.success'),
       }
     case 'ui.tool.text':
-      return { fg: get('text.tool.name', 'text.primary') }
+      {
+        const bg = get('bg.toolCall', 'bg.panel')
+        return {
+          fg: readableAgainst(bg, [
+            get('text.tool.name'),
+            get('text.primary'),
+            get('text.secondary'),
+          ], get('text.primary'), 4.5),
+        }
+      }
     case 'ui.tool.textMuted':
-      return { fg: get('text.tool.args', 'text.muted') }
+      {
+        const bg = get('bg.toolCall', 'bg.panel')
+        return {
+          fg: readableAgainst(bg, [
+            get('text.tool.args'),
+            get('text.muted'),
+            get('text.secondary'),
+            get('text.primary'),
+          ], get('text.secondary', 'text.primary'), 3.5),
+        }
+      }
     case 'ui.tool.textFaint':
-      return { fg: get('text.tool.label', 'text.faint', 'text.muted') }
+      {
+        const bg = get('bg.toolCall', 'bg.panel')
+        return {
+          fg: readableAgainst(bg, [
+            get('text.tool.label'),
+            get('text.faint'),
+            get('text.muted'),
+            get('text.secondary'),
+            get('text.primary'),
+          ], get('text.secondary', 'text.primary'), 3),
+        }
+      }
     case 'ui.tool.accent':
       return { fg: get('accent') }
     case 'ui.tool.accentOn':
@@ -943,7 +1113,17 @@ function fallbackUIStyle(
         border: get('border.input', 'border.default'),
       }
     case 'ui.editor.placeholder':
-      return { fg: get('text.inputPlaceholder', 'text.muted') }
+      {
+        const bg = get('bg.input', 'bg.panel')
+        return {
+          fg: readableAgainst(bg, [
+            get('text.inputPlaceholder'),
+            get('text.muted'),
+            get('text.secondary'),
+            get('text.primary'),
+          ], get('text.secondary', 'text.primary'), 3.5),
+        }
+      }
     case 'ui.editor.caret':
       return { fg: get('text.input', 'text.primary') }
     case 'ui.editor.selection':
@@ -1131,9 +1311,19 @@ export function resolveThemeUI(
     ...DEFAULT_UI_ALIASES,
     ...(ui?.aliases || {}),
   }
+  const surfaceRoles = deriveSurfaceRoles({
+    colorScheme: mode,
+    app: resolvedTheme['bg.app'],
+    sidebar: resolvedTheme['bg.sidebar'],
+    chat: resolvedTheme['bg.chat'],
+    panel: resolvedTheme['bg.panel'],
+    elevated: resolvedTheme['bg.elevated'],
+    floating: resolvedTheme['bg.floating'],
+    primaryText: resolvedTheme['text.primary'],
+  })
 
   for (const token of SEMANTIC_UI_TOKENS) {
-    styles.set(token, fallbackUIStyle(resolvedTheme, token))
+    styles.set(token, fallbackUIStyle(resolvedTheme, token, surfaceRoles))
   }
 
   for (const [token, style] of Object.entries(ui?.semanticTokens || {})) {

@@ -182,13 +182,13 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 40px;
+  height: 38px;
   padding: 0 8px 0 0;
   user-select: none;
   flex-shrink: 0;
   position: relative;
-  background: var(--ui-tab-bar-surface-bg, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat)))));
-  box-shadow: var(--ui-tab-bar-surface-shadow, inset 0 1px 0 color-mix(in srgb, var(--ui-surface-floating-bg, var(--bg-floating)) 20%, transparent));
+  background: var(--ui-tab-bar-surface-bg, var(--ui-surface-chat-bg, var(--bg-chat, var(--bg-panel))));
+  box-shadow: var(--ui-tab-bar-surface-shadow, none);
 }
 
 .tab-bar::after {
@@ -198,7 +198,7 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   bottom: 0;
   left: 0;
   height: 1px;
-  background: color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle))) 62%, transparent);
+  background: color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle))) 28%, transparent);
   pointer-events: none;
   z-index: 0;
 }
@@ -251,7 +251,7 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   overflow-x: auto;
   overflow-y: visible;
   scrollbar-width: none;
-  padding: 0 8px 0 12px;
+  padding: 0 8px 0 10px;
   min-width: 0;
   -webkit-app-region: no-drag;
 }
@@ -293,14 +293,14 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
 }
 
 .header-btn {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
   background: transparent;
-  border-radius: 8px;
+  border-radius: 7px;
   color: var(--ui-tab-bar-action-fg, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
   -webkit-app-region: no-drag;
@@ -312,8 +312,8 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
 }
 
 .header-btn:hover {
-  background: var(--ui-tab-bar-action-hover-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 72%, transparent));
-  border-color: var(--ui-tab-bar-action-hover-border, var(--ui-border-subtle-border, var(--border-subtle)));
+  background: color-mix(in srgb, var(--ui-tab-bar-action-hover-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 72%, transparent)) 78%, transparent);
+  border-color: color-mix(in srgb, var(--ui-tab-bar-action-hover-border, var(--ui-border-subtle-border, var(--border-subtle))) 58%, transparent);
   color: var(--ui-tab-bar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 

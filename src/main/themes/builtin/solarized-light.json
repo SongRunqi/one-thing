@@ -78,10 +78,10 @@
     },
 
     "text": {
-      "primary": "base01",
-      "secondary": "base00",
-      "muted": "base0",
-      "faint": "base1",
+      "primary": "base02",
+      "secondary": "base01",
+      "muted": "base00",
+      "faint": "base0",
       "error": "red",
       "warning": "orange",
       "success": "green",
@@ -89,13 +89,13 @@
       "link": "blue",
       "linkHover": "cyan",
       "user": {
-        "primary": "base01",
-        "secondary": "base00"
+        "primary": "base02",
+        "secondary": "base01"
       },
       "ai": {
-        "primary": "base00",
-        "secondary": "base0",
-        "thinking": "base1"
+        "primary": "base01",
+        "secondary": "base00",
+        "thinking": "base0"
       },
       "tool": {
         "name": "magenta",
@@ -104,14 +104,14 @@
         "error": "red"
       },
       "sidebar": {
-        "title": "base01",
-        "item": "base00",
-        "itemActive": "blue",
-        "itemHover": "base01",
-        "muted": "base1"
+        "title": "base02",
+        "item": "base02",
+        "itemActive": "base02",
+        "itemHover": "base02",
+        "muted": "base00"
       },
-      "input": "base01",
-      "inputPlaceholder": "base1",
+      "input": "base02",
+      "inputPlaceholder": "base00",
       "btn": {
         "primary": "base3",
         "secondary": "base01",
@@ -119,27 +119,27 @@
         "danger": "base3"
       },
       "code": {
-        "inline": "base01",
-        "block": "base01",
-        "comment": "base1",
+        "inline": "base02",
+        "block": "base02",
+        "comment": "base0",
         "keyword": "violet",
         "string": "cyan",
         "number": "orange",
         "function": "blue",
-        "variable": "base01",
-        "operator": "base1",
+        "variable": "base02",
+        "operator": "base0",
         "type": "yellow",
         "property": "blue",
-        "punctuation": "base1"
+        "punctuation": "base0"
       },
       "menu": {
-        "item": "base00",
-        "itemHover": "base01",
-        "itemActive": "blue",
-        "header": "base1"
+        "item": "base01",
+        "itemHover": "base02",
+        "itemActive": "base02",
+        "header": "base00"
       },
-      "label": "base00",
-      "helper": "base1"
+      "label": "base01",
+      "helper": "base00"
     },
 
     "border": {

@@ -1252,14 +1252,19 @@ defineExpose({
 
 /* Main composer container */
 .composer {
+  --composer-surface: color-mix(in srgb, var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))))) 78%, var(--ui-surface-chat-bg, var(--bg-chat, var(--bg))) 22%);
+  --composer-border: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 64%, transparent);
+
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  border-radius: 16px;
-  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 78%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))) 92%, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 8%);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.055);
+  border-radius: 14px;
+  border: 0.5px solid var(--composer-border);
+  background: var(--composer-surface);
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
   backdrop-filter: blur(6px) saturate(1.02);
   -webkit-backdrop-filter: blur(6px) saturate(1.02);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
@@ -1270,16 +1275,13 @@ defineExpose({
   border-color: color-mix(
     in srgb,
     var(--ui-surface-input-focus-border, var(--ui-state-focus-border, var(--ui-accent-primary-fg, var(--accent)))) 34%,
-    var(--ui-border-default-border, var(--border))
+    var(--composer-border)
   );
-  background: color-mix(
-    in srgb,
-    var(--ui-surface-input-focus-bg, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)))) 94%,
-    var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 6%
-  );
+  background: var(--composer-surface);
   box-shadow:
-    0 1px 5px rgba(0, 0, 0, 0.07),
-    0 0 0 3px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent))) 7%, transparent);
+    0 10px 24px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent))) 6%, transparent);
 }
 
 .composer.extension-open {
@@ -1677,7 +1679,7 @@ defineExpose({
   width: 38px;
   height: 38px;
   border-radius: 12px;
-  border: none;
+  border: 1px solid transparent;
   background: var(--ui-action-primary-bg, var(--accent));
   color: var(--ui-action-primary-fg, var(--text-btn-primary));
   cursor: pointer;
@@ -1701,9 +1703,10 @@ defineExpose({
 }
 
 .send-btn:disabled {
-  background: var(--ui-action-disabled-bg, var(--bg-hover));
-  color: var(--ui-action-disabled-fg, var(--text-muted));
-  cursor: not-allowed;
+  background: color-mix(in srgb, var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel)))) 68%, transparent);
+  border-color: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 58%, transparent);
+  color: color-mix(in srgb, var(--ui-editor-placeholder-fg, var(--ui-text-muted-fg, var(--text-muted))) 72%, transparent);
+  cursor: default;
   box-shadow: none;
 }
 

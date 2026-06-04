@@ -44,7 +44,7 @@
     "bg": {
       "app": "base100",
       "sidebar": "base150",
-      "chat": "base150",
+      "chat": "base100",
       "panel": "base150",
       "elevated": "base200",
       "floating": "base300",

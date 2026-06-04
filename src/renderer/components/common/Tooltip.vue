@@ -173,24 +173,25 @@ onUnmounted(() => {
 }
 
 .tooltip {
+  --tooltip-bg: var(--ui-surface-tooltip-bg, var(--bg-tooltip, rgba(24, 24, 27, 0.95)));
+  --tooltip-fg: var(--ui-surface-tooltip-fg, var(--ui-text-inverse-fg, #fff));
+  --tooltip-border: var(--ui-surface-tooltip-border, color-mix(in srgb, var(--tooltip-fg) 14%, transparent));
+  --tooltip-shadow: var(--ui-surface-tooltip-shadow, 0 2px 8px rgba(0, 0, 0, 0.25));
+
   position: fixed;
   z-index: var(--z-tooltip);
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--ui-surface-tooltip-fg, var(--ui-text-inverse-fg, #fff));
-  background: var(--ui-surface-tooltip-bg, rgba(24, 24, 27, 0.95));
+  color: var(--tooltip-fg);
+  background: var(--tooltip-bg);
+  border: 0.5px solid var(--tooltip-border);
   border-radius: 6px;
   white-space: pre-line;
   pointer-events: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--tooltip-shadow);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-}
-
-html[data-theme='light'] .tooltip {
-  background: var(--ui-surface-tooltip-bg, rgba(39, 39, 42, 0.95));
-  color: var(--ui-surface-tooltip-fg, var(--ui-text-inverse-fg, #fff));
 }
 
 .tooltip-arrow {
@@ -200,11 +201,7 @@ html[data-theme='light'] .tooltip {
   height: 0;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-top: 5px solid var(--ui-surface-tooltip-bg, rgba(24, 24, 27, 0.95));
-}
-
-html[data-theme='light'] .tooltip-arrow {
-  border-top-color: rgba(39, 39, 42, 0.95);
+  border-top: 5px solid var(--tooltip-bg);
 }
 
 /* Transition */

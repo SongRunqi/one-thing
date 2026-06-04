@@ -3,13 +3,25 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
 import type { Theme } from '../../../shared/ipc/themes.js'
-import { extractPreviewColors, resolveTheme } from '../resolver.js'
+import { extractPreviewColors, resolveTheme, resolveThemeUI } from '../resolver.js'
 import { CSS_VAR_MAP } from '../css-mapper.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
+const builtinThemeDir = path.resolve(dirname, '../builtin')
+const builtinThemeFiles = fs
+  .readdirSync(builtinThemeDir)
+  .filter(fileName => fileName.endsWith('.json'))
+  .sort()
+
+interface ParsedColor {
+  red: number
+  green: number
+  blue: number
+  alpha: number
+}
 
 function loadBuiltinTheme(fileName: string): Theme {
-  const themePath = path.resolve(dirname, '../builtin', fileName)
+  const themePath = path.resolve(builtinThemeDir, fileName)
   return JSON.parse(fs.readFileSync(themePath, 'utf8')) as Theme
 }
 
@@ -22,22 +34,83 @@ function getPathValue(source: unknown, dottedPath: string): unknown {
   }, source)
 }
 
-function parseHexColor(value: string): [number, number, number] {
-  const match = /^#([0-9a-f]{6})$/i.exec(value)
-  if (!match) {
-    throw new Error(`Expected a 6-digit hex color, received ${value}`)
+function parseCssColor(value: string | undefined): ParsedColor | null {
+  if (!value) return null
+
+  const trimmed = value.trim()
+  if (trimmed === 'transparent') {
+    return { red: 0, green: 0, blue: 0, alpha: 0 }
   }
 
-  const numericValue = Number.parseInt(match[1], 16)
-  return [
-    (numericValue >> 16) & 255,
-    (numericValue >> 8) & 255,
-    numericValue & 255,
-  ]
+  const shortHexMatch = /^#([0-9a-f]{3})$/i.exec(trimmed)
+  if (shortHexMatch) {
+    const [, hex] = shortHexMatch
+    return {
+      red: Number.parseInt(hex[0] + hex[0], 16),
+      green: Number.parseInt(hex[1] + hex[1], 16),
+      blue: Number.parseInt(hex[2] + hex[2], 16),
+      alpha: 1,
+    }
+  }
+
+  const hexMatch = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(trimmed)
+  if (hexMatch) {
+    const [, hex, alphaHex] = hexMatch
+    const numericValue = Number.parseInt(hex, 16)
+    return {
+      red: (numericValue >> 16) & 255,
+      green: (numericValue >> 8) & 255,
+      blue: numericValue & 255,
+      alpha: alphaHex ? Number.parseInt(alphaHex, 16) / 255 : 1,
+    }
+  }
+
+  const rgbMatch = /^rgba?\((.+)\)$/i.exec(trimmed)
+  if (rgbMatch) {
+    const body = rgbMatch[1].replace(/\s*\/\s*/g, ', ')
+    const parts = body.includes(',')
+      ? body.split(',').map(part => part.trim())
+      : body.split(/\s+/)
+    if (parts.length < 3) return null
+
+    return {
+      red: Number.parseFloat(parts[0]),
+      green: Number.parseFloat(parts[1]),
+      blue: Number.parseFloat(parts[2]),
+      alpha: parts[3] === undefined ? 1 : Number.parseFloat(parts[3]),
+    }
+  }
+
+  return null
 }
 
-function relativeLuminance(color: string): number {
-  const [red, green, blue] = parseHexColor(color).map(channel => {
+function compositeColor(foreground: ParsedColor, background: ParsedColor): ParsedColor {
+  const alpha = foreground.alpha + background.alpha * (1 - foreground.alpha)
+  if (alpha === 0) {
+    return { red: 0, green: 0, blue: 0, alpha: 0 }
+  }
+
+  return {
+    red: ((foreground.red * foreground.alpha) + (background.red * background.alpha * (1 - foreground.alpha))) / alpha,
+    green: ((foreground.green * foreground.alpha) + (background.green * background.alpha * (1 - foreground.alpha))) / alpha,
+    blue: ((foreground.blue * foreground.alpha) + (background.blue * background.alpha * (1 - foreground.alpha))) / alpha,
+    alpha,
+  }
+}
+
+function resolveColorOver(value: string | undefined, backgroundValue: string): ParsedColor {
+  const color = parseCssColor(value)
+  const background = parseCssColor(backgroundValue)
+
+  if (!color || !background) {
+    throw new Error(`Unable to parse colors: ${value} over ${backgroundValue}`)
+  }
+
+  return color.alpha < 1 ? compositeColor(color, background) : color
+}
+
+function relativeLuminance(color: ParsedColor): number {
+  const [red, green, blue] = [color.red, color.green, color.blue].map(channel => {
     const normalized = channel / 255
     return normalized <= 0.03928
       ? normalized / 12.92
@@ -47,10 +120,38 @@ function relativeLuminance(color: string): number {
   return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue)
 }
 
-function contrastRatio(foreground: string, background: string): number {
+function contrastRatio(foreground: ParsedColor, background: ParsedColor): number {
   const lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background))
   const darker = Math.min(relativeLuminance(foreground), relativeLuminance(background))
   return (lighter + 0.05) / (darker + 0.05)
+}
+
+function expectReadable(
+  themeName: string,
+  label: string,
+  foregroundValue: string | undefined,
+  backgroundValue: string,
+  minimum: number
+) {
+  const foreground = resolveColorOver(foregroundValue, backgroundValue)
+  const background = resolveColorOver(backgroundValue, '#ffffff')
+
+  expect.soft(
+    contrastRatio(foreground, background),
+    `${themeName} ${label} contrast`
+  ).toBeGreaterThanOrEqual(minimum)
+}
+
+function colorDistance(first: ParsedColor, second: ParsedColor): number {
+  return Math.abs(first.red - second.red)
+    + Math.abs(first.green - second.green)
+    + Math.abs(first.blue - second.blue)
+}
+
+function solidColorKey(value: string | undefined): string | null {
+  const color = parseCssColor(value)
+  if (!color || color.alpha < 0.999) return null
+  return `${Math.round(color.red)},${Math.round(color.green)},${Math.round(color.blue)}`
 }
 
 describe('theme CSS variable mapping', () => {
@@ -78,6 +179,30 @@ describe('built-in theme text contrast', () => {
     expect(preview.palette.length).toBeLessThanOrEqual(10)
   })
 
+  it('keeps Nord defs on the official palette instead of custom pseudo-colors', () => {
+    const theme = loadBuiltinTheme('nord.json')
+
+    expect(Object.keys(theme.defs).sort()).toEqual([
+      'nord0',
+      'nord1',
+      'nord10',
+      'nord11',
+      'nord12',
+      'nord13',
+      'nord14',
+      'nord15',
+      'nord2',
+      'nord3',
+      'nord4',
+      'nord5',
+      'nord6',
+      'nord7',
+      'nord8',
+      'nord9',
+    ])
+    expect(theme.defs).not.toHaveProperty('nordSurface')
+  })
+
   it('keeps Nord sidebar metadata readable against the sidebar surface', () => {
     const theme = loadBuiltinTheme('nord.json')
     const resolvedTheme = resolveTheme(theme, 'dark')
@@ -89,7 +214,7 @@ describe('built-in theme text contrast', () => {
     ]
 
     for (const token of readableSidebarTokens) {
-      expect(contrastRatio(resolvedTheme[token], background), `${token} contrast`).toBeGreaterThanOrEqual(4.5)
+      expectReadable('Nord', token, resolvedTheme[token], background, 4.5)
     }
   })
 
@@ -109,7 +234,133 @@ describe('built-in theme text contrast', () => {
 
     for (const token of readableTextTokens) {
       expect(getPathValue(theme.theme, token), `${token} should not use a border color as text`).not.toBe('borderDefault')
-      expect(contrastRatio(resolvedTheme[token], background), `${token} contrast`).toBeGreaterThanOrEqual(4.5)
+      expectReadable('GitHub Light', token, resolvedTheme[token], background, 4.5)
+    }
+  })
+
+  it('keeps core UI semantic surfaces readable for every built-in theme', () => {
+    for (const fileName of builtinThemeFiles) {
+      const theme = loadBuiltinTheme(fileName)
+      const mode = theme.colorScheme === 'light' ? 'light' : 'dark'
+      const resolvedTheme = resolveTheme(theme, mode)
+      const resolvedUI = resolveThemeUI(theme, mode, resolvedTheme)
+      const themeName = theme.name
+      const sidebarSurface = resolvedUI['ui.sidebar.surface'].bg || resolvedTheme['bg.sidebar']
+      const tabBarSurface = resolvedUI['ui.tabBar.surface'].bg || resolvedTheme['bg.panel']
+      const chatSurface = resolvedUI['ui.surface.chat'].bg || resolvedTheme['bg.chat']
+      const panelSurface = resolvedUI['ui.surface.panel'].bg || resolvedTheme['bg.panel']
+      const inputSurface = resolvedUI['ui.surface.input'].bg || resolvedTheme['bg.input']
+      const tooltipSurface = resolvedUI['ui.surface.tooltip'].bg || resolvedTheme['bg.tooltip']
+      const userMessageSurface = resolvedUI['ui.message.userSolid'].bg || resolvedUI['ui.message.user'].bg || panelSurface
+      const toolSurface = resolvedUI['ui.tool.surface'].bg || resolvedTheme['bg.toolCall']
+      const assistantSurface = resolvedUI['ui.message.assistant'].bg === 'transparent'
+        ? chatSurface
+        : (resolvedUI['ui.message.assistant'].bg || panelSurface)
+      const sidebarActiveSurface = resolveColorOver(resolvedUI['ui.sidebar.itemActive'].bg, sidebarSurface)
+      const tabActiveSurface = resolveColorOver(resolvedUI['ui.tabBar.itemActive'].bg, tabBarSurface)
+
+      expectReadable(themeName, 'sidebar item', resolvedUI['ui.sidebar.item'].fg, sidebarSurface, 4.5)
+      expectReadable(themeName, 'sidebar muted metadata', resolvedUI['ui.sidebar.itemMuted'].fg, sidebarSurface, 3.5)
+      expectReadable(themeName, 'sidebar section header', resolvedUI['ui.sidebar.header'].fg, sidebarSurface, 3.5)
+      expectReadable(themeName, 'tab item', resolvedUI['ui.tabBar.item'].fg, tabBarSurface, 3.5)
+      expectReadable(themeName, 'chat primary text', resolvedUI['ui.text.primary'].fg, chatSurface, 4.5)
+      expectReadable(themeName, 'composer text', resolvedUI['ui.editor.text'].fg, inputSurface, 4.5)
+      expectReadable(themeName, 'composer placeholder', resolvedUI['ui.editor.placeholder'].fg, inputSurface, 3.5)
+      expectReadable(themeName, 'tooltip text', resolvedUI['ui.surface.tooltip'].fg, tooltipSurface, 4.5)
+      expectReadable(themeName, 'user message text', resolvedUI['ui.message.user'].fg, userMessageSurface, 4.5)
+      expectReadable(themeName, 'assistant message text', resolvedUI['ui.message.assistant'].fg, assistantSurface, 4.5)
+      expectReadable(themeName, 'tool text', resolvedUI['ui.tool.text'].fg, toolSurface, 4.5)
+      expectReadable(themeName, 'tool muted metadata', resolvedUI['ui.tool.textMuted'].fg, toolSurface, 3.5)
+
+      expect(
+        contrastRatio(resolveColorOver(resolvedUI['ui.sidebar.itemActive'].fg, sidebarSurface), sidebarActiveSurface),
+        `${themeName} sidebar active item contrast`
+      ).toBeGreaterThanOrEqual(4.5)
+      expect(
+        contrastRatio(resolveColorOver(resolvedUI['ui.tabBar.itemActive'].fg, tabBarSurface), tabActiveSurface),
+        `${themeName} tab active item contrast`
+      ).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('keeps active states visible without leaking solid accent into neutral chrome', () => {
+    for (const fileName of builtinThemeFiles) {
+      const theme = loadBuiltinTheme(fileName)
+      const mode = theme.colorScheme === 'light' ? 'light' : 'dark'
+      const resolvedTheme = resolveTheme(theme, mode)
+      const resolvedUI = resolveThemeUI(theme, mode, resolvedTheme)
+      const themeName = theme.name
+      const accentKey = solidColorKey(resolvedUI['ui.accent.primary'].fg || resolvedTheme.accent)
+      const sidebarSurface = resolvedUI['ui.sidebar.surface'].bg || resolvedTheme['bg.sidebar']
+      const tabBarSurface = resolvedUI['ui.tabBar.surface'].bg || resolvedTheme['bg.panel']
+      const sidebarSurfaceColor = resolveColorOver(sidebarSurface, '#ffffff')
+      const tabBarSurfaceColor = resolveColorOver(tabBarSurface, '#ffffff')
+      const sidebarActiveSurface = resolveColorOver(resolvedUI['ui.sidebar.itemActive'].bg, sidebarSurface)
+      const tabActiveSurface = resolveColorOver(resolvedUI['ui.tabBar.itemActive'].bg, tabBarSurface)
+      const nonAccentChrome = [
+        ['sidebar surface', resolvedUI['ui.sidebar.surface'].bg],
+        ['tab bar surface', resolvedUI['ui.tabBar.surface'].bg],
+        ['chat surface', resolvedUI['ui.surface.chat'].bg],
+        ['panel surface', resolvedUI['ui.surface.panel'].bg],
+        ['tooltip surface', resolvedUI['ui.surface.tooltip'].bg],
+        ['composer input surface', resolvedUI['ui.surface.input'].bg],
+        ['message user surface', resolvedUI['ui.message.userSolid'].bg || resolvedUI['ui.message.user'].bg],
+        ['tool surface', resolvedUI['ui.tool.surface'].bg],
+        ['sidebar active text', resolvedUI['ui.sidebar.itemActive'].fg],
+        ['tab active text', resolvedUI['ui.tabBar.itemActive'].fg],
+      ]
+
+      for (const [label, value] of nonAccentChrome) {
+        expect(solidColorKey(value), `${themeName} ${label} should not be solid accent`).not.toBe(accentKey)
+      }
+
+      expect(
+        colorDistance(sidebarActiveSurface, sidebarSurfaceColor),
+        `${themeName} sidebar active state should differ from sidebar surface`
+      ).toBeGreaterThanOrEqual(6)
+      expect(
+        colorDistance(tabActiveSurface, tabBarSurfaceColor),
+        `${themeName} tab active state should differ from tab bar surface`
+      ).toBeGreaterThanOrEqual(6)
+    }
+  })
+
+  it('keeps the app canvas visually behind the chat content surface', () => {
+    for (const fileName of builtinThemeFiles) {
+      const theme = loadBuiltinTheme(fileName)
+      const mode = theme.colorScheme === 'light' ? 'light' : 'dark'
+      const resolvedTheme = resolveTheme(theme, mode)
+      const resolvedUI = resolveThemeUI(theme, mode, resolvedTheme)
+      const themeName = theme.name
+      const appSurface = resolvedUI['ui.surface.app'].bg || resolvedTheme['bg.app']
+      const chatSurface = resolvedUI['ui.surface.chat'].bg || resolvedTheme['bg.chat']
+      const sidebarSurface = resolvedUI['ui.sidebar.surface'].bg || resolvedTheme['bg.sidebar']
+      const tabBarSurface = resolvedUI['ui.tabBar.surface'].bg || chatSurface
+      const appColor = resolveColorOver(appSurface, '#ffffff')
+      const chatColor = resolveColorOver(chatSurface, '#ffffff')
+      const sidebarColor = resolveColorOver(sidebarSurface, '#ffffff')
+      const tabBarColor = resolveColorOver(tabBarSurface, '#ffffff')
+
+      expect(
+        colorDistance(appColor, chatColor),
+        `${themeName} app canvas should differ from chat panel`
+      ).toBeGreaterThanOrEqual(6)
+      expect(
+        colorDistance(sidebarColor, appColor),
+        `${themeName} sidebar surface should sit on the app canvas`
+      ).toBeLessThanOrEqual(1)
+      expect(
+        colorDistance(sidebarColor, chatColor),
+        `${themeName} sidebar surface should differ from chat surface`
+      ).toBeGreaterThanOrEqual(6)
+      expect(
+        colorDistance(tabBarColor, chatColor),
+        `${themeName} tab bar surface should belong to the chat panel`
+      ).toBeLessThanOrEqual(1)
+      expect(
+        colorDistance(tabBarColor, sidebarColor),
+        `${themeName} tab bar surface should differ from sidebar surface`
+      ).toBeGreaterThanOrEqual(6)
     }
   })
 })

@@ -33,10 +33,10 @@
 
     "bg": {
       "app": "bgDark",
-      "sidebar": "bg",
+      "sidebar": "bgHighlight",
       "chat": "bg",
-      "panel": "bg",
-      "elevated": "bgHighlight",
+      "panel": "bgHighlight",
+      "elevated": "terminal",
       "floating": "terminal",
       "message": {
         "user": "bgHighlight",

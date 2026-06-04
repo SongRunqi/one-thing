@@ -256,17 +256,16 @@ const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true'
 const sidebarFloating = ref(false)
 const sidebarFloatingClosing = ref(false)
 const sidebarNoTransition = ref(false) // Disable transition during/after floating
-const reserveSidebarActions = ref(false)
+const reserveSidebarActions = ref(sidebarCollapsed.value)
 const sidebarActionAnimating = ref(false)
 const floatingCooldown = ref(false) // Prevent re-expansion after toggle
 const floatingShowTimer = ref<ReturnType<typeof setTimeout> | null>(null) // Delay before showing floating sidebar
+let sidebarToggleTimer: ReturnType<typeof setTimeout> | null = null
 const SIDEBAR_ACTION_GROUP_WIDTH = 80
 const SIDEBAR_ACTION_COLLAPSED_LEFT = 84
-const SIDEBAR_FLOATING_WIDTH = 300
 const sidebarActionLeft = computed(() => {
-  if (sidebarCollapsed.value && !sidebarFloating.value) return SIDEBAR_ACTION_COLLAPSED_LEFT
-  const activeSidebarWidth = sidebarFloating.value ? SIDEBAR_FLOATING_WIDTH : sidebarWidth.value
-  return Math.max(SIDEBAR_ACTION_COLLAPSED_LEFT, activeSidebarWidth - SIDEBAR_ACTION_GROUP_WIDTH)
+  if (sidebarCollapsed.value) return SIDEBAR_ACTION_COLLAPSED_LEFT
+  return Math.max(SIDEBAR_ACTION_COLLAPSED_LEFT, sidebarWidth.value - SIDEBAR_ACTION_GROUP_WIDTH)
 })
 
 // Close floating sidebar with animation
@@ -291,15 +290,22 @@ function handleSidebarToggle() {
   if (sidebarFloating.value) {
     closeFloatingSidebar()
   } else {
-    // Prevent floating from triggering during collapse animation.
-    // The top-bar reserved slot animates its width with the Sidebar width,
-    // so tabs reflow instead of jumping or being covered.
+    const nextCollapsed = !sidebarCollapsed.value
+
+    // Animate sidebar width and top-bar reservation as complementary offsets.
+    // This keeps the tab strip from being pushed twice during expand.
     floatingCooldown.value = true
     sidebarActionAnimating.value = true
-    sidebarCollapsed.value = !sidebarCollapsed.value
-    setTimeout(() => {
+    reserveSidebarActions.value = nextCollapsed
+    sidebarCollapsed.value = nextCollapsed
+
+    if (sidebarToggleTimer) {
+      clearTimeout(sidebarToggleTimer)
+    }
+    sidebarToggleTimer = setTimeout(() => {
       sidebarActionAnimating.value = false
       floatingCooldown.value = false
+      sidebarToggleTimer = null
     }, 340)
   }
 }
@@ -347,6 +353,9 @@ function handleSidebarMouseLeave(event: MouseEvent) {
 
 // Close floating mode when sidebar is expanded permanently
 watch(sidebarCollapsed, (collapsed) => {
+  if (!sidebarActionAnimating.value) {
+    reserveSidebarActions.value = collapsed
+  }
   if (!collapsed) {
     sidebarFloating.value = false
   }
@@ -412,6 +421,7 @@ onMounted(async () => {
     }
     if (appState.sidebarCollapsed !== undefined) {
       sidebarCollapsed.value = appState.sidebarCollapsed
+      reserveSidebarActions.value = appState.sidebarCollapsed
     }
   } catch (e) {
     console.warn('[App] Failed to restore app state:', e)
@@ -528,6 +538,14 @@ onUnmounted(() => {
   if (unsubscribeSearchAction) {
     unsubscribeSearchAction()
   }
+  if (floatingShowTimer.value) {
+    clearTimeout(floatingShowTimer.value)
+    floatingShowTimer.value = null
+  }
+  if (sidebarToggleTimer) {
+    clearTimeout(sidebarToggleTimer)
+    sidebarToggleTimer = null
+  }
 })
 
 // Theme is managed by settingsStore.applyTheme() which correctly resolves 'system' to 'light'/'dark'
@@ -540,7 +558,7 @@ onUnmounted(() => {
   width: 100%;
   display: flex;
   flex-direction: row;
-  background: var(--bg);
+  background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
 }
 
 /* Main Content - Full height, horizontal layout */
@@ -550,6 +568,8 @@ onUnmounted(() => {
   min-height: 0;
   min-width: 0;
   position: relative;
+  overflow: hidden;
+  background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
 }
 
 .app-sidebar-actions {
@@ -558,7 +578,7 @@ onUnmounted(() => {
   height: 24px;
   display: flex;
   align-items: center;
-  z-index: 600;
+  z-index: 700;
   pointer-events: auto;
   -webkit-app-region: no-drag;
 }

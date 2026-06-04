@@ -158,8 +158,14 @@ describe('theme UI semantic tokens', () => {
       fg: '#eeeeee',
       border: '#282828',
     })
+    expect(resolvedUI['ui.surface.app']).toMatchObject({
+      bg: '#101010',
+    })
+    expect(resolvedUI['ui.surface.chat']).toMatchObject({
+      bg: '#202020',
+    })
     expect(resolvedUI['ui.sidebar.surface']).toMatchObject({
-      bg: '#151515',
+      bg: '#101010',
       fg: '#cccccc',
       border: '#282828',
     })
@@ -196,8 +202,10 @@ describe('theme UI semantic tokens', () => {
     expect(cssVariables['--bg-btn-primary']).toBe('#3388dd')
     expect(cssVariables['--ui-tool-surface-bg']).toBe('#202020')
     expect(cssVariables['--tool-surface']).toBe('#202020')
-    expect(cssVariables['--ui-sidebar-surface-bg']).toBe('#151515')
-    expect(cssVariables['--bg-sidebar']).toBe('#151515')
+    expect(cssVariables['--ui-surface-app-bg']).toBe('#101010')
+    expect(cssVariables['--bg-app']).toBe('#101010')
+    expect(cssVariables['--ui-sidebar-surface-bg']).toBe('#101010')
+    expect(cssVariables['--bg-sidebar']).toBe('#101010')
     expect(cssVariables['--ui-surface-note-bg']).toBe('#282828')
     expect(cssVariables['--bg-note']).toBe('#282828')
     expect(cssVariables['--ui-surface-preview-light-bg']).toBe('#ffffff')
@@ -252,5 +260,25 @@ describe('theme UI semantic tokens', () => {
     expect(cssVariables['--tool-surface']).toBe('#ff00ff')
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()
+  })
+
+  it('repairs flattened legacy surfaces into distinct app roles', () => {
+    const theme = makeTheme()
+    theme.theme.bg.sidebar = 'chat'
+    theme.theme.bg.panel = 'chat'
+    theme.theme.bg.elevated = 'chat'
+    theme.theme.bg.floating = 'chat'
+
+    const resolvedTheme = resolveTheme(theme, 'dark')
+    const resolvedUI = resolveThemeUI(theme, 'dark', resolvedTheme)
+
+    expect(resolvedUI['ui.surface.chat'].bg).toBe('#181818')
+    expect(resolvedUI['ui.surface.app'].bg).not.toBe(resolvedUI['ui.surface.chat'].bg)
+    expect(resolvedUI['ui.surface.app'].bg).toBe(resolvedUI['ui.sidebar.surface'].bg)
+    expect(resolvedUI['ui.sidebar.surface'].bg).not.toBe(resolvedUI['ui.surface.chat'].bg)
+    expect(resolvedUI['ui.surface.panel'].bg).toBe(resolvedUI['ui.surface.chat'].bg)
+    expect(resolvedUI['ui.tabBar.surface'].bg).toBe(resolvedUI['ui.surface.chat'].bg)
+    expect(resolvedUI['ui.tabBar.surface'].bg).not.toBe(resolvedUI['ui.sidebar.surface'].bg)
+    expect(resolvedUI['ui.surface.elevated'].bg).not.toBe(resolvedUI['ui.surface.panel'].bg)
   })
 })

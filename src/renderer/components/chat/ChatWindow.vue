@@ -342,10 +342,15 @@ defineExpose({
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat))));
+  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated)))));
   position: relative;
   overflow: hidden;
-  border: none;
+  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 84%, transparent);
+  border-radius: 10px;
+  background-clip: padding-box;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
   contain: layout style;
 }
 

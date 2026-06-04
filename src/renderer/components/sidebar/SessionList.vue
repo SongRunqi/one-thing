@@ -345,12 +345,12 @@ onUnmounted(() => {
 .sessions-list {
   --sidebar-list-meta-fg: color-mix(
     in srgb,
-    var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 82%,
+    var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 88%,
     transparent
   );
   --sidebar-list-meta-fg-strong: color-mix(
     in srgb,
-    var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 88%,
+    var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 96%,
     transparent
   );
 
@@ -362,7 +362,7 @@ onUnmounted(() => {
   overflow-x: hidden;
   min-height: 0;
   min-width: 0;
-  padding: 2px 0 60px 8px;
+  padding: 2px 8px 60px 10px;
   scrollbar-gutter: stable;
   contain: strict;
   content-visibility: auto;
@@ -385,7 +385,7 @@ onUnmounted(() => {
   margin-right: 4px;
   padding: 15px 8px 5px;
   border: none;
-  background: var(--ui-sidebar-surface-bg, var(--sidebar-bg));
+  background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--sidebar-bg)));
   font-size: 11px;
   font-weight: var(--font-weight-normal);
   line-height: 1.35;
@@ -446,7 +446,7 @@ onUnmounted(() => {
 }
 
 .load-more-btn:hover {
-  background: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+  background: color-mix(in srgb, var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover))) 76%, transparent);
   color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 

@@ -653,8 +653,8 @@ onUnmounted(() => {
 
 <style scoped>
 .settings-page {
-  --settings-paper: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
-  --settings-paper-2: var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2)));
+  --settings-paper: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat))));
+  --settings-paper-2: var(--ui-sidebar-surface-bg, var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2))));
   --settings-paper-3: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel)));
   --settings-rule: var(--ui-border-default-border, var(--border-default, var(--border)));
   --settings-rule-soft: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
@@ -1209,8 +1209,8 @@ onUnmounted(() => {
 }
 
 .settings-page {
-  --settings-paper: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
-  --settings-paper-2: var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2)));
+  --settings-paper: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat))));
+  --settings-paper-2: var(--ui-sidebar-surface-bg, var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2))));
   --settings-paper-3: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel)));
   --settings-rule: var(--ui-border-default-border, var(--border-default, var(--border)));
   --settings-rule-soft: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
@@ -1478,9 +1478,9 @@ onUnmounted(() => {
 
 /* IDE-style settings page refresh, inspired by compact desktop preferences. */
 .settings-page {
-  --settings-paper: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
-  --settings-paper-2: color-mix(in srgb, var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2))) 88%, var(--ui-surface-app-bg, var(--bg-app, var(--bg))));
-  --settings-paper-3: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 76%, var(--settings-paper));
+  --settings-paper: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat))));
+  --settings-paper-2: var(--ui-sidebar-surface-bg, var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2))));
+  --settings-paper-3: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel)));
   --settings-rule: color-mix(in srgb, var(--ui-border-default-border, var(--border-default, var(--border))) 82%, transparent);
   --settings-rule-soft: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 66%, transparent);
   --settings-ink: var(--ui-text-primary-fg, var(--text-primary, var(--text)));

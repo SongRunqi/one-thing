@@ -505,11 +505,16 @@ onUnmounted(() => {
 <style scoped>
 .chat-container-wrapper {
   flex: 1;
-  padding: 0;
-  background: var(--bg-sunken, color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 95%, black));
+  padding: 5px 8px 8px 0;
+  background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
   min-width: 0;
   display: flex;
   position: relative;
+  transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chat-container-wrapper.sidebar-collapsed {
+  padding-left: 8px;
 }
 
 /* Hover trigger for floating sidebar */
@@ -737,13 +742,12 @@ onUnmounted(() => {
 .full-page-container {
   flex: 1;
   display: flex;
-  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat))));
-  border-radius: var(--radius-lg);
+  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated)))));
+  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 84%, transparent);
+  border-radius: 10px;
   box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.15),
-    0 8px 16px rgba(0, 0, 0, 0.2),
-    0 20px 40px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    0 10px 28px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
   overflow: hidden;
 }
 
@@ -753,9 +757,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat))));
+  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated)))));
+  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 84%, transparent);
+  border-radius: 10px;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
   position: relative;
   -webkit-app-region: drag;
+  overflow: hidden;
 }
 
 .empty-state-content {

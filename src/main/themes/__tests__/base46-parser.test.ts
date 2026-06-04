@@ -85,7 +85,7 @@ describe('Base46 theme conversion', () => {
     const inputBg = theme.theme.bg.input as string
     const sidebarSurface = theme.ui?.semanticTokens?.['ui.sidebar.surface'] as { bg?: string } | undefined
 
-    expect(theme.theme.bg.chat).toBe('#262C36')
+    expect(theme.theme.bg.chat).toBe('#3B4252')
     expect(theme.theme.bg.panel).toBe('#3B4252')
     expect(theme.theme.text.sidebar?.itemActive).toBe(theme.theme.text.primary)
     expect(sidebarSurface?.bg).toBe(sidebarBg)
@@ -93,5 +93,62 @@ describe('Base46 theme conversion', () => {
     expect(contrastRatio(theme.theme.text.sidebar?.item as string, sidebarBg)).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio(theme.theme.text.sidebar?.muted as string, sidebarBg)).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio(theme.theme.text.inputPlaceholder as string, inputBg)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('repairs flat Base46 surface palettes without per-theme overrides', () => {
+    const base46: Base46Theme = {
+      type: 'dark',
+      base_30: {
+        black: '#202020',
+        darker_black: '#202020',
+        one_bg: '#202020',
+        one_bg2: '#202020',
+        one_bg3: '#202020',
+        grey: '#343434',
+        grey_fg: '#BDBDBD',
+        grey_fg2: '#C8C8C8',
+        light_grey: '#DADADA',
+        white: '#F2F2F2',
+        blue: '#7AA2F7',
+        nord_blue: '#88C0D0',
+        cyan: '#7DCFFF',
+        red: '#F7768E',
+        green: '#9ECE6A',
+        vibrant_green: '#9ECE6A',
+        orange: '#FF9E64',
+        yellow: '#E0AF68',
+        purple: '#BB9AF7',
+        teal: '#7DCFFF',
+        line: '#3A3A3A',
+      },
+      base_16: {
+        base00: '#202020',
+        base01: '#202020',
+        base02: '#202020',
+        base03: '#343434',
+        base04: '#BDBDBD',
+        base05: '#DADADA',
+        base06: '#E7E7E7',
+        base07: '#F2F2F2',
+        base08: '#F7768E',
+        base09: '#FF9E64',
+        base0A: '#E0AF68',
+        base0B: '#9ECE6A',
+        base0C: '#7DCFFF',
+        base0D: '#7AA2F7',
+        base0E: '#BB9AF7',
+        base0F: '#88C0D0',
+      },
+    }
+
+    const theme = convertBase46ToTheme(base46, 'flat-surfaces')
+    const ui = theme.ui?.semanticTokens
+
+    expect(theme.theme.bg.sidebar).not.toBe(theme.theme.bg.chat)
+    expect(theme.theme.bg.panel).toBe(theme.theme.bg.chat)
+    expect(theme.theme.bg.elevated).not.toBe(theme.theme.bg.panel)
+    expect(ui?.['ui.sidebar.surface']?.bg).toBe(theme.theme.bg.sidebar)
+    expect(ui?.['ui.tabBar.surface']?.bg).toBe(theme.theme.bg.chat)
+    expect(ui?.['ui.tabBar.surface']?.bg).not.toBe(theme.theme.bg.sidebar)
   })
 })

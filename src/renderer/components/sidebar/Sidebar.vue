@@ -295,8 +295,7 @@ onUnmounted(() => {
 .sidebar {
   --sidebar-bg: var(
     --ui-sidebar-surface-bg,
-    linear-gradient(color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 6%, transparent), color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 6%, transparent)),
-    var(--ui-surface-app-bg, var(--bg-app))
+    var(--ui-surface-app-bg, var(--bg-app, var(--bg)))
   );
   position: relative;
   flex-shrink: 0;
@@ -326,7 +325,7 @@ onUnmounted(() => {
   width: 300px !important;
   max-width: 300px !important;
   height: 100%;
-  z-index: 500;
+  z-index: 650;
   background: transparent;
   animation: slideInLeft 0.2s cubic-bezier(0.32, 0.72, 0, 1) forwards;
   overflow: visible;
@@ -339,6 +338,8 @@ onUnmounted(() => {
   height: calc(100% - 12px);
   margin: 6px;
   padding-bottom: 0;
+  background: var(--sidebar-bg);
+  border: 1px solid color-mix(in srgb, var(--ui-sidebar-border-border, var(--ui-border-subtle-border, var(--border-subtle, var(--border)))) 72%, transparent);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-floating);
   will-change: transform, opacity;
@@ -378,7 +379,7 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   margin-top: 12px;
-  background: var(--sidebar-bg);
+  background: transparent;
   overflow: hidden;
   contain: layout style paint;
   transition: opacity 0.15s ease;
@@ -429,14 +430,15 @@ onUnmounted(() => {
 }
 
 .workspace-action:hover {
-  background: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+  background: color-mix(in srgb, var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover))) 76%, transparent);
   color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 
 .workspace-action.active {
-  background: var(--ui-sidebar-item-active-bg, color-mix(in srgb, var(--ui-accent-subtle-fg, var(--accent-sub, var(--accent-light))) 38%, transparent));
+  background: color-mix(in srgb, var(--ui-sidebar-item-active-bg, color-mix(in srgb, var(--ui-accent-subtle-fg, var(--accent-sub, var(--accent-light))) 38%, transparent)) 76%, transparent);
   color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
   font-weight: 500;
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-sidebar-item-active-border, var(--ui-accent-primary-fg, var(--accent))) 58%, transparent);
 }
 
 .workspace-action-icon {

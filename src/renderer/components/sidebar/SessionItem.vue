@@ -181,9 +181,10 @@ function cancelRename() {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 10px;
-  margin: 1px 4px;
-  border-radius: 6px;
+  min-height: 34px;
+  padding: 6px 10px;
+  margin: 1px 2px;
+  border-radius: 7px;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -197,11 +198,12 @@ function cancelRename() {
 }
 
 .session-item:not(.active):hover {
-  background: var(--ui-sidebar-item-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+  background: color-mix(in srgb, var(--ui-sidebar-item-hover-bg, var(--ui-state-hover-bg, var(--hover))) 78%, transparent);
 }
 
 .session-item.active {
-  background: var(--ui-sidebar-item-active-bg, var(--ui-state-selected-bg, var(--session-highlight)));
+  background: color-mix(in srgb, var(--ui-sidebar-item-active-bg, var(--ui-state-selected-bg, var(--session-highlight))) 76%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-sidebar-item-active-border, var(--ui-accent-primary-fg, var(--accent))) 58%, transparent);
 }
 
 .session-item.hidden {
@@ -355,7 +357,7 @@ function cancelRename() {
   line-height: 1;
   color: var(
     --sidebar-list-meta-fg,
-    color-mix(in srgb, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 82%, transparent)
+    color-mix(in srgb, var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 88%, transparent)
   );
   opacity: 1;
   text-align: right;
@@ -372,7 +374,7 @@ function cancelRename() {
 .session-item.active .session-time {
   color: var(
     --sidebar-list-meta-fg-strong,
-    color-mix(in srgb, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 88%, transparent)
+    color-mix(in srgb, var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 96%, transparent)
   );
   opacity: 1;
 }
