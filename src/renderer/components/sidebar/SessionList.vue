@@ -331,7 +331,7 @@ onUnmounted(() => {
 .scroll-indicator-top {
   height: 1px;
   margin: 0 16px;
-  background: var(--border-subtle);
+  background: var(--ui-border-subtle-border, var(--border-subtle));
   opacity: 0;
   transition: opacity 0.3s ease;
   pointer-events: none;
@@ -343,6 +343,17 @@ onUnmounted(() => {
 }
 
 .sessions-list {
+  --sidebar-list-meta-fg: color-mix(
+    in srgb,
+    var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 82%,
+    transparent
+  );
+  --sidebar-list-meta-fg-strong: color-mix(
+    in srgb,
+    var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 88%,
+    transparent
+  );
+
   position: relative;
   display: flex;
   flex-direction: column;
@@ -374,12 +385,12 @@ onUnmounted(() => {
   margin-right: 4px;
   padding: 15px 8px 5px;
   border: none;
-  background: var(--sidebar-bg);
+  background: var(--ui-sidebar-surface-bg, var(--sidebar-bg));
   font-size: 11px;
   font-weight: var(--font-weight-normal);
   line-height: 1.35;
   letter-spacing: 0.01em;
-  color: color-mix(in srgb, var(--text-faint) 76%, transparent);
+  color: var(--sidebar-list-meta-fg);
   text-align: left;
   cursor: pointer;
   user-select: none;
@@ -387,7 +398,7 @@ onUnmounted(() => {
 }
 
 .session-group-header:hover {
-  color: var(--text-muted);
+  color: var(--ui-sidebar-item-hover-fg, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
 /* First section header sits flush at the top */
@@ -397,8 +408,8 @@ onUnmounted(() => {
 
 .group-chevron {
   flex-shrink: 0;
-  color: var(--text-faint);
-  opacity: 0.75;
+  color: currentColor;
+  opacity: 1;
   transition: transform 0.18s ease;
 }
 
@@ -417,8 +428,7 @@ onUnmounted(() => {
 .group-count {
   flex-shrink: 0;
   font-weight: var(--font-weight-normal);
-  color: var(--text-faint);
-  opacity: 0.48;
+  color: var(--sidebar-list-meta-fg-strong);
 }
 
 /* Show-more affordance per section */
@@ -428,7 +438,7 @@ onUnmounted(() => {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: color-mix(in srgb, var(--text-faint) 72%, transparent);
+  color: var(--sidebar-list-meta-fg);
   font-size: 11px;
   text-align: left;
   cursor: pointer;
@@ -436,8 +446,8 @@ onUnmounted(() => {
 }
 
 .load-more-btn:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 
 /* Kill child transitions while initial state settles to avoid the
@@ -460,13 +470,13 @@ onUnmounted(() => {
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-sidebar-border-border, var(--ui-border-default-border, var(--border)));
   margin-bottom: 8px;
   padding-bottom: 12px;
 }
 
 .session-item.new-chat-item .new-chat-icon {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   flex-shrink: 0;
 }
 
@@ -476,22 +486,22 @@ onUnmounted(() => {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   font-size: 14px;
   font-weight: 400;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   padding-right: 12px;
 }
 
 .session-item.new-chat-item:hover {
-  background: rgba(var(--accent-rgb), 0.1);
+  background: var(--ui-sidebar-item-hover-bg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent));
 }
 
 .session-item.new-chat-item:hover .session-name {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .empty-sessions {
   padding: 20px;
   text-align: center;
-  color: var(--muted);
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--muted)));
   font-size: 13px;
 }
 </style>

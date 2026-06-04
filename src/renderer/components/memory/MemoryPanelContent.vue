@@ -3025,7 +3025,7 @@ function formatMaybeDate(ms?: number): string {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   overflow: hidden;
 }
 
@@ -3059,7 +3059,7 @@ function formatMaybeDate(ms?: number): string {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 15px;
   font-weight: 650;
 }
@@ -3085,18 +3085,18 @@ function formatMaybeDate(ms?: number): string {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
 }
 
 .icon-btn:hover:not(:disabled) {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .icon-btn.bordered {
   flex-shrink: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .icon-btn:disabled {
@@ -3107,7 +3107,7 @@ function formatMaybeDate(ms?: number): string {
 .memory-stats {
   flex-wrap: wrap;
   gap: 6px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
 }
 
@@ -3117,31 +3117,31 @@ function formatMaybeDate(ms?: number): string {
   display: inline-flex;
   align-items: center;
   padding: 0 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 6px;
-  background: var(--bg-elevated);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .status-pill {
-  color: var(--accent) !important;
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--border)) !important;
+  color: var(--ui-accent-primary-fg, var(--accent)) !important;
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 38%, var(--ui-border-default-border, var(--border))) !important;
 }
 
 .status-pill.off {
-  color: var(--muted) !important;
-  border-color: var(--border) !important;
+  color: var(--ui-text-muted-fg, var(--muted)) !important;
+  border-color: var(--ui-border-default-border, var(--border)) !important;
 }
 
 .root-path {
   min-height: 28px;
   padding: 7px 9px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--hover);
-  color: var(--muted);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-muted-fg, var(--muted));
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
   overflow: hidden;
@@ -3163,11 +3163,11 @@ function formatMaybeDate(ms?: number): string {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
   padding: 0 10px;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
   cursor: pointer;
 }
@@ -3180,9 +3180,9 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .memory-tab.active {
-  color: var(--accent);
-  background: var(--active);
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-active-bg, var(--active));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, var(--ui-border-default-border, var(--border)));
 }
 
 .memory-body {
@@ -3201,7 +3201,7 @@ function formatMaybeDate(ms?: number): string {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 13px;
 }
 
@@ -3210,10 +3210,10 @@ function formatMaybeDate(ms?: number): string {
   justify-content: flex-start;
   margin-bottom: 10px;
   padding: 9px 10px;
-  border: 1px solid color-mix(in srgb, #ef4444 45%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 45%, var(--ui-border-default-border, var(--border)));
   border-radius: 8px;
-  color: #ef4444;
-  background: color-mix(in srgb, #ef4444 8%, transparent);
+  color: var(--ui-status-danger-fg, #ef4444);
+  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 8%, transparent);
 }
 
 .notice.compact {
@@ -3251,10 +3251,10 @@ function formatMaybeDate(ms?: number): string {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--bg-elevated);
-  color: var(--text);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  color: var(--ui-text-primary-fg, var(--text));
   padding: 10px;
   cursor: pointer;
   text-align: left;
@@ -3263,14 +3263,14 @@ function formatMaybeDate(ms?: number): string {
 .file-row:hover,
 .result-row:hover,
 .file-row.active {
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
-  background: var(--active);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 38%, var(--ui-border-default-border, var(--border)));
+  background: var(--ui-state-active-bg, var(--active));
 }
 
 .file-icon {
   flex-shrink: 0;
   margin-top: 1px;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .file-main {
@@ -3283,7 +3283,7 @@ function formatMaybeDate(ms?: number): string {
 
 .file-name,
 .result-path {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 13px;
   font-weight: 620;
   overflow-wrap: anywhere;
@@ -3293,13 +3293,13 @@ function formatMaybeDate(ms?: number): string {
 .file-date,
 .result-score,
 .setting-meta {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
 }
 
 .file-preview,
 .result-content {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
   line-height: 1.45;
   display: -webkit-box;
@@ -3316,9 +3316,9 @@ function formatMaybeDate(ms?: number): string {
 .viewer {
   min-width: 0;
   margin-top: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--bg-elevated);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   overflow: hidden;
 }
 
@@ -3331,8 +3331,8 @@ function formatMaybeDate(ms?: number): string {
   justify-content: flex-end;
   gap: 10px;
   padding: 0 10px;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
 }
 
@@ -3352,7 +3352,7 @@ function formatMaybeDate(ms?: number): string {
   resize: vertical;
   outline: none;
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
   line-height: 1.55;
@@ -3366,7 +3366,7 @@ function formatMaybeDate(ms?: number): string {
   margin: 0;
   padding: 12px;
   overflow: auto;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
   line-height: 1.55;
@@ -3388,7 +3388,7 @@ function formatMaybeDate(ms?: number): string {
 .text-btn {
   border: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   font-size: 12px;
 }
 
@@ -3402,7 +3402,7 @@ function formatMaybeDate(ms?: number): string {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  background: var(--border);
+  background: var(--ui-border-default-border, var(--border));
 }
 
 .overview-grid > div {
@@ -3411,11 +3411,11 @@ function formatMaybeDate(ms?: number): string {
   flex-direction: column;
   gap: 3px;
   padding: 10px;
-  background: var(--bg-elevated);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
 }
 
 .overview-grid strong {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 13px;
   overflow-wrap: anywhere;
 }
@@ -3427,19 +3427,19 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .status-line.running {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .status-line.success {
-  color: #16a34a;
+  color: var(--ui-status-success-fg, #16a34a);
 }
 
 .status-line.error {
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 
 .status-line.muted {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .action-row {
@@ -3449,7 +3449,7 @@ function formatMaybeDate(ms?: number): string {
   flex-wrap: wrap;
   gap: 8px;
   padding: 10px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .action-row > * {
@@ -3458,10 +3458,10 @@ function formatMaybeDate(ms?: number): string {
 
 .inline-error {
   padding: 8px 10px;
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
   font-size: 12px;
   line-height: 1.4;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
   overflow-wrap: anywhere;
 }
 
@@ -3487,10 +3487,10 @@ function formatMaybeDate(ms?: number): string {
 .memory-textarea {
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 13px;
   outline: none;
 }
@@ -3515,7 +3515,7 @@ function formatMaybeDate(ms?: number): string {
 .memory-input:focus,
 .memory-select:focus,
 .memory-textarea:focus {
-  border-color: var(--accent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .primary-btn,
@@ -3523,8 +3523,8 @@ function formatMaybeDate(ms?: number): string {
   max-width: 100%;
   min-width: 0;
   min-height: 34px;
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 45%, var(--ui-border-default-border, var(--border)));
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
   padding: 0 12px;
   font-size: 12px;
@@ -3543,9 +3543,9 @@ function formatMaybeDate(ms?: number): string {
 .secondary-action {
   width: 100%;
   margin-top: 8px;
-  background: var(--bg-elevated);
-  color: var(--text);
-  border-color: var(--border);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  color: var(--ui-text-primary-fg, var(--text));
+  border-color: var(--ui-border-default-border, var(--border));
 }
 
 .secondary-action.inline {
@@ -3555,8 +3555,8 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .secondary-action.danger {
-  color: #ef4444;
-  border-color: color-mix(in srgb, #ef4444 38%, var(--border));
+  color: var(--ui-status-danger-fg, #ef4444);
+  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 38%, var(--ui-border-default-border, var(--border)));
 }
 
 .primary-btn:disabled,
@@ -3568,9 +3568,9 @@ function formatMaybeDate(ms?: number): string {
 .append-box {
   margin-bottom: 12px;
   padding: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--bg-elevated);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
 }
 
 .append-top {
@@ -3641,19 +3641,19 @@ function formatMaybeDate(ms?: number): string {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
   padding: 9px;
-  background: var(--bg-elevated);
-  color: var(--text);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  color: var(--ui-text-primary-fg, var(--text));
   text-align: left;
   cursor: pointer;
 }
 
 .profile-row:hover,
 .profile-row.active {
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
-  background: var(--active);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 38%, var(--ui-border-default-border, var(--border)));
+  background: var(--ui-state-active-bg, var(--active));
 }
 
 .profile-row-top,
@@ -3664,7 +3664,7 @@ function formatMaybeDate(ms?: number): string {
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
 }
 
@@ -3687,7 +3687,7 @@ function formatMaybeDate(ms?: number): string {
 .profile-row code {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .profile-row strong {
@@ -3701,7 +3701,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .profile-row > span:last-child {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -3711,7 +3711,7 @@ function formatMaybeDate(ms?: number): string {
   display: block;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
   text-align: left;
   cursor: default;
 }
@@ -3733,7 +3733,7 @@ function formatMaybeDate(ms?: number): string {
 
 .profile-detail-item > span,
 .profile-detail-text > span {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 10px;
   font-weight: 650;
 }
@@ -3741,7 +3741,7 @@ function formatMaybeDate(ms?: number): string {
 .profile-detail-item strong,
 .profile-detail-text strong {
   display: block;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 11px;
   line-height: 1.45;
   overflow: visible;
@@ -3754,9 +3754,9 @@ function formatMaybeDate(ms?: number): string {
   margin-top: 8px;
   padding: 8px;
   overflow: auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .profile-editor {
@@ -3787,21 +3787,21 @@ function formatMaybeDate(ms?: number): string {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
   padding-top: 8px;
 }
 
 .memory-section {
   min-width: 0;
   max-width: 100%;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--bg-elevated);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   overflow: hidden;
 }
 
 .settings-group-title {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
   font-weight: 720;
   letter-spacing: 0;
@@ -3810,8 +3810,8 @@ function formatMaybeDate(ms?: number): string {
 
 .behavior-note {
   padding: 0 10px 10px;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
   line-height: 1.45;
 }
@@ -3828,7 +3828,7 @@ function formatMaybeDate(ms?: number): string {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 128px), 1fr));
   gap: 8px;
   padding: 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .log-filter-grid .memory-input {
@@ -3861,24 +3861,24 @@ function formatMaybeDate(ms?: number): string {
   gap: 4px 8px;
   padding: 9px 10px;
   border: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   text-align: left;
   cursor: pointer;
 }
 
 .log-row:hover,
 .log-row.active {
-  background: var(--active);
+  background: var(--ui-state-active-bg, var(--active));
 }
 
 .log-row.warn {
-  border-left: 3px solid #f59e0b;
+  border-left: 3px solid var(--ui-status-warning-fg, #f59e0b);
 }
 
 .log-row.error {
-  border-left: 3px solid #ef4444;
+  border-left: 3px solid var(--ui-status-danger-fg, #ef4444);
 }
 
 .log-row strong,
@@ -3890,12 +3890,12 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .log-row strong {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .log-row span,
 .log-row code {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .log-row code {
@@ -3910,20 +3910,20 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .log-chain {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .log-status {
   justify-self: end;
   padding: 1px 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 999px;
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .log-duration {
   justify-self: end;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 
@@ -3933,7 +3933,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .log-summary {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .log-timeline {
@@ -3943,9 +3943,9 @@ function formatMaybeDate(ms?: number): string {
   gap: 6px;
   margin-top: 8px;
   padding: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--hover) 68%, transparent);
+  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 68%, transparent);
 }
 
 .log-event {
@@ -3954,7 +3954,7 @@ function formatMaybeDate(ms?: number): string {
   flex-direction: column;
   gap: 3px;
   padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .log-event:last-child {
@@ -3975,7 +3975,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .log-event-summary {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   line-height: 1.35;
 }
 
@@ -3986,10 +3986,10 @@ function formatMaybeDate(ms?: number): string {
   margin-top: 6px;
   padding: 8px;
   overflow: auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
   line-height: 1.45;
@@ -4005,8 +4005,8 @@ function formatMaybeDate(ms?: number): string {
   max-width: 100%;
   max-height: 420px;
   overflow: auto;
-  color: var(--text);
-  background: var(--bg-elevated);
+  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   font-size: 11px;
   line-height: 1.45;
   tab-size: 2;
@@ -4019,7 +4019,7 @@ function formatMaybeDate(ms?: number): string {
 .field {
   min-width: 0;
   padding: 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .setting-row:last-child,
@@ -4042,7 +4042,7 @@ function formatMaybeDate(ms?: number): string {
 .toggle-row input {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
+  accent-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .setting-title,
@@ -4054,7 +4054,7 @@ function formatMaybeDate(ms?: number): string {
 .setting-label,
 .range-label,
 .field span {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 12px;
   font-weight: 620;
   overflow-wrap: anywhere;
@@ -4083,7 +4083,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .range-label strong {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   font-size: 12px;
 }
 
@@ -4093,9 +4093,9 @@ function formatMaybeDate(ms?: number): string {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .segmented button {
@@ -4104,7 +4104,7 @@ function formatMaybeDate(ms?: number): string {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
   line-height: 1.2;
   overflow-wrap: anywhere;
@@ -4122,8 +4122,8 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .segmented button.active {
-  background: var(--bg-elevated);
-  color: var(--text);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .inline-field {
@@ -4133,7 +4133,7 @@ function formatMaybeDate(ms?: number): string {
 
 .memory-range {
   width: 100%;
-  accent-color: var(--accent);
+  accent-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .grid-two {
@@ -4147,7 +4147,7 @@ function formatMaybeDate(ms?: number): string {
   flex-wrap: wrap;
   gap: 8px;
   padding: 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .mini-toggle {
@@ -4157,9 +4157,9 @@ function formatMaybeDate(ms?: number): string {
   gap: 6px;
   min-height: 28px;
   padding: 0 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
 }
 
@@ -4169,7 +4169,7 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .mini-toggle input {
-  accent-color: var(--accent);
+  accent-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .field {
@@ -4184,20 +4184,20 @@ function formatMaybeDate(ms?: number): string {
   grid-template-columns: 76px minmax(0, 1fr);
   gap: 6px 8px;
   padding: 10px;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
 }
 
 .embedding-target.warning {
-  border-color: color-mix(in srgb, #f59e0b 45%, var(--border));
+  border-color: color-mix(in srgb, var(--ui-status-warning-fg, #f59e0b) 45%, var(--ui-border-default-border, var(--border)));
 }
 
 .embedding-target strong,
 .embedding-target code,
 .dreaming-status strong {
   min-width: 0;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   overflow-wrap: anywhere;
 }
 
@@ -4214,7 +4214,7 @@ function formatMaybeDate(ms?: number): string {
 
   .log-list {
     border-right: 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--ui-border-default-border, var(--border));
   }
 }
 

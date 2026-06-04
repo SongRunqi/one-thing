@@ -6,7 +6,7 @@
  * proxy.
  */
 
-import { Agent, ProxyAgent, Socks5ProxyAgent, fetch as undiciFetch } from 'undici'
+import * as undici from 'undici'
 import type { Dispatcher } from 'undici'
 import type { ProxySettings } from '../../shared/ipc.js'
 import { getSettings } from '../stores/settings.js'
@@ -104,21 +104,26 @@ export function getAppDispatcher(proxy?: ProxySettings): Dispatcher {
 
   if (proxy) {
     if (proxy.url.toLowerCase().startsWith('socks5:')) {
+      const Socks5ProxyAgent = (undici as any).Socks5ProxyAgent
+      if (!Socks5ProxyAgent) {
+        throw new Error('SOCKS5 proxy support is not available in this undici version.')
+      }
       dispatcher = new Socks5ProxyAgent(proxy.url, {
         bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
       })
     } else {
-      dispatcher = new ProxyAgent({
+      dispatcher = new undici.ProxyAgent({
         uri: proxy.url,
         bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
       } as any)
     }
   } else {
-    dispatcher = new Agent({
+    dispatcher = new undici.Agent({
       bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
     })
   }
 
+  if (!dispatcher) throw new Error('Failed to create app network dispatcher')
   dispatcherCache.set(key, dispatcher)
   return dispatcher
 }
@@ -141,7 +146,7 @@ export function createAppFetch(options: { proxy?: ProxySettings } = {}): FetchFn
 
     const dispatcher = getAppDispatcher(proxy)
     try {
-      return await undiciFetch(input, { ...(init || {}), dispatcher })
+      return await undici.fetch(input, { ...(init || {}), dispatcher })
     } catch (error: any) {
       const target = typeof input === 'string'
         ? input

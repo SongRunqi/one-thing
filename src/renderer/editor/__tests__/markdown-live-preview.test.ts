@@ -2,6 +2,7 @@
 import { EditorState } from '@codemirror/state'
 import { markdown } from '@codemirror/lang-markdown'
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { cursorCharLeft, deleteCharBackward } from '@codemirror/commands'
 import { EditorView } from '@codemirror/view'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -293,11 +294,274 @@ describe('markdown live preview helpers', () => {
     expect(anchor).not.toBeNull()
     expect(anchor?.closest('.md-live-heading-1')).not.toBeNull()
 
-    view.dispatch({ selection: { anchor: 0 } })
-    expect(view.state.selection.main.head).toBe(2)
-    view.dispatch({ selection: { anchor: 1 } })
-    expect(view.state.selection.main.head).toBe(2)
+    view.dispatch({ selection: { anchor: 0 }, userEvent: 'select' })
+    expect(view.state.selection.main.head).toBe(0)
     expect(view.dom.querySelector('.md-live-empty-structure-caret-anchor')).not.toBeNull()
+    view.dispatch({ selection: { anchor: 1 }, userEvent: 'select' })
+    expect(view.state.selection.main.head).toBe(1)
+    expect(view.dom.textContent).toContain('# Title')
+    expect(view.dom.querySelector('.md-live-empty-structure-caret-anchor')).toBeNull()
+
+    view.dispatch({ selection: { anchor: 2 }, userEvent: 'select' })
+    expect(view.dom.textContent).not.toContain('# Title')
+    expect(view.dom.querySelector('.md-live-empty-structure-caret-anchor')).not.toBeNull()
+
+    view.destroy()
+  })
+
+  it('keeps the visible line start reachable while skipping hidden line prefixes', () => {
+    const doc = [
+      'Before',
+      '## Now',
+      '- [ ] Task',
+    ].join('\n')
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: doc.indexOf('Now') + 1 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    let moved = view.moveByChar(view.state.selection.main, false)
+    view.dispatch({ selection: moved, userEvent: 'select' })
+    expect(view.state.selection.main.head).toBe(doc.indexOf('Now'))
+
+    view.dispatch({ selection: { anchor: doc.indexOf('Task') + 1 }, userEvent: 'select' })
+    moved = view.moveByChar(view.state.selection.main, false)
+    view.dispatch({ selection: moved, userEvent: 'select' })
+    expect(view.state.selection.main.head).toBe(doc.indexOf('Task'))
+
+    view.destroy()
+  })
+
+  it('preserves programmatic selections in hidden Markdown source', () => {
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: '# Title',
+        selection: { anchor: 2 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    view.dispatch({ selection: { anchor: 0 } })
+    expect(view.state.selection.main.head).toBe(0)
+
+    view.destroy()
+  })
+
+  it('moves through hidden Markdown source by character', () => {
+    const doc = [
+      'Before',
+      '- [ ] Task',
+      '**bold** after',
+    ].join('\n')
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: doc.indexOf('Task') },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    const taskTextFrom = doc.indexOf('Task')
+    let moved = view.moveByChar(view.state.selection.main, false)
+    expect(moved.head).toBe(taskTextFrom - 1)
+    view.dispatch({ selection: moved, userEvent: 'select' })
+    expect(view.state.selection.main.head).toBe(taskTextFrom - 1)
+
+    moved = view.moveByChar(view.state.selection.main, false)
+    view.dispatch({ selection: moved, userEvent: 'select' })
+    expect(view.state.selection.main.head).toBe(taskTextFrom - 2)
+
+    view.destroy()
+
+    const inlineView = new EditorView({
+      state: EditorState.create({
+        doc: '**bold** after',
+        selection: { anchor: 0 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    moved = inlineView.moveByChar(inlineView.state.selection.main, true)
+    expect(moved.head).toBe(1)
+    inlineView.destroy()
+
+    const inlineSuffixView = new EditorView({
+      state: EditorState.create({
+        doc: '**bold** after',
+        selection: { anchor: 6 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    moved = inlineSuffixView.moveByChar(inlineSuffixView.state.selection.main, true)
+    expect(moved.head).toBe(7)
+
+    inlineSuffixView.destroy()
+  })
+
+  it('reveals hidden Markdown source while the caret is inside it', () => {
+    const taskView = new EditorView({
+      state: EditorState.create({
+        doc: '- [ ] Task',
+        selection: { anchor: ' -'.length },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    expect(taskView.dom.textContent).toContain('- [ ]')
+    expect(taskView.dom.querySelector('.md-live-task-checkbox-slot')).toBeNull()
+    taskView.dispatch({ selection: { anchor: '- [ ] '.length }, userEvent: 'select' })
+    expect(taskView.dom.textContent).not.toContain('- [ ]')
+    expect(taskView.dom.querySelector('.md-live-task-checkbox-slot')).not.toBeNull()
+    taskView.destroy()
+    document.body.innerHTML = ''
+
+    const inlineView = new EditorView({
+      state: EditorState.create({
+        doc: '**bold** [label](url)',
+        selection: { anchor: 1 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    expect(inlineView.dom.textContent).toContain('**bold')
+    inlineView.dispatch({ selection: { anchor: '**bold*'.length }, userEvent: 'select' })
+    expect(inlineView.dom.textContent).toContain('bold**')
+    inlineView.dispatch({ selection: { anchor: '**bold** [label]('.length + 1 }, userEvent: 'select' })
+    expect(inlineView.dom.textContent).toContain('(url)')
+    inlineView.destroy()
+    document.body.innerHTML = ''
+
+    const imageView = new EditorView({
+      state: EditorState.create({
+        doc: '![alt](image.png)',
+        selection: { anchor: 1 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    expect(imageView.dom.textContent).toContain('![alt](image.png)')
+    expect(imageView.dom.querySelector('.md-live-image-widget')).toBeNull()
+    imageView.destroy()
+  })
+
+  it('keeps heading marker source reachable during keyboard selection', () => {
+    const doc = [
+      'Before',
+      '## Now',
+    ].join('\n')
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: doc.indexOf('Now') },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    let moved = view.moveByChar(view.state.selection.main, false)
+    view.dispatch({ selection: moved, userEvent: 'select' })
+    expect(view.state.selection.main.head).toBe(doc.indexOf('Now') - 1)
+
+    moved = view.moveByChar(view.state.selection.main, false)
+    view.dispatch({ selection: moved, userEvent: 'select' })
+    expect(view.state.selection.main.head).toBe(doc.indexOf('Now') - 2)
+
+    view.destroy()
+  })
+
+  it('moves through nested ordered-list markers without jumping to the outer marker', () => {
+    const doc = '1. Premier 误判断修复\n2. 2. 非Premier 进入Premier流程修复 '
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: doc.indexOf('2. 非Premier') + 2 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    expect(view.dom.querySelectorAll('.md-live-list-marker-widget')).toHaveLength(2)
+
+    const positions: number[] = []
+    for (let index = 0; index < 4; index += 1) {
+      const moved = view.moveByChar(view.state.selection.main, false)
+      view.dispatch({ selection: moved, userEvent: 'select' })
+      positions.push(view.state.selection.main.head)
+    }
+
+    expect(positions).toEqual([21, 20, 19, 18])
+
+    view.destroy()
+  })
+
+  it('does not render marker-looking inline content as another list marker', () => {
+    const doc = '2. 2.'
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    expect(view.dom.querySelectorAll('.md-live-list-marker-widget')).toHaveLength(1)
+
+    cursorCharLeft(view)
+    expect(view.state.selection.main.head).toBe(4)
+
+    view.destroy()
+
+    const backspaceView = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    deleteCharBackward(backspaceView)
+    expect(backspaceView.state.doc.toString()).toBe('2. 2')
+    expect(backspaceView.state.selection.main.head).toBe(4)
+
+    backspaceView.destroy()
+  })
+
+  it('splits before an existing ordered-list marker without duplicating the marker', () => {
+    const doc = '1. Premier 误判断修复 2. 非Premier 进入Premier流程修复 '
+    const splitAt = doc.indexOf('2. 非Premier')
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: splitAt },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    const enterEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    })
+    view.contentDOM.dispatchEvent(enterEvent)
+
+    expect(enterEvent.defaultPrevented).toBe(true)
+    expect(view.state.doc.toString()).toBe('1. Premier 误判断修复\n2. 非Premier 进入Premier流程修复 ')
+    expect(view.state.selection.main.head).toBe('1. Premier 误判断修复\n'.length)
 
     view.destroy()
   })

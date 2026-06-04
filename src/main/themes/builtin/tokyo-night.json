@@ -119,15 +119,18 @@
         "danger": "bgDark"
       },
       "code": {
-        "inline": "magenta",
+        "inline": "fg",
         "block": "fg",
         "comment": "comment",
-        "keyword": "magenta",
+        "keyword": "blue2",
         "string": "green",
         "number": "orange",
         "function": "blue",
-        "variable": "cyan",
-        "operator": "blue1"
+        "variable": "fgDark",
+        "operator": "comment",
+        "type": "cyan",
+        "property": "blue1",
+        "punctuation": "comment"
       },
       "menu": {
         "item": "fgDark",

@@ -240,7 +240,7 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
 .section-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0 0 16px 0;
@@ -254,13 +254,13 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   margin-bottom: 8px;
 }
 
 .form-hint {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   margin-top: 6px;
 }
 
@@ -308,7 +308,7 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
 }
 
 .toggle input:checked + .toggle-slider {
-  background-color: var(--accent);
+  background-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .toggle input:checked + .toggle-slider:before {
@@ -331,8 +331,8 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
 .dialog {
   width: 100%;
   max-width: 480px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-app-bg, var(--bg));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 16px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
   animation: slideUp 0.2s ease;
@@ -358,14 +358,14 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .dialog-header h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .dialog-content {
@@ -375,7 +375,7 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
 .dialog-content p {
   margin: 0;
   font-size: 14px;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   line-height: 1.6;
 }
 
@@ -384,7 +384,7 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
   justify-content: flex-end;
   gap: 8px;
   padding: 16px 24px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .btn {
@@ -398,21 +398,21 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
 }
 
 .btn.secondary {
-  background: var(--panel-2);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-sidebar-bg, var(--panel-2));
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  border: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .btn.secondary:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .btn.danger {
-  background: #ef4444;
+  background: var(--ui-status-danger-fg, #ef4444);
   color: white;
 }
 
 .btn.danger:hover {
-  background: #dc2626;
+  background: var(--ui-status-danger-fg, #dc2626);
 }
 </style>

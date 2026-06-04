@@ -61,6 +61,9 @@ Returns a list of search results with titles, URLs, and snippets.`,
   enabled: true,
   autoExecute: true,  // Safe to auto-execute (read-only)
   permissionGuard: 'safe',
+  executionMode: 'parallel',
+  renderKind: 'search',
+  promptSnippet: 'Search the web for current information',
 
   parameters: WebSearchParameters,
 
@@ -73,6 +76,11 @@ Returns a list of search results with titles, URLs, and snippets.`,
     if (!provider) {
       throw new Error('No web search provider configured. Please add a Brave Search API key in Settings → Tools → Web Search.')
     }
+
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: `Searching the web for "${query}"...` }],
+      details: { phase: 'searching', query, provider: provider.id, resultCount: 0 },
+    })
 
     // Update metadata with initial state
     ctx.metadata({
@@ -106,6 +114,13 @@ Returns a list of search results with titles, URLs, and snippets.`,
       })),
     }
 
+    const output = `Search results for "${query}" (via ${provider.name}):\n\n${formattedResults}`
+
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: output }],
+      details: { phase: 'ready', ...resultMetadata },
+    })
+
     // Update metadata with results
     ctx.metadata({
       title: `Found ${response.results.length} results for: ${query}`,
@@ -114,7 +129,7 @@ Returns a list of search results with titles, URLs, and snippets.`,
 
     return {
       title: `Found ${response.results.length} results for: ${query}`,
-      output: `Search results for "${query}" (via ${provider.name}):\n\n${formattedResults}`,
+      output,
       metadata: resultMetadata,
     }
   },

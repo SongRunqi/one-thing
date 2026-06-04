@@ -40,7 +40,7 @@ defineProps<{
   gap: 10px;
   min-height: 180px;
   padding: 24px;
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   text-align: center;
 }
 
@@ -49,14 +49,14 @@ defineProps<{
   place-items: center;
   width: 34px;
   height: 34px;
-  border: 1px solid var(--settings-rule-soft, var(--border));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
   border-radius: 8px;
-  color: var(--settings-ink-3, var(--text-muted));
-  background: var(--settings-paper-2, var(--bg));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  background: var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg)));
 }
 
 .settings-empty-title {
-  color: var(--settings-ink-2, var(--text-primary));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 13px;
   font-weight: 650;
 }

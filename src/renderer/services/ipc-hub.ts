@@ -62,6 +62,18 @@ export function initializeIPCHub() {
         })
         break
 
+      case 'tool:execution-start':
+        store.handleToolExecutionStart({ sessionId, messageId: '', ...event })
+        break
+
+      case 'tool:execution-update':
+        store.handleToolExecutionUpdate({ sessionId, messageId: '', ...event })
+        break
+
+      case 'tool:execution-end':
+        store.handleToolExecutionEnd({ sessionId, messageId: '', ...event })
+        break
+
       // Content events → mapped to stream chunk format
       case 'content:part':
         store.handleStreamChunk({ type: 'content_part', sessionId, messageId: '', content: '', contentPart: event.part })

@@ -37,7 +37,7 @@ describe('tool activity view', () => {
       toolCall: tc({
         status: 'input-streaming',
         streamingArgs: JSON.stringify({
-          file_path: '/Users/me/project/src/large.ts',
+          path: '/Users/me/project/src/large.ts',
           content: 'x'.repeat(6_000),
         }),
       }),
@@ -110,7 +110,7 @@ describe('tool activity view', () => {
   it('labels permission rejection distinctly from execution failure', () => {
     const rejected = buildToolActivityView(step({
       status: 'failed',
-      error: 'User rejected this operation',
+      error: 'The user rejected permission for this tool.',
       rejected: true,
       toolCall: tc({
         toolId: 'bash',
@@ -125,10 +125,59 @@ describe('tool activity view', () => {
     expect(rejected.defaultExpanded).toBe(true)
   })
 
+  it('uses action-specific labels for variable tools', () => {
+    const setWorkdir = buildToolActivityView(step({
+      status: 'completed',
+      toolCall: tc({
+        toolId: 'variable',
+        toolName: 'variable',
+        status: 'completed',
+        arguments: {
+          action: 'set',
+          name: 'workdir',
+          value: '/Users/me/project/start-electron',
+        },
+      }),
+    }))
+    const listVariables = buildToolActivityView(step({
+      status: 'running',
+      toolCall: tc({
+        toolId: 'variable',
+        toolName: 'variable',
+        status: 'executing',
+        arguments: { action: 'list' },
+      }),
+    }))
+    const appendRoot = buildToolActivityView(step({
+      status: 'awaiting-confirmation',
+      toolCall: tc({
+        toolId: 'variable',
+        toolName: 'variable',
+        status: 'pending',
+        requiresConfirmation: true,
+        arguments: {
+          action: 'append',
+          name: 'workdir',
+          value: '/Users/me/other-project',
+        },
+      }),
+    }))
+
+    expect(setWorkdir.verb).toBe('Set')
+    expect(setWorkdir.target).toBe('workdir')
+    expect(setWorkdir.targetMeta).toBe('= /Users/me/project/start-electron')
+    expect(listVariables.verb).toBe('Listing')
+    expect(listVariables.target).toBe('variables')
+    expect(listVariables.targetMeta).toBe('')
+    expect(appendRoot.verb).toBe('Add')
+    expect(appendRoot.target).toBe('workdir root')
+    expect(appendRoot.targetMeta).toBe('+ /Users/me/other-project')
+  })
+
   it('groups steps in order and hydrates details only when requested', () => {
     const steps = [
       step({ id: 'a', toolCallId: 'a', toolCall: tc({ id: 'a', status: 'completed' }) }),
-      step({ id: 'b', toolCallId: 'b', toolCall: tc({ id: 'b', status: 'input-streaming', streamingArgs: '{"file_path":"src/b.ts","content":"hello"}' }) }),
+      step({ id: 'b', toolCallId: 'b', toolCall: tc({ id: 'b', status: 'input-streaming', streamingArgs: '{"path":"src/b.ts","content":"hello"}' }) }),
     ]
 
     const activities = buildToolActivityViews(steps)

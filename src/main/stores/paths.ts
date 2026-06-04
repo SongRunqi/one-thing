@@ -1,8 +1,18 @@
-import { app } from 'electron'
+import { createRequire } from 'module'
 import path from 'path'
 import os from 'os'
 import fs from 'fs'
 import fsp from 'fs/promises'
+
+const require = createRequire(import.meta.url)
+const electronModule = (() => {
+  try {
+    return require('electron') as any
+  } catch {
+    return null
+  }
+})()
+const electronApp = typeof electronModule === 'object' ? electronModule?.app : null
 
 // Get the user data directory for storing app data
 export function getStorePath(): string {
@@ -110,6 +120,11 @@ export function getToolOutputsDir(): string {
   return path.join(getStorePath(), 'tool-outputs')
 }
 
+// File mutation audit snapshots (for future undo/rollback UI)
+export function getFileMutationsDir(): string {
+  return path.join(getStorePath(), 'file-mutations')
+}
+
 export function getToolOutputPath(filename: string): string {
   return path.join(getToolOutputsDir(), filename)
 }
@@ -131,7 +146,7 @@ export function getMCPToolsCatalogPath(): string {
 export function getDocsDir(): string {
   // In production, docs are bundled in resources/docs
   // In development, they're in resources/docs relative to project root
-  if (app.isPackaged) {
+  if (electronApp?.isPackaged) {
     return path.join(process.resourcesPath, 'docs')
   }
   // Development: use process.cwd() which is the project root when using electron-vite
@@ -174,6 +189,7 @@ export function ensureStoreDirs(): void {
     getSchedulerDir(),
     getSchedulerRunsDir(),
     getToolOutputsDir(),
+    getFileMutationsDir(),
     getPermissionsDir(),
   ]
 

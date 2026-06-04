@@ -27,7 +27,9 @@
       title="Todo / Notes"
       aria-label="Show Todo / Notes"
       @click="collapsed = false"
-    />
+    >
+      <FileText :size="17" />
+    </button>
 
     <template v-else>
       <header class="panel-header">
@@ -287,6 +289,7 @@
           :min-height="120"
           :max-height="100000"
           :spellcheck="true"
+          :source-toggle="false"
           @update:model-value="handleDraftUpdate"
           @keydown="handleEditorKeydown"
           @paste="handleMarkdownPaste"
@@ -624,7 +627,10 @@ const effectiveWorkingDirectory = computed(() => {
 })
 const allDocuments = computed(() => {
   if (!snapshot.value) return []
-  return [...snapshot.value.userNotes, snapshot.value.workspaceAiTodo]
+  return [
+    ...snapshot.value.userNotes,
+    ...(snapshot.value.workspaceAiTodo ? [snapshot.value.workspaceAiTodo] : []),
+  ]
 })
 const activeDocument = computed(() => allDocuments.value.find(doc => doc.id === activeId.value) || allDocuments.value[0])
 const tasks = computed(() => parseTasks(draft.value))
@@ -852,7 +858,14 @@ async function loadSnapshot() {
   if (!response.success || !response.snapshot) return
   snapshot.value = response.snapshot
   if (!allDocuments.value.some(doc => doc.id === activeId.value)) {
-    selectDocument(response.snapshot.userNotes[0]?.id || response.snapshot.workspaceAiTodo.id, false)
+    const fallbackDocument = response.snapshot.userNotes[0] || response.snapshot.workspaceAiTodo
+    if (fallbackDocument) {
+      selectDocument(fallbackDocument.id, false)
+    } else {
+      activeId.value = ''
+      loadedDocumentId = ''
+      draft.value = ''
+    }
   }
 }
 
@@ -1444,15 +1457,15 @@ onUnmounted(() => {
 <style scoped>
 .todo-plan-panel {
   --todo-plan-nav-gutter: 52px;
-  --todo-card-bg: var(--bg-elevated, var(--panel));
-  --todo-card-bg-soft: color-mix(in srgb, var(--bg-elevated, var(--panel)) 92%, var(--bg) 8%);
-  --todo-rule: var(--border, rgba(128, 128, 128, 0.24));
-  --todo-rule-soft: color-mix(in srgb, var(--border, rgba(128, 128, 128, 0.24)) 58%, transparent);
-  --todo-text: var(--text);
-  --todo-muted: var(--muted);
-  --todo-accent: var(--accent);
-  --todo-accent-soft: rgba(var(--accent-rgb, 59, 130, 246), 0.14);
-  --todo-accent-border: rgba(var(--accent-rgb, 59, 130, 246), 0.36);
+  --todo-card-bg: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel)));
+  --todo-card-bg-soft: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 92%, var(--ui-surface-app-bg, var(--bg)) 8%);
+  --todo-rule: var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.24)));
+  --todo-rule-soft: color-mix(in srgb, var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.24))) 58%, transparent);
+  --todo-text: var(--ui-text-primary-fg, var(--text));
+  --todo-muted: var(--ui-text-muted-fg, var(--muted));
+  --todo-accent: var(--ui-accent-primary-fg, var(--accent));
+  --todo-accent-soft: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 14%, transparent);
+  --todo-accent-border: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
   --todo-plan-width: 280px;
   --todo-popover-top: 44px;
   --todo-popover-width: min(430px, calc(100% - 18px));
@@ -1481,20 +1494,19 @@ onUnmounted(() => {
 
 .todo-plan-panel.collapsed {
   top: 74px;
-  right: 5px;
-  width: 6px;
-  height: 52px !important;
+  right: 0;
+  width: 28px;
+  height: 56px !important;
   min-height: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: 999px 0 0 999px;
   background: transparent;
   box-shadow: none;
   overflow: visible;
 }
 
 .todo-plan-panel.collapsed:hover {
-  width: 8px;
-  transform: translateX(-1px);
+  transform: translateX(-2px);
 }
 
 .todo-plan-panel.docked {
@@ -1506,8 +1518,8 @@ onUnmounted(() => {
 }
 
 .todo-plan-panel.standalone {
-  --todo-card-bg: color-mix(in srgb, var(--bg-elevated, var(--panel)) 92%, #f5f0dd 8%);
-  --todo-card-bg-soft: color-mix(in srgb, var(--todo-card-bg) 86%, #fff 14%);
+  --todo-card-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 92%, var(--ui-surface-note-bg) 8%);
+  --todo-card-bg-soft: color-mix(in srgb, var(--todo-card-bg) 86%, var(--ui-surface-app-bg, #fff) 14%);
   --todo-popover-top: clamp(58px, 12vh, 88px);
   --todo-popover-width: min(520px, calc(100% - 56px));
   --todo-popover-radius: 14px;
@@ -1544,20 +1556,29 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   padding: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--todo-muted) 26%, transparent);
-  opacity: 0.7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--todo-rule);
+  border-right: 0;
+  border-radius: 999px 0 0 999px;
+  background: var(--todo-card-bg);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--todo-text) 16%, transparent);
+  color: var(--todo-muted);
+  opacity: 0.92;
 }
 
 .wake-button::before {
   content: '';
   position: absolute;
-  inset: -10px -6px;
-  border-radius: 999px;
+  inset: -8px 0 -8px -8px;
+  border-radius: 999px 0 0 999px;
 }
 
 .wake-button:hover {
-  background: color-mix(in srgb, var(--todo-accent) 46%, transparent);
+  border-color: var(--todo-accent-border);
+  background: color-mix(in srgb, var(--todo-card-bg) 86%, var(--todo-accent) 14%);
+  color: var(--todo-accent);
   opacity: 1;
 }
 
@@ -1628,7 +1649,7 @@ onUnmounted(() => {
 .mini-button:hover,
 .note-option:hover {
   color: var(--todo-text);
-  background: var(--hover, color-mix(in srgb, var(--text) 8%, transparent));
+  background: var(--ui-state-hover-bg, var(--hover, color-mix(in srgb, var(--text) 8%, transparent)));
 }
 
 .panel-title {
@@ -1699,7 +1720,7 @@ onUnmounted(() => {
 }
 
 .icon-button.active {
-  color: var(--todo-accent);
+  color: var(--todo-text);
   background: var(--todo-accent-soft);
 }
 
@@ -1737,7 +1758,7 @@ onUnmounted(() => {
 }
 
 .todo-plan-panel.standalone .note-switcher {
-  background: color-mix(in srgb, var(--todo-card-bg) 96%, #fff 4%);
+  background: color-mix(in srgb, var(--todo-card-bg) 96%, var(--ui-surface-app-bg, #fff) 4%);
 }
 
 .switcher-search,
@@ -1919,7 +1940,7 @@ onUnmounted(() => {
 }
 
 .note-option small i.current {
-  background: #ff5f57;
+  background: var(--ui-status-danger-fg, #ff5f57);
 }
 
 .note-option small b {
@@ -2047,7 +2068,16 @@ onUnmounted(() => {
 
 .todo-plan-panel.standalone .markdown-editor {
   --editor-font-size: 15px;
-  padding: 10px 18px 10px;
+  /* Only keep the left text inset on the wrapper: let the CodeMirror scroller
+     reach the panel edges on top/right/bottom so the scrollbar sits flush and
+     spans the full height. Text insets are restored on .cm-content below. */
+  padding: 0 0 0 18px;
+}
+
+.todo-plan-panel.standalone .markdown-editor :deep(.cm-content) {
+  padding-top: 10px;
+  padding-right: 12px;
+  padding-bottom: 10px;
 }
 
 .markdown-editor :deep(.cm-editor),
@@ -2216,7 +2246,7 @@ onUnmounted(() => {
   }
 
   .todo-plan-panel.collapsed {
-    right: 5px;
+    right: 0;
   }
 }
 

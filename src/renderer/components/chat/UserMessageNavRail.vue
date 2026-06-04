@@ -12,6 +12,16 @@
       @pointerdown.stop
       @click.stop
     >
+      <button
+        v-if="showModeSwitch"
+        type="button"
+        class="user-nav-mode-switch"
+        aria-label="Show AI outline"
+        title="AI outline"
+        @click.stop="emit('switchMode')"
+      >
+        <span aria-hidden="true">&lt;</span>
+      </button>
       <div
         class="user-nav-scroll"
         role="listbox"
@@ -92,10 +102,12 @@ const props = defineProps<{
   markers: UserMessageNavMarker[]
   currentIndex: number
   totalCount?: number
+  showModeSwitch?: boolean
 }>()
 
 const emit = defineEmits<{
   navigate: [navIndex: number]
+  switchMode: []
 }>()
 
 const sortedMarkers = computed(() => [...props.markers].sort((a, b) => a.navIndex - b.navIndex))
@@ -104,7 +116,7 @@ const pageStartIndex = ref(0)
 const pageDirection = ref<1 | -1>(1)
 let pageWheelLockTimer: ReturnType<typeof setTimeout> | null = null
 
-const pageSize = 6
+const pageSize = 8
 const maxPageStartIndex = computed(() => {
   const total = sortedMarkers.value.length
   if (total <= pageSize) return 0
@@ -212,11 +224,11 @@ onUnmounted(() => {
 <style scoped>
 .user-nav-rail {
   --user-nav-row-height: 18px;
-  --user-nav-row-gap: 8px;
-  --user-nav-visible-count: 6;
+  --user-nav-row-gap: 7px;
+  --user-nav-visible-count: 8;
   --user-nav-vertical-padding: 22px;
   --user-nav-collapsed-width: 34px;
-  --user-nav-expanded-width: min(286px, calc(100vw - 64px));
+  --user-nav-expanded-width: min(306px, calc(100vw - 64px));
   position: absolute;
   top: 50%;
   right: 12px;
@@ -256,8 +268,8 @@ onUnmounted(() => {
 }
 
 .user-nav-card.open {
-  border-color: color-mix(in srgb, var(--border) 62%, transparent);
-  background: color-mix(in srgb, var(--bg-elevated, var(--bg)) 94%, white 6%);
+  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 62%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 94%, white 6%);
   box-shadow:
     0 22px 48px rgba(0, 0, 0, 0.13),
     0 2px 8px rgba(0, 0, 0, 0.08);
@@ -287,7 +299,8 @@ onUnmounted(() => {
 .user-nav-page {
   display: grid;
   grid-template-rows: repeat(var(--user-nav-visible-count), var(--user-nav-row-height));
-  align-content: space-between;
+  align-content: start;
+  row-gap: var(--user-nav-row-gap);
   width: 100%;
   height: 100%;
   will-change: opacity, transform, filter;
@@ -304,7 +317,7 @@ onUnmounted(() => {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text-muted, var(--muted));
+  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
   cursor: pointer;
   font: inherit;
   overflow: visible;
@@ -320,11 +333,10 @@ onUnmounted(() => {
   position: absolute;
   top: 50%;
   right: 48px;
-  width: calc(var(--user-nav-expanded-width) - 76px);
+  width: calc(var(--user-nav-expanded-width) - 82px);
   min-width: 0;
-  padding-right: 8px;
   overflow: hidden;
-  color: var(--text-secondary, var(--text));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
   font-size: 14px;
   line-height: 1;
   opacity: 0;
@@ -345,7 +357,7 @@ onUnmounted(() => {
 
 .user-nav-card.open .user-nav-row:hover .user-nav-label,
 .user-nav-card.open .user-nav-row:focus-visible .user-nav-label {
-  color: var(--accent, #3b82f6);
+  color: var(--ui-accent-primary-fg, var(--accent));
   opacity: 1;
 }
 
@@ -356,7 +368,7 @@ onUnmounted(() => {
   width: 14px;
   height: 2px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text-muted, var(--muted)) 34%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 34%, transparent);
   opacity: 0.74;
   transform: translateY(-50%);
   transition:
@@ -369,7 +381,7 @@ onUnmounted(() => {
 .user-nav-row:hover .user-nav-marker,
 .user-nav-row:focus-visible .user-nav-marker {
   opacity: 1;
-  background: color-mix(in srgb, var(--accent, #3b82f6) 72%, var(--text-muted, var(--muted)));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 72%, var(--ui-text-muted-fg, var(--text-muted, var(--muted))));
 }
 
 .user-nav-row:focus-visible {
@@ -377,7 +389,7 @@ onUnmounted(() => {
 }
 
 .user-nav-card.open .user-nav-row.active .user-nav-label {
-  color: var(--accent, #3b82f6);
+  color: var(--ui-text-primary-fg, var(--text));
   font-weight: 600;
   opacity: 1;
   visibility: visible;
@@ -386,8 +398,8 @@ onUnmounted(() => {
 .user-nav-row.active .user-nav-marker {
   width: 18px;
   opacity: 1;
-  background: var(--accent, #3b82f6);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent);
+  background: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
 .user-nav-scroll-thumb {
@@ -397,7 +409,7 @@ onUnmounted(() => {
   display: none;
   width: 5px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 36%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 36%, transparent);
   pointer-events: none;
 }
 
@@ -405,6 +417,7 @@ onUnmounted(() => {
   display: block;
 }
 
+.user-nav-mode-switch,
 .user-nav-page-cue {
   position: absolute;
   right: 0;
@@ -417,7 +430,7 @@ onUnmounted(() => {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: color-mix(in srgb, var(--text-muted, var(--muted)) 58%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 58%, transparent);
   cursor: pointer;
   opacity: 0.42;
   pointer-events: auto;
@@ -427,14 +440,24 @@ onUnmounted(() => {
     opacity 0.12s ease;
 }
 
+.user-nav-mode-switch {
+  top: 2px;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.user-nav-card.open .user-nav-mode-switch,
 .user-nav-card.open .user-nav-page-cue {
   opacity: 0.55;
 }
 
+.user-nav-mode-switch:hover,
+.user-nav-mode-switch:focus-visible,
 .user-nav-page-cue:hover,
 .user-nav-page-cue:focus-visible {
-  background: color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent);
-  color: var(--accent, #3b82f6);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   opacity: 0.9;
   outline: none;
 }
@@ -515,7 +538,7 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .user-nav-rail {
-    --user-nav-expanded-width: min(260px, calc(100vw - 44px));
+    --user-nav-expanded-width: min(270px, calc(100vw - 44px));
     right: 6px;
   }
 }

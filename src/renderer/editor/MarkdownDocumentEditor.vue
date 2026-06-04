@@ -351,7 +351,7 @@ defineExpose<MarkdownDocumentEditorHandle>({
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .markdown-document-toolbar {
@@ -378,15 +378,15 @@ defineExpose<MarkdownDocumentEditorHandle>({
   flex: 0 0 auto;
   border: 1px solid transparent;
   border-radius: 6px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   background: transparent;
   cursor: pointer;
 }
 
 .markdown-command-button:hover {
-  color: var(--text);
-  border-color: var(--border);
-  background: color-mix(in srgb, var(--bg-elevated, var(--panel)) 72%, transparent);
+  color: var(--ui-text-primary-fg, var(--text));
+  border-color: var(--ui-border-default-border, var(--border));
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 72%, transparent);
 }
 
 .markdown-source-toggle {
@@ -400,10 +400,10 @@ defineExpose<MarkdownDocumentEditorHandle>({
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--text-muted, var(--muted)) 24%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 24%, transparent);
   border-radius: 6px;
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--bg-elevated, var(--panel)) 84%, transparent);
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 84%, transparent);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
   cursor: pointer;
   opacity: 0;
@@ -419,9 +419,9 @@ defineExpose<MarkdownDocumentEditorHandle>({
 .markdown-source-toggle:hover,
 .markdown-source-toggle:focus-visible,
 .markdown-source-toggle[aria-pressed="true"] {
-  color: var(--text);
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated, var(--panel)));
+  color: var(--ui-text-primary-fg, var(--text));
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))));
   outline: none;
 }
 

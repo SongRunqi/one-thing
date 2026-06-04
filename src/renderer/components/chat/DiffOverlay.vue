@@ -114,16 +114,13 @@ async function loadDiff() {
     const [diffResult, oldContentResult, newContentResult] = await Promise.all([
       window.electronAPI.executeTool(
         'bash',
-        { command: diffCommand, working_directory: props.workingDirectory },
+        { command: diffCommand },
         `git-diff-${Date.now()}`,
         props.sessionId
       ),
       window.electronAPI.executeTool(
         'bash',
-        {
-          command: `git show HEAD:"${props.filePath}"`,
-          working_directory: props.workingDirectory
-        },
+        { command: `git show HEAD:"${props.filePath}"` },
         `git-show-old-${Date.now()}`,
         props.sessionId
       ),
@@ -196,8 +193,8 @@ onUnmounted(() => {
   max-width: 900px;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  border-left: 1px solid var(--border-subtle);
+  background: var(--ui-surface-app-bg, var(--bg));
+  border-left: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.15);
   z-index: var(--z-dropdown);
 }
@@ -211,8 +208,8 @@ html[data-theme='light'] .diff-overlay {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   flex-shrink: 0;
 }
 
@@ -227,7 +224,7 @@ html[data-theme='light'] .diff-overlay {
 .diff-file-path {
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -238,8 +235,8 @@ html[data-theme='light'] .diff-overlay {
   font-weight: 500;
   padding: 2px 6px;
   border-radius: var(--radius-xs);
-  background: rgba(var(--success-rgb, 34, 197, 94), 0.15);
-  color: var(--success, #22c55e);
+  background: color-mix(in srgb, var(--ui-status-success-fg, var(--success, var(--color-success))) 15%, transparent);
+  color: var(--ui-status-success-fg, var(--success, #22c55e));
   text-transform: uppercase;
   letter-spacing: 0.5px;
   flex-shrink: 0;
@@ -254,7 +251,7 @@ html[data-theme='light'] .diff-overlay {
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   transition: all 0.15s ease;
   flex-shrink: 0;
@@ -262,7 +259,7 @@ html[data-theme='light'] .diff-overlay {
 
 .close-btn:hover {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 
 .diff-overlay-content {
@@ -280,19 +277,19 @@ html[data-theme='light'] .diff-overlay {
   justify-content: center;
   height: 100%;
   gap: 12px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 13px;
 }
 
 .error-state {
-  color: var(--error, #ef4444);
+  color: var(--ui-status-danger-fg, var(--error, #ef4444));
 }
 
 .loading-spinner {
   width: 24px;
   height: 24px;
-  border: 2px solid var(--border-subtle);
-  border-top-color: var(--accent);
+  border: 2px solid var(--ui-border-subtle-border, var(--border-subtle));
+  border-top-color: var(--ui-accent-primary-fg, var(--accent));
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }

@@ -3,9 +3,291 @@
  * Recursively resolves color references from defs and theme properties
  */
 
-import type { ColorValue, ThemeDefs, Theme, ThemeColors } from '../../shared/ipc/themes.js'
+import type {
+  ColorValue,
+  HighlightFontStyle,
+  HighlightStyle,
+  SemanticHighlightToken,
+  SemanticUIToken,
+  Theme,
+  ThemeColors,
+  ThemeDefs,
+  ThemeHighlightGroup,
+  ThemeUIGroup,
+  UIStyle,
+} from '../../shared/ipc/themes.js'
 
 type ResolvedColorValue = string | { dark: string; light: string }
+
+export interface ResolvedHighlightStyle {
+  fg?: string
+  bg?: string
+  fontStyle?: HighlightFontStyle
+}
+
+export interface ResolvedUIStyle {
+  fg?: string
+  bg?: string
+  border?: string
+  ring?: string
+  shadow?: string
+}
+
+export const SEMANTIC_HIGHLIGHT_TOKENS: SemanticHighlightToken[] = [
+  'syntax.plain',
+  'syntax.comment',
+  'syntax.keyword',
+  'syntax.atom',
+  'syntax.string',
+  'syntax.number',
+  'syntax.function',
+  'syntax.definition',
+  'syntax.variable',
+  'syntax.property',
+  'syntax.type',
+  'syntax.tag',
+  'syntax.operator',
+  'syntax.punctuation',
+  'syntax.invalid',
+  'syntax.inserted',
+  'syntax.deleted',
+  'syntax.heading',
+  'syntax.link',
+  'syntax.emphasis',
+  'syntax.strong',
+]
+
+const SEMANTIC_HIGHLIGHT_TOKEN_SET = new Set<string>(SEMANTIC_HIGHLIGHT_TOKENS)
+
+export const SEMANTIC_UI_TOKENS: SemanticUIToken[] = [
+  'ui.accent.primary',
+  'ui.accent.subtle',
+  'ui.surface.app',
+  'ui.surface.sidebar',
+  'ui.surface.chat',
+  'ui.surface.panel',
+  'ui.surface.elevated',
+  'ui.surface.floating',
+  'ui.surface.overlay',
+  'ui.surface.menu',
+  'ui.surface.menuHover',
+  'ui.surface.input',
+  'ui.surface.inputFocus',
+  'ui.surface.codeInline',
+  'ui.surface.codeBlock',
+  'ui.surface.codeHeader',
+  'ui.surface.tooltip',
+  'ui.surface.modal',
+  'ui.surface.note',
+  'ui.surface.previewLight',
+  'ui.surface.previewDark',
+  'ui.text.primary',
+  'ui.text.secondary',
+  'ui.text.muted',
+  'ui.text.faint',
+  'ui.text.inverse',
+  'ui.text.placeholder',
+  'ui.text.disabled',
+  'ui.text.link',
+  'ui.text.linkHover',
+  'ui.border.default',
+  'ui.border.subtle',
+  'ui.border.strong',
+  'ui.border.divider',
+  'ui.border.focus',
+  'ui.border.selected',
+  'ui.action.primary',
+  'ui.action.primaryHover',
+  'ui.action.secondary',
+  'ui.action.secondaryHover',
+  'ui.action.ghost',
+  'ui.action.ghostHover',
+  'ui.action.danger',
+  'ui.action.dangerHover',
+  'ui.action.disabled',
+  'ui.state.hover',
+  'ui.state.active',
+  'ui.state.selected',
+  'ui.state.selectedHover',
+  'ui.state.highlight',
+  'ui.state.focus',
+  'ui.state.disabled',
+  'ui.sidebar.surface',
+  'ui.sidebar.item',
+  'ui.sidebar.itemHover',
+  'ui.sidebar.itemActive',
+  'ui.sidebar.itemMuted',
+  'ui.sidebar.header',
+  'ui.sidebar.action',
+  'ui.sidebar.actionHover',
+  'ui.sidebar.border',
+  'ui.tabBar.surface',
+  'ui.tabBar.divider',
+  'ui.tabBar.item',
+  'ui.tabBar.itemHover',
+  'ui.tabBar.itemActive',
+  'ui.tabBar.action',
+  'ui.tabBar.actionHover',
+  'ui.tabBar.danger',
+  'ui.status.danger',
+  'ui.status.warning',
+  'ui.status.success',
+  'ui.status.info',
+  'ui.message.user',
+  'ui.message.userSolid',
+  'ui.message.assistant',
+  'ui.message.system',
+  'ui.message.error',
+  'ui.message.hover',
+  'ui.message.thinking',
+  'ui.tool.surface',
+  'ui.tool.surfaceHover',
+  'ui.tool.surfaceSubtle',
+  'ui.tool.result',
+  'ui.tool.error',
+  'ui.tool.success',
+  'ui.tool.text',
+  'ui.tool.textMuted',
+  'ui.tool.textFaint',
+  'ui.tool.accent',
+  'ui.tool.accentOn',
+  'ui.tool.successText',
+  'ui.tool.dangerText',
+  'ui.tool.border',
+  'ui.editor.text',
+  'ui.editor.placeholder',
+  'ui.editor.caret',
+  'ui.editor.selection',
+]
+
+const SEMANTIC_UI_TOKEN_SET = new Set<string>(SEMANTIC_UI_TOKENS)
+
+const VALID_HIGHLIGHT_FONT_STYLES = new Set<HighlightFontStyle>([
+  'normal',
+  'italic',
+  'bold',
+  'underline',
+  'bold italic',
+  'bold underline',
+  'italic underline',
+  'bold italic underline',
+])
+
+const DEFAULT_HIGHLIGHT_ALIASES: Record<string, SemanticHighlightToken> = {
+  Normal: 'syntax.plain',
+  Comment: 'syntax.comment',
+  '@comment': 'syntax.comment',
+  Keyword: 'syntax.keyword',
+  Statement: 'syntax.keyword',
+  Conditional: 'syntax.keyword',
+  Repeat: 'syntax.keyword',
+  Include: 'syntax.keyword',
+  Exception: 'syntax.keyword',
+  '@keyword': 'syntax.keyword',
+  '@keyword.function': 'syntax.keyword',
+  '@keyword.operator': 'syntax.keyword',
+  Boolean: 'syntax.atom',
+  Constant: 'syntax.atom',
+  '@boolean': 'syntax.atom',
+  String: 'syntax.string',
+  Character: 'syntax.string',
+  '@string': 'syntax.string',
+  Number: 'syntax.number',
+  Float: 'syntax.number',
+  '@number': 'syntax.number',
+  Function: 'syntax.function',
+  '@function': 'syntax.function',
+  '@method': 'syntax.function',
+  '@constructor': 'syntax.function',
+  Identifier: 'syntax.variable',
+  Variable: 'syntax.variable',
+  '@variable': 'syntax.variable',
+  Property: 'syntax.property',
+  '@property': 'syntax.property',
+  '@field': 'syntax.property',
+  Type: 'syntax.type',
+  Typedef: 'syntax.type',
+  '@type': 'syntax.type',
+  '@class': 'syntax.type',
+  Tag: 'syntax.tag',
+  '@tag': 'syntax.tag',
+  '@tag.attribute': 'syntax.property',
+  Operator: 'syntax.operator',
+  Delimiter: 'syntax.punctuation',
+  '@operator': 'syntax.operator',
+  '@punctuation': 'syntax.punctuation',
+  Error: 'syntax.invalid',
+  DiagnosticError: 'syntax.invalid',
+  DiffAdd: 'syntax.inserted',
+  DiffDelete: 'syntax.deleted',
+  Title: 'syntax.heading',
+  Underlined: 'syntax.link',
+}
+
+const DEFAULT_UI_ALIASES: Record<string, SemanticUIToken> = {
+  Accent: 'ui.accent.primary',
+  AccentSubtle: 'ui.accent.subtle',
+  Background: 'ui.surface.app',
+  Sidebar: 'ui.surface.sidebar',
+  ChatSurface: 'ui.surface.chat',
+  Panel: 'ui.surface.panel',
+  Elevated: 'ui.surface.elevated',
+  Floating: 'ui.surface.floating',
+  Popover: 'ui.surface.floating',
+  Menu: 'ui.surface.menu',
+  Input: 'ui.surface.input',
+  CodeSurface: 'ui.surface.codeBlock',
+  Tooltip: 'ui.surface.tooltip',
+  Modal: 'ui.surface.modal',
+  NoteSurface: 'ui.surface.note',
+  PreviewLight: 'ui.surface.previewLight',
+  PreviewDark: 'ui.surface.previewDark',
+  Text: 'ui.text.primary',
+  TextPrimary: 'ui.text.primary',
+  TextSecondary: 'ui.text.secondary',
+  TextMuted: 'ui.text.muted',
+  TextFaint: 'ui.text.faint',
+  Link: 'ui.text.link',
+  Border: 'ui.border.default',
+  BorderSubtle: 'ui.border.subtle',
+  Focus: 'ui.state.focus',
+  Selected: 'ui.state.selected',
+  Hover: 'ui.state.hover',
+  SidebarSurface: 'ui.sidebar.surface',
+  SidebarItem: 'ui.sidebar.item',
+  SidebarItemHover: 'ui.sidebar.itemHover',
+  SidebarItemActive: 'ui.sidebar.itemActive',
+  SidebarItemMuted: 'ui.sidebar.itemMuted',
+  SidebarHeader: 'ui.sidebar.header',
+  SidebarAction: 'ui.sidebar.action',
+  SidebarActionHover: 'ui.sidebar.actionHover',
+  SidebarBorder: 'ui.sidebar.border',
+  TabBarSurface: 'ui.tabBar.surface',
+  TabBarDivider: 'ui.tabBar.divider',
+  TabBarItem: 'ui.tabBar.item',
+  TabBarItemHover: 'ui.tabBar.itemHover',
+  TabBarItemActive: 'ui.tabBar.itemActive',
+  TabBarAction: 'ui.tabBar.action',
+  TabBarActionHover: 'ui.tabBar.actionHover',
+  TabBarDanger: 'ui.tabBar.danger',
+  PrimaryButton: 'ui.action.primary',
+  SecondaryButton: 'ui.action.secondary',
+  GhostButton: 'ui.action.ghost',
+  DangerButton: 'ui.action.danger',
+  Danger: 'ui.status.danger',
+  Error: 'ui.status.danger',
+  Warning: 'ui.status.warning',
+  Success: 'ui.status.success',
+  Info: 'ui.status.info',
+  UserMessage: 'ui.message.user',
+  AssistantMessage: 'ui.message.assistant',
+  ToolCard: 'ui.tool.surface',
+  ToolSurface: 'ui.tool.surface',
+  ToolText: 'ui.tool.text',
+  ToolMuted: 'ui.tool.textMuted',
+  Editor: 'ui.editor.text',
+  EditorCaret: 'ui.editor.caret',
+}
 
 /**
  * Check if a value is a direct color value (not a reference)
@@ -18,6 +300,7 @@ function isDirectColorValue(value: string): boolean {
     value.startsWith('var(') ||
     value.startsWith('linear-gradient') ||
     value.startsWith('radial-gradient') ||
+    value.startsWith('color-mix') ||
     value === 'transparent' ||
     value === 'inherit' ||
     value === 'currentColor' ||
@@ -157,6 +440,787 @@ export function resolveTheme(
   return resolved
 }
 
+function isSemanticHighlightToken(value: string): value is SemanticHighlightToken {
+  return SEMANTIC_HIGHLIGHT_TOKEN_SET.has(value)
+}
+
+function isSemanticUIToken(value: string): value is SemanticUIToken {
+  return SEMANTIC_UI_TOKEN_SET.has(value)
+}
+
+function isHighlightLink(value: ThemeHighlightGroup): value is { link: string } {
+  return typeof value === 'object' && value !== null && 'link' in value
+}
+
+function isUILink(value: ThemeUIGroup): value is { link: string } {
+  return typeof value === 'object' && value !== null && 'link' in value
+}
+
+function buildResolvedMap(resolvedTheme: Record<string, string>): Map<string, ResolvedColorValue> {
+  const resolvedMap = new Map<string, ResolvedColorValue>()
+  for (const [path, value] of Object.entries(resolvedTheme)) {
+    resolvedMap.set(path, value)
+    const lastSegment = path.split('.').pop()
+    if (lastSegment && !resolvedMap.has(lastSegment)) {
+      resolvedMap.set(lastSegment, value)
+    }
+  }
+  return resolvedMap
+}
+
+function selectModeValue(value: ResolvedColorValue, mode: 'dark' | 'light'): string {
+  return typeof value === 'object' && 'dark' in value ? value[mode] : value
+}
+
+function resolveHighlightColor(
+  value: ColorValue | undefined,
+  defs: ThemeDefs,
+  resolvedMap: Map<string, ResolvedColorValue>,
+  mode: 'dark' | 'light'
+): string | undefined {
+  if (value === undefined) return undefined
+  const resolvedValue = resolveColorValue(value, defs, resolvedMap, new Set())
+  return selectModeValue(resolvedValue, mode)
+}
+
+function normalizeHighlightFontStyle(value: HighlightFontStyle | undefined): HighlightFontStyle | undefined {
+  if (!value) return undefined
+  if (VALID_HIGHLIGHT_FONT_STYLES.has(value)) return value
+  console.warn(`[ThemeResolver] Unknown highlight fontStyle: ${value}`)
+  return undefined
+}
+
+function resolveHighlightStyle(
+  style: HighlightStyle,
+  defs: ThemeDefs,
+  resolvedMap: Map<string, ResolvedColorValue>,
+  mode: 'dark' | 'light'
+): ResolvedHighlightStyle {
+  return {
+    fg: resolveHighlightColor(style.fg, defs, resolvedMap, mode),
+    bg: resolveHighlightColor(style.bg, defs, resolvedMap, mode),
+    fontStyle: normalizeHighlightFontStyle(style.fontStyle),
+  }
+}
+
+function mergeHighlightStyle(
+  base: ResolvedHighlightStyle,
+  override: ResolvedHighlightStyle
+): ResolvedHighlightStyle {
+  return {
+    fg: override.fg ?? base.fg,
+    bg: override.bg ?? base.bg,
+    fontStyle: override.fontStyle ?? base.fontStyle,
+  }
+}
+
+function resolveUIColor(
+  value: ColorValue | undefined,
+  defs: ThemeDefs,
+  resolvedMap: Map<string, ResolvedColorValue>,
+  mode: 'dark' | 'light'
+): string | undefined {
+  if (value === undefined) return undefined
+  const resolvedValue = resolveColorValue(value, defs, resolvedMap, new Set())
+  return selectModeValue(resolvedValue, mode)
+}
+
+function resolveUIStyle(
+  style: UIStyle,
+  defs: ThemeDefs,
+  resolvedMap: Map<string, ResolvedColorValue>,
+  mode: 'dark' | 'light'
+): ResolvedUIStyle {
+  return {
+    fg: resolveUIColor(style.fg, defs, resolvedMap, mode),
+    bg: resolveUIColor(style.bg, defs, resolvedMap, mode),
+    border: resolveUIColor(style.border, defs, resolvedMap, mode),
+    ring: resolveUIColor(style.ring, defs, resolvedMap, mode),
+    shadow: resolveUIColor(style.shadow, defs, resolvedMap, mode),
+  }
+}
+
+function mergeUIStyle(
+  base: ResolvedUIStyle,
+  override: ResolvedUIStyle
+): ResolvedUIStyle {
+  return {
+    fg: override.fg ?? base.fg,
+    bg: override.bg ?? base.bg,
+    border: override.border ?? base.border,
+    ring: override.ring ?? base.ring,
+    shadow: override.shadow ?? base.shadow,
+  }
+}
+
+function getResolvedThemeValue(
+  resolvedTheme: Record<string, string>,
+  ...paths: string[]
+): string | undefined {
+  for (const path of paths) {
+    const value = resolvedTheme[path]
+    if (value !== undefined) return value
+  }
+  return undefined
+}
+
+function fallbackUIStyle(
+  resolvedTheme: Record<string, string>,
+  token: SemanticUIToken
+): ResolvedUIStyle {
+  const get = (...paths: string[]) => getResolvedThemeValue(resolvedTheme, ...paths)
+
+  switch (token) {
+    case 'ui.accent.primary':
+      return { fg: get('accentMain', 'accent') }
+    case 'ui.accent.subtle':
+      return { fg: get('accentSub', 'accentLight', 'accent') }
+    case 'ui.surface.app':
+      return { bg: get('bg.app') }
+    case 'ui.surface.sidebar':
+      return { bg: get('bg.sidebar', 'bg.panel', 'bg.app') }
+    case 'ui.surface.chat':
+      return { bg: get('bg.chat', 'bg.app') }
+    case 'ui.surface.panel':
+      return { bg: get('bg.panel', 'bg.chat', 'bg.app') }
+    case 'ui.surface.elevated':
+      return {
+        bg: get('bg.elevated', 'bg.panel', 'bg.app'),
+        shadow: get('shadow.elevated', 'shadow.md', 'shadow.sm'),
+      }
+    case 'ui.surface.floating':
+      return {
+        bg: get('bg.floating', 'bg.elevated', 'bg.panel'),
+        shadow: get('shadow.floating', 'shadow.lg', 'shadow.md'),
+      }
+    case 'ui.surface.overlay':
+      return { bg: get('bg.modalOverlay', 'effects.overlayActive') }
+    case 'ui.surface.menu':
+      return { bg: get('bg.menu', 'bg.floating', 'bg.panel') }
+    case 'ui.surface.menuHover':
+      return { bg: get('bg.menuItemHover', 'bg.hover') }
+    case 'ui.surface.input':
+      return {
+        bg: get('bg.input', 'bg.panel'),
+        border: get('border.input', 'border.default'),
+      }
+    case 'ui.surface.inputFocus':
+      return {
+        bg: get('bg.inputFocus', 'bg.input', 'bg.panel'),
+        border: get('border.inputFocus', 'border.accent', 'accent'),
+        ring: get('border.inputFocus', 'border.accent', 'accent'),
+      }
+    case 'ui.surface.codeInline':
+      return {
+        bg: get('bg.code.inline', 'bg.elevated', 'bg.panel'),
+        fg: get('text.code.inline', 'text.primary'),
+        border: get('border.code', 'border.subtle'),
+      }
+    case 'ui.surface.codeBlock':
+      return {
+        bg: get('bg.code.block', 'bg.panel'),
+        fg: get('text.code.block', 'text.primary'),
+        border: get('border.code', 'border.subtle'),
+      }
+    case 'ui.surface.codeHeader':
+      return { bg: get('bg.code.header', 'bg.elevated', 'bg.panel') }
+    case 'ui.surface.tooltip':
+      return {
+        bg: get('bg.tooltip', 'bg.floating'),
+        fg: get('text.tooltip', 'text.inverse', 'text.primary'),
+        border: get('border.strong', 'border.default'),
+      }
+    case 'ui.surface.modal':
+      return {
+        bg: get('bg.modal', 'bg.floating', 'bg.panel'),
+        fg: get('text.modalBody', 'text.primary'),
+        border: get('border.default'),
+        shadow: get('shadow.floating', 'shadow.xl', 'shadow.lg'),
+      }
+    case 'ui.surface.note':
+      return {
+        bg: get('color.warningLight', 'bg.elevated', 'bg.panel'),
+        fg: get('text.primary'),
+        border: get('border.warning', 'border.subtle', 'border.default'),
+      }
+    case 'ui.surface.previewLight':
+      return { bg: '#ffffff', fg: '#111827', border: '#e5e7eb' }
+    case 'ui.surface.previewDark':
+      return { bg: '#0f1117', fg: '#f9fafb', border: '#1f2937' }
+    case 'ui.text.primary':
+      return { fg: get('text.primary') }
+    case 'ui.text.secondary':
+      return { fg: get('text.secondary', 'text.primary') }
+    case 'ui.text.muted':
+      return { fg: get('text.muted', 'text.secondary', 'text.primary') }
+    case 'ui.text.faint':
+      return { fg: get('text.faint', 'text.muted', 'text.secondary') }
+    case 'ui.text.inverse':
+      return { fg: get('text.btn.primary', 'bg.app', 'text.primary') }
+    case 'ui.text.placeholder':
+      return { fg: get('text.inputPlaceholder', 'text.muted') }
+    case 'ui.text.disabled':
+      return { fg: get('text.inputDisabled', 'text.btn.disabled', 'text.faint', 'text.muted') }
+    case 'ui.text.link':
+      return { fg: get('text.link', 'color.info', 'accent') }
+    case 'ui.text.linkHover':
+      return { fg: get('text.linkHover', 'text.link', 'color.info', 'accent') }
+    case 'ui.border.default':
+      return { border: get('border.default') }
+    case 'ui.border.subtle':
+      return { border: get('border.subtle', 'border.default') }
+    case 'ui.border.strong':
+      return { border: get('border.strong', 'border.default') }
+    case 'ui.border.divider':
+      return { border: get('border.divider', 'border.subtle', 'border.default') }
+    case 'ui.border.focus':
+      return { border: get('border.inputFocus', 'border.accent', 'accent'), ring: get('border.inputFocus', 'accent') }
+    case 'ui.border.selected':
+      return { border: get('border.accent', 'border.inputFocus', 'accent') }
+    case 'ui.action.primary':
+      return {
+        bg: get('bg.btn.primary', 'accent'),
+        fg: get('text.btn.primary', 'bg.app'),
+        border: get('border.accent', 'accent'),
+      }
+    case 'ui.action.primaryHover':
+      return {
+        bg: get('bg.btn.primaryHover', 'accentLight', 'accentSub', 'bg.btn.primary', 'accent'),
+        fg: get('text.btn.primary', 'bg.app'),
+        border: get('border.accent', 'accent'),
+      }
+    case 'ui.action.secondary':
+      return {
+        bg: get('bg.btn.secondary', 'bg.elevated', 'bg.panel'),
+        fg: get('text.btn.secondary', 'text.primary'),
+        border: get('border.subtle', 'border.default'),
+      }
+    case 'ui.action.secondaryHover':
+      return {
+        bg: get('bg.btn.secondaryHover', 'bg.btn.secondary', 'bg.hover'),
+        fg: get('text.btn.secondary', 'text.primary'),
+        border: get('border.default', 'border.subtle'),
+      }
+    case 'ui.action.ghost':
+      return {
+        bg: get('bg.btn.ghost') || 'transparent',
+        fg: get('text.btn.ghost', 'text.primary'),
+        border: 'transparent',
+      }
+    case 'ui.action.ghostHover':
+      return {
+        bg: get('bg.btn.ghostHover', 'bg.hover'),
+        fg: get('text.btn.ghost', 'text.primary'),
+        border: 'transparent',
+      }
+    case 'ui.action.danger':
+      return {
+        bg: get('bg.btn.danger', 'color.danger'),
+        fg: get('text.btn.danger', 'bg.app'),
+        border: get('border.error', 'color.danger'),
+      }
+    case 'ui.action.dangerHover':
+      return {
+        bg: get('bg.btn.dangerHover', 'bg.btn.danger', 'color.danger'),
+        fg: get('text.btn.danger', 'bg.app'),
+        border: get('border.error', 'color.danger'),
+      }
+    case 'ui.action.disabled':
+      return {
+        bg: get('bg.inputDisabled', 'effects.overlayDisabled', 'bg.hover'),
+        fg: get('text.btn.disabled', 'text.inputDisabled', 'text.faint'),
+        border: get('border.subtle', 'border.default'),
+      }
+    case 'ui.state.hover':
+      return { bg: get('bg.hover', 'effects.overlayHover') }
+    case 'ui.state.active':
+      return { bg: get('bg.active', 'effects.overlayActive') }
+    case 'ui.state.selected':
+      return {
+        bg: get('bg.selected'),
+        fg: get('text.primary'),
+        border: get('border.accent', 'accent'),
+      }
+    case 'ui.state.selectedHover':
+      return {
+        bg: get('bg.selectedHover', 'bg.selected'),
+        fg: get('text.primary'),
+        border: get('border.accent', 'accent'),
+      }
+    case 'ui.state.highlight':
+      return { bg: get('bg.highlight', 'accentSub') }
+    case 'ui.state.focus':
+      return {
+        border: get('border.inputFocus', 'border.accent', 'accent'),
+        ring: get('border.inputFocus', 'border.accent', 'accent'),
+      }
+    case 'ui.state.disabled':
+      return {
+        bg: get('bg.inputDisabled', 'effects.overlayDisabled'),
+        fg: get('text.inputDisabled', 'text.btn.disabled', 'text.faint'),
+        border: get('border.subtle', 'border.default'),
+      }
+    case 'ui.sidebar.surface':
+      return {
+        bg: get('bg.sidebar', 'bg.panel', 'bg.app'),
+        fg: get('text.sidebar.item', 'text.secondary', 'text.primary'),
+        border: get('border.divider', 'border.subtle', 'border.default'),
+      }
+    case 'ui.sidebar.item':
+      return { fg: get('text.sidebar.item', 'text.secondary', 'text.primary') }
+    case 'ui.sidebar.itemHover':
+      return {
+        bg: get('bg.hover', 'effects.overlayHover'),
+        fg: get('text.sidebar.itemHover', 'text.primary'),
+      }
+    case 'ui.sidebar.itemActive':
+      return {
+        bg: get('bg.selected'),
+        fg: get('text.primary'),
+        border: get('border.accent', 'accent'),
+      }
+    case 'ui.sidebar.itemMuted':
+      return { fg: get('text.sidebar.muted', 'text.sidebar.count', 'text.faint', 'text.muted') }
+    case 'ui.sidebar.header':
+      return { fg: get('text.sidebar.title', 'text.faint', 'text.muted') }
+    case 'ui.sidebar.action':
+      return {
+        fg: get('text.sidebar.item', 'text.secondary', 'text.primary'),
+        bg: 'transparent',
+      }
+    case 'ui.sidebar.actionHover':
+      return {
+        bg: get('bg.hover', 'effects.overlayHover'),
+        fg: get('text.sidebar.itemHover', 'text.primary'),
+      }
+    case 'ui.sidebar.border':
+      return { border: get('border.divider', 'border.subtle', 'border.default') }
+    case 'ui.tabBar.surface':
+      return {
+        bg: get('bg.panel', 'bg.elevated', 'bg.chat'),
+        border: get('border.subtle', 'border.default'),
+        shadow: 'inset 0 1px 0 color-mix(in srgb, var(--ui-surface-floating-bg, var(--bg-floating)) 20%, transparent)',
+      }
+    case 'ui.tabBar.divider':
+      return { border: 'color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 70%, var(--ui-text-muted-fg, var(--muted)))' }
+    case 'ui.tabBar.item':
+      return { fg: get('text.muted', 'text.secondary') }
+    case 'ui.tabBar.itemHover':
+      return {
+        bg: 'color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4.5%, transparent)',
+        fg: get('text.primary'),
+      }
+    case 'ui.tabBar.itemActive':
+      return {
+        bg: 'color-mix(in srgb, var(--ui-accent-subtle-fg, var(--accent-sub, var(--accent-light))) 42%, transparent)',
+        fg: get('text.primary'),
+        border: 'transparent',
+      }
+    case 'ui.tabBar.action':
+      return { fg: get('text.muted', 'text.secondary') }
+    case 'ui.tabBar.actionHover':
+      return {
+        bg: get('bg.elevated', 'bg.hover'),
+        fg: get('text.primary'),
+        border: get('border.subtle', 'border.default'),
+      }
+    case 'ui.tabBar.danger':
+      return {
+        bg: 'color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 15%, transparent)',
+        fg: get('text.error', 'color.danger'),
+      }
+    case 'ui.status.danger':
+      return {
+        fg: get('text.error', 'color.danger'),
+        bg: get('color.dangerLight', 'bg.message.error'),
+        border: get('border.error', 'color.danger'),
+      }
+    case 'ui.status.warning':
+      return {
+        fg: get('text.warning', 'color.warning'),
+        bg: get('color.warningLight'),
+        border: get('border.warning', 'color.warning'),
+      }
+    case 'ui.status.success':
+      return {
+        fg: get('text.success', 'color.success'),
+        bg: get('color.successLight'),
+        border: get('border.success', 'color.success'),
+      }
+    case 'ui.status.info':
+      return {
+        fg: get('text.info', 'color.info'),
+        bg: get('color.infoLight'),
+        border: get('border.accent', 'color.info', 'accent'),
+      }
+    case 'ui.message.user':
+      return {
+        bg: get('bg.message.user', 'bg.message.userSolid'),
+        fg: get('text.user.primary', 'text.primary'),
+        border: get('border.messageUser', 'border.message', 'border.subtle'),
+      }
+    case 'ui.message.userSolid':
+      return {
+        bg: get('bg.message.userSolid', 'bg.message.user'),
+        fg: get('text.user.primary', 'text.primary'),
+        border: get('border.messageUser', 'border.message', 'border.subtle'),
+      }
+    case 'ui.message.assistant':
+      return {
+        bg: get('bg.message.ai') || 'transparent',
+        fg: get('text.ai.primary', 'text.primary'),
+        border: get('border.message', 'border.subtle'),
+      }
+    case 'ui.message.system':
+      return {
+        bg: get('bg.message.system', 'bg.panel'),
+        fg: get('text.system', 'text.secondary', 'text.primary'),
+        border: get('border.message', 'border.subtle'),
+      }
+    case 'ui.message.error':
+      return {
+        bg: get('bg.message.error', 'color.dangerLight'),
+        fg: get('text.error', 'color.danger'),
+        border: get('border.error', 'color.danger'),
+      }
+    case 'ui.message.hover':
+      return { bg: get('bg.message.hover', 'bg.hover') }
+    case 'ui.message.thinking':
+      return { fg: get('text.ai.thinking', 'text.muted') }
+    case 'ui.tool.surface':
+      return {
+        bg: get('bg.toolCall', 'bg.panel'),
+        fg: get('text.primary'),
+        border: get('border.subtle', 'border.default'),
+      }
+    case 'ui.tool.surfaceHover':
+      return {
+        bg: get('bg.toolCallHover', 'bg.toolCall', 'bg.hover'),
+        fg: get('text.primary'),
+        border: get('border.default', 'border.subtle'),
+      }
+    case 'ui.tool.surfaceSubtle':
+      return {
+        bg: 'color-mix(in srgb, var(--ui-tool-text-fg, var(--tool-ink)) 6%, var(--ui-tool-surface-bg, var(--bg-tool-call)))',
+      }
+    case 'ui.tool.result':
+      return {
+        bg: get('bg.toolResult', 'bg.toolCall', 'bg.panel'),
+        fg: get('text.tool.result', 'text.primary'),
+      }
+    case 'ui.tool.error':
+      return {
+        bg: get('bg.toolError', 'color.dangerLight', 'bg.message.error'),
+        fg: get('text.tool.error', 'text.error', 'color.danger'),
+        border: get('border.error', 'color.danger'),
+      }
+    case 'ui.tool.success':
+      return {
+        bg: get('bg.toolSuccess', 'color.successLight'),
+        fg: get('text.success', 'color.success'),
+        border: get('border.success', 'color.success'),
+      }
+    case 'ui.tool.text':
+      return { fg: get('text.tool.name', 'text.primary') }
+    case 'ui.tool.textMuted':
+      return { fg: get('text.tool.args', 'text.muted') }
+    case 'ui.tool.textFaint':
+      return { fg: get('text.tool.label', 'text.faint', 'text.muted') }
+    case 'ui.tool.accent':
+      return { fg: get('accent') }
+    case 'ui.tool.accentOn':
+      return { fg: get('bg.app', 'text.btn.primary') }
+    case 'ui.tool.successText':
+      return { fg: get('color.success', 'text.success') }
+    case 'ui.tool.dangerText':
+      return { fg: get('color.danger', 'text.error') }
+    case 'ui.tool.border':
+      return { border: get('border.subtle', 'border.default') }
+    case 'ui.editor.text':
+      return {
+        fg: get('text.input', 'text.primary'),
+        bg: get('bg.input', 'bg.panel'),
+        border: get('border.input', 'border.default'),
+      }
+    case 'ui.editor.placeholder':
+      return { fg: get('text.inputPlaceholder', 'text.muted') }
+    case 'ui.editor.caret':
+      return { fg: get('text.input', 'text.primary') }
+    case 'ui.editor.selection':
+      return {
+        bg: get('bg.selected'),
+        fg: get('text.primary'),
+      }
+  }
+}
+
+function fallbackHighlightStyle(theme: Theme, token: SemanticHighlightToken): HighlightStyle {
+  const text = theme.theme.text
+  const code = text.code || {}
+  const semantic = theme.theme.color || {}
+
+  switch (token) {
+    case 'syntax.plain':
+      return { fg: code.block || text.primary }
+    case 'syntax.comment':
+      return { fg: code.comment || text.muted || code.block || text.primary, fontStyle: 'italic' }
+    case 'syntax.keyword':
+      return { fg: code.keyword || code.block || text.primary }
+    case 'syntax.atom':
+      return { fg: code.keyword || code.number || code.block || text.primary }
+    case 'syntax.string':
+      return { fg: code.string || code.block || text.primary }
+    case 'syntax.number':
+      return { fg: code.number || code.block || text.primary }
+    case 'syntax.function':
+      return { fg: code.function || code.block || text.primary }
+    case 'syntax.definition':
+      return { fg: code.function || code.variable || code.block || text.primary }
+    case 'syntax.variable':
+      return { fg: code.variable || code.block || text.primary }
+    case 'syntax.property':
+      return { fg: code.property || code.variable || code.block || text.primary }
+    case 'syntax.type':
+      return { fg: code.type || code.variable || code.block || text.primary }
+    case 'syntax.tag':
+      return { fg: code.type || code.keyword || code.block || text.primary }
+    case 'syntax.operator':
+      return { fg: code.operator || code.block || text.primary }
+    case 'syntax.punctuation':
+      return { fg: code.punctuation || code.operator || code.block || text.primary }
+    case 'syntax.invalid':
+      return { fg: text.error || semantic.danger || code.block || text.primary }
+    case 'syntax.inserted':
+      return { fg: text.success || semantic.success || code.string || code.block || text.primary }
+    case 'syntax.deleted':
+      return { fg: text.error || semantic.danger || code.block || text.primary }
+    case 'syntax.heading':
+      return { fg: code.function || text.primary, fontStyle: 'bold' }
+    case 'syntax.link':
+      return { fg: text.link || code.function || text.primary, fontStyle: 'underline' }
+    case 'syntax.emphasis':
+      return { fg: code.block || text.primary, fontStyle: 'italic' }
+    case 'syntax.strong':
+      return { fg: code.block || text.primary, fontStyle: 'bold' }
+  }
+}
+
+/**
+ * Resolve app-level highlight groups from a theme. Themes without `highlights`
+ * are upgraded from `theme.text.code.*` so old JSON files continue to work.
+ */
+export function resolveThemeHighlights(
+  theme: Theme,
+  mode: 'dark' | 'light',
+  resolvedTheme: Record<string, string> = resolveTheme(theme, mode)
+): Record<SemanticHighlightToken, ResolvedHighlightStyle> {
+  const defs = theme.defs || {}
+  const resolvedMap = buildResolvedMap(resolvedTheme)
+  const styles = new Map<SemanticHighlightToken, ResolvedHighlightStyle>()
+  const highlights = theme.highlights
+  const groups = highlights?.groups || {}
+  const aliases = {
+    ...DEFAULT_HIGHLIGHT_ALIASES,
+    ...(highlights?.aliases || {}),
+  }
+
+  for (const token of SEMANTIC_HIGHLIGHT_TOKENS) {
+    styles.set(token, resolveHighlightStyle(fallbackHighlightStyle(theme, token), defs, resolvedMap, mode))
+  }
+
+  for (const [token, style] of Object.entries(highlights?.semanticTokens || {})) {
+    if (!isSemanticHighlightToken(token)) {
+      console.warn(`[ThemeResolver] Unknown semantic highlight token: ${token}`)
+      continue
+    }
+    styles.set(token, mergeHighlightStyle(
+      styles.get(token) || {},
+      resolveHighlightStyle(style, defs, resolvedMap, mode)
+    ))
+  }
+
+  const resolveSemanticTarget = (
+    name: string,
+    visited: Set<string> = new Set()
+  ): SemanticHighlightToken | null => {
+    if (isSemanticHighlightToken(name)) return name
+    if (visited.has(name)) {
+      console.warn(`[ThemeResolver] Circular highlight alias detected: ${name}`)
+      return null
+    }
+    visited.add(name)
+
+    const aliasTarget = aliases[name]
+    if (aliasTarget) {
+      return resolveSemanticTarget(aliasTarget, visited)
+    }
+
+    const group = groups[name]
+    if (group && isHighlightLink(group)) {
+      return resolveSemanticTarget(group.link, visited)
+    }
+
+    return null
+  }
+
+  const resolveGroupDefinition = (
+    name: string,
+    visited: Set<string> = new Set()
+  ): ResolvedHighlightStyle | null => {
+    if (visited.has(name)) {
+      console.warn(`[ThemeResolver] Circular highlight group link detected: ${name}`)
+      return null
+    }
+    visited.add(name)
+
+    const group = groups[name]
+    if (!group) {
+      if (isSemanticHighlightToken(name)) return styles.get(name) || null
+      const aliasTarget = aliases[name]
+      return aliasTarget ? resolveGroupDefinition(aliasTarget, visited) : null
+    }
+
+    if (isHighlightLink(group)) {
+      return resolveGroupDefinition(group.link, visited)
+    }
+
+    return resolveHighlightStyle(group, defs, resolvedMap, mode)
+  }
+
+  for (const token of SEMANTIC_HIGHLIGHT_TOKENS) {
+    if (!groups[token]) continue
+    const groupStyle = resolveGroupDefinition(token)
+    if (groupStyle) {
+      styles.set(token, mergeHighlightStyle(styles.get(token) || {}, groupStyle))
+    }
+  }
+
+  for (const [groupName, targetName] of Object.entries(aliases)) {
+    if (!groups[groupName]) continue
+    const token = resolveSemanticTarget(targetName)
+    if (!token) {
+      console.warn(`[ThemeResolver] Unknown highlight alias target: ${groupName} -> ${targetName}`)
+      continue
+    }
+    const groupStyle = resolveGroupDefinition(groupName)
+    if (groupStyle) {
+      styles.set(token, mergeHighlightStyle(styles.get(token) || {}, groupStyle))
+    }
+  }
+
+  return Object.fromEntries(
+    SEMANTIC_HIGHLIGHT_TOKENS.map(token => [token, styles.get(token) || {}])
+  ) as Record<SemanticHighlightToken, ResolvedHighlightStyle>
+}
+
+/**
+ * Resolve app UI semantic tokens from a theme. Themes without `ui` are
+ * upgraded from the existing `theme.bg/text/border/color/*` structure.
+ */
+export function resolveThemeUI(
+  theme: Theme,
+  mode: 'dark' | 'light',
+  resolvedTheme: Record<string, string> = resolveTheme(theme, mode)
+): Record<SemanticUIToken, ResolvedUIStyle> {
+  const defs = theme.defs || {}
+  const resolvedMap = buildResolvedMap(resolvedTheme)
+  const styles = new Map<SemanticUIToken, ResolvedUIStyle>()
+  const ui = theme.ui
+  const groups = ui?.groups || {}
+  const aliases = {
+    ...DEFAULT_UI_ALIASES,
+    ...(ui?.aliases || {}),
+  }
+
+  for (const token of SEMANTIC_UI_TOKENS) {
+    styles.set(token, fallbackUIStyle(resolvedTheme, token))
+  }
+
+  for (const [token, style] of Object.entries(ui?.semanticTokens || {})) {
+    if (!isSemanticUIToken(token)) {
+      console.warn(`[ThemeResolver] Unknown semantic UI token: ${token}`)
+      continue
+    }
+    styles.set(token, mergeUIStyle(
+      styles.get(token) || {},
+      resolveUIStyle(style, defs, resolvedMap, mode)
+    ))
+  }
+
+  const resolveSemanticTarget = (
+    name: string,
+    visited: Set<string> = new Set()
+  ): SemanticUIToken | null => {
+    if (isSemanticUIToken(name)) return name
+    if (visited.has(name)) {
+      console.warn(`[ThemeResolver] Circular UI alias detected: ${name}`)
+      return null
+    }
+    visited.add(name)
+
+    const aliasTarget = aliases[name]
+    if (aliasTarget) {
+      return resolveSemanticTarget(aliasTarget, visited)
+    }
+
+    const group = groups[name]
+    if (group && isUILink(group)) {
+      return resolveSemanticTarget(group.link, visited)
+    }
+
+    return null
+  }
+
+  const resolveGroupDefinition = (
+    name: string,
+    visited: Set<string> = new Set()
+  ): ResolvedUIStyle | null => {
+    if (visited.has(name)) {
+      console.warn(`[ThemeResolver] Circular UI group link detected: ${name}`)
+      return null
+    }
+    visited.add(name)
+
+    const group = groups[name]
+    if (!group) {
+      if (isSemanticUIToken(name)) return styles.get(name) || null
+      const aliasTarget = aliases[name]
+      return aliasTarget ? resolveGroupDefinition(aliasTarget, visited) : null
+    }
+
+    if (isUILink(group)) {
+      return resolveGroupDefinition(group.link, visited)
+    }
+
+    return resolveUIStyle(group, defs, resolvedMap, mode)
+  }
+
+  for (const token of SEMANTIC_UI_TOKENS) {
+    if (!groups[token]) continue
+    const groupStyle = resolveGroupDefinition(token)
+    if (groupStyle) {
+      styles.set(token, mergeUIStyle(styles.get(token) || {}, groupStyle))
+    }
+  }
+
+  for (const [groupName, targetName] of Object.entries(aliases)) {
+    if (!groups[groupName]) continue
+    const token = resolveSemanticTarget(targetName)
+    if (!token) {
+      console.warn(`[ThemeResolver] Unknown UI alias target: ${groupName} -> ${targetName}`)
+      continue
+    }
+    const groupStyle = resolveGroupDefinition(groupName)
+    if (groupStyle) {
+      styles.set(token, mergeUIStyle(styles.get(token) || {}, groupStyle))
+    }
+  }
+
+  return Object.fromEntries(
+    SEMANTIC_UI_TOKENS.map(token => [token, styles.get(token) || {}])
+  ) as Record<SemanticUIToken, ResolvedUIStyle>
+}
+
 /**
  * Extract preview colors from a theme (for theme list thumbnails)
  * Returns colors for the preview card in theme selector
@@ -166,25 +1230,93 @@ export function extractPreviewColors(theme: Theme): {
   sidebar: string
   accent: string
   text: string
+  palette: string[]
 } {
   const defs = theme.defs || {}
 
-  function resolveSimple(value: ColorValue | undefined): string {
-    if (!value) return '#888888'
+  function resolveOptional(value: ColorValue | undefined): string | undefined {
+    if (!value) return undefined
 
     if (typeof value === 'string') {
       if (value.startsWith('#')) return value
       if (value.startsWith('rgb')) return value
       // Try to resolve from defs
-      if (defs[value]) return resolveSimple(defs[value])
-      return '#888888'
+      if (defs[value]) return resolveOptional(defs[value])
+      return undefined
     }
 
     if (typeof value === 'object' && 'dark' in value) {
-      return resolveSimple(value.dark)
+      return resolveOptional(value.dark)
     }
 
-    return '#888888'
+    return undefined
+  }
+
+  function resolveSimple(value: ColorValue | undefined): string {
+    return resolveOptional(value) || '#888888'
+  }
+
+  const palette: string[] = []
+  const seen = new Set<string>()
+  const pushSwatch = (value: ColorValue | undefined) => {
+    const color = resolveOptional(value)
+    if (!color || (!color.startsWith('#') && !color.startsWith('rgb'))) return
+    const key = color.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    palette.push(color)
+  }
+
+  const preferredDefKeys = [
+    'nord1',
+    'nord2',
+    'nord3',
+    'nord4',
+    'nord8',
+    'nord9',
+    'nord7',
+    'nord14',
+    'nord10',
+    'nord15',
+    'one_bg',
+    'one_bg2',
+    'one_bg3',
+    'grey_fg',
+    'white',
+    'cyan',
+    'blue',
+    'nord_blue',
+    'green',
+    'yellow',
+    'purple',
+    'red',
+    'base01',
+    'base02',
+    'base03',
+    'base05',
+    'base0C',
+    'base0D',
+    'base0B',
+    'base0A',
+    'base0E',
+    'base08',
+  ]
+
+  for (const key of preferredDefKeys) {
+    pushSwatch(defs[key])
+    if (palette.length >= 10) break
+  }
+
+  if (palette.length < 6) {
+    pushSwatch(theme.theme.bg?.sidebar)
+    pushSwatch(theme.theme.bg?.panel)
+    pushSwatch(theme.theme.bg?.elevated)
+    pushSwatch(theme.theme.text?.primary)
+    pushSwatch(theme.theme.accent)
+    pushSwatch(theme.theme.text?.info)
+    pushSwatch(theme.theme.text?.success)
+    pushSwatch(theme.theme.text?.warning)
+    pushSwatch(theme.theme.text?.error)
   }
 
   return {
@@ -192,5 +1324,6 @@ export function extractPreviewColors(theme: Theme): {
     sidebar: resolveSimple(theme.theme.bg?.sidebar),
     accent: resolveSimple(theme.theme.accent),
     text: resolveSimple(theme.theme.text?.primary),
+    palette: palette.slice(0, 10),
   }
 }

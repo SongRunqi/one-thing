@@ -374,18 +374,11 @@ if (!isSettingsWindow.value && !isImagePreviewWindow.value && !isSearchWindow.va
   useDoubleShift(() => openSearch())
 }
 
-// Create new chat, reusing an existing empty session if available
+// Open a temporary New Chat UI. A real session is created only when the user sends the first message.
 async function createNewChat() {
-  // Check if there's an existing empty session
-  const existingEmptySession = sessionsStore.filteredSessions.find(
-    s => (s.name === 'New Chat' || s.name === '') && (!s.messages || s.messages.length === 0)
-  )
-
-  if (existingEmptySession) {
-    await sessionsStore.switchSession(existingEmptySession.id)
-  } else {
-    await sessionsStore.createSession('New Chat')
-  }
+  sessionsStore.openNewChatDraft('New Chat')
+  await nextTick()
+  chatContainerRef.value?.focusInput?.()
 }
 
 let unsubscribeSettingsChanged: (() => void) | null = null

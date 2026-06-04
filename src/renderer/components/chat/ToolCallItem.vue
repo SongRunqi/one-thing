@@ -26,7 +26,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  confirm: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
+  confirm: [toolCall: ToolCall, response: 'once']
   reject: [toolCall: ToolCall]
   'open-file': [filePath: string]
 }>()

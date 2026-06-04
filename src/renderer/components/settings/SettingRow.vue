@@ -47,7 +47,7 @@ withDefaults(defineProps<{
   display: flex;
   gap: 16px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--border));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
 }
 
 .setting-row:last-child {
@@ -75,7 +75,7 @@ withDefaults(defineProps<{
 }
 
 .setting-row-title {
-  color: var(--settings-ink-2, var(--text-primary));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
@@ -84,7 +84,7 @@ withDefaults(defineProps<{
 .setting-row-description {
   max-width: 560px;
   margin-top: 3px;
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 12px;
   line-height: 1.45;
 }

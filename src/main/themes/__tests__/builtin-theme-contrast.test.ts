@@ -3,7 +3,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
 import type { Theme } from '../../../shared/ipc/themes.js'
-import { resolveTheme } from '../resolver.js'
+import { extractPreviewColors, resolveTheme } from '../resolver.js'
+import { CSS_VAR_MAP } from '../css-mapper.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -52,7 +53,46 @@ function contrastRatio(foreground: string, background: string): number {
   return (lighter + 0.05) / (darker + 0.05)
 }
 
+describe('theme CSS variable mapping', () => {
+  it('maps text.input to the shared editor caret token', () => {
+    expect(CSS_VAR_MAP['text.input']).toContain('--text-input')
+    expect(CSS_VAR_MAP['text.input']).toContain('--editor-caret')
+  })
+})
+
 describe('built-in theme text contrast', () => {
+  it('exposes Nord palette swatches for theme previews', () => {
+    const theme = loadBuiltinTheme('nord.json')
+    const preview = extractPreviewColors(theme)
+
+    expect(preview.palette).toEqual(expect.arrayContaining([
+      '#3B4252',
+      '#434C5E',
+      '#4C566A',
+      '#D8DEE9',
+      '#88C0D0',
+      '#81A1C1',
+      '#8FBCBB',
+      '#A3BE8C',
+    ]))
+    expect(preview.palette.length).toBeLessThanOrEqual(10)
+  })
+
+  it('keeps Nord sidebar metadata readable against the sidebar surface', () => {
+    const theme = loadBuiltinTheme('nord.json')
+    const resolvedTheme = resolveTheme(theme, 'dark')
+    const background = resolvedTheme['bg.sidebar']
+    const readableSidebarTokens = [
+      'text.sidebar.item',
+      'text.sidebar.muted',
+      'text.sidebar.title',
+    ]
+
+    for (const token of readableSidebarTokens) {
+      expect(contrastRatio(resolvedTheme[token], background), `${token} contrast`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
   it('keeps GitHub Light chat metadata and thinking text readable', () => {
     const theme = loadBuiltinTheme('github-light.json')
     const resolvedTheme = resolveTheme(theme, 'light')

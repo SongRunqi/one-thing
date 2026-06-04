@@ -253,7 +253,7 @@ describe('content-parts helpers', () => {
       const streaming = makeToolCall('write-1', {
         toolName: 'write',
         status: 'input-streaming',
-        streamingArgs: '{"file_path":"a.txt","content":"hello"}',
+        streamingArgs: '{"path":"a.txt","content":"hello"}',
       })
       const parts: ContentPart[] = [
         { type: 'tool-call', toolCalls: [streaming] },
@@ -262,7 +262,7 @@ describe('content-parts helpers', () => {
       const finalized = makeToolCall('write-1', {
         toolName: 'write',
         status: 'executing',
-        arguments: { file_path: 'a.txt', content: 'hello' },
+        arguments: { path: 'a.txt', content: 'hello' },
       })
 
       upsertToolCall(parts, finalized)
@@ -271,7 +271,7 @@ describe('content-parts helpers', () => {
       const toolCalls = (parts[0] as { type: 'tool-call'; toolCalls: ToolCall[] }).toolCalls
       expect(toolCalls).toHaveLength(1)
       expect(toolCalls[0].status).toBe('executing')
-      expect(toolCalls[0].streamingArgs).toBe('{"file_path":"a.txt","content":"hello"}')
+      expect(toolCalls[0].streamingArgs).toBe('{"path":"a.txt","content":"hello"}')
     })
 
     it('pops waiting before merging', () => {

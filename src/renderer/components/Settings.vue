@@ -143,8 +143,8 @@ async function saveSettings() {
 }
 
 .settings-modal {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-sidebar-bg, var(--panel-2));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 16px;
   box-shadow: var(--shadow);
   width: 90%;
@@ -160,13 +160,13 @@ async function saveSettings() {
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .settings-header h3 {
   margin: 0;
   font-size: 20px;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .close-button {
@@ -174,7 +174,7 @@ async function saveSettings() {
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   padding: 0;
   width: 32px;
   height: 32px;
@@ -184,7 +184,7 @@ async function saveSettings() {
 }
 
 .close-button:hover {
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .settings-content {
@@ -201,7 +201,7 @@ async function saveSettings() {
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   font-size: 14px;
 }
 
@@ -209,7 +209,7 @@ async function saveSettings() {
 .slider {
   width: 100%;
   padding: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 12px;
   font-size: 14px;
   font-family: inherit;
@@ -218,8 +218,8 @@ async function saveSettings() {
 
 .input-field:focus {
   outline: none;
-  border-color: rgba(59, 130, 246, 0.35);
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 35%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
 }
 
 .slider {
@@ -231,14 +231,14 @@ async function saveSettings() {
 .help-text {
   margin: 8px 0 0 0;
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .settings-footer {
   display: flex;
   gap: 12px;
   padding: 20px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -256,21 +256,21 @@ async function saveSettings() {
 
 .cancel-button {
   background: transparent;
-  color: var(--text-primary);
-  border: 1px solid var(--border);
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  border: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .cancel-button:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .save-button {
-  background: rgba(59, 130, 246, 0.22);
-  color: var(--text-primary);
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 22%, transparent);
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 30%, transparent);
 }
 
 .save-button:hover {
-  background: rgba(59, 130, 246, 0.3);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 30%, transparent);
 }
 </style>

@@ -5,10 +5,9 @@
  * Based on OpenCode's permission system design.
  *
  * Flow:
- * 1. Tool calls Permission.ask() before dangerous operations
- * 2. System checks if pattern is already approved (workdir → session)
- * 3. If not, emits event via EventBus and waits for user response
- * 4. User can respond with: once, session, workdir, reject
+ * 1. PermissionPolicy decides allow / ask / deny before tool execution
+ * 2. Permission.ask() emits the approved ask to EventBus and waits for response
+ * 3. User can respond with: once, session, workdir, reject
  *
  * Permission Levels:
  * - once: Allow this single operation only (本次)
@@ -24,8 +23,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import path from 'path'
-import * as DirectoryPermissions from './directory-permissions.js'
+import { formatPermissionRejectedMessage } from '../../shared/tool-errors.js'
+import * as PermissionGrants from './permission-grants.js'
 
 // Lazy imports to avoid circular dependencies
 type EventBus = import('../events/event-bus.js').EventBus
@@ -60,9 +59,6 @@ export namespace Permission {
    */
   export type Response = 'once' | 'session' | 'workdir' | 'reject'
 
-  /** Legacy response type for backwards compatibility */
-  export type LegacyResponse = 'once' | 'always' | 'workspace' | 'reject'
-
   /**
    * Permission state per session
    */
@@ -72,7 +68,6 @@ export namespace Permission {
       resolve: () => void
       reject: (error: Error) => void
     }>
-    approved: Map<string, boolean>
   }
 
   // Session permission state
@@ -81,8 +76,15 @@ export namespace Permission {
   // EventBus reference (set via initialize())
   let eventBus: EventBus | null = null
 
+  export type Mode = 'normal' | 'auto-accept-edits' | 'dangerously-allow-all'
+
   // Channel resolver: given a sessionId, returns the current channel
   let channelResolver: ((sessionId: string) => string) | null = null
+
+  // Permission mode resolver: given a sessionId, returns the current mode.
+  // This is intentionally injected instead of importing settings here so unit
+  // tests and non-IPC integrations can use the Permission module standalone.
+  let modeResolver: ((sessionId: string) => Mode) | null = null
 
   // Subscription cleanup
   let unsubPermissionRespond: (() => void) | null = null
@@ -92,47 +94,10 @@ export namespace Permission {
     if (!session) {
       session = {
         pending: new Map(),
-        approved: new Map(),
       }
       sessions.set(sessionId, session)
     }
     return session
-  }
-
-  /**
-   * Convert pattern to keys for matching
-   */
-  function toKeys(pattern: Info['pattern'], type: string): string[] {
-    if (pattern === undefined) return [type]
-    return Array.isArray(pattern) ? pattern : [pattern]
-  }
-
-  /**
-   * Check if keys are covered by approved patterns
-   */
-  function isCovered(keys: string[], approved: Map<string, boolean>): boolean {
-    return keys.every(key => {
-      for (const [pattern] of approved) {
-        if (matchWildcard(key, pattern)) return true
-      }
-      return false
-    })
-  }
-
-  /**
-   * Simple wildcard matching (supports * at end)
-   */
-  function matchWildcard(text: string, pattern: string): boolean {
-    if (pattern === text) return true
-    if (pattern.endsWith('*')) {
-      const prefix = pattern.slice(0, -1)
-      return text.startsWith(prefix)
-    }
-    if (text.endsWith('*') && path.isAbsolute(text) && path.isAbsolute(pattern)) {
-      const dir = text.slice(0, -1).replace(/[\\/]$/, '')
-      return path.dirname(pattern) === dir
-    }
-    return false
   }
 
   /**
@@ -147,9 +112,11 @@ export namespace Permission {
   export function initialize(
     bus: EventBus,
     resolver: (sessionId: string) => string,
+    permissionModeResolver?: (sessionId: string) => Mode,
   ): void {
     eventBus = bus
     channelResolver = resolver
+    modeResolver = permissionModeResolver ?? null
 
     // Subscribe to permission-respond commands from all sessions
     unsubPermissionRespond = bus.onAnySession(
@@ -199,6 +166,7 @@ export namespace Permission {
     }
     eventBus = null
     channelResolver = null
+    modeResolver = null
     console.log('[Permission] Shut down')
   }
 
@@ -208,6 +176,10 @@ export namespace Permission {
   export function getPending(sessionId: string): Info[] {
     const session = getSession(sessionId)
     return Array.from(session.pending.values()).map(p => p.info)
+  }
+
+  export function getMode(sessionId: string): Mode {
+    return modeResolver ? modeResolver(sessionId) : 'normal'
   }
 
   /**
@@ -227,21 +199,9 @@ export namespace Permission {
     workingDirectory?: string
   }): Promise<void> {
     const session = getSession(input.sessionId)
-    const keys = toKeys(input.pattern, input.type)
 
-    // Check if approved at working-directory level first (persistent)
-    if (input.workingDirectory) {
-      if (DirectoryPermissions.areAllApprovedInWorkingDirectory(input.workingDirectory, keys)) {
-        console.log('[Permission] Already approved at working-directory level:', keys)
-        return
-      }
-    }
-
-    // Check if approved at session level (in-memory)
-    if (isCovered(keys, session.approved)) {
-      console.log('[Permission] Already approved at session level:', keys)
-      return
-    }
+    // PermissionPolicy owns mode auto-allow and grant matching decisions.
+    // Permission.ask is now only the low-level ask/await event bridge.
 
     // Resolve the target channel for this session
     const targetChannel = channelResolver
@@ -298,7 +258,7 @@ export namespace Permission {
   export function respond(input: {
     sessionId: string
     permissionId: string
-    response: Response | LegacyResponse
+    response: Response
     /** Optional reason for rejection */
     rejectReason?: string
   }): boolean {
@@ -310,7 +270,7 @@ export namespace Permission {
       return false
     }
 
-    const response = normalizeResponse(input.response)
+    const response = input.response
 
     console.log('[Permission] Response:', input.permissionId, response)
 
@@ -330,17 +290,29 @@ export namespace Permission {
     // Grant permission
     pending.resolve()
 
-    const keys = toKeys(pending.info.pattern, pending.info.type)
-
-    // Handle 'workdir' response - persist to working-directory storage
+    // Handle workspace/workdir response - persist scoped workspace grant.
     if (response === 'workdir' && pending.info.workingDirectory) {
-      DirectoryPermissions.approveInWorkingDirectory(pending.info.workingDirectory, keys)
-
-      // Auto-approve any other pending requests that match in this working directory.
+      PermissionGrants.addGrant({
+        scope: 'workspace',
+        type: pending.info.type,
+        pattern: pending.info.pattern ?? pending.info.type,
+        workspaceRoot: pending.info.workingDirectory,
+        createdFrom: {
+          messageId: pending.info.messageId,
+          toolCallId: pending.info.callId,
+          title: pending.info.title,
+        },
+        metadata: pending.info.metadata,
+      })
       for (const [id, other] of session.pending) {
         if (other.info.workingDirectory === pending.info.workingDirectory) {
-          const otherKeys = toKeys(other.info.pattern, other.info.type)
-          if (DirectoryPermissions.areAllApprovedInWorkingDirectory(pending.info.workingDirectory, otherKeys)) {
+          const otherGrant = PermissionGrants.matchGrant({
+            type: other.info.type,
+            pattern: other.info.pattern,
+            sessionId: input.sessionId,
+            workspaceRoot: other.info.workingDirectory,
+          })
+          if (otherGrant) {
             session.pending.delete(id)
             other.resolve()
           }
@@ -348,16 +320,28 @@ export namespace Permission {
       }
     }
 
-    // Handle 'session' response - store in session memory
+    // Handle 'session' response - store scoped session grant.
     if (response === 'session') {
-      for (const key of keys) {
-        session.approved.set(key, true)
-      }
-
-      // Auto-approve any other pending requests that match
+      PermissionGrants.addGrant({
+        scope: 'session',
+        type: pending.info.type,
+        pattern: pending.info.pattern ?? pending.info.type,
+        sessionId: input.sessionId,
+        createdFrom: {
+          messageId: pending.info.messageId,
+          toolCallId: pending.info.callId,
+          title: pending.info.title,
+        },
+        metadata: pending.info.metadata,
+      })
       for (const [id, other] of session.pending) {
-        const otherKeys = toKeys(other.info.pattern, other.info.type)
-        if (isCovered(otherKeys, session.approved)) {
+        const otherGrant = PermissionGrants.matchGrant({
+          type: other.info.type,
+          pattern: other.info.pattern,
+          sessionId: input.sessionId,
+          workspaceRoot: other.info.workingDirectory,
+        })
+        if (otherGrant) {
           session.pending.delete(id)
           other.resolve()
         }
@@ -365,12 +349,6 @@ export namespace Permission {
     }
 
     return true
-  }
-
-  function normalizeResponse(response: Response | LegacyResponse): Response {
-    if (response === 'always') return 'session'
-    if (response === 'workspace') return 'workdir'
-    return response
   }
 
   /**
@@ -404,11 +382,7 @@ export namespace Permission {
       public readonly metadata?: Record<string, unknown>,
       public readonly reason?: string
     ) {
-      // If user provided a reason, include it directly; otherwise use default message
-      const message = reason
-        ? `User rejected this operation: ${reason}`
-        : 'The user rejected permission to use this tool. You may try again with different parameters.'
-      super(message)
+      super(formatPermissionRejectedMessage(reason))
       this.name = 'PermissionRejectedError'
     }
   }

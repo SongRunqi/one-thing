@@ -45,8 +45,8 @@ defineEmits<{
 <style scoped>
 .problems-panel {
   height: 150px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-panel);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -58,8 +58,8 @@ header {
   align-items: center;
   justify-content: space-between;
   padding: 0 10px;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -68,13 +68,13 @@ header {
 header button {
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
 }
 
 .empty {
   padding: 16px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
 }
 
@@ -86,7 +86,7 @@ header button {
   align-items: center;
   border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 12px;
   text-align: left;
   cursor: pointer;
@@ -94,7 +94,7 @@ header button {
 }
 
 .problem-row:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .severity {
@@ -104,11 +104,11 @@ header button {
 }
 
 .severity.error {
-  background: #ef4444;
+  background: var(--ui-status-danger-fg, #ef4444);
 }
 
 .severity.warning {
-  background: #f59e0b;
+  background: var(--ui-status-warning-fg, #f59e0b);
 }
 
 .message,
@@ -119,6 +119,6 @@ header button {
 }
 
 .location {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 </style>

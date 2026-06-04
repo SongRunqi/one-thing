@@ -314,13 +314,18 @@ export async function search(options: {
   pattern: string
   glob?: string[]
   maxCount?: number
+  ignoreCase?: boolean
+  literal?: boolean
 }): Promise<Array<{
   path: string
   lineNumber: number
   lineText: string
 }>> {
   const rgPath = await getRipgrepPath()
-  const args = ['-n', '-H', '--field-match-separator=|', '--regexp', options.pattern]
+  const args = ['-n', '-H', '--color=never', '--hidden', '--field-match-separator=|']
+
+  if (options.ignoreCase) args.push('--ignore-case')
+  if (options.literal) args.push('--fixed-strings')
 
   if (options.glob) {
     for (const g of options.glob) {
@@ -332,7 +337,7 @@ export async function search(options: {
     args.push('--max-count', String(options.maxCount))
   }
 
-  args.push(options.cwd)
+  args.push('--regexp', options.pattern, options.cwd)
 
   const proc = spawn(rgPath, args, {
     stdio: ['ignore', 'pipe', 'pipe'],

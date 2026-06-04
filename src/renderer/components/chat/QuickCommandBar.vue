@@ -80,23 +80,23 @@ async function executeQuickCommand(commandId: string) {
 .quick-cmd-btn {
   padding: 4px 12px;
   border-radius: 12px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
   flex-shrink: 0;
   /* 毛玻璃效果 */
-  background: rgba(var(--bg-rgb, 30, 30, 35), 0.5);
+  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 50%, transparent);
   backdrop-filter: blur(12px) saturate(1.2);
   -webkit-backdrop-filter: blur(12px) saturate(1.2);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .quick-cmd-btn:hover {
-  background: var(--hover);
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--ui-state-hover-bg, var(--hover));
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .quick-cmd-btn:active {

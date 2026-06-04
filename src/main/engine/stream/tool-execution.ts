@@ -6,12 +6,15 @@
 import { v4 as uuidv4 } from 'uuid'
 import * as store from '../../store.js'
 import type { Step, StepType, SkillDefinition, ToolCall } from '../../../shared/ipc.js'
-import { executeTool } from '../../tools/index.js'
+import { analyzeTool, executeTool } from '../../tools/index.js'
 import { isMCPTool, executeMCPTool } from '../../mcp/index.js'
 import { Permission } from '../../permission/index.js'
-import type { ToolExecutionContext, ToolExecutionResult } from '../../tools/types.js'
+import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '../../tools/types.js'
 import type { StreamContext } from './stream-processor.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
+import { enforcePermissionPolicy } from '../../tools/core/permission-policy.js'
+import { textFromToolResult, toolFailureText, toolResultToStructured } from '../../tools/core/tool-result.js'
+import type { ToolEffect } from '../../tools/core/tool-effect.js'
 
 function isPermissionRejectedError(error: unknown): error is Permission.RejectedError {
   return error instanceof Permission.RejectedError ||
@@ -62,6 +65,10 @@ export function getStepType(toolName: string, args: Record<string, any>): StepTy
   return 'tool-call'
 }
 
+function textFromPartialResult(update: ToolPartialResultUpdate): string {
+  return textFromToolResult(update) || JSON.stringify(update)
+}
+
 /**
  * Generate a human-readable step title from tool name and arguments
  */
@@ -101,6 +108,7 @@ export async function executeToolDirectly(
     workingDirectoryRoots?: string[] // Additional sandbox roots
     abortSignal?: AbortSignal
     onMetadata?: (update: { title?: string; metadata?: Record<string, unknown> }) => void
+    onPartialResult?: (update: ToolPartialResultUpdate) => void
     // Step event callbacks for sub-agent tools (e.g., CustomAgent)
     onStepStart?: (step: Step) => void
     onStepComplete?: (step: Step) => void
@@ -124,18 +132,20 @@ export async function executeToolDirectly(
       if (context.abortSignal?.aborted) {
         return { success: false, error: 'Execution cancelled by user', aborted: true }
       }
-      await Permission.ask({
-        type: 'mcp',
-        pattern: toolName,
+      const effects: ToolEffect[] = [{
+        kind: 'mcp',
+        resources: [toolName],
+        barrier: true,
+        metadata: { toolName, arguments: args },
+      }]
+      await enforcePermissionPolicy({
         sessionId: context.sessionId,
         messageId: context.messageId,
-        callId: context.toolCallId,
-        title: `Run MCP tool: ${toolName}`,
-        workingDirectory: context.workingDirectory,
-        metadata: {
-          toolName,
-          arguments: args,
-        },
+        toolCallId: context.toolCallId,
+        toolName,
+        effects,
+        preview: { title: `Run MCP tool: ${toolName}`, metadata: { toolName, arguments: args } },
+        workspaceRoot: context.workingDirectory,
       })
       await context.beforeSideEffect?.()
       const result = await executeMCPTool(toolName, args)
@@ -156,10 +166,40 @@ export async function executeToolDirectly(
       workingDirectoryRoots: context.workingDirectoryRoots,
       abortSignal: context.abortSignal,
       onMetadata: context.onMetadata,
+      onPartialResult: context.onPartialResult,
       // Forward step callbacks for sub-agent tools (e.g., CustomAgent)
       onStepStart: context.onStepStart,
       onStepComplete: context.onStepComplete,
       beforeSideEffect: context.beforeSideEffect,
+    }
+    const analysis = await analyzeTool(toolName, args, execContext)
+    if (!analysis.success) {
+      return { success: false, error: analysis.error || 'Tool analysis failed' }
+    }
+    if (analysis.preview && context.onMetadata) {
+      context.onMetadata({
+        title: analysis.preview.title,
+        metadata: {
+          ...(analysis.preview.metadata ?? {}),
+          ...(analysis.preview.path && { path: analysis.preview.path }),
+          ...(analysis.preview.diff && { diff: analysis.preview.diff }),
+          ...(analysis.preview.additions !== undefined && { additions: analysis.preview.additions }),
+          ...(analysis.preview.deletions !== undefined && { deletions: analysis.preview.deletions }),
+        },
+      })
+    }
+    await enforcePermissionPolicy({
+      sessionId: context.sessionId,
+      messageId: context.messageId,
+      toolCallId: context.toolCallId,
+      toolName,
+      effects: analysis.effects ?? [],
+      preview: analysis.preview,
+      workspaceRoot: context.workingDirectory,
+    })
+    execContext.approvedAnalysis = {
+      effects: analysis.effects ?? [],
+      preview: analysis.preview,
     }
     const result = await executeTool(toolName, args, execContext)
     return result
@@ -168,7 +208,7 @@ export async function executeToolDirectly(
       console.log(`[DirectExec] Permission rejected for tool ${toolName}`)
       return {
         success: false,
-        error: error.message || 'User rejected this operation',
+        error: toolFailureText({ error: error.message, rejected: true, rejectionReason: error.reason }),
         rejected: true,
         rejectionReason: error.reason,
       }
@@ -280,6 +320,8 @@ export async function executeToolAndUpdate(
     emitter.sendStepAdded(step)
   }
 
+  emitter.sendToolExecutionStart(toolCall.id, step.id, toolCallData.toolName, toolCallData.args)
+
   toolCall.status = 'executing'
   toolCall.startTime = Date.now()
 
@@ -318,12 +360,17 @@ export async function executeToolAndUpdate(
 
           // If metadata contains diff info (edit tool), store in toolCall.changes
           if (update.metadata.diff) {
+            const changedPath = update.metadata.path as string
             const changesData = {
               diff: update.metadata.diff as string,
-              filePath: update.metadata.filePath as string,
+              filePath: changedPath,
               additions: (update.metadata.additions as number) || 0,
               deletions: (update.metadata.deletions as number) || 0,
-              originalContent: update.metadata.originalContent as string | undefined,  // For rollback
+              originalContent: update.metadata.originalContent as string | undefined,
+              originalContentHash: update.metadata.originalContentHash as string | undefined,
+              afterContentHash: update.metadata.afterContentHash as string | undefined,
+              auditId: update.metadata.auditId as string | undefined,
+              auditPath: update.metadata.auditPath as string | undefined,
             }
 
             // ★ 关键：同时更新局部 step 对象（因为 store.getSession 返回的是副本）
@@ -341,6 +388,15 @@ export async function executeToolAndUpdate(
         if (Object.keys(metadataUpdates).length > 0) {
           emitter.sendStepUpdated(step.id, metadataUpdates)
         }
+      },
+      onPartialResult: (update) => {
+        emitter.sendToolExecutionUpdate(toolCall.id, step.id, update)
+        emitter.sendStepUpdated(step.id, {
+          status: 'running',
+          partialResult: update,
+          partialResultIsPartial: true,
+          result: textFromPartialResult(update),
+        })
       },
       onStepStart: (subStep: Step) => {
         emitter.sendStepAdded(subStep)
@@ -377,8 +433,16 @@ export async function executeToolAndUpdate(
     } else {
       toolCall.status = result.success ? 'completed' : 'failed'
     }
+    const finalError = result.success
+      ? undefined
+      : toolFailureText({
+          error: result.error,
+          rejected: result.rejected,
+          rejectionReason: result.rejectionReason,
+          status: result.aborted ? 'cancelled' : 'failed',
+        })
     toolCall.result = result.data
-    toolCall.error = result.error
+    toolCall.error = finalError
     toolCall.rejected = result.rejected || undefined
     toolCall.rejectionReason = result.rejectionReason
     toolCall.requiresConfirmation = false
@@ -388,13 +452,17 @@ export async function executeToolAndUpdate(
     // Only use if it's a string - avoid [object Object] display for arrays/objects
     const rawTitle = result.data?.title
     const finalTitle = (typeof rawTitle === 'string' ? rawTitle : null) || step.title
+    const structuredResult = result.success ? toolResultToStructured(result.data) : undefined
+    emitter.sendToolExecutionEnd(toolCall.id, step.id, structuredResult, !result.success, finalError)
     emitter.sendStepUpdated(step.id, {
       status: stepStatus,
       title: finalTitle,  // Update title with final result title
       // Preserve step.toolCall.changes (set by onMetadata) when updating
       toolCall: { ...toolCall, changes: step.toolCall?.changes },
+      partialResult: structuredResult,
+      partialResultIsPartial: false,
       result: typeof result.data === 'string' ? result.data : JSON.stringify(result.data),
-      error: result.error,
+      error: finalError,
       rejected: result.rejected || undefined,
       rejectionReason: result.rejectionReason,
     })
@@ -402,4 +470,6 @@ export async function executeToolAndUpdate(
 
   store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
   emitter.sendToolResult(toolCall)
+  // TEMP [WaitingGap] diagnostic: when a tool result becomes visible (esp. failed)
+  console.info('[WaitingGap] tool settled', { tool: toolCall.toolName, status: toolCall.status, t: Date.now() })
 }

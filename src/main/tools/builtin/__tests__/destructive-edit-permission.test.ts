@@ -2,13 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs/promises'
 import path from 'path'
 import { EditTool } from '../edit.js'
-import { Permission } from '../../../permission/index.js'
-
-vi.mock('../../../permission/index.js', () => ({
-  Permission: {
-    ask: vi.fn().mockResolvedValue(undefined),
-  },
-}))
 
 const createdDirs: string[] = []
 
@@ -34,7 +27,7 @@ async function createTmpFile(prefix: string, content: string) {
   return { tmpRoot, filePath }
 }
 
-describe('destructive edit permission', () => {
+describe('destructive edit policy analysis', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -43,7 +36,7 @@ describe('destructive edit permission', () => {
     await Promise.all(createdDirs.splice(0).map(dir => fs.rm(dir, { recursive: true, force: true })))
   })
 
-  it('rejects prefix replacements that delete many lines', async () => {
+  it('allows explicit large replacements through execute after policy approval', async () => {
     const original = [
       '    ["6406584"] = "26406584",',
       '',
@@ -60,22 +53,36 @@ describe('destructive edit permission', () => {
     ].join('\n')
     const { tmpRoot, filePath } = await createTmpFile('destructive-edit', original)
 
-    await expect(EditTool.execute({
-      file_path: filePath,
-      old_string: original.trimEnd(),
-      new_string: [
-        '    ["6406584"] = "26406584",',
-        '',
-        '    -- EMEA 0615',
-      ].join('\n'),
-      replace_all: false,
-    }, createContext(tmpRoot))).rejects.toThrow('Refusing potentially destructive edit')
+    const analysis = await EditTool.analyze!({
+      path: filePath,
+      edits: [{
+        oldText: original.trimEnd(),
+        newText: [
+          '    ["6406584"] = "26406584",',
+          '',
+          '    -- EMEA 0615',
+        ].join('\n'),
+      }],
+    }, createContext(tmpRoot))
 
-    expect(Permission.ask).not.toHaveBeenCalled()
-    await expect(fs.readFile(filePath, 'utf-8')).resolves.toBe(original)
+    expect(analysis.effects[0]).toMatchObject({ kind: 'file_destructive_edit' })
+
+    await EditTool.execute({
+      path: filePath,
+      edits: [{
+        oldText: original.trimEnd(),
+        newText: [
+          '    ["6406584"] = "26406584",',
+          '',
+          '    -- EMEA 0615',
+        ].join('\n'),
+      }],
+    }, { ...createContext(tmpRoot), approvedAnalysis: analysis })
+
+    await expect(fs.readFile(filePath, 'utf-8')).resolves.toContain('    ["6406584"] = "26406584",')
   })
 
-  it('forces explicit permission for large non-truncating deletions', async () => {
+  it('classifies large non-truncating deletions as destructive edit effects', async () => {
     const original = [
       'start',
       'remove 1',
@@ -89,46 +96,32 @@ describe('destructive edit permission', () => {
     ].join('\n')
     const { tmpRoot, filePath } = await createTmpFile('large-delete-edit', original)
 
-    await EditTool.execute({
-      file_path: filePath,
-      old_string: original.trimEnd(),
-      new_string: 'start changed\nend changed',
-      replace_all: false,
+    const analysis = await EditTool.analyze!({
+      path: filePath,
+      edits: [{ oldText: original.trimEnd(), newText: 'start changed\nend changed' }],
     }, createContext(tmpRoot))
 
-    expect(Permission.ask).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'file_destructive_edit',
-        pattern: expect.stringContaining(`explicit-file-edit:${filePath}:`),
-        title: `Confirm large deletion: ${path.basename(filePath)}`,
-        metadata: expect.objectContaining({
-          filePath,
-          risk: 'large_deletion',
-          requiresExplicitPermission: true,
-        }),
+    expect(analysis.effects[0]).toMatchObject({
+      kind: 'file_destructive_edit',
+      resources: [path.join(path.dirname(filePath), '*')],
+      metadata: expect.objectContaining({
+        path: filePath,
+        risk: 'large_deletion',
       }),
-    )
-    expect(vi.mocked(Permission.ask).mock.calls[0][0].pattern).not.toBe(path.join(path.dirname(filePath), '*'))
+    })
   })
 
-  it('uses normal file edit permission for small replacements', async () => {
+  it('classifies small replacements as normal file edit effects', async () => {
     const { tmpRoot, filePath } = await createTmpFile('small-edit', 'A: old\nB: old\n')
 
-    await EditTool.execute({
-      file_path: filePath,
-      old_string: 'A: old',
-      new_string: 'A: new',
-      replace_all: false,
+    const analysis = await EditTool.analyze!({
+      path: filePath,
+      edits: [{ oldText: 'A: old', newText: 'A: new' }],
     }, createContext(tmpRoot))
 
-    expect(Permission.ask).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'file_edit',
-        pattern: path.join(path.dirname(filePath), '*'),
-        metadata: expect.objectContaining({
-          requiresExplicitPermission: false,
-        }),
-      }),
-    )
+    expect(analysis.effects[0]).toMatchObject({
+      kind: 'file_edit',
+      resources: [path.join(path.dirname(filePath), '*')],
+    })
   })
 })

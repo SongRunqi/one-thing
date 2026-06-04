@@ -1,31 +1,15 @@
 /**
  * Prompt Service
  *
- * Exports for the Handlebars-based prompt template system.
+ * TypeScript prompt builders and context assembly. No Handlebars templates are used.
  */
 
-// Core manager
-export {
-  getPromptManager,
-  initializePromptManager,
-  PromptManager,
-} from './prompt-manager.js'
-
-// Types
 export type {
   OSType,
-  TemplateName,
-  TemplateVariables,
-  SystemPromptVariables,
-  SkillsVariables,
   TemplateSkill,
   PromptSegment,
 } from './types.js'
 
-// Hot reload watcher (dev only)
-export { startTemplateWatcher, stopTemplateWatcher } from './watcher.js'
-
-// Builders (template-based)
 export {
   buildSystemPrompt,
   buildSkillsAwarenessPrompt,
@@ -35,15 +19,14 @@ export {
 } from './builders.js'
 
 export {
-  buildPromptContext,
-  buildRequestMessages,
+  buildPrompt,
   loadAgentsMdInstructions,
 } from './context.js'
 export type {
   BuildPromptContextOptions,
-  PromptContextBuildResult,
+  BuildPromptOptions,
+  BuildPromptResult,
   PromptRequestMessage,
-  BuildRequestMessagesResult,
 } from './context.js'
 
 export {

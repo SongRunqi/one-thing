@@ -95,6 +95,10 @@ import type {
   GetProvidersResponse,
   ToolDefinition,
   ToolCall,
+  ToolResult,
+  ToolPartialResult,
+  ToolRenderKind,
+  PermissionMode,
   ToolSettings,
   BashToolSettings,
   GetToolsResponse,
@@ -330,6 +334,10 @@ export type {
   MarkdownSaveAttachmentsResponse,
   ToolDefinition,
   ToolCall,
+  ToolResult,
+  ToolPartialResult,
+  ToolRenderKind,
+  PermissionMode,
   ToolSettings,
   BashToolSettings,
   ContentPart,
@@ -467,8 +475,13 @@ export interface ElectronAPI {
   updateSessionPin: (sessionId: string, isPinned: boolean) => Promise<UpdateSessionPinResponse>
   updateSessionModel: (sessionId: string, provider: string, model: string) => Promise<{ success: boolean; error?: string }>
   updateSessionAgent: (sessionId: string, agentId: string) => Promise<{ success: boolean; error?: string }>
+  updateSessionPermissionMode: (sessionId: string, permissionMode: PermissionMode) => Promise<{ success: boolean; error?: string }>
   updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) => Promise<{ success: boolean; error?: string }>
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
+  listPermissionGrants: (options: { sessionId?: string; workspaceRoot?: string }) => Promise<{ success: boolean; error?: string; sessionGrants?: any[]; workspaceGrants?: any[] }>
+  revokePermissionGrant: (id: string) => Promise<{ success: boolean; error?: string }>
+  clearSessionPermissionGrants: (sessionId: string) => Promise<{ success: boolean; error?: string }>
+  clearWorkspacePermissionGrants: (workspaceRoot: string) => Promise<{ success: boolean; error?: string }>
   // Variables subsystem (scalar variables)
   listVariables: (sessionId: string) => Promise<VariablesListResponse>
   setVariable: (sessionId: string, name: string, value: string, description?: string, scope?: 'global' | 'session') => Promise<VariablesSetResponse>
@@ -547,16 +560,16 @@ export interface ElectronAPI {
   getTools: () => Promise<GetToolsResponse>
   executeTool: (toolId: string, args: Record<string, any>, messageId: string, sessionId: string) => Promise<ExecuteToolResponse>
   cancelTool: (toolCallId: string) => Promise<{ success: boolean }>
+  listBackgroundJobs: (options?: { includeInactive?: boolean }) => Promise<{ success: boolean; jobs?: Array<Record<string, any>>; error?: string }>
+  stopBackgroundJob: (jobId: string) => Promise<{ success: boolean; error?: string }>
   updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolCall>) => Promise<{ success: boolean }>
   abortStream: (sessionId?: string) => Promise<{ success: boolean }>
   getActiveStreams: () => Promise<{ success: boolean; streams?: string[] }>
   resumeAfterToolConfirm: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>
 
   // Permission methods
-  respondToPermission: (request: { sessionId: string; permissionId: string; response: 'once' | 'session' | 'workdir' | 'workspace' | 'reject' | 'always'; rejectReason?: string }) => Promise<{ success: boolean; error?: string }>
   clearSessionPermissions: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   getPendingPermissions: (sessionId: string) => Promise<{ success: boolean; pending?: PermissionInfo[]; error?: string }>
-  onPermissionRequest: (callback: (info: PermissionInfo) => void) => () => void
 
   // MCP methods
   mcpGetServers: () => Promise<MCPGetServersResponse>
@@ -670,7 +683,7 @@ export interface ElectronAPI {
   listFiles: (options: { cwd: string; query?: string; limit?: number }) => Promise<{ success: boolean; files: string[]; error?: string }>
 
   // File rollback (for /files command)
-  rollbackFile: (options: { filePath: string; originalContent: string; isNew: boolean }) => Promise<{ success: boolean; error?: string }>
+  rollbackFile: (options: { auditPath?: string; filePath?: string; originalContent?: string; isNew?: boolean }) => Promise<{ success: boolean; error?: string; auditId?: string; filePath?: string; restoredExists?: boolean }>
 
   // Directories listing (for /cd path completion)
   listDirs: (options: { basePath: string; query?: string; limit?: number }) => Promise<{ success: boolean; dirs: string[]; basePath: string; error?: string }>

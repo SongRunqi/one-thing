@@ -1,14 +1,12 @@
 /**
  * Prompt-rendering helpers for project-dirs.
  *
- * Two output shapes for two Handlebars partials:
- *   - active-project.hbs   ← renders one project (when current workdir
- *                             matches a known project)
- *   - known-projects.hbs   ← renders the recently-used list
+ * Two output shapes for prompt context builders:
+ *   - active project: renders one project when current workdir matches a known project
+ *   - known projects: renders the recently-used list
  *
- * Builders return plain template-friendly objects rather than strings
- * so partials can lay them out and future fields (reflections, tags)
- * slot in without rewriting render logic here.
+ * Builders return plain formatter-friendly objects rather than strings
+ * so future fields (reflections, tags) can slot in without rewriting lookup logic here.
  */
 
 import * as os from 'os'

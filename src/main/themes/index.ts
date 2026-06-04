@@ -7,7 +7,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import type { Theme, ThemeMeta, Base46Theme } from '../../shared/ipc/themes.js'
-import { resolveTheme, extractPreviewColors } from './resolver.js'
+import { resolveTheme, resolveThemeHighlights, resolveThemeUI, extractPreviewColors } from './resolver.js'
 import { generateCSSVariables } from './css-mapper.js'
 import { parseBase46Lua, convertBase46ToTheme } from './base46-parser.js'
 
@@ -321,9 +321,11 @@ function applyThemeInternal(
 ): Record<string, string> {
   // Resolve all color references
   const resolvedColors = resolveTheme(theme, mode)
+  const resolvedHighlights = resolveThemeHighlights(theme, mode, resolvedColors)
+  const resolvedUI = resolveThemeUI(theme, mode, resolvedColors)
 
   // Map to CSS variables
-  const cssVariables = generateCSSVariables(resolvedColors)
+  const cssVariables = generateCSSVariables(resolvedColors, resolvedHighlights, resolvedUI)
 
   return cssVariables
 }

@@ -211,7 +211,7 @@
                   class="inline-reasoning-body"
                 >
                   <div
-                    class="inline-reasoning-content"
+                    class="inline-reasoning-content md-body"
                   >
                     <StreamingMarkdown
                       v-if="shouldUseStreamingMarkdown(false)"
@@ -348,7 +348,7 @@ const emit = defineEmits<{
   contentClick: [event: MouseEvent]
   textSelection: [text: string, position: { top: number; left: number }]
   executeTool: [toolCall: ToolCall]
-  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
+  confirmTool: [toolCall: ToolCall, response: 'once']
   rejectTool: [toolCall: ToolCall]
   openFile: [filePath: string]
 }>()
@@ -442,17 +442,12 @@ function getOtherPartKey(part: ContentPart, index: number): string {
   return `part-${index}`
 }
 
-function contentFingerprint(content: string): string {
-  let hash = 2166136261
-  for (let i = 0; i < content.length; i += 1) {
-    hash ^= content.charCodeAt(i)
-    hash = Math.imul(hash, 16777619)
-  }
-  return `${content.length}:${hash >>> 0}`
-}
-
 function inlineReasoningKey(part: Extract<ContentPart, { type: 'reasoning' }>, index: number): string {
-  return `reasoning-${index}-${contentFingerprint(part.content)}`
+  // Stable across streaming: a reasoning part keeps its position while its
+  // content grows. Keying on the content fingerprint changed the key on every
+  // chunk, so an expanded streaming block lost its state and snapped shut —
+  // making it impossible to keep the last (still-streaming) thought open.
+  return `reasoning-${part.turnIndex ?? index}`
 }
 
 function hasVisibleReasoningContent(content: string): boolean {
@@ -695,8 +690,8 @@ function handleContentClick(event: MouseEvent) {
   max-width: 80%;
   padding: var(--message-padding, 14px 18px);
   border-radius: 18px;
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   position: relative;
   transition: all 0.2s ease;
   box-shadow: var(--shadow);
@@ -719,9 +714,9 @@ function handleContentClick(event: MouseEvent) {
 
 /* User message bubble */
 .bubble.user {
-  background: var(--user-bubble);
+  background: var(--ui-message-user-bg, var(--user-bubble));
   border-radius: 18px 18px 4px 18px;
-  border: 1px solid var(--user-bubble-border);
+  border: 1px solid var(--ui-message-user-border, var(--user-bubble-border));
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   width: fit-content;
 }
@@ -732,17 +727,17 @@ html[data-theme='light'] .bubble.user {
 
 /* Custom text selection highlight for AI messages */
 .bubble.assistant ::selection {
-  background: rgba(59, 130, 246, 0.35);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 35%, transparent);
   color: inherit;
 }
 
 .bubble.assistant ::-moz-selection {
-  background: rgba(59, 130, 246, 0.35);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 35%, transparent);
   color: inherit;
 }
 
 html[data-theme='light'] .bubble.assistant ::selection {
-  background: rgba(59, 130, 246, 0.25);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 25%, transparent);
 }
 
 /* Message attachments */
@@ -786,7 +781,7 @@ html[data-theme='light'] .bubble.assistant ::selection {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   font-size: 13px;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .attachment-file svg {
@@ -811,11 +806,11 @@ html[data-theme='light'] .attachment-file {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background: rgba(var(--accent-rgb), 0.1);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
   border-radius: 12px;
   margin-bottom: 8px;
   font-size: 12px;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .skill-icon {
@@ -863,10 +858,10 @@ html[data-theme='light'] .attachment-file {
   aspect-ratio: 1 / 1;
   overflow: hidden;
   border-radius: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   background:
-    linear-gradient(135deg, rgba(var(--accent-rgb), 0.08), transparent 36%),
-    var(--bg-elevated);
+    linear-gradient(135deg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent), transparent 36%),
+    var(--ui-surface-elevated-bg, var(--bg-elevated));
 }
 
 .image-generation-skeleton::after {
@@ -918,7 +913,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   background: linear-gradient(
     to bottom,
     transparent,
-    var(--user-bubble)
+    var(--ui-message-user-bg, var(--user-bubble))
   );
   pointer-events: none;
 }
@@ -934,14 +929,14 @@ html[data-theme='light'] .image-generation-skeleton::after {
   margin-top: 4px;
   background: transparent;
   border: none;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 13px;
   cursor: pointer;
   transition: color 0.2s ease;
 }
 
 .collapse-toggle:hover {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .collapse-icon {
@@ -959,18 +954,18 @@ html[data-theme='light'] .image-generation-skeleton::after {
   font-family: var(--font-body);
   line-height: var(--message-line-height-px, 24px);
   font-size: var(--message-font-size, 15px);
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   letter-spacing: 0.01em;
 }
 
 /* AI message text */
 .bubble.assistant .content {
-  color: var(--ai-text);
+  color: var(--ui-message-assistant-fg, var(--ai-text));
 }
 
 .bubble.user .content {
   line-height: var(--message-line-height-px, 24px);
-  color: var(--text-user-primary);
+  color: var(--ui-message-user-fg, var(--text-user-primary));
 }
 
 /* ============ Text 淡入动画 ============ */
@@ -988,8 +983,8 @@ html[data-theme='light'] .image-generation-skeleton::after {
 .tool-loop-waiting {
   --waiting-fg: color-mix(
     in srgb,
-    var(--text-ai-thinking, var(--text-muted, var(--muted))) 72%,
-    var(--text-primary, var(--text)) 28%
+    var(--ui-message-thinking-fg, var(--text-ai-thinking, var(--text-muted, var(--muted)))) 72%,
+    var(--ui-text-primary-fg, var(--text-primary, var(--text))) 28%
   );
   display: inline-flex;
   align-items: center;
@@ -1006,8 +1001,8 @@ html[data-theme='light'] .image-generation-skeleton::after {
   height: 6px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 28%, transparent);
+  background: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, transparent);
   animation: waitingDotPulse 1.35s ease-in-out infinite;
 }
 
@@ -1024,8 +1019,8 @@ html[data-theme='light'] .image-generation-skeleton::after {
 .inline-reasoning {
   --reasoning-fg: color-mix(
     in srgb,
-    var(--text-ai-thinking, var(--text-muted, var(--muted))) 76%,
-    var(--text-primary, var(--text)) 24%
+    var(--ui-message-thinking-fg, var(--text-ai-thinking, var(--text-muted, var(--muted)))) 76%,
+    var(--ui-text-primary-fg, var(--text-primary, var(--text))) 24%
   );
   margin: 3px 0;
   color: var(--reasoning-fg);
@@ -1071,10 +1066,10 @@ html[data-theme='light'] .image-generation-skeleton::after {
   min-height: 0;
   overflow: hidden;
   padding-left: 10px;
-  border-left: 2px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-left: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 34%, var(--ui-border-default-border, var(--border)));
   font-size: 13px;
   line-height: 1.55;
-  color: color-mix(in srgb, var(--reasoning-fg) 92%, var(--text-primary, var(--text)) 8%);
+  color: color-mix(in srgb, var(--reasoning-fg) 92%, var(--ui-text-primary-fg, var(--text-primary, var(--text))) 8%);
 }
 
 .inline-reasoning-content :deep(p) {
@@ -1206,13 +1201,13 @@ html[data-theme='light'] .image-generation-skeleton::after {
 .content :deep(blockquote) {
   margin: var(--content-paragraph-gap, 8px) 0;
   padding: 0.3em 0.8em;
-  border-left: 2px solid var(--muted);
-  color: var(--muted);
+  border-left: 2px solid var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg, var(--muted));
   border-radius: 0 4px 4px 0;
 }
 
 .content :deep(a) {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   text-decoration: none;
 }
 
@@ -1224,7 +1219,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
 .content :deep(hr) {
   border: none;
   height: 1px;
-  background: var(--border);
+  background: var(--ui-border-default-border, var(--border));
   margin: var(--content-spacing-px, 11px) 0;
   opacity: 0.3;
 }
@@ -1264,28 +1259,24 @@ html[data-theme='light'] .content :deep(img:hover) {
 
 .content :deep(th),
 .content :deep(td) {
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   padding: 8px 12px;
   text-align: left;
 }
 
 .content :deep(th) {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--ui-state-hover-bg, rgba(255, 255, 255, 0.05));
   font-weight: 600;
 }
 
 /* Inline code */
 .content :deep(.inline-code) {
-  background: rgba(255, 255, 255, 0.1);
   padding: 2px 6px;
   border-radius: 4px;
+  color: var(--hg-syntax-plain-fg, var(--text-code-inline));
+  background: var(--ui-surface-code-inline-bg, var(--bg-code-inline));
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 0.9em;
-}
-
-html[data-theme='light'] .content :deep(.inline-code) {
-  background: rgba(0, 0, 0, 0.06);
-  color: #e45649;
 }
 
 /* Code block container */
@@ -1293,8 +1284,8 @@ html[data-theme='light'] .content :deep(.inline-code) {
   margin: var(--content-spacing-px, 11px) 0;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid var(--border-code, var(--border));
-  background: var(--bg-code-block, rgba(0, 0, 0, 0.3));
+  border: 1px solid var(--ui-surface-code-block-border, var(--border-code, var(--border)));
+  background: var(--ui-surface-code-block-bg, var(--bg-code-block));
 }
 
 .content :deep(.code-block-header) {
@@ -1302,14 +1293,14 @@ html[data-theme='light'] .content :deep(.inline-code) {
   justify-content: space-between;
   align-items: center;
   padding: 2px 10px;
-  background: var(--bg-code-block, rgba(0, 0, 0, 0.3));
-  border-bottom: 1px solid var(--border-code, var(--border));
+  background: var(--ui-surface-code-header-bg, var(--bg-code-header));
+  border-bottom: 1px solid var(--ui-surface-code-block-border, var(--border-code, var(--border)));
 }
 
 .content :deep(.code-block-lang) {
   font-size: 11px;
   line-height: 20px;
-  color: var(--text-secondary);
+  color: var(--ui-text-secondary-fg, var(--text-secondary));
   text-transform: lowercase;
 }
 
@@ -1323,14 +1314,14 @@ html[data-theme='light'] .content :deep(.inline-code) {
   border-radius: 6px;
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .content :deep(.code-block-copy:hover) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: var(--ui-state-hover-bg, var(--bg-hover));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .content :deep(.code-block-copy .check-icon) {
@@ -1343,7 +1334,7 @@ html[data-theme='light'] .content :deep(.inline-code) {
 
 .content :deep(.code-block-copy.copied .check-icon) {
   display: block;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .content :deep(pre) {
@@ -1361,7 +1352,7 @@ html[data-theme='light'] .content :deep(.inline-code) {
 /* highlight.js base - syntax colors are handled by global hljs-theme.css */
 .content :deep(.hljs) {
   background: transparent;
-  color: var(--text-code-block, #e6e6e6);
+  color: var(--hg-syntax-plain-fg, var(--text-code-block));
 }
 
 /* Light theme code block - colors are now controlled by theme variables */
@@ -1387,11 +1378,11 @@ html[data-theme='light'] .content :deep(.inline-code) {
 
 /* Dark theme: invert MathJax SVG colors */
 .content :deep(mjx-container svg) {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 html[data-theme='light'] .content :deep(mjx-container svg) {
-  color: #1a1a1a;
+  color: var(--ui-text-primary-fg, #1a1a1a);
 }
 
 </style>

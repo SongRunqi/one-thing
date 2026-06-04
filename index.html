@@ -9,6 +9,10 @@
       // Uses inline styles on documentElement for HIGHEST CSS specificity
       // This cannot be overridden by any stylesheet rules
       (function() {
+        // Transparent panel windows (e.g. the standalone Todo window) draw their
+        // own rounded surface, so the root must stay transparent — otherwise this
+        // opaque inline background fills the square behind the rounded corners.
+        var isTransparentWindow = window.location.hash.indexOf('#/todo-plan') === 0;
         try {
           var cachedCss = localStorage.getItem('cached-theme-css');
 
@@ -25,20 +29,20 @@
 
             // Set background color
             var bgColor = variables['--bg-app'] || variables['--bg'] || '#282726';
-            document.documentElement.style.backgroundColor = bgColor;
+            document.documentElement.style.backgroundColor = isTransparentWindow ? 'transparent' : bgColor;
             document.documentElement.style.margin = '0';
             document.documentElement.style.padding = '0';
 
             console.log('[Theme] Applied cached CSS via inline style (highest specificity)');
           } else {
             // No cache - just set basic background (will be overridden by theme later)
-            document.documentElement.style.backgroundColor = '#282726';
+            document.documentElement.style.backgroundColor = isTransparentWindow ? 'transparent' : '#282726';
             document.documentElement.style.margin = '0';
             document.documentElement.style.padding = '0';
           }
         } catch (e) {
           console.warn('[Theme] Failed to apply cached theme:', e);
-          document.documentElement.style.backgroundColor = '#282726';
+          document.documentElement.style.backgroundColor = isTransparentWindow ? 'transparent' : '#282726';
         }
       })();
     </script>

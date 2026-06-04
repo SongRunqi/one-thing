@@ -38,15 +38,13 @@ describe('same-file edit ordering', () => {
     const queue = new OrderedSideEffectQueue()
     const metadataByCall = new Map<string, any[]>()
 
-    async function runEdit(callId: string, old_string: string, new_string: string) {
+    async function runEdit(callId: string, oldText: string, newText: string) {
       const gate = queue.createGate()
       metadataByCall.set(callId, [])
       try {
         return await EditTool.execute({
-          file_path: filePath,
-          old_string,
-          new_string,
-          replace_all: false,
+          path: filePath,
+          edits: [{ oldText, newText }],
         }, {
           sessionId: 'test-session',
           messageId: 'test-message',
@@ -76,6 +74,8 @@ describe('same-file edit ordering', () => {
     expect(first.metadata.originalContent).toContain('A: old\nB: old\nC: old')
     expect(second.metadata.originalContent).toContain('A: new\nB: old\nC: old')
     expect(third.metadata.originalContent).toContain('A: new\nB: new\nC: old')
-    expect(Permission.ask).toHaveBeenCalledTimes(3)
+    // Direct tool execution no longer performs tool-internal Permission.ask();
+    // centralized analyze → PermissionPolicy handles permission before execute.
+    expect(Permission.ask).not.toHaveBeenCalled()
   })
 })

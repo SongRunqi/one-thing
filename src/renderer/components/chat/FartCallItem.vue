@@ -343,18 +343,22 @@ function maybePlayAudio() {
   margin: 8px 0;
   padding: 10px;
   background:
-    linear-gradient(180deg, #18181b 0%, #0c0c0e 100%);
-  border: 1px solid #3f3f46;
+    linear-gradient(
+      180deg,
+      var(--ui-surface-floating-bg, #18181b) 0%,
+      var(--ui-surface-app-bg, #0c0c0e) 100%
+    );
+  border: 1px solid var(--ui-border-strong-border, #3f3f46);
   border-radius: 8px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 4px 16px rgba(0, 0, 0, 0.45);
   font-family: 'Press Start 2P', 'VT323', 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  color: #00ff88;
+  color: var(--ui-status-success-fg, #00ff88);
 }
 
 .arcade-cabinet.status-failed {
-  border-color: #7f1d1d;
+  border-color: var(--ui-status-danger-border, #7f1d1d);
 }
 
 /* ── Marquee ── */
@@ -365,9 +369,9 @@ function maybePlayAudio() {
   gap: 10px;
   padding: 6px 10px;
   background:
-    linear-gradient(180deg, #db2777 0%, #7e22ce 100%);
+    linear-gradient(180deg, var(--ui-accent-primary-fg, #db2777) 0%, var(--ui-accent-subtle-fg, #7e22ce) 100%);
   border-radius: 4px;
-  color: #fff;
+  color: var(--ui-text-inverse-fg, #fff);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 2px;
@@ -395,9 +399,9 @@ function maybePlayAudio() {
 .crt {
   position: relative;
   padding: 6px;
-  background: #000;
+  background: var(--ui-surface-app-bg, #000);
   border-radius: 10px;
-  border: 2px solid #27272a;
+  border: 2px solid var(--ui-border-strong-border, #27272a);
   box-shadow:
     inset 0 0 20px rgba(0, 255, 136, 0.15),
     inset 0 0 60px rgba(0, 0, 0, 0.8);
@@ -409,7 +413,11 @@ function maybePlayAudio() {
   padding: 14px 16px 18px;
   border-radius: 8px;
   background:
-    radial-gradient(ellipse at center, #0b1b13 0%, #000 80%);
+    radial-gradient(
+      ellipse at center,
+      var(--ui-surface-code-block-bg, #0b1b13) 0%,
+      var(--ui-surface-app-bg, #000) 80%
+    );
   overflow: hidden;
 }
 
@@ -420,20 +428,20 @@ function maybePlayAudio() {
   gap: 10px;
   font-size: 10px;
   letter-spacing: 2px;
-  color: #a3e635;
+  color: var(--ui-status-success-fg, #a3e635);
   margin-bottom: 8px;
   text-shadow: 0 0 6px rgba(163, 230, 53, 0.5);
 }
 
 .hud-label {
-  color: #facc15;
+  color: var(--ui-status-warning-fg, #facc15);
   text-shadow: 0 0 6px rgba(250, 204, 21, 0.5);
 }
 
 .hud-value {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  color: #fff;
+  color: var(--ui-text-inverse-fg, #fff);
   text-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
 }
 
@@ -462,15 +470,15 @@ function maybePlayAudio() {
   max-width: 80%;
   margin: 0 auto 8px;
   padding: 8px 12px;
-  background: #fff;
-  color: #111;
-  border: 2px solid #000;
+  background: var(--ui-surface-floating-bg, #fff);
+  color: var(--ui-text-primary-fg, #111);
+  border: 2px solid var(--ui-border-strong-border, #000);
   border-radius: 6px;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 12px;
   line-height: 1.45;
   box-shadow:
-    2px 2px 0 #000,
+    2px 2px 0 var(--ui-border-strong-border, #000),
     4px 4px 0 rgba(0, 0, 0, 0.2);
   text-shadow: none;
 }
@@ -489,8 +497,8 @@ function maybePlayAudio() {
   height: 0;
   border-left: 8px solid transparent;
   border-right: 8px solid transparent;
-  border-top: 10px solid #fff;
-  filter: drop-shadow(0 2px 0 #000);
+  border-top: 10px solid var(--ui-surface-floating-bg, #fff);
+  filter: drop-shadow(0 2px 0 var(--ui-border-strong-border, #000));
 }
 
 .bubble-tail::after {
@@ -502,13 +510,13 @@ function maybePlayAudio() {
   height: 0;
   border-left: 8px solid transparent;
   border-right: 8px solid transparent;
-  border-top: 10px solid #000;
+  border-top: 10px solid var(--ui-border-strong-border, #000);
   z-index: -1;
 }
 
 .caret {
   display: inline-block;
-  color: #db2777;
+  color: var(--ui-accent-primary-fg, #db2777);
   animation: caret-blink 0.6s steps(2, end) infinite;
   margin-left: 1px;
 }
@@ -572,11 +580,11 @@ function maybePlayAudio() {
   min-width: 70px;
   height: 30px;
   padding: 0 10px;
-  border: 2px solid #0f172a;
+  border: 2px solid var(--ui-border-strong-border, #0f172a);
   border-radius: 14px;
   background:
-    linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
-  color: #fff;
+    linear-gradient(180deg, var(--ui-status-danger-fg, #ef4444) 0%, var(--ui-status-danger-fg, #b91c1c) 100%);
+  color: var(--ui-text-inverse-fg, #fff);
   font-family: inherit;
   font-size: 9px;
   letter-spacing: 1.5px;
@@ -585,7 +593,7 @@ function maybePlayAudio() {
   box-shadow:
     inset 0 2px 0 rgba(255, 255, 255, 0.25),
     inset 0 -2px 0 rgba(0, 0, 0, 0.3),
-    0 2px 0 #0f172a;
+    0 2px 0 var(--ui-border-strong-border, #0f172a);
   transition: transform 0.06s ease, box-shadow 0.06s ease;
 }
 
@@ -594,7 +602,7 @@ function maybePlayAudio() {
   box-shadow:
     inset 0 2px 0 rgba(255, 255, 255, 0.2),
     inset 0 -1px 0 rgba(0, 0, 0, 0.3),
-    0 0 0 #0f172a;
+    0 0 0 var(--ui-border-strong-border, #0f172a);
 }
 
 .arcade-btn:disabled {
@@ -603,11 +611,11 @@ function maybePlayAudio() {
 }
 
 .btn-start {
-  background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
+  background: linear-gradient(180deg, var(--ui-status-success-fg, #22c55e) 0%, var(--ui-status-success-fg, #15803d) 100%);
 }
 
 .btn-sound {
-  background: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%);
+  background: linear-gradient(180deg, var(--ui-accent-primary-fg, var(--accent)) 0%, var(--ui-accent-primary-fg, var(--accent)) 100%);
 }
 
 .btn-label {
@@ -617,10 +625,10 @@ function maybePlayAudio() {
 .credits {
   margin-left: auto;
   padding: 4px 10px;
-  border: 1px solid #3f3f46;
+  border: 1px solid var(--ui-border-strong-border, #3f3f46);
   border-radius: 4px;
-  background: #000;
-  color: #facc15;
+  background: var(--ui-surface-app-bg, #000);
+  color: var(--ui-status-warning-fg, #facc15);
   font-size: 9px;
   letter-spacing: 2px;
   font-family: inherit;
@@ -629,7 +637,7 @@ function maybePlayAudio() {
 
 /* ── Status tints ── */
 .arcade-cabinet.status-failed .stage {
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
   text-shadow:
     0 0 8px rgba(239, 68, 68, 0.6),
     0 0 16px rgba(239, 68, 68, 0.35);

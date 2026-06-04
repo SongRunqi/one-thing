@@ -5,6 +5,7 @@ import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { TokenUsage, SessionTokenUsage } from '../../shared/ipc.js'
 import * as store from '../store.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
+import type { PermissionMode } from '../../shared/ipc.js'
 import { workdirGateway } from '../variables/gateways.js'
 import {
   sanitizeMessagesForRenderer,
@@ -238,6 +239,18 @@ export function registerSessionHandlers() {
       return { success: false, error: 'Agent not found' }
     }
     const success = store.updateSessionAgent(sessionId, nextAgentId)
+    if (!success) {
+      return { success: false, error: 'Session not found' }
+    }
+    return { success: true }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_PERMISSION_MODE, async (_event, { sessionId, permissionMode }) => {
+    const allowed: PermissionMode[] = ['normal', 'auto-accept-edits', 'dangerously-allow-all']
+    if (!allowed.includes(permissionMode)) {
+      return { success: false, error: 'Invalid permission mode' }
+    }
+    const success = store.updateSessionPermissionMode(sessionId, permissionMode)
     if (!success) {
       return { success: false, error: 'Session not found' }
     }

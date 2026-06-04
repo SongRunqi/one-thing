@@ -1188,7 +1188,7 @@ function normalizeASRTestError(error: any) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--border));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
 }
 
 .settings-grid:last-child {
@@ -1205,7 +1205,7 @@ function normalizeASRTestError(error: any) {
   grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr);
   gap: 14px;
   padding: 14px;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--border));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
   background: var(--settings-paper-2, var(--bg-secondary));
 }
 
@@ -1219,23 +1219,23 @@ function normalizeASRTestError(error: any) {
   width: fit-content;
   min-height: 22px;
   padding: 3px 8px;
-  border: 1px solid var(--settings-rule-soft, var(--border));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
   border-radius: 999px;
   background: var(--settings-paper-1, var(--bg-primary));
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 12px;
   font-weight: 650;
   line-height: 1;
 }
 
 .voice-state-pill.on {
-  border-color: color-mix(in srgb, #16a34a 36%, var(--settings-rule-soft, var(--border)));
-  color: #15803d;
+  border-color: color-mix(in srgb, var(--ui-status-success-fg, #16a34a) 36%, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  color: var(--ui-status-success-fg, #15803d);
 }
 
 .voice-setup-copy h4 {
   margin: 10px 0 4px;
-  color: var(--settings-ink-1, var(--text-primary));
+  color: var(--settings-ink-1, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 14px;
   font-weight: 700;
   line-height: 1.25;
@@ -1243,7 +1243,7 @@ function normalizeASRTestError(error: any) {
 
 .voice-setup-copy p {
   margin: 0;
-  color: var(--settings-ink-3, var(--text-secondary));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
   font-size: 12px;
   line-height: 1.45;
 }
@@ -1258,7 +1258,7 @@ function normalizeASRTestError(error: any) {
 .voice-setup-item {
   min-width: 0;
   padding: 10px;
-  border: 1px solid var(--settings-rule-soft, var(--border));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
   background: var(--settings-paper-1, var(--bg-primary));
 }
@@ -1270,7 +1270,7 @@ function normalizeASRTestError(error: any) {
 }
 
 .voice-setup-item span {
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 11px;
   font-weight: 650;
   line-height: 1.2;
@@ -1281,7 +1281,7 @@ function normalizeASRTestError(error: any) {
   display: block;
   margin-top: 7px;
   overflow-wrap: anywhere;
-  color: var(--settings-ink-1, var(--text-primary));
+  color: var(--settings-ink-1, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 13px;
   font-weight: 700;
   line-height: 1.25;
@@ -1289,19 +1289,19 @@ function normalizeASRTestError(error: any) {
 
 .voice-setup-item small {
   margin-top: 5px;
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 12px;
   line-height: 1.35;
 }
 
 .voice-setup-item small.warning {
-  color: #b45309;
+  color: var(--ui-status-warning-fg, #b45309);
 }
 
 .native-toggle input {
   width: 16px;
   height: 16px;
-  accent-color: var(--settings-accent, var(--accent));
+  accent-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .voice-replies-control {
@@ -1324,7 +1324,7 @@ function normalizeASRTestError(error: any) {
 }
 
 .voice-replies-toggle span {
-  color: var(--settings-ink-2, var(--text-primary));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 13px;
   font-weight: 650;
   line-height: 1.3;
@@ -1332,7 +1332,7 @@ function normalizeASRTestError(error: any) {
 
 .voice-replies-toggle small {
   margin-top: 3px;
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 12px;
   line-height: 1.35;
 }
@@ -1356,17 +1356,17 @@ function normalizeASRTestError(error: any) {
 }
 
 .model-status {
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 12px;
   line-height: 1.35;
 }
 
 .model-status.error {
-  color: #b91c1c;
+  color: var(--ui-status-danger-fg, #b91c1c);
 }
 
 .model-status.success {
-  color: #15803d;
+  color: var(--ui-status-success-fg, #15803d);
 }
 
 .readonly-provider {
@@ -1374,10 +1374,10 @@ function normalizeASRTestError(error: any) {
   display: flex;
   align-items: center;
   padding: 8px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 6px;
-  background: color-mix(in srgb, var(--input-bg, var(--bg-primary)) 70%, transparent);
-  color: var(--settings-ink-3, var(--text-secondary));
+  background: color-mix(in srgb, var(--ui-surface-input-bg, var(--input-bg, var(--bg-primary))) 70%, transparent);
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
   font-size: 13px;
 }
 
@@ -1386,13 +1386,13 @@ function normalizeASRTestError(error: any) {
   flex-wrap: wrap;
   gap: 8px;
   padding: 12px 14px;
-  border-top: 1px solid var(--settings-rule-soft, var(--border));
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
 }
 
 .setup-note {
   max-width: 560px;
   margin: 8px 0 0;
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 12px;
   line-height: 1.45;
 }
@@ -1401,28 +1401,28 @@ function normalizeASRTestError(error: any) {
   flex-basis: 100%;
   margin: 0;
   padding: 8px 10px;
-  border: 1px solid var(--settings-rule-soft, var(--border));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
   background: var(--settings-paper-2, var(--bg-secondary));
-  color: var(--settings-ink-3, var(--text-secondary));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
   font-size: 12px;
   line-height: 1.4;
 }
 
 .setup-status.success {
-  border-color: color-mix(in srgb, #16a34a 42%, var(--settings-rule-soft, var(--border)));
-  color: #15803d;
+  border-color: color-mix(in srgb, var(--ui-status-success-fg, #16a34a) 42%, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  color: var(--ui-status-success-fg, #15803d);
 }
 
 .setup-status.error {
-  border-color: color-mix(in srgb, #dc2626 42%, var(--settings-rule-soft, var(--border)));
-  color: #b91c1c;
+  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #dc2626) 42%, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  color: var(--ui-status-danger-fg, #b91c1c);
 }
 
 .setup-status.warning {
-  border-color: color-mix(in srgb, #f59e0b 48%, var(--settings-rule-soft, var(--border)));
-  color: #92400e;
-  background: color-mix(in srgb, #fef3c7 28%, var(--settings-paper-2, var(--bg-secondary)));
+  border-color: color-mix(in srgb, var(--ui-status-warning-fg, #f59e0b) 48%, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  color: var(--ui-status-warning-fg, #92400e);
+  background: color-mix(in srgb, var(--ui-surface-note-bg, var(--ui-status-warning-bg, #fef3c7)) 28%, var(--settings-paper-2, var(--bg-secondary)));
 }
 
 .provider-note {
@@ -1432,10 +1432,10 @@ function normalizeASRTestError(error: any) {
   gap: 10px;
   margin-bottom: 10px;
   padding: 9px 10px;
-  border: 1px solid var(--settings-rule-soft, var(--border));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
   background: var(--settings-paper-2, var(--bg-secondary));
-  color: var(--settings-ink-3, var(--text-secondary));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
   font-size: 12px;
   line-height: 1.35;
 }
@@ -1444,10 +1444,10 @@ function normalizeASRTestError(error: any) {
   flex-shrink: 0;
   min-height: 28px;
   padding: 5px 9px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 6px;
   background: var(--settings-paper-1, var(--bg-primary));
-  color: var(--settings-ink-1, var(--text-primary));
+  color: var(--settings-ink-1, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -1461,10 +1461,10 @@ function normalizeASRTestError(error: any) {
   gap: 7px;
   min-height: 32px;
   padding: 7px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 6px;
-  background: var(--button-bg, var(--bg-secondary));
-  color: var(--text-primary);
+  background: var(--ui-action-secondary-bg, var(--button-bg, var(--bg-secondary)));
+  color: var(--ui-text-primary-fg, var(--text-primary));
   font-size: 13px;
   cursor: pointer;
 }
@@ -1475,7 +1475,7 @@ function normalizeASRTestError(error: any) {
 
 .secondary-button:hover,
 .advanced-toggle:hover {
-  background: var(--hover-bg, var(--bg-tertiary));
+  background: var(--ui-state-hover-bg, var(--hover-bg, var(--bg-tertiary)));
 }
 
 .secondary-button:disabled {
@@ -1498,10 +1498,10 @@ function normalizeASRTestError(error: any) {
 .form-input {
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 6px;
-  background: var(--input-bg, var(--bg-primary));
-  color: var(--text-primary);
+  background: var(--ui-surface-input-bg, var(--input-bg, var(--bg-primary)));
+  color: var(--ui-text-primary-fg, var(--text-primary));
   font-size: 13px;
 }
 

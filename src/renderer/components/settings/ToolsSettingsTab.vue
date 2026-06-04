@@ -19,6 +19,28 @@
             <span class="toggle-slider" />
           </label>
         </SettingRow>
+
+        <SettingRow
+          label="Permission Mode"
+          description="Control when tool calls ask for confirmation. Normal asks before edits and non-read-only commands; Auto Accept Edits runs file edits automatically; Dangerously Allow All runs tools without confirmation."
+        >
+          <select
+            class="form-input mode-select"
+            :value="settings.tools.permissionMode || 'normal'"
+            :disabled="!settings.tools.enableToolCalls"
+            @change="updatePermissionMode(($event.target as HTMLSelectElement).value as PermissionMode)"
+          >
+            <option value="normal">
+              Normal
+            </option>
+            <option value="auto-accept-edits">
+              Auto Accept Edits
+            </option>
+            <option value="dangerously-allow-all">
+              Dangerously Allow All
+            </option>
+          </select>
+        </SettingRow>
       </SettingsGroup>
     </SettingsSection>
 
@@ -93,14 +115,17 @@
       :settings="settings"
       @update:settings="$emit('update:settings', $event)"
     />
+
+    <BackgroundJobsPanel v-if="settings.tools.enableToolCalls && hasBashTool" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AppSettings, ToolDefinition } from '@/types'
-import type { WebSearchSettings } from '@shared/ipc/tools'
+import type { PermissionMode, WebSearchSettings } from '@shared/ipc/tools'
 import BashSettingsPanel from './BashSettingsPanel.vue'
+import BackgroundJobsPanel from './BackgroundJobsPanel.vue'
 import {
   SettingRow,
   SettingsEmptyState,
@@ -139,6 +164,13 @@ function updateEnableToolCalls(enabled: boolean) {
   })
 }
 
+function updatePermissionMode(permissionMode: PermissionMode) {
+  emit('update:settings', {
+    ...props.settings,
+    tools: { ...props.settings.tools, permissionMode }
+  })
+}
+
 function getToolEnabled(toolId: string): boolean {
   const tool = props.tools.find(item => item.id === toolId)
   return props.settings.tools.tools[toolId]?.enabled ?? tool?.enabled ?? true
@@ -147,20 +179,6 @@ function getToolEnabled(toolId: string): boolean {
 function setToolEnabled(toolId: string, enabled: boolean) {
   const tools = { ...props.settings.tools.tools }
   tools[toolId] = { ...tools[toolId], enabled }
-  emit('update:settings', {
-    ...props.settings,
-    tools: { ...props.settings.tools, tools }
-  })
-}
-
-function getToolAutoExecute(toolId: string): boolean {
-  const tool = props.tools.find(item => item.id === toolId)
-  return props.settings.tools.tools[toolId]?.autoExecute ?? tool?.autoExecute ?? false
-}
-
-function setToolAutoExecute(toolId: string, autoExecute: boolean) {
-  const tools = { ...props.settings.tools.tools }
-  tools[toolId] = { ...tools[toolId], autoExecute }
   emit('update:settings', {
     ...props.settings,
     tools: { ...props.settings.tools, tools }
@@ -216,7 +234,7 @@ function updateBraveApiKey(apiKey: string) {
 .section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin: 0 0 12px 0;
@@ -237,12 +255,12 @@ function updateBraveApiKey(apiKey: string) {
 .form-label {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .form-hint {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   margin-top: 4px;
 }
 
@@ -279,8 +297,8 @@ function updateBraveApiKey(apiKey: string) {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--panel-2);
-  border: 1px solid var(--border);
+  background-color: var(--ui-surface-sidebar-bg, var(--panel-2));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 24px;
   transition: 0.15s;
 }
@@ -292,7 +310,7 @@ function updateBraveApiKey(apiKey: string) {
   width: 18px;
   left: 2px;
   bottom: 2px;
-  background-color: var(--text-primary);
+  background-color: var(--ui-text-primary-fg, var(--text-primary));
   border-radius: 50%;
   transition: 0.15s;
 }
@@ -303,8 +321,8 @@ function updateBraveApiKey(apiKey: string) {
 }
 
 .toggle input:checked + .toggle-slider {
-  background-color: var(--accent);
-  border-color: var(--accent);
+  background-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .toggle input:checked + .toggle-slider::before {
@@ -325,7 +343,7 @@ function updateBraveApiKey(apiKey: string) {
 .empty-state {
   padding: 24px;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 /* Tools List */
@@ -353,15 +371,15 @@ function updateBraveApiKey(apiKey: string) {
 .tool-name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .tool-category {
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
-  background: rgba(59, 130, 246, 0.12);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .tool-controls {
@@ -373,7 +391,7 @@ function updateBraveApiKey(apiKey: string) {
 
 .control-label {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   min-width: 80px;
 }
 
@@ -383,32 +401,36 @@ function updateBraveApiKey(apiKey: string) {
   padding: 10px 12px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary);
-  background-color: var(--panel);
-  border: 1px solid var(--border);
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  background-color: var(--ui-surface-panel-bg, var(--panel));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
   transition: all 0.15s ease;
 }
 
 .form-input:hover {
-  border-color: var(--accent);
-  background-color: var(--panel-2);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  background-color: var(--ui-surface-sidebar-bg, var(--panel-2));
 }
 
 .form-input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
 }
 
 .form-input::placeholder {
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   opacity: 0.6;
+}
+
+.mode-select {
+  max-width: 220px;
 }
 
 /* Link */
 .link {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   text-decoration: none;
 }
 

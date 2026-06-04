@@ -595,20 +595,20 @@ async function confirmDelete(session: ArchivedSession) {
   flex: 1;
   padding: 10px 14px;
   font-size: 14px;
-  color: var(--text);
-  background: var(--hover);
-  border: 1px solid var(--border);
+  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg, var(--hover));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 10px;
   transition: all 0.15s ease;
 }
 
 .search-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .search-input::placeholder {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 /* Grouping Toggle */
@@ -616,7 +616,7 @@ async function confirmDelete(session: ArchivedSession) {
   display: flex;
   gap: 2px;
   padding: 3px;
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
   border-radius: 8px;
 }
 
@@ -629,13 +629,13 @@ async function confirmDelete(session: ArchivedSession) {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .toggle-btn:hover {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -644,8 +644,8 @@ html[data-theme='light'] .toggle-btn:hover {
 }
 
 .toggle-btn.active {
-  color: var(--accent);
-  background: var(--bg-elevated);
+  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
@@ -662,14 +662,14 @@ html[data-theme='light'] .toggle-btn:hover {
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid var(--border);
-  border-top-color: var(--accent);
+  border: 3px solid var(--ui-border-default-border, var(--border));
+  border-top-color: var(--ui-accent-primary-fg, var(--accent));
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 12px;
@@ -690,7 +690,7 @@ html[data-theme='light'] .toggle-btn:hover {
   gap: 8px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0 0 12px;
@@ -703,7 +703,7 @@ html[data-theme='light'] .toggle-btn:hover {
 
 .group-title:hover {
   background: rgba(255, 255, 255, 0.04);
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 html[data-theme='light'] .group-title:hover {
@@ -727,7 +727,7 @@ html[data-theme='light'] .group-title:hover {
 .group-count {
   font-size: 10px;
   font-weight: 500;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   background: rgba(255, 255, 255, 0.06);
   padding: 2px 6px;
   border-radius: 10px;
@@ -750,7 +750,7 @@ html[data-theme='light'] .group-count {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
   border: 1px solid transparent;
   border-radius: 12px;
   cursor: pointer;
@@ -758,25 +758,25 @@ html[data-theme='light'] .group-count {
 }
 
 .chat-card:hover {
-  background: var(--active);
-  border-color: var(--border);
+  background: var(--ui-state-active-bg, var(--active));
+  border-color: var(--ui-border-default-border, var(--border));
 }
 
 .chat-card.active {
-  background: rgba(var(--accent-rgb), 0.1);
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .chat-icon {
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  background: var(--active);
+  background: var(--ui-state-active-bg, var(--active));
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .chat-info {
@@ -787,7 +787,7 @@ html[data-theme='light'] .group-count {
 .chat-name {
   font-size: 14px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   margin: 0 0 4px;
   white-space: nowrap;
   overflow: hidden;
@@ -799,7 +799,7 @@ html[data-theme='light'] .group-count {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   margin: 0;
 }
 
@@ -816,7 +816,7 @@ html[data-theme='light'] .group-count {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   font-size: 11px;
 }
 
@@ -825,7 +825,7 @@ html[data-theme='light'] .group-count {
 }
 
 .chat-branches {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   opacity: 0.8;
 }
 
@@ -837,12 +837,12 @@ html[data-theme='light'] .group-count {
 /* Branch styling */
 .chat-card.is-branch {
   margin-left: 16px;
-  border-left: 2px solid rgba(var(--accent-rgb), 0.3);
+  border-left: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 30%, transparent);
 }
 
 .chat-icon.branch-icon {
-  background: rgba(var(--accent-rgb), 0.1);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 /* Chat Actions */
@@ -866,19 +866,19 @@ html[data-theme='light'] .group-count {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .action-btn:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .action-btn.danger:hover {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 
 /* Empty State */
@@ -892,7 +892,7 @@ html[data-theme='light'] .group-count {
 }
 
 .empty-icon {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   opacity: 0.5;
   margin-bottom: 16px;
 }
@@ -900,13 +900,13 @@ html[data-theme='light'] .group-count {
 .empty-text {
   font-size: 15px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   margin: 0 0 4px;
 }
 
 .empty-hint {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   margin: 0;
 }
 </style>

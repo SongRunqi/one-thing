@@ -2,8 +2,8 @@
  * Built-in Tool: Read
  *
  * Reads file contents with support for:
- * - Line number display
- * - Offset/limit for large files
+ * - Offset/limit continuation for large files
+ * - Line/byte truncation
  * - Binary file detection
  * - Image preview support
  */
@@ -12,12 +12,12 @@ import { z } from 'zod'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Tool } from '../core/tool.js'
-import { checkFileAccess } from '../core/sandbox.js'
+import { checkFileAccess, findSandboxRootForPath, getSandboxBoundary, resolveToolPath } from '../core/sandbox.js'
+import { classifySensitiveFile } from '../core/sensitive-files.js'
 
-// Maximum lines to read by default
+// Maximum lines/bytes to return by default, matching Pi's read tool behavior.
 const DEFAULT_LIMIT = 2000
-// Maximum line length before truncation
-const MAX_LINE_LENGTH = 2000
+const DEFAULT_MAX_BYTES = 50 * 1024
 // Binary file detection - check first N bytes
 const BINARY_CHECK_BYTES = 8192
 
@@ -25,31 +25,47 @@ const BINARY_CHECK_BYTES = 8192
  * Read Tool Metadata
  */
 export interface ReadMetadata {
-  filePath: string
+  path: string
   lineCount: number
   offset: number
   limit: number
   truncated: boolean
   isBinary: boolean
   fileSize: number
+  truncation?: ReadTruncation
   [key: string]: unknown
+}
+
+interface ReadTruncation {
+  truncated: boolean
+  truncatedBy: 'bytes' | 'lines' | null
+  outputLines: number
+  totalLines: number
+  maxBytes: number
+  maxLines: number
+  firstLineExceedsLimit?: boolean
+}
+
+interface TruncatedTextResult {
+  content: string
+  truncation: ReadTruncation
 }
 
 /**
  * Read Tool Parameters Schema
  */
 const ReadParameters = z.object({
-  file_path: z
+  path: z
     .string()
-    .describe('The absolute path to the file to read'),
+    .describe('Path to the file to read (relative or absolute)'),
   offset: z
     .number()
     .optional()
-    .describe('Line number to start reading from (1-based). Only provide if the file is too large.'),
+    .describe('Line number to start reading from (1-indexed)'),
   limit: z
     .number()
     .optional()
-    .describe('Number of lines to read. Only provide if the file is too large.'),
+    .describe('Maximum number of lines to read'),
 })
 
 /**
@@ -74,43 +90,97 @@ function isBinaryBuffer(buffer: Buffer): boolean {
   return nonPrintable / checkLength > 0.1
 }
 
-/**
- * Format line numbers like cat -n
- */
-function formatWithLineNumbers(lines: string[], startLine: number): string {
-  const maxLineNum = startLine + lines.length - 1
-  const lineNumWidth = String(maxLineNum).length
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  const kb = bytes / 1024
+  if (kb < 1024) return `${Number.isInteger(kb) ? kb : kb.toFixed(1)}KB`
+  const mb = kb / 1024
+  return `${Number.isInteger(mb) ? mb : mb.toFixed(1)}MB`
+}
 
-  return lines.map((line, i) => {
-    const lineNum = String(startLine + i).padStart(lineNumWidth, ' ')
-    // Truncate long lines
-    const truncatedLine = line.length > MAX_LINE_LENGTH
-      ? line.slice(0, MAX_LINE_LENGTH) + '... (truncated)'
-      : line
-    return `${lineNum}\t${truncatedLine}`
-  }).join('\n')
+function utf8Bytes(text: string): number {
+  return Buffer.byteLength(text, 'utf-8')
+}
+
+/**
+ * Return the head of text bounded by both line and byte limits. The output is
+ * raw file text (no line numbers), so models can copy oldText for exact edits.
+ */
+function truncateHead(text: string, maxLines = DEFAULT_LIMIT, maxBytes = DEFAULT_MAX_BYTES): TruncatedTextResult {
+  const allLines = text.split('\n')
+  const totalLines = allLines.length
+  const firstLineBytes = utf8Bytes(allLines[0] ?? '')
+
+  if (firstLineBytes > maxBytes) {
+    return {
+      content: '',
+      truncation: {
+        truncated: true,
+        truncatedBy: 'bytes',
+        outputLines: 0,
+        totalLines,
+        maxBytes,
+        maxLines,
+        firstLineExceedsLimit: true,
+      },
+    }
+  }
+
+  const selectedLines: string[] = []
+  let selectedBytes = 0
+  let truncatedBy: ReadTruncation['truncatedBy'] = null
+
+  for (let i = 0; i < allLines.length; i++) {
+    if (selectedLines.length >= maxLines) {
+      truncatedBy = 'lines'
+      break
+    }
+
+    const separatorBytes = selectedLines.length > 0 ? 1 : 0
+    const nextBytes = separatorBytes + utf8Bytes(allLines[i])
+    if (selectedBytes + nextBytes > maxBytes) {
+      truncatedBy = 'bytes'
+      break
+    }
+
+    selectedLines.push(allLines[i])
+    selectedBytes += nextBytes
+  }
+
+  const outputLines = selectedLines.length
+  return {
+    content: selectedLines.join('\n'),
+    truncation: {
+      truncated: truncatedBy !== null,
+      truncatedBy,
+      outputLines,
+      totalLines,
+      maxBytes,
+      maxLines,
+    },
+  }
 }
 
 /**
  * Get file extension
  */
-function getExtension(filePath: string): string {
-  return path.extname(filePath).toLowerCase()
+function getExtension(targetPath: string): string {
+  return path.extname(targetPath).toLowerCase()
 }
 
 /**
- * Check if file is an image
+ * Check if file is an image supported by Pi's read tool contract.
  */
-function isImageFile(filePath: string): boolean {
-  const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico']
-  return imageExtensions.includes(getExtension(filePath))
+function isImageFile(targetPath: string): boolean {
+  const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
+  return imageExtensions.includes(getExtension(targetPath))
 }
 
 /**
  * Check if file is a PDF
  */
-function isPdfFile(filePath: string): boolean {
-  return getExtension(filePath) === '.pdf'
+function isPdfFile(targetPath: string): boolean {
+  return getExtension(targetPath) === '.pdf'
 }
 
 /**
@@ -118,39 +188,89 @@ function isPdfFile(filePath: string): boolean {
  */
 export const ReadTool = Tool.define<typeof ReadParameters, ReadMetadata>('read', {
   name: 'Read',
-  description: `Reads a file from the local filesystem.
-
-Usage:
-- The file_path parameter must be an absolute path
-- By default, reads up to ${DEFAULT_LIMIT} lines starting from the beginning
-- Use offset and limit for large files
-- Lines longer than ${MAX_LINE_LENGTH} characters will be truncated
-- Results are returned with line numbers (like cat -n)
-- Binary files are detected and a message is shown instead of content`,
+  description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp). Images are sent as attachments. For text files, output is truncated to ${DEFAULT_LIMIT} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
   category: 'builtin',
   enabled: true,
   autoExecute: true, // Safe read-only operation
   permissionGuard: 'sandboxed',
+  executionMode: 'parallel',
+  renderKind: 'file',
+  promptSnippet: 'Read file contents',
+  promptGuidelines: ['Use read to examine files instead of cat or sed.'],
 
   parameters: ReadParameters,
 
+  async analyze(args, ctx) {
+    const resolvedPath = resolveToolPath(args.path, ctx.workingDirectory)
+    const boundary = getSandboxBoundary(ctx.workingDirectory)
+    const matchedRoot = findSandboxRootForPath(resolvedPath, ctx.workingDirectory, ctx.workingDirectoryRoots)
+    const sensitivity = classifySensitiveFile(resolvedPath)
+    const effects = []
+    if (!matchedRoot) {
+      effects.push({
+        kind: 'external_directory' as const,
+        resources: [path.join(path.dirname(resolvedPath), '*')],
+        barrier: true,
+        external: true,
+        metadata: {
+          path: resolvedPath,
+          boundary,
+          operation: 'Read file',
+          targetType: 'file',
+        },
+      })
+    }
+    effects.push({
+      kind: sensitivity.sensitive ? 'sensitive_file_read' as const : 'read' as const,
+      resources: [resolvedPath],
+      barrier: sensitivity.sensitive,
+      sensitive: sensitivity.sensitive,
+      metadata: sensitivity.sensitive ? {
+        path: resolvedPath,
+        category: sensitivity.category,
+        reason: sensitivity.reason,
+      } : { path: resolvedPath },
+    })
+    return {
+      effects,
+      preview: {
+        title: sensitivity.sensitive ? `Read sensitive file: ${path.basename(resolvedPath)}` : `Read ${path.basename(resolvedPath)}`,
+        path: resolvedPath,
+      },
+    }
+  },
+
   async execute(args, ctx) {
-    const { file_path, offset = 1, limit = DEFAULT_LIMIT } = args
+    const { offset = 1, limit } = args
+
+    const throwIfAborted = () => {
+      if (ctx.abortSignal?.aborted) throw new Error('Operation aborted')
+    }
+    throwIfAborted()
 
     // Check sandbox boundary and request permission if needed
-    const resolvedPath = await checkFileAccess(file_path, ctx, 'Read file')
+    const resolvedPath = await checkFileAccess(args.path, ctx, 'Read file')
+    throwIfAborted()
+
+    const sensitivity = classifySensitiveFile(resolvedPath)
+
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: `Reading ${resolvedPath}...` }],
+      details: { phase: 'reading', path: resolvedPath, offset, limit },
+    })
 
     // Update metadata with initial state
     ctx.metadata({
       title: `Reading ${path.basename(resolvedPath)}`,
       metadata: {
-        filePath: resolvedPath,
+        path: resolvedPath,
         lineCount: 0,
         offset,
         limit,
         truncated: false,
         isBinary: false,
         fileSize: 0,
+        sensitive: sensitivity.sensitive,
       },
     })
 
@@ -165,17 +285,23 @@ Usage:
       throw error
     }
 
+    throwIfAborted()
+
     if (stats.isDirectory()) {
       throw new Error(`Path is a directory, not a file: ${resolvedPath}. Use ls command via Bash tool to list directory contents.`)
     }
 
     // Handle image files
     if (isImageFile(resolvedPath)) {
+      ctx.updateResult?.({
+        content: [{ type: 'image', path: resolvedPath }],
+        details: { phase: 'ready', path: resolvedPath, fileSize: stats.size, isBinary: true },
+      })
       return {
         title: `Image: ${path.basename(resolvedPath)}`,
         output: `[Image file: ${resolvedPath}]\nSize: ${stats.size} bytes\nThis is an image file. Content cannot be displayed as text.`,
         metadata: {
-          filePath: resolvedPath,
+          path: resolvedPath,
           lineCount: 0,
           offset: 0,
           limit: 0,
@@ -192,11 +318,15 @@ Usage:
 
     // Handle PDF files
     if (isPdfFile(resolvedPath)) {
+      ctx.updateResult?.({
+        content: [{ type: 'file', path: resolvedPath }],
+        details: { phase: 'ready', path: resolvedPath, fileSize: stats.size, isBinary: true },
+      })
       return {
         title: `PDF: ${path.basename(resolvedPath)}`,
         output: `[PDF file: ${resolvedPath}]\nSize: ${stats.size} bytes\nThis is a PDF file. Use a PDF viewer to read its contents.`,
         metadata: {
-          filePath: resolvedPath,
+          path: resolvedPath,
           lineCount: 0,
           offset: 0,
           limit: 0,
@@ -213,14 +343,19 @@ Usage:
 
     // Read file content
     const buffer = await fs.readFile(resolvedPath)
+    throwIfAborted()
 
     // Check if binary
     if (isBinaryBuffer(buffer)) {
+      ctx.updateResult?.({
+        content: [{ type: 'file', path: resolvedPath }],
+        details: { phase: 'ready', path: resolvedPath, fileSize: stats.size, isBinary: true },
+      })
       return {
         title: `Binary: ${path.basename(resolvedPath)}`,
         output: `[Binary file: ${resolvedPath}]\nSize: ${stats.size} bytes\nThis appears to be a binary file. Content cannot be displayed as text.`,
         metadata: {
-          filePath: resolvedPath,
+          path: resolvedPath,
           lineCount: 0,
           offset: 0,
           limit: 0,
@@ -236,40 +371,64 @@ Usage:
     const allLines = content.split('\n')
     const totalLines = allLines.length
 
-    // Apply offset and limit (offset is 1-based)
+    // Apply offset and optional user limit (offset is 1-based)
     const startIndex = Math.max(0, offset - 1)
-    const endIndex = Math.min(totalLines, startIndex + limit)
-    const selectedLines = allLines.slice(startIndex, endIndex)
-    const truncated = endIndex < totalLines
+    if (startIndex >= totalLines) {
+      throw new Error(`Offset ${offset} is beyond end of file (${totalLines} lines total)`)
+    }
 
-    // Format with line numbers
-    const formattedContent = formatWithLineNumbers(selectedLines, offset)
+    const endIndex = limit !== undefined
+      ? Math.min(totalLines, startIndex + limit)
+      : totalLines
+    const selectedText = allLines.slice(startIndex, endIndex).join('\n')
+    const userLimitedLines = limit !== undefined ? endIndex - startIndex : undefined
+    const truncatedResult = truncateHead(selectedText)
+    const { truncation } = truncatedResult
+    const startLineDisplay = startIndex + 1
+    let output = truncatedResult.content
+    let outputLineCount = truncation.outputLines
+
+    if (truncation.firstLineExceedsLimit) {
+      const firstLineSize = formatSize(utf8Bytes(allLines[startIndex] ?? ''))
+      output = `[Line ${startLineDisplay} is ${firstLineSize}, exceeds ${formatSize(DEFAULT_MAX_BYTES)} limit. Use bash: sed -n '${startLineDisplay}p' ${args.path} | head -c ${DEFAULT_MAX_BYTES}]`
+    } else if (truncation.truncated) {
+      const endLineDisplay = startLineDisplay + truncation.outputLines - 1
+      const nextOffset = endLineDisplay + 1
+      if (truncation.truncatedBy === 'lines') {
+        output += `\n\n[Showing lines ${startLineDisplay}-${endLineDisplay} of ${totalLines}. Use offset=${nextOffset} to continue.]`
+      } else {
+        output += `\n\n[Showing lines ${startLineDisplay}-${endLineDisplay} of ${totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Use offset=${nextOffset} to continue.]`
+      }
+    } else if (userLimitedLines !== undefined && startIndex + userLimitedLines < totalLines) {
+      const remaining = totalLines - (startIndex + userLimitedLines)
+      const nextOffset = startIndex + userLimitedLines + 1
+      output += `\n\n[${remaining} more lines in file. Use offset=${nextOffset} to continue.]`
+    }
+
+    // Handle empty files
+    if (totalLines === 1 && allLines[0] === '') {
+      output = `[Empty file: ${resolvedPath}]`
+      outputLineCount = 0
+    }
 
     const metadata: ReadMetadata = {
-      filePath: resolvedPath,
-      lineCount: selectedLines.length,
+      path: resolvedPath,
+      lineCount: outputLineCount,
       offset,
-      limit,
-      truncated,
+      limit: limit ?? DEFAULT_LIMIT,
+      truncated: truncation.truncated || (userLimitedLines !== undefined && startIndex + userLimitedLines < totalLines),
+      truncation,
       isBinary: false,
       fileSize: stats.size,
     }
 
-    // Build output
-    let output = formattedContent
-
-    // Add truncation notice if applicable
-    if (truncated) {
-      output += `\n\n[Showing lines ${offset}-${endIndex} of ${totalLines} total lines]`
-    }
-
-    // Handle empty files
-    if (selectedLines.length === 0 || (selectedLines.length === 1 && selectedLines[0] === '')) {
-      output = `[Empty file: ${resolvedPath}]`
-    }
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: output }],
+      details: { phase: 'ready', ...metadata },
+    })
 
     return {
-      title: `${path.basename(resolvedPath)} (${selectedLines.length} lines)`,
+      title: `${path.basename(resolvedPath)} (${outputLineCount} lines)`,
       output,
       metadata,
     }
@@ -277,6 +436,6 @@ Usage:
 
   formatValidationError(error) {
     const issues = error.issues.map((issue) => `- ${issue.path.join('.')}: ${issue.message}`)
-    return `Invalid read parameters:\n${issues.join('\n')}`
+    return `Invalid read parameters:\n${issues.join('\n')}\n\nUsage: read({ path: string, offset?: number, limit?: number }). The path field is required.`
   },
 })

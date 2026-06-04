@@ -13,6 +13,7 @@
  */
 
 import type { WebContents } from 'electron'
+import type { PermissionMode } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
 import type { AppSettings, ChatMessage, MessageAttachment } from '../../shared/ipc.js'
 import type { SendMessageCommand, EditAndResendCommand, ResumeAfterConfirmCommand, RetryMessageCommand, InjectSteeringCommand, InjectFollowUpCommand, CompactContextCommand } from '../../shared/events/session-commands.js'
@@ -30,7 +31,7 @@ import { buildHistoryMessages } from './stream/message-helpers.js'
 import { executeMessageStream, type ProviderConfigWithKey } from './stream/stream-executor.js'
 import { createStreamProcessor, type StreamContext } from './stream/stream-processor.js'
 import { runStream } from './stream/tool-loop.js'
-import { buildPromptContext, buildRequestMessages } from './prompt/index.js'
+import { buildPrompt } from './prompt/index.js'
 import { getSkillsForSession } from '../ipc/skills.js'
 import { getEnabledToolsAsync, setInitContext, initializeAsyncTools } from '../tools/index.js'
 import { getMCPToolsForAI } from '../mcp/index.js'
@@ -67,6 +68,11 @@ export class StreamEngine {
 
   getChannel(sessionId: string): string {
     return this.sessionChannels.get(sessionId) || 'ipc'
+  }
+
+  getPermissionMode(sessionId: string): PermissionMode {
+    const session = store.getSession(sessionId)
+    return session?.permissionMode ?? store.getSettings().tools?.permissionMode ?? 'normal'
   }
 
   /** Get or create the steering queue for a session */
@@ -552,8 +558,7 @@ export class StreamEngine {
       const voiceConversation = [...session.messages]
         .reverse()
         .find(message => message.role === 'user')?.source === 'voice'
-      const promptContext = await buildPromptContext({
-        previousState: session.promptContext ?? undefined,
+      const requestMessages = await buildPrompt({
         sessionId,
         agentId: session.agentId,
         providerId,
@@ -570,12 +575,6 @@ export class StreamEngine {
         mcpToolNames: Object.keys(mcpTools),
         voiceConversation,
         speakMode: voiceConversation,
-      })
-      store.updateSessionPromptContext(sessionId, promptContext.state)
-      const requestMessages = buildRequestMessages({
-        providerId,
-        promptContext: promptContext.state,
-        emittedFragments: promptContext.emittedFragments,
         historyMessages: [],
       })
       const { systemPrompt, systemPromptSegments } = requestMessages

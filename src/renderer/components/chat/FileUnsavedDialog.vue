@@ -67,9 +67,9 @@ const fileName = computed(() => props.filePath?.split('/').pop() || 'this file')
 }
 
 .dialog {
-  background: var(--bg-elevated);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   width: 90%;
   max-width: 420px;
   box-shadow: var(--shadow);
@@ -80,11 +80,11 @@ const fileName = computed(() => props.filePath?.split('/').pop() || 'this file')
   align-items: center;
   gap: 12px;
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .dialog-header svg {
-  color: #f59e0b;
+  color: var(--ui-status-warning-fg, #f59e0b);
   flex-shrink: 0;
 }
 
@@ -97,7 +97,7 @@ const fileName = computed(() => props.filePath?.split('/').pop() || 'this file')
 .dialog-message {
   padding: 20px 24px;
   font-size: 14px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   margin: 0;
   word-break: break-word;
 }
@@ -107,7 +107,7 @@ const fileName = computed(() => props.filePath?.split('/').pop() || 'this file')
   justify-content: flex-end;
   gap: 10px;
   padding: 16px 24px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .btn {
@@ -125,21 +125,21 @@ const fileName = computed(() => props.filePath?.split('/').pop() || 'this file')
 }
 
 .btn.primary {
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
 }
 
 .btn.primary:hover {
-  background: #2563eb;
+  background: var(--ui-action-primary-hover-bg, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .btn.secondary {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
+  background: var(--ui-surface-panel-bg, var(--panel));
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .btn.secondary:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 </style>

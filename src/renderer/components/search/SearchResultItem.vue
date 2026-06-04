@@ -117,18 +117,18 @@ function formatTime(ts: number): string {
 }
 
 .search-result-item.selected {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .result-icon {
   flex-shrink: 0;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   display: flex;
   align-items: center;
 }
 
 .search-result-item.selected .result-icon {
-  color: var(--accent);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .result-body {
@@ -141,7 +141,7 @@ function formatTime(ts: number): string {
 
 .result-title {
   font-size: 13px;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -149,7 +149,7 @@ function formatTime(ts: number): string {
 
 .result-subtitle {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -157,14 +157,14 @@ function formatTime(ts: number): string {
 
 .result-detail {
   font-size: 11px;
-  color: color-mix(in srgb, var(--muted) 78%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 78%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .result-title mark {
-  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 26%, transparent);
   color: inherit;
   border-radius: 3px;
   padding: 0 1px;
@@ -173,13 +173,13 @@ function formatTime(ts: number): string {
 .result-shortcut {
   flex-shrink: 0;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-family: var(--font-mono, monospace);
 }
 
 .result-time {
   flex-shrink: 0;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 </style>

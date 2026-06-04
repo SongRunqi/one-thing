@@ -7,7 +7,7 @@
 import type { ToolCall } from '@/types'
 
 const STREAMING_TAIL_MAX = 80
-const BASH_PREVIEW_MAX = 55
+const BASH_PREVIEW_MAX = 96
 const PATTERN_PREVIEW_MAX = 20
 
 /** Shorten a file path to its last 1-2 segments when it exceeds maxLen. */
@@ -35,9 +35,9 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max - 3) + '...'
 }
 
-/** Pull the `file_path` value out of partially-streamed JSON args. */
+/** Pull the `path` value out of partially-streamed JSON args. */
 function extractStreamingPath(streamingArgs: string): string | null {
-  const match = streamingArgs.match(/"(?:file_path|path)"\s*:\s*"/)
+  const match = streamingArgs.match(/"path"\s*:\s*"/)
   if (!match || match.index === undefined) return null
 
   let value = ''
@@ -70,7 +70,7 @@ function formatArgsSummary(toolCall: ToolCall): string {
 
   switch (toolName) {
     case 'read': {
-      const path = basename(String(args.file_path || args.path || ''))
+      const path = basename(String(args.path || ''))
       const offset = args.offset as number | undefined
       const limit = args.limit as number | undefined
       if (offset || limit) {
@@ -96,13 +96,18 @@ function formatArgsSummary(toolCall: ToolCall): string {
 
     case 'edit': {
       const changes = toolCall.changes
-      const path = basename(String(args.file_path || changes?.filePath || ''))
-      if (changes) return `${path} (+${changes.additions} -${changes.deletions})`
+      const path = basename(String(args.path || changes?.filePath || ''))
+      if (!path) return ''
+      const additions = typeof changes?.additions === 'number' ? changes.additions : null
+      const deletions = typeof changes?.deletions === 'number' ? changes.deletions : null
+      if (additions !== null || deletions !== null) {
+        return `${path} (+${additions ?? 0} -${deletions ?? 0})`
+      }
       return path
     }
 
     case 'write': {
-      const path = basename(String(args.file_path || ''))
+      const path = basename(String(args.path || ''))
       const content = args.content as string | undefined
       if (content) return `${path} (${content.length} chars)`
       return path
@@ -115,6 +120,10 @@ function formatArgsSummary(toolCall: ToolCall): string {
       return pattern
     }
 
+    case 'variable': {
+      return formatVariablePreview(args)
+    }
+
     case 'web-search':
     case 'websearch': {
       const query = args.query as string | undefined
@@ -123,8 +132,8 @@ function formatArgsSummary(toolCall: ToolCall): string {
 
     default: {
       // Generic fallback: prefer file path > pattern > command > first value
-      if (args.file_path || args.path) {
-        return basename(String(args.file_path || args.path))
+      if (args.path) {
+        return basename(String(args.path))
       }
       if (args.pattern) return `"${args.pattern}"`
       if (args.command) return truncate(String(args.command), BASH_PREVIEW_MAX)
@@ -132,6 +141,33 @@ function formatArgsSummary(toolCall: ToolCall): string {
       return firstVal !== undefined ? String(firstVal) : ''
     }
   }
+}
+
+function formatVariablePreview(args: Record<string, unknown>): string {
+  const action = String(args.action || '').toLowerCase()
+  const name = String(args.name || '')
+  const value = args.value === undefined ? '' : String(args.value)
+
+  if (action === 'list') return 'variables'
+  if (!name) return 'variable'
+
+  if (action === 'set') {
+    return value ? `${name} = ${shortenPath(value, 40)}` : name
+  }
+
+  if (action === 'append') {
+    if (name === 'workdir') return value ? `workdir root ${shortenPath(value, 35)}` : 'workdir root'
+    return value ? `${name} += ${truncate(value, 35)}` : name
+  }
+
+  if (action === 'remove') {
+    if (name === 'workdir') return value ? `workdir root ${shortenPath(value, 35)}` : 'workdir root'
+    return value ? `${name} -= ${truncate(value, 35)}` : name
+  }
+
+  if (action === 'delete') return name
+
+  return name
 }
 
 /**

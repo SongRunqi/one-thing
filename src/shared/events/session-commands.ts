@@ -50,7 +50,7 @@ export interface PermissionRespondCommand {
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   requestId: string
-  decision: 'once' | 'session' | 'workdir' | 'workspace' | 'always' | 'reject'
+  decision: 'once' | 'session' | 'workdir' | 'reject'
   /** Optional reason for rejection */
   rejectReason?: string
 }

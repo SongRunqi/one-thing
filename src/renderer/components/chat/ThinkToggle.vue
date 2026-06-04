@@ -654,6 +654,14 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.thinking-control,
+.think-panel {
+  --think-accent: var(--ui-message-thinking-fg, var(--text-ai-thinking, var(--accent)));
+  --think-accent-border: color-mix(in srgb, var(--think-accent) 50%, transparent);
+  --think-accent-bg: color-mix(in srgb, var(--think-accent) 10%, transparent);
+  --think-accent-bg-strong: color-mix(in srgb, var(--think-accent) 18%, transparent);
+}
+
 .thinking-control {
   display: inline-flex;
   align-items: center;
@@ -668,10 +676,10 @@ onBeforeUnmount(() => {
   height: 28px;
   max-width: 160px;
   padding: 0 8px 0 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 14px;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -683,8 +691,8 @@ onBeforeUnmount(() => {
 }
 
 .think-select:hover {
-  color: var(--text);
-  background: var(--hover);
+  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .think-select:active {
@@ -692,18 +700,18 @@ onBeforeUnmount(() => {
 }
 
 .think-select.active {
-  color: #a855f7;
-  border-color: rgba(168, 85, 247, 0.5);
-  background: rgba(168, 85, 247, 0.1);
+  color: var(--ui-text-primary-fg, var(--text));
+  border-color: var(--think-accent-border);
+  background: var(--think-accent-bg);
 }
 
 .think-select.active:hover,
 .think-select.open {
-  background: rgba(168, 85, 247, 0.18);
+  background: var(--think-accent-bg-strong);
 }
 
 .think-value {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -711,7 +719,7 @@ onBeforeUnmount(() => {
 }
 
 .think-select:not(.active) .think-value {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .think-chevron {
@@ -726,23 +734,23 @@ onBeforeUnmount(() => {
 .think-panel {
   z-index: 10000;
   padding: 4px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--bg);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+  background: var(--ui-surface-app-bg, var(--bg));
+  box-shadow: var(--shadow-lg, 0 10px 28px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 18%, transparent));
   outline: none;
 }
 
 .think-group + .think-group {
   margin-top: 4px;
   padding-top: 4px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .think-section-label {
   height: 22px;
   padding: 5px 8px 3px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 10px;
   font-weight: 600;
   line-height: 14px;
@@ -759,7 +767,7 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 12px;
   font-weight: 500;
   text-align: left;
@@ -775,11 +783,11 @@ onBeforeUnmount(() => {
 
 .think-option:hover,
 .think-option.active {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .think-option.selected {
-  color: #a855f7;
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 @media (max-width: 600px) {

@@ -202,9 +202,9 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   flex-direction: column;
   gap: 12px;
   padding: 14px;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 8px;
-  background: var(--settings-paper, var(--bg));
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
 }
 
 .usage-header {
@@ -221,32 +221,32 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 }
 
 .usage-title {
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 14px;
   font-weight: 620;
 }
 
 .usage-state {
   padding: 2px 7px;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 999px;
-  color: var(--settings-ink-3, var(--text-secondary));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
   font-size: 11px;
 }
 
 .usage-subtitle {
   margin-top: 3px;
-  color: var(--settings-ink-3, var(--text-secondary));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
   font-size: 12px;
 }
 
 .usage-button {
   min-height: 32px;
   padding: 0 12px;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
   background: transparent;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -268,9 +268,9 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 .usage-panel,
 .limit-row,
 .additional-limits {
-  border: 1px solid var(--settings-rule-soft, var(--border-subtle));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 8px;
-  background: var(--settings-paper-2, var(--panel-2));
+  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
 }
 
 .usage-metric {
@@ -285,14 +285,14 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 .limit-copy small,
 .additional-row small,
 .usage-panel {
-  color: var(--settings-ink-3, var(--text-secondary));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
   font-size: 12px;
 }
 
 .usage-metric strong,
 .limit-meter strong {
   overflow: hidden;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 13px;
   font-weight: 620;
   text-overflow: ellipsis;
@@ -321,7 +321,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 }
 
 .limit-copy span {
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 13px;
   font-weight: 560;
 }
@@ -337,14 +337,14 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   height: 7px;
   overflow: hidden;
   border-radius: 999px;
-  background: var(--settings-rule-soft, var(--border-subtle));
+  background: var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
 }
 
 .meter-track span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--settings-accent, var(--accent));
+  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .usage-panel {
@@ -352,7 +352,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 }
 
 .usage-error {
-  color: var(--text-error, var(--color-error));
+  color: var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -362,7 +362,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 }
 
 .additional-limits summary {
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   cursor: pointer;
   font-size: 13px;
   font-weight: 560;
@@ -385,7 +385,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 
 .additional-row span {
   overflow: hidden;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;

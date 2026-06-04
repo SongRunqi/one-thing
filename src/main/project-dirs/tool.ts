@@ -55,26 +55,33 @@ function renderList(entries: Array<{ path: string; description: string; lastUsed
 
 export const ProjectDirsTool = Tool.define<typeof ProjectDirsParameters, ProjectDirsMetadata>('project_dirs', {
   name: 'ProjectDirs',
-  description: `Manage the list of known project directories. Each entry remembers a path and a short description; future iterations will store per-project notes and AI activity history.
+  description: `Inspect or manage the remembered list of known project directories. This tool does not change the session work directory. To actually switch into a project or make file tools resolve relative paths there, use variable { action: "set", name: "workdir", value: <project-directory> }.
 
 Actions:
 - list: returns recently used projects (path + description).
-- get { path }: returns the full record for one project (use this when entering a project to see prior context).
+- get { path }: returns the full record for one project only; it does not switch cwd.
 - add { path, description? }: register a new project directory or refresh its lastUsedAt. Description is set on first add or when explicitly provided.
 - update { path, description }: rename a project's description without changing its order.
 - remove { path }: forget a project directory.
 
-Setting workdir via the variable tool automatically calls add() under the hood, using the current session name as a fallback description. Use this tool's update/get when you need to maintain richer state.`,
+Setting the work directory via the variable tool automatically records/touches project_dirs under the hood. Use project_dirs get/update only when you need remembered metadata, not when you need to enter the project.`,
   category: 'builtin',
   enabled: true,
   autoExecute: true,
   permissionGuard: 'safe',
+  executionMode: 'parallel',
+  renderKind: 'text',
+  promptSnippet: 'Inspect remembered project directories without changing workdir',
 
   parameters: ProjectDirsParameters,
 
   async execute(args, ctx) {
     const store = getProjectsStore()
     const action: ProjectDirsAction = args.action
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: `Running project_dirs ${action}...` }],
+      details: { phase: 'running', action },
+    })
 
     let output: string
     let resultPath: string | undefined
@@ -124,6 +131,10 @@ Setting workdir via the variable tool automatically calls add() under the hood, 
       path: resultPath,
       count: store.list().length,
     }
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: output }],
+      details: { phase: 'ready', ...meta },
+    })
     ctx.metadata({ title: titleFor(action, resultPath), metadata: meta })
 
     return {

@@ -108,7 +108,7 @@
     >
       <div class="thinking-reasoning-inner">
         <div
-          class="thinking-content"
+          class="thinking-content md-body"
           v-html="renderedReasoning"
         />
       </div>
@@ -326,8 +326,8 @@ onUnmounted(() => {
 .thinking-status-row {
   --thinking-fg: color-mix(
     in srgb,
-    var(--text-ai-thinking, var(--text-muted, var(--muted))) 72%,
-    var(--text-primary, var(--text)) 28%
+    var(--ui-message-thinking-fg, var(--text-ai-thinking, var(--text-muted, var(--muted)))) 72%,
+    var(--ui-text-primary-fg, var(--text-primary, var(--text))) 28%
   );
   display: flex;
   align-items: center;
@@ -353,7 +353,7 @@ onUnmounted(() => {
 }
 
 .thinking-text.thought {
-  color: color-mix(in srgb, var(--thinking-fg) 90%, var(--text-primary, var(--text)) 10%);
+  color: color-mix(in srgb, var(--thinking-fg) 90%, var(--ui-text-primary-fg, var(--text-primary, var(--text))) 10%);
 }
 
 .thinking-dot {
@@ -361,8 +361,8 @@ onUnmounted(() => {
   height: 6px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 28%, transparent);
+  background: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, transparent);
   animation: thinkingDotPulse 1.35s ease-in-out infinite;
 }
 
@@ -453,7 +453,7 @@ onUnmounted(() => {
   height: 20px;
   border: none;
   background: transparent;
-  color: color-mix(in srgb, var(--thinking-fg, var(--text-ai-thinking, var(--muted))) 82%, transparent);
+  color: color-mix(in srgb, var(--thinking-fg, var(--ui-message-thinking-fg, var(--text-ai-thinking, var(--muted)))) 82%, transparent);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -463,8 +463,8 @@ onUnmounted(() => {
 }
 
 .thinking-toggle-btn:hover {
-  background: rgba(var(--accent-rgb), 0.1);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .thinking-toggle-btn svg {
@@ -477,13 +477,13 @@ onUnmounted(() => {
 
 .thinking-content {
   padding: 8px 12px;
-  border-left: 2px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-left: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 34%, var(--ui-border-default-border, var(--border)));
   font-size: 12.5px;
   line-height: 1.5;
   color: color-mix(
     in srgb,
-    var(--text-ai-thinking, var(--text-muted, var(--muted))) 82%,
-    var(--text-primary, var(--text)) 18%
+    var(--ui-message-thinking-fg, var(--text-ai-thinking, var(--text-muted, var(--muted)))) 82%,
+    var(--ui-text-primary-fg, var(--text-primary, var(--text))) 18%
   );
 }
 

@@ -111,6 +111,24 @@ export function useSessionEvents(sessionIdRef: MaybeRef<string | undefined>): Se
         break
       }
 
+      case 'tool:execution-update': {
+        const idx = steps.value.findIndex(s => s.id === event.stepId || s.toolCallId === event.toolCallId)
+        if (idx >= 0) {
+          const updated = { ...steps.value[idx], status: 'running' as const, partialResult: event.partialResult, partialResultIsPartial: true }
+          steps.value = [...steps.value.slice(0, idx), updated, ...steps.value.slice(idx + 1)]
+        }
+        break
+      }
+
+      case 'tool:execution-end': {
+        const idx = steps.value.findIndex(s => s.id === event.stepId || s.toolCallId === event.toolCallId)
+        if (idx >= 0) {
+          const updated = { ...steps.value[idx], partialResult: event.result, partialResultIsPartial: false, ...(event.isError ? { error: event.error } : {}) }
+          steps.value = [...steps.value.slice(0, idx), updated, ...steps.value.slice(idx + 1)]
+        }
+        break
+      }
+
     }
   }
 

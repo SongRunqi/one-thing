@@ -114,7 +114,7 @@ function onDrop(e: DragEvent) {
 
 <style scoped>
 .tab-item {
-  --tab-active-bg: var(--bg-panel);
+  --tab-active-bg: var(--ui-surface-panel-bg, var(--bg-panel));
   --tab-radius: 8px;
   --tab-height: 28px;
   --tab-min-width: 72px;
@@ -132,7 +132,7 @@ function onDrop(e: DragEvent) {
   font-size: 13px;
   font-weight: 400;
   line-height: 1;
-  color: var(--muted);
+  color: var(--ui-tab-bar-item-fg, var(--ui-text-muted-fg, var(--muted)));
   background: transparent;
   transition:
     background var(--duration-fast) var(--ease-default),
@@ -169,28 +169,28 @@ function onDrop(e: DragEvent) {
 }
 
 .tab-item:hover .tab-surface {
-  background: var(--ot-hover-bg, color-mix(in srgb, var(--bg-elevated) 32%, transparent));
-  color: var(--text);
+  background: var(--ot-hover-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 32%, transparent));
+  color: var(--ui-tab-bar-item-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 
 .tab-item.active {
-  color: var(--ot-active-text, var(--text));
+  color: var(--ot-active-text, var(--ui-text-primary-fg, var(--text)));
   font-weight: 500;
 }
 
 .tab-item.active .tab-surface {
-  background: var(--ot-active-bg, color-mix(in srgb, var(--accent) 13%, transparent));
-  border-color: transparent;
+  background: var(--ot-active-bg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 13%, transparent));
+  border-color: var(--ui-tab-bar-item-active-border, transparent);
   border-radius: var(--tab-radius);
   box-shadow: none;
 }
 
 .tab-item.drag-over {
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--border-subtle, var(--border)) 80%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle, var(--border)))) 80%, transparent);
 }
 
 .tab-item.drag-over .tab-surface {
-  border-left-color: color-mix(in srgb, var(--border-subtle, var(--border)) 80%, transparent);
+  border-left-color: color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle, var(--border)))) 80%, transparent);
 }
 
 .tab-icon {
@@ -217,7 +217,7 @@ function onDrop(e: DragEvent) {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   flex: 0 0 7px;
 }
 
@@ -232,7 +232,7 @@ function onDrop(e: DragEvent) {
   background: none;
   -webkit-app-region: no-drag;
   border-radius: 6px;
-  color: var(--muted);
+  color: var(--ui-tab-bar-action-fg, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
   opacity: 0;
   transition:
@@ -248,7 +248,7 @@ function onDrop(e: DragEvent) {
 
 .tab-close:hover {
   opacity: 1;
-  background: var(--bg-hover);
-  color: var(--text);
+  background: var(--ui-tab-bar-action-hover-bg, var(--ui-state-hover-bg, var(--bg-hover)));
+  color: var(--ui-tab-bar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 </style>

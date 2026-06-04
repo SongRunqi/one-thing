@@ -444,10 +444,10 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 7px 12px;
-  border: 1px solid var(--settings-ink, var(--text));
+  border: 1px solid var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   border-radius: 7px;
-  background: var(--settings-ink, var(--text));
-  color: var(--settings-paper, var(--bg));
+  background: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
   font: inherit;
   font-size: 13px;
   font-weight: 560;
@@ -455,9 +455,9 @@ onUnmounted(() => {
 }
 
 .provider-rows {
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 12px;
-  background: var(--settings-paper, var(--bg));
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
   overflow: hidden;
 }
 
@@ -470,9 +470,9 @@ onUnmounted(() => {
   min-height: 64px;
   padding: 14px 16px;
   border: 0;
-  border-top: 1px solid var(--settings-rule-soft, var(--border-subtle));
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
   background: transparent;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -484,7 +484,7 @@ onUnmounted(() => {
 
 .provider-row:hover,
 .provider-row.active {
-  background: var(--settings-paper-2, var(--panel-2));
+  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
 }
 
 .provider-icon-tile {
@@ -494,10 +494,10 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 9px;
-  background: var(--settings-paper-2, var(--panel-2));
-  color: var(--settings-ink-2, var(--text-secondary));
+  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
 }
 
 .provider-status-dot {
@@ -506,13 +506,13 @@ onUnmounted(() => {
   bottom: -3px;
   width: 10px;
   height: 10px;
-  border: 2px solid var(--settings-paper, var(--bg));
+  border: 2px solid var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
   border-radius: 999px;
-  background: var(--settings-ink-5, var(--muted));
+  background: var(--settings-ink-5, var(--ui-text-muted-fg, var(--muted)));
 }
 
 .provider-status-dot.active {
-  background: var(--text-success, var(--color-success));
+  background: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
 }
 
 .provider-row-main {
@@ -531,7 +531,7 @@ onUnmounted(() => {
 
 .provider-name {
   overflow: hidden;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 14px;
   font-weight: 650;
   text-overflow: ellipsis;
@@ -541,7 +541,7 @@ onUnmounted(() => {
 .provider-row-model,
 .provider-key-preview {
   overflow: hidden;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11.5px;
   text-overflow: ellipsis;
@@ -549,17 +549,17 @@ onUnmounted(() => {
 }
 
 .provider-key-preview {
-  color: var(--settings-ink-3, var(--text-muted));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
 }
 
 .provider-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 999px;
   background: transparent;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
   font-weight: 560;
@@ -571,15 +571,15 @@ onUnmounted(() => {
 }
 
 .provider-pill.blue {
-  border-color: color-mix(in srgb, var(--settings-accent, var(--accent)) 32%, transparent);
-  background: var(--settings-accent-tint, color-mix(in srgb, var(--settings-accent, var(--accent)) 12%, var(--settings-paper)));
-  color: var(--settings-accent, var(--accent));
+  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 32%, transparent);
+  background: var(--settings-accent-tint, color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 12%, var(--settings-paper)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .provider-pill.green {
-  border-color: color-mix(in srgb, var(--text-success, var(--color-success)) 32%, transparent);
-  background: color-mix(in srgb, var(--text-success, var(--color-success)) 12%, var(--settings-paper));
-  color: var(--text-success, var(--color-success));
+  border-color: color-mix(in srgb, var(--ui-status-success-fg, var(--text-success, var(--color-success))) 32%, transparent);
+  background: color-mix(in srgb, var(--ui-status-success-fg, var(--text-success, var(--color-success))) 12%, var(--settings-paper));
+  color: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
 }
 
 .provider-configure,
@@ -589,10 +589,10 @@ onUnmounted(() => {
   justify-content: center;
   min-height: 30px;
   padding: 0 12px;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
-  background: var(--settings-paper, var(--bg));
-  color: var(--settings-ink-2, var(--text-secondary));
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
   font-size: 13px;
   font-weight: 560;
   white-space: nowrap;
@@ -604,7 +604,7 @@ onUnmounted(() => {
 
 .provider-row-edit:hover,
 .provider-row:hover .provider-configure {
-  border-color: var(--settings-accent, var(--accent));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .provider-tab {
@@ -627,7 +627,7 @@ onUnmounted(() => {
 .detail-title {
   font-size: 24px;
   font-weight: 650;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   margin: 0;
   letter-spacing: 0;
 }
@@ -643,8 +643,8 @@ onUnmounted(() => {
 .toggle-switch {
   width: 36px;
   height: 20px;
-  border: 1px solid var(--settings-rule, var(--border));
-  background: var(--settings-paper, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  background: var(--settings-paper, var(--ui-border-default-border, var(--border)));
   border-radius: 10px;
   position: relative;
   transition: background 0.2s ease, border-color 0.2s ease;
@@ -655,7 +655,7 @@ onUnmounted(() => {
   position: absolute;
   width: 16px;
   height: 16px;
-  background: var(--settings-ink-3, var(--muted));
+  background: var(--settings-ink-3, var(--ui-text-muted-fg, var(--muted)));
   border-radius: 50%;
   top: 1px;
   left: 1px;
@@ -664,12 +664,12 @@ onUnmounted(() => {
 }
 
 .enable-toggle input:checked + .toggle-switch {
-  border-color: var(--settings-accent, var(--accent));
-  background: var(--settings-accent, var(--accent));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .enable-toggle input:checked + .toggle-switch::after {
-  background: var(--settings-paper, var(--bg));
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
   transform: translateX(16px);
 }
 
@@ -680,7 +680,7 @@ onUnmounted(() => {
 .section-label {
   font-size: 10.5px;
   font-weight: 650;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0 0 12px 2px;
@@ -691,7 +691,7 @@ onUnmounted(() => {
 
 .section-value {
   margin-left: auto;
-  color: var(--settings-accent, var(--accent));
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   font-weight: 600;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
@@ -700,7 +700,7 @@ onUnmounted(() => {
 }
 
 .section-value.muted {
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
 }
 
 .settings-group.is-disabled {
@@ -719,7 +719,7 @@ onUnmounted(() => {
 }
 
 .section-hint {
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-weight: 400;
   text-transform: none;
   letter-spacing: 0;
@@ -730,7 +730,7 @@ onUnmounted(() => {
   margin-left: 4px;
   border: none;
   background: transparent;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-size: 11px;
   cursor: pointer;
   padding: 2px 6px;
@@ -738,7 +738,7 @@ onUnmounted(() => {
 }
 
 .section-reset:hover {
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   background: var(--settings-paper-2, rgba(128, 128, 128, 0.1));
 }
 
@@ -765,7 +765,7 @@ onUnmounted(() => {
 
 .row-label {
   font-size: 14px;
-  color: var(--settings-ink-2, var(--text));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text)));
   flex-shrink: 0;
   font-weight: 520;
 }
@@ -784,7 +784,7 @@ onUnmounted(() => {
   border: none;
   border-radius: 7px;
   background: transparent;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 13px;
   text-align: right;
 }
@@ -795,7 +795,7 @@ onUnmounted(() => {
 }
 
 .row-input::placeholder {
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
 }
 
 .row-select {
@@ -815,7 +815,7 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   border-radius: 4px;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -824,7 +824,7 @@ onUnmounted(() => {
 }
 
 .input-toggle:hover {
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
 .stepper-row,
@@ -842,7 +842,7 @@ onUnmounted(() => {
   width: 100%;
   height: 6px;
   border-radius: 3px;
-  background: var(--settings-rule, var(--border));
+  background: var(--settings-rule, var(--ui-border-default-border, var(--border)));
   cursor: pointer;
   -webkit-appearance: none;
 }
@@ -852,7 +852,7 @@ onUnmounted(() => {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--settings-accent, var(--accent));
+  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
@@ -864,7 +864,7 @@ onUnmounted(() => {
   align-items: center;
   margin-top: 6px;
   font-size: 11px;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   gap: 8px;
 }
 
@@ -875,7 +875,7 @@ onUnmounted(() => {
   padding: 1px 6px;
   border-radius: 3px;
   background: rgba(128, 128, 128, 0.1);
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

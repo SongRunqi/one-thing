@@ -7,6 +7,10 @@ export interface ToolDiffData {
   additions: number
   deletions: number
   filePath: string
+  auditId?: string
+  auditPath?: string
+  originalContentHash?: string
+  afterContentHash?: string
 }
 
 export interface ToolDiffLine {
@@ -93,8 +97,8 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
   const filePath = getToolFilePath(toolCall, diff, streamingContent)
   const argsJson = includeDetails ? getArgsJson(step) : null
   const resultText = includeDetails ? getResultText(step) : null
-  const liveOutput = includeDetails && step.status === 'running' && step.result
-    ? truncateOutput(step.result)
+  const liveOutput = includeDetails && step.status === 'running'
+    ? getLiveOutput(step)
     : null
   const inlineResult = includeDetails ? getInlineResult(step) : null
   const errorPreview = isRejected
@@ -171,12 +175,9 @@ export function getToolFilePath(
   if (diff?.filePath) return diff.filePath
   if (streamingContent?.filePath) return streamingContent.filePath
   if (typeof toolCall?.changes?.filePath === 'string') return toolCall.changes.filePath
-  if (typeof args.file_path === 'string') return args.file_path
   if (typeof args.path === 'string') return args.path
   if (toolCall?.status === 'input-streaming' && toolCall.streamingArgs) {
-    return extractStreamingStringValue(toolCall.streamingArgs, 'file_path') ||
-      extractStreamingStringValue(toolCall.streamingArgs, 'path') ||
-      ''
+    return extractStreamingStringValue(toolCall.streamingArgs, 'path') || ''
   }
   return ''
 }
@@ -225,6 +226,21 @@ function getArgsJson(step: Step): string | null {
     return null
   }
   return formatArgsJson(args, toolName)
+}
+
+function getLiveOutput(step: Step): string | null {
+  const partialText = step.partialResult?.content
+    ?.map((part) => {
+      if (part.type === 'text') return part.text ?? ''
+      if (part.type === 'file') return part.path ? `[File: ${part.path}]` : ''
+      if (part.type === 'image') return part.path ? `[Image: ${part.path}]` : '[Image]'
+      return ''
+    })
+    .filter(Boolean)
+    .join('\n')
+
+  const source = partialText || step.result
+  return source ? truncateOutput(source) : null
 }
 
 function getInlineResult(step: Step): string | null {
@@ -329,9 +345,11 @@ function getStreamingContentSource(toolName: string, args: string): ToolContentS
 
   try {
     const parsed = JSON.parse(args)
-    const parsedContent = toolName === 'write' ? parsed.content : parsed.new_string
+    const parsedContent = toolName === 'write'
+      ? parsed.content
+      : extractEditReplacementContent(parsed)
     const content = typeof parsedContent === 'string' ? parsedContent : ''
-    const filePath = typeof parsed.file_path === 'string' ? parsed.file_path : ''
+    const filePath = typeof parsed.path === 'string' ? parsed.path : ''
     return (filePath || content)
       ? {
         filePath,
@@ -344,11 +362,9 @@ function getStreamingContentSource(toolName: string, args: string): ToolContentS
     // tolerant extraction below.
   }
 
-  result.filePath = extractStreamingStringValue(args, 'file_path') ||
-    extractStreamingStringValue(args, 'path') ||
-    ''
+  result.filePath = extractStreamingStringValue(args, 'path') || ''
 
-  const contentKey = toolName === 'write' ? 'content' : 'new_string'
+  const contentKey = toolName === 'write' ? 'content' : 'newText'
   const contentMatch = args.match(new RegExp(`"${contentKey}"\\s*:\\s*"`))
   if (contentMatch) {
     const startIdx = contentMatch.index! + contentMatch[0].length
@@ -370,18 +386,24 @@ function getStreamingContentSource(toolName: string, args: string): ToolContentS
     : null
 }
 
+function extractEditReplacementContent(args: Record<string, any>): string {
+  if (Array.isArray(args.edits)) {
+    return args.edits
+      .map((edit: any) => typeof edit?.newText === 'string' ? edit.newText : '')
+      .filter(Boolean)
+      .join('\n')
+  }
+  return ''
+}
+
 function getFinalizedContentSource(toolCall: ToolCall | undefined, toolName: string): ToolContentSource | null {
   const args = toolCall?.arguments
   if (!args) return null
 
-  const parsedContent = toolName === 'write' ? args.content : args.new_string
+  const parsedContent = toolName === 'write' ? args.content : extractEditReplacementContent(args)
   if (typeof parsedContent !== 'string') return null
 
-  const filePath = typeof args.file_path === 'string'
-    ? args.file_path
-    : typeof args.path === 'string'
-      ? args.path
-      : ''
+  const filePath = typeof args.path === 'string' ? args.path : ''
 
   return {
     filePath,
@@ -460,6 +482,10 @@ export function getDiffFromStep(step: Step): ToolDiffData | null {
       additions: step.toolCall.changes.additions || 0,
       deletions: step.toolCall.changes.deletions || 0,
       filePath: step.toolCall.changes.filePath || '',
+      auditId: step.toolCall.changes.auditId,
+      auditPath: step.toolCall.changes.auditPath,
+      originalContentHash: step.toolCall.changes.originalContentHash,
+      afterContentHash: step.toolCall.changes.afterContentHash,
     }
   }
 
@@ -471,7 +497,11 @@ export function getDiffFromStep(step: Step): ToolDiffData | null {
         diff: parsed.diff,
         additions: parsed.additions || 0,
         deletions: parsed.deletions || 0,
-        filePath: parsed.filePath || '',
+        filePath: parsed.path || '',
+        auditId: parsed.auditId,
+        auditPath: parsed.auditPath,
+        originalContentHash: parsed.originalContentHash,
+        afterContentHash: parsed.afterContentHash,
       }
     }
     if (parsed.metadata?.diff) {
@@ -479,7 +509,11 @@ export function getDiffFromStep(step: Step): ToolDiffData | null {
         diff: parsed.metadata.diff,
         additions: parsed.metadata.additions || 0,
         deletions: parsed.metadata.deletions || 0,
-        filePath: parsed.metadata.filePath || '',
+        filePath: parsed.metadata.path || '',
+        auditId: parsed.metadata.auditId,
+        auditPath: parsed.metadata.auditPath,
+        originalContentHash: parsed.metadata.originalContentHash,
+        afterContentHash: parsed.metadata.afterContentHash,
       }
     }
   } catch {

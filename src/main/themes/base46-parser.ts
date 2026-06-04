@@ -3,7 +3,59 @@
  * Parses NvChad Base46 Lua theme files and converts them to our JSON format
  */
 
-import type { Base46Theme, Base46Base30, Base46Base16, Theme, ThemeDefs } from '../../shared/ipc/themes.js'
+import type {
+  Base46Base16,
+  Base46Base30,
+  Base46Theme,
+  SemanticHighlightToken,
+  Theme,
+  ThemeDefs,
+  ThemeHighlights,
+  ThemeUITokens,
+} from '../../shared/ipc/themes.js'
+
+const BASE46_HIGHLIGHT_ALIASES: Record<string, SemanticHighlightToken> = {
+  Normal: 'syntax.plain',
+  Comment: 'syntax.comment',
+  '@comment': 'syntax.comment',
+  Keyword: 'syntax.keyword',
+  Statement: 'syntax.keyword',
+  Conditional: 'syntax.keyword',
+  Repeat: 'syntax.keyword',
+  Include: 'syntax.keyword',
+  Exception: 'syntax.keyword',
+  '@keyword': 'syntax.keyword',
+  '@keyword.function': 'syntax.keyword',
+  '@keyword.operator': 'syntax.keyword',
+  Boolean: 'syntax.atom',
+  Constant: 'syntax.atom',
+  String: 'syntax.string',
+  Character: 'syntax.string',
+  Number: 'syntax.number',
+  Float: 'syntax.number',
+  Function: 'syntax.function',
+  Identifier: 'syntax.variable',
+  '@function': 'syntax.function',
+  '@method': 'syntax.function',
+  '@variable': 'syntax.variable',
+  '@property': 'syntax.property',
+  '@field': 'syntax.property',
+  Type: 'syntax.type',
+  Typedef: 'syntax.type',
+  '@type': 'syntax.type',
+  '@class': 'syntax.type',
+  Tag: 'syntax.tag',
+  '@tag': 'syntax.tag',
+  Operator: 'syntax.operator',
+  Delimiter: 'syntax.punctuation',
+  '@operator': 'syntax.operator',
+  '@punctuation': 'syntax.punctuation',
+  Error: 'syntax.invalid',
+  DiffAdd: 'syntax.inserted',
+  DiffDelete: 'syntax.deleted',
+  Title: 'syntax.heading',
+  Underlined: 'syntax.link',
+}
 
 /**
  * Extract a Lua table from theme content
@@ -85,6 +137,316 @@ function toKebabCase(str: string): string {
     .toLowerCase()
 }
 
+function buildBase46Highlights(
+  b30: Partial<Base46Base30>,
+  b16: Partial<Base46Base16>
+): ThemeHighlights {
+  const plain = b30.light_grey || b16.base06 || b30.white || b16.base05 || '#E6E4D9'
+  const keyword = b30.purple || b16.base0E || '#BD93F9'
+  const string = b30.green || b16.base0B || '#50FA7B'
+  const number = b30.orange || b16.base09 || '#FFB86C'
+  const fn = b30.blue || b16.base0D || '#8BE9FD'
+  const variable = b30.cyan || b16.base08 || plain
+  const operator = b30.grey_fg || b16.base04 || '#878580'
+  const type = b30.teal || b16.base0C || '#4ec9b0'
+  const property = b30.nord_blue || b16.base0C || '#9cdcfe'
+  const punctuation = b30.grey_fg || b16.base05 || '#d4d4d4'
+  const comment = b30.grey || b16.base03 || '#6272A4'
+  const danger = b30.red || b16.base08 || '#FF5555'
+
+  return {
+    semanticTokens: {
+      'syntax.plain': { fg: plain },
+      'syntax.comment': { fg: comment, fontStyle: 'italic' },
+      'syntax.keyword': { fg: keyword },
+      'syntax.atom': { fg: number },
+      'syntax.string': { fg: string },
+      'syntax.number': { fg: number },
+      'syntax.function': { fg: fn },
+      'syntax.definition': { fg: fn },
+      'syntax.variable': { fg: variable },
+      'syntax.property': { fg: property },
+      'syntax.type': { fg: type },
+      'syntax.tag': { fg: keyword },
+      'syntax.operator': { fg: operator },
+      'syntax.punctuation': { fg: punctuation },
+      'syntax.invalid': { fg: danger },
+      'syntax.inserted': { fg: b30.vibrant_green || b30.green || b16.base0B || '#50FA7B' },
+      'syntax.deleted': { fg: danger },
+      'syntax.heading': { fg: fn, fontStyle: 'bold' },
+      'syntax.link': { fg: b30.cyan || b16.base0C || '#8BE9FD', fontStyle: 'underline' },
+      'syntax.emphasis': { fg: plain, fontStyle: 'italic' },
+      'syntax.strong': { fg: plain, fontStyle: 'bold' },
+    },
+    aliases: BASE46_HIGHLIGHT_ALIASES,
+  }
+}
+
+type ThemeColorScheme = 'dark' | 'light'
+
+interface Base46AppRoles {
+  accent: string
+  accentSub: string
+  appBg: string
+  sidebarBg: string
+  chatBg: string
+  panelBg: string
+  elevatedBg: string
+  floatingBg: string
+  primaryText: string
+  secondaryText: string
+  mutedText: string
+  faintText: string
+  sidebarTitleText: string
+  sidebarItemText: string
+  sidebarMutedText: string
+  placeholderText: string
+  borderDefault: string
+  borderSubtle: string
+  borderStrong: string
+  hoverBg: string
+  activeBg: string
+  selectedBg: string
+  selectedHoverBg: string
+}
+
+function firstDefinedColor(...candidates: Array<string | undefined>): string | undefined {
+  return candidates.find(color => typeof color === 'string' && color.length > 0)
+}
+
+function parseHexColor(hex: string | undefined): [number, number, number] | null {
+  if (!hex) return null
+  const normalized = hex.trim().replace('#', '')
+  const expanded = normalized.length === 3
+    ? normalized.split('').map(channel => channel + channel).join('')
+    : normalized
+
+  if (!/^[0-9a-f]{6}$/i.test(expanded)) return null
+
+  return [
+    parseInt(expanded.slice(0, 2), 16),
+    parseInt(expanded.slice(2, 4), 16),
+    parseInt(expanded.slice(4, 6), 16),
+  ]
+}
+
+function rgbToHex([red, green, blue]: [number, number, number]): string {
+  return `#${[red, green, blue]
+    .map(channel => Math.round(channel).toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()}`
+}
+
+function mixHexColors(
+  foreground: string,
+  background: string,
+  foregroundWeight: number
+): string {
+  const foregroundRgb = parseHexColor(foreground)
+  const backgroundRgb = parseHexColor(background)
+  if (!foregroundRgb || !backgroundRgb) return foreground
+
+  const weight = Math.min(1, Math.max(0, foregroundWeight))
+  return rgbToHex([
+    (foregroundRgb[0] * weight) + (backgroundRgb[0] * (1 - weight)),
+    (foregroundRgb[1] * weight) + (backgroundRgb[1] * (1 - weight)),
+    (foregroundRgb[2] * weight) + (backgroundRgb[2] * (1 - weight)),
+  ])
+}
+
+function contrastRatio(foreground: string, background: string): number | null {
+  if (!parseHexColor(foreground) || !parseHexColor(background)) return null
+
+  const foregroundLuminance = getLuminance(foreground)
+  const backgroundLuminance = getLuminance(background)
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance)
+  const darker = Math.min(foregroundLuminance, backgroundLuminance)
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
+function colorMeetsContrast(
+  foreground: string | undefined,
+  background: string,
+  minContrast: number
+): foreground is string {
+  if (!foreground) return false
+  const ratio = contrastRatio(foreground, background)
+  return ratio !== null && ratio >= minContrast
+}
+
+function readableColor(
+  background: string,
+  candidates: Array<string | undefined>,
+  fallback: string,
+  minContrast = 4.5,
+  preferredWeight = 0.72
+): string {
+  for (const candidate of candidates) {
+    if (colorMeetsContrast(candidate, background, minContrast)) return candidate
+  }
+
+  const base = firstDefinedColor(...candidates) || fallback
+  if (!parseHexColor(base) || !parseHexColor(background)) return fallback
+
+  for (let weight = preferredWeight; weight <= 1; weight += 0.04) {
+    const mixed = mixHexColors(base, background, weight)
+    if (colorMeetsContrast(mixed, background, minContrast)) return mixed
+  }
+
+  return fallback
+}
+
+function rgbaFromHex(hex: string, alpha: number, fallbackRgb = '67, 133, 190'): string {
+  const rgb = parseHexColor(hex)
+  if (!rgb) return `rgba(${fallbackRgb}, ${alpha})`
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`
+}
+
+function neutralOverlay(colorScheme: ThemeColorScheme, alpha: number): string {
+  return colorScheme === 'dark'
+    ? `rgba(255, 255, 255, ${alpha})`
+    : `rgba(0, 0, 0, ${alpha})`
+}
+
+function deriveBase46AppRoles(
+  b30: Partial<Base46Base30>,
+  b16: Partial<Base46Base16>,
+  colorScheme: ThemeColorScheme
+): Base46AppRoles {
+  const defaultBg = colorScheme === 'dark' ? '#282726' : '#FFFCF0'
+  const defaultText = colorScheme === 'dark' ? '#F2F0E5' : '#1F2328'
+  const defaultSubtleText = colorScheme === 'dark' ? '#B7B5AC' : '#6B7280'
+  const defaultAccent = colorScheme === 'dark' ? '#4385BE' : '#2563EB'
+
+  const baseBg = firstDefinedColor(b30.black, b16.base00, defaultBg) || defaultBg
+  const appBg = firstDefinedColor(b30.darker_black, b16.base00, baseBg) || baseBg
+  const sidebarBg = firstDefinedColor(b30.black, b16.base00, appBg) || appBg
+  const chatBg = firstDefinedColor(b30.darker_black, b30.black, b16.base00, appBg) || appBg
+  const panelBg = firstDefinedColor(b30.one_bg, b16.base01, sidebarBg) || sidebarBg
+  const elevatedBg = firstDefinedColor(b30.one_bg2, b16.base02, panelBg) || panelBg
+  const floatingBg = firstDefinedColor(b30.one_bg3, b16.base03, elevatedBg) || elevatedBg
+  const accent = firstDefinedColor(b30.blue, b16.base0D, defaultAccent) || defaultAccent
+  const accentSub = firstDefinedColor(b30.nord_blue, b30.cyan, b16.base0C, accent) || accent
+
+  const primaryText = readableColor(
+    chatBg,
+    [b30.white, b16.base05, b30.light_grey, b16.base06],
+    defaultText,
+    4.5,
+    0.88
+  )
+  const secondaryText = readableColor(
+    chatBg,
+    [b30.light_grey, b16.base06, b30.grey_fg2, b16.base05, primaryText],
+    primaryText,
+    4.5,
+    0.8
+  )
+  const mutedText = readableColor(
+    chatBg,
+    [b30.grey_fg, b30.grey_fg2, b16.base04, b30.light_grey, secondaryText],
+    defaultSubtleText,
+    4.5,
+    0.68
+  )
+  const faintText = readableColor(
+    chatBg,
+    [b30.grey, b16.base03, b30.grey_fg, mutedText],
+    mutedText,
+    3.8,
+    0.58
+  )
+  const sidebarItemText = readableColor(
+    sidebarBg,
+    [b30.grey_fg, b30.light_grey, b16.base04, b16.base06, secondaryText, primaryText],
+    secondaryText,
+    4.5,
+    0.72
+  )
+  const sidebarMutedText = readableColor(
+    sidebarBg,
+    [b30.grey_fg2, b30.grey_fg, b16.base04, b30.light_grey, sidebarItemText],
+    sidebarItemText,
+    4.5,
+    0.62
+  )
+  const placeholderText = readableColor(
+    panelBg,
+    [b30.grey, b16.base03, b30.grey_fg, mutedText],
+    mutedText,
+    4.5,
+    0.62
+  )
+
+  return {
+    accent,
+    accentSub,
+    appBg,
+    sidebarBg,
+    chatBg,
+    panelBg,
+    elevatedBg,
+    floatingBg,
+    primaryText,
+    secondaryText,
+    mutedText,
+    faintText,
+    sidebarTitleText: readableColor(sidebarBg, [b30.white, b16.base05, primaryText], primaryText),
+    sidebarItemText,
+    sidebarMutedText,
+    placeholderText,
+    borderDefault: firstDefinedColor(b30.line, b30.grey, b16.base02, mixHexColors(primaryText, panelBg, 0.18)) || '#44475A',
+    borderSubtle: firstDefinedColor(b30.one_bg2, b16.base01, mixHexColors(primaryText, panelBg, 0.12)) || '#343331',
+    borderStrong: firstDefinedColor(b30.grey_fg, b16.base03, mixHexColors(primaryText, panelBg, 0.28)) || '#575653',
+    hoverBg: neutralOverlay(colorScheme, colorScheme === 'dark' ? 0.05 : 0.06),
+    activeBg: neutralOverlay(colorScheme, colorScheme === 'dark' ? 0.09 : 0.1),
+    selectedBg: rgbaFromHex(accent, colorScheme === 'dark' ? 0.14 : 0.12),
+    selectedHoverBg: rgbaFromHex(accent, colorScheme === 'dark' ? 0.2 : 0.17),
+  }
+}
+
+function buildBase46UI(roles: Base46AppRoles): ThemeUITokens {
+  return {
+    semanticTokens: {
+      'ui.accent.primary': { fg: roles.accent },
+      'ui.accent.subtle': { fg: roles.accentSub },
+      'ui.surface.app': { bg: roles.appBg },
+      'ui.surface.sidebar': { bg: roles.sidebarBg },
+      'ui.surface.chat': { bg: roles.chatBg },
+      'ui.surface.panel': { bg: roles.panelBg },
+      'ui.surface.elevated': { bg: roles.elevatedBg },
+      'ui.surface.floating': { bg: roles.floatingBg },
+      'ui.surface.input': { bg: roles.panelBg, border: roles.borderDefault },
+      'ui.surface.inputFocus': { bg: roles.elevatedBg, border: roles.accent, ring: roles.accent },
+      'ui.text.primary': { fg: roles.primaryText },
+      'ui.text.secondary': { fg: roles.secondaryText },
+      'ui.text.muted': { fg: roles.mutedText },
+      'ui.text.faint': { fg: roles.faintText },
+      'ui.text.placeholder': { fg: roles.placeholderText },
+      'ui.border.default': { border: roles.borderDefault },
+      'ui.border.subtle': { border: roles.borderSubtle },
+      'ui.border.strong': { border: roles.borderStrong },
+      'ui.state.hover': { bg: roles.hoverBg },
+      'ui.state.active': { bg: roles.activeBg },
+      'ui.state.selected': { bg: roles.selectedBg, fg: roles.primaryText, border: roles.accent },
+      'ui.state.selectedHover': { bg: roles.selectedHoverBg, fg: roles.primaryText, border: roles.accent },
+      'ui.sidebar.surface': {
+        bg: roles.sidebarBg,
+        fg: roles.sidebarItemText,
+        border: roles.borderSubtle,
+      },
+      'ui.sidebar.item': { fg: roles.sidebarItemText },
+      'ui.sidebar.itemMuted': { fg: roles.sidebarMutedText },
+      'ui.sidebar.header': { fg: roles.sidebarTitleText },
+      'ui.sidebar.action': { fg: roles.sidebarItemText, bg: 'transparent' },
+      'ui.tabBar.surface': { bg: roles.panelBg, border: roles.borderSubtle },
+      'ui.tabBar.item': { fg: roles.mutedText },
+      'ui.tabBar.itemActive': { bg: roles.selectedBg, fg: roles.primaryText, border: 'transparent' },
+      'ui.editor.placeholder': { fg: roles.placeholderText },
+    },
+  }
+}
+
 /**
  * Convert Base46 theme to our JSON theme format
  */
@@ -101,6 +463,7 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
   // Detect color scheme: use explicit type from Lua, or detect from background color
   const bgColor = b30.black || b30.darker_black || b16.base00 || '#1E1E2E'
   const colorScheme = base46.type || detectColorSchemeFromBg(bgColor)
+  const roles = deriveBase46AppRoles(b30, b16, colorScheme)
 
   // Build defs from all Base46 colors
   const defs: ThemeDefs = {}
@@ -128,62 +491,62 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
 
     theme: {
       // Accent - use blue or base0D (functions/links)
-      accent: b30.blue || b16.base0D || '#4385BE',
-      accentMain: b30.blue || b16.base0D || '#4385BE',
-      accentSub: b30.nord_blue || b30.baby_pink || b16.base0C || '#8BE9FD',
-      accentRgb: hexToRgb(b30.blue || b16.base0D || '#4385BE'),
+      accent: roles.accent,
+      accentMain: roles.accent,
+      accentSub: roles.accentSub,
+      accentRgb: hexToRgb(roles.accent),
 
       bg: {
-        app: b30.darker_black || b30.black || b16.base00 || '#282726',
-        sidebar: b30.black || b16.base00 || '#282726',
-        chat: b30.one_bg || b16.base01 || '#343331',
-        panel: b30.one_bg || b16.base01 || '#343331',
-        elevated: b30.one_bg2 || b16.base02 || '#403E3C',
-        floating: b30.one_bg3 || b16.base03 || '#575653',
+        app: roles.appBg,
+        sidebar: roles.sidebarBg,
+        chat: roles.chatBg,
+        panel: roles.panelBg,
+        elevated: roles.elevatedBg,
+        floating: roles.floatingBg,
         message: {
-          user: b30.one_bg2 || b16.base02 || '#403E3C',
-          userSolid: b30.one_bg2 || b16.base02 || '#403E3C',
+          user: roles.elevatedBg,
+          userSolid: roles.elevatedBg,
           ai: 'transparent',
-          system: b30.one_bg || b16.base01 || '#343331',
+          system: roles.panelBg,
           error: `rgba(${hexToRgb(b30.red || b16.base08 || '#FF5555')}, 0.12)`,
-          hover: 'rgba(255, 255, 255, 0.03)',
+          hover: neutralOverlay(colorScheme, colorScheme === 'dark' ? 0.03 : 0.04),
         },
-        toolCall: b30.one_bg || b16.base01 || '#343331',
-        toolCallHover: b30.one_bg2 || b16.base02 || '#403E3C',
-        toolResult: b30.one_bg || b16.base01 || '#343331',
-        input: b30.one_bg || b16.base01 || '#343331',
-        inputFocus: b30.one_bg2 || b16.base02 || '#403E3C',
+        toolCall: roles.panelBg,
+        toolCallHover: roles.elevatedBg,
+        toolResult: roles.panelBg,
+        input: roles.panelBg,
+        inputFocus: roles.elevatedBg,
         btn: {
-          primary: b30.blue || b16.base0D || '#4385BE',
-          primaryHover: b30.nord_blue || b16.base0C || '#8BE9FD',
-          secondary: b30.grey || b16.base03 || '#575653',
-          secondaryHover: b30.grey_fg || b16.base04 || '#6F6E69',
+          primary: roles.accent,
+          primaryHover: roles.accentSub,
+          secondary: roles.floatingBg,
+          secondaryHover: roles.borderStrong,
           ghost: 'transparent',
-          ghostHover: b30.one_bg2 || b16.base02 || '#403E3C',
+          ghostHover: roles.elevatedBg,
           danger: b30.red || b16.base08 || '#FF5555',
           dangerHover: b30.baby_pink || b16.base09 || '#FFB86C',
         },
         code: {
-          inline: b30.one_bg2 || b16.base02 || '#403E3C',
-          block: b30.darker_black || b16.base00 || '#282726',
-          header: b30.one_bg2 || b16.base02 || '#403E3C',
+          inline: roles.elevatedBg,
+          block: roles.appBg,
+          header: roles.elevatedBg,
         },
-        menu: b30.one_bg2 || b16.base02 || '#403E3C',
-        menuItemHover: b30.one_bg3 || b16.base03 || '#575653',
+        menu: roles.elevatedBg,
+        menuItemHover: roles.floatingBg,
         tooltip: b30.light_grey || b16.base07 || '#F2F0E5',
-        modal: b30.one_bg || b16.base01 || '#343331',
-        selected: `rgba(${hexToRgb(b30.blue || b16.base0D || '#4385BE')}, 0.15)`,
-        selectedHover: `rgba(${hexToRgb(b30.blue || b16.base0D || '#4385BE')}, 0.2)`,
+        modal: roles.panelBg,
+        selected: roles.selectedBg,
+        selectedHover: roles.selectedHoverBg,
         highlight: `rgba(${hexToRgb(b30.yellow || b16.base0A || '#F1FA8C')}, 0.2)`,
-        hover: 'rgba(255, 255, 255, 0.04)',
-        active: 'rgba(255, 255, 255, 0.08)',
+        hover: roles.hoverBg,
+        active: roles.activeBg,
       },
 
       text: {
-        primary: b30.white || b16.base05 || '#F2F0E5',
-        secondary: b30.light_grey || b16.base06 || '#E6E4D9',
-        muted: b30.grey_fg || b16.base04 || '#878580',
-        faint: b30.grey || b16.base03 || '#6F6E69',
+        primary: roles.primaryText,
+        secondary: roles.secondaryText,
+        muted: roles.mutedText,
+        faint: roles.faintText,
         error: b30.red || b16.base08 || '#FF5555',
         warning: b30.orange || b16.base09 || '#FFB86C',
         success: b30.green || b16.base0B || '#50FA7B',
@@ -191,34 +554,34 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
         link: b30.cyan || b16.base0C || '#8BE9FD',
         linkHover: b30.teal || b16.base0C || '#8BE9FD',
         user: {
-          primary: b30.white || b16.base05 || '#F2F0E5',
-          secondary: b30.light_grey || b16.base06 || '#E6E4D9',
+          primary: roles.primaryText,
+          secondary: roles.secondaryText,
         },
         ai: {
-          primary: b30.light_grey || b16.base06 || '#E6E4D9',
-          secondary: b30.grey_fg2 || b16.base04 || '#878580',
-          thinking: b30.grey || b16.base03 || '#6F6E69',
+          primary: roles.secondaryText,
+          secondary: roles.mutedText,
+          thinking: roles.faintText,
         },
         tool: {
           name: b30.purple || b16.base0E || '#BD93F9',
-          args: b30.grey || b16.base03 || '#6F6E69',
-          result: b30.grey_fg || b16.base04 || '#878580',
+          args: roles.faintText,
+          result: roles.mutedText,
           error: b30.red || b16.base08 || '#FF5555',
         },
         sidebar: {
-          title: b30.white || b16.base05 || '#F2F0E5',
-          item: b30.grey_fg || b16.base04 || '#878580',
-          itemActive: b30.blue || b16.base0D || '#4385BE',
-          itemHover: b30.white || b16.base05 || '#F2F0E5',
-          muted: b30.grey || b16.base03 || '#6F6E69',
+          title: roles.sidebarTitleText,
+          item: roles.sidebarItemText,
+          itemActive: roles.primaryText,
+          itemHover: roles.primaryText,
+          muted: roles.sidebarMutedText,
         },
-        input: b30.white || b16.base05 || '#F2F0E5',
-        inputPlaceholder: b30.grey || b16.base03 || '#6F6E69',
+        input: roles.primaryText,
+        inputPlaceholder: roles.placeholderText,
         btn: {
-          primary: b30.black || b16.base00 || '#282726',
-          secondary: b30.light_grey || b16.base06 || '#E6E4D9',
-          ghost: b30.grey_fg || b16.base04 || '#878580',
-          danger: b30.black || b16.base00 || '#282726',
+          primary: roles.appBg,
+          secondary: roles.secondaryText,
+          ghost: roles.mutedText,
+          danger: roles.appBg,
         },
         code: {
           inline: b30.pink || b16.base0E || '#FF79C6',
@@ -235,30 +598,30 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
           punctuation: b30.grey_fg || b16.base05 || '#d4d4d4',
         },
         menu: {
-          item: b30.grey_fg || b16.base04 || '#878580',
-          itemHover: b30.white || b16.base05 || '#F2F0E5',
-          itemActive: b30.blue || b16.base0D || '#4385BE',
-          header: b30.grey || b16.base03 || '#6F6E69',
+          item: roles.mutedText,
+          itemHover: roles.primaryText,
+          itemActive: roles.accent,
+          header: roles.faintText,
         },
-        label: b30.grey_fg || b16.base04 || '#878580',
-        helper: b30.grey || b16.base03 || '#6F6E69',
+        label: roles.mutedText,
+        helper: roles.faintText,
       },
 
       border: {
-        default: b30.line || b30.grey || b16.base02 || '#44475A',
-        subtle: b30.one_bg2 || b16.base01 || '#343331',
-        strong: b30.grey_fg || b16.base03 || '#575653',
-        accent: b30.blue || b16.base0D || '#4385BE',
+        default: roles.borderDefault,
+        subtle: roles.borderSubtle,
+        strong: roles.borderStrong,
+        accent: roles.accent,
         error: b30.red || b16.base08 || '#FF5555',
         success: b30.green || b16.base0B || '#50FA7B',
         warning: b30.orange || b16.base09 || '#FFB86C',
-        input: b30.line || b30.grey || b16.base02 || '#44475A',
-        inputFocus: b30.blue || b16.base0D || '#4385BE',
+        input: roles.borderDefault,
+        inputFocus: roles.accent,
         inputError: b30.red || b16.base08 || '#FF5555',
-        message: b30.one_bg2 || b16.base01 || '#343331',
-        messageUser: b30.grey || b16.base02 || '#44475A',
-        code: b30.grey || b16.base02 || '#44475A',
-        divider: b30.line || b30.one_bg2 || b16.base01 || '#343331',
+        message: roles.borderSubtle,
+        messageUser: roles.borderDefault,
+        code: roles.borderDefault,
+        divider: roles.borderSubtle,
       },
 
       shadow: {
@@ -277,11 +640,11 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
       },
 
       effects: {
-        gradientUserBubble: `linear-gradient(135deg, ${b30.one_bg2 || b16.base02 || '#403E3C'} 0%, ${b30.one_bg || b16.base01 || '#343331'} 100%)`,
+        gradientUserBubble: `linear-gradient(135deg, ${roles.elevatedBg} 0%, ${roles.panelBg} 100%)`,
         gradientAiBubble: 'linear-gradient(135deg, transparent 0%, transparent 100%)',
-        gradientAccent: `linear-gradient(135deg, ${b30.blue || b16.base0D || '#4385BE'} 0%, ${b30.nord_blue || b16.base0C || '#8BE9FD'} 100%)`,
-        overlayHover: 'rgba(255, 255, 255, 0.04)',
-        overlayActive: 'rgba(255, 255, 255, 0.08)',
+        gradientAccent: `linear-gradient(135deg, ${roles.accent} 0%, ${roles.accentSub} 100%)`,
+        overlayHover: roles.hoverBg,
+        overlayActive: roles.activeBg,
         overlayDisabled: 'rgba(0, 0, 0, 0.5)',
         blurBackdrop: '24px',
       },
@@ -308,6 +671,9 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
         infoLight: `rgba(${hexToRgb(b30.cyan || b16.base0C || '#8BE9FD')}, 0.15)`,
       },
     },
+
+    highlights: buildBase46Highlights(b30, b16),
+    ui: buildBase46UI(roles),
   }
 
   return theme
@@ -317,19 +683,9 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
  * Convert hex color to RGB values string
  */
 function hexToRgb(hex: string): string {
-  // Remove # if present
-  hex = hex.replace('#', '')
-
-  // Handle 3-char hex
-  if (hex.length === 3) {
-    hex = hex.split('').map(c => c + c).join('')
-  }
-
-  const r = parseInt(hex.slice(0, 2), 16)
-  const g = parseInt(hex.slice(2, 4), 16)
-  const b = parseInt(hex.slice(4, 6), 16)
-
-  return `${r}, ${g}, ${b}`
+  const rgb = parseHexColor(hex)
+  if (!rgb) return '67, 133, 190'
+  return `${rgb[0]}, ${rgb[1]}, ${rgb[2]}`
 }
 
 /**
@@ -337,17 +693,12 @@ function hexToRgb(hex: string): string {
  * Returns value 0-1, where 0 is black and 1 is white
  */
 function getLuminance(hex: string): number {
-  // Remove # if present
-  hex = hex.replace('#', '')
+  const rgb = parseHexColor(hex)
+  if (!rgb) return 0
 
-  // Handle 3-char hex
-  if (hex.length === 3) {
-    hex = hex.split('').map(c => c + c).join('')
-  }
-
-  const r = parseInt(hex.slice(0, 2), 16) / 255
-  const g = parseInt(hex.slice(2, 4), 16) / 255
-  const b = parseInt(hex.slice(4, 6), 16) / 255
+  const r = rgb[0] / 255
+  const g = rgb[1] / 255
+  const b = rgb[2] / 255
 
   // sRGB to linear RGB conversion
   const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)

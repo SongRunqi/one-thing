@@ -4,6 +4,10 @@
  * Ensures backward compatibility with existing components
  */
 
+import type { SemanticHighlightToken, SemanticUIToken } from '../../shared/ipc/themes.js'
+import { SEMANTIC_HIGHLIGHT_TOKENS, SEMANTIC_UI_TOKENS } from './resolver.js'
+import type { ResolvedHighlightStyle, ResolvedUIStyle } from './resolver.js'
+
 /**
  * Maps theme property paths to CSS variable names
  * Each theme property can map to multiple CSS variables for compatibility
@@ -121,7 +125,9 @@ export const CSS_VAR_MAP: Record<string, string[]> = {
   'text.sidebar.count': ['--text-sidebar-count'],
 
   // Input Text
-  'text.input': ['--text-input'],
+  // --editor-caret follows text.input (not accent) so editors keep a high-contrast
+  // insertion cursor across full themes and Markdown live-preview surfaces.
+  'text.input': ['--text-input', '--editor-caret'],
   'text.inputPlaceholder': ['--text-input-placeholder'],
   'text.inputDisabled': ['--text-input-disabled'],
 
@@ -233,6 +239,410 @@ export const CSS_VAR_MAP: Record<string, string[]> = {
   'diff.hunkText': ['--diff-hunk-text'],
 }
 
+const HIGHLIGHT_LEGACY_FG_VAR_MAP: Partial<Record<SemanticHighlightToken, string[]>> = {
+  'syntax.plain': ['--text-code-inline', '--text-code-block'],
+  'syntax.comment': ['--text-code-comment', '--hljs-comment', '--syntax-comment'],
+  'syntax.keyword': ['--text-code-keyword', '--hljs-keyword', '--syntax-keyword'],
+  'syntax.string': ['--text-code-string', '--hljs-string', '--syntax-string'],
+  'syntax.number': ['--text-code-number', '--hljs-number', '--syntax-number'],
+  'syntax.function': ['--text-code-function', '--hljs-function', '--syntax-func'],
+  'syntax.variable': ['--text-code-variable', '--hljs-variable'],
+  'syntax.property': ['--text-code-property', '--hljs-property'],
+  'syntax.type': ['--text-code-type', '--hljs-type'],
+  'syntax.operator': ['--text-code-operator', '--hljs-operator'],
+  'syntax.punctuation': ['--text-code-punctuation', '--hljs-punctuation', '--syntax-punct'],
+}
+
+type UIStyleField = keyof ResolvedUIStyle
+
+const UI_LEGACY_VAR_MAP: Partial<Record<SemanticUIToken, Partial<Record<UIStyleField, string[]>>>> = {
+  'ui.accent.primary': {
+    fg: ['--accent', '--accent-main'],
+  },
+  'ui.accent.subtle': {
+    fg: ['--accent-sub'],
+  },
+  'ui.surface.app': {
+    bg: ['--bg-app', '--bg'],
+  },
+  'ui.surface.sidebar': {
+    bg: ['--bg-sidebar', '--panel-2'],
+  },
+  'ui.surface.chat': {
+    bg: ['--bg-chat', '--chat-canvas'],
+  },
+  'ui.surface.panel': {
+    bg: ['--bg-panel', '--panel'],
+  },
+  'ui.surface.elevated': {
+    bg: ['--bg-elevated'],
+    shadow: ['--shadow-elevated'],
+  },
+  'ui.surface.floating': {
+    bg: ['--bg-floating'],
+    shadow: ['--shadow-floating'],
+  },
+  'ui.surface.overlay': {
+    bg: ['--bg-modal-overlay'],
+  },
+  'ui.surface.menu': {
+    bg: ['--bg-menu'],
+  },
+  'ui.surface.menuHover': {
+    bg: ['--bg-menu-item-hover'],
+  },
+  'ui.surface.input': {
+    bg: ['--bg-input'],
+    border: ['--border-input'],
+  },
+  'ui.surface.inputFocus': {
+    bg: ['--bg-input-focus'],
+    border: ['--border-input-focus'],
+  },
+  'ui.surface.codeInline': {
+    bg: ['--bg-code-inline'],
+  },
+  'ui.surface.codeBlock': {
+    bg: ['--bg-code-block'],
+    border: ['--border-code'],
+  },
+  'ui.surface.codeHeader': {
+    bg: ['--bg-code-header'],
+  },
+  'ui.surface.tooltip': {
+    bg: ['--bg-tooltip'],
+    fg: ['--text-tooltip'],
+  },
+  'ui.surface.modal': {
+    bg: ['--bg-modal'],
+    fg: ['--text-modal-body'],
+  },
+  'ui.surface.note': {
+    bg: ['--bg-note'],
+    fg: ['--text-note'],
+    border: ['--border-note'],
+  },
+  'ui.text.primary': {
+    fg: ['--text-primary', '--text'],
+  },
+  'ui.text.secondary': {
+    fg: ['--text-secondary'],
+  },
+  'ui.text.muted': {
+    fg: ['--text-muted', '--muted'],
+  },
+  'ui.text.faint': {
+    fg: ['--text-faint'],
+  },
+  'ui.text.placeholder': {
+    fg: ['--text-input-placeholder'],
+  },
+  'ui.text.disabled': {
+    fg: ['--text-input-disabled', '--text-btn-disabled'],
+  },
+  'ui.text.link': {
+    fg: ['--text-link'],
+  },
+  'ui.text.linkHover': {
+    fg: ['--text-link-hover'],
+  },
+  'ui.border.default': {
+    border: ['--border-default', '--border'],
+  },
+  'ui.border.subtle': {
+    border: ['--border-subtle'],
+  },
+  'ui.border.strong': {
+    border: ['--border-strong'],
+  },
+  'ui.border.divider': {
+    border: ['--border-divider'],
+  },
+  'ui.border.focus': {
+    border: ['--border-input-focus'],
+  },
+  'ui.border.selected': {
+    border: ['--border-accent'],
+  },
+  'ui.action.primary': {
+    bg: ['--bg-btn-primary'],
+    fg: ['--text-btn-primary'],
+    border: ['--border-accent'],
+  },
+  'ui.action.primaryHover': {
+    bg: ['--bg-btn-primary-hover'],
+  },
+  'ui.action.secondary': {
+    bg: ['--bg-btn-secondary'],
+    fg: ['--text-btn-secondary'],
+  },
+  'ui.action.secondaryHover': {
+    bg: ['--bg-btn-secondary-hover'],
+  },
+  'ui.action.ghost': {
+    bg: ['--bg-btn-ghost'],
+    fg: ['--text-btn-ghost'],
+  },
+  'ui.action.ghostHover': {
+    bg: ['--bg-btn-ghost-hover'],
+  },
+  'ui.action.danger': {
+    bg: ['--bg-btn-danger'],
+    fg: ['--text-btn-danger'],
+    border: ['--border-error'],
+  },
+  'ui.action.dangerHover': {
+    bg: ['--bg-btn-danger-hover'],
+  },
+  'ui.action.disabled': {
+    bg: ['--bg-input-disabled'],
+    fg: ['--text-btn-disabled', '--text-input-disabled'],
+  },
+  'ui.state.hover': {
+    bg: ['--bg-hover', '--hover', '--overlay-hover'],
+  },
+  'ui.state.active': {
+    bg: ['--bg-active', '--active', '--overlay-active'],
+  },
+  'ui.state.selected': {
+    bg: ['--bg-selected', '--session-highlight'],
+  },
+  'ui.state.selectedHover': {
+    bg: ['--bg-selected-hover'],
+  },
+  'ui.state.highlight': {
+    bg: ['--bg-highlight'],
+  },
+  'ui.state.disabled': {
+    bg: ['--bg-input-disabled', '--overlay-disabled'],
+    fg: ['--text-input-disabled', '--text-btn-disabled'],
+  },
+  'ui.sidebar.surface': {
+    bg: ['--sidebar-bg'],
+  },
+  'ui.sidebar.item': {
+    fg: ['--text-sidebar-item'],
+  },
+  'ui.sidebar.itemHover': {
+    fg: ['--text-sidebar-item-hover'],
+  },
+  'ui.sidebar.itemActive': {
+    fg: ['--text-sidebar-item-active'],
+    bg: ['--session-highlight'],
+    border: ['--border-accent'],
+  },
+  'ui.sidebar.itemMuted': {
+    fg: ['--text-sidebar-muted', '--text-sidebar-count'],
+  },
+  'ui.sidebar.header': {
+    fg: ['--text-sidebar-title'],
+  },
+  'ui.sidebar.action': {
+    fg: ['--sidebar-action-fg'],
+  },
+  'ui.sidebar.actionHover': {
+    fg: ['--sidebar-action-hover-fg'],
+    bg: ['--sidebar-action-hover-bg'],
+  },
+  'ui.sidebar.border': {
+    border: ['--border-sidebar'],
+  },
+  'ui.tabBar.surface': {
+    bg: ['--tab-bar-bg'],
+  },
+  'ui.tabBar.divider': {
+    border: ['--tab-bar-divider'],
+  },
+  'ui.tabBar.item': {
+    fg: ['--tab-item-fg'],
+  },
+  'ui.tabBar.itemHover': {
+    fg: ['--tab-item-hover-fg'],
+    bg: ['--tab-item-hover-bg'],
+  },
+  'ui.tabBar.itemActive': {
+    fg: ['--tab-item-active-fg'],
+    bg: ['--tab-item-active-bg'],
+  },
+  'ui.tabBar.action': {
+    fg: ['--tab-action-fg'],
+  },
+  'ui.tabBar.actionHover': {
+    fg: ['--tab-action-hover-fg'],
+    bg: ['--tab-action-hover-bg'],
+    border: ['--tab-action-hover-border'],
+  },
+  'ui.tabBar.danger': {
+    fg: ['--tab-danger-fg'],
+    bg: ['--tab-danger-bg'],
+  },
+  'ui.status.danger': {
+    fg: ['--color-danger', '--danger', '--text-error'],
+    bg: ['--color-danger-light'],
+    border: ['--border-error'],
+  },
+  'ui.status.warning': {
+    fg: ['--color-warning', '--text-warning'],
+    bg: ['--color-warning-light'],
+    border: ['--border-warning'],
+  },
+  'ui.status.success': {
+    fg: ['--color-success', '--text-success'],
+    bg: ['--color-success-light'],
+    border: ['--border-success'],
+  },
+  'ui.status.info': {
+    fg: ['--color-info', '--text-info'],
+    bg: ['--color-info-light'],
+  },
+  'ui.message.user': {
+    bg: ['--bg-message-user', '--user-bubble', '--gradient-user-bubble'],
+    fg: ['--text-user-primary'],
+    border: ['--border-message-user', '--user-bubble-border'],
+  },
+  'ui.message.userSolid': {
+    bg: ['--bg-message-user-solid'],
+  },
+  'ui.message.assistant': {
+    bg: ['--bg-message-ai'],
+    fg: ['--text-ai-primary', '--ai-text'],
+    border: ['--border-message'],
+  },
+  'ui.message.system': {
+    bg: ['--bg-message-system'],
+    fg: ['--text-system'],
+  },
+  'ui.message.error': {
+    bg: ['--bg-message-error'],
+    fg: ['--text-error'],
+    border: ['--border-error'],
+  },
+  'ui.message.hover': {
+    bg: ['--bg-message-hover'],
+  },
+  'ui.message.thinking': {
+    fg: ['--text-ai-thinking'],
+  },
+  'ui.tool.surface': {
+    bg: ['--bg-tool-call', '--tool-surface'],
+    border: ['--tool-border'],
+  },
+  'ui.tool.surfaceHover': {
+    bg: ['--bg-tool-call-hover'],
+  },
+  'ui.tool.surfaceSubtle': {
+    bg: ['--tool-surface-sub'],
+  },
+  'ui.tool.result': {
+    bg: ['--bg-tool-result'],
+    fg: ['--text-tool-result'],
+  },
+  'ui.tool.error': {
+    bg: ['--bg-tool-error'],
+    fg: ['--text-tool-error'],
+  },
+  'ui.tool.success': {
+    bg: ['--bg-tool-success'],
+  },
+  'ui.tool.text': {
+    fg: ['--tool-ink', '--text-tool-name'],
+  },
+  'ui.tool.textMuted': {
+    fg: ['--tool-soft', '--text-tool-args'],
+  },
+  'ui.tool.textFaint': {
+    fg: ['--tool-faint', '--text-tool-label'],
+  },
+  'ui.tool.accent': {
+    fg: ['--tool-accent'],
+  },
+  'ui.tool.accentOn': {
+    fg: ['--tool-accent-on'],
+  },
+  'ui.tool.successText': {
+    fg: ['--tool-ok', '--tool-add-bar'],
+  },
+  'ui.tool.dangerText': {
+    fg: ['--tool-del-bar'],
+  },
+  'ui.tool.border': {
+    border: ['--tool-border'],
+  },
+  'ui.editor.text': {
+    fg: ['--text-input'],
+    bg: ['--bg-input'],
+    border: ['--border-input'],
+  },
+  'ui.editor.placeholder': {
+    fg: ['--text-input-placeholder'],
+  },
+  'ui.editor.caret': {
+    fg: ['--editor-caret'],
+  },
+}
+
+function highlightVarName(token: SemanticHighlightToken, suffix: string): string {
+  return `--hg-${token.replace(/\./g, '-')}-${suffix}`
+}
+
+function uiVarName(token: SemanticUIToken, suffix: UIStyleField): string {
+  return `--${token.replace(/[A-Z]/g, match => `-${match.toLowerCase()}`).replace(/\./g, '-')}-${suffix}`
+}
+
+function getFontStyleParts(fontStyle: string | undefined): {
+  fontStyle: string
+  fontWeight: string
+  textDecoration: string
+} {
+  const value = fontStyle || 'normal'
+  return {
+    fontStyle: value.includes('italic') ? 'italic' : 'normal',
+    fontWeight: value.includes('bold') ? '700' : '400',
+    textDecoration: value.includes('underline') ? 'underline' : 'none',
+  }
+}
+
+function addHighlightCSSVariables(
+  result: Record<string, string>,
+  resolvedHighlights: Record<SemanticHighlightToken, ResolvedHighlightStyle>
+): void {
+  for (const [token, style] of Object.entries(resolvedHighlights) as Array<[SemanticHighlightToken, ResolvedHighlightStyle]>) {
+    const fontStyleParts = getFontStyleParts(style.fontStyle)
+
+    if (style.fg) {
+      result[highlightVarName(token, 'fg')] = style.fg
+      const legacyVars = HIGHLIGHT_LEGACY_FG_VAR_MAP[token] || []
+      for (const cssVar of legacyVars) {
+        result[cssVar] = style.fg
+      }
+    }
+
+    result[highlightVarName(token, 'bg')] = style.bg || 'transparent'
+    result[highlightVarName(token, 'font-style')] = fontStyleParts.fontStyle
+    result[highlightVarName(token, 'font-weight')] = fontStyleParts.fontWeight
+    result[highlightVarName(token, 'text-decoration')] = fontStyleParts.textDecoration
+  }
+}
+
+function addUICSSVariables(
+  result: Record<string, string>,
+  resolvedUI: Record<SemanticUIToken, ResolvedUIStyle>
+): void {
+  for (const [token, style] of Object.entries(resolvedUI) as Array<[SemanticUIToken, ResolvedUIStyle]>) {
+    for (const field of ['fg', 'bg', 'border', 'ring', 'shadow'] as UIStyleField[]) {
+      const value = style[field]
+      if (!value) continue
+
+      result[uiVarName(token, field)] = value
+
+      const legacyVars = UI_LEGACY_VAR_MAP[token]?.[field] || []
+      for (const cssVar of legacyVars) {
+        result[cssVar] = value
+      }
+    }
+  }
+}
+
 /**
  * Extract RGB components from a hex color
  * @param hex - Hex color like "#282726"
@@ -257,7 +667,9 @@ function hexToRgbTriplet(hex: string): string | null {
  * @returns CSS variable declarations as a string
  */
 export function generateCSSVariables(
-  resolvedTheme: Record<string, string>
+  resolvedTheme: Record<string, string>,
+  resolvedHighlights?: Record<SemanticHighlightToken, ResolvedHighlightStyle>,
+  resolvedUI?: Record<SemanticUIToken, ResolvedUIStyle>
 ): Record<string, string> {
   const result: Record<string, string> = {}
 
@@ -268,6 +680,14 @@ export function generateCSSVariables(
         result[cssVar] = value
       }
     }
+  }
+
+  if (resolvedHighlights) {
+    addHighlightCSSVariables(result, resolvedHighlights)
+  }
+
+  if (resolvedUI) {
+    addUICSSVariables(result, resolvedUI)
   }
 
   // Generate RGB triplet variables for transparency patterns
@@ -342,6 +762,23 @@ export function getAllCSSVariableNames(): string[] {
   for (const vars of Object.values(CSS_VAR_MAP)) {
     for (const varName of vars) {
       allVars.add(varName)
+    }
+  }
+  for (const token of SEMANTIC_HIGHLIGHT_TOKENS) {
+    allVars.add(highlightVarName(token, 'fg'))
+    allVars.add(highlightVarName(token, 'bg'))
+    allVars.add(highlightVarName(token, 'font-style'))
+    allVars.add(highlightVarName(token, 'font-weight'))
+    allVars.add(highlightVarName(token, 'text-decoration'))
+  }
+  for (const token of SEMANTIC_UI_TOKENS) {
+    for (const field of ['fg', 'bg', 'border', 'ring', 'shadow'] as UIStyleField[]) {
+      allVars.add(uiVarName(token, field))
+    }
+    for (const varsByField of Object.values(UI_LEGACY_VAR_MAP[token] || {})) {
+      for (const varName of varsByField || []) {
+        allVars.add(varName)
+      }
     }
   }
   return Array.from(allVars)

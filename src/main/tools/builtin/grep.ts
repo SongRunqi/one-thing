@@ -1,8 +1,7 @@
 /**
  * Built-in Tool: Grep
  *
- * Fast content search using ripgrep.
- * Supports regex patterns and file type filtering.
+ * Pi-style content search using ripgrep.
  */
 
 import { z } from 'zod'
@@ -10,217 +9,234 @@ import * as path from 'path'
 import * as fs from 'fs/promises'
 import { Tool } from '../core/tool.js'
 import { Ripgrep } from '../../utils/ripgrep.js'
-import { checkFileAccess, expandPath } from '../core/sandbox.js'
+import { checkFileAccess, findSandboxRootForPath, getSandboxBoundary, resolveToolPath } from '../core/sandbox.js'
+import { DEFAULT_TEXT_MAX_BYTES, formatSize, truncateLine, truncateTextHead, type TextTruncationResult } from '../core/text-truncation.js'
 
-// Maximum results to return
 const DEFAULT_LIMIT = 100
-// Maximum line length before truncation
-const MAX_LINE_LENGTH = 2000
+const GREP_MAX_LINE_LENGTH = 2000
 
-/**
- * Grep Tool Metadata
- */
 export interface GrepMetadata {
   pattern: string
-  searchPath: string
+  path: string
   matches: number
   truncated: boolean
+  truncation?: TextTruncationResult
+  matchLimitReached?: number
+  linesTruncated?: boolean
   [key: string]: unknown
 }
 
-/**
- * Grep Tool Parameters Schema
- */
 const GrepParameters = z.object({
   pattern: z
     .string()
-    .describe('The regular expression pattern to search for in file contents'),
+    .describe('Search pattern (regex or literal string)'),
   path: z
     .string()
     .optional()
-    .describe('File or directory to search in. Defaults to current working directory.'),
+    .describe('Directory or file to search (default: current work directory)'),
   glob: z
     .string()
     .optional()
-    .describe('Glob pattern to filter files (e.g., "*.js", "*.{ts,tsx}")'),
-  type: z
-    .string()
-    .optional()
-    .describe('File type to search (e.g., "js", "py", "rust"). More efficient than glob for standard types.'),
-  case_insensitive: z
+    .describe("Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'"),
+  ignoreCase: z
     .boolean()
     .optional()
-    .default(false)
-    .describe('Case insensitive search'),
-  context_lines: z
+    .describe('Case-insensitive search (default: false)'),
+  literal: z
+    .boolean()
+    .optional()
+    .describe('Treat pattern as literal string instead of regex (default: false)'),
+  context: z
     .number()
     .optional()
-    .describe('Number of context lines to show before and after each match'),
+    .describe('Number of lines to show before and after each match (default: 0)'),
+  limit: z
+    .number()
+    .optional()
+    .describe(`Maximum number of matches to return (default: ${DEFAULT_LIMIT})`),
 })
 
-/**
- * Grep Tool Definition
- */
+function resolveSearchPath(inputPath: string | undefined, workingDirectory?: string): string {
+  return resolveToolPath(inputPath || '.', workingDirectory)
+}
+
+function toPosixPath(value: string): string {
+  return value.split(path.sep).join('/')
+}
+
 export const GrepTool = Tool.define<typeof GrepParameters, GrepMetadata>('grep', {
   name: 'Grep',
-  description: `A powerful search tool built on ripgrep.
-
-Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+").
-Filter files with glob parameter (e.g., "*.js", "**/*.tsx").
-
-Results are sorted by file modification time (newest first).`,
+  description: `Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Output is truncated to ${DEFAULT_LIMIT} matches or ${DEFAULT_TEXT_MAX_BYTES / 1024}KB (whichever is hit first). Long lines are truncated to ${GREP_MAX_LINE_LENGTH} chars.`,
   category: 'builtin',
   enabled: true,
-  autoExecute: true, // Safe read-only operation
+  autoExecute: true,
   permissionGuard: 'sandboxed',
+  executionMode: 'parallel',
+  renderKind: 'search',
+  promptSnippet: 'Search file contents for patterns (respects .gitignore)',
+  promptGuidelines: ['Use grep to search file contents when you know the text or regex pattern to find.'],
 
   parameters: GrepParameters,
 
-  async execute(args, ctx) {
-    const { pattern } = args
-    // ctx.workingDirectory is already expanded by getSession
-    const workDir = ctx.workingDirectory || process.cwd()
-    // args.path from LLM may contain ~, so expand it
-    let searchPath = args.path ? expandPath(args.path) : workDir
-
-    // Resolve relative paths
-    if (!path.isAbsolute(searchPath)) {
-      searchPath = path.resolve(workDir, searchPath)
+  async analyze(args, ctx) {
+    const resolvedPath = resolveSearchPath(args.path, ctx.workingDirectory)
+    const boundary = getSandboxBoundary(ctx.workingDirectory)
+    const matchedRoot = findSandboxRootForPath(resolvedPath, ctx.workingDirectory, ctx.workingDirectoryRoots)
+    const effects = []
+    if (!matchedRoot) {
+      effects.push({
+        kind: 'external_directory' as const,
+        resources: [path.join(resolvedPath, '*')],
+        barrier: true,
+        external: true,
+        metadata: {
+          path: resolvedPath,
+          boundary,
+          operation: 'Search file contents',
+          targetType: 'directory',
+        },
+      })
     }
-    searchPath = await checkFileAccess(searchPath, ctx, 'Search directory', 'directory')
-
-    // Build glob patterns
-    const globs: string[] = []
-    if (args.glob) {
-      globs.push(args.glob)
-    }
-    if (args.type) {
-      // Map common types to globs
-      const typeMap: Record<string, string> = {
-        js: '*.js',
-        ts: '*.ts',
-        tsx: '*.tsx',
-        jsx: '*.jsx',
-        py: '*.py',
-        rust: '*.rs',
-        go: '*.go',
-        java: '*.java',
-        c: '*.c',
-        cpp: '*.cpp',
-        h: '*.h',
-        css: '*.css',
-        html: '*.html',
-        json: '*.json',
-        yaml: '*.{yaml,yml}',
-        md: '*.md',
-        vue: '*.vue',
-        svelte: '*.svelte',
-      }
-      const typeGlob = typeMap[args.type] || `*.${args.type}`
-      globs.push(typeGlob)
-    }
-
-    // Update metadata with initial state
-    ctx.metadata({
-      title: `Searching: ${pattern}`,
-      metadata: {
-        pattern,
-        searchPath,
-        matches: 0,
-        truncated: false,
+    effects.push({
+      kind: 'read' as const,
+      resources: [path.join(resolvedPath, '*')],
+      barrier: false,
+      metadata: { path: resolvedPath, pattern: args.pattern },
+    })
+    return {
+      effects,
+      preview: {
+        title: `Grep ${args.pattern}`,
+        path: resolvedPath,
+        metadata: { pattern: args.pattern },
       },
+    }
+  },
+
+  async execute(args, ctx) {
+    const throwIfAborted = () => {
+      if (ctx.abortSignal?.aborted) throw new Error('Operation aborted')
+    }
+    throwIfAborted()
+
+    const searchPath = await checkFileAccess(resolveSearchPath(args.path, ctx.workingDirectory), ctx, 'Search file contents', 'directory')
+    const effectiveLimit = Math.max(1, Math.floor(args.limit ?? DEFAULT_LIMIT))
+    const contextValue = Math.max(0, Math.floor(args.context ?? 0))
+
+    let isDirectory = false
+    try {
+      isDirectory = (await fs.stat(searchPath)).isDirectory()
+    } catch (error: any) {
+      if (error.code === 'ENOENT') throw new Error(`Path not found: ${searchPath}`)
+      throw error
+    }
+
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: `Searching ${searchPath} for ${args.pattern}...` }],
+      details: { phase: 'searching', pattern: args.pattern, path: searchPath, matches: 0 },
+    })
+    ctx.metadata({
+      title: `Searching: ${args.pattern}`,
+      metadata: { pattern: args.pattern, path: searchPath, matches: 0, truncated: false },
     })
 
-    // Perform search
-    let results: Array<{
-      path: string
-      lineNumber: number
-      lineText: string
-    }>
+    const formatPath = (filePath: string): string => {
+      if (isDirectory) {
+        const relative = path.relative(searchPath, filePath)
+        if (relative && !relative.startsWith('..')) return toPosixPath(relative)
+      }
+      return path.basename(filePath)
+    }
 
+    const fileCache = new Map<string, string[]>()
+    const getFileLines = async (filePath: string): Promise<string[]> => {
+      let lines = fileCache.get(filePath)
+      if (!lines) {
+        try {
+          const content = await fs.readFile(filePath, 'utf-8')
+          lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+        } catch {
+          lines = []
+        }
+        fileCache.set(filePath, lines)
+      }
+      return lines
+    }
+
+    let rawResults
     try {
-      results = await Ripgrep.search({
+      rawResults = await Ripgrep.search({
         cwd: searchPath,
-        pattern,
-        glob: globs.length > 0 ? globs : undefined,
-        maxCount: DEFAULT_LIMIT * 10, // Get more to allow sorting
+        pattern: args.pattern,
+        glob: args.glob ? [args.glob] : undefined,
+        maxCount: effectiveLimit * 2,
+        ignoreCase: args.ignoreCase,
+        literal: args.literal,
       })
     } catch (error: any) {
+      if (ctx.abortSignal?.aborted) throw new Error('Operation aborted')
       throw new Error(`Grep search failed: ${error.message}`)
     }
+    throwIfAborted()
 
-    // Get modification times for sorting
-    const fileModTimes = new Map<string, number>()
-    for (const result of results) {
-      if (!fileModTimes.has(result.path)) {
-        try {
-          const stats = await fs.stat(result.path)
-          fileModTimes.set(result.path, stats.mtime.getTime())
-        } catch {
-          fileModTimes.set(result.path, 0)
-        }
-      }
-    }
-
-    // Sort by modification time
-    results.sort((a, b) => {
-      const aTime = fileModTimes.get(a.path) || 0
-      const bTime = fileModTimes.get(b.path) || 0
-      if (aTime !== bTime) return bTime - aTime
-      // Same file, sort by line number
-      return a.lineNumber - b.lineNumber
-    })
-
-    // Truncate if needed
-    const truncated = results.length > DEFAULT_LIMIT
-    if (truncated) {
-      results = results.slice(0, DEFAULT_LIMIT)
-    }
-
-    // Build output
+    const matchLimitReached = rawResults.length > effectiveLimit
+    const results = matchLimitReached ? rawResults.slice(0, effectiveLimit) : rawResults
+    let linesTruncated = false
     const outputLines: string[] = []
 
-    if (results.length === 0) {
-      outputLines.push('No matches found')
-    } else {
-      outputLines.push(`Found ${results.length} match${results.length !== 1 ? 'es' : ''}`)
-      outputLines.push('')
-
-      let currentFile = ''
-      for (const match of results) {
-        if (currentFile !== match.path) {
-          if (currentFile !== '') {
-            outputLines.push('')
-          }
-          currentFile = match.path
-          outputLines.push(`${match.path}:`)
-        }
-
-        // Truncate long lines
-        let lineText = match.lineText
-        if (lineText.length > MAX_LINE_LENGTH) {
-          lineText = lineText.slice(0, MAX_LINE_LENGTH) + '...'
-        }
-
-        outputLines.push(`  ${match.lineNumber}: ${lineText}`)
+    for (const match of results) {
+      throwIfAborted()
+      const relativePath = formatPath(match.path)
+      if (contextValue <= 0) {
+        const truncatedLine = truncateLine(match.lineText.replace(/\r/g, ''), GREP_MAX_LINE_LENGTH)
+        linesTruncated = linesTruncated || truncatedLine.truncated
+        outputLines.push(`${relativePath}:${match.lineNumber}: ${truncatedLine.text}`)
+        continue
       }
 
-      if (truncated) {
-        outputLines.push('')
-        outputLines.push(`(Results truncated at ${DEFAULT_LIMIT}. Use a more specific pattern or path.)`)
+      const fileLines = await getFileLines(match.path)
+      if (!fileLines.length) {
+        outputLines.push(`${relativePath}:${match.lineNumber}: (unable to read file)`)
+        continue
+      }
+      const start = Math.max(1, match.lineNumber - contextValue)
+      const end = Math.min(fileLines.length, match.lineNumber + contextValue)
+      for (let current = start; current <= end; current++) {
+        const raw = fileLines[current - 1] ?? ''
+        const truncatedLine = truncateLine(raw.replace(/\r/g, ''), GREP_MAX_LINE_LENGTH)
+        linesTruncated = linesTruncated || truncatedLine.truncated
+        outputLines.push(`${relativePath}:${current}: ${truncatedLine.text}`)
       }
     }
+
+    let output = outputLines.length > 0 ? outputLines.join('\n') : 'No matches found'
+    const truncation = truncateTextHead(output, { maxLines: Number.MAX_SAFE_INTEGER })
+    output = truncation.content
+
+    const notices: string[] = []
+    if (matchLimitReached) notices.push(`${effectiveLimit} matches limit reached. Use limit=${effectiveLimit * 2} for more, or refine pattern`)
+    if (truncation.truncated) notices.push(`${formatSize(DEFAULT_TEXT_MAX_BYTES)} limit reached`)
+    if (linesTruncated) notices.push('some lines truncated')
+    if (notices.length > 0) output += `\n\n[${notices.join('. ')}]`
 
     const metadata: GrepMetadata = {
-      pattern,
-      searchPath,
+      pattern: args.pattern,
+      path: searchPath,
       matches: results.length,
-      truncated,
+      truncated: matchLimitReached || truncation.truncated || linesTruncated,
+      ...(truncation.truncated && { truncation }),
+      ...(matchLimitReached && { matchLimitReached: effectiveLimit }),
+      ...(linesTruncated && { linesTruncated }),
     }
 
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: output }],
+      details: { phase: 'ready', ...metadata },
+    })
+
     return {
-      title: `${results.length} match${results.length !== 1 ? 'es' : ''}`,
-      output: outputLines.join('\n'),
+      title: `${results.length} match${results.length === 1 ? '' : 'es'}`,
+      output,
       metadata,
     }
   },

@@ -36,13 +36,13 @@ describe('builtin file tool path expansion', () => {
     const expectedPath = path.join(os.homedir(), fileName)
 
     await expect(
-      WriteTool.execute({ file_path: `~/${fileName}`, content: 'hello' }, ctx)
+      WriteTool.execute({ path: `~/${fileName}`, content: 'hello' }, ctx)
     ).rejects.toThrow('stop before write')
 
     expect(ctx.metadata).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({
-          filePath: expectedPath,
+          path: expectedPath,
         }),
       })
     )
@@ -56,17 +56,15 @@ describe('builtin file tool path expansion', () => {
 
     await expect(
       EditTool.execute({
-        file_path: `~/${fileName}`,
-        old_string: '',
-        new_string: 'hello',
-        replace_all: false,
+        path: `~/${fileName}`,
+        edits: [{ oldText: 'before', newText: 'hello' }],
       }, ctx)
     ).rejects.toThrow('stop before write')
 
     expect(ctx.metadata).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({
-          filePath: expectedPath,
+          path: expectedPath,
         }),
       })
     )
@@ -83,10 +81,8 @@ describe('builtin file tool path expansion', () => {
     }))
 
     const result = await EditTool.execute({
-      file_path: filePath,
-      old_string: 'after',
-      new_string: 'done',
-      replace_all: false,
+      path: filePath,
+      edits: [{ oldText: 'after', newText: 'done' }],
     }, ctx)
 
     await expect(fs.readFile(filePath, 'utf-8')).resolves.toBe('done\n')
@@ -103,7 +99,7 @@ describe('builtin file tool path expansion', () => {
     }))
 
     const result = await WriteTool.execute({
-      file_path: filePath,
+      path: filePath,
       content: 'final\n',
     }, ctx)
 

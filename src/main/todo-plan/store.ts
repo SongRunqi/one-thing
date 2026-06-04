@@ -16,14 +16,6 @@ import { getStorePath } from '../stores/paths.js'
 const USER_NOTES_DIR = 'user-notes'
 const WORKSPACES_DIR = 'workspaces'
 const AI_TODO_FILE = 'ai-todo.md'
-const AI_TODO_INITIAL_CONTENT = `# AI Todo
-
-## Now
-- [ ] Track current assistant work here
-
-## Later
-- [ ] Track follow-up work here
-`
 
 export function getTodoPlanDirectory(): string {
   const configured = getSettings().general?.todoPlan?.directory?.trim()
@@ -86,6 +78,15 @@ function titleFromContent(content: string, fallback: string): string {
   return heading ? heading.replace(/^#\s+/, '').trim() || fallback : fallback
 }
 
+function hasSubstantiveMarkdownContent(content: string): boolean {
+  return content
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line && !/^#{1,6}\s+/.test(line) && !/^-{3,}$/.test(line))
+    .join('\n')
+    .trim().length > 0
+}
+
 async function toDocument(
   input: {
     id: string
@@ -120,14 +121,20 @@ async function ensureDefaultUserNote(): Promise<void> {
   )
 }
 
-async function ensureWorkspaceAiTodo(workingDirectory?: string): Promise<string> {
+async function readWorkspaceAiTodo(workingDirectory?: string): Promise<TodoPlanDocument | undefined> {
   const filePath = workspaceAiTodoPath(workingDirectory)
   try {
     await fs.access(filePath)
   } catch {
-    await writeFileEnsured(filePath, AI_TODO_INITIAL_CONTENT)
+    return undefined
   }
-  return filePath
+  return toDocument({
+    id: 'workspace-ai-todo',
+    scope: 'workspace-ai-todo',
+    role: 'assistant',
+    title: 'AI Todo',
+    filePath,
+  })
 }
 
 export async function readTodoPlanSnapshot(context: TodoPlanContext = {}): Promise<TodoPlanSnapshot> {
@@ -152,16 +159,13 @@ export async function readTodoPlanSnapshot(context: TodoPlanContext = {}): Promi
       }),
   )
 
-  const aiPath = await ensureWorkspaceAiTodo(context.workingDirectory)
-  const workspaceAiTodo = await toDocument({
-    id: 'workspace-ai-todo',
-    scope: 'workspace-ai-todo',
-    role: 'assistant',
-    title: 'AI Todo',
-    filePath: aiPath,
-  })
+  const workspaceAiTodo = await readWorkspaceAiTodo(context.workingDirectory)
 
-  return { directory, userNotes, workspaceAiTodo }
+  return {
+    directory,
+    userNotes,
+    ...(workspaceAiTodo ? { workspaceAiTodo } : {}),
+  }
 }
 
 export async function createUserTodoNote(title: string, content?: string): Promise<TodoPlanDocument> {
@@ -209,6 +213,10 @@ export async function updateTodoPlanDocument(request: {
     filePath = workspaceAiTodoPath(request.workingDirectory)
     role = 'assistant'
     title = 'AI Todo'
+    const exists = Boolean(await fs.stat(filePath).catch(() => null))
+    if (!exists && !hasSubstantiveMarkdownContent(request.content)) {
+      throw new Error('workspace-ai-todo content is empty; it is created only after there is real AI todo content')
+    }
   } else {
     throw new Error(`Unsupported todo/plan scope: ${request.scope}`)
   }

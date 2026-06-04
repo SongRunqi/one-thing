@@ -113,7 +113,7 @@ describe('IPCBridge stream buffer', () => {
     appendStreamBufferChunk(bridge.sessions.get('s1').buffer, {
       type: 'tool-input-delta',
       toolCallId: 'tc1',
-      argsTextDelta: '{"file_path":"a',
+      argsTextDelta: '{"path":"a',
     })
 
     bridge.handleSessionEvent({
@@ -139,7 +139,7 @@ describe('IPCBridge stream buffer', () => {
     expect(sent[0].payload.chunk).toEqual({
       type: 'tool-input-delta',
       toolCallId: 'tc1',
-      argsTextDelta: '{"file_path":"a',
+      argsTextDelta: '{"path":"a',
       messageId: 'm1',
     })
     expect(sent[1].payload.event.type).toBe('permission:request')

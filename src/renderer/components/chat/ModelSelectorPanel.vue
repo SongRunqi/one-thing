@@ -578,8 +578,8 @@ onUnmounted(() => {
   position: fixed;
   width: 480px;
   height: 400px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: var(--radius-md, 12px);
   box-shadow: var(--shadow-elevated, 0 8px 32px rgba(0, 0, 0, 0.4));
   z-index: var(--z-max);
@@ -594,11 +594,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .search-icon {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   flex-shrink: 0;
 }
 
@@ -607,20 +607,20 @@ onUnmounted(() => {
   background: transparent;
   border: none;
   outline: none;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 14px;
 }
 
 .search-input::placeholder {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .search-hint {
   font-size: 10px;
   padding: 2px 6px;
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-family: var(--font-mono, monospace);
 }
 
@@ -634,7 +634,7 @@ onUnmounted(() => {
 /* Provider list */
 .provider-list {
   width: 140px;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--ui-border-default-border, var(--border));
   overflow-y: auto;
   padding: 6px;
   flex-shrink: 0;
@@ -652,15 +652,15 @@ onUnmounted(() => {
 }
 
 .provider-item:hover {
-  background-color: var(--hover);
+  background-color: var(--ui-state-hover-bg, var(--hover));
 }
 
 .provider-item.active {
-  background-color: rgba(var(--accent-rgb, 59, 130, 246), 0.15);
+  background-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
 }
 
 .provider-item.active .provider-name {
-  color: var(--accent);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .provider-name {
@@ -674,8 +674,8 @@ onUnmounted(() => {
 
 .model-count {
   font-size: 11px;
-  color: var(--muted);
-  background: var(--hover);
+  color: var(--ui-text-muted-fg, var(--muted));
+  background: var(--ui-state-hover-bg, var(--hover));
   padding: 2px 6px;
   border-radius: 10px;
 }
@@ -694,15 +694,15 @@ onUnmounted(() => {
   justify-content: center;
   gap: 8px;
   height: 100%;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 13px;
 }
 
 .loading-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
+  border: 2px solid var(--ui-border-default-border, var(--border));
+  border-top-color: var(--ui-accent-primary-fg, var(--accent));
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -723,17 +723,17 @@ onUnmounted(() => {
 }
 
 .model-card:hover {
-  background-color: var(--hover);
+  background-color: var(--ui-state-hover-bg, var(--hover));
 }
 
 .model-card.focused {
-  background-color: var(--hover);
-  border-color: var(--border);
+  background-color: var(--ui-state-hover-bg, var(--hover));
+  border-color: var(--ui-border-default-border, var(--border));
 }
 
 .model-card.active {
-  background-color: rgba(var(--accent-rgb, 59, 130, 246), 0.1);
-  border-color: var(--accent);
+  background-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .model-header {
@@ -746,17 +746,17 @@ onUnmounted(() => {
 .model-name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .model-card.active .model-name {
-  color: var(--accent);
+  color: var(--ui-text-primary-fg, var(--text));
   font-weight: 600;
 }
 
 .context-length {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-family: var(--font-mono, monospace);
 }
 
@@ -782,33 +782,33 @@ onUnmounted(() => {
 }
 
 .badge.tools {
-  background: rgba(var(--accent-rgb), 0.15);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .badge.reasoning {
-  background: rgba(var(--accent-rgb), 0.15);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .badge.image {
-  background: rgba(var(--color-success-rgb), 0.15);
-  color: var(--text-success);
+  background: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success)) 15%, transparent);
+  color: var(--ui-status-success-fg, var(--text-success));
 }
 
 .badge.image-gen {
-  background: rgba(var(--color-success-rgb), 0.15);
-  color: var(--text-success);
+  background: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success)) 15%, transparent);
+  color: var(--ui-status-success-fg, var(--text-success));
 }
 
 .badge.vision {
-  background: rgba(var(--color-warning-rgb), 0.15);
-  color: var(--text-warning);
+  background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 15%, transparent);
+  color: var(--ui-status-warning-fg, var(--text-warning));
 }
 
 .badge.speed {
-  background: rgba(var(--color-warning-rgb), 0.15);
-  color: var(--text-warning);
+  background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 15%, transparent);
+  color: var(--ui-status-warning-fg, var(--text-warning));
 }
 
 /* Transitions - GPU accelerated */

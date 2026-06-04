@@ -116,15 +116,18 @@
         "danger": "background"
       },
       "code": {
-        "inline": "pink",
+        "inline": "foreground",
         "block": "foreground",
         "comment": "comment",
-        "keyword": "pink",
-        "string": "yellow",
-        "number": "purple",
-        "function": "green",
+        "keyword": "purple",
+        "string": "green",
+        "number": "orange",
+        "function": "cyan",
         "variable": "foreground",
-        "operator": "pink"
+        "operator": "comment",
+        "type": "cyan",
+        "property": "cyan",
+        "punctuation": "comment"
       },
       "menu": {
         "item": "comment",

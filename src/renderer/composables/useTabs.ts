@@ -5,7 +5,7 @@
  * At least one chat tab must remain open at all times.
  */
 
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import type { Tab, ChatTab, FileTab, WorkbenchTab } from '@/types/tabs'
 
 let nextId = 0
@@ -141,7 +141,8 @@ export function useTabs(initialSessionId: string) {
   function serialize(): { tabs: SerializedTab[]; activeTabIndex: number } {
     const serialized = tabs.value.map(t => {
       if (t.type === 'chat') {
-        return { type: 'chat' as const, sessionId: (t as ChatTab).sessionId }
+        const sessionId = (t as ChatTab).sessionId
+        return { type: 'chat' as const, sessionId: sessionId.startsWith('draft:') ? '' : sessionId }
       }
       if (t.type === 'workbench') {
         const wt = t as WorkbenchTab

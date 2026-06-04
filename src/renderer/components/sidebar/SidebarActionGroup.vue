@@ -11,13 +11,13 @@
     >
       <PanelLeftClose
         v-if="sidebarVisible"
-        :size="14"
-        :stroke-width="1.6"
+        :size="15"
+        :stroke-width="1.9"
       />
       <PanelLeftOpen
         v-else
-        :size="14"
-        :stroke-width="1.6"
+        :size="15"
+        :stroke-width="1.9"
       />
     </button>
     <button
@@ -26,8 +26,8 @@
       @click="$emit('open-search')"
     >
       <Search
-        :size="14"
-        :stroke-width="1.6"
+        :size="15"
+        :stroke-width="1.9"
       />
     </button>
     <button
@@ -36,8 +36,8 @@
       @click="$emit('create-new-chat')"
     >
       <SquarePen
-        :size="14"
-        :stroke-width="1.6"
+        :size="15"
+        :stroke-width="1.9"
       />
     </button>
   </div>
@@ -79,15 +79,18 @@ defineEmits<{
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--muted);
+  color: var(
+    --ui-sidebar-action-fg,
+    color-mix(in srgb, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 88%, transparent)
+  );
   cursor: pointer;
   -webkit-app-region: no-drag;
   transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
 .sidebar-action-btn:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 
 .sidebar-action-btn:active {
@@ -96,7 +99,7 @@ defineEmits<{
 
 .sidebar-action-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 36%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
 }
 
 .sidebar-action-group.sidebar {

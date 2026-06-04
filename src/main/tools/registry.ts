@@ -17,9 +17,11 @@ import type {
   AIToolSchema,
 } from './types.js'
 import { v4 as uuidv4 } from 'uuid'
-import type { ToolInfo, ToolContext, ToolInfoAsync, ToolInfoUnion, InitContext } from './core/tool.js'
+import type { ToolExecutionMode, ToolInfo, ToolContext, ToolInfoAsync, ToolInfoUnion, InitContext } from './core/tool.js'
+import type { ToolEffect, ToolPreview } from './core/tool-effect.js'
 import { zodToJsonSchema, isAsyncTool, Tool } from './core/tool.js'
 import { Permission } from '../permission/index.js'
+import { toolFailureText } from './core/tool-result.js'
 
 // Static tool registry (Tool.define() tools)
 const toolRegistry: Map<string, ToolInfo> = new Map()
@@ -38,11 +40,44 @@ function isPermissionRejectedError(error: unknown): error is Permission.Rejected
     (error instanceof Error && error.name === 'PermissionRejectedError')
 }
 
+export interface ToolAnalysisResult {
+  success: boolean
+  effects?: ToolEffect[]
+  preview?: ToolPreview
+  error?: string
+}
+
+function toToolContext(context: ToolExecutionContext): ToolContext {
+  return {
+    sessionId: context.sessionId,
+    messageId: context.messageId,
+    toolCallId: context.toolCallId,
+    workingDirectory: context.workingDirectory,
+    workingDirectoryRoots: context.workingDirectoryRoots,
+    abortSignal: context.abortSignal,
+    metadata: (update) => {
+      if (context.onMetadata) {
+        context.onMetadata({
+          title: update.title,
+          metadata: update.metadata as Record<string, unknown>,
+        })
+      }
+    },
+    updateResult: (update) => {
+      context.onPartialResult?.(update)
+    },
+    onStepStart: context.onStepStart,
+    onStepComplete: context.onStepComplete,
+    beforeSideEffect: context.beforeSideEffect,
+    approvedAnalysis: context.approvedAnalysis,
+  }
+}
+
 function toToolExecutionError(error: any): ToolExecutionResult {
   if (isPermissionRejectedError(error)) {
     return {
       success: false,
-      error: error.message || 'User rejected this operation',
+      error: toolFailureText({ error: error.message, rejected: true, rejectionReason: error.reason }),
       rejected: true,
       rejectionReason: error.reason,
     }
@@ -96,6 +131,50 @@ export function hasTool(toolId: string): boolean {
   return toolRegistry.has(toolId) || toolRegistryAsync.has(toolId)
 }
 
+export function getToolPromptSnippet(toolId: string): string | undefined {
+  const staticTool = toolRegistry.get(toolId)
+  if (staticTool?.promptSnippet) return staticTool.promptSnippet
+
+  const asyncTool = toolRegistryAsync.get(toolId)
+  return asyncTool?._initialized?.promptSnippet ?? asyncTool?.promptSnippet
+}
+
+export function getToolPromptGuidelines(toolIds: string[]): string[] {
+  const lines: string[] = []
+  const seen = new Set<string>()
+  for (const toolId of toolIds) {
+    const staticTool = toolRegistry.get(toolId)
+    const asyncTool = toolRegistryAsync.get(toolId)
+    const guidelines = staticTool?.promptGuidelines ?? asyncTool?._initialized?.promptGuidelines ?? asyncTool?.promptGuidelines ?? []
+    for (const guideline of guidelines) {
+      if (seen.has(guideline)) continue
+      seen.add(guideline)
+      lines.push(guideline)
+    }
+  }
+  return lines
+}
+
+export function getToolExecutionMode(toolId: string): ToolExecutionMode {
+  const normalized = toolId.toLowerCase()
+  if (normalized.startsWith('mcp:') || normalized.startsWith('mcp_')) return 'sequential'
+
+  const staticTool = toolRegistry.get(toolId)
+  if (staticTool?.executionMode) return staticTool.executionMode
+
+  const asyncTool = toolRegistryAsync.get(toolId)
+  if (asyncTool?._initialized?.executionMode) return asyncTool._initialized.executionMode
+  if (asyncTool?.executionMode) return asyncTool.executionMode
+
+  // Compatibility fallback while built-ins migrate to tool-declared executionMode.
+  return normalized === 'edit'
+    || normalized === 'write'
+    || normalized === 'bash'
+    || normalized === 'variable'
+    ? 'sequential'
+    : 'parallel'
+}
+
 /**
  * Convert ToolInfo to ToolDefinition format (for external APIs)
  */
@@ -123,9 +202,15 @@ function toolInfoToDefinition(tool: ToolInfo): ToolDefinition {
     name: tool.name,
     description: tool.description,
     parameters,
+    parameterSchema: jsonSchema,
     enabled: tool.enabled ?? true,
     autoExecute: tool.autoExecute ?? false,
     permissionGuard: tool.permissionGuard,
+    executionMode: tool.executionMode,
+    renderKind: tool.renderKind,
+    renderShell: tool.renderShell,
+    promptSnippet: tool.promptSnippet,
+    promptGuidelines: tool.promptGuidelines,
     category: tool.category === 'mcp' ? 'custom' : tool.category,
   }
 }
@@ -161,9 +246,15 @@ function asyncToolToDefinition(tool: ToolInfoAsync): ToolDefinition | null {
     name: tool.name,
     description: initResult.description,
     parameters,
+    parameterSchema: jsonSchema,
     enabled: tool.enabled ?? true,
     autoExecute: tool.autoExecute ?? false,
     permissionGuard: tool.permissionGuard,
+    executionMode: initResult.executionMode ?? tool.executionMode,
+    renderKind: initResult.renderKind ?? tool.renderKind,
+    renderShell: initResult.renderShell ?? tool.renderShell,
+    promptSnippet: initResult.promptSnippet ?? tool.promptSnippet,
+    promptGuidelines: initResult.promptGuidelines ?? tool.promptGuidelines,
     category: tool.category === 'mcp' ? 'custom' : tool.category,
   }
 }
@@ -359,6 +450,57 @@ export async function getToolsForAI(toolSettings?: Record<string, { enabled: boo
 }
 
 /**
+ * Analyze a tool call by ID without executing side effects.
+ */
+export async function analyzeTool(
+  toolId: string,
+  args: Record<string, any>,
+  context: ToolExecutionContext
+): Promise<ToolAnalysisResult> {
+  const staticTool = toolRegistry.get(toolId)
+  if (staticTool) {
+    try {
+      const parseResult = staticTool.parameters.safeParse(args)
+      if (!parseResult.success) {
+        const errorMessage = staticTool.formatValidationError
+          ? staticTool.formatValidationError(parseResult.error)
+          : `Invalid arguments: ${parseResult.error.message}`
+        return { success: false, error: errorMessage }
+      }
+      if (!staticTool.analyze) return { success: true, effects: [] }
+      const result = await staticTool.analyze(parseResult.data, toToolContext(context))
+      return { success: true, effects: result.effects, preview: result.preview }
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Unknown error during tool analysis' }
+    }
+  }
+
+  const asyncTool = toolRegistryAsync.get(toolId)
+  if (asyncTool) {
+    try {
+      if (!asyncTool._initialized) {
+        await Tool.initialize(asyncTool, currentInitContext)
+      }
+      const initResult = asyncTool._initialized!
+      const parseResult = initResult.parameters.safeParse(args)
+      if (!parseResult.success) {
+        const errorMessage = initResult.formatValidationError
+          ? initResult.formatValidationError(parseResult.error)
+          : `Invalid arguments: ${parseResult.error.message}`
+        return { success: false, error: errorMessage }
+      }
+      if (!initResult.analyze) return { success: true, effects: [] }
+      const result = await initResult.analyze(parseResult.data, toToolContext(context))
+      return { success: true, effects: result.effects, preview: result.preview }
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Unknown error during tool analysis' }
+    }
+  }
+
+  return { success: false, error: `Tool not found: ${toolId}` }
+}
+
+/**
  * Execute a tool by ID
  */
 export async function executeTool(
@@ -393,9 +535,13 @@ export async function executeTool(
             })
           }
         },
+        updateResult: (update) => {
+          context.onPartialResult?.(update)
+        },
         onStepStart: context.onStepStart,
         onStepComplete: context.onStepComplete,
         beforeSideEffect: context.beforeSideEffect,
+        approvedAnalysis: context.approvedAnalysis,
       }
 
       const result = await staticTool.execute(parseResult.data, toolContext)
@@ -450,9 +596,13 @@ export async function executeTool(
             })
           }
         },
+        updateResult: (update) => {
+          context.onPartialResult?.(update)
+        },
         onStepStart: context.onStepStart,
         onStepComplete: context.onStepComplete,
         beforeSideEffect: context.beforeSideEffect,
+        approvedAnalysis: context.approvedAnalysis,
       }
 
       const result = await initResult.execute(parseResult.data, toolContext)

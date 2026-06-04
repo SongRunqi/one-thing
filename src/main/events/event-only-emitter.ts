@@ -114,6 +114,18 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
       emitSafe({ type: 'tool:input-start', toolCallId, toolName, toolCall })
     },
 
+    sendToolExecutionStart(toolCallId, stepId, toolName, args) {
+      emitSafe({ type: 'tool:execution-start', toolCallId, stepId, toolName, args })
+    },
+
+    sendToolExecutionUpdate(toolCallId, stepId, partialResult) {
+      emitSafe({ type: 'tool:execution-update', toolCallId, stepId, partialResult })
+    },
+
+    sendToolExecutionEnd(toolCallId, stepId, result, isError, error) {
+      emitSafe({ type: 'tool:execution-end', toolCallId, stepId, result, isError, error })
+    },
+
     // ── Content → EventBus ──────────────────────
 
     sendContentPart(part) {

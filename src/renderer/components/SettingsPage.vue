@@ -653,18 +653,18 @@ onUnmounted(() => {
 
 <style scoped>
 .settings-page {
-  --settings-paper: var(--bg-app, var(--bg));
-  --settings-paper-2: var(--bg-sidebar, var(--panel-2));
-  --settings-paper-3: var(--bg-elevated, var(--panel));
-  --settings-rule: var(--border-default, var(--border));
-  --settings-rule-soft: var(--border-subtle, var(--border));
-  --settings-ink: var(--text-primary, var(--text));
-  --settings-ink-2: var(--text-secondary, var(--text));
-  --settings-ink-3: var(--text-muted, var(--muted));
-  --settings-ink-4: var(--text-faint, var(--muted));
-  --settings-ink-5: color-mix(in srgb, var(--text-faint, var(--muted)) 66%, transparent);
-  --settings-accent: var(--accent);
-  --settings-accent-soft: rgba(var(--accent-rgb), 0.16);
+  --settings-paper: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+  --settings-paper-2: var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2)));
+  --settings-paper-3: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel)));
+  --settings-rule: var(--ui-border-default-border, var(--border-default, var(--border)));
+  --settings-rule-soft: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  --settings-ink: var(--ui-text-primary-fg, var(--text-primary, var(--text)));
+  --settings-ink-2: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  --settings-ink-3: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  --settings-ink-4: var(--ui-text-faint-fg, var(--text-faint, var(--muted)));
+  --settings-ink-5: color-mix(in srgb, var(--ui-text-faint-fg, var(--text-faint, var(--muted))) 66%, transparent);
+  --settings-accent: var(--ui-accent-primary-fg, var(--accent));
+  --settings-accent-soft: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 16%, transparent);
   --settings-accent-tint: color-mix(in srgb, var(--settings-accent) 12%, var(--settings-paper));
   --settings-shadow: 0 30px 80px -34px rgba(0, 0, 0, 0.42), 0 10px 28px -18px rgba(0, 0, 0, 0.28);
 
@@ -910,7 +910,7 @@ onUnmounted(() => {
 }
 
 .sidebar-item.active .sidebar-icon {
-  color: var(--settings-accent);
+  color: var(--settings-ink);
 }
 
 .sidebar-copy {
@@ -1209,17 +1209,17 @@ onUnmounted(() => {
 }
 
 .settings-page {
-  --settings-paper: var(--bg-app, var(--bg));
-  --settings-paper-2: var(--bg-sidebar, var(--panel-2));
-  --settings-paper-3: var(--bg-elevated, var(--panel));
-  --settings-rule: var(--border-default, var(--border));
-  --settings-rule-soft: var(--border-subtle, var(--border));
-  --settings-ink: var(--text-primary, var(--text));
-  --settings-ink-2: var(--text-secondary, var(--text));
-  --settings-ink-3: var(--text-muted, var(--muted));
-  --settings-ink-4: var(--text-faint, var(--muted));
-  --settings-accent: var(--accent);
-  --settings-accent-soft: rgba(var(--accent-rgb), 0.14);
+  --settings-paper: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+  --settings-paper-2: var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2)));
+  --settings-paper-3: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel)));
+  --settings-rule: var(--ui-border-default-border, var(--border-default, var(--border)));
+  --settings-rule-soft: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  --settings-ink: var(--ui-text-primary-fg, var(--text-primary, var(--text)));
+  --settings-ink-2: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  --settings-ink-3: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  --settings-ink-4: var(--ui-text-faint-fg, var(--text-faint, var(--muted)));
+  --settings-accent: var(--ui-accent-primary-fg, var(--accent));
+  --settings-accent-soft: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 14%, transparent);
   background: var(--settings-paper);
 }
 
@@ -1478,16 +1478,16 @@ onUnmounted(() => {
 
 /* IDE-style settings page refresh, inspired by compact desktop preferences. */
 .settings-page {
-  --settings-paper: var(--bg-app, var(--bg));
-  --settings-paper-2: color-mix(in srgb, var(--bg-sidebar, var(--panel-2)) 88%, var(--bg-app, var(--bg)));
-  --settings-paper-3: color-mix(in srgb, var(--bg-elevated, var(--panel)) 76%, var(--settings-paper));
-  --settings-rule: color-mix(in srgb, var(--border-default, var(--border)) 82%, transparent);
-  --settings-rule-soft: color-mix(in srgb, var(--border-subtle, var(--border)) 66%, transparent);
-  --settings-ink: var(--text-primary, var(--text));
-  --settings-ink-2: color-mix(in srgb, var(--text-primary, var(--text)) 90%, var(--text-secondary, var(--muted)));
-  --settings-ink-3: var(--text-secondary, var(--muted));
-  --settings-ink-4: var(--text-muted, var(--muted));
-  --settings-ink-5: color-mix(in srgb, var(--text-muted, var(--muted)) 72%, transparent);
+  --settings-paper: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+  --settings-paper-2: color-mix(in srgb, var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2))) 88%, var(--ui-surface-app-bg, var(--bg-app, var(--bg))));
+  --settings-paper-3: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 76%, var(--settings-paper));
+  --settings-rule: color-mix(in srgb, var(--ui-border-default-border, var(--border-default, var(--border))) 82%, transparent);
+  --settings-rule-soft: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 66%, transparent);
+  --settings-ink: var(--ui-text-primary-fg, var(--text-primary, var(--text)));
+  --settings-ink-2: color-mix(in srgb, var(--ui-text-primary-fg, var(--text-primary, var(--text))) 90%, var(--ui-text-secondary-fg, var(--text-secondary, var(--muted))));
+  --settings-ink-3: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
+  --settings-ink-4: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  --settings-ink-5: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 72%, transparent);
   --settings-accent-soft: color-mix(in srgb, var(--settings-accent) 16%, transparent);
 
   background: var(--settings-paper);

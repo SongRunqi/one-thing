@@ -240,7 +240,12 @@ export const useThemeStore = defineStore('themes', () => {
     }
 
     // Debug: Check if code syntax highlighting variables are generated
-    const hljsVars = Object.keys(variables).filter(k => k.startsWith('--hljs-') || k.startsWith('--bg-code') || k.startsWith('--text-code'))
+    const hljsVars = Object.keys(variables).filter(k =>
+      k.startsWith('--hg-') ||
+      k.startsWith('--hljs-') ||
+      k.startsWith('--bg-code') ||
+      k.startsWith('--text-code')
+    )
     console.log('[ThemeStore] Applied', Object.keys(variables).length, 'CSS variables')
     console.log('[ThemeStore] Code highlighting vars:', hljsVars.length > 0 ? hljsVars : 'NONE - check theme definition')
   }

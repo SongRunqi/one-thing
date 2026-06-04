@@ -44,6 +44,18 @@
           <div class="preview-content">
             <div class="preview-bubble user" />
             <div class="preview-bubble assistant" />
+            <div
+              v-if="theme.previewColors?.palette?.length"
+              class="preview-palette"
+              aria-hidden="true"
+            >
+              <span
+                v-for="color in theme.previewColors.palette"
+                :key="color"
+                class="preview-swatch"
+                :style="{ background: color }"
+              />
+            </div>
           </div>
         </div>
 
@@ -212,7 +224,7 @@ async function refreshThemes() {
   display: flex;
   gap: 4px;
   border: 1px solid var(--settings-rule, transparent);
-  background: var(--settings-paper-2, var(--bg-input, var(--bg-hover)));
+  background: var(--settings-paper-2, var(--ui-surface-input-bg, var(--bg-input, var(--bg-hover))));
   padding: 3px;
   border-radius: 999px;
   width: fit-content;
@@ -223,7 +235,7 @@ async function refreshThemes() {
   border: none;
   border-radius: 999px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -231,13 +243,13 @@ async function refreshThemes() {
 }
 
 .tab-btn:hover:not(.active) {
-  color: var(--text-primary);
-  background: var(--settings-paper, var(--bg-hover));
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  background: var(--settings-paper, var(--ui-state-hover-bg, var(--bg-hover)));
 }
 
 .tab-btn.active {
-  background: var(--settings-ink, var(--accent));
-  color: var(--settings-paper, var(--bg));
+  background: var(--settings-ink, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
@@ -250,24 +262,24 @@ async function refreshThemes() {
 
 .theme-item {
   position: relative;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
   transition: all 0.15s ease;
-  background: var(--settings-paper, var(--bg-panel, var(--panel)));
+  background: var(--settings-paper, var(--ui-surface-panel-bg, var(--bg-panel, var(--panel))));
 }
 
 .theme-item:hover {
-  border-color: var(--accent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .theme-item.active {
-  border-color: var(--settings-accent, var(--accent));
-  background: color-mix(in srgb, var(--settings-accent, var(--accent)) 6%, transparent);
-  box-shadow: 0 0 0 3px var(--settings-accent-soft, rgba(var(--accent-rgb, 67, 133, 190), 0.14));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 6%, transparent);
+  box-shadow: 0 0 0 3px var(--settings-accent-soft, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 14%, transparent));
 }
 
 /* Theme Preview */
@@ -275,7 +287,7 @@ async function refreshThemes() {
   height: 92px;
   display: flex;
   background: var(--preview-bg);
-  border-bottom: 1px solid var(--settings-rule-soft, var(--border));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
 }
 
 .preview-sidebar {
@@ -308,6 +320,25 @@ async function refreshThemes() {
   background: rgba(255, 255, 255, 0.12);
 }
 
+.preview-palette {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 12px;
+  margin-top: 2px;
+}
+
+.preview-swatch {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 3px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
 /* Theme Info */
 .theme-info {
   padding: 10px 12px;
@@ -319,7 +350,7 @@ async function refreshThemes() {
 .theme-name {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -327,7 +358,7 @@ async function refreshThemes() {
 
 .theme-author {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 /* Check Icon */
@@ -338,8 +369,8 @@ async function refreshThemes() {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--text-btn-primary, var(--settings-paper));
+  background: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-action-primary-fg, var(--text-btn-primary, var(--settings-paper)));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -351,7 +382,7 @@ async function refreshThemes() {
   display: flex;
   gap: 10px;
   padding-top: 12px;
-  border-top: 1px solid var(--settings-rule-soft, var(--border));
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
 }
 
 .action-btn {
@@ -359,18 +390,18 @@ async function refreshThemes() {
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 8px;
   background: var(--settings-paper, transparent);
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   font-size: 13px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .action-btn:hover:not(:disabled) {
-  background: var(--settings-paper-2, var(--bg-hover, var(--hover)));
-  border-color: var(--settings-accent, var(--accent));
+  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--bg-hover, var(--hover))));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .action-btn:disabled {
@@ -391,9 +422,9 @@ async function refreshThemes() {
 .error-message {
   padding: 10px 14px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--text-error, var(--color-danger)) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text-error, var(--color-danger)) 30%, transparent);
-  color: var(--text-error, var(--color-danger));
+  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 30%, transparent);
+  color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
   font-size: 13px;
 }
 
@@ -401,7 +432,7 @@ async function refreshThemes() {
 .empty-state {
   padding: 32px;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 13px;
 }
 

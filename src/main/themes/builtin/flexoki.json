@@ -129,14 +129,14 @@
         "danger": { "dark": "#100F0F", "light": "#FFFCF0" }
       },
       "code": {
-        "inline": "magenta",
+        "inline": "base900",
         "block": "base900",
         "comment": "base500",
         "keyword": "purple",
         "string": "green",
         "number": "orange",
         "function": "blue",
-        "variable": "cyan",
+        "variable": "base800",
         "operator": "base700",
         "type": "cyan",
         "property": "blue",

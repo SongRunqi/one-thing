@@ -15,6 +15,8 @@ import type {
   GetSessionUserMarkersResponse,
   MessageAttachment,
   Step,
+  ToolPartialResult,
+  ToolResult,
   ContentPart,
   UserMessageMarker,
 } from '@/types'
@@ -99,6 +101,33 @@ interface StepUpdateData {
   updates: any
 }
 
+interface ToolExecutionStartData {
+  sessionId: string
+  messageId: string
+  toolCallId: string
+  stepId: string
+  toolName: string
+  args: Record<string, unknown>
+}
+
+interface ToolExecutionUpdateData {
+  sessionId: string
+  messageId: string
+  toolCallId: string
+  stepId: string
+  partialResult: ToolPartialResult
+}
+
+interface ToolExecutionEndData {
+  sessionId: string
+  messageId: string
+  toolCallId: string
+  stepId: string
+  result?: ToolResult
+  isError?: boolean
+  error?: string
+}
+
 // Skill activation data from IPC
 interface SkillActivatedData {
   sessionId: string
@@ -150,11 +179,57 @@ export const useChatStore = defineStore('chat', () => {
 
   // Active streams (sessionId -> messageId)
   const activeStreams = ref<Map<string, string>>(new Map())
+
+  interface ComposerDraft {
+    messageInput: string
+    quotedText: string
+    attachments: MessageAttachment[]
+  }
+
+  const composerDrafts = ref<Map<string, ComposerDraft>>(new Map())
   const pendingPermissionRequests = new Map<string, PermissionRequestData[]>()
 
   // Chunks can arrive before the assistant-created event during HMR/replay or
   // very tight event timing. Keep them until the target message exists.
   const pendingStreamChunks = new Map<string, Map<string, StreamChunk[]>>()
+
+  function normalizeComposerDraft(draft: Partial<ComposerDraft>): ComposerDraft {
+    return {
+      messageInput: draft.messageInput ?? '',
+      quotedText: draft.quotedText ?? '',
+      attachments: draft.attachments ? [...draft.attachments] : [],
+    }
+  }
+
+  function isEmptyComposerDraft(draft: ComposerDraft): boolean {
+    return !draft.messageInput.trim() && !draft.quotedText.trim() && draft.attachments.length === 0
+  }
+
+  function setComposerDraft(sessionId: string, draft: Partial<ComposerDraft>) {
+    if (!sessionId) return
+    const normalized = normalizeComposerDraft(draft)
+    if (isEmptyComposerDraft(normalized)) {
+      composerDrafts.value.delete(sessionId)
+    } else {
+      composerDrafts.value.set(sessionId, normalized)
+    }
+    triggerRef(composerDrafts)
+  }
+
+  function getComposerDraft(sessionId: string): ComposerDraft | null {
+    const draft = composerDrafts.value.get(sessionId)
+    return draft ? normalizeComposerDraft(draft) : null
+  }
+
+  function clearComposerDraft(sessionId: string) {
+    if (!composerDrafts.value.delete(sessionId)) return
+    triggerRef(composerDrafts)
+  }
+
+  function isComposerDraftEmpty(sessionId: string): boolean {
+    const draft = composerDrafts.value.get(sessionId)
+    return !draft || isEmptyComposerDraft(draft)
+  }
 
   /** Resolve messageId: use provided value or fallback to activeStreams lookup */
   function resolveMessageId(sessionId: string, messageId?: string): string {
@@ -525,7 +600,7 @@ export const useChatStore = defineStore('chat', () => {
     const step = message.steps?.find(s => s.toolCallId === toolCall.id)
     if (step) {
       step.status = 'awaiting-confirmation'
-      if (data.metadata && (data.metadata.diff || data.metadata.filePath)) {
+      if (data.metadata && (data.metadata.diff || data.metadata.path)) {
         step.result = JSON.stringify(data.metadata)
       }
       if (message.steps) {
@@ -970,6 +1045,47 @@ export const useChatStore = defineStore('chat', () => {
 
   }
 
+  function findMessageStep(sessionId: string, messageId: string, stepId: string, toolCallId?: string): { messages: ChatMessage[]; message: ChatMessage; stepIndex: number } | null {
+    const messages = getSessionMessagesRef(sessionId)
+    const resolvedMsgId = resolveMessageId(sessionId, messageId)
+    const message = messages.find(m => m.id === resolvedMsgId)
+    if (!message?.steps) return null
+    const stepIndex = message.steps.findIndex(s => s.id === stepId || (!!toolCallId && s.toolCallId === toolCallId))
+    if (stepIndex < 0) return null
+    return { messages, message, stepIndex }
+  }
+
+  function patchStep(sessionId: string, messageId: string, stepId: string, toolCallId: string | undefined, updates: Partial<Step>): void {
+    const found = findMessageStep(sessionId, messageId, stepId, toolCallId)
+    if (!found) return
+    const { messages, message, stepIndex } = found
+    message.steps![stepIndex] = { ...message.steps![stepIndex], ...updates }
+    linkStepsToToolCalls(message)
+    message.steps = [...message.steps!]
+    setSessionMessages(sessionId, [...messages])
+    bumpScrollVersion(sessionId)
+  }
+
+  function handleToolExecutionStart(data: ToolExecutionStartData) {
+    patchStep(data.sessionId, data.messageId, data.stepId, data.toolCallId, { status: 'running' })
+  }
+
+  function handleToolExecutionUpdate(data: ToolExecutionUpdateData) {
+    patchStep(data.sessionId, data.messageId, data.stepId, data.toolCallId, {
+      status: 'running',
+      partialResult: data.partialResult,
+      partialResultIsPartial: true,
+    })
+  }
+
+  function handleToolExecutionEnd(data: ToolExecutionEndData) {
+    patchStep(data.sessionId, data.messageId, data.stepId, data.toolCallId, {
+      partialResult: data.result,
+      partialResultIsPartial: false,
+      ...(data.isError ? { error: data.error } : {}),
+    })
+  }
+
   /**
    * Handle skill activated event
    */
@@ -1314,7 +1430,16 @@ export const useChatStore = defineStore('chat', () => {
     const messages = getSessionMessagesRef(sessionId)
     const messageIndex = messages.findIndex(m => m.id === messageId)
     if (messageIndex !== -1) {
-      messages[messageIndex] = { ...messages[messageIndex], ...updates }
+      const merged = { ...messages[messageIndex], ...updates }
+      // A message that just finished streaming must not keep a transient
+      // waiting/loading indicator. This covers the case where a continuation's
+      // early waiting was emitted on a turn message that then gets finalized
+      // (e.g. when context compaction starts a fresh assistant message).
+      if (updates.isStreaming === false && merged.contentParts) {
+        const cleaned = [...merged.contentParts]
+        if (removeTransientIndicators(cleaned)) merged.contentParts = cleaned
+      }
+      messages[messageIndex] = merged
       setSessionMessages(sessionId, [...messages])
     }
   }
@@ -1499,6 +1624,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionError,
     sessionErrorDetails,
     activeStreams,
+    composerDrafts,
 
     // Getters
     getSessionState,
@@ -1520,6 +1646,9 @@ export const useChatStore = defineStore('chat', () => {
     handleStreamError,
     handleStepAdded,
     handleStepUpdated,
+    handleToolExecutionStart,
+    handleToolExecutionUpdate,
+    handleToolExecutionEnd,
     handleSkillActivated,
     handlePermissionRequest,
     handleMessageCreated,
@@ -1550,6 +1679,10 @@ export const useChatStore = defineStore('chat', () => {
     updateSessionMessage,
     clearSessionError,
     clearSessionMessages,
+    setComposerDraft,
+    getComposerDraft,
+    clearComposerDraft,
+    isComposerDraftEmpty,
     addLocalMessage,
     addMessageToState,
     removeMessage,

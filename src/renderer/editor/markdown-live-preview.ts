@@ -12,6 +12,10 @@ import {
   Decoration,
   type DecorationSet,
   EditorView,
+  type LayerMarker,
+  layer,
+  type Rect,
+  RectangleMarker,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
@@ -911,6 +915,27 @@ class EmptyStructureCaretWidget extends WidgetType {
     span.setAttribute('aria-hidden', 'true')
     return span
   }
+
+  coordsAt(dom: HTMLElement): Rect | null {
+    const line = dom.closest('.cm-line') as HTMLElement | null
+    const lineRect = line?.getBoundingClientRect()
+    const anchorRect = dom.getBoundingClientRect()
+    if (!line || !lineRect) return anchorRect
+
+    const lineStyle = getComputedStyle(line)
+    const lineHeight = Number.parseFloat(lineStyle.lineHeight)
+    const height = Number.isFinite(lineHeight) && lineHeight > 0
+      ? lineHeight
+      : lineRect.height
+    const top = lineRect.top + Math.max(0, (lineRect.height - height) / 2)
+    const left = Number.isFinite(anchorRect.left) ? anchorRect.left : lineRect.left
+    return {
+      left,
+      right: left,
+      top,
+      bottom: top + height,
+    }
+  }
 }
 
 class MarkdownTableRowWidget extends WidgetType {
@@ -1147,11 +1172,9 @@ class MarkdownLivePreviewPlugin {
     const foldsChanged = update.transactions.some(transaction =>
       transaction.effects.some(effect => effect.is(toggleMarkdownFoldEffect)),
     )
-    const selectionChangesScanRange = update.selectionSet &&
-      update.view.state.doc.lines > (this.options.fullScanLineLimit ?? FULL_SCAN_LINE_LIMIT)
     if (
       update.docChanged ||
-      selectionChangesScanRange ||
+      update.selectionSet ||
       update.viewportChanged ||
       foldsChanged
     ) {
@@ -1193,6 +1216,28 @@ function buildMarkdownDecorations(view: EditorView, options: MarkdownLivePreview
   return Decoration.set(ranges, true)
 }
 
+function addLivePreviewReplace(
+  view: EditorView,
+  ranges: Range<Decoration>[],
+  from: number,
+  to: number,
+  spec: Parameters<typeof Decoration.replace>[0] = {},
+): void {
+  if (from >= to) return
+  if (shouldRevealMarkdownSourceRange(view, from, to)) {
+    ranges.push(Decoration.mark({ class: 'md-live-source-revealed' }).range(from, to))
+    return
+  }
+  ranges.push(Decoration.replace(spec).range(from, to))
+}
+
+function shouldRevealMarkdownSourceRange(view: EditorView, from: number, to: number): boolean {
+  return view.state.selection.ranges.some((range) => {
+    if (range.empty) return range.head > from && range.head < to
+    return range.from < to && range.to > from
+  })
+}
+
 function markdownLivePreviewFeatures(options: MarkdownLivePreviewOptions): Required<MarkdownLivePreviewFeatures> {
   return {
     ...DEFAULT_MARKDOWN_LIVE_PREVIEW_FEATURES,
@@ -1200,39 +1245,78 @@ function markdownLivePreviewFeatures(options: MarkdownLivePreviewOptions): Requi
   }
 }
 
-const hiddenHeadingCaretFilter = EditorState.transactionFilter.of((transaction) => {
-  const normalized = normalizeHiddenHeadingSelection(transaction.newDoc, transaction.newSelection)
-  if (!normalized) return transaction
-  return [
-    transaction,
-    { selection: normalized, sequential: true },
-  ]
-})
+const markdownLivePreviewCursorLayer: Extension = [
+  layer({
+    above: true,
+    markers(view): readonly LayerMarker[] {
+      if (!markdownLivePreviewContentHasFocus(view)) return []
+      const cursors: LayerMarker[] = []
+      for (const range of view.state.selection.ranges) {
+        if (!range.empty) continue
+        const className = range === view.state.selection.main
+          ? 'cm-cursor cm-cursor-primary'
+          : 'cm-cursor cm-cursor-secondary'
+        cursors.push(...markdownLivePreviewCursorMarkers(view, className, range))
+      }
+      return cursors
+    },
+    update(update, dom) {
+      if (update.transactions.some(transaction => transaction.selection)) {
+        dom.style.animationName = dom.style.animationName === 'cm-blink' ? 'cm-blink2' : 'cm-blink'
+      }
+      return update.docChanged ||
+        update.selectionSet ||
+        update.viewportChanged ||
+        update.geometryChanged ||
+        update.focusChanged
+    },
+    class: 'cm-cursorLayer',
+  }),
+  EditorView.theme({
+    '.cm-content, .cm-line': {
+      caretColor: 'transparent !important',
+    },
+    '.cm-content :focus': {
+      caretColor: 'initial !important',
+    },
+  }),
+]
 
-function normalizeHiddenHeadingSelection(
-  doc: EditorState['doc'],
-  selection: EditorSelection,
-): EditorSelection | null {
-  let changed = false
-  const ranges = selection.ranges.map((range) => {
-    if (!range.empty) return range
-    const target = visibleHeadingStartAtPosition(doc, range.head)
-    if (target == null || target === range.head) return range
-    changed = true
-    return EditorSelection.cursor(target, range.assoc, range.bidiLevel ?? undefined, range.goalColumn)
-  })
-
-  return changed ? EditorSelection.create(ranges, selection.mainIndex) : null
+function markdownLivePreviewContentHasFocus(view: EditorView): boolean {
+  return view.hasFocus && view.root.activeElement === view.contentDOM
 }
 
-function visibleHeadingStartAtPosition(doc: EditorState['doc'], position: number): number | null {
-  const safePosition = Math.max(0, Math.min(position, doc.length))
-  const line = doc.lineAt(safePosition)
-  const heading = line.text.match(HEADING_RE)
-  if (!heading) return null
+function markdownLivePreviewCursorMarkers(
+  view: EditorView,
+  className: string,
+  range: EditorSelection['main'],
+): readonly LayerMarker[] {
+  return RectangleMarker
+    .forRange(view, className, range)
+    .map(marker => normalizedMarkdownLivePreviewCursorMarker(view, className, range.head, marker))
+}
 
-  const visibleStart = line.from + heading[1].length + heading[2].length + heading[3].length
-  if (safePosition >= line.from && safePosition < visibleStart) return visibleStart
+function normalizedMarkdownLivePreviewCursorMarker(
+  view: EditorView,
+  className: string,
+  position: number,
+  marker: RectangleMarker,
+): RectangleMarker {
+  const height = markdownLivePreviewCursorHeight(view, position) || marker.height
+  const top = marker.top + (marker.height - height) / 2
+  return new RectangleMarker(className, marker.left, top, null, height)
+}
+
+function markdownLivePreviewCursorHeight(
+  view: EditorView,
+  position: number,
+): number | null {
+  const after = position < view.state.doc.length ? view.coordsForChar(position) : null
+  if (after) return after.bottom - after.top
+
+  const before = position > 0 ? view.coordsForChar(position - 1) : null
+  if (before) return before.bottom - before.top
+
   return null
 }
 
@@ -1338,25 +1422,26 @@ function addSyntaxTreeDecorations(
           const line = doc.lineAt(from)
           if (!isRenderableHeadingLine(line.text)) return
           const whitespaceTo = Math.min(line.to, to + trailingWhitespaceLength(line.text.slice(to - line.from)))
-          ranges.push(Decoration.replace({
+          addLivePreviewReplace(view, ranges, from, whitespaceTo, {
             widget: new EmptyStructureCaretWidget(),
             inclusive: false,
-          }).range(from, whitespaceTo))
+          })
           return
         }
 
         if (name === 'ListMark') {
           const line = doc.lineAt(from)
           if (!isRenderableListLine(line.text)) return
+          if (!isPrimaryLineMarker(line.text, line.from, from)) return
           if (!isTaskLine(line.text)) {
             const ordered = /^\d+\.$/.test(doc.sliceString(from, to))
             const markerTo = Math.min(line.to, to + trailingWhitespaceLength(line.text.slice(to - line.from)))
             const label = ordered ? doc.sliceString(from, to) : '•'
             ranges.push(Decoration.line({ class: `md-live-line md-live-${ordered ? 'ordered-list' : 'unordered-list'}` }).range(line.from))
-            ranges.push(Decoration.replace({
+            addLivePreviewReplace(view, ranges, from, markerTo, {
               widget: new MarkdownListMarkerWidget(label),
               inclusive: false,
-            }).range(from, markerTo))
+            })
           }
           return
         }
@@ -1366,10 +1451,10 @@ function addSyntaxTreeDecorations(
           if (!isRenderableBlockquoteLine(line.text)) return
           const markerTo = Math.min(line.to, to + trailingWhitespaceLength(line.text.slice(to - line.from)))
           ranges.push(Decoration.line({ class: 'md-live-line md-live-blockquote' }).range(line.from))
-          ranges.push(Decoration.replace({
+          addLivePreviewReplace(view, ranges, from, markerTo, {
             widget: markerTo >= line.to ? new EmptyStructureCaretWidget() : undefined,
             inclusive: false,
-          }).range(from, markerTo))
+          })
           return
         }
 
@@ -1403,10 +1488,10 @@ function addSyntaxTreeDecorations(
         if (name === 'HorizontalRule') {
           const line = doc.lineAt(from)
           ranges.push(Decoration.line({ class: 'md-live-line md-live-horizontal-rule' }).range(line.from))
-          ranges.push(Decoration.replace({
+          addLivePreviewReplace(view, ranges, from, to, {
             widget: new HorizontalRuleWidget(),
             inclusive: false,
-          }).range(from, to))
+          })
         }
       },
     })
@@ -1440,17 +1525,17 @@ function addLineFallbackDecorations(
       const tableLine = tableLines.get(lineNumber)
 
       if (features.tables && tableLine) {
-        addTableBlockDecoration(ranges, line.from, line.to, tableLine)
+        addTableBlockDecoration(view, ranges, line.from, line.to, tableLine)
         continue
       }
 
-      if (features.tasks) addTaskDecoration(ranges, line.from, line.to, line.text, info)
-      if (features.tables) addTableDecoration(ranges, line.from, line.to, line.text, info)
+      if (features.tasks) addTaskDecoration(view, ranges, line.from, line.to, line.text, info)
+      if (features.tables) addTableDecoration(view, ranges, line.from, line.to, line.text, info)
       if (info.kind !== 'table' && info.kind !== 'code' && info.kind !== 'fence') {
-        if (features.math) addMathDecorations(ranges, line.from, line.text)
-        addInlineFallbackDecorations(ranges, line.from, line.text)
-        if (features.images) addObsidianLinkDecorations(ranges, line.from, line.text, options, folded)
-        addEmojiDecorations(ranges, line.from, line.text)
+        if (features.math) addMathDecorations(view, ranges, line.from, line.text)
+        addInlineFallbackDecorations(view, ranges, line.from, line.text)
+        if (features.images) addObsidianLinkDecorations(view, ranges, line.from, line.text, options, folded)
+        addEmojiDecorations(view, ranges, line.from, line.text)
       }
 
       if (isFence) inFence = !inFence
@@ -1498,12 +1583,12 @@ function addFrontMatterDecorations(
   const doc = view.state.doc
   const openingLine = doc.line(block.openingLineNumber)
   ranges.push(Decoration.line({ class: 'md-live-line md-live-frontmatter-line' }).range(openingLine.from))
-  addReplaceOrWidgetDecoration(ranges, openingLine.from, openingLine.to, new MarkdownFrontMatterWidget(block))
+  addReplaceOrWidgetDecoration(view, ranges, openingLine.from, openingLine.to, new MarkdownFrontMatterWidget(block))
 
   for (let lineNumber = block.openingLineNumber + 1; lineNumber <= block.closingLineNumber; lineNumber += 1) {
     const line = doc.line(lineNumber)
     ranges.push(Decoration.line({ class: 'md-live-line md-live-frontmatter-hidden md-live-fold-hidden' }).range(line.from))
-    addReplaceOrWidgetDecoration(ranges, line.from, line.to, new EmptyMarkdownWidget())
+    addReplaceOrWidgetDecoration(view, ranges, line.from, line.to, new EmptyMarkdownWidget())
   }
 }
 
@@ -1581,6 +1666,7 @@ function collectMarkdownTableLineStates(
 }
 
 function addTaskDecoration(
+  view: EditorView,
   ranges: Range<Decoration>[],
   lineFrom: number,
   lineTo: number,
@@ -1596,10 +1682,10 @@ function addTaskDecoration(
   if (checkboxIndex < 0) return
   const checkFrom = lineFrom + checkboxIndex + 1
   ranges.push(Decoration.line({ class: `md-live-line md-live-task${info.checked ? ' md-live-task-done' : ''}` }).range(lineFrom))
-  ranges.push(Decoration.replace({
+  addLivePreviewReplace(view, ranges, markerFrom, markerTo, {
     widget: new MarkdownTaskWidget(Boolean(info.checked), checkFrom),
     inclusive: false,
-  }).range(markerFrom, markerTo))
+  })
 }
 
 function addSetextListTypingDecorations(
@@ -1621,6 +1707,7 @@ function addSetextListTypingDecorations(
 }
 
 function addTableDecoration(
+  view: EditorView,
   ranges: Range<Decoration>[],
   lineFrom: number,
   lineTo: number,
@@ -1629,13 +1716,14 @@ function addTableDecoration(
 ): void {
   if (info.kind !== 'table') return
   ranges.push(Decoration.line({ class: 'md-live-line md-live-table' }).range(lineFrom))
-  ranges.push(Decoration.replace({
+  addLivePreviewReplace(view, ranges, lineFrom, lineTo, {
     widget: new MarkdownTableRowWidget(parseTableCells(text), TABLE_SEPARATOR_RE.test(text)),
     inclusive: false,
-  }).range(lineFrom, lineTo))
+  })
 }
 
 function addTableBlockDecoration(
+  view: EditorView,
   ranges: Range<Decoration>[],
   lineFrom: number,
   lineTo: number,
@@ -1643,12 +1731,12 @@ function addTableBlockDecoration(
 ): void {
   if (state.role === 'block' && state.block) {
     ranges.push(Decoration.line({ class: 'md-live-line md-live-table md-live-table-block-line' }).range(lineFrom))
-    addReplaceOrWidgetDecoration(ranges, lineFrom, lineTo, new MarkdownTableBlockWidget(state.block))
+    addReplaceOrWidgetDecoration(view, ranges, lineFrom, lineTo, new MarkdownTableBlockWidget(state.block))
     return
   }
 
   ranges.push(Decoration.line({ class: 'md-live-line md-live-table-hidden md-live-fold-hidden' }).range(lineFrom))
-  addReplaceOrWidgetDecoration(ranges, lineFrom, lineTo, new EmptyMarkdownWidget())
+  addReplaceOrWidgetDecoration(view, ranges, lineFrom, lineTo, new EmptyMarkdownWidget())
 }
 
 function addFencedCodeDecorations(
@@ -1680,7 +1768,7 @@ function addFencedCodeDecorations(
 
     if (isOpeningFence) {
       ranges.push(Decoration.line({ class: 'md-live-line md-live-fence md-live-codeblock-fence-hidden' }).range(line.from))
-      addReplaceOrWidgetDecoration(ranges, line.from, line.to, new EmptyMarkdownWidget())
+      addReplaceOrWidgetDecoration(view, ranges, line.from, line.to, new EmptyMarkdownWidget())
       continue
     }
 
@@ -1692,6 +1780,7 @@ function addFencedCodeDecorations(
           side: -1,
         }).range(line.from))
         addReplaceOrWidgetDecoration(
+          view,
           ranges,
           line.from,
           line.to,
@@ -1699,14 +1788,14 @@ function addFencedCodeDecorations(
         )
       } else {
         ranges.push(Decoration.line({ class: 'md-live-line md-live-fold-hidden' }).range(line.from))
-        addReplaceOrWidgetDecoration(ranges, line.from, line.to, new EmptyMarkdownWidget())
+        addReplaceOrWidgetDecoration(view, ranges, line.from, line.to, new EmptyMarkdownWidget())
       }
       continue
     }
 
     if (isClosingFence) {
       ranges.push(Decoration.line({ class: 'md-live-line md-live-fence md-live-codeblock-fence-hidden' }).range(line.from))
-      addReplaceOrWidgetDecoration(ranges, line.from, line.to, new EmptyMarkdownWidget())
+      addReplaceOrWidgetDecoration(view, ranges, line.from, line.to, new EmptyMarkdownWidget())
       continue
     }
 
@@ -1734,16 +1823,17 @@ function addFencedCodeDecorations(
 }
 
 function addReplaceOrWidgetDecoration(
+  view: EditorView,
   ranges: Range<Decoration>[],
   from: number,
   to: number,
   widget: WidgetType,
 ): void {
   if (from < to) {
-    ranges.push(Decoration.replace({
+    addLivePreviewReplace(view, ranges, from, to, {
       widget,
       inclusive: false,
-    }).range(from, to))
+    })
     return
   }
 
@@ -1765,9 +1855,9 @@ function addEmphasisDecoration(
   const contentFrom = from + delimiterLength
   const contentTo = to - delimiterLength
   if (contentFrom >= contentTo) return
-  ranges.push(Decoration.replace({ inclusive: false }).range(from, contentFrom))
+  addLivePreviewReplace(view, ranges, from, contentFrom, { inclusive: false })
   ranges.push(Decoration.mark({ class: className }).range(contentFrom, contentTo))
-  ranges.push(Decoration.replace({ inclusive: false }).range(contentTo, to))
+  addLivePreviewReplace(view, ranges, contentTo, to, { inclusive: false })
 }
 
 function addInlineCodeDecoration(
@@ -1782,9 +1872,9 @@ function addInlineCodeDecoration(
   const contentFrom = from + delimiterLength
   const contentTo = to - delimiterLength
   if (contentFrom >= contentTo) return
-  ranges.push(Decoration.replace({ inclusive: false }).range(from, contentFrom))
+  addLivePreviewReplace(view, ranges, from, contentFrom, { inclusive: false })
   ranges.push(Decoration.mark({ class: 'md-live-inline-code' }).range(contentFrom, contentTo))
-  ranges.push(Decoration.replace({ inclusive: false }).range(contentTo, to))
+  addLivePreviewReplace(view, ranges, contentTo, to, { inclusive: false })
 }
 
 function addLinkDecoration(
@@ -1795,12 +1885,12 @@ function addLinkDecoration(
 ): void {
   const parts = parseLinkParts(view.state.doc.sliceString(from, to), from)
   if (!parts || parts.labelFrom >= parts.labelTo) return
-  ranges.push(Decoration.replace({ inclusive: false }).range(from, parts.labelFrom))
+  addLivePreviewReplace(view, ranges, from, parts.labelFrom, { inclusive: false })
   ranges.push(Decoration.mark({
     class: 'md-live-link',
     attributes: parts.url ? { 'data-href': parts.url } : undefined,
   }).range(parts.labelFrom, parts.labelTo))
-  ranges.push(Decoration.replace({ inclusive: false }).range(parts.labelTo, to))
+  addLivePreviewReplace(view, ranges, parts.labelTo, to, { inclusive: false })
 }
 
 function addImageDecoration(
@@ -1816,20 +1906,20 @@ function addImageDecoration(
   const alt = view.state.doc.sliceString(parts.labelFrom, parts.labelTo)
   const rawSource = view.state.doc.sliceString(from, to)
   if (!shouldRenderMarkdownImageTarget(parts.url)) {
-    ranges.push(Decoration.replace({
+    addLivePreviewReplace(view, ranges, from, to, {
       widget: new MarkdownFileWidget(alt || displayTargetLabel(parts.url), parts.url, rawSource, from, to, options),
       inclusive: false,
-    }).range(from, to))
+    })
     return
   }
   const foldKey = markdownAssetFoldKey(rawSource)
-  ranges.push(Decoration.replace({
+  addLivePreviewReplace(view, ranges, from, to, {
     widget: new MarkdownImageWidget(alt, parts.url, rawSource, from, to, foldKey, folded.has(foldKey), options),
     inclusive: false,
-  }).range(from, to))
+  })
 }
 
-function addMathDecorations(ranges: Range<Decoration>[], lineFrom: number, text: string): void {
+function addMathDecorations(view: EditorView, ranges: Range<Decoration>[], lineFrom: number, text: string): void {
   for (const match of text.matchAll(MATH_RE)) {
     const index = match.index ?? 0
     const delimiter = match[1]
@@ -1838,22 +1928,24 @@ function addMathDecorations(ranges: Range<Decoration>[], lineFrom: number, text:
     const from = lineFrom + index
     const contentFrom = from + delimiter.length
     const contentTo = contentFrom + content.length
-    ranges.push(Decoration.replace({ inclusive: false }).range(from, contentFrom))
+    addLivePreviewReplace(view, ranges, from, contentFrom, { inclusive: false })
     ranges.push(Decoration.mark({ class: 'md-live-math' }).range(contentFrom, contentTo))
-    ranges.push(Decoration.replace({ inclusive: false }).range(contentTo, contentTo + delimiter.length))
+    addLivePreviewReplace(view, ranges, contentTo, contentTo + delimiter.length, { inclusive: false })
   }
 }
 
 function addInlineFallbackDecorations(
+  view: EditorView,
   ranges: Range<Decoration>[],
   lineFrom: number,
   text: string,
 ): void {
-  addDelimitedInlineDecorations(ranges, lineFrom, text, STRIKETHROUGH_RE, 2, 2, 'md-live-strikethrough')
-  addDelimitedInlineDecorations(ranges, lineFrom, text, UNDERLINE_RE, 3, 4, 'md-live-underline')
+  addDelimitedInlineDecorations(view, ranges, lineFrom, text, STRIKETHROUGH_RE, 2, 2, 'md-live-strikethrough')
+  addDelimitedInlineDecorations(view, ranges, lineFrom, text, UNDERLINE_RE, 3, 4, 'md-live-underline')
 }
 
 function addObsidianLinkDecorations(
+  view: EditorView,
   ranges: Range<Decoration>[],
   lineFrom: number,
   text: string,
@@ -1873,12 +1965,12 @@ function addObsidianLinkDecorations(
     const embed = raw.startsWith('![[')
     const image = embed && isLikelyImageTarget(target)
     const foldKey = image ? markdownAssetFoldKey(raw) : ''
-    ranges.push(Decoration.replace({
+    addLivePreviewReplace(view, ranges, from, to, {
       widget: image
         ? new MarkdownImageWidget(display, target, raw, from, to, foldKey, folded.has(foldKey), options)
         : new MarkdownFileWidget(display, target, raw, from, to, options),
       inclusive: false,
-    }).range(from, to))
+    })
   }
 }
 
@@ -1916,19 +2008,21 @@ function rangesOverlap(from: number, to: number, otherFrom: number, otherTo: num
 }
 
 function addEmojiDecorations(
+  view: EditorView,
   ranges: Range<Decoration>[],
   lineFrom: number,
   text: string,
 ): void {
   for (const match of findEmojiShortcodes(text)) {
-    ranges.push(Decoration.replace({
+    addLivePreviewReplace(view, ranges, lineFrom + match.from, lineFrom + match.to, {
       widget: new MarkdownEmojiWidget(match.emoji, match.name),
       inclusive: false,
-    }).range(lineFrom + match.from, lineFrom + match.to))
+    })
   }
 }
 
 function addDelimitedInlineDecorations(
+  view: EditorView,
   ranges: Range<Decoration>[],
   lineFrom: number,
   text: string,
@@ -1944,9 +2038,9 @@ function addDelimitedInlineDecorations(
     const contentFrom = from + prefixLength
     const contentTo = from + match[0].length - suffixLength
     if (contentFrom >= contentTo) continue
-    ranges.push(Decoration.replace({ inclusive: false }).range(from, contentFrom))
+    addLivePreviewReplace(view, ranges, from, contentFrom, { inclusive: false })
     ranges.push(Decoration.mark({ class: className }).range(contentFrom, contentTo))
-    ranges.push(Decoration.replace({ inclusive: false }).range(contentTo, from + match[0].length))
+    addLivePreviewReplace(view, ranges, contentTo, from + match[0].length, { inclusive: false })
   }
 }
 
@@ -2169,6 +2263,14 @@ function trailingWhitespaceLength(text: string): number {
   return text.match(/^\s*/)?.[0].length || 0
 }
 
+function leadingWhitespaceLength(text: string): number {
+  return text.match(/^\s*/)?.[0].length || 0
+}
+
+function isPrimaryLineMarker(text: string, lineFrom: number, markerFrom: number): boolean {
+  return markerFrom === lineFrom + leadingWhitespaceLength(text)
+}
+
 function markdownLivePreviewPlugin(options: MarkdownLivePreviewOptions): Extension {
   return ViewPlugin.define(
     view => new MarkdownLivePreviewPlugin(view, options),
@@ -2236,6 +2338,25 @@ const codeBlockSelectAllHandler = Prec.highest(EditorView.domEventHandlers({
   },
 }))
 
+const orderedListExistingMarkerSplitHandler = Prec.highest(EditorView.domEventHandlers({
+  keydown: (event, view) => {
+    if (!isPlainEnterKey(event) || view.state.selection.ranges.length !== 1) return false
+    if (view.state.facet(EditorState.readOnly)) return false
+
+    const edit = existingOrderedListMarkerSplit(view)
+    if (!edit) return false
+
+    event.preventDefault()
+    event.stopPropagation()
+    view.dispatch({
+      changes: { from: edit.from, to: edit.position, insert: '\n' },
+      selection: { anchor: edit.from + 1 },
+      scrollIntoView: true,
+    })
+    return true
+  },
+}))
+
 function hiddenSyntaxDeleteHandler(features: Required<MarkdownLivePreviewFeatures>): Extension {
   return EditorView.domEventHandlers({
     keydown: (event, view) => {
@@ -2261,19 +2382,51 @@ function hiddenSyntaxDeleteHandler(features: Required<MarkdownLivePreviewFeature
   })
 }
 
+function existingOrderedListMarkerSplit(view: EditorView): { from: number; position: number } | null {
+  const selection = view.state.selection.main
+  if (!selection.empty) return null
+
+  const position = selection.head
+  const doc = view.state.doc
+  const line = doc.lineAt(position)
+  if (position <= line.from || position >= line.to) return null
+  if (isLineInFencedCodeContent(doc, line.number)) return null
+
+  const info = analyzeMarkdownLivePreviewLine(line.text, false)
+  if (info.kind !== 'ordered-list' || !info.markerLength) return null
+  if (position <= line.from + info.markerLength) return null
+
+  const beforeContent = line.text.slice(info.markerLength, position - line.from)
+  if (!beforeContent.trim()) return null
+
+  const afterContent = line.text.slice(position - line.from)
+  if (!/^\d+[.)][ \t]+/.test(afterContent)) return null
+
+  let from = position
+  while (from > line.from + info.markerLength && /[ \t]/.test(doc.sliceString(from - 1, from))) {
+    from -= 1
+  }
+
+  return { from, position }
+}
+
 interface CompletableFenceLine {
   indent: string
   marker: string
   markerChar: '`' | '~'
 }
 
-function isCodeBlockCompletionKey(event: KeyboardEvent): boolean {
+function isPlainEnterKey(event: KeyboardEvent): boolean {
   return event.key === 'Enter' &&
     !event.shiftKey &&
     !event.altKey &&
     !event.metaKey &&
     !event.ctrlKey &&
     !event.isComposing
+}
+
+function isCodeBlockCompletionKey(event: KeyboardEvent): boolean {
+  return isPlainEnterKey(event)
 }
 
 function parseCompletableFenceLine(text: string): CompletableFenceLine | null {
@@ -2648,13 +2801,22 @@ const theme = EditorView.theme({
     '--md-live-code-padding-x-total': `${CODE_BLOCK_PADDING_X * 2}px`,
     '--md-live-code-fold-gutter-width': `${CODE_BLOCK_FOLD_GUTTER_WIDTH}px`,
     '--md-live-code-padding-y': `${CODE_BLOCK_PADDING_Y}px`,
-    '--md-live-code-bg': 'color-mix(in srgb, var(--editor-text, var(--text)) 9%, transparent)',
+    '--md-live-code-bg': 'color-mix(in srgb, var(--editor-text, var(--ui-text-primary-fg, var(--text))) 9%, transparent)',
   },
   '.cm-scroller': {
     overflowAnchor: 'none',
   },
   '.md-live-line': {
     transition: 'background-color 120ms ease',
+  },
+  '.md-live-source-revealed': {
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
+    fontFamily: 'var(--font-sans)',
+    fontSize: 'var(--editor-font-size, 15px)',
+    fontStyle: 'normal',
+    fontWeight: '400',
+    lineHeight: 'inherit',
+    textDecoration: 'none !important',
   },
   '.md-live-heading': {
     fontFamily: 'var(--font-sans)',
@@ -2678,15 +2840,15 @@ const theme = EditorView.theme({
     fontSize: '1.05em',
   },
   '.md-live-setext-list-typing, .md-live-setext-list-typing span': {
-    color: 'var(--editor-text, var(--text)) !important',
+    color: 'var(--editor-text, var(--ui-text-primary-fg, var(--text))) !important',
     fontWeight: 'inherit !important',
     textDecoration: 'none !important',
   },
   '.md-live-task': {
-    color: 'var(--editor-text, var(--text))',
+    color: 'var(--editor-text, var(--ui-text-primary-fg, var(--text)))',
   },
   '.md-live-task-done': {
-    color: 'var(--text-muted, var(--muted))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
     textDecoration: 'line-through',
   },
   '.md-live-task-checkbox-slot': {
@@ -2709,15 +2871,15 @@ const theme = EditorView.theme({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    border: '1.5px solid var(--border, rgba(128, 128, 128, 0.35))',
+    border: '1.5px solid color-mix(in srgb, var(--editor-text, var(--ui-editor-text-fg, var(--text-input, var(--text)))) 42%, var(--ui-border-default-border, var(--border, transparent)))',
     borderRadius: '5px',
-    color: 'var(--text-btn-primary, #fff)',
-    background: 'transparent',
+    color: 'var(--ui-action-primary-fg, var(--text-btn-primary, #fff))',
+    background: 'color-mix(in srgb, var(--editor-text, var(--ui-editor-text-fg, var(--text-input, var(--text)))) 5%, transparent)',
     cursor: 'pointer',
   },
   '.md-live-task-checkbox.checked': {
-    borderColor: 'var(--accent)',
-    background: 'var(--accent)',
+    borderColor: 'var(--ui-accent-primary-fg, var(--accent))',
+    background: 'var(--ui-accent-primary-fg, var(--accent))',
   },
   '.md-live-task-checkbox.checked::after': {
     content: '"✓"',
@@ -2726,14 +2888,14 @@ const theme = EditorView.theme({
     lineHeight: '1',
   },
   '.md-live-list-marker, .md-live-quote-marker, .md-live-fence-marker': {
-    color: 'var(--text-muted, var(--muted))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
   },
   '.md-live-list-marker-widget': {
     minWidth: '1.35em',
     marginRight: '0.35em',
     display: 'inline-flex',
     justifyContent: 'center',
-    color: 'var(--text-muted, var(--muted))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
   },
   '.md-live-hidden-source-widget': {
     display: 'inline-block',
@@ -2762,7 +2924,7 @@ const theme = EditorView.theme({
     padding: '0',
     border: '0',
     borderRadius: '4px',
-    color: 'color-mix(in srgb, var(--text-muted, var(--muted)) 76%, transparent)',
+    color: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 76%, transparent)',
     background: 'transparent',
     boxShadow: 'none',
     fontFamily: 'var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif)',
@@ -2775,15 +2937,15 @@ const theme = EditorView.theme({
     transition: 'background-color 120ms ease, color 120ms ease, opacity 120ms ease',
   },
   '.md-live-fold-button:hover': {
-    color: 'var(--text)',
-    background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+    color: 'var(--ui-text-primary-fg, var(--text))',
+    background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent)',
     opacity: '1',
   },
   '.md-live-fold-button:focus-visible': {
-    outline: '1px solid color-mix(in srgb, var(--accent) 62%, transparent)',
+    outline: '1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 62%, transparent)',
     outlineOffset: '1px',
-    color: 'var(--text)',
-    background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+    color: 'var(--ui-text-primary-fg, var(--text))',
+    background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent)',
     opacity: '1',
   },
   '.md-live-fold-button:active': {
@@ -2803,9 +2965,9 @@ const theme = EditorView.theme({
     paddingRight: 'var(--md-live-code-padding-x) !important',
     paddingTop: '5px !important',
     paddingBottom: '5px !important',
-    backgroundColor: 'color-mix(in srgb, var(--editor-text, var(--text)) 4%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--editor-text, var(--ui-text-primary-fg, var(--text))) 4%, transparent)',
     borderRadius: '7px',
-    boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--text-muted, var(--muted)) 10%, transparent)',
+    boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 10%, transparent)',
   },
   '.md-live-codeblock-fold-summary-line .md-live-fold-summary': {
     maxWidth: 'calc(100% - 90px)',
@@ -2815,13 +2977,13 @@ const theme = EditorView.theme({
     padding: '1px 0',
     border: '0',
     borderRadius: '0',
-    color: 'var(--text-muted, var(--muted))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
     background: 'transparent',
     boxShadow: 'none',
     appearance: 'none',
   },
   '.md-live-codeblock-fold-summary-line .md-live-fold-summary:hover': {
-    color: 'var(--text-muted, var(--muted))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
     background: 'transparent',
   },
   '.md-live-fold-summary': {
@@ -2835,25 +2997,26 @@ const theme = EditorView.theme({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    color: 'var(--text-muted, var(--muted))',
-    background: 'color-mix(in srgb, var(--editor-text, var(--text)) 5%, transparent)',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
+    background: 'color-mix(in srgb, var(--editor-text, var(--ui-text-primary-fg, var(--text))) 5%, transparent)',
     font: 'inherit',
     cursor: 'default',
   },
   '.md-live-fold-summary:hover': {
-    color: 'var(--text-muted, var(--muted))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
   },
   '.md-live-empty-structure-caret-anchor': {
     display: 'inline-block',
-    width: '0.08em',
-    minWidth: '1px',
-    height: '1em',
-    verticalAlign: '-0.08em',
+    width: '0',
+    minWidth: '0',
+    height: '0',
+    overflow: 'hidden',
+    verticalAlign: 'baseline',
   },
   '.md-live-blockquote': {
     paddingLeft: '10px !important',
-    borderLeft: '3px solid var(--border, rgba(128, 128, 128, 0.28))',
-    color: 'var(--text-muted, var(--muted))',
+    borderLeft: '3px solid var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.28)))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
   },
   '.md-live-code': {
     position: 'relative',
@@ -2865,7 +3028,7 @@ const theme = EditorView.theme({
     lineHeight: '1.55',
   },
   '.md-live-fence': {
-    color: 'var(--text-muted, var(--muted))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
   },
   '.md-live-codeblock-first': {
@@ -2945,10 +3108,10 @@ const theme = EditorView.theme({
     boxSizing: 'border-box',
     minHeight: '22px',
     padding: '1px 8px',
-    border: '1px solid color-mix(in srgb, var(--text-muted, var(--muted)) 28%, var(--bg-elevated, var(--panel)))',
+    border: '1px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 28%, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))))',
     borderRadius: '5px',
-    color: 'var(--text-muted, var(--muted))',
-    background: 'var(--bg-elevated, var(--panel))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
+    background: 'var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel)))',
     boxShadow: '0 3px 10px rgba(0, 0, 0, 0.12)',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: '11px',
@@ -2956,9 +3119,9 @@ const theme = EditorView.theme({
     cursor: 'pointer',
   },
   '.md-live-code-copy-button:hover': {
-    color: 'var(--text)',
-    borderColor: 'var(--accent)',
-    background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-elevated, var(--panel)))',
+    color: 'var(--ui-text-primary-fg, var(--text))',
+    borderColor: 'var(--ui-accent-primary-fg, var(--accent))',
+    background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))))',
   },
   '.md-live-codeblock-footer': {
     position: 'absolute',
@@ -2980,7 +3143,7 @@ const theme = EditorView.theme({
     border: '1px solid transparent',
     borderRadius: '4px',
     outline: 'none',
-    color: 'var(--text-muted, var(--muted))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
     background: 'transparent',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: '11px',
@@ -2989,31 +3152,31 @@ const theme = EditorView.theme({
     pointerEvents: 'auto',
   },
   '.md-live-code-language-input:hover, .md-live-code-language-input:focus': {
-    color: 'var(--text)',
-    borderColor: 'var(--accent)',
-    background: 'color-mix(in srgb, var(--accent) 9%, transparent)',
+    color: 'var(--ui-text-primary-fg, var(--text))',
+    borderColor: 'var(--ui-accent-primary-fg, var(--accent))',
+    background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 9%, transparent)',
   },
   '.md-live-code-keyword': {
-    color: 'var(--accent)',
+    color: 'var(--ui-accent-primary-fg, var(--accent))',
     fontWeight: '600',
   },
   '.md-live-code-type': {
-    color: 'color-mix(in srgb, var(--editor-text, var(--text)) 56%, transparent)',
+    color: 'color-mix(in srgb, var(--editor-text, var(--ui-text-primary-fg, var(--text))) 56%, transparent)',
   },
   '.md-live-code-string': {
-    color: 'var(--color-success, #6a8f2a)',
+    color: 'var(--ui-status-success-fg, var(--color-success, #6a8f2a))',
   },
   '.md-live-code-number': {
-    color: 'var(--color-warning, #d97706)',
+    color: 'var(--ui-status-warning-fg, var(--color-warning, #d97706))',
   },
   '.md-live-code-comment': {
-    color: 'var(--text-muted, var(--muted))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
     fontStyle: 'italic',
   },
   '.md-live-table': {
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-    color: 'var(--editor-text, var(--text))',
-    backgroundColor: 'color-mix(in srgb, var(--bg-elevated, var(--panel)) 72%, transparent)',
+    color: 'var(--editor-text, var(--ui-text-primary-fg, var(--text)))',
+    backgroundColor: 'color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 72%, transparent)',
   },
   '.md-live-table-block-line': {
     paddingTop: '4px !important',
@@ -3027,9 +3190,9 @@ const theme = EditorView.theme({
     maxWidth: '100%',
     overflowX: 'auto',
     verticalAlign: 'middle',
-    border: '1px solid var(--border, rgba(128, 128, 128, 0.28))',
+    border: '1px solid var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.28)))',
     borderRadius: '7px',
-    background: 'color-mix(in srgb, var(--bg-elevated, var(--panel)) 72%, transparent)',
+    background: 'color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 72%, transparent)',
     boxShadow: '0 1px 0 rgba(0, 0, 0, 0.03)',
   },
   '.md-live-table-row': {
@@ -3039,7 +3202,7 @@ const theme = EditorView.theme({
     gap: '0',
     maxWidth: '100%',
     verticalAlign: 'middle',
-    border: '1px solid var(--border, rgba(128, 128, 128, 0.28))',
+    border: '1px solid var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.28)))',
     borderRadius: '5px',
     overflow: 'hidden',
   },
@@ -3049,13 +3212,13 @@ const theme = EditorView.theme({
     display: 'inline-block',
     border: '0',
     borderRadius: '0',
-    backgroundColor: 'var(--border, rgba(128, 128, 128, 0.28))',
+    backgroundColor: 'var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.28)))',
   },
   '.md-live-table-cell': {
     minWidth: '6ch',
     padding: '0',
-    borderRight: '1px solid var(--border, rgba(128, 128, 128, 0.2))',
-    borderBottom: '1px solid var(--border, rgba(128, 128, 128, 0.2))',
+    borderRight: '1px solid var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.2)))',
+    borderBottom: '1px solid var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.2)))',
     whiteSpace: 'pre-wrap',
     overflowWrap: 'anywhere',
     lineHeight: '1.45',
@@ -3064,7 +3227,7 @@ const theme = EditorView.theme({
   },
   '.md-live-table-cell.header': {
     fontWeight: '600',
-    background: 'color-mix(in srgb, var(--editor-text, var(--text)) 4%, transparent)',
+    background: 'color-mix(in srgb, var(--editor-text, var(--ui-text-primary-fg, var(--text))) 4%, transparent)',
   },
   '.md-live-table-cell.last-col, .md-live-table-cell:last-child': {
     borderRight: '0',
@@ -3088,12 +3251,12 @@ const theme = EditorView.theme({
     lineHeight: '1.45',
   },
   '.md-live-table-cell-input:hover': {
-    background: 'color-mix(in srgb, var(--accent) 5%, transparent)',
+    background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 5%, transparent)',
   },
   '.md-live-table-cell-input:focus': {
-    borderColor: 'color-mix(in srgb, var(--accent) 56%, transparent)',
-    background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-elevated, var(--panel)))',
-    boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent)',
+    borderColor: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 56%, transparent)',
+    background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))))',
+    boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, transparent)',
   },
   '.md-live-frontmatter-line': {
     paddingTop: '4px !important',
@@ -3108,11 +3271,11 @@ const theme = EditorView.theme({
     width: 'min(100%, 680px)',
     maxWidth: '100%',
     padding: '8px 10px',
-    border: '1px solid color-mix(in srgb, var(--text-muted, var(--muted)) 22%, transparent)',
+    border: '1px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 22%, transparent)',
     borderRadius: '7px',
     verticalAlign: 'middle',
-    color: 'var(--editor-text, var(--text))',
-    background: 'color-mix(in srgb, var(--bg-elevated, var(--panel)) 78%, transparent)',
+    color: 'var(--editor-text, var(--ui-text-primary-fg, var(--text)))',
+    background: 'color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 78%, transparent)',
     boxShadow: '0 1px 0 rgba(0, 0, 0, 0.03)',
     fontFamily: 'var(--font-sans, system-ui, sans-serif)',
   },
@@ -3123,8 +3286,8 @@ const theme = EditorView.theme({
     minHeight: '18px',
     padding: '0 6px',
     borderRadius: '4px',
-    color: 'var(--text-muted, var(--muted))',
-    background: 'color-mix(in srgb, var(--editor-text, var(--text)) 5%, transparent)',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
+    background: 'color-mix(in srgb, var(--editor-text, var(--ui-text-primary-fg, var(--text))) 5%, transparent)',
     fontSize: '11px',
     fontWeight: '600',
     lineHeight: '1.4',
@@ -3139,19 +3302,19 @@ const theme = EditorView.theme({
     borderRadius: '5px',
     outline: 'none',
     resize: 'vertical',
-    color: 'var(--editor-text, var(--text))',
+    color: 'var(--editor-text, var(--ui-text-primary-fg, var(--text)))',
     background: 'transparent',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: '0.78em',
     lineHeight: '1.45',
   },
   '.md-live-frontmatter-textarea:hover': {
-    background: 'color-mix(in srgb, var(--accent) 4%, transparent)',
+    background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 4%, transparent)',
   },
   '.md-live-frontmatter-textarea:focus': {
-    borderColor: 'color-mix(in srgb, var(--accent) 54%, transparent)',
-    background: 'color-mix(in srgb, var(--accent) 7%, var(--bg-elevated, var(--panel)))',
-    boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent)',
+    borderColor: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 54%, transparent)',
+    background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 7%, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))))',
+    boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 24%, transparent)',
   },
   '.md-live-horizontal-rule': {
     display: 'flex',
@@ -3163,7 +3326,7 @@ const theme = EditorView.theme({
     width: '100%',
     height: '1px',
     verticalAlign: 'middle',
-    backgroundColor: 'var(--border, rgba(128, 128, 128, 0.35))',
+    backgroundColor: 'var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.35)))',
   },
   '.md-live-bold': {
     fontWeight: '700',
@@ -3182,12 +3345,12 @@ const theme = EditorView.theme({
   '.md-live-inline-code': {
     padding: '0.1em 0.32em',
     borderRadius: '4px',
-    backgroundColor: 'color-mix(in srgb, var(--text-muted, var(--muted)) 15%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 15%, transparent)',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: '0.92em',
   },
   '.md-live-link': {
-    color: 'var(--accent)',
+    color: 'var(--ui-accent-primary-fg, var(--accent))',
     textDecoration: 'underline',
     textUnderlineOffset: '2px',
   },
@@ -3198,10 +3361,10 @@ const theme = EditorView.theme({
     minHeight: '30px',
     maxWidth: '100%',
     padding: '4px',
-    border: '1px solid var(--border, rgba(128, 128, 128, 0.3))',
+    border: '1px solid var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.3)))',
     borderRadius: '6px',
-    color: 'var(--accent)',
-    background: 'color-mix(in srgb, var(--bg-elevated, var(--panel)) 78%, transparent)',
+    color: 'var(--ui-accent-primary-fg, var(--accent))',
+    background: 'color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 78%, transparent)',
     font: 'inherit',
     cursor: 'pointer',
   },
@@ -3240,10 +3403,10 @@ const theme = EditorView.theme({
     minHeight: '26px',
     maxWidth: '100%',
     padding: '2px 8px',
-    border: '1px solid var(--border, rgba(128, 128, 128, 0.3))',
+    border: '1px solid var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.3)))',
     borderRadius: '6px',
-    color: 'var(--accent)',
-    background: 'color-mix(in srgb, var(--bg-elevated, var(--panel)) 78%, transparent)',
+    color: 'var(--ui-accent-primary-fg, var(--accent))',
+    background: 'color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 78%, transparent)',
     font: 'inherit',
     cursor: 'pointer',
   },
@@ -3261,14 +3424,14 @@ const theme = EditorView.theme({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    color: 'var(--text-muted, var(--muted))',
-    background: 'color-mix(in srgb, var(--editor-text, var(--text)) 4%, transparent)',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
+    background: 'color-mix(in srgb, var(--editor-text, var(--ui-text-primary-fg, var(--text))) 4%, transparent)',
     font: 'inherit',
     fontSize: '0.92em',
     cursor: 'default',
   },
   '.md-live-asset-collapsed-widget:hover': {
-    color: 'var(--text-muted, var(--muted))',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
   },
   '.md-live-asset-fold-toggle': {
     position: 'absolute',
@@ -3311,10 +3474,10 @@ const theme = EditorView.theme({
     minWidth: '28px',
     minHeight: '24px',
     padding: '1px 6px',
-    border: '1px solid color-mix(in srgb, var(--text-muted, var(--muted)) 32%, transparent)',
+    border: '1px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 32%, transparent)',
     borderRadius: '5px',
-    color: 'var(--text-muted, var(--muted))',
-    background: 'color-mix(in srgb, var(--bg-elevated, var(--panel)) 88%, transparent)',
+    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
+    background: 'color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 88%, transparent)',
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.14)',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: '11px',
@@ -3341,9 +3504,9 @@ const theme = EditorView.theme({
     opacity: '1',
   },
   '.md-live-source-toggle:hover': {
-    color: 'var(--text)',
-    borderColor: 'var(--accent)',
-    background: 'color-mix(in srgb, var(--accent) 10%, var(--bg-elevated, var(--panel)))',
+    color: 'var(--ui-text-primary-fg, var(--text))',
+    borderColor: 'var(--ui-accent-primary-fg, var(--accent))',
+    background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))))',
   },
   '.md-live-source-input': {
     display: 'none',
@@ -3354,11 +3517,12 @@ const theme = EditorView.theme({
     width: 'min(100%, 58ch)',
     minHeight: '24px',
     padding: '2px 7px',
-    border: '1px solid var(--accent)',
+    border: '1px solid var(--ui-accent-primary-fg, var(--accent))',
     borderRadius: '5px',
     outline: 'none',
-    color: 'var(--editor-text, var(--text))',
-    background: 'var(--bg-elevated, var(--panel))',
+    color: 'var(--editor-text, var(--ui-text-primary-fg, var(--text)))',
+    caretColor: 'var(--ui-editor-caret-fg, var(--editor-caret, var(--text-input, var(--text))))',
+    background: 'var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel)))',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: '12px',
     lineHeight: '1.35',
@@ -3372,8 +3536,8 @@ const theme = EditorView.theme({
     opacity: '1',
   },
   '.md-live-file-widget[data-asset-kind="missing"], .md-live-image-widget[data-asset-kind="missing"]': {
-    color: 'var(--color-warning, #d97706)',
-    borderColor: 'color-mix(in srgb, var(--color-warning, #d97706) 42%, transparent)',
+    color: 'var(--ui-status-warning-fg, var(--color-warning, #d97706))',
+    borderColor: 'color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning, #d97706)) 42%, transparent)',
   },
   '.md-live-asset-label': {
     overflow: 'hidden',
@@ -3383,8 +3547,8 @@ const theme = EditorView.theme({
   '.md-live-math': {
     padding: '0.05em 0.28em',
     borderRadius: '4px',
-    color: 'var(--accent)',
-    backgroundColor: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+    color: 'var(--ui-accent-primary-fg, var(--accent))',
+    backgroundColor: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent)',
     fontFamily: 'ui-serif, Georgia, serif',
   },
   '.md-live-emoji': {
@@ -3406,7 +3570,8 @@ export function markdownLivePreviewExtension(
   const features = markdownLivePreviewFeatures(options)
   return enabled ? [
     markdownFoldState,
-    hiddenHeadingCaretFilter,
+    markdownLivePreviewCursorLayer,
+    orderedListExistingMarkerSplitHandler,
     features.codeBlocks ? codeBlockSelectAllHandler : [],
     features.codeBlocks ? codeBlockSyntaxCompletionHandler : [],
     markdownLivePreviewPlugin(options),

@@ -104,6 +104,9 @@ export class Session {
       case 'tool:call':
       case 'tool:result':
       case 'tool:input-start':
+      case 'tool:execution-start':
+      case 'tool:execution-update':
+      case 'tool:execution-end':
       case 'step:added':
       case 'step:updated':
       case 'content:part':

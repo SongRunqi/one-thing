@@ -56,6 +56,9 @@ export const SkillTool = Tool.define(
     category: 'builtin',
     autoExecute: true, // Skills are read-only, safe to auto-execute
     permissionGuard: 'safe',
+    executionMode: 'parallel',
+    renderKind: 'text',
+    promptSnippet: 'Load an installed skill instruction file',
   },
   async (ctx?: InitContext) => {
     const skills = (ctx?.skills ?? []) as SkillDefinition[]
@@ -70,12 +73,20 @@ export const SkillTool = Tool.define(
     return {
       description: buildDescription(skills),
       parameters,
+      executionMode: 'parallel',
+      renderKind: 'text',
+      promptSnippet: 'Load an installed skill instruction file',
 
       async execute(
         args: { name: string },
         toolCtx: ToolContext<SkillMetadata>
       ): Promise<ToolResult<SkillMetadata>> {
         const { name } = args
+
+        toolCtx.updateResult?.({
+          content: [{ type: 'text', text: `Loading skill: ${name}...` }],
+          details: { phase: 'loading', skillName: name },
+        })
 
         const skill = skills.find(s => s.name === name)
         if (!skill) {
@@ -100,6 +111,10 @@ export const SkillTool = Tool.define(
         // Load skill content from file
         try {
           const content = fs.readFileSync(skill.path, 'utf-8')
+          toolCtx.updateResult?.({
+            content: [{ type: 'text', text: content }],
+            details: { phase: 'ready', skillName: name, skillSource: skill.source },
+          })
           return {
             title: `Loaded skill: ${name}`,
             output: content,

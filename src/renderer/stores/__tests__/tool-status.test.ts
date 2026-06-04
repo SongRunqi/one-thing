@@ -51,6 +51,10 @@ describe('getToolRenderStatus', () => {
     expect(getToolRenderStatus(tc({ status: 'input-streaming' }))).toBe('streaming-input')
   })
 
+  it('maps toolCall.status="queued" to queued', () => {
+    expect(getToolRenderStatus(tc({ status: 'queued' }))).toBe('queued')
+  })
+
   it('maps toolCall.status="executing" to executing', () => {
     expect(getToolRenderStatus(tc({ status: 'executing' }))).toBe('executing')
   })

@@ -91,7 +91,7 @@ defineEmits<{
   align-items: center;
   gap: 12px;
   padding: 12px 20px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -100,12 +100,12 @@ defineEmits<{
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #f59e0b;
+  color: var(--ui-status-warning-fg, #f59e0b);
   margin-right: auto;
 }
 
 .unsaved-indicator svg {
-  color: #f59e0b;
+  color: var(--ui-status-warning-fg, #f59e0b);
 }
 
 .footer-actions {
@@ -125,22 +125,22 @@ defineEmits<{
 
 .btn.secondary {
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-primary);
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .btn.secondary:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .btn.primary {
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   border: none;
   color: white;
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--ui-action-primary-hover-bg, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .btn.primary:disabled {
@@ -153,8 +153,8 @@ defineEmits<{
 }
 
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 0%, transparent); }
 }
 
 .save-toast {
@@ -166,12 +166,12 @@ defineEmits<{
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
-  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, transparent);
   z-index: var(--z-dropdown);
 }
 

@@ -119,7 +119,7 @@ onMounted(() => {
   padding-right: 8px;
   border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 12px;
   text-align: left;
   cursor: pointer;
@@ -127,11 +127,11 @@ onMounted(() => {
 
 .tree-row:hover,
 .tree-row.active {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .tree-row svg {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   flex-shrink: 0;
 }
 
@@ -155,7 +155,7 @@ onMounted(() => {
   height: 24px;
   display: flex;
   align-items: center;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
 }
 </style>

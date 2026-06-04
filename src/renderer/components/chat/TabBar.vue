@@ -174,10 +174,10 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
 
 <style scoped>
 .tab-bar {
-  --ot-active-bg: color-mix(in srgb, var(--accent-sub, var(--accent-light)) 42%, transparent);
-  --ot-active-text: var(--accent-main, var(--accent));
-  --ot-hover-bg: color-mix(in srgb, var(--text) 4.5%, transparent);
-  --ot-divider: color-mix(in srgb, var(--border-subtle, var(--border)) 70%, var(--muted));
+  --ot-active-bg: var(--ui-tab-bar-item-active-bg, color-mix(in srgb, var(--ui-accent-subtle-fg, var(--accent-sub, var(--accent-light))) 42%, transparent));
+  --ot-active-text: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
+  --ot-hover-bg: var(--ui-tab-bar-item-hover-bg, color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4.5%, transparent));
+  --ot-divider: var(--ui-tab-bar-divider-border, color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 70%, var(--ui-text-muted-fg, var(--muted))));
 
   display: flex;
   align-items: center;
@@ -187,8 +187,8 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   user-select: none;
   flex-shrink: 0;
   position: relative;
-  background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg-floating) 20%, transparent);
+  background: var(--ui-tab-bar-surface-bg, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat)))));
+  box-shadow: var(--ui-tab-bar-surface-shadow, inset 0 1px 0 color-mix(in srgb, var(--ui-surface-floating-bg, var(--bg-floating)) 20%, transparent));
 }
 
 .tab-bar::after {
@@ -198,7 +198,7 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   bottom: 0;
   left: 0;
   height: 1px;
-  background: color-mix(in srgb, var(--border-subtle) 62%, transparent);
+  background: color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle))) 62%, transparent);
   pointer-events: none;
   z-index: 0;
 }
@@ -301,7 +301,7 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   border: 1px solid transparent;
   background: transparent;
   border-radius: 8px;
-  color: var(--muted);
+  color: var(--ui-tab-bar-action-fg, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
   -webkit-app-region: no-drag;
   transition:
@@ -312,9 +312,9 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
 }
 
 .header-btn:hover {
-  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
-  border-color: var(--border-subtle);
-  color: var(--text);
+  background: var(--ui-tab-bar-action-hover-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 72%, transparent));
+  border-color: var(--ui-tab-bar-action-hover-border, var(--ui-border-subtle-border, var(--border-subtle)));
+  color: var(--ui-tab-bar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 
 .header-btn:active {
@@ -322,12 +322,12 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
 }
 
 .header-btn.back-btn {
-  color: var(--accent);
+  color: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
 }
 
 .header-btn.close-btn:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  background: var(--ui-tab-bar-danger-bg, color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 15%, transparent));
+  color: var(--ui-tab-bar-danger-fg, var(--ui-status-danger-fg, #ef4444));
 }
 
 .header-btn.inspector-toggle {

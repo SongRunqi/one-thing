@@ -73,6 +73,7 @@ export class EventBus {
     'content:part',
     'content:continuation',
     'step:updated',
+    'tool:execution-update',
     'tool:metadata',
   ])
 

@@ -80,8 +80,8 @@ function handleRefresh() {
   justify-content: center;
   height: 100%;
   width: 100%;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--ui-surface-app-bg, var(--bg));
+  color: var(--ui-text-primary-fg, var(--text));
   padding: 20px;
   text-align: center;
 }
@@ -95,12 +95,12 @@ function handleRefresh() {
 }
 
 .error-boundary svg {
-  color: var(--danger);
+  color: var(--ui-status-danger-fg, var(--danger));
   margin-bottom: 8px;
 }
 
 .error-msg {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 14px;
   word-break: break-all;
 }
@@ -114,21 +114,21 @@ function handleRefresh() {
 button {
   padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-panel-bg, var(--panel));
+  color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s ease;
 }
 
 button:hover {
-  background: var(--hover);
-  border-color: var(--accent);
+  background: var(--ui-state-hover-bg, var(--hover));
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .retry-btn {
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
   border: none;
 }

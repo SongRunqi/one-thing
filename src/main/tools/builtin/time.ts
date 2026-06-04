@@ -505,10 +505,17 @@ Timezone rules:
   enabled: true,
   autoExecute: true,
   permissionGuard: 'safe',
+  executionMode: 'parallel',
+  renderKind: 'text',
+  promptSnippet: 'Get, convert, diff, or add timezone-aware times',
 
   parameters: TimeParameters,
 
   async execute(args, ctx) {
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: `Calculating time ${args.action}...` }],
+      details: { phase: 'running', action: args.action },
+    })
     const format = args.format || 'full'
     const now = new Date()
 

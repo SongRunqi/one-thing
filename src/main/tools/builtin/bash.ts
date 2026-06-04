@@ -2,8 +2,8 @@
  * Built-in Tool: Bash
  *
  * Execute bash commands with:
- * - Tree-sitter command parsing for accurate permission checks
- * - Permission system integration (Permission.ask)
+ * - Lightweight command parsing for permission checks
+ * - Central PermissionPolicy integration via analyze()
  * - Command classification (read-only, dangerous, forbidden)
  * - Directory sandbox restrictions
  *
@@ -11,74 +11,25 @@
  */
 
 import { z } from 'zod'
-import { execa } from 'execa'
 import * as path from 'path'
 import * as os from 'os'
-import * as fs from 'fs'
 import { Tool } from '../core/tool.js'
-import { Permission } from '../../permission/index.js'
+import { classifyBashCommand, classifyCommand, parseCommand, splitShellWords } from '../core/bash-classifier.js'
+import {
+  DEFAULT_OUTPUT_MAX_BYTES,
+  DEFAULT_OUTPUT_MAX_LINES,
+  OutputAccumulator,
+} from '../core/output-accumulator.js'
 import { getSettings } from '../../stores/settings.js'
-import { getToolOutputsDir, getToolOutputPath, generateToolOutputFilename } from '../../stores/paths.js'
+import { getToolOutputsDir } from '../../stores/paths.js'
+import { createLocalBashOperations } from '../core/bash-executor.js'
 
 // Maximum output length
-const MAX_OUTPUT_LENGTH = 30_000
+const MAX_OUTPUT_LENGTH = DEFAULT_OUTPUT_MAX_BYTES
+const MAX_OUTPUT_DISPLAY = `${Math.round(DEFAULT_OUTPUT_MAX_BYTES / 1000)}KB`
 // Default timeout
 const DEFAULT_TIMEOUT = 2 * 60 * 1000
-
-// Read-only commands - auto-execute (allow)
-const READ_ONLY_COMMANDS = new Set([
-  'cat', 'ls', 'pwd', 'echo', 'grep', 'egrep', 'fgrep', 'find',
-  'head', 'tail', 'wc', 'file', 'which', 'whoami', 'date', 'env',
-  'printenv', 'less', 'more', 'diff', 'cmp', 'stat', 'du', 'df',
-  'tree', 'realpath', 'dirname', 'basename', 'readlink', 'type',
-  'man', 'help', 'uname', 'hostname',
-])
-
-// Git read-only commands
-const GIT_READ_ONLY = new Set([
-  'status', 'log', 'diff', 'branch', 'show', 'blame', 'remote',
-  'tag', 'describe', 'rev-parse', 'ls-files', 'ls-tree',
-])
-
-// NPM read-only commands
-const NPM_READ_ONLY = new Set([
-  'list', 'ls', 'outdated', 'view', 'search', 'info', 'help',
-])
-
-// Dangerous commands - require permission (ask)
-const DANGEROUS_COMMANDS = new Set([
-  'rm', 'rmdir', 'mv', 'cp', 'mkdir', 'touch', 'chmod', 'chown',
-  'kill', 'pkill', 'killall', 'dd', 'truncate', 'shred',
-  'wget', 'curl',
-])
-
-// Git write commands
-const GIT_WRITE = new Set([
-  'add', 'commit', 'push', 'pull', 'merge', 'rebase', 'reset',
-  'checkout', 'stash', 'cherry-pick', 'revert', 'fetch',
-])
-
-// NPM write commands
-const NPM_WRITE = new Set([
-  'install', 'uninstall', 'update', 'run', 'start', 'test',
-  'build', 'publish', 'link', 'init',
-])
-
-// Forbidden commands - always reject (deny)
-const FORBIDDEN_COMMANDS = new Set([
-  'sudo', 'su', 'shutdown', 'reboot', 'halt', 'poweroff',
-  'init', 'systemctl', 'service', 'passwd', 'useradd', 'userdel',
-  'mkfs', 'fdisk', 'mount', 'umount', 'chroot',
-  'iptables', 'firewall-cmd', 'ufw',
-  'crontab', 'at',
-])
-
-// Dangerous patterns
-const DANGEROUS_PATTERNS = [
-  />\s*\/dev\/(?!null\b)/, // write to /dev (but allow /dev/null)
-  /\|\s*sh\b/, // pipe to shell
-  /\|\s*bash\b/,
-]
+const BASH_UPDATE_THROTTLE_MS = 100
 
 /**
  * Bash Tool Metadata
@@ -88,7 +39,7 @@ export interface BashMetadata {
   workingDirectory: string
   exitCode: number
   output: string
-  outputFilePath?: string  // Path to full output file (when output exceeds limit)
+  outputFilePath?: string
   description?: string
   [key: string]: unknown
 }
@@ -100,170 +51,12 @@ const BashParameters = z.object({
   command: z
     .string()
     .min(1)
-    .describe('The bash command to execute'),
-  working_directory: z
-    .string()
-    .optional()
-    .describe('Working directory for the command (must be within allowed paths)'),
+    .describe('The bash command to execute. It runs in the session work directory.'),
   timeout: z
     .number()
     .optional()
-    .default(DEFAULT_TIMEOUT)
-    .describe('Command timeout in milliseconds (default: 60000)'),
+    .describe('Command timeout in milliseconds (default: 120000)'),
 })
-
-/**
- * Parse command into parts (simple parser, can be enhanced with tree-sitter later)
- */
-function parseCommand(command: string): { head: string; args: string[] } {
-  const trimmed = command.trim()
-  // Remove env prefix
-  const withoutEnv = trimmed.replace(/^(env\s+)?(\w+=\S+\s+)*/, '')
-  const parts = splitShellWords(withoutEnv)
-  return {
-    head: parts[0] || '',
-    args: parts.slice(1),
-  }
-}
-
-function splitShellWords(input: string): string[] {
-  const words: string[] = []
-  let current = ''
-  let quote: '"' | "'" | null = null
-  let escaped = false
-
-  for (const char of input) {
-    if (escaped) {
-      current += char
-      escaped = false
-      continue
-    }
-
-    if (char === '\\' && quote !== "'") {
-      escaped = true
-      continue
-    }
-
-    if ((char === '"' || char === "'") && (!quote || quote === char)) {
-      quote = quote ? null : char
-      continue
-    }
-
-    if (!quote && /\s/.test(char)) {
-      if (current) {
-        words.push(current)
-        current = ''
-      }
-      continue
-    }
-
-    current += char
-  }
-
-  if (current) words.push(current)
-  return words
-}
-
-function targetsRootOrHome(targets: string[]): boolean {
-  return targets.some(target => {
-    const normalized = target.replace(/\/+$/, '') || '/'
-    return normalized === '/' ||
-      normalized === '~' ||
-      normalized === '$HOME' ||
-      normalized === '${HOME}'
-  })
-}
-
-function commandRemovesRootOrHome(command: string): boolean {
-  const words = splitShellWords(command)
-
-  for (let index = 0; index < words.length; index++) {
-    if (words[index] !== 'rm') continue
-
-    const targets: string[] = []
-    for (let argIndex = index + 1; argIndex < words.length; argIndex++) {
-      const arg = words[argIndex]
-      if (arg === '&&' || arg === '||' || arg === ';' || arg === '|') break
-      if (arg.startsWith('-')) continue
-      targets.push(arg)
-    }
-
-    if (targetsRootOrHome(targets)) return true
-  }
-
-  return false
-}
-
-/**
- * Classify a command's permission requirement
- */
-function classifyCommand(command: string): 'allow' | 'ask' | 'deny' {
-  const { head, args } = parseCommand(command)
-
-  // Check forbidden first
-  if (FORBIDDEN_COMMANDS.has(head)) {
-    return 'deny'
-  }
-
-  // Check dangerous patterns
-  for (const pattern of DANGEROUS_PATTERNS) {
-    if (pattern.test(command)) {
-      return 'deny'
-    }
-  }
-
-  if (commandRemovesRootOrHome(command)) {
-    return 'deny'
-  }
-
-  // Git commands
-  if (head === 'git' && args.length > 0) {
-    const subcommand = args[0]
-    if (GIT_READ_ONLY.has(subcommand)) return 'allow'
-    if (GIT_WRITE.has(subcommand)) return 'ask'
-    return 'ask' // Unknown git command, ask
-  }
-
-  // NPM commands
-  if ((head === 'npm' || head === 'npx' || head === 'yarn' || head === 'pnpm') && args.length > 0) {
-    const subcommand = args[0]
-    if (NPM_READ_ONLY.has(subcommand)) return 'allow'
-    if (NPM_WRITE.has(subcommand)) return 'ask'
-    return 'ask' // Unknown npm command, ask
-  }
-
-  // Read-only commands
-  if (READ_ONLY_COMMANDS.has(head)) {
-    // But check for output redirection
-    if (/[^<]>\s*[^>]|>>/.test(command)) {
-      return 'ask'
-    }
-    return 'allow'
-  }
-
-  // Dangerous commands
-  if (DANGEROUS_COMMANDS.has(head)) {
-    return 'ask'
-  }
-
-  // Default: ask for unknown commands
-  return 'ask'
-}
-
-/**
- * Get command pattern for permission
- */
-function getCommandPattern(command: string): string {
-  const { head, args } = parseCommand(command)
-
-  // For git/npm, include subcommand
-  if (['git', 'npm', 'npx', 'yarn', 'pnpm'].includes(head) && args.length > 0) {
-    const sub = args.find(arg => !arg.startsWith('-'))
-    return sub ? `${head} ${sub} *` : `${head} *`
-  }
-
-  return `${head} *`
-}
 
 /**
  * Expand ~ to home directory
@@ -331,43 +124,158 @@ function findSandboxRoot(sandboxRoots: string[], targetPath: string): string | u
   return sandboxRoots.find(root => isPathContained(root, targetPath))
 }
 
+const COMMAND_SEPARATORS = new Set(['&&', '||', ';', '|', '&'])
+
+function resolveCommandDirectory(input: string, baseDir: string): string {
+  const expanded = expandPath(input)
+  return path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(baseDir, expanded)
+}
+
+function extractCdDirectories(command: string, initialWorkingDir: string): string[] {
+  const words = splitShellWords(command)
+  const dirs: string[] = []
+  let cursor = initialWorkingDir
+
+  for (let i = 0; i < words.length; i++) {
+    if (words[i] !== 'cd') continue
+    const target = words[i + 1]
+    if (!target || target.startsWith('-') || COMMAND_SEPARATORS.has(target)) continue
+    const resolved = resolveCommandDirectory(target, cursor)
+    dirs.push(resolved)
+    cursor = resolved
+  }
+
+  return Array.from(new Set(dirs))
+}
+
+function formatTruncatedOutput(snapshot: ReturnType<OutputAccumulator['snapshot']>, emptyText = '(no output)'): string {
+  let text = snapshot.content || emptyText
+  const truncation = snapshot.truncation
+  if (truncation.truncated) {
+    const by = truncation.truncatedBy === 'lines'
+      ? `showing last ${truncation.outputLines} of ${truncation.totalLines} lines`
+      : `showing last ${truncation.outputBytes} of ${truncation.totalBytes} bytes`
+    text += `\n\n<bash_metadata>\nOutput truncated (${by}).\n${snapshot.fullOutputPath ? `Full output saved to: ${snapshot.fullOutputPath}\n` : ''}</bash_metadata>`
+  }
+  return text
+}
+
 /**
  * Bash Tool Definition
  */
 export const BashTool = Tool.define<typeof BashParameters, BashMetadata>('bash', {
   name: 'Bash',
-  description: `Execute bash commands in a sandboxed environment.
+  description: `Execute a bash command in the session work directory. Returns stdout and stderr. Output is truncated to the last ${DEFAULT_OUTPUT_MAX_LINES} lines or ${MAX_OUTPUT_DISPLAY} (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in milliseconds.
 
-Read-only commands (cat, ls, grep, git status, etc.) are auto-executed.
-Dangerous commands (rm, mv, git push, npm install, etc.) require user confirmation.
-Forbidden commands (sudo, shutdown, etc.) are always rejected.
-
-The sandbox restricts file access to allowed directories only.`,
+To change the work directory for bash and file tools, use variable { action: "set", name: "workdir", value: <directory> } before calling bash.`,
   category: 'builtin',
   enabled: true,
-  autoExecute: false, // Permission system handles auto-execute
+  autoExecute: false, // Central PermissionPolicy handles auto-execute/ask decisions
   permissionGuard: 'internal-check',
+  executionMode: 'sequential',
+  renderKind: 'bash',
+  promptSnippet: 'Execute bash commands (ls, grep, find, etc.)',
 
   parameters: BashParameters,
 
+  async analyze(args, ctx) {
+    const { command } = args
+    const sandboxBoundary = getSandboxBoundary(ctx.workingDirectory)
+    const sandboxRoots = getSandboxRoots(ctx.workingDirectory, ctx.workingDirectoryRoots)
+    const workingDir = sandboxBoundary
+    const matchedRoot = findSandboxRoot(sandboxRoots, workingDir)
+    const permissionRoot = matchedRoot ?? sandboxBoundary
+    const commandClassification = classifyBashCommand(command)
+    const cdDirectories = extractCdDirectories(command, workingDir)
+    const externalCdDirectories = cdDirectories.filter(dir => !findSandboxRoot(sandboxRoots, dir))
+    const effects = []
+
+    if (!matchedRoot) {
+      effects.push({
+        kind: 'external_directory' as const,
+        resources: [workingDir, path.join(workingDir, '*')],
+        barrier: true,
+        external: true,
+        metadata: {
+          command,
+          directory: workingDir,
+          boundary: sandboxBoundary,
+        },
+      })
+    }
+
+    if (externalCdDirectories.length > 0) {
+      effects.push({
+        kind: 'external_directory' as const,
+        resources: externalCdDirectories.flatMap(dir => [dir, path.join(dir, '*')]),
+        barrier: true,
+        external: true,
+        metadata: {
+          command,
+          directories: externalCdDirectories,
+          boundary: sandboxBoundary,
+          reason: 'Command changes directory outside the current work directory list',
+        },
+      })
+    }
+
+    if (commandClassification.decision === 'deny') {
+      effects.push({
+        kind: 'bash' as const,
+        resources: commandClassification.patterns.length > 0 ? commandClassification.patterns : ['*'],
+        barrier: true,
+        metadata: {
+          command,
+          patterns: commandClassification.patterns,
+          reason: commandClassification.reason,
+          commands: commandClassification.commands,
+          hardDeny: true,
+        },
+      })
+    } else if (commandClassification.decision === 'ask') {
+      const patterns = commandClassification.patterns.length > 0
+        ? commandClassification.patterns
+        : ['*']
+      effects.push({
+        kind: 'bash' as const,
+        resources: patterns,
+        barrier: true,
+        metadata: {
+          command,
+          patterns,
+          reason: commandClassification.reason,
+          commands: commandClassification.commands,
+          workingDirectory: permissionRoot,
+        },
+      })
+    }
+
+    return {
+      effects,
+      preview: {
+        title: command,
+        metadata: {
+          command,
+          workingDirectory: workingDir,
+          classification: commandClassification.decision,
+          reason: commandClassification.reason,
+        },
+      },
+    }
+  },
+
   async execute(args, ctx) {
-    const { command, working_directory, timeout } = args
+    const { command, timeout } = args
 
     // Get sandbox boundary from session's workingDirectory (getSandboxBoundary expands ~)
     const sandboxBoundary = getSandboxBoundary(ctx.workingDirectory)
-    const sandboxRoots = getSandboxRoots(ctx.workingDirectory, ctx.workingDirectoryRoots)
 
-    // Determine working directory (default to sandbox boundary)
-    // Also expand ~ in working_directory parameter from LLM
-    let workingDir = working_directory ? expandPath(working_directory) : sandboxBoundary
-    if (!path.isAbsolute(workingDir)) {
-      workingDir = path.resolve(sandboxBoundary, workingDir)
-    }
-    const matchedRoot = findSandboxRoot(sandboxRoots, workingDir)
-    const permissionRoot = matchedRoot ?? sandboxBoundary
-
-    // Classify the command
-    const commandAction = classifyCommand(command)
+    // Bash always runs in the backend-provided session work directory.
+    const workingDir = sandboxBoundary
+    // Classify the command. This uses a lightweight multi-command parser now;
+    // the API is ready to swap in tree-sitter-bash later.
+    const commandClassification = classifyBashCommand(command)
+    const commandAction = commandClassification.decision
 
     // Update metadata with initial state
     ctx.metadata({
@@ -382,48 +290,12 @@ The sandbox restricts file access to allowed directories only.`,
 
     // Reject forbidden commands
     if (commandAction === 'deny') {
-      const { head } = parseCommand(command)
-      throw new Error(`Command "${head}" is forbidden for security reasons`)
+      const deniedCommand = commandClassification.commands.find(item => item.decision === 'deny')
+      const head = deniedCommand?.head || parseCommand(command).head
+      throw new Error(commandClassification.reason || `Command "${head}" is forbidden for security reasons`)
     }
 
-    // Check if working directory is outside sandbox boundary
-    if (!matchedRoot) {
-      await Permission.ask({
-        type: 'external_directory',
-        pattern: [workingDir, path.join(workingDir, '*')],
-        sessionId: ctx.sessionId,
-        messageId: ctx.messageId,
-        callId: ctx.toolCallId,
-        title: `Access directory outside project: ${workingDir}`,
-        workingDirectory: sandboxBoundary,
-        metadata: {
-          command,
-          directory: workingDir,
-          boundary: sandboxBoundary,
-        },
-      })
-    }
-
-    // Request permission for dangerous commands
-    if (commandAction === 'ask') {
-      const pattern = getCommandPattern(command)
-      await Permission.ask({
-        type: 'bash',
-        pattern: [pattern],
-        sessionId: ctx.sessionId,
-        messageId: ctx.messageId,
-        callId: ctx.toolCallId,
-        title: command,
-        workingDirectory: permissionRoot,
-        metadata: {
-          command,
-          pattern,
-        },
-      })
-    }
-
-    // Execute the command
-    let output = ''
+    // Central PermissionPolicy owns external-directory and dangerous-command asks.
 
     // Check if already aborted before starting
     if (ctx.abortSignal?.aborted) {
@@ -432,135 +304,124 @@ The sandbox restricts file access to allowed directories only.`,
 
     await ctx.beforeSideEffect?.()
 
-    const proc = execa(command, {
-      shell: true,
-      cwd: workingDir,
-      timeout: timeout || DEFAULT_TIMEOUT,
-      maxBuffer: 1024 * 1024 * 10, // 10MB buffer
-      env: {
-        ...process.env,
-        LANG: 'en_US.UTF-8',
-      },
-      reject: false, // Don't throw on non-zero exit
+    const output = new OutputAccumulator({
+      maxBytes: MAX_OUTPUT_LENGTH,
+      tempDir: getToolOutputsDir(),
+      tempFilePrefix: 'bash',
     })
 
-    // Handle abort signal - kill the process when abort is triggered
+    let updateTimer: NodeJS.Timeout | undefined
+    let updateDirty = false
+    let lastUpdateAt = 0
+
+    const emitOutputUpdate = () => {
+      if (!updateDirty) return
+      updateDirty = false
+      lastUpdateAt = Date.now()
+      const snapshot = output.snapshot({ persistIfTruncated: true })
+      ctx.updateResult?.({
+        content: [{ type: 'text', text: formatTruncatedOutput(snapshot, '') }],
+        details: {
+          truncation: snapshot.truncation.truncated ? snapshot.truncation : undefined,
+          ...(snapshot.fullOutputPath && { fullOutputPath: snapshot.fullOutputPath, outputFilePath: snapshot.fullOutputPath }),
+        },
+      })
+    }
+
+    const clearUpdateTimer = () => {
+      if (updateTimer) {
+        clearTimeout(updateTimer)
+        updateTimer = undefined
+      }
+    }
+
+    const scheduleOutputUpdate = () => {
+      updateDirty = true
+      const delay = BASH_UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt)
+      if (delay <= 0) {
+        clearUpdateTimer()
+        emitOutputUpdate()
+        return
+      }
+      updateTimer ??= setTimeout(() => {
+        updateTimer = undefined
+        emitOutputUpdate()
+      }, delay)
+    }
+
+    const append = (data: Buffer) => {
+      output.append(data)
+      scheduleOutputUpdate()
+    }
+
+    ctx.updateResult?.({ content: [], details: undefined })
+
+    const ops = createLocalBashOperations({
+      shellPath: (getSettings().tools?.bash as any)?.shellPath,
+    })
+
     let aborted = false
-    const abortHandler = () => {
-      if (proc.killed) return
-      aborted = true
-      console.log('[Bash] Abort signal received, killing process')
-      proc.kill('SIGTERM')
-      // Force kill after 500ms if still running
-      setTimeout(() => {
-        if (!proc.killed) {
-          console.log('[Bash] Force killing process with SIGKILL')
-          proc.kill('SIGKILL')
-        }
-      }, 500)
-    }
-
-    if (ctx.abortSignal) {
-      ctx.abortSignal.addEventListener('abort', abortHandler, { once: true })
-    }
-
-    // Stream output to metadata
-    const append = (chunk: string) => {
-      if (output.length <= MAX_OUTPUT_LENGTH) {
-        output += chunk
-        ctx.metadata({
-          metadata: {
-            command,
-            workingDirectory: workingDir,
-            exitCode: -1,
-            output,
-          },
-        })
-      }
-    }
-
-    proc.stdout?.on('data', (data: Buffer) => append(data.toString()))
-    proc.stderr?.on('data', (data: Buffer) => append(data.toString()))
-
-    let result
+    let timedOut = false
+    let result: { exitCode: number | null; backgroundJobIds?: string[] }
     try {
-      result = await proc
+      result = await ops.exec(command, workingDir, {
+        onData: append,
+        signal: ctx.abortSignal,
+        timeout: timeout || DEFAULT_TIMEOUT,
+      })
+    } catch (error: any) {
+      if (error instanceof Error && error.message === 'aborted') {
+        aborted = true
+        result = { exitCode: null }
+      } else if (error instanceof Error && error.message.startsWith('timeout:')) {
+        timedOut = true
+        result = { exitCode: null }
+      } else {
+        throw error
+      }
     } finally {
-      // Clean up abort listener
-      if (ctx.abortSignal) {
-        ctx.abortSignal.removeEventListener('abort', abortHandler)
-      }
+      clearUpdateTimer()
+      emitOutputUpdate()
     }
 
-    // If aborted, throw an error to indicate cancellation
+    output.finish()
+    const finalSnapshot = output.snapshot({ persistIfTruncated: true })
+    await output.closeTempFile()
+
+    let finalOutput = formatTruncatedOutput(finalSnapshot)
+    const outputFilePath = finalSnapshot.fullOutputPath
+
+    if (timedOut) {
+      finalOutput += `\n\n<bash_metadata>\nCommand timed out after ${timeout || DEFAULT_TIMEOUT} ms\n</bash_metadata>`
+    }
+
     if (aborted) {
-      throw new Error('Command execution was cancelled by user')
+      throw new Error(`${finalOutput}\n\nCommand execution was cancelled by user`)
     }
 
-    // Handle large outputs by writing to file
-    let finalOutput = output || '(no output)'
-    let outputFilePath: string | undefined
-
-    if (output.length > MAX_OUTPUT_LENGTH) {
-      // Write full output to a file
-      try {
-        // Ensure tool outputs directory exists
-        const outputsDir = getToolOutputsDir()
-        if (!fs.existsSync(outputsDir)) {
-          fs.mkdirSync(outputsDir, { recursive: true })
-        }
-
-        const filename = generateToolOutputFilename('bash', ctx.sessionId)
-        outputFilePath = getToolOutputPath(filename)
-        fs.writeFileSync(outputFilePath, output, 'utf-8')
-
-        // Keep the TAIL of the output (more useful than head for error messages)
-        const PREVIEW_LENGTH = 8000
-        const TAIL_LENGTH = 6000
-        const HEAD_LENGTH = 1500
-
-        let preview: string
-        if (output.length <= PREVIEW_LENGTH) {
-          preview = output
-        } else {
-          // Show head + ... + tail
-          const head = output.slice(0, HEAD_LENGTH)
-          const tail = output.slice(-TAIL_LENGTH)
-          preview = `${head}\n\n... [${output.length - HEAD_LENGTH - TAIL_LENGTH} characters omitted] ...\n\n${tail}`
-        }
-
-        finalOutput = `${preview}\n\n<bash_metadata>
-Full output saved to: ${outputFilePath}
-Total length: ${output.length} characters
-To view full output, use: cat "${outputFilePath}"
-To view last N lines: tail -n 100 "${outputFilePath}"
-</bash_metadata>`
-
-        console.log(`[Bash] Large output (${output.length} chars) saved to: ${outputFilePath}`)
-      } catch (writeError) {
-        console.error('[Bash] Failed to write large output to file:', writeError)
-        // Fallback to simple truncation
-        finalOutput = output.slice(0, MAX_OUTPUT_LENGTH)
-        finalOutput += `\n\n<bash_metadata>\nOutput truncated at ${MAX_OUTPUT_LENGTH} characters (file write failed)\n</bash_metadata>`
-      }
-    }
-
-    if (result.exitCode !== 0) {
+    if (result.exitCode !== null && result.exitCode !== 0) {
       finalOutput += `\n\n<bash_metadata>\nExit code: ${result.exitCode}\n</bash_metadata>`
     }
 
+    const exitCode = result.exitCode ?? (timedOut || aborted ? -1 : 0)
     const metadata: BashMetadata = {
       command,
       workingDirectory: workingDir,
-      exitCode: result.exitCode ?? 0,
+      exitCode,
       output: finalOutput,
       ...(outputFilePath && { outputFilePath }),
+      ...(result.backgroundJobIds?.length && { backgroundJobIds: result.backgroundJobIds }),
+    }
+
+    if (result.backgroundJobIds?.length) {
+      finalOutput += `\n\n<bash_metadata>\nBackground job(s): ${result.backgroundJobIds.join(', ')}\n</bash_metadata>`
+      metadata.output = finalOutput
     }
 
     return {
-      title: result.exitCode === 0
+      title: exitCode === 0
         ? command
-        : `Failed (exit ${result.exitCode}): ${command}`,
+        : `Failed (exit ${exitCode}): ${command}`,
       output: finalOutput,
       metadata,
     }

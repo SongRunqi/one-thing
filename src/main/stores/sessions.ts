@@ -643,6 +643,7 @@ function extractSessionMeta(session: ChatSession): SessionMeta {
     agentId: session.agentId || DEFAULT_AGENT_ID,
     lastModel: session.lastModel,
     lastProvider: session.lastProvider,
+    permissionMode: session.permissionMode,
     isPinned: session.isPinned,
     isArchived: session.isArchived,
     archivedAt: session.archivedAt,
@@ -996,6 +997,25 @@ export function updateSessionArchived(sessionId: string, isArchived: boolean, ar
 }
 
 // Update session working directory (does not affect sort order)
+export function updateSessionPermissionMode(sessionId: string, permissionMode: ChatSession['permissionMode']): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  session.permissionMode = permissionMode
+
+  saveSessionToFile(sessionId, session)
+  syncSessionMetadataToSqlite(session)
+
+  const index = loadSessionsIndex()
+  const meta = index.find((s) => s.id === sessionId)
+  if (meta) {
+    meta.permissionMode = permissionMode
+    saveSessionsIndex(index)
+  }
+
+  return true
+}
+
 export function updateSessionWorkingDirectory(sessionId: string, workingDirectory: string | null): void {
   const session = getSession(sessionId)
   if (!session) return
@@ -1586,6 +1606,21 @@ export function updateMessageStep(sessionId: string, messageId: string, stepId: 
   Object.assign(step, updates)
 
   // Save session file
+  saveSessionToFile(sessionId, session)
+  syncMessageToSqliteIfReady(session, message)
+
+  return true
+}
+
+export function updateMessageSteps(sessionId: string, messageId: string, steps: Step[] | undefined): boolean {
+  const session = getSession(sessionId)
+  if (!session) return false
+
+  const message = session.messages.find((m) => m.id === messageId)
+  if (!message) return false
+
+  message.steps = steps
+
   saveSessionToFile(sessionId, session)
   syncMessageToSqliteIfReady(session, message)
 

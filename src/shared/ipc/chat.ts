@@ -3,7 +3,7 @@
  * Chat and message-related type definitions for IPC communication
  */
 
-import type { ToolCall } from './tools.js'
+import type { PermissionMode, ToolCall, ToolPartialResult } from './tools.js'
 import type { PromptReferenceSnapshot } from './prompts.js'
 import type { SkillReferenceSnapshot } from './skills.js'
 import type { VoiceTranscriptMetadata } from './voice.js'
@@ -61,6 +61,8 @@ export interface Step {
   toolCall?: ToolCall              // Full tool call object for displaying details
   thinking?: string                // AI's reasoning before this step (why it's doing this)
   result?: string                  // Tool execution result
+  partialResult?: ToolPartialResult // Structured partial tool result while execution is running
+  partialResultIsPartial?: boolean // True when partialResult is a live/incomplete result
   summary?: string                 // AI's analysis after getting the result
   error?: string                   // Error message if failed
   rejected?: boolean               // True when the user rejected permission for this step
@@ -101,7 +103,7 @@ export interface ChatMessage {
   isThinking?: boolean
   errorDetails?: string  // Additional error details for error messages
   reasoning?: string  // Thinking/reasoning process for reasoning models (e.g., deepseek-reasoner)
-  toolCalls?: ToolCall[]  // Tool calls made by the assistant (legacy, for backward compat)
+  toolCalls?: ToolCall[]  // Tool calls made by the assistant
   contentParts?: ContentPart[]  // Sequential content parts for inline tool call display
   model?: string  // AI model used for assistant messages
   thinkingTime?: number  // Final thinking time in seconds (persisted for display after session switch)
@@ -137,6 +139,7 @@ export interface SessionMeta {
   branchFromMessageId?: string
   lastModel?: string
   lastProvider?: string
+  permissionMode?: PermissionMode
   isPinned?: boolean
   isArchived?: boolean
   archivedAt?: number
@@ -179,6 +182,7 @@ export interface ChatSession {
   branchFromMessageId?: string
   lastModel?: string
   lastProvider?: string
+  permissionMode?: PermissionMode
   isPinned?: boolean
   isArchived?: boolean  // Archived (soft-deleted) session
   archivedAt?: number   // Timestamp when session was archived

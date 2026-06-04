@@ -286,8 +286,8 @@ function formatTime(timestamp: number): string {
 
 <style scoped>
 .server-item {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-sidebar-bg, var(--panel-2));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 12px;
   overflow: hidden;
   transition: all 0.15s ease;
@@ -298,7 +298,7 @@ function formatTime(timestamp: number): string {
 }
 
 .server-item.expanded {
-  border-color: var(--accent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .server-header {
@@ -335,7 +335,7 @@ function formatTime(timestamp: number): string {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: var(--text-muted);
+  background: var(--ui-text-muted-fg, var(--text-muted));
   opacity: 0.5;
   transition: all 0.3s ease;
 }
@@ -358,7 +358,7 @@ function formatTime(timestamp: number): string {
 }
 
 .server-status.connected .status-dot {
-  background: #22c55e;
+  background: var(--ui-status-success-fg, #22c55e);
   opacity: 1;
   box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
 }
@@ -369,12 +369,12 @@ function formatTime(timestamp: number): string {
 }
 
 .server-status.connecting .status-dot {
-  background: #f59e0b;
+  background: var(--ui-status-warning-fg, #f59e0b);
   opacity: 1;
 }
 
 .server-status.connecting .status-ring {
-  border-color: #f59e0b;
+  border-color: var(--ui-status-warning-fg, #f59e0b);
   opacity: 1;
   animation: ring-spin 1s linear infinite;
   border-top-color: transparent;
@@ -382,7 +382,7 @@ function formatTime(timestamp: number): string {
 }
 
 .server-status.error .status-dot {
-  background: #ef4444;
+  background: var(--ui-status-danger-fg, #ef4444);
   opacity: 1;
   animation: error-blink 2s ease-in-out infinite;
 }
@@ -393,7 +393,7 @@ function formatTime(timestamp: number): string {
 }
 
 .server-status.disconnected .status-dot {
-  background: var(--text-muted);
+  background: var(--ui-text-muted-fg, var(--text-muted));
   opacity: 0.4;
 }
 
@@ -414,7 +414,7 @@ function formatTime(timestamp: number): string {
 .server-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -433,22 +433,22 @@ function formatTime(timestamp: number): string {
   padding: 2px 6px;
   border-radius: 4px;
   background: rgba(120, 120, 128, 0.2);
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .transport-badge.stdio {
   background: rgba(168, 85, 247, 0.15);
-  color: #a855f7;
+  color: var(--ui-accent-primary-fg, #a855f7);
 }
 
 .transport-badge.sse {
-  background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .capability-count {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .server-actions {
@@ -510,7 +510,7 @@ function formatTime(timestamp: number): string {
 }
 
 .toggle input:checked + .toggle-slider {
-  background-color: var(--accent);
+  background-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .toggle input:checked + .toggle-slider:before {
@@ -527,7 +527,7 @@ function formatTime(timestamp: number): string {
   border: none;
   background: transparent;
   border-radius: 8px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -541,8 +541,8 @@ function formatTime(timestamp: number): string {
 }
 
 .icon-btn:hover:not(:disabled) {
-  background: var(--hover);
-  color: var(--text-primary);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .icon-btn:disabled {
@@ -552,7 +552,7 @@ function formatTime(timestamp: number): string {
 
 .icon-btn.danger:hover:not(:disabled) {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 
 .connect-btn {
@@ -561,12 +561,12 @@ function formatTime(timestamp: number): string {
 }
 
 .connect-btn.is-connected {
-  color: #22c55e;
+  color: var(--ui-status-success-fg, #22c55e);
 }
 
 .connect-btn.is-connected:hover:not(:disabled) {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 
 .connect-btn.is-loading {
@@ -575,7 +575,7 @@ function formatTime(timestamp: number): string {
 
 .connect-btn .loading-spinner {
   animation: spin 1s linear infinite;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 @keyframes spin {
@@ -585,7 +585,7 @@ function formatTime(timestamp: number): string {
 
 .expand-chevron {
   transition: transform 0.2s ease;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .server-item.expanded .expand-chevron {
@@ -595,7 +595,7 @@ function formatTime(timestamp: number): string {
 /* Expanded content */
 .server-expanded {
   padding: 0 16px 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
   margin-top: -1px;
   animation: slideDown 0.2s ease;
 }
@@ -620,7 +620,7 @@ function formatTime(timestamp: number): string {
   background: rgba(239, 68, 68, 0.1);
   border-radius: 8px;
   font-size: 13px;
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 
 .server-error svg {
@@ -631,7 +631,7 @@ function formatTime(timestamp: number): string {
 .connection-info {
   margin-top: 12px;
   padding: 12px;
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
   border-radius: 8px;
 }
 
@@ -649,14 +649,14 @@ function formatTime(timestamp: number): string {
 .info-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   flex-shrink: 0;
   width: 80px;
 }
 
 .info-value {
   font-size: 12px;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   word-break: break-all;
 }
 
@@ -678,7 +678,7 @@ code.info-value {
 .capabilities-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -696,7 +696,7 @@ code.info-value {
   flex-direction: column;
   gap: 2px;
   padding: 8px 12px;
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
   border-radius: 6px;
 }
 
@@ -704,12 +704,12 @@ code.info-value {
 .resource-name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .tool-desc,
 .resource-uri {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 </style>

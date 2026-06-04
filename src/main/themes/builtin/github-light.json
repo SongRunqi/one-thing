@@ -120,15 +120,18 @@
         "danger": "bg"
       },
       "code": {
-        "inline": "pink",
+        "inline": "fg",
         "block": "fg",
-        "comment": "fgSubtle",
-        "keyword": "red",
-        "string": "blue",
-        "number": "blue",
-        "function": "purple",
-        "variable": "orange",
-        "operator": "red"
+        "comment": "fgMuted",
+        "keyword": "purple",
+        "string": "green",
+        "number": "orange",
+        "function": "blue",
+        "variable": "fgMuted",
+        "operator": "fgMuted",
+        "type": "cyan",
+        "property": "blue",
+        "punctuation": "fgSubtle"
       },
       "menu": {
         "item": "fgSubtle",

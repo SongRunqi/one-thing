@@ -83,7 +83,7 @@ describe('chat store permission ordering', () => {
       messageId: 'm1',
       content: '',
       toolCallId: 'tc1',
-      argsTextDelta: '{"file_path":"src/a.ts"',
+      argsTextDelta: '{"path":"src/a.ts"',
     })
 
     store.handleStreamChunk({
@@ -111,6 +111,6 @@ describe('chat store permission ordering', () => {
     })
 
     const message = store.sessionMessages.get('s1')![0]
-    expect(message.toolCalls![0].streamingArgs).toBe('{"file_path":"src/a.ts"')
+    expect(message.toolCalls![0].streamingArgs).toBe('{"path":"src/a.ts"')
   })
 })

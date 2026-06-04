@@ -25,6 +25,10 @@ export type {
   ToolMetadata,
   ToolContext,
   ToolResult,
+  CanonicalToolResult,
+  ToolExecutionMode,
+  ToolRenderKind,
+  ToolRenderShell,
   ToolInfo,
   ToolConfig,
   ToolInfoAsync,
@@ -59,8 +63,12 @@ export {
   getEnabledAsyncTools,
   getToolsForAI,
   executeTool,
+  analyzeTool,
   createToolCall,
   canAutoExecute,
+  getToolExecutionMode,
+  getToolPromptSnippet,
+  getToolPromptGuidelines,
   initializeToolRegistry,
   isInitialized,
   // Async tool support
@@ -68,6 +76,8 @@ export {
   getInitContext,
   initializeAsyncTools,
 } from './registry.js'
+
+export { toolResultToStructured, textFromToolResult, isCanonicalToolResult } from './core/tool-result.js'
 
 // Re-export permission system
 export { Permission } from '../permission/index.js'

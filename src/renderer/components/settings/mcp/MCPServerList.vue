@@ -146,7 +146,7 @@ defineEmits<Emits>()
 .section-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0;
@@ -162,9 +162,9 @@ defineEmits<Emits>()
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--text-primary);
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-sidebar-bg, var(--panel-2));
+  color: var(--ui-text-primary-fg, var(--text-primary));
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
@@ -173,7 +173,7 @@ defineEmits<Emits>()
 }
 
 .import-btn:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
   border-color: rgba(255, 255, 255, 0.15);
 }
 
@@ -182,8 +182,8 @@ defineEmits<Emits>()
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  border: 1px solid var(--border);
-  background: var(--accent);
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
   border-radius: 8px;
   font-size: 13px;
@@ -193,7 +193,7 @@ defineEmits<Emits>()
 }
 
 .add-server-btn:hover {
-  background: #2563eb;
+  background: var(--ui-action-primary-hover-bg, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .empty-state {
@@ -203,13 +203,13 @@ defineEmits<Emits>()
   justify-content: center;
   padding: 48px 24px;
   text-align: center;
-  background: var(--panel-2);
+  background: var(--ui-surface-sidebar-bg, var(--panel-2));
   border-radius: 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .empty-state svg {
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   opacity: 0.5;
   margin-bottom: 16px;
 }
@@ -217,12 +217,12 @@ defineEmits<Emits>()
 .empty-state p {
   margin: 0;
   font-size: 14px;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .empty-state .hint {
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   margin-top: 4px;
 }
 

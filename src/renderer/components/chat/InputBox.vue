@@ -253,6 +253,15 @@
         <div class="toolbar-left">
           <ModelSelector :session-id="props.sessionId" />
           <ThinkToggle :session-id="props.sessionId" />
+          <button
+            class="permission-mode-btn"
+            type="button"
+            :class="`mode-${permissionMode}`"
+            :title="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
+            @click.stop="cyclePermissionMode"
+          >
+            {{ permissionModeLabel }}
+          </button>
         </div>
 
         <div
@@ -330,7 +339,7 @@ import { X, Square, Send, Check, CornerDownRight, Trash2, FileText, Loader2, Mic
 import { findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
-import type { MessageAttachment } from '@/types'
+import type { MessageAttachment, PermissionMode } from '@/types'
 import { DEFAULT_VOICE_SETTINGS } from '@shared/defaults/settings'
 
 // Composables
@@ -363,6 +372,20 @@ const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
 const voiceStore = useVoiceStore()
 const promptsStore = usePromptsStore()
+
+const PERMISSION_MODES: PermissionMode[] = ['normal', 'auto-accept-edits', 'dangerously-allow-all']
+
+const permissionMode = computed<PermissionMode>(() => {
+  return sessionsStore.currentSession?.permissionMode || settingsStore.settings?.tools?.permissionMode || 'normal'
+})
+
+const permissionModeLabel = computed(() => {
+  switch (permissionMode.value) {
+    case 'auto-accept-edits': return 'Auto Edits'
+    case 'dangerously-allow-all': return 'Danger'
+    default: return 'Normal'
+  }
+})
 
 // Core state
 const messageInput = ref('')
@@ -444,6 +467,33 @@ const {
   restoreAttachments,
   toMessageAttachments,
 } = useAttachments()
+
+let activeComposerSessionId = effectiveSessionId.value || ''
+let restoringComposerDraft = false
+
+function getCurrentComposerDraft() {
+  return {
+    messageInput: messageInput.value,
+    quotedText: quotedText.value,
+    attachments: toMessageAttachments() ?? [],
+  }
+}
+
+function saveComposerDraft(sessionId = activeComposerSessionId) {
+  if (!sessionId || restoringComposerDraft) return
+  chatStore.setComposerDraft(sessionId, getCurrentComposerDraft())
+}
+
+async function restoreComposerDraft(sessionId: string) {
+  restoringComposerDraft = true
+  const draft = sessionId ? chatStore.getComposerDraft(sessionId) : null
+  messageInput.value = draft?.messageInput ?? ''
+  quotedText.value = draft?.quotedText ?? ''
+  restoreAttachments(draft?.attachments)
+  await nextTick()
+  updateComposerHeight()
+  restoringComposerDraft = false
+}
 
 // --- Computed ---
 
@@ -560,6 +610,18 @@ function startVoiceRecordingTimer() {
 
 // --- Watchers ---
 
+watch(effectiveSessionId, async (newSessionId, oldSessionId) => {
+  if (oldSessionId) saveComposerDraft(oldSessionId)
+  activeComposerSessionId = newSessionId || ''
+  resetHistoryNavigation()
+  closeAllPickers()
+  await restoreComposerDraft(activeComposerSessionId)
+}, { immediate: true })
+
+watch([messageInput, quotedText, attachedFiles], () => {
+  saveComposerDraft()
+}, { deep: true })
+
 watch(isVoiceRecordingActive, (recording) => {
   if (recording) {
     startVoiceRecordingTimer()
@@ -599,6 +661,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  saveComposerDraft()
   document.removeEventListener('mousedown', handleDocumentMouseDown)
   stopVoiceRecordingTimer()
 })
@@ -639,8 +702,28 @@ async function handlePasteAttachments(event: ClipboardEvent) {
   })
 }
 
+async function cyclePermissionMode() {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return
+
+  const currentIndex = PERMISSION_MODES.indexOf(permissionMode.value)
+  const nextMode = PERMISSION_MODES[(currentIndex + 1) % PERMISSION_MODES.length]
+  const result = await sessionsStore.updateSessionPermissionMode(sessionId, nextMode)
+  if (!result.success) {
+    showCommandFeedback('error', result.error || 'Failed to update permission mode')
+    return
+  }
+  showCommandFeedback('success', `Permission mode: ${permissionModeLabel.value}`)
+}
+
 function handleKeyDown(e: KeyboardEvent) {
   if (isComposing.value || e.isComposing) return
+
+  if (e.key === 'Tab' && e.shiftKey && !anyPickerVisible.value) {
+    e.preventDefault()
+    void cyclePermissionMode()
+    return
+  }
 
   if (anyPickerVisible.value) {
     if (e.key === 'ArrowUp') {
@@ -1030,22 +1113,22 @@ defineExpose({
   gap: 6px;
   max-width: 100%;
   padding: 6px 10px;
-  border: 0.5px solid var(--border);
+  border: 0.5px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: rgba(var(--bg-rgb, 30, 30, 35), 0.48);
-  color: var(--text);
+  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 48%, transparent);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 12px;
   line-height: 1.3;
 }
 
 .command-feedback.success {
-  border-color: rgba(var(--color-success-rgb), 0.30);
-  color: var(--text-success, var(--text));
+  border-color: color-mix(in srgb, var(--ui-status-success-border, var(--color-success)) 30%, transparent);
+  color: var(--ui-status-success-fg, var(--text-success, var(--text)));
 }
 
 .command-feedback.error {
-  border-color: rgba(var(--color-danger-rgb), 0.30);
-  color: var(--text-error, var(--text));
+  border-color: color-mix(in srgb, var(--ui-status-danger-border, var(--color-danger)) 30%, transparent);
+  color: var(--ui-status-danger-fg, var(--text-error, var(--text)));
 }
 
 .command-feedback span {
@@ -1082,10 +1165,10 @@ defineExpose({
   align-items: center;
   gap: 8px;
   padding: 7px 14px;
-  border: 0.5px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 72%, transparent);
   border-radius: 12px 12px 7px 7px;
-  background: color-mix(in srgb, var(--bg-panel, var(--bg)) 88%, transparent);
-  color: var(--text-muted);
+  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))) 88%, transparent);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.035);
   backdrop-filter: blur(8px) saturate(1.02);
   -webkit-backdrop-filter: blur(8px) saturate(1.02);
@@ -1093,7 +1176,7 @@ defineExpose({
 }
 
 .queued-message-icon {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   flex-shrink: 0;
 }
 
@@ -1106,14 +1189,14 @@ defineExpose({
   -webkit-box-orient: vertical;
   font-size: 13px;
   line-height: 1.45;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .queued-message-action,
 .queued-message-icon-btn {
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1138,8 +1221,8 @@ defineExpose({
 
 .queued-message-action:hover,
 .queued-message-icon-btn:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .queued-message-action:disabled {
@@ -1151,7 +1234,7 @@ defineExpose({
 .queued-message-attachments {
   display: inline-block;
   margin-left: 8px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
   white-space: nowrap;
 }
@@ -1174,8 +1257,8 @@ defineExpose({
   display: flex;
   flex-direction: column;
   border-radius: 16px;
-  border: 0.5px solid color-mix(in srgb, var(--border) 78%, transparent);
-  background: color-mix(in srgb, var(--bg-panel, var(--bg)) 92%, var(--bg-elevated, var(--bg)) 8%);
+  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 78%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))) 92%, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 8%);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.055);
   backdrop-filter: blur(6px) saturate(1.02);
   -webkit-backdrop-filter: blur(6px) saturate(1.02);
@@ -1184,8 +1267,19 @@ defineExpose({
 }
 
 .composer.focused {
-  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.07);
+  border-color: color-mix(
+    in srgb,
+    var(--ui-surface-input-focus-border, var(--ui-state-focus-border, var(--ui-accent-primary-fg, var(--accent)))) 34%,
+    var(--ui-border-default-border, var(--border))
+  );
+  background: color-mix(
+    in srgb,
+    var(--ui-surface-input-focus-bg, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)))) 94%,
+    var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 6%
+  );
+  box-shadow:
+    0 1px 5px rgba(0, 0, 0, 0.07),
+    0 0 0 3px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent))) 7%, transparent);
 }
 
 .composer.extension-open {
@@ -1200,7 +1294,8 @@ defineExpose({
 /* Input area */
 .input-area {
   position: relative;
-  padding: 0 18px 6px 18px;
+  /* Keep the editor scroller flush with the composer edge; text padding lives in CodeMirror. */
+  padding: 0 0 6px 18px;
 }
 
 .composer-input {
@@ -1239,17 +1334,17 @@ defineExpose({
   width: min(230px, 68vw);
   height: 42px;
   padding: 5px 6px 5px 5px;
-  border: 0.5px solid var(--border);
+  border: 0.5px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: rgba(var(--bg-rgb, 30, 30, 35), 0.48);
-  color: var(--text);
+  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 48%, transparent);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .attachment-chip.is-loading {
   grid-template-columns: auto 1fr;
   width: auto;
   padding: 5px 10px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 13px;
 }
 
@@ -1263,15 +1358,15 @@ defineExpose({
 
 .attachment-thumb {
   object-fit: cover;
-  background: var(--bg-muted);
+  background: var(--ui-state-disabled-bg, var(--bg-muted));
 }
 
 .attachment-file-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--hover);
-  color: var(--muted);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .attachment-info {
@@ -1295,7 +1390,7 @@ defineExpose({
 
 .attachment-size {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .attachment-remove {
@@ -1304,7 +1399,7 @@ defineExpose({
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1312,8 +1407,8 @@ defineExpose({
 }
 
 .attachment-remove:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .attachment-spinner {
@@ -1328,20 +1423,20 @@ defineExpose({
   margin: 0 12px 8px;
   min-height: 36px;
   padding: 7px 8px 7px 10px;
-  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 82%, transparent);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--bg-tertiary, var(--hover)) 86%, transparent);
-  color: var(--text);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-tertiary, var(--ui-state-hover-bg, var(--hover)))) 86%, transparent);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .voice-capture-bar.recording {
-  border-color: color-mix(in srgb, #ef4444 36%, var(--border));
-  background: color-mix(in srgb, #ef4444 8%, var(--bg-tertiary, var(--hover)));
+  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 36%, var(--ui-border-default-border, var(--border)));
+  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 8%, var(--ui-surface-elevated-bg, var(--bg-tertiary, var(--ui-state-hover-bg, var(--hover)))));
 }
 
 .voice-capture-bar.transcribing {
-  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
-  background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary, var(--hover)));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, var(--ui-border-default-border, var(--border)));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, var(--ui-surface-elevated-bg, var(--bg-tertiary, var(--ui-state-hover-bg, var(--hover)))));
 }
 
 .voice-capture-visual {
@@ -1350,7 +1445,7 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .voice-wave {
@@ -1366,7 +1461,7 @@ defineExpose({
   width: 2px;
   height: 7px;
   border-radius: 999px;
-  background: #ef4444;
+  background: var(--ui-status-danger-fg, #ef4444);
   animation: voice-wave 0.9s ease-in-out infinite;
 }
 
@@ -1396,7 +1491,7 @@ defineExpose({
   white-space: nowrap;
   font-size: 12px;
   line-height: 1.2;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .voice-capture-stop {
@@ -1405,17 +1500,17 @@ defineExpose({
   align-items: center;
   gap: 5px;
   padding: 0 8px;
-  border: 1px solid color-mix(in srgb, #ef4444 42%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 42%, var(--ui-border-default-border, var(--border)));
   border-radius: 8px;
-  background: color-mix(in srgb, #ef4444 9%, transparent);
-  color: #ef4444;
+  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 9%, transparent);
+  color: var(--ui-status-danger-fg, #ef4444);
   font-size: 12px;
   font-weight: 650;
   cursor: pointer;
 }
 
 .voice-capture-stop:hover {
-  background: color-mix(in srgb, #ef4444 15%, transparent);
+  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 15%, transparent);
 }
 
 @keyframes attachment-spin {
@@ -1455,6 +1550,43 @@ defineExpose({
   flex-shrink: 0;
 }
 
+.permission-mode-btn {
+  --permission-mode-fg: var(--ui-text-muted-fg, var(--muted));
+  --permission-mode-fg-hover: var(--ui-text-primary-fg, var(--text));
+  --permission-mode-border: var(--ui-border-default-border, var(--border));
+  --permission-mode-border-hover: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 35%, var(--ui-border-default-border, var(--border)));
+  --permission-mode-bg: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 88%, transparent);
+
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--permission-mode-border);
+  background: var(--permission-mode-bg);
+  color: var(--permission-mode-fg);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.permission-mode-btn:hover {
+  color: var(--permission-mode-fg-hover);
+  border-color: var(--permission-mode-border-hover);
+}
+
+.permission-mode-btn.mode-auto-accept-edits {
+  --permission-mode-fg: var(--ui-status-success-fg, var(--text-success));
+  --permission-mode-border: color-mix(in srgb, var(--ui-status-success-border, var(--border-success)) 32%, var(--ui-border-default-border, var(--border)));
+  --permission-mode-bg: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success)) 8%, transparent);
+}
+
+.permission-mode-btn.mode-dangerously-allow-all {
+  --permission-mode-fg: var(--ui-status-warning-fg, var(--text-warning));
+  --permission-mode-border: color-mix(in srgb, var(--ui-status-warning-border, var(--color-warning)) 40%, var(--ui-border-default-border, var(--border)));
+  --permission-mode-bg: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 10%, transparent);
+}
+
 /* Toolbar buttons */
 .toolbar-btn {
   width: 32px;
@@ -1462,7 +1594,7 @@ defineExpose({
   border-radius: 8px;
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1472,8 +1604,8 @@ defineExpose({
 }
 
 .toolbar-btn:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
   transform: scale(1.1);
 }
 
@@ -1490,9 +1622,9 @@ defineExpose({
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--hover);
-  color: var(--muted);
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1501,34 +1633,34 @@ defineExpose({
 }
 
 .voice-btn:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--active);
+  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-active-bg, var(--active));
   transform: translateY(-1px);
 }
 
 .voice-btn.needs-setup {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
-  background: color-mix(in srgb, var(--accent) 10%, var(--hover));
+  color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 38%, var(--ui-border-default-border, var(--border)));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, var(--ui-state-hover-bg, var(--hover)));
 }
 
 .voice-btn.needs-setup:hover {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 56%, var(--border));
-  background: color-mix(in srgb, var(--accent) 16%, var(--hover));
+  color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 56%, var(--ui-border-default-border, var(--border)));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 16%, var(--ui-state-hover-bg, var(--hover)));
 }
 
 .voice-btn.active {
-  color: #ef4444;
-  border-color: color-mix(in srgb, #ef4444 45%, var(--border));
-  background: color-mix(in srgb, #ef4444 10%, transparent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, #ef4444 10%, transparent);
+  color: var(--ui-status-danger-fg, #ef4444);
+  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 45%, var(--ui-border-default-border, var(--border)));
+  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent);
 }
 
 .voice-btn.transcribing {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 42%, var(--ui-border-default-border, var(--border)));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 9%, transparent);
 }
 
 .voice-spinner {
@@ -1546,52 +1678,52 @@ defineExpose({
   height: 38px;
   border-radius: 12px;
   border: none;
-  background: var(--accent);
-  color: var(--text-btn-primary);
+  background: var(--ui-action-primary-bg, var(--accent));
+  color: var(--ui-action-primary-fg, var(--text-btn-primary));
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
   flex-shrink: 0;
-  box-shadow: 0 1px 4px rgba(var(--accent-rgb), 0.22);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 22%, transparent);
 }
 
 .send-btn:hover:not(:disabled) {
-  background: var(--bg-btn-primary-hover);
+  background: var(--ui-action-primary-hover-bg, var(--bg-btn-primary-hover));
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.24);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 24%, transparent);
 }
 
 .send-btn:active:not(:disabled) {
   transform: scale(0.97);
-  box-shadow: 0 1px 3px rgba(var(--accent-rgb), 0.18);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 18%, transparent);
 }
 
 .send-btn:disabled {
-  background: var(--bg-hover);
-  color: var(--text-muted);
+  background: var(--ui-action-disabled-bg, var(--bg-hover));
+  color: var(--ui-action-disabled-fg, var(--text-muted));
   cursor: not-allowed;
   box-shadow: none;
 }
 
 .send-btn.stop-btn {
-  background: var(--hover);
+  background: var(--ui-action-ghost-bg, var(--hover));
   box-shadow: none;
-  color: var(--muted);
-  border: 1px solid var(--border);
+  color: var(--ui-action-ghost-fg, var(--muted));
+  border: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .send-btn.stop-btn:hover {
-  background: var(--active);
-  color: var(--text);
+  background: var(--ui-action-ghost-hover-bg, var(--active));
+  color: var(--ui-text-primary-fg, var(--text));
   transform: translateY(-1px) scale(1.02);
   box-shadow: none;
 }
 
 .send-btn.stop-btn:active {
   transform: scale(0.96);
-  background: var(--active);
+  background: var(--ui-state-active-bg, var(--active));
 }
 
 /* Responsive styles */

@@ -20,9 +20,99 @@
     />
 
     <div
-      v-memo="[isGenerating, effectiveSessionId]"
+      v-memo="[isGenerating, effectiveSessionId, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, showRejectInstruction]"
       class="composer-container"
     >
+      <BackgroundJobsStatusBar />
+
+      <div
+        v-if="currentPendingPermission"
+        class="session-permission-panel"
+      >
+        <div class="permission-main">
+          <div class="permission-label">
+            Permission required
+          </div>
+          <div class="permission-title">
+            {{ permissionTitle(currentPendingPermission.toolCall) }}
+          </div>
+          <div
+            v-if="permissionPreview(currentPendingPermission.toolCall)"
+            class="permission-preview"
+          >
+            {{ permissionPreview(currentPendingPermission.toolCall) }}
+          </div>
+          <div
+            v-if="queuedBehindPermission.length > 0"
+            class="permission-queue"
+          >
+            {{ queuedBehindPermission.length }} queued behind this permission
+          </div>
+        </div>
+        <div class="permission-actions">
+          <div class="permission-allow-group">
+            <button
+              class="permission-btn allow"
+              type="button"
+              title="Allow once"
+              @click="approveCurrentPermission('once')"
+            >
+              Allow
+            </button>
+            <button
+              class="permission-btn allow-scope"
+              type="button"
+              title="Allow for this session"
+              @click="approveCurrentPermission('session')"
+            >
+              Session
+            </button>
+            <button
+              v-if="canAllowWorkspace(currentPendingPermission.toolCall)"
+              class="permission-btn allow-scope"
+              type="button"
+              title="Allow in this workspace"
+              @click="approveCurrentPermission('workdir')"
+            >
+              Workspace
+            </button>
+          </div>
+          <button
+            class="permission-btn reject"
+            type="button"
+            @click="rejectCurrentPermission"
+          >
+            Reject
+          </button>
+          <button
+            class="permission-btn instruct"
+            type="button"
+            @click="showRejectInstruction = !showRejectInstruction"
+          >
+            Reject with instruction
+          </button>
+        </div>
+        <div
+          v-if="showRejectInstruction"
+          class="permission-instruction"
+        >
+          <textarea
+            v-model="rejectInstruction"
+            class="permission-instruction-input"
+            placeholder="Tell the assistant what to do instead..."
+            rows="2"
+            @keydown.stop
+          />
+          <button
+            class="permission-btn reject"
+            type="button"
+            @click="rejectCurrentPermissionWithInstruction"
+          >
+            Send rejection
+          </button>
+        </div>
+      </div>
+
       <InputBox
         ref="inputBoxRef"
         :is-loading="isGenerating"
@@ -43,7 +133,8 @@ import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import TodoPlanPanel from './TodoPlanPanel.vue'
-import type { MessageAttachment } from '@/types'
+import BackgroundJobsStatusBar from './BackgroundJobsStatusBar.vue'
+import type { MessageAttachment, ToolCall } from '@/types'
 
 const props = defineProps<{
   sessionId?: string
@@ -75,10 +166,46 @@ const {
 const currentSession = computed(() => {
   const sid = effectiveSessionId.value
   if (!sid) return null
+  if (sessionsStore.currentSession?.id === sid) return sessionsStore.currentSession
   return sessionsStore.sessions.find(s => s.id === sid) || null
 })
 
 const panelMessages = computed(() => messages.value)
+
+const currentPendingPermission = computed<{ toolCall: ToolCall } | null>(() => {
+  for (const message of panelMessages.value) {
+    const toolCall = message.toolCalls?.find(tc => tc.requiresConfirmation)
+    if (toolCall) return { toolCall }
+  }
+  return null
+})
+
+const queuedBehindPermission = computed(() => {
+  const pending = currentPendingPermission.value?.toolCall
+  if (!pending) return []
+  const queued: ToolCall[] = []
+  let seenPending = false
+  for (const message of panelMessages.value) {
+    for (const toolCall of message.toolCalls || []) {
+      if (toolCall.id === pending.id) {
+        seenPending = true
+        continue
+      }
+      if (seenPending && toolCall.status === 'queued') {
+        queued.push(toolCall)
+      }
+    }
+  }
+  return queued
+})
+
+const showRejectInstruction = ref(false)
+const rejectInstruction = ref('')
+
+watch(currentPendingPermission, () => {
+  showRejectInstruction.value = false
+  rejectInstruction.value = ''
+})
 
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
@@ -87,6 +214,49 @@ const RESTORE_WAIT_FRAME_LIMIT = 120
 
 function nextFrame(): Promise<void> {
   return new Promise(resolve => requestAnimationFrame(() => resolve()))
+}
+
+function permissionTitle(toolCall: ToolCall): string {
+  const name = (toolCall.toolName || toolCall.toolId || 'tool').toLowerCase()
+  if (name === 'bash') return `Run ${String(toolCall.arguments?.command || '').slice(0, 96)}`
+  if (name === 'edit') return `Edit ${String(toolCall.changes?.filePath || toolCall.arguments?.path || '')}`
+  if (name === 'write') return `Write ${String(toolCall.arguments?.path || '')}`
+  return `Use ${toolCall.toolName || toolCall.toolId}`
+}
+
+function permissionPreview(toolCall: ToolCall): string {
+  if (toolCall.changes) return `+${toolCall.changes.additions || 0} -${toolCall.changes.deletions || 0}`
+  if (toolCall.arguments?.command) return String(toolCall.arguments.command)
+  return ''
+}
+
+type PermissionResponse = 'once' | 'session' | 'workdir'
+
+function canAllowWorkspace(toolCall: ToolCall): boolean {
+  const permissionType = String((toolCall as any).permissionType || toolCall.arguments?.permissionType || '')
+  const name = (toolCall.toolName || toolCall.toolId || '').toLowerCase()
+  // Sensitive file reads should not be granted workspace-wide in the first scope UX.
+  if (permissionType === 'sensitive_file_read') return false
+  if (name === 'read' && /\.env|\.pem$|\.key$|\.p12$|\.pfx$/i.test(permissionTitle(toolCall))) return false
+  return true
+}
+
+function approveCurrentPermission(response: PermissionResponse = 'once') {
+  const toolCall = currentPendingPermission.value?.toolCall
+  if (!toolCall) return
+  messageListRef.value?.confirmTool(toolCall, response)
+}
+
+function rejectCurrentPermission() {
+  const toolCall = currentPendingPermission.value?.toolCall
+  if (!toolCall) return
+  messageListRef.value?.rejectTool(toolCall)
+}
+
+function rejectCurrentPermissionWithInstruction() {
+  const toolCall = currentPendingPermission.value?.toolCall
+  if (!toolCall) return
+  messageListRef.value?.rejectTool(toolCall, rejectInstruction.value.trim() || undefined)
 }
 
 async function waitForRestorePage(sessionId: string, anchorMessageId?: string) {
@@ -205,7 +375,8 @@ async function handleSendMessage(
   mode: 'send' | 'steer' | 'followup' = 'send',
   attachments?: MessageAttachment[],
 ) {
-  if (!currentSession.value) return
+  const session = currentSession.value
+  if (!session) return
   // Note: do not scroll here. This runs before the message is in state, so it
   // would smooth-scroll against stale content and then fight MessageList's
   // new-user-message watcher (force-follow + instant setTail), producing a
@@ -215,6 +386,12 @@ async function handleSendMessage(
   } else if (mode === 'followup') {
     await chatQueueFollowUpMessage(message)
   } else {
+    if (sessionsStore.isNewChatDraftId(session.id)) {
+      const materialized = await sessionsStore.materializeNewChatDraft(session.id, session.name || 'New Chat')
+      if (!materialized) return
+      await chatStore.sendMessage(materialized.id, message, attachments)
+      return
+    }
     await chatSendMessage(message, attachments)
   }
 }
@@ -295,6 +472,129 @@ defineExpose({
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+.session-permission-panel {
+  --permission-panel-fg: var(--ui-status-warning-fg, var(--text-warning));
+  --permission-panel-border: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 36%, var(--ui-border-default-border, var(--border)));
+  --permission-panel-bg: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 9%, var(--ui-surface-app-bg, var(--bg)));
+  --permission-panel-shadow: var(--shadow-md, 0 8px 24px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 10%, transparent));
+  --permission-allow-fg: var(--ui-status-success-fg, var(--text-success));
+  --permission-allow-border: color-mix(in srgb, var(--ui-status-success-border, var(--border-success)) 36%, var(--ui-border-default-border, var(--border)));
+  --permission-allow-bg: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success)) 9%, transparent);
+  --permission-reject-fg: var(--ui-status-warning-fg, var(--text-warning));
+  --permission-reject-border: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 42%, var(--ui-border-default-border, var(--border)));
+  --permission-reject-bg: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 8%, transparent);
+
+  width: var(--chat-content-width);
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 12px;
+  border: 1px solid var(--permission-panel-border);
+  border-radius: 12px;
+  background: var(--permission-panel-bg);
+  box-shadow: var(--permission-panel-shadow);
+}
+
+.permission-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.permission-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--permission-panel-fg);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.permission-title {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ui-text-primary-fg, var(--text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.permission-preview,
+.permission-queue {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.permission-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.permission-allow-group {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.permission-btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-panel-bg, var(--panel));
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+.permission-btn.allow,
+.permission-btn.allow-scope {
+  color: var(--permission-allow-fg);
+  border-color: var(--permission-allow-border);
+  background: var(--permission-allow-bg);
+}
+
+.permission-btn.allow-scope {
+  font-size: 11px;
+  opacity: 0.86;
+}
+
+.permission-btn.reject,
+.permission-btn.instruct {
+  color: var(--permission-reject-fg);
+  border-color: var(--permission-reject-border);
+  background: var(--permission-reject-bg);
+}
+
+.permission-instruction {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.permission-instruction-input {
+  flex: 1;
+  min-height: 48px;
+  resize: vertical;
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  border-radius: 8px;
+  background: var(--ui-surface-panel-bg, var(--panel));
+  color: var(--ui-text-primary-fg, var(--text));
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
 }
 
 @media (max-width: 768px) {

@@ -678,7 +678,7 @@ watch(() => props.filteredModels.length, () => {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10.5px;
   font-weight: 650;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0 0 0 2px;
@@ -690,7 +690,7 @@ watch(() => props.filteredModels.length, () => {
 .count-badge {
   font-size: 11px;
   font-weight: 560;
-  color: var(--settings-accent, var(--accent));
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   text-transform: none;
   letter-spacing: 0;
 }
@@ -704,13 +704,13 @@ watch(() => props.filteredModels.length, () => {
   border-radius: 7px;
   background: var(--settings-paper, transparent);
   font-size: 11px;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
   transition: color 0.1s ease;
 }
 
 .refresh-btn:hover:not(:disabled) {
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   border-color: var(--settings-rule, transparent);
 }
 
@@ -747,7 +747,7 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .search-icon {
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   flex-shrink: 0;
 }
 
@@ -755,13 +755,13 @@ watch(() => props.filteredModels.length, () => {
   flex: 1;
   border: none;
   background: transparent;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 13px;
   outline: none;
 }
 
 .search-input::placeholder {
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
 }
 
 .search-clear {
@@ -770,7 +770,7 @@ watch(() => props.filteredModels.length, () => {
   border: none;
   background: transparent;
   border-radius: 3px;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -778,7 +778,7 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .search-clear:hover {
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
 /* ── Model list (virtual scroll container) ── */
@@ -792,7 +792,7 @@ watch(() => props.filteredModels.length, () => {
 .model-list::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--settings-ink, #000) 16%, transparent);
+  background: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, #000)) 16%, transparent);
   background-clip: padding-box;
 }
 
@@ -822,7 +822,7 @@ watch(() => props.filteredModels.length, () => {
 /* Active model: the one whose temperature / max-output the sliders below
    are configuring. Marked with a left accent stripe + light tint. */
 .model-row.is-active {
-  background: var(--settings-accent-tint, color-mix(in srgb, var(--settings-accent, var(--accent)) 8%, transparent));
+  background: var(--settings-accent-tint, color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 8%, transparent));
 }
 
 .model-row.is-active::before {
@@ -833,15 +833,15 @@ watch(() => props.filteredModels.length, () => {
   bottom: 4px;
   width: 2px;
   border-radius: 2px;
-  background: var(--settings-accent, var(--accent));
+  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .model-row.is-active:hover {
-  background: color-mix(in srgb, var(--settings-accent, var(--accent)) 11%, transparent);
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 11%, transparent);
 }
 
 .model-row.is-active .model-name {
-  color: var(--settings-accent, var(--accent));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font-weight: 600;
 }
 
@@ -853,7 +853,7 @@ watch(() => props.filteredModels.length, () => {
   height: 14px;
   padding: 4px;
   margin: -4px;
-  border: 1.5px solid var(--settings-rule, var(--border));
+  border: 1.5px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 4px;
   display: flex;
   align-items: center;
@@ -865,24 +865,24 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-check:hover {
-  border-color: var(--settings-accent, var(--accent));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .model-check:focus-visible {
-  outline: 2px solid var(--settings-accent, var(--accent));
+  outline: 2px solid var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   outline-offset: 2px;
 }
 
 .model-check.checked {
-  background: var(--settings-accent, var(--accent)) content-box;
-  border-color: var(--settings-accent, var(--accent));
-  color: var(--text-btn-primary, var(--settings-paper));
+  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) content-box;
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--ui-action-primary-fg, var(--text-btn-primary, var(--settings-paper)));
 }
 
 .model-name {
   flex: 1;
   font-weight: 450;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -893,14 +893,14 @@ watch(() => props.filteredModels.length, () => {
   display: flex;
   gap: 2px;
   flex-shrink: 0;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
 }
 
 .model-ctx {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   min-width: 36px;
@@ -932,23 +932,23 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-out-wrap:focus-within {
-  border-color: var(--settings-accent, var(--accent));
-  background: color-mix(in srgb, var(--settings-accent, var(--accent)) 7%, transparent);
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 7%, transparent);
 }
 
 .model-out-wrap.overridden {
-  border-color: color-mix(in srgb, var(--settings-accent, var(--accent)) 45%, transparent);
-  background: color-mix(in srgb, var(--settings-accent, var(--accent)) 8%, transparent);
+  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 45%, transparent);
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 8%, transparent);
 }
 
 .out-icon {
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   opacity: 0.7;
   flex-shrink: 0;
 }
 
 .model-out-wrap.overridden .out-icon {
-  color: var(--settings-accent, var(--accent));
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   opacity: 1;
 }
 
@@ -965,7 +965,7 @@ watch(() => props.filteredModels.length, () => {
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
@@ -977,22 +977,22 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-out-clear:hover {
-  background: color-mix(in srgb, var(--text-error, var(--color-danger)) 18%, transparent);
-  color: var(--text-error, var(--color-danger));
+  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 18%, transparent);
+  color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
 }
 
 .empty-row {
   padding: 20px;
   text-align: center;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-size: 13px;
 }
 
 .error-message {
   padding: 8px 12px;
-  background: color-mix(in srgb, var(--text-error, var(--color-danger)) 8%, transparent);
+  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 8%, transparent);
   border-radius: 8px;
-  color: var(--text-error, var(--color-danger));
+  color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
   font-size: 12px;
   margin-bottom: 8px;
 }
@@ -1012,10 +1012,10 @@ watch(() => props.filteredModels.length, () => {
 
 .fetch-btn {
   padding: 6px 16px;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
   background: var(--settings-paper, transparent);
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -1047,21 +1047,21 @@ watch(() => props.filteredModels.length, () => {
   border: none;
   background: transparent;
   min-width: 0;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 13px;
   outline: none;
 }
 
 .add-model-input::placeholder {
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
 }
 
 .add-model-btn {
   padding: 4px 12px;
   border: none;
   border-radius: 7px;
-  background: var(--settings-accent, var(--accent));
-  color: var(--text-btn-primary, var(--settings-paper));
+  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--ui-action-primary-fg, var(--text-btn-primary, var(--settings-paper)));
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -1084,17 +1084,17 @@ watch(() => props.filteredModels.length, () => {
   border: 1px solid transparent;
   background: transparent;
   border-radius: 4px;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .model-caps-edit:hover {
-  background: var(--settings-paper-2, var(--hover));
-  color: var(--settings-ink, var(--text));
+  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 .model-caps-edit.has-override {
-  border-color: color-mix(in srgb, var(--settings-accent, var(--accent)) 40%, transparent);
-  color: var(--settings-accent, var(--accent));
+  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 40%, transparent);
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 </style>
 
@@ -1108,8 +1108,8 @@ watch(() => props.filteredModels.length, () => {
 /* Popover lives at <body> via Teleport; position is set inline. */
 .model-caps-popover {
   z-index: 1000;
-  background: var(--bg-elevated, var(--bg-panel));
-  border: 1px solid var(--border);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel)));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   padding: 8px;
@@ -1123,17 +1123,17 @@ watch(() => props.filteredModels.length, () => {
   align-items: center;
   justify-content: space-between;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   text-transform: uppercase;
   letter-spacing: 0.4px;
   padding: 0 4px 4px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .model-caps-reset {
   border: none;
   background: transparent;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   font-size: 11px;
   cursor: pointer;
   padding: 0;
@@ -1155,12 +1155,12 @@ watch(() => props.filteredModels.length, () => {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .model-caps-tristate {
   display: inline-flex;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 6px;
   overflow: hidden;
 }
@@ -1168,36 +1168,36 @@ watch(() => props.filteredModels.length, () => {
 .tristate-btn {
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
   padding: 3px 8px;
   cursor: pointer;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--ui-border-default-border, var(--border));
   transition: background 0.12s ease, color 0.12s ease;
 }
 .tristate-btn:last-child {
   border-right: none;
 }
 .tristate-btn:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
 }
 .tristate-btn.active {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .model-caps-popover-hint {
   margin: 4px 4px 0;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   line-height: 1.4;
 }
 
 .model-caps-close {
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 16px;
   line-height: 1;
   width: 18px;
@@ -1211,13 +1211,13 @@ watch(() => props.filteredModels.length, () => {
   letter-spacing: 0;
 }
 .model-caps-close:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .model-caps-id-label {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   text-transform: uppercase;
   letter-spacing: 0.4px;
   padding: 4px 4px 2px;
@@ -1234,31 +1234,31 @@ watch(() => props.filteredModels.length, () => {
   min-width: 0;
   height: 26px;
   padding: 0 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 6px;
-  background: var(--bg, transparent);
-  color: var(--text);
+  background: var(--ui-surface-app-bg, var(--bg, transparent));
+  color: var(--ui-text-primary-fg, var(--text));
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 12px;
   outline: none;
 }
 .model-caps-id-input:focus {
-  border-color: var(--accent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .model-caps-id-save {
   height: 26px;
   padding: 0 10px;
   border: 1px solid transparent;
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 18%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
 }
 .model-caps-id-save:hover {
-  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, transparent);
 }
 .model-caps-id-save:disabled {
   opacity: 0.4;
@@ -1268,7 +1268,7 @@ watch(() => props.filteredModels.length, () => {
 .model-caps-id-error {
   margin: 4px 4px 0;
   font-size: 11px;
-  color: var(--text-error, var(--color-danger));
+  color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
   line-height: 1.3;
 }
 
@@ -1277,11 +1277,11 @@ watch(() => props.filteredModels.length, () => {
   align-items: center;
   justify-content: space-between;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   text-transform: uppercase;
   letter-spacing: 0.4px;
   padding: 8px 4px 2px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
   margin-top: 4px;
 }
 </style>

@@ -146,15 +146,15 @@ function commitDraft() {
   display: inline-grid;
   grid-template-columns: 36px minmax(58px, auto) 36px;
   min-height: 30px;
-  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 6px;
   overflow: hidden;
-  background: var(--settings-paper-2, var(--bg));
+  background: var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg)));
 }
 
 .number-stepper:focus-within {
-  border-color: color-mix(in srgb, var(--settings-accent, var(--accent)) 52%, var(--settings-rule, var(--border-subtle)));
-  box-shadow: 0 0 0 2px var(--settings-accent-soft, rgba(var(--accent-rgb), 0.12));
+  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 52%, var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle))));
+  box-shadow: 0 0 0 2px var(--settings-accent-soft, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent));
 }
 
 .number-stepper-compact {
@@ -170,18 +170,18 @@ function commitDraft() {
 .stepper-btn {
   border: 0;
   background: transparent;
-  color: var(--settings-ink-2, var(--text-primary));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   font: inherit;
   font-size: 17px;
   cursor: pointer;
 }
 
 .stepper-btn:not(:last-child) {
-  border-right: 1px solid var(--settings-rule, var(--border-subtle));
+  border-right: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
 }
 
 .stepper-btn:last-child {
-  border-left: 1px solid var(--settings-rule, var(--border-subtle));
+  border-left: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
 }
 
 .stepper-btn:disabled {
@@ -190,7 +190,7 @@ function commitDraft() {
 }
 
 .stepper-btn:hover:not(:disabled) {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .number-stepper-compact .stepper-btn {
@@ -204,7 +204,7 @@ function commitDraft() {
   justify-content: center;
   min-width: 58px;
   padding: 0 7px;
-  color: var(--settings-ink, var(--text-primary));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 15px;
   font-weight: 650;
   white-space: nowrap;
@@ -250,7 +250,7 @@ function commitDraft() {
 
 .stepper-suffix {
   margin-left: 1px;
-  color: var(--settings-ink-3, var(--text-secondary));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
   font-size: 0.82em;
 }
 </style>

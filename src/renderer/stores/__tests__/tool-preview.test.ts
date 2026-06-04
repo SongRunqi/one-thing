@@ -53,11 +53,11 @@ describe('formatToolCallPreview', () => {
   })
 
   describe('streaming input', () => {
-    it('extracts file_path for write tool from streaming args', () => {
+    it('extracts path for write tool from streaming args', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'write',
         status: 'input-streaming',
-        streamingArgs: '{"file_path":"/Users/me/project/src/foo.ts","content":"...',
+        streamingArgs: '{"path":"/Users/me/project/src/foo.ts","content":"...',
       }))).toBe('foo.ts')
     })
 
@@ -65,11 +65,11 @@ describe('formatToolCallPreview', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'edit',
         status: 'input-streaming',
-        streamingArgs: '{"new_string":"const FLUSH_INTERVAL_MS = 250"}',
+        streamingArgs: '{"edits":[{"newText":"const FLUSH_INTERVAL_MS = 250"}]}',
       }))).toBe('')
     })
 
-    it('falls back to streaming args tail when no file_path yet', () => {
+    it('falls back to streaming args tail when no path yet', () => {
       const longArgs = 'x'.repeat(200)
       const result = formatToolCallPreview(tc({
         toolName: 'bash',
@@ -93,7 +93,7 @@ describe('formatToolCallPreview', () => {
   })
 
   describe('per-tool summaries', () => {
-    it('bash: shows command, truncated to 55 chars', () => {
+    it('bash: shows command, truncated to 96 chars', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'bash',
         arguments: { command: 'ls -la' },
@@ -105,17 +105,17 @@ describe('formatToolCallPreview', () => {
         arguments: { command: long },
       }))
       expect(result.endsWith('...')).toBe(true)
-      expect(result.length).toBe(55)
+      expect(result.length).toBe(96)
     })
 
     it('read: shows file path with optional range', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'read',
-        arguments: { file_path: '/Users/me/project/src/foo.ts' },
+        arguments: { path: '/Users/me/project/src/foo.ts' },
       }))).toBe('foo.ts')
       expect(formatToolCallPreview(tc({
         toolName: 'read',
-        arguments: { file_path: '/Users/me/project/src/foo.ts', offset: 10, limit: 20 },
+        arguments: { path: '/Users/me/project/src/foo.ts', offset: 10, limit: 20 },
       }))).toBe('foo.ts:10-29')
     })
 
@@ -133,7 +133,7 @@ describe('formatToolCallPreview', () => {
     it('edit: shows path with diff stats when present', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'edit',
-        arguments: { file_path: '/Users/me/project/src/foo.ts' },
+        arguments: { path: '/Users/me/project/src/foo.ts' },
         changes: { diff: '...', filePath: '/Users/me/project/src/foo.ts', additions: 3, deletions: 1 },
       }))).toBe('foo.ts (+3 -1)')
     })
@@ -141,14 +141,14 @@ describe('formatToolCallPreview', () => {
     it('write: shows path with content size', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'write',
-        arguments: { file_path: '/Users/me/project/src/foo.ts', content: 'hello world' },
+        arguments: { path: '/Users/me/project/src/foo.ts', content: 'hello world' },
       }))).toBe('foo.ts (11 chars)')
     })
 
     it('default: falls back to first arg or path/pattern', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'unknown',
-        arguments: { file_path: 'a.ts' },
+        arguments: { path: 'a.ts' },
       }))).toBe('a.ts')
       expect(formatToolCallPreview(tc({
         toolName: 'unknown',

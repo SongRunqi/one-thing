@@ -1,405 +1,475 @@
 // @vitest-environment happy-dom
-import { mount, type VueWrapper } from '@vue/test-utils'
-import { nextTick, reactive } from 'vue'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import InputBox from '../InputBox.vue'
-import { createDefaultSettings } from '../../../../shared/defaults/settings'
+import { mount, type VueWrapper } from "@vue/test-utils";
+import { nextTick, reactive } from "vue";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import InputBox from "../InputBox.vue";
+import { createDefaultSettings } from "../../../../shared/defaults/settings";
 
 const mocks = vi.hoisted(() => ({
-  settingsStore: null as any,
-  sessionsStore: null as any,
-  chatStore: null as any,
-  voiceStore: null as any,
-  promptsStore: null as any,
-}))
+	settingsStore: null as any,
+	sessionsStore: null as any,
+	chatStore: null as any,
+	voiceStore: null as any,
+	promptsStore: null as any,
+}));
 
-vi.mock('@/stores/settings', () => ({
-  useSettingsStore: () => mocks.settingsStore,
-}))
+vi.mock("@/stores/settings", () => ({
+	useSettingsStore: () => mocks.settingsStore,
+}));
 
-vi.mock('@/stores/sessions', () => ({
-  useSessionsStore: () => mocks.sessionsStore,
-}))
+vi.mock("@/stores/sessions", () => ({
+	useSessionsStore: () => mocks.sessionsStore,
+}));
 
-vi.mock('@/stores/chat', () => ({
-  useChatStore: () => mocks.chatStore,
-}))
+vi.mock("@/stores/chat", () => ({
+	useChatStore: () => mocks.chatStore,
+}));
 
-vi.mock('@/stores/voice', () => ({
-  useVoiceStore: () => mocks.voiceStore,
-}))
+vi.mock("@/stores/voice", () => ({
+	useVoiceStore: () => mocks.voiceStore,
+}));
 
-vi.mock('@/stores/prompts', () => ({
-  usePromptsStore: () => mocks.promptsStore,
-}))
+vi.mock("@/stores/prompts", () => ({
+	usePromptsStore: () => mocks.promptsStore,
+}));
 
-vi.mock('@/services/commands', () => ({
-  findCommand: vi.fn(() => null),
-  getCommands: vi.fn(() => [{
-    id: 'compact',
-    name: 'Compact Context',
-    description: 'Compact context',
-    usage: '/compact',
-    execute: vi.fn(),
-  }]),
-  refreshPluginCommands: vi.fn().mockResolvedValue([]),
-}))
+vi.mock("@/services/commands", () => ({
+	findCommand: vi.fn(() => null),
+	getCommands: vi.fn(() => [
+		{
+			id: "compact",
+			name: "Compact Context",
+			description: "Compact context",
+			usage: "/compact",
+			execute: vi.fn(),
+		},
+	]),
+	refreshPluginCommands: vi.fn().mockResolvedValue([]),
+}));
 
-vi.mock('@/editor/TextEditor.vue', () => ({
-  default: {
-    name: 'TextEditor',
-    props: ['modelValue'],
-    emits: [
-      'update:modelValue',
-      'paste',
-      'keydown',
-      'focus',
-      'blur',
-      'heightChange',
-      'selectionChange',
-      'transaction',
-      'compositionstart',
-      'compositionend',
-    ],
-    template: '<textarea class="composer-input" :value="modelValue" @input="onInput" @paste="$emit(\'paste\', $event)" @keydown="$emit(\'keydown\', $event)" />',
-    methods: {
-      onInput(this: any, event: Event) {
-        this.$emit('update:modelValue', (event.target as HTMLTextAreaElement).value)
-      },
-      focus() {},
-      scrollToTop() {},
-      getSelection(this: any) {
-        const length = String(this.modelValue ?? '').length
-        return { from: length, to: length }
-      },
-      replaceRange() {},
-      setValue(this: any, value: string) {
-        this.$emit('update:modelValue', value)
-      },
-    },
-  },
-}))
+vi.mock("@/editor/TextEditor.vue", () => ({
+	default: {
+		name: "TextEditor",
+		props: ["modelValue"],
+		emits: [
+			"update:modelValue",
+			"paste",
+			"keydown",
+			"focus",
+			"blur",
+			"heightChange",
+			"selectionChange",
+			"transaction",
+			"compositionstart",
+			"compositionend",
+		],
+		template:
+			'<textarea class="composer-input" :value="modelValue" @input="onInput" @paste="$emit(\'paste\', $event)" @keydown="$emit(\'keydown\', $event)" />',
+		methods: {
+			onInput(this: any, event: Event) {
+				this.$emit(
+					"update:modelValue",
+					(event.target as HTMLTextAreaElement).value,
+				);
+			},
+			focus() {},
+			scrollToTop() {},
+			getSelection(this: any) {
+				const length = String(this.modelValue ?? "").length;
+				return { from: length, to: length };
+			},
+			replaceRange() {},
+			setValue(this: any, value: string) {
+				this.$emit("update:modelValue", value);
+			},
+		},
+	},
+}));
 
 function makePasteEvent(files: File[]): ClipboardEvent {
-  const event = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
-  Object.defineProperty(event, 'clipboardData', {
-    value: {
-      files,
-      items: files.map(file => ({
-        kind: 'file',
-        type: file.type,
-        getAsFile: () => file,
-      })),
-    },
-  })
-  return event
+	const event = new Event("paste", {
+		bubbles: true,
+		cancelable: true,
+	}) as ClipboardEvent;
+	Object.defineProperty(event, "clipboardData", {
+		value: {
+			files,
+			items: files.map((file) => ({
+				kind: "file",
+				type: file.type,
+				getAsFile: () => file,
+			})),
+		},
+	});
+	return event;
 }
 
 async function settle() {
-  await nextTick()
-  await Promise.resolve()
-  await Promise.resolve()
-  await new Promise(resolve => setTimeout(resolve, 0))
-  await nextTick()
+	await nextTick();
+	await Promise.resolve();
+	await Promise.resolve();
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	await nextTick();
 }
 
 async function waitFor(predicate: () => boolean) {
-  for (let i = 0; i < 25; i += 1) {
-    await settle()
-    if (predicate()) return
-  }
-  throw new Error('Timed out waiting for condition')
+	for (let i = 0; i < 25; i += 1) {
+		await settle();
+		if (predicate()) return;
+	}
+	throw new Error("Timed out waiting for condition");
 }
 
 function dispatchKeydown(element: Element, key: string) {
-  const event = new KeyboardEvent('keydown', {
-    key,
-    bubbles: true,
-    cancelable: true,
-  })
-  element.dispatchEvent(event)
-  return event
+	const event = new KeyboardEvent("keydown", {
+		key,
+		bubbles: true,
+		cancelable: true,
+	});
+	element.dispatchEvent(event);
+	return event;
 }
 
 function mountInputBox(props: Record<string, unknown> = {}) {
-  return mount(InputBox, {
-    attachTo: document.body,
-    props: {
-      sessionId: 'session-1',
-      ...props,
-    },
-    global: {
-      stubs: {
-        QuotedContext: { template: '<div />' },
-        CommandPicker: { template: '<div />' },
-        SkillPicker: { template: '<div />' },
-        FilePicker: { template: '<div />' },
-        PathPicker: { template: '<div />' },
-        ModelSelector: { template: '<div />' },
-        ThinkToggle: { template: '<div />' },
-        Transition: false,
-        TransitionGroup: false,
-      },
-    },
-  })
+	return mount(InputBox, {
+		attachTo: document.body,
+		props: {
+			sessionId: "session-1",
+			...props,
+		},
+		global: {
+			stubs: {
+				QuotedContext: { template: "<div />" },
+				CommandPicker: { template: "<div />" },
+				SkillPicker: { template: "<div />" },
+				FilePicker: { template: "<div />" },
+				PathPicker: { template: "<div />" },
+				ModelSelector: { template: "<div />" },
+				ThinkToggle: { template: "<div />" },
+				Transition: false,
+				TransitionGroup: false,
+			},
+		},
+	});
 }
 
 async function setComposerValue(wrapper: VueWrapper, value: string) {
-  await wrapper.find('textarea').setValue(value)
-  wrapper.findComponent({ name: 'TextEditor' }).vm.$emit('transaction', {
-    value,
-    selection: { from: value.length, to: value.length },
-    docChanged: true,
-    selectionChanged: true,
-  })
-  await settle()
+	await wrapper.find("textarea").setValue(value);
+	wrapper.findComponent({ name: "TextEditor" }).vm.$emit("transaction", {
+		value,
+		selection: { from: value.length, to: value.length },
+		docChanged: true,
+		selectionChanged: true,
+	});
+	await settle();
 }
 
-describe('InputBox paste attachments', () => {
-  beforeEach(() => {
-    const baseSettings = createDefaultSettings()
-    baseSettings.ai.provider = 'openai'
-    baseSettings.ai.providers.openai.model = 'gpt-vision'
+describe("InputBox paste attachments", () => {
+	beforeEach(() => {
+		const baseSettings = createDefaultSettings();
+		baseSettings.ai.provider = "openai";
+		baseSettings.ai.providers.openai.model = "gpt-vision";
 
-    mocks.settingsStore = reactive({
-      settings: baseSettings,
-      saveSettings: vi.fn(async (newSettings) => {
-        mocks.settingsStore.settings = newSettings
-      }),
-      getCachedModels: vi.fn(() => [{
-        id: 'gpt-vision',
-        architecture: { input_modalities: ['text', 'image'] },
-      }]),
-    })
-    mocks.sessionsStore = reactive({
-      currentSessionId: 'session-1',
-      sessionVariables: new Map(),
-      sessions: [{ id: 'session-1', workingDirectory: '/repo' }],
-    })
-    mocks.chatStore = reactive({
-      isSessionGenerating: vi.fn(() => false),
-    })
-    mocks.voiceStore = reactive({
-      isEnabled: false,
-      isRecording: false,
-      status: 'idle',
-      startListening: vi.fn().mockResolvedValue({ success: true }),
-      stop: vi.fn(),
-    })
-    mocks.promptsStore = reactive({
-      prompts: [],
-      loadPrompts: vi.fn().mockResolvedValue([]),
-    })
+		mocks.settingsStore = reactive({
+			settings: baseSettings,
+			saveSettings: vi.fn(async (newSettings) => {
+				mocks.settingsStore.settings = newSettings;
+			}),
+			getCachedModels: vi.fn(() => [
+				{
+					id: "gpt-vision",
+					architecture: { input_modalities: ["text", "image"] },
+				},
+			]),
+		});
+		mocks.sessionsStore = reactive({
+			currentSessionId: "session-1",
+			sessionVariables: new Map(),
+			sessions: [{ id: "session-1", workingDirectory: "/repo" }],
+		});
+		const composerDrafts = new Map<string, any>();
+		mocks.chatStore = reactive({
+			isSessionGenerating: vi.fn(() => false),
+			setComposerDraft: vi.fn((sessionId: string, draft: any) => {
+				if (
+					!draft.messageInput?.trim() &&
+					!draft.quotedText?.trim() &&
+					!draft.attachments?.length
+				) {
+					composerDrafts.delete(sessionId);
+				} else {
+					composerDrafts.set(sessionId, {
+						...draft,
+						attachments: [...(draft.attachments || [])],
+					});
+				}
+			}),
+			getComposerDraft: vi.fn(
+				(sessionId: string) => composerDrafts.get(sessionId) || null,
+			),
+			clearComposerDraft: vi.fn((sessionId: string) =>
+				composerDrafts.delete(sessionId),
+			),
+			isComposerDraftEmpty: vi.fn(
+				(sessionId: string) => !composerDrafts.has(sessionId),
+			),
+		});
+		mocks.voiceStore = reactive({
+			isEnabled: false,
+			isRecording: false,
+			status: "idle",
+			startListening: vi.fn().mockResolvedValue({ success: true }),
+			stop: vi.fn(),
+		});
+		mocks.promptsStore = reactive({
+			prompts: [],
+			loadPrompts: vi.fn().mockResolvedValue([]),
+		});
 
-    vi.stubGlobal('ResizeObserver', class {
-      observe() {}
-      disconnect() {}
-    })
-    vi.stubGlobal('Image', class {
-      width = 320
-      height = 180
-      onload: (() => void) | null = null
-      set src(_value: string) {
-        queueMicrotask(() => this.onload?.())
-      }
-    })
-    vi.stubGlobal('window', Object.assign(window, {
-      electronAPI: {
-        getSkills: vi.fn().mockResolvedValue({ success: true, skills: [] }),
-        listVariables: vi.fn().mockResolvedValue({ success: true, variables: [] }),
-        listFiles: vi.fn().mockResolvedValue({ success: true, files: ['/repo/src/main.ts'] }),
-        listDirs: vi.fn().mockResolvedValue({ success: true, dirs: ['/repo/src'] }),
-        openSettingsWindow: vi.fn().mockResolvedValue({ success: true }),
-      },
-    }))
-  })
+		vi.stubGlobal(
+			"ResizeObserver",
+			class {
+				observe() {}
+				disconnect() {}
+			},
+		);
+		vi.stubGlobal(
+			"Image",
+			class {
+				width = 320;
+				height = 180;
+				onload: (() => void) | null = null;
+				set src(_value: string) {
+					queueMicrotask(() => this.onload?.());
+				}
+			},
+		);
+		vi.stubGlobal(
+			"window",
+			Object.assign(window, {
+				electronAPI: {
+					getSkills: vi.fn().mockResolvedValue({ success: true, skills: [] }),
+					listVariables: vi
+						.fn()
+						.mockResolvedValue({ success: true, variables: [] }),
+					listFiles: vi
+						.fn()
+						.mockResolvedValue({ success: true, files: ["/repo/src/main.ts"] }),
+					listDirs: vi
+						.fn()
+						.mockResolvedValue({ success: true, dirs: ["/repo/src"] }),
+					openSettingsWindow: vi.fn().mockResolvedValue({ success: true }),
+				},
+			}),
+		);
+	});
 
-  afterEach(() => {
-    vi.unstubAllGlobals()
-    vi.restoreAllMocks()
-    document.body.innerHTML = ''
-  })
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+		document.body.textContent = "";
+	});
 
-  it('shows an attachment tray after pasting a file', async () => {
-    const wrapper = mountInputBox()
-    const file = new File(['hello'], 'notes.txt', { type: 'text/plain' })
+	it("restores composer text when switching back to a draft session", async () => {
+		const wrapper = mountInputBox({ sessionId: "draft:one" });
 
-    wrapper.find('textarea').element.dispatchEvent(makePasteEvent([file]))
-    await waitFor(() => wrapper.text().includes('notes.txt'))
+		await setComposerValue(wrapper, "unfinished draft");
+		await wrapper.setProps({ sessionId: "session-2" });
+		await settle();
+		expect((wrapper.find("textarea").element as HTMLTextAreaElement).value).toBe("");
 
-    expect(wrapper.find('.attachment-tray').exists()).toBe(true)
-    expect(wrapper.text()).toContain('notes.txt')
-    expect(wrapper.find('.send-btn').attributes('disabled')).toBeUndefined()
-  })
+		await wrapper.setProps({ sessionId: "draft:one" });
+		await settle();
 
-  it('allows sending an attachment-only message', async () => {
-    const wrapper = mountInputBox()
-    const file = new File(['pdf'], 'brief.pdf', { type: 'application/pdf' })
+		expect((wrapper.find("textarea").element as HTMLTextAreaElement).value).toBe("unfinished draft");
+	});
 
-    wrapper.find('textarea').element.dispatchEvent(makePasteEvent([file]))
-    await waitFor(() => wrapper.text().includes('brief.pdf'))
-    await wrapper.find('.send-btn').trigger('click')
-    await settle()
+	it("shows an attachment tray after pasting a file", async () => {
+		const wrapper = mountInputBox();
+		const file = new File(["hello"], "notes.txt", { type: "text/plain" });
 
-    const emitted = wrapper.emitted('sendMessage')?.[0]
-    expect(emitted?.[0]).toBe('')
-    expect(emitted?.[1]).toBe('send')
-    expect(emitted?.[2]).toMatchObject([{
-      fileName: 'brief.pdf',
-      mimeType: 'application/pdf',
-      mediaType: 'document',
-    }])
-    expect(wrapper.find('.attachment-tray').exists()).toBe(false)
-  })
+		wrapper.find("textarea").element.dispatchEvent(makePasteEvent([file]));
+		await waitFor(() => wrapper.text().includes("notes.txt"));
 
-  it('removes a pasted attachment from the tray', async () => {
-    const wrapper = mountInputBox()
-    const file = new File(['hello'], 'remove-me.txt', { type: 'text/plain' })
+		expect(wrapper.find(".attachment-tray").exists()).toBe(true);
+		expect(wrapper.text()).toContain("notes.txt");
+		expect(wrapper.find(".send-btn").attributes("disabled")).toBeUndefined();
+	});
 
-    wrapper.find('textarea').element.dispatchEvent(makePasteEvent([file]))
-    await waitFor(() => wrapper.text().includes('remove-me.txt'))
-    await wrapper.find('.attachment-remove').trigger('click')
-    await settle()
+	it("allows sending an attachment-only message", async () => {
+		const wrapper = mountInputBox();
+		const file = new File(["pdf"], "brief.pdf", { type: "application/pdf" });
 
-    expect(wrapper.find('.attachment-tray').exists()).toBe(false)
-    expect(wrapper.find('.send-btn').attributes('disabled')).toBeDefined()
-  })
+		wrapper.find("textarea").element.dispatchEvent(makePasteEvent([file]));
+		await waitFor(() => wrapper.text().includes("brief.pdf"));
+		await wrapper.find(".send-btn").trigger("click");
+		await settle();
 
-  it('queues attachment messages during generation and flushes them afterwards', async () => {
-    const wrapper = mountInputBox({ isLoading: true })
-    const file = new File(['hello'], 'queued.txt', { type: 'text/plain' })
+		const emitted = wrapper.emitted("sendMessage")?.[0];
+		expect(emitted?.[0]).toBe("");
+		expect(emitted?.[1]).toBe("send");
+		expect(emitted?.[2]).toMatchObject([
+			{
+				fileName: "brief.pdf",
+				mimeType: "application/pdf",
+				mediaType: "document",
+			},
+		]);
+		expect(wrapper.find(".attachment-tray").exists()).toBe(false);
+	});
 
-    wrapper.find('textarea').element.dispatchEvent(makePasteEvent([file]))
-    await waitFor(() => wrapper.text().includes('queued.txt'))
-    await wrapper.find('.send-btn').trigger('click')
-    await settle()
+	it("removes a pasted attachment from the tray", async () => {
+		const wrapper = mountInputBox();
+		const file = new File(["hello"], "remove-me.txt", { type: "text/plain" });
 
-    expect(wrapper.emitted('sendMessage')).toBeUndefined()
-    expect(wrapper.text()).toContain('1 file attached')
+		wrapper.find("textarea").element.dispatchEvent(makePasteEvent([file]));
+		await waitFor(() => wrapper.text().includes("remove-me.txt"));
+		await wrapper.find(".attachment-remove").trigger("click");
+		await settle();
 
-    await wrapper.setProps({ isLoading: false })
-    await settle()
+		expect(wrapper.find(".attachment-tray").exists()).toBe(false);
+		expect(wrapper.find(".send-btn").attributes("disabled")).toBeDefined();
+	});
 
-    const emitted = wrapper.emitted('sendMessage')?.[0]
-    expect(emitted?.[0]).toBe('')
-    expect(emitted?.[1]).toBe('send')
-    expect(emitted?.[2]).toMatchObject([{ fileName: 'queued.txt' }])
-  })
+	it("queues attachment messages during generation and flushes them afterwards", async () => {
+		const wrapper = mountInputBox({ isLoading: true });
+		const file = new File(["hello"], "queued.txt", { type: "text/plain" });
 
-  it('keeps Enter inside the active palette instead of sending the draft', async () => {
-    const wrapper = mountInputBox()
+		wrapper.find("textarea").element.dispatchEvent(makePasteEvent([file]));
+		await waitFor(() => wrapper.text().includes("queued.txt"));
+		await wrapper.find(".send-btn").trigger("click");
+		await settle();
 
-    await setComposerValue(wrapper, '/c')
-    dispatchKeydown(wrapper.find('textarea').element, 'Enter')
-    await settle()
+		expect(wrapper.emitted("sendMessage")).toBeUndefined();
+		expect(wrapper.text()).toContain("1 file attached");
 
-    expect(wrapper.emitted('sendMessage')).toBeUndefined()
-  })
+		await wrapper.setProps({ isLoading: false });
+		await settle();
 
-  it('keeps Enter inside the active file picker instead of sending the draft', async () => {
-    const wrapper = mountInputBox()
+		const emitted = wrapper.emitted("sendMessage")?.[0];
+		expect(emitted?.[0]).toBe("");
+		expect(emitted?.[1]).toBe("send");
+		expect(emitted?.[2]).toMatchObject([{ fileName: "queued.txt" }]);
+	});
 
-    await setComposerValue(wrapper, '@')
-    dispatchKeydown(wrapper.find('textarea').element, 'Enter')
-    await settle()
+	it("keeps Enter inside the active palette instead of sending the draft", async () => {
+		const wrapper = mountInputBox();
 
-    expect(wrapper.emitted('sendMessage')).toBeUndefined()
-  })
+		await setComposerValue(wrapper, "/c");
+		dispatchKeydown(wrapper.find("textarea").element, "Enter");
+		await settle();
 
-  it('lets /cd Enter flow through as the path confirmation action', async () => {
-    const wrapper = mountInputBox()
+		expect(wrapper.emitted("sendMessage")).toBeUndefined();
+	});
 
-    await setComposerValue(wrapper, '/cd /repo')
-    dispatchKeydown(wrapper.find('textarea').element, 'Enter')
-    await settle()
+	it("keeps Enter inside the active file picker instead of sending the draft", async () => {
+		const wrapper = mountInputBox();
 
-    expect(wrapper.emitted('sendMessage')?.[0]?.[0]).toBe('/cd /repo')
-  })
+		await setComposerValue(wrapper, "@");
+		dispatchKeydown(wrapper.find("textarea").element, "Enter");
+		await settle();
 
-  it('keeps the voice button clickable and repairs an incomplete advanced ASR choice', async () => {
-    mocks.settingsStore.settings.voice.enabled = true
-    mocks.settingsStore.settings.voice.asr.provider = 'openai-transcribe'
-    mocks.settingsStore.settings.voice.asr.openai.apiKey = ''
-    mocks.settingsStore.settings.ai.providers.openai.apiKey = ''
-    mocks.settingsStore.settings.ai.providers.openrouter.apiKey = ''
+		expect(wrapper.emitted("sendMessage")).toBeUndefined();
+	});
 
-    const wrapper = mountInputBox()
-    const voiceButton = wrapper.find('.voice-btn')
+	it("lets /cd Enter flow through as the path confirmation action", async () => {
+		const wrapper = mountInputBox();
 
-    expect(voiceButton.attributes('disabled')).toBeUndefined()
+		await setComposerValue(wrapper, "/cd /repo");
+		dispatchKeydown(wrapper.find("textarea").element, "Enter");
+		await settle();
 
-    await voiceButton.trigger('click')
-    await settle()
+		expect(wrapper.emitted("sendMessage")?.[0]?.[0]).toBe("/cd /repo");
+	});
 
-    const savedSettings = mocks.settingsStore.saveSettings.mock.calls.at(-1)?.[0]
-    expect(savedSettings.voice.asr.provider).toBe('funasr-stream')
-    expect(window.electronAPI.openSettingsWindow).toHaveBeenCalled()
-    expect(mocks.voiceStore.startListening).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('Voice was reset to streaming ASR')
-  })
+	it("keeps the voice button clickable and repairs an incomplete advanced ASR choice", async () => {
+		mocks.settingsStore.settings.voice.enabled = true;
+		mocks.settingsStore.settings.voice.asr.provider = "openai-transcribe";
+		mocks.settingsStore.settings.voice.asr.openai.apiKey = "";
+		mocks.settingsStore.settings.ai.providers.openai.apiKey = "";
+		mocks.settingsStore.settings.ai.providers.openrouter.apiKey = "";
 
-  it('enables the recommended voice path from the mic button when FunASR streaming is configured', async () => {
-    mocks.settingsStore.settings.voice.enabled = false
-    mocks.settingsStore.settings.voice.asr.provider = 'funasr-stream'
-    mocks.settingsStore.settings.voice.asr.funasr.url = 'ws://127.0.0.1:10095'
+		const wrapper = mountInputBox();
+		const voiceButton = wrapper.find(".voice-btn");
 
-    const wrapper = mountInputBox()
+		expect(voiceButton.attributes("disabled")).toBeUndefined();
 
-    await wrapper.find('.voice-btn').trigger('click')
-    await settle()
+		await voiceButton.trigger("click");
+		await settle();
 
-    const savedSettings = mocks.settingsStore.saveSettings.mock.calls.at(-1)?.[0]
-    expect(savedSettings.voice.enabled).toBe(true)
-    expect(savedSettings.voice.asr.provider).toBe('funasr-stream')
-    expect(window.electronAPI.openSettingsWindow).not.toHaveBeenCalled()
-    expect(mocks.voiceStore.startListening).toHaveBeenCalledWith('session-1')
-  })
+		const savedSettings =
+			mocks.settingsStore.saveSettings.mock.calls.at(-1)?.[0];
+		expect(savedSettings.voice.asr.provider).toBe("funasr-stream");
+		expect(window.electronAPI.openSettingsWindow).toHaveBeenCalled();
+		expect(mocks.voiceStore.startListening).not.toHaveBeenCalled();
+		expect(wrapper.text()).toContain("Voice was reset to streaming ASR");
+	});
 
-  it('submits the current recording when the mic button is clicked again', async () => {
-    mocks.voiceStore.isRecording = true
+	it("enables the recommended voice path from the mic button when FunASR streaming is configured", async () => {
+		mocks.settingsStore.settings.voice.enabled = false;
+		mocks.settingsStore.settings.voice.asr.provider = "funasr-stream";
+		mocks.settingsStore.settings.voice.asr.funasr.url = "ws://127.0.0.1:10095";
 
-    const wrapper = mountInputBox()
+		const wrapper = mountInputBox();
 
-    await wrapper.find('.voice-btn').trigger('click')
-    await settle()
+		await wrapper.find(".voice-btn").trigger("click");
+		await settle();
 
-    expect(mocks.voiceStore.stop).toHaveBeenCalledWith('mic-button', true)
-    expect(mocks.voiceStore.startListening).not.toHaveBeenCalled()
-  })
+		const savedSettings =
+			mocks.settingsStore.saveSettings.mock.calls.at(-1)?.[0];
+		expect(savedSettings.voice.enabled).toBe(true);
+		expect(savedSettings.voice.asr.provider).toBe("funasr-stream");
+		expect(window.electronAPI.openSettingsWindow).not.toHaveBeenCalled();
+		expect(mocks.voiceStore.startListening).toHaveBeenCalledWith("session-1");
+	});
 
-  it('shows an inline recording status with an explicit stop action', async () => {
-    mocks.voiceStore.isRecording = true
-    mocks.voiceStore.status = 'recording'
-    mocks.settingsStore.settings.voice.vad.silenceMs = 1200
+	it("submits the current recording when the mic button is clicked again", async () => {
+		mocks.voiceStore.isRecording = true;
 
-    const wrapper = mountInputBox()
-    await settle()
+		const wrapper = mountInputBox();
 
-    const statusBar = wrapper.find('.voice-capture-bar')
-    expect(statusBar.exists()).toBe(true)
-    expect(statusBar.text()).toContain('Listening')
-    expect(statusBar.text()).toContain('0:00')
-    expect(statusBar.attributes('title')).toContain('Auto-stops after about 1.2s of silence')
-    expect(statusBar.find('.voice-capture-stop').exists()).toBe(true)
+		await wrapper.find(".voice-btn").trigger("click");
+		await settle();
 
-    await statusBar.find('.voice-capture-stop').trigger('click')
-    await settle()
+		expect(mocks.voiceStore.stop).toHaveBeenCalledWith("mic-button", true);
+		expect(mocks.voiceStore.startListening).not.toHaveBeenCalled();
+	});
 
-    expect(mocks.voiceStore.stop).toHaveBeenCalledWith('mic-button', true)
-  })
+	it("shows an inline recording status with an explicit stop action", async () => {
+		mocks.voiceStore.isRecording = true;
+		mocks.voiceStore.status = "recording";
+		mocks.settingsStore.settings.voice.vad.silenceMs = 1200;
 
-  it('shows an inline transcribing status while speech is sent to ASR', async () => {
-    mocks.voiceStore.isRecording = true
-    mocks.voiceStore.status = 'transcribing'
+		const wrapper = mountInputBox();
+		await settle();
 
-    const wrapper = mountInputBox()
-    await settle()
+		const statusBar = wrapper.find(".voice-capture-bar");
+		expect(statusBar.exists()).toBe(true);
+		expect(statusBar.text()).toContain("Listening");
+		expect(statusBar.text()).toContain("0:00");
+		expect(statusBar.attributes("title")).toContain(
+			"Auto-stops after about 1.2s of silence",
+		);
+		expect(statusBar.find(".voice-capture-stop").exists()).toBe(true);
 
-    const statusBar = wrapper.find('.voice-capture-bar')
-    expect(statusBar.exists()).toBe(true)
-    expect(statusBar.text()).toContain('Transcribing')
-    expect(statusBar.text()).toContain('Speech to text')
-    expect(statusBar.find('.voice-capture-stop').exists()).toBe(false)
-    expect(wrapper.find('.voice-btn').classes()).toContain('transcribing')
-  })
-})
+		await statusBar.find(".voice-capture-stop").trigger("click");
+		await settle();
+
+		expect(mocks.voiceStore.stop).toHaveBeenCalledWith("mic-button", true);
+	});
+
+	it("shows an inline transcribing status while speech is sent to ASR", async () => {
+		mocks.voiceStore.isRecording = true;
+		mocks.voiceStore.status = "transcribing";
+
+		const wrapper = mountInputBox();
+		await settle();
+
+		const statusBar = wrapper.find(".voice-capture-bar");
+		expect(statusBar.exists()).toBe(true);
+		expect(statusBar.text()).toContain("Transcribing");
+		expect(statusBar.text()).toContain("Speech to text");
+		expect(statusBar.find(".voice-capture-stop").exists()).toBe(false);
+		expect(wrapper.find(".voice-btn").classes()).toContain("transcribing");
+	});
+});

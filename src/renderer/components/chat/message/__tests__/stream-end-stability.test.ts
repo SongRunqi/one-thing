@@ -42,7 +42,7 @@ function toolCall(overrides: Partial<ToolCall> = {}): ToolCall {
     id: 'tc1',
     toolId: 'edit',
     toolName: 'edit',
-    arguments: { file_path: '/tmp/a.ts' },
+    arguments: { path: '/tmp/a.ts' },
     status: 'pending',
     timestamp: 0,
     changes: {
@@ -248,14 +248,14 @@ describe('stream end visual stability', () => {
     const rejectedStep = step({
       id: 'step2',
       status: 'failed',
-      error: 'User rejected this operation',
+      error: 'The user rejected permission for this tool.',
       rejected: true,
       toolCall: toolCall({
         id: 'tc2',
         status: 'failed',
         requiresConfirmation: false,
         rejected: true,
-        error: 'User rejected this operation',
+        error: 'The user rejected permission for this tool.',
       }),
       toolCallId: 'tc2',
     })
@@ -289,7 +289,7 @@ describe('stream end visual stability', () => {
     const wrapper = mount(StepsPanel, {
       props: {
         steps: [writeStep({}, {
-          streamingArgs: JSON.stringify({ file_path: '/tmp/generated.ts', content }),
+          streamingArgs: JSON.stringify({ path: '/tmp/generated.ts', content }),
         })],
       },
       global: {
@@ -311,7 +311,7 @@ describe('stream end visual stability', () => {
     await wrapper.setProps({
       steps: [writeStep({}, {
         status: 'executing',
-        arguments: { file_path: '/tmp/generated.ts', content },
+        arguments: { path: '/tmp/generated.ts', content },
       })],
     })
     await nextTick()

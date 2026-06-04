@@ -130,15 +130,18 @@
         "danger": "bg0"
       },
       "code": {
-        "inline": "purpleBright",
+        "inline": "fg1",
         "block": "fg1",
         "comment": "gray",
-        "keyword": "redBright",
+        "keyword": "purpleBright",
         "string": "greenBright",
-        "number": "purpleBright",
-        "function": "greenBright",
-        "variable": "blueBright",
-        "operator": "fg3"
+        "number": "orangeBright",
+        "function": "blueBright",
+        "variable": "fg2",
+        "operator": "fg3",
+        "type": "aquaBright",
+        "property": "blueBright",
+        "punctuation": "fg3"
       },
       "menu": {
         "item": "fg3",

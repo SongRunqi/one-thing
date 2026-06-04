@@ -778,7 +778,7 @@ onMounted(async () => {
   padding: 16px 6px 20px;
   overflow-x: hidden;
   overflow-y: auto;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .tasks-panel,
@@ -833,7 +833,7 @@ onMounted(async () => {
 .trace-row small,
 label span {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 12px;
 }
 
@@ -844,9 +844,9 @@ label span {
 .icon-btn,
 .primary-btn,
 .text-btn {
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  color: var(--text);
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
 }
 
@@ -865,7 +865,7 @@ label span {
 
 .icon-btn:hover:not(:disabled),
 .primary-btn:hover:not(:disabled) {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .icon-btn:disabled,
@@ -876,7 +876,7 @@ label span {
 }
 
 .icon-btn.danger {
-  color: var(--danger, #ef4444);
+  color: var(--ui-status-danger-fg, var(--danger, #ef4444));
 }
 
 .primary-btn {
@@ -902,7 +902,7 @@ label span {
 .text-btn {
   border: 0;
   background: transparent;
-  color: var(--accent, #4f7cff);
+  color: var(--ui-accent-primary-fg, var(--accent));
   padding: 4px 2px;
   font-size: 12px;
 }
@@ -933,7 +933,7 @@ label span {
   align-items: center;
   justify-content: space-between;
   padding: 0 8px 6px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0;
@@ -950,7 +950,7 @@ label span {
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   padding: 9px 8px;
   text-align: left;
   cursor: pointer;
@@ -961,12 +961,12 @@ label span {
 }
 
 .task-row:hover {
-  background: color-mix(in srgb, var(--text) 5%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
 }
 
 .task-row.active {
-  background: var(--active);
-  box-shadow: inset 3px 0 0 var(--accent, #4f7cff);
+  background: var(--ui-state-active-bg, var(--active));
+  box-shadow: inset 3px 0 0 var(--ui-accent-primary-fg, var(--accent));
 }
 
 .task-icon {
@@ -976,13 +976,13 @@ label span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--text) 5%, transparent);
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
 }
 
 .task-row.active .task-icon {
-  color: var(--accent, #4f7cff);
-  background: color-mix(in srgb, var(--accent, #4f7cff) 13%, transparent);
+  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 13%, transparent);
 }
 
 .task-row-main {
@@ -1017,7 +1017,7 @@ label span {
   gap: 8px;
   min-width: 0;
   margin-top: 2px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 11px;
 }
 
@@ -1041,7 +1041,7 @@ label span {
   width: 3px;
   height: 3px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--text-muted) 58%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 58%, transparent);
   transform: translateY(-50%);
 }
 
@@ -1049,21 +1049,21 @@ label span {
   flex-shrink: 0;
   border-radius: 999px;
   padding: 2px 7px 3px;
-  background: color-mix(in srgb, #22c55e 14%, transparent);
-  color: #16a34a;
+  background: color-mix(in srgb, var(--ui-status-success-fg, #22c55e) 14%, transparent);
+  color: var(--ui-status-success-fg, #16a34a);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.2;
 }
 
 .status-pill.off {
-  background: color-mix(in srgb, var(--text-muted) 13%, transparent);
-  color: var(--text-muted);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 13%, transparent);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .status-pill.running {
-  background: color-mix(in srgb, #f59e0b 16%, transparent);
-  color: #d97706;
+  background: color-mix(in srgb, var(--ui-status-warning-fg, #f59e0b) 16%, transparent);
+  color: var(--ui-status-warning-fg, #d97706);
 }
 
 .task-detail,
@@ -1074,15 +1074,15 @@ label span {
 }
 
 .editor-section {
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--bg-elevated);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   padding: 12px;
 }
 
 .task-detail {
   padding: 14px 2px 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .detail-head {
@@ -1113,8 +1113,8 @@ label span {
   align-items: center;
   padding: 0 7px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-  color: var(--text-muted);
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 6%, transparent);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 11px;
   font-weight: 650;
 }
@@ -1133,10 +1133,10 @@ label span {
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
   overflow: hidden;
-  background: var(--bg-elevated);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
 }
 
 .metric-grid span {
@@ -1149,15 +1149,15 @@ label span {
 }
 
 .metric-grid span:nth-child(odd) {
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .metric-grid span:nth-child(n + 3) {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .metric-grid small {
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .metric-grid strong {
@@ -1168,9 +1168,9 @@ label span {
 
 .detail-prompt {
   margin: 0;
-  border-left: 2px solid color-mix(in srgb, var(--accent, #4f7cff) 50%, var(--border));
+  border-left: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 50%, var(--ui-border-default-border, var(--border)));
   padding: 1px 0 1px 10px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -1185,17 +1185,17 @@ label {
 .field {
   min-width: 0;
   width: 100%;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 7px;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--ui-surface-app-bg, var(--bg));
+  color: var(--ui-text-primary-fg, var(--text));
   padding: 8px 9px;
   font-size: 13px;
 }
 
 .field:focus {
   outline: none;
-  border-color: color-mix(in srgb, var(--accent, #4f7cff) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 55%, var(--ui-border-default-border, var(--border)));
 }
 
 .textarea {
@@ -1238,8 +1238,8 @@ label {
   align-items: center;
   border: 1px solid transparent;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--accent, #4f7cff) 7%, transparent);
-  color: var(--text);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 7%, transparent);
+  color: var(--ui-text-primary-fg, var(--text));
   padding: 10px;
   text-align: left;
   cursor: pointer;
@@ -1247,7 +1247,7 @@ label {
 }
 
 .history-toggle:hover {
-  background: color-mix(in srgb, var(--accent, #4f7cff) 11%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 11%, transparent);
 }
 
 .history-toggle > span:first-child {
@@ -1262,14 +1262,14 @@ label {
 
 .history-toggle small {
   overflow: hidden;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .history-toggle > span:last-child {
-  color: var(--accent, #4f7cff);
+  color: var(--ui-accent-primary-fg, var(--accent));
   font-size: 12px;
   font-weight: 700;
 }
@@ -1301,7 +1301,7 @@ label {
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   padding: 8px 6px;
   text-align: left;
   cursor: pointer;
@@ -1309,11 +1309,11 @@ label {
 }
 
 .run-row:hover {
-  background: color-mix(in srgb, var(--text) 5%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
 }
 
 .run-row.active {
-  background: var(--active);
+  background: var(--ui-state-active-bg, var(--active));
 }
 
 .run-row strong {
@@ -1332,26 +1332,26 @@ label {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-muted);
+  background: var(--ui-text-muted-fg, var(--text-muted));
   margin-top: 5px;
   order: 1;
 }
 
 .status-dot.succeeded {
-  background: #22c55e;
+  background: var(--ui-status-success-fg, #22c55e);
 }
 
 .status-dot.failed,
 .status-dot.blocked {
-  background: #ef4444;
+  background: var(--ui-status-danger-fg, #ef4444);
 }
 
 .status-dot.running {
-  background: #f59e0b;
+  background: var(--ui-status-warning-fg, #f59e0b);
 }
 
 .run-detail {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
   padding-top: 10px;
 }
 
@@ -1360,20 +1360,20 @@ label {
   max-width: 100%;
   display: grid;
   gap: 4px;
-  border-left: 2px solid color-mix(in srgb, var(--text-muted) 22%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 22%, transparent);
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   padding: 3px 0 3px 10px;
 }
 
 .result-preview,
 .notice {
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 7px;
-  background: var(--bg-elevated);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   padding: 9px;
   margin: 0;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -1381,8 +1381,8 @@ label {
 }
 
 .notice.error {
-  border-color: color-mix(in srgb, #ef4444 42%, var(--border));
-  color: #ef4444;
+  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 42%, var(--ui-border-default-border, var(--border)));
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 
 .trace-row code {
@@ -1391,7 +1391,7 @@ label {
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 11px;
   line-height: 1.45;
 }
@@ -1401,7 +1401,7 @@ label {
   display: grid;
   place-items: center;
   gap: 10px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .spinning {

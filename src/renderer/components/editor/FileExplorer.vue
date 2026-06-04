@@ -293,8 +293,8 @@ onBeforeUnmount(() => {
   min-width: 180px;
   max-width: 320px;
   height: 100%;
-  border-right: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  border-right: 1px solid var(--ui-border-default-border, var(--border));
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 72%, transparent);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -312,9 +312,9 @@ onBeforeUnmount(() => {
   padding: 0 10px;
   font-size: 11px;
   font-weight: 700;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   text-transform: uppercase;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .explorer-actions {
@@ -330,14 +330,14 @@ onBeforeUnmount(() => {
   justify-content: center;
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   border-radius: 5px;
   cursor: pointer;
 }
 
 .explorer-actions button:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .explorer-tree {
@@ -351,7 +351,7 @@ onBeforeUnmount(() => {
 
 .explorer-empty {
   padding: 16px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 13px;
 }
 
@@ -360,9 +360,9 @@ onBeforeUnmount(() => {
   z-index: calc(var(--z-dropdown) + 10);
   min-width: 150px;
   padding: 5px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--panel-2);
+  background: var(--ui-surface-sidebar-bg, var(--panel-2));
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
 }
 
@@ -376,18 +376,18 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 12px;
   text-align: left;
   cursor: pointer;
 }
 
 .explorer-menu button:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .explorer-menu .danger {
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 
 .explorer-dialog-backdrop {
@@ -406,40 +406,40 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 10px;
   padding: 14px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--panel-2);
+  background: var(--ui-surface-sidebar-bg, var(--panel-2));
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
 }
 
 .explorer-dialog label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .explorer-dialog p {
   margin: 0;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
 }
 
 .explorer-dialog input {
   height: 30px;
   padding: 0 9px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--ui-surface-app-bg, var(--bg));
+  color: var(--ui-text-primary-fg, var(--text));
   outline: none;
 }
 
 .explorer-dialog input:focus {
-  border-color: var(--accent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .dialog-error {
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
   font-size: 12px;
 }
 
@@ -452,19 +452,19 @@ onBeforeUnmount(() => {
 .dialog-actions button {
   height: 28px;
   padding: 0 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 6px;
-  background: var(--bg-elevated);
-  color: var(--text);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
 }
 
 .dialog-actions button:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .dialog-actions .danger {
   border-color: rgba(239, 68, 68, 0.35);
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 </style>

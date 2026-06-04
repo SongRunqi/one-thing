@@ -10,7 +10,9 @@ import { useSessionsStore } from '@/stores/sessions'
 
 // Base session type for organizer - compatible with both metadata-only and full sessions
 // This allows the organizer to work with metadata loaded on startup (no messages)
-type SessionBase = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary'>>
+type SessionBase = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary'>> & {
+  kind?: 'new-chat-draft'
+}
 
 // Extended session interface with branch information
 export interface SessionWithBranches extends SessionBase {
@@ -70,6 +72,10 @@ function temporalKey(ts: number): 'today' | 'yesterday' | 'week' | 'older' {
   if (ts >= todayStart - DAY_MS) return 'yesterday'
   if (ts >= todayStart - 6 * DAY_MS) return 'week'
   return 'older'
+}
+
+function isNewChatDraft(session: SessionBase): boolean {
+  return session.kind === 'new-chat-draft'
 }
 
 export function useSessionOrganizer() {
@@ -349,7 +355,12 @@ export function useSessionOrganizer() {
     const buckets: Record<string, Block[]> = {
       pinned: [], today: [], yesterday: [], week: [], older: [],
     }
+    const draftBlocks: Block[] = []
     for (const block of blocks) {
+      if (isNewChatDraft(block.root)) {
+        draftBlocks.push(block)
+        continue
+      }
       const key = block.root.isPinned ? 'pinned' : temporalKey(block.root.lastBranchUpdate)
       buckets[key].push(block)
     }
@@ -373,6 +384,21 @@ export function useSessionOrganizer() {
       if (sectionBlocks.length === 0) continue
       groups.push({ key, label, sessions: sectionBlocks.flatMap(b => b.rows) })
     }
+
+    if (draftBlocks.length > 0) {
+      draftBlocks.sort((a, b) => b.root.lastBranchUpdate - a.root.lastBranchUpdate)
+      const draftRows = draftBlocks.flatMap(b => b.rows)
+      const todayIndex = groups.findIndex(group => group.key === 'today')
+      if (todayIndex >= 0) {
+        const todayGroup = groups[todayIndex]
+        todayGroup.sessions = [...draftRows, ...todayGroup.sessions]
+      } else {
+        const pinnedIndex = groups.findIndex(group => group.key === 'pinned')
+        const insertIndex = pinnedIndex >= 0 ? pinnedIndex + 1 : 0
+        groups.splice(insertIndex, 0, { key: 'today', label: '今天', sessions: draftRows })
+      }
+    }
+
     return groups
   }
 

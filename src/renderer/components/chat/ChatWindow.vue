@@ -207,6 +207,7 @@ watch(() => editorWorkspace.workspace.activePath, (filePath) => {
 const currentSession = computed(() => {
   const sid = effectiveSessionId.value
   if (!sid) return null
+  if (sessionsStore.currentSession?.id === sid) return sessionsStore.currentSession
   return sessionsStore.sessions.find(s => s.id === sid) || null
 })
 
@@ -341,7 +342,7 @@ defineExpose({
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
+  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat))));
   position: relative;
   overflow: hidden;
   border: none;

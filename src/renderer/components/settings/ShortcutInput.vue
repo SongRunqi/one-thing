@@ -179,28 +179,28 @@ function clearShortcut() {
 
 .shortcut-input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.2);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 20%, transparent);
 }
 
 .shortcut-input.recording {
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
 .shortcut-input.empty .shortcut-display {
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-style: italic;
 }
 
 .shortcut-display {
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-weight: 500;
 }
 
 .recording-hint {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   animation: pulse 1s ease-in-out infinite;
 }
 
@@ -216,14 +216,14 @@ function clearShortcut() {
   padding: 2px;
   border: none;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
   border-radius: 4px;
   transition: all 0.15s ease;
 }
 
 .clear-btn:hover {
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   background: rgba(255, 255, 255, 0.1);
 }
 

@@ -514,15 +514,15 @@ async function chooseTodoPlanDirectory() {
 
 /* macOS-style card group */
 .settings-card {
-  border: 1px solid var(--settings-rule, var(--border));
-  background: var(--settings-paper, var(--bg-panel));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  background: var(--settings-paper, var(--ui-surface-panel-bg, var(--bg-panel)));
   border-radius: 12px;
   overflow: hidden;
 }
 
 .card-row {
   padding: 12px 14px;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--border-subtle));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
 }
 
 .card-row:last-child {
@@ -556,13 +556,13 @@ async function chooseTodoPlanDirectory() {
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   cursor: pointer;
 }
 
 .reset-inline:hover {
-  background: var(--hover);
-  color: var(--settings-ink, var(--text-primary));
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
 .number-stepper {
@@ -571,27 +571,27 @@ async function chooseTodoPlanDirectory() {
   display: inline-grid;
   grid-template-columns: 44px minmax(72px, auto) 44px;
   min-height: 34px;
-  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 6px;
   overflow: hidden;
-  background: var(--settings-paper-2, var(--bg));
+  background: var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg)));
 }
 
 .stepper-btn {
   border: 0;
   background: transparent;
-  color: var(--settings-ink-2, var(--text-primary));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   font: inherit;
   font-size: 20px;
   cursor: pointer;
 }
 
 .stepper-btn:not(:last-child) {
-  border-right: 1px solid var(--settings-rule, var(--border-subtle));
+  border-right: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
 }
 
 .stepper-btn:last-child {
-  border-left: 1px solid var(--settings-rule, var(--border-subtle));
+  border-left: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
 }
 
 .stepper-btn:disabled {
@@ -600,7 +600,7 @@ async function chooseTodoPlanDirectory() {
 }
 
 .stepper-btn:hover:not(:disabled) {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .stepper-value {
@@ -609,7 +609,7 @@ async function chooseTodoPlanDirectory() {
   justify-content: center;
   min-width: 72px;
   padding: 0 12px;
-  color: var(--settings-ink, var(--text-primary));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 17px;
   font-weight: 650;
 }
@@ -636,7 +636,7 @@ async function chooseTodoPlanDirectory() {
 .section-title {
   font-size: var(--type-caption-size);
   font-weight: var(--font-weight-bold);
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin: 0 0 12px 0;
@@ -660,17 +660,17 @@ async function chooseTodoPlanDirectory() {
   gap: 8px;
   font-size: var(--type-label-size);
   font-weight: var(--type-label-weight);
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   margin-bottom: 8px;
 }
 
 .form-input {
   width: 100%;
   min-height: 34px;
-  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 8px;
-  background: var(--settings-paper-2, var(--bg));
-  color: var(--text-primary);
+  background: var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg)));
+  color: var(--ui-text-primary-fg, var(--text-primary));
   font-size: var(--type-body-size);
   padding: 7px 10px;
   outline: none;
@@ -679,10 +679,10 @@ async function chooseTodoPlanDirectory() {
 .form-select {
   width: 100%;
   min-height: 34px;
-  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 8px;
-  background: var(--settings-paper-2, var(--bg));
-  color: var(--text-primary);
+  background: var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg)));
+  color: var(--ui-text-primary-fg, var(--text-primary));
   font-size: var(--type-body-size);
   padding: 7px 10px;
   outline: none;
@@ -703,13 +703,13 @@ async function chooseTodoPlanDirectory() {
 }
 
 .form-select:focus {
-  border-color: var(--settings-accent, var(--accent));
-  box-shadow: 0 0 0 2px var(--settings-accent-soft, rgba(var(--accent-rgb), 0.12));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: 0 0 0 2px var(--settings-accent-soft, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent));
 }
 
 .form-input:focus {
-  border-color: var(--settings-accent, var(--accent));
-  box-shadow: 0 0 0 2px var(--settings-accent-soft, rgba(var(--accent-rgb), 0.12));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: 0 0 0 2px var(--settings-accent-soft, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent));
 }
 
 .segmented-control {
@@ -717,9 +717,9 @@ async function chooseTodoPlanDirectory() {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 8px;
-  background: var(--settings-paper-2, var(--bg));
+  background: var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg)));
 }
 
 .segment-btn {
@@ -727,24 +727,24 @@ async function chooseTodoPlanDirectory() {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: var(--type-label-size);
   cursor: pointer;
 }
 
 .segment-btn:hover {
-  color: var(--text-primary);
-  background: var(--hover);
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .segment-btn.active {
-  color: var(--text-primary);
-  background: var(--settings-paper, var(--bg-panel));
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  background: var(--settings-paper, var(--ui-surface-panel-bg, var(--bg-panel)));
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .segment-btn:focus-visible {
-  outline: 2px solid var(--settings-accent, var(--accent));
+  outline: 2px solid var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   outline-offset: 2px;
 }
 
@@ -762,18 +762,18 @@ async function chooseTodoPlanDirectory() {
 .secondary-btn {
   flex-shrink: 0;
   min-height: 34px;
-  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 8px;
   background: var(--settings-paper, transparent);
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   padding: 0 12px;
   font-size: var(--type-label-size);
   cursor: pointer;
 }
 
 .secondary-btn:hover {
-  border-color: var(--settings-accent, var(--accent));
-  background: var(--settings-paper-2, var(--hover));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
 }
 
 .toggle-row {
@@ -791,24 +791,24 @@ async function chooseTodoPlanDirectory() {
 .toggle-title {
   font-size: var(--type-body-size);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .toggle-desc {
   margin-top: 2px;
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .toggle-row input {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
+  accent-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .label-value {
   margin-left: auto;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   font-weight: var(--font-weight-semibold);
 }
 
@@ -823,7 +823,7 @@ async function chooseTodoPlanDirectory() {
 }
 
 .theme-card {
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 12px;
   background: var(--settings-paper, transparent);
   padding: 0;
@@ -834,13 +834,13 @@ async function chooseTodoPlanDirectory() {
 }
 
 .theme-card:hover {
-  border-color: var(--settings-accent, var(--accent));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   transform: translateY(-1px);
 }
 
 .theme-card.active {
-  border-color: var(--settings-accent, var(--accent));
-  box-shadow: 0 0 0 3px var(--settings-accent-soft, rgba(var(--accent-rgb), 0.14));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: 0 0 0 3px var(--settings-accent-soft, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 14%, transparent));
 }
 
 .theme-card span {
@@ -860,11 +860,11 @@ async function chooseTodoPlanDirectory() {
 }
 
 .theme-preview.light {
-  background: #ffffff;
+  background: var(--ui-surface-preview-light-bg);
 }
 
 .theme-preview.dark {
-  background: #0f1117;
+  background: var(--ui-surface-preview-dark-bg);
 }
 
 .theme-preview.system {
@@ -878,11 +878,11 @@ async function chooseTodoPlanDirectory() {
 }
 
 .preview-half.light {
-  background: #ffffff;
+  background: var(--ui-surface-preview-light-bg);
 }
 
 .preview-half.dark {
-  background: #0f1117;
+  background: var(--ui-surface-preview-dark-bg);
 }
 
 .preview-half .preview-sidebar {
@@ -940,7 +940,7 @@ async function chooseTodoPlanDirectory() {
   align-items: center;
   gap: 10px;
   padding: 14px 10px;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 12px;
   background: transparent;
   cursor: pointer;
@@ -949,7 +949,7 @@ async function chooseTodoPlanDirectory() {
 
 .color-theme-btn:hover {
   border-color: var(--theme-main);
-  background: var(--settings-paper-2, var(--bg-hover));
+  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--bg-hover)));
 }
 
 .color-theme-btn.active {
@@ -991,7 +991,7 @@ async function chooseTodoPlanDirectory() {
 .color-name {
   font-size: var(--font-size-sm);
   font-weight: var(--type-label-weight);
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 /* Slider */
@@ -999,7 +999,7 @@ async function chooseTodoPlanDirectory() {
   width: 100%;
   height: 6px;
   border-radius: 3px;
-  background: var(--border);
+  background: var(--ui-border-default-border, var(--border));
   cursor: pointer;
   -webkit-appearance: none;
 }
@@ -1009,7 +1009,7 @@ async function chooseTodoPlanDirectory() {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
@@ -1019,7 +1019,7 @@ async function chooseTodoPlanDirectory() {
   justify-content: space-between;
   margin-top: 8px;
   font-size: var(--type-caption-size);
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 /* Radio Group */
@@ -1037,7 +1037,7 @@ async function chooseTodoPlanDirectory() {
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .radio-item:last-child {
@@ -1045,11 +1045,11 @@ async function chooseTodoPlanDirectory() {
 }
 
 .radio-item:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .radio-item.active {
-  background: rgba(var(--accent-rgb), 0.05);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 5%, transparent);
 }
 
 .radio-item input {
@@ -1060,13 +1060,13 @@ async function chooseTodoPlanDirectory() {
 .radio-label {
   font-size: var(--type-body-size);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   margin-bottom: 2px;
 }
 
 .radio-desc {
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 /* Responsive */
@@ -1127,7 +1127,7 @@ async function chooseTodoPlanDirectory() {
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  border: 1px solid var(--settings-rule, var(--border-subtle));
+  border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 9px;
   background: var(--settings-paper, transparent);
   cursor: pointer;
@@ -1136,18 +1136,18 @@ async function chooseTodoPlanDirectory() {
 }
 
 .font-option:hover {
-  background: var(--settings-paper-2, var(--hover));
-  border-color: var(--settings-accent, var(--border-default));
+  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
+  border-color: var(--settings-accent, var(--ui-border-default-border, var(--border-default)));
 }
 
 .font-option.active {
-  border-color: var(--settings-accent, var(--accent));
-  background: color-mix(in srgb, var(--settings-accent, var(--accent)) 8%, transparent);
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 8%, transparent);
 }
 
 .font-preview {
   font-size: var(--type-body-size);
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -1156,15 +1156,15 @@ async function chooseTodoPlanDirectory() {
 
 .font-name {
   font-size: var(--type-caption-size);
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   white-space: nowrap;
 }
 
 .font-tag {
   font-size: 10px;
   font-weight: var(--font-weight-semibold);
-  color: var(--text-faint);
-  background: var(--settings-paper-2, var(--bg-hover));
+  color: var(--ui-text-faint-fg, var(--text-faint));
+  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--bg-hover)));
   padding: 2px 6px;
   border-radius: 4px;
   white-space: nowrap;

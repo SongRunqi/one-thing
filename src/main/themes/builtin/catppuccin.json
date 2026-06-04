@@ -128,15 +128,18 @@
         "danger": "crust"
       },
       "code": {
-        "inline": "pink",
+        "inline": "text",
         "block": "text",
         "comment": "overlay1",
         "keyword": "mauve",
         "string": "green",
         "number": "peach",
         "function": "blue",
-        "variable": "lavender",
-        "operator": "sky"
+        "variable": "subtext1",
+        "operator": "overlay2",
+        "type": "teal",
+        "property": "sapphire",
+        "punctuation": "overlay1"
       },
       "menu": {
         "item": "subtext0",

@@ -644,9 +644,9 @@ describe('codex provider helpers', () => {
   it('streams function call argument deltas before the final tool call', async () => {
     const baseFetch = vi.fn(async () => new Response([
       'data: {"type":"response.output_item.added","item":{"type":"function_call","id":"fc_item_1","call_id":"call_1","name":"edit"}}\n\n',
-      'data: {"type":"response.function_call_arguments.delta","item_id":"fc_item_1","call_id":"call_1","delta":"{\\"file_path\\":\\"a.txt\\",\\"new_string\\":\\"he"}\n\n',
-      'data: {"type":"response.function_call_arguments.delta","item_id":"fc_item_1","call_id":"call_1","delta":"llo\\"}"}\n\n',
-      'data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_item_1","call_id":"call_1","name":"edit","arguments":"{\\"file_path\\":\\"a.txt\\",\\"new_string\\":\\"hello\\"}"}}\n\n',
+      'data: {"type":"response.function_call_arguments.delta","item_id":"fc_item_1","call_id":"call_1","delta":"{\\"path\\":\\"a.txt\\",\\"edits\\":[{\\"oldText\\":\\"old\\",\\"newText\\":\\"he"}\n\n',
+      'data: {"type":"response.function_call_arguments.delta","item_id":"fc_item_1","call_id":"call_1","delta":"llo\\"}]}"}\n\n',
+      'data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_item_1","call_id":"call_1","name":"edit","arguments":"{\\"path\\":\\"a.txt\\",\\"edits\\":[{\\"oldText\\":\\"old\\",\\"newText\\":\\"hello\\"}]}"}}\n\n',
       'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}\n\n',
     ].join(''), {
       status: 200,
@@ -677,23 +677,23 @@ describe('codex provider helpers', () => {
 
     expect(chunks).toEqual(expect.arrayContaining([
       { type: 'tool-input-start', id: 'call_1', toolName: 'edit' },
-      { type: 'tool-input-delta', id: 'call_1', delta: '{"file_path":"a.txt","new_string":"he' },
-      { type: 'tool-input-delta', id: 'call_1', delta: 'llo"}' },
+      { type: 'tool-input-delta', id: 'call_1', delta: '{"path":"a.txt","edits":[{"oldText":"old","newText":"he' },
+      { type: 'tool-input-delta', id: 'call_1', delta: 'llo"}]}' },
       { type: 'tool-input-end', id: 'call_1' },
       {
         type: 'tool-call',
         toolCallId: 'call_1',
         toolName: 'edit',
-        input: '{"file_path":"a.txt","new_string":"hello"}',
+        input: '{"path":"a.txt","edits":[{"oldText":"old","newText":"hello"}]}',
       },
     ]))
-    expect(chunks.filter((chunk) => chunk.type === 'tool-input-delta').map((chunk) => chunk.delta).join('')).toBe('{"file_path":"a.txt","new_string":"hello"}')
+    expect(chunks.filter((chunk) => chunk.type === 'tool-input-delta').map((chunk) => chunk.delta).join('')).toBe('{"path":"a.txt","edits":[{"oldText":"old","newText":"hello"}]}')
     expect(chunks.find((chunk) => chunk.type === 'finish')?.finishReason).toBe('tool-calls')
   })
 
   it('falls back to a single argument payload when no argument deltas are sent', async () => {
     const baseFetch = vi.fn(async () => new Response([
-      'data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_item_1","call_id":"call_1","name":"write","arguments":"{\\"file_path\\":\\"a.txt\\",\\"content\\":\\"hello\\"}"}}\n\n',
+      'data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_item_1","call_id":"call_1","name":"write","arguments":"{\\"path\\":\\"a.txt\\",\\"content\\":\\"hello\\"}"}}\n\n',
       'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.5"}}\n\n',
     ].join(''), {
       status: 200,
@@ -724,13 +724,13 @@ describe('codex provider helpers', () => {
 
     expect(chunks).toEqual(expect.arrayContaining([
       { type: 'tool-input-start', id: 'call_1', toolName: 'write' },
-      { type: 'tool-input-delta', id: 'call_1', delta: '{"file_path":"a.txt","content":"hello"}' },
+      { type: 'tool-input-delta', id: 'call_1', delta: '{"path":"a.txt","content":"hello"}' },
       { type: 'tool-input-end', id: 'call_1' },
       {
         type: 'tool-call',
         toolCallId: 'call_1',
         toolName: 'write',
-        input: '{"file_path":"a.txt","content":"hello"}',
+        input: '{"path":"a.txt","content":"hello"}',
       },
     ]))
   })

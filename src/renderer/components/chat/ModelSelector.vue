@@ -232,14 +232,14 @@ async function handleSelect(provider: string, model: string) {
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   height: 32px;
 }
 
 .model-selector-btn:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
   transform: scale(1.02);
 }
 
@@ -258,7 +258,7 @@ html[data-theme='light'] .model-selector-btn:hover {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .model-text {
@@ -269,13 +269,13 @@ html[data-theme='light'] .model-selector-btn:hover {
 }
 
 .chevron-icon {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   flex-shrink: 0;
   transition: transform 0.2s ease;
 }
 
 .model-selector-btn:hover .chevron-icon {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 /* Compact mode - hide text and chevron, show only icon */

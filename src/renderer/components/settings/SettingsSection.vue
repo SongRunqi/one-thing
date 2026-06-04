@@ -61,7 +61,7 @@ defineProps<{
 
 .settings-section-title {
   margin: 0;
-  color: var(--settings-ink-2, var(--text-primary));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 13px;
   font-weight: 650;
   line-height: 1.25;
@@ -71,7 +71,7 @@ defineProps<{
 .settings-section-description {
   max-width: 620px;
   margin: 3px 0 0;
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 12px;
   line-height: 1.45;
 }

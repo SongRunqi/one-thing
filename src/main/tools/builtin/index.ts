@@ -16,6 +16,8 @@ import { ReadTool } from './read.js'
 import { WriteTool } from './write.js'
 import { GlobTool } from './glob.js'
 import { GrepTool } from './grep.js'
+import { FindTool } from './find.js'
+import { LsTool } from './ls.js'
 import { SkillTool } from './skill.js'
 import { FartTool } from './fart.js'
 import { VariableTool } from './variable.js'
@@ -35,6 +37,8 @@ const builtinTools = [
   WriteTool,
   GlobTool,
   GrepTool,
+  FindTool,
+  LsTool,
   VariableTool,
   TodoPlanTool,
   TimeTool,

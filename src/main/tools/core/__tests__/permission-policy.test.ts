@@ -1,0 +1,56 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ToolEffect } from '../tool-effect'
+import { decidePermission } from '../permission-policy'
+
+vi.mock('../../../permission/permission-grants.js', () => ({
+  matchGrant: vi.fn(),
+}))
+
+const readEffect: ToolEffect = { kind: 'read', resources: ['/repo/a.ts'], barrier: false }
+const editEffect: ToolEffect = { kind: 'file_edit', resources: ['/repo/a.ts'], barrier: true }
+const bashEffect: ToolEffect = { kind: 'bash', resources: ['rm *'], barrier: true }
+
+beforeEach(async () => {
+  const grants = await import('../../../permission/permission-grants.js')
+  ;(grants.matchGrant as any).mockReset()
+})
+
+describe('permission-policy', () => {
+  it('allows read-only effects in normal mode', () => {
+    expect(decidePermission({ sessionId: 's1', mode: 'normal', effects: [readEffect] })).toEqual({ decision: 'allow' })
+  })
+
+  it('asks for edit/write/bash effects in normal mode', () => {
+    expect(decidePermission({ sessionId: 's1', mode: 'normal', effects: [editEffect] })).toMatchObject({ decision: 'ask' })
+    expect(decidePermission({ sessionId: 's1', mode: 'normal', effects: [bashEffect] })).toMatchObject({ decision: 'ask' })
+  })
+
+  it('auto-allows edits in auto accept edits mode but not bash', () => {
+    expect(decidePermission({ sessionId: 's1', mode: 'auto-accept-edits', effects: [editEffect] })).toEqual({ decision: 'allow' })
+    expect(decidePermission({ sessionId: 's1', mode: 'auto-accept-edits', effects: [bashEffect] })).toMatchObject({ decision: 'ask' })
+  })
+
+  it('allows by scoped grant', async () => {
+    const grants = await import('../../../permission/permission-grants.js')
+    ;(grants.matchGrant as any).mockReturnValue({ id: 'g1' } as any)
+
+    expect(decidePermission({ sessionId: 's1', mode: 'normal', effects: [bashEffect], workspaceRoot: '/repo' })).toMatchObject({
+      decision: 'allow',
+      grantId: 'g1',
+    })
+  })
+
+  it('does not let danger mode override hard deny effects', () => {
+    const hardDeny: ToolEffect = {
+      kind: 'bash',
+      resources: ['sudo *'],
+      barrier: true,
+      metadata: { hardDeny: true, reason: 'sudo is forbidden' },
+    }
+
+    expect(decidePermission({ sessionId: 's1', mode: 'dangerously-allow-all', effects: [hardDeny] })).toMatchObject({
+      decision: 'deny',
+      reason: 'sudo is forbidden',
+    })
+  })
+})

@@ -7,7 +7,8 @@
  * - Tool handlers
  */
 
-import type { ToolDefinition, ToolCall, ToolParameter, ProviderConfig, ToolSettings, Step, SkillDefinition } from '../../shared/ipc.js'
+import type { ToolDefinition, ToolCall, ToolParameter, ProviderConfig, ToolSettings, Step, SkillDefinition, ToolPartialResult, ToolResultContentPart } from '../../shared/ipc.js'
+import type { ToolEffect, ToolPreview } from './core/tool-effect.js'
 
 // Re-export shared types
 export type { ToolDefinition, ToolCall, ToolParameter }
@@ -19,6 +20,9 @@ export interface ToolMetadataUpdate {
   title?: string
   metadata?: Record<string, unknown>
 }
+
+export type { ToolResultContentPart }
+export type ToolPartialResultUpdate = ToolPartialResult
 
 /**
  * Context provided to tool handlers during execution
@@ -41,8 +45,12 @@ export interface ToolExecutionContext {
   onStepComplete?: (step: Step) => void
   // Tool metadata streaming callback
   onMetadata?: (update: ToolMetadataUpdate) => void
+  // Pi-style partial result streaming callback. Partial and final tool output share the same shape.
+  onPartialResult?: (update: ToolPartialResultUpdate) => void
   // Wait point for tools that are about to perform filesystem/process/remote side effects.
   beforeSideEffect?: () => Promise<void>
+  // Analysis approved by central PermissionPolicy before execute.
+  approvedAnalysis?: { effects: ToolEffect[]; preview?: ToolPreview }
 }
 
 /**

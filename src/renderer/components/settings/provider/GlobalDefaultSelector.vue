@@ -72,7 +72,7 @@ defineEmits<Emits>()
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 10.5px;
   font-weight: 650;
-  color: var(--settings-ink-4, var(--muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0 0 12px 2px;
@@ -108,7 +108,7 @@ defineEmits<Emits>()
 
 .row-label {
   font-size: 14px;
-  color: var(--settings-ink-2, var(--text));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text)));
   font-weight: 520;
 }
 
@@ -119,7 +119,7 @@ defineEmits<Emits>()
   border: none;
   border-radius: 7px;
   background-color: transparent;
-  color: var(--settings-ink, var(--muted));
+  color: var(--settings-ink, var(--ui-text-muted-fg, var(--muted)));
   font-size: 13px;
   cursor: pointer;
   appearance: none;
@@ -133,7 +133,7 @@ defineEmits<Emits>()
 }
 
 .row-select:hover {
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
 .row-select:focus {
@@ -141,8 +141,8 @@ defineEmits<Emits>()
 }
 
 .row-select option {
-  background: var(--settings-paper, var(--bg));
-  color: var(--settings-ink, var(--text));
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   text-align: left;
 }
 </style>

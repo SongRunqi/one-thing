@@ -240,7 +240,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   border: 1px solid var(--todo-rule);
   border-radius: var(--todo-popover-radius, 12px);
-  background: color-mix(in srgb, var(--todo-card-bg) 94%, #fff 6%);
+  background: color-mix(in srgb, var(--todo-card-bg) 94%, var(--ui-surface-app-bg, #fff) 6%);
   box-shadow: var(--todo-popover-shadow, 0 16px 42px rgba(0, 0, 0, 0.2));
   transform: translateX(-50%);
   font-family: var(--font-sans);
@@ -250,7 +250,7 @@ onBeforeUnmount(() => {
 }
 
 .todo-notes-action-panel.surface-standalone-window {
-  background: color-mix(in srgb, var(--todo-card-bg) 96%, #fff 4%);
+  background: color-mix(in srgb, var(--todo-card-bg) 96%, var(--ui-surface-app-bg, #fff) 4%);
 }
 
 .action-search {

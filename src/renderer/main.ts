@@ -7,6 +7,14 @@ import './styles/main.css'
 // Note: Initial theme is handled by index.html inline script to prevent FOUC
 // The settings store will apply the user's saved preference after loading
 
+// The standalone Todo window is a transparent macOS panel whose rounded shape
+// is drawn by `.todo-plan-window` (border-radius: 22px). The global opaque
+// `html/body/#app` background would otherwise fill the square behind it and
+// peek out at the corners, so flag the root to make those layers transparent.
+if (window.location.hash.startsWith('#/todo-plan')) {
+  document.documentElement.classList.add('transparent-window-root')
+}
+
 // Ensure theme attribute is valid (fixes HMR issues where 'system' might persist)
 const html = document.documentElement
 const currentTheme = html.getAttribute('data-theme')

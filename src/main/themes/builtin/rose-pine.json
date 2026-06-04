@@ -118,15 +118,18 @@
         "danger": "base"
       },
       "code": {
-        "inline": "rose",
+        "inline": "text",
         "block": "text",
         "comment": "muted",
         "keyword": "iris",
-        "string": "gold",
+        "string": "pine",
         "number": "gold",
         "function": "foam",
         "variable": "text",
-        "operator": "subtle"
+        "operator": "muted",
+        "type": "foam",
+        "property": "pine",
+        "punctuation": "muted"
       },
       "menu": {
         "item": "muted",

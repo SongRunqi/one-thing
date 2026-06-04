@@ -148,7 +148,7 @@ function updateShortcut(key: keyof ShortcutSettings, shortcut: KeyboardShortcut 
 .section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin: 0 0 12px 0;
@@ -160,7 +160,7 @@ function updateShortcut(key: keyof ShortcutSettings, shortcut: KeyboardShortcut 
 
 .section-desc {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   margin-bottom: 16px;
 }
 
@@ -196,12 +196,12 @@ function updateShortcut(key: keyof ShortcutSettings, shortcut: KeyboardShortcut 
 .shortcut-name {
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .shortcut-desc {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 /* Light theme */

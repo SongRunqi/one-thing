@@ -23,6 +23,7 @@ import {
   executeTool,
   createToolCall,
   canAutoExecute,
+  getToolExecutionMode,
 } from '../registry'
 
 import { Tool } from '../core/tool'
@@ -54,7 +55,7 @@ function createStaticTool(id: string, overrides: Partial<any> = {}) {
 
 describe('Tool Registry', () => {
   beforeEach(() => {
-    for (const id of ['test-tool', 'tool-a', 'tool-b', 'tool-c', 'async-tool', 'disabled-tool', 'auto-tool', 'reject-tool', 'error-tool', 'non-existent']) {
+    for (const id of ['test-tool', 'tool-a', 'tool-b', 'tool-c', 'async-tool', 'disabled-tool', 'auto-tool', 'reject-tool', 'error-tool', 'nested-tool', 'non-existent']) {
       unregisterTool(id)
     }
     vi.clearAllMocks()
@@ -95,6 +96,22 @@ describe('Tool Registry', () => {
     })
   })
 
+  describe('getToolExecutionMode()', () => {
+    it('uses tool-declared executionMode with compatibility fallback', () => {
+      registerTool(createStaticTool('parallel-tool', { executionMode: 'parallel' }))
+      registerTool(createStaticTool('sequential-tool', { executionMode: 'sequential' }))
+
+      expect(getToolExecutionMode('parallel-tool')).toBe('parallel')
+      expect(getToolExecutionMode('sequential-tool')).toBe('sequential')
+      expect(getToolExecutionMode('bash')).toBe('sequential')
+      expect(getToolExecutionMode('read')).toBe('parallel')
+      expect(getToolExecutionMode('mcp:server:tool')).toBe('sequential')
+
+      unregisterTool('parallel-tool')
+      unregisterTool('sequential-tool')
+    })
+  })
+
   // ─── unregisterTool ──────────────────────────────────────────────
 
   describe('unregisterTool()', () => {
@@ -124,6 +141,31 @@ describe('Tool Registry', () => {
       const ids = all.map(t => t.id)
       expect(ids).toContain('tool-a')
       expect(ids).toContain('tool-b')
+    })
+
+    it('preserves nested parameter JSON schema for model-facing tools', () => {
+      registerTool(createStaticTool('nested-tool', {
+        parameters: z.object({
+          edits: z.array(z.object({
+            oldText: z.string().describe('Exact text to replace'),
+            newText: z.string().describe('Replacement text'),
+          })).describe('One or more replacements'),
+        }),
+      }))
+
+      const nested = getAllTools().find(t => t.id === 'nested-tool')
+
+      expect(nested?.parameterSchema?.properties?.edits).toMatchObject({
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            oldText: { type: 'string', description: 'Exact text to replace' },
+            newText: { type: 'string', description: 'Replacement text' },
+          },
+          required: ['oldText', 'newText'],
+        },
+      })
     })
 
     it('should not include async tools', () => {

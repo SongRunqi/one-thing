@@ -352,7 +352,7 @@ watch(() => activeBufferForRoot.value?.filePath, async () => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg-panel);
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
 }
 
 .editor-main {
@@ -399,11 +399,11 @@ watch(() => activeBufferForRoot.value?.filePath, async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 13px;
 }
 
 .editor-state.error {
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 </style>

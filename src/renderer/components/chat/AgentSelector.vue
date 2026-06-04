@@ -245,10 +245,10 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 0 10px;
-  border: 1px solid color-mix(in srgb, var(--border-subtle, var(--border)) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 70%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-elevated) 42%, transparent);
-  color: var(--muted);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 42%, transparent);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
   cursor: pointer;
 }
@@ -260,8 +260,8 @@ onBeforeUnmount(() => {
 }
 
 .agent-chip:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--border);
+  color: var(--ui-text-primary-fg, var(--text));
+  border-color: var(--ui-border-default-border, var(--border));
 }
 
 .agent-chip:disabled {
@@ -277,9 +277,9 @@ onBeforeUnmount(() => {
   max-height: min(520px, calc(100vh - 64px));
   overflow: auto;
   padding: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--bg-floating, var(--bg-panel));
+  background: var(--ui-surface-floating-bg, var(--bg-floating, var(--bg-panel)));
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
   z-index: 50;
 }
@@ -294,7 +294,7 @@ onBeforeUnmount(() => {
 .agent-icon-action {
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
 }
 
@@ -313,8 +313,8 @@ onBeforeUnmount(() => {
 .agent-row.active,
 .agent-action:hover,
 .agent-icon-action:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-subtle);
+  background: var(--ui-state-hover-bg, var(--bg-hover));
+  border-color: var(--ui-border-subtle-border, var(--border-subtle));
 }
 
 .agent-row-name {
@@ -324,7 +324,7 @@ onBeforeUnmount(() => {
 }
 
 .agent-row-meta {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
 }
 
@@ -341,24 +341,24 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 0 9px;
   border-radius: 7px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .agent-form {
   display: grid;
   gap: 8px;
   padding-top: 8px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
 }
 
 .agent-input,
 .agent-textarea {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 7px;
-  background: var(--bg-input, var(--bg));
-  color: var(--text);
+  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
+  color: var(--ui-text-primary-fg, var(--text));
   font: inherit;
 }
 
@@ -376,7 +376,7 @@ onBeforeUnmount(() => {
 
 .agent-error {
   margin: 0;
-  color: var(--error, #ef4444);
+  color: var(--ui-status-danger-fg, var(--error, #ef4444));
   font-size: 12px;
 }
 
@@ -395,7 +395,7 @@ onBeforeUnmount(() => {
 }
 
 .agent-icon-action.danger:hover {
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
   background: rgba(239, 68, 68, 0.12);
 }
 </style>

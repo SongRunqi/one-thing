@@ -192,7 +192,7 @@ const emit = defineEmits<{
   goToBranch: [sessionId: string]
   quote: [quotedText: string]
   executeTool: [toolCall: ToolCall]
-  confirmTool: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
+  confirmTool: [toolCall: ToolCall, response: 'once']
   rejectTool: [toolCall: ToolCall]
   openFile: [filePath: string]
   updateThinkingTime: [messageId: string, thinkingTime: number]
@@ -299,7 +299,7 @@ function handleToolExecute(toolCall: ToolCall) {
   emit('executeTool', toolCall)
 }
 
-function handleToolConfirm(toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always') {
+function handleToolConfirm(toolCall: ToolCall, response: 'once') {
   emit('confirmTool', toolCall, response)
 }
 
@@ -379,10 +379,14 @@ onUnmounted(() => {
 
 @keyframes highlight-pulse {
   0% {
-    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.6), 0 0 20px rgba(59, 130, 246, 0.3);
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 60%, transparent),
+      0 0 20px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 30%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.4), 0 0 15px rgba(59, 130, 246, 0.2);
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, transparent),
+      0 0 15px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 20%, transparent);
   }
   100% {
     box-shadow: none;
@@ -448,7 +452,7 @@ onUnmounted(() => {
 .meta {
   font-size: 12px;
   line-height: 28px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   user-select: none;
   font-variant-numeric: tabular-nums;
 }
@@ -480,7 +484,7 @@ onUnmounted(() => {
   outline: none;
   font-family: inherit;
   overflow-y: auto;
-  caret-color: var(--accent);
+  caret-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .message.user :deep(.edit-textarea)::-webkit-scrollbar {
@@ -508,13 +512,13 @@ html[data-theme='light'] .message.user :deep(.edit-textarea)::-webkit-scrollbar-
 .message.user :deep(.bubble.editing) {
   box-shadow:
     0 4px 12px rgba(0, 0, 0, 0.3),
-    0 0 0 2px rgba(59, 130, 246, 0.4);
+    0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, transparent);
 }
 
 html[data-theme='light'] .message.user :deep(.bubble.editing) {
   box-shadow:
     0 4px 12px rgba(0, 0, 0, 0.04),
-    0 0 0 2px rgba(59, 130, 246, 0.3);
+    0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 30%, transparent);
 }
 
 /* Regenerate button animation */
@@ -533,10 +537,10 @@ html[data-theme='light'] .message.user :deep(.bubble.editing) {
   gap: 8px;
   padding: 10px 14px;
   margin-top: 8px;
-  background: rgba(var(--color-danger-rgb), 0.1);
-  border: 1px solid rgba(var(--color-danger-rgb), 0.3);
+  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-status-danger-border, var(--color-danger)) 30%, transparent);
   border-radius: 8px;
-  color: var(--text-error);
+  color: var(--ui-status-danger-fg, var(--text-error));
   font-size: 13px;
   line-height: 1.5;
 }

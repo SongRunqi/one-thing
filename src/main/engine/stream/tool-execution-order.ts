@@ -39,6 +39,7 @@ export function needsOrderedSideEffectGate(toolName: string): boolean {
   return normalized === 'edit'
     || normalized === 'write'
     || normalized === 'bash'
+    || normalized === 'variable'
     || normalized.startsWith('mcp:')
     || normalized.startsWith('mcp_')
 }

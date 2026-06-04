@@ -119,18 +119,18 @@
         "danger": "base3"
       },
       "code": {
-        "inline": "magenta",
+        "inline": "base01",
         "block": "base01",
         "comment": "base1",
-        "keyword": "green",
+        "keyword": "violet",
         "string": "cyan",
-        "number": "magenta",
+        "number": "orange",
         "function": "blue",
         "variable": "base01",
-        "operator": "green",
-        "type": "orange",
-        "property": "yellow",
-        "punctuation": "base00"
+        "operator": "base1",
+        "type": "yellow",
+        "property": "blue",
+        "punctuation": "base1"
       },
       "menu": {
         "item": "base00",

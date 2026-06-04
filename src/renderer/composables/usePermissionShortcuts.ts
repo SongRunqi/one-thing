@@ -2,62 +2,33 @@
  * Permission Shortcuts Composable
  *
  * Handles keyboard shortcuts for permission confirmation:
- * - Enter: Allow once (本次)
- * - S: Allow for session (本会话)
- * - W: Allow for working directory (本工作目录) - permanent
+ * - Enter: Allow current tool
  * - D / Escape: Reject
  *
- * Based on OpenCode's permission interaction design.
+ * The old session/workdir/always shortcuts were intentionally removed. Users
+ * reduce prompts by switching Permission Mode, not by creating scoped grants.
  */
 
 import { onMounted, onUnmounted } from 'vue'
 
 export interface PermissionShortcutHandlers {
-  onAllowOnce: () => void
-  /** Allow for the duration of this session */
-  onAllowSession: () => void
-  /** Allow permanently in this working directory */
-  onAllowWorkdir: () => void
-  onReject: () => void
-}
-
-/** Legacy handlers for backwards compatibility */
-export interface LegacyPermissionShortcutHandlers {
-  onAllowOnce: () => void
-  onAllowAlways: () => void
+  onAllow: () => void
   onReject: () => void
 }
 
 /**
- * Setup keyboard shortcuts for permission confirmation
+ * Setup keyboard shortcuts for permission confirmation.
  *
  * @param hasPendingPermission - Function that returns true if there's a pending permission
  * @param handlers - Callback handlers for each action
  */
 export function usePermissionShortcuts(
   hasPendingPermission: () => boolean,
-  handlers: PermissionShortcutHandlers | LegacyPermissionShortcutHandlers
+  handlers: PermissionShortcutHandlers,
 ) {
-  // Normalize handlers: support both new and legacy format
-  const isNewFormat = 'onAllowSession' in handlers
-  const newHandlers = handlers as PermissionShortcutHandlers
-  const legacyHandlers = handlers as LegacyPermissionShortcutHandlers
-
-  const normalizedHandlers: PermissionShortcutHandlers = {
-    onAllowOnce: handlers.onAllowOnce,
-    // Map legacy onAllowAlways to new onAllowSession
-    onAllowSession: isNewFormat ? newHandlers.onAllowSession : legacyHandlers.onAllowAlways,
-    onAllowWorkdir: 'onAllowWorkdir' in handlers
-      ? newHandlers.onAllowWorkdir
-      : (isNewFormat ? newHandlers.onAllowSession : legacyHandlers.onAllowAlways),
-    onReject: handlers.onReject,
-  }
-
   function handleKeydown(event: KeyboardEvent) {
-    // Only handle when there's a pending permission
     if (!hasPendingPermission()) return
 
-    // Skip if user is typing in an input field
     const target = event.target as HTMLElement
     if (
       target.tagName === 'INPUT' ||
@@ -67,7 +38,6 @@ export function usePermissionShortcuts(
       return
     }
 
-    // Skip if modifier keys are pressed (except for Escape)
     if ((event.ctrlKey || event.metaKey || event.altKey) && event.key !== 'Escape') {
       return
     }
@@ -76,31 +46,7 @@ export function usePermissionShortcuts(
       case 'Enter':
         event.preventDefault()
         event.stopPropagation()
-        normalizedHandlers.onAllowOnce()
-        break
-
-      // S = Session (allow for this session)
-      case 's':
-      case 'S':
-        event.preventDefault()
-        event.stopPropagation()
-        normalizedHandlers.onAllowSession()
-        break
-
-      // W = Workdir (allow permanently in this working directory)
-      case 'w':
-      case 'W':
-        event.preventDefault()
-        event.stopPropagation()
-        normalizedHandlers.onAllowWorkdir()
-        break
-
-      // A = legacy alias for Session (backwards compatibility)
-      case 'a':
-      case 'A':
-        event.preventDefault()
-        event.stopPropagation()
-        normalizedHandlers.onAllowSession()
+        handlers.onAllow()
         break
 
       case 'd':
@@ -108,13 +54,12 @@ export function usePermissionShortcuts(
       case 'Escape':
         event.preventDefault()
         event.stopPropagation()
-        normalizedHandlers.onReject()
+        handlers.onReject()
         break
     }
   }
 
   onMounted(() => {
-    // Use capture phase to handle before other listeners
     window.addEventListener('keydown', handleKeydown, { capture: true })
   })
 

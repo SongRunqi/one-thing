@@ -28,7 +28,7 @@ export interface TodoPlanContext {
 export interface TodoPlanSnapshot {
   directory: string
   userNotes: TodoPlanDocument[]
-  workspaceAiTodo: TodoPlanDocument
+  workspaceAiTodo?: TodoPlanDocument
 }
 
 export interface TodoPlanSettings {

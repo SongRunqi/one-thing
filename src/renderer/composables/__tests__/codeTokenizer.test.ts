@@ -17,6 +17,12 @@ describe('codeTokenizer', () => {
     expect(spans.some(span => span.className.includes('tok-keyword'))).toBe(true)
   })
 
+  it('keeps property names on their own semantic token class', () => {
+    const tokens = tokenizeCode('javascript', 'user.name')
+
+    expect(tokens.some(token => token.className.includes('tok-property'))).toBe(true)
+  })
+
   it('falls back to a single plain span for unknown languages', () => {
     const spans = renderTokenSpans('made-up-lang', 'hello')
 

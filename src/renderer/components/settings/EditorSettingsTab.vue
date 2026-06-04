@@ -231,7 +231,7 @@ function updateEditor(patch: EditorSettings) {
 .section-title {
   font-size: var(--type-caption-size);
   font-weight: var(--font-weight-bold);
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin: 0 0 12px 0;
@@ -271,13 +271,13 @@ function updateEditor(patch: EditorSettings) {
   gap: 8px;
   font-size: var(--type-label-size);
   font-weight: var(--type-label-weight);
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   margin-bottom: 8px;
 }
 
 .label-value {
   margin-left: auto;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   font-weight: var(--font-weight-semibold);
 }
 
@@ -285,7 +285,7 @@ function updateEditor(patch: EditorSettings) {
   width: 100%;
   height: 6px;
   border-radius: 3px;
-  background: var(--border);
+  background: var(--ui-border-default-border, var(--border));
   cursor: pointer;
   -webkit-appearance: none;
 }
@@ -295,7 +295,7 @@ function updateEditor(patch: EditorSettings) {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
@@ -304,22 +304,22 @@ function updateEditor(patch: EditorSettings) {
   width: 100%;
   height: 34px;
   padding: 0 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 7px;
   outline: 0;
-  color: var(--text-primary);
-  background: var(--bg-input, var(--bg));
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
   font: inherit;
 }
 
 .form-select {
   min-height: 34px;
   padding: 0 34px 0 10px;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
   outline: 0;
-  color: var(--text-primary);
-  background: var(--bg-input, var(--bg));
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
   font: inherit;
 }
 
@@ -328,11 +328,11 @@ function updateEditor(patch: EditorSettings) {
 }
 
 .form-select:focus {
-  border-color: var(--accent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .form-input:focus {
-  border-color: var(--accent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .slider-labels {
@@ -340,7 +340,7 @@ function updateEditor(patch: EditorSettings) {
   justify-content: space-between;
   margin-top: 8px;
   font-size: var(--type-caption-size);
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .toggle-row {
@@ -349,13 +349,13 @@ function updateEditor(patch: EditorSettings) {
   gap: 10px;
   font-size: var(--type-label-size);
   font-weight: var(--type-label-weight);
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   cursor: pointer;
 }
 
 .toggle-row input {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
+  accent-color: var(--ui-accent-primary-fg, var(--accent));
 }
 </style>

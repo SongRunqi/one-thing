@@ -8,7 +8,7 @@
  * The Session state machine reduces these events into SessionState.
  */
 
-import type { Step, ToolCall, ContentPart, ChatMessage, ContextVariable, ThinkingEffort } from '../ipc.js'
+import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart, ChatMessage, ContextVariable, ThinkingEffort } from '../ipc.js'
 import type { StreamCompleteData, StreamErrorData } from '../../main/engine/stream/ipc-emitter.js'
 import type { SessionCommand } from './session-commands.js'
 
@@ -53,6 +53,30 @@ export interface ToolInputStartEvent {
   toolCallId: string
   toolName: string
   toolCall: ToolCall
+}
+
+export interface ToolExecutionStartEvent {
+  type: 'tool:execution-start'
+  toolCallId: string
+  stepId: string
+  toolName: string
+  args: Record<string, unknown>
+}
+
+export interface ToolExecutionUpdateEvent {
+  type: 'tool:execution-update'
+  toolCallId: string
+  stepId: string
+  partialResult: ToolPartialResult
+}
+
+export interface ToolExecutionEndEvent {
+  type: 'tool:execution-end'
+  toolCallId: string
+  stepId: string
+  result?: ToolResult
+  isError?: boolean
+  error?: string
 }
 
 // ── Step events ─────────────────────────────────
@@ -120,12 +144,12 @@ export interface StreamParamsResolvingEvent {
 
 // ── Request inspector ───────────────────────────
 
-/** One slice of a system prompt, attributed to a specific .hbs template. */
+/** One slice of a system prompt, attributed to a prompt source. */
 export interface PromptSourceSegment {
-  /** Path relative to resources/templates, no extension. */
+  /** Stable prompt source id. */
   source: string
   content: string
-  /** Absolute on-disk path of the source .hbs file, for opening in an editor. */
+  /** Optional absolute on-disk path for source inspection. */
   absolutePath?: string
   role?: 'base' | 'developer' | 'user'
   marker?: {
@@ -264,6 +288,9 @@ export type SessionEvent =
   | ToolCallEvent
   | ToolResultEvent
   | ToolInputStartEvent
+  | ToolExecutionStartEvent
+  | ToolExecutionUpdateEvent
+  | ToolExecutionEndEvent
   | StepAddedEvent
   | StepUpdatedEvent
   | ContentPartEvent

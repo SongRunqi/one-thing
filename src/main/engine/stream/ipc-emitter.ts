@@ -7,7 +7,7 @@
  * The actual implementation is in src/main/events/event-only-emitter.ts.
  */
 
-import type { Step, ToolCall, ContentPart } from '../../../shared/ipc.js'
+import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart } from '../../../shared/ipc.js'
 import type { ReasoningPlacement } from '../../../shared/events/index.js'
 
 /**
@@ -63,6 +63,15 @@ export interface IPCEmitter {
 
   /** Send tool input delta (streaming args increment) */
   sendToolInputDelta(toolCallId: string, argsTextDelta: string): void
+
+  /** Send tool execution start */
+  sendToolExecutionStart(toolCallId: string, stepId: string, toolName: string, args: Record<string, unknown>): void
+
+  /** Send structured partial tool result update */
+  sendToolExecutionUpdate(toolCallId: string, stepId: string, partialResult: ToolPartialResult): void
+
+  /** Send structured final tool result */
+  sendToolExecutionEnd(toolCallId: string, stepId: string, result?: ToolResult, isError?: boolean, error?: string): void
 
   // ========== Context Events ==========
 

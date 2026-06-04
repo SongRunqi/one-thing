@@ -214,59 +214,146 @@ async function handleCopy() {
 
 .code-block-container code :deep(.tok-keyword),
 .code-block-container code :deep(.tok-atom) {
-  color: #c678dd;
+  color: var(--hg-syntax-keyword-fg, var(--text-code-keyword));
+  background-color: var(--hg-syntax-keyword-bg, transparent);
+  font-style: var(--hg-syntax-keyword-font-style, normal);
+  font-weight: var(--hg-syntax-keyword-font-weight, 400);
+  text-decoration: var(--hg-syntax-keyword-text-decoration, none);
+}
+
+.code-block-container code :deep(.tok-atom) {
+  color: var(--hg-syntax-atom-fg, var(--text-code-keyword));
+  background-color: var(--hg-syntax-atom-bg, transparent);
+  font-style: var(--hg-syntax-atom-font-style, normal);
+  font-weight: var(--hg-syntax-atom-font-weight, 400);
+  text-decoration: var(--hg-syntax-atom-text-decoration, none);
 }
 
 .code-block-container code :deep(.tok-number) {
-  color: #d19a66;
+  color: var(--hg-syntax-number-fg, var(--text-code-number));
+  background-color: var(--hg-syntax-number-bg, transparent);
+  font-style: var(--hg-syntax-number-font-style, normal);
+  font-weight: var(--hg-syntax-number-font-weight, 400);
+  text-decoration: var(--hg-syntax-number-text-decoration, none);
 }
 
 .code-block-container code :deep(.tok-string) {
-  color: #98c379;
+  color: var(--hg-syntax-string-fg, var(--text-code-string));
+  background-color: var(--hg-syntax-string-bg, transparent);
+  font-style: var(--hg-syntax-string-font-style, normal);
+  font-weight: var(--hg-syntax-string-font-weight, 400);
+  text-decoration: var(--hg-syntax-string-text-decoration, none);
 }
 
 .code-block-container code :deep(.tok-comment) {
-  color: color-mix(in srgb, var(--muted) 72%, transparent);
-  font-style: italic;
+  color: var(--hg-syntax-comment-fg, var(--text-code-comment));
+  background-color: var(--hg-syntax-comment-bg, transparent);
+  font-style: var(--hg-syntax-comment-font-style, italic);
+  font-weight: var(--hg-syntax-comment-font-weight, 400);
+  text-decoration: var(--hg-syntax-comment-text-decoration, none);
 }
 
-.code-block-container code :deep(.tok-definition),
+.code-block-container code :deep(.tok-definition) {
+  color: var(--hg-syntax-definition-fg, var(--text-code-function));
+  background-color: var(--hg-syntax-definition-bg, transparent);
+  font-style: var(--hg-syntax-definition-font-style, normal);
+  font-weight: var(--hg-syntax-definition-font-weight, 400);
+  text-decoration: var(--hg-syntax-definition-text-decoration, none);
+}
+
 .code-block-container code :deep(.tok-function) {
-  color: #61afef;
+  color: var(--hg-syntax-function-fg, var(--text-code-function));
+  background-color: var(--hg-syntax-function-bg, transparent);
+  font-style: var(--hg-syntax-function-font-style, normal);
+  font-weight: var(--hg-syntax-function-font-weight, 400);
+  text-decoration: var(--hg-syntax-function-text-decoration, none);
 }
 
-.code-block-container code :deep(.tok-variable),
+.code-block-container code :deep(.tok-variable) {
+  color: var(--hg-syntax-variable-fg, var(--text-code-variable, inherit));
+  background-color: var(--hg-syntax-variable-bg, transparent);
+  font-style: var(--hg-syntax-variable-font-style, normal);
+  font-weight: var(--hg-syntax-variable-font-weight, 400);
+  text-decoration: var(--hg-syntax-variable-text-decoration, none);
+}
+
 .code-block-container code :deep(.tok-property) {
-  color: inherit;
+  color: var(--hg-syntax-property-fg, var(--text-code-property, var(--text-code-variable, inherit)));
+  background-color: var(--hg-syntax-property-bg, transparent);
+  font-style: var(--hg-syntax-property-font-style, normal);
+  font-weight: var(--hg-syntax-property-font-weight, 400);
+  text-decoration: var(--hg-syntax-property-text-decoration, none);
 }
 
-.code-block-container code :deep(.tok-type),
+.code-block-container code :deep(.tok-type) {
+  color: var(--hg-syntax-type-fg, var(--text-code-type));
+  background-color: var(--hg-syntax-type-bg, transparent);
+  font-style: var(--hg-syntax-type-font-style, normal);
+  font-weight: var(--hg-syntax-type-font-weight, 400);
+  text-decoration: var(--hg-syntax-type-text-decoration, none);
+}
+
 .code-block-container code :deep(.tok-tag) {
-  color: #e5c07b;
+  color: var(--hg-syntax-tag-fg, var(--text-code-type));
+  background-color: var(--hg-syntax-tag-bg, transparent);
+  font-style: var(--hg-syntax-tag-font-style, normal);
+  font-weight: var(--hg-syntax-tag-font-weight, 400);
+  text-decoration: var(--hg-syntax-tag-text-decoration, none);
 }
 
 .code-block-container code :deep(.tok-punctuation) {
-  color: color-mix(in srgb, currentColor 70%, transparent);
+  color: var(--hg-syntax-punctuation-fg, var(--text-code-punctuation, var(--text-code-operator)));
+  background-color: var(--hg-syntax-punctuation-bg, transparent);
+  font-style: var(--hg-syntax-punctuation-font-style, normal);
+  font-weight: var(--hg-syntax-punctuation-font-weight, 400);
+  text-decoration: var(--hg-syntax-punctuation-text-decoration, none);
 }
 
 .code-block-container code :deep(.tok-invalid) {
-  color: #e06c75;
+  color: var(--hg-syntax-invalid-fg, var(--text-error));
+  background-color: var(--hg-syntax-invalid-bg, transparent);
+  font-style: var(--hg-syntax-invalid-font-style, normal);
+  font-weight: var(--hg-syntax-invalid-font-weight, 400);
+  text-decoration: var(--hg-syntax-invalid-text-decoration, none);
 }
 
 .code-block-container code :deep(.tok-inserted) {
-  color: #98c379;
+  color: var(--hg-syntax-inserted-fg, var(--text-success));
+  background-color: var(--hg-syntax-inserted-bg, transparent);
+  font-style: var(--hg-syntax-inserted-font-style, normal);
+  font-weight: var(--hg-syntax-inserted-font-weight, 400);
+  text-decoration: var(--hg-syntax-inserted-text-decoration, none);
 }
 
-.code-block-container code :deep(.tok-heading),
+.code-block-container code :deep(.tok-heading) {
+  color: var(--hg-syntax-heading-fg, var(--text-code-function));
+  background-color: var(--hg-syntax-heading-bg, transparent);
+  font-style: var(--hg-syntax-heading-font-style, normal);
+  font-weight: var(--hg-syntax-heading-font-weight, 700);
+  text-decoration: var(--hg-syntax-heading-text-decoration, none);
+}
+
 .code-block-container code :deep(.tok-strong) {
-  font-weight: 600;
+  color: var(--hg-syntax-strong-fg, inherit);
+  background-color: var(--hg-syntax-strong-bg, transparent);
+  font-style: var(--hg-syntax-strong-font-style, normal);
+  font-weight: var(--hg-syntax-strong-font-weight, 700);
+  text-decoration: var(--hg-syntax-strong-text-decoration, none);
 }
 
 .code-block-container code :deep(.tok-emphasis) {
-  font-style: italic;
+  color: var(--hg-syntax-emphasis-fg, inherit);
+  background-color: var(--hg-syntax-emphasis-bg, transparent);
+  font-style: var(--hg-syntax-emphasis-font-style, italic);
+  font-weight: var(--hg-syntax-emphasis-font-weight, 400);
+  text-decoration: var(--hg-syntax-emphasis-text-decoration, none);
 }
 
 .code-block-container code :deep(.tok-link) {
-  color: var(--accent);
+  color: var(--hg-syntax-link-fg, var(--text-link, var(--accent)));
+  background-color: var(--hg-syntax-link-bg, transparent);
+  font-style: var(--hg-syntax-link-font-style, normal);
+  font-weight: var(--hg-syntax-link-font-weight, 400);
+  text-decoration: var(--hg-syntax-link-text-decoration, underline);
 }
 </style>

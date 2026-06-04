@@ -310,8 +310,8 @@ defineExpose({
 .dialog {
   width: 100%;
   max-width: 480px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-app-bg, var(--bg));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 16px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
   animation: slideUp 0.2s ease;
@@ -333,14 +333,14 @@ defineExpose({
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .dialog-header h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .close-btn {
@@ -349,7 +349,7 @@ defineExpose({
   border: none;
   background: transparent;
   border-radius: 8px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -358,8 +358,8 @@ defineExpose({
 }
 
 .close-btn:hover {
-  background: var(--hover);
-  color: var(--text-primary);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .dialog-content {
@@ -371,7 +371,7 @@ defineExpose({
   justify-content: flex-end;
   gap: 8px;
   padding: 16px 24px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .form-group {
@@ -382,35 +382,35 @@ defineExpose({
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   margin-bottom: 8px;
 }
 
 .form-hint {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   margin-top: 6px;
 }
 
 .form-input {
   width: 100%;
   padding: 12px 14px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 10px;
   font-size: 14px;
-  background: var(--panel-2);
-  color: var(--text-primary);
+  background: var(--ui-surface-sidebar-bg, var(--panel-2));
+  color: var(--ui-text-primary-fg, var(--text-primary));
   transition: all 0.15s ease;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
 .form-input::placeholder {
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .transport-selector {
@@ -425,33 +425,33 @@ defineExpose({
   align-items: center;
   gap: 6px;
   padding: 16px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-sidebar-bg, var(--panel-2));
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .transport-option:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
   border-color: rgba(255, 255, 255, 0.15);
 }
 
 .transport-option.active {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .transport-option span {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .transport-desc {
   font-size: 12px !important;
   font-weight: 400 !important;
-  color: var(--text-muted) !important;
+  color: var(--ui-text-muted-fg, var(--text-muted)) !important;
 }
 
 .error-message {
@@ -462,7 +462,7 @@ defineExpose({
   background: rgba(239, 68, 68, 0.1);
   border-radius: 8px;
   font-size: 13px;
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
   margin-top: 16px;
 }
 
@@ -477,12 +477,12 @@ defineExpose({
 }
 
 .btn.primary {
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--ui-action-primary-hover-bg, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .btn.primary:disabled {
@@ -491,12 +491,12 @@ defineExpose({
 }
 
 .btn.secondary {
-  background: var(--panel-2);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-sidebar-bg, var(--panel-2));
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  border: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .btn.secondary:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 </style>

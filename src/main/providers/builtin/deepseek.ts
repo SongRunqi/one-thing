@@ -48,6 +48,8 @@ interface DeepSeekTool {
   }
 }
 
+type DeepSeekReasoningEffort = 'high' | 'max'
+
 interface DeepSeekRequest {
   model: string
   messages: DeepSeekMessage[]
@@ -59,7 +61,7 @@ interface DeepSeekRequest {
   tools?: DeepSeekTool[]
   tool_choice?: 'auto' | 'none'
   thinking?: { type: 'enabled' | 'disabled' }
-  reasoning_effort?: 'high' | 'max'
+  reasoning_effort?: DeepSeekReasoningEffort
 }
 
 interface DeepSeekStreamChunk {
@@ -144,6 +146,15 @@ function isCompleteToolArguments(input: string): boolean {
   } catch {
     return false
   }
+}
+
+function normalizeDeepSeekReasoningEffort(value: unknown): DeepSeekReasoningEffort | undefined {
+  if (value === 'high' || value === 'max') return value
+  // DeepSeek documents only high/max as request values. It also documents
+  // compatibility aliases: low/medium => high, xhigh => max.
+  if (value === 'low' || value === 'medium') return 'high'
+  if (value === 'xhigh') return 'max'
+  return undefined
 }
 
 /**
@@ -288,11 +299,9 @@ function createDeepSeekModel(
         | 'enabled'
         | 'disabled'
         | undefined
-      const configuredReasoningEffort = (rest as any).providerOptions?.deepseek?.reasoningEffort
-      const userReasoningEffort =
-        configuredReasoningEffort === 'high' || configuredReasoningEffort === 'max'
-          ? configuredReasoningEffort
-          : undefined
+      const userReasoningEffort = normalizeDeepSeekReasoningEffort(
+        (rest as any).providerOptions?.deepseek?.reasoningEffort,
+      )
       const effectiveThinking =
         userThinking === 'enabled'
           ? true
@@ -464,6 +473,15 @@ function createDeepSeekModel(
               }
 
               if (delta?.tool_calls) {
+                // Thinking models go straight from reasoning_content to
+                // tool_calls without any intervening `content`. Close the open
+                // reasoning block first so the v2 stream stays well-formed —
+                // mirrors the content branch above instead of deferring
+                // reasoning-end to the finish_reason chunk.
+                if (reasoningStarted) {
+                  yield { type: 'reasoning-end', id: reasoningId } as any
+                  reasoningStarted = false
+                }
                 for (const tc of delta.tool_calls) {
                   const idx = tc.index
                   let entry = toolsInProgress.get(idx)

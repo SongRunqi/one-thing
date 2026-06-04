@@ -2,13 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import path from 'path'
 import os from 'os'
 
-// Mock Permission module
-vi.mock('../../../permission/index.js', () => ({
-  Permission: {
-    ask: vi.fn().mockResolvedValue(undefined),
-  },
-}))
-
 // Mock settings store
 vi.mock('../../../stores/settings.js', () => ({
   getSettings: vi.fn(() => ({})),
@@ -23,7 +16,6 @@ import {
   resolveToolPath,
   checkFileAccess,
 } from '../sandbox'
-import { Permission } from '../../../permission/index.js'
 import { getSettings } from '../../../stores/settings.js'
 
 describe('sandbox', () => {
@@ -126,7 +118,7 @@ describe('sandbox', () => {
     })
 
     it('should return settings.defaultWorkingDirectory when no workingDirectory', () => {
-      vi.mocked(getSettings).mockReturnValue({
+      (getSettings as any).mockReturnValue({
         tools: {
           bash: {
             defaultWorkingDirectory: '/default/workspace',
@@ -139,7 +131,7 @@ describe('sandbox', () => {
     })
 
     it('should expand ~ in settings.defaultWorkingDirectory', () => {
-      vi.mocked(getSettings).mockReturnValue({
+      (getSettings as any).mockReturnValue({
         tools: {
           bash: {
             defaultWorkingDirectory: '~/workspace',
@@ -152,7 +144,7 @@ describe('sandbox', () => {
     })
 
     it('should fallback to process.cwd() when nothing configured', () => {
-      vi.mocked(getSettings).mockReturnValue({} as any)
+      (getSettings as any).mockReturnValue({} as any)
 
       const result = getSandboxBoundary()
       expect(result).toBe(process.cwd())
@@ -193,7 +185,7 @@ describe('sandbox', () => {
     it('should resolve absolute path inside boundary without permission', async () => {
       const result = await checkFileAccess('/workspace/src/file.ts', defaultCtx, 'read')
       expect(result).toBe('/workspace/src/file.ts')
-      expect(Permission.ask).not.toHaveBeenCalled()
+      // PermissionPolicy owns external-directory asks; sandbox only resolves paths.
     })
 
     it('should allow absolute paths inside additional roots without permission', async () => {
@@ -203,79 +195,40 @@ describe('sandbox', () => {
         'read',
       )
       expect(result).toBe('/skills/iva/references/code-templates.md')
-      expect(Permission.ask).not.toHaveBeenCalled()
+      // PermissionPolicy owns external-directory asks; sandbox only resolves paths.
     })
 
     it('should resolve relative path against boundary', async () => {
       const result = await checkFileAccess('src/file.ts', defaultCtx, 'read')
       expect(result).toBe(path.resolve('/workspace', 'src/file.ts'))
-      expect(Permission.ask).not.toHaveBeenCalled()
+      // PermissionPolicy owns external-directory asks; sandbox only resolves paths.
     })
 
     it('should expand ~ before checking access', async () => {
       const result = await checkFileAccess('~/file.txt', defaultCtx, 'read')
       expect(result).toBe(os.homedir() + '/file.txt')
-      expect(Permission.ask).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'external_directory',
-          metadata: expect.objectContaining({
-            filePath: os.homedir() + '/file.txt',
-          }),
-        })
-      )
     })
 
     it('should request permission for path outside boundary', async () => {
       const result = await checkFileAccess('/other/file.ts', defaultCtx, 'write')
       expect(result).toBe('/other/file.ts')
-      expect(Permission.ask).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'external_directory',
-          pattern: '/other/*',
-          sessionId: 'test-session',
-          messageId: 'test-message',
-          callId: 'test-call',
-          title: 'write: file.ts',
-          workingDirectory: '/workspace',
-          metadata: expect.objectContaining({
-            filePath: '/other/file.ts',
-            boundary: '/workspace',
-            operation: 'write',
-            targetType: 'file',
-          }),
-        })
-      )
     })
 
     it('should request directory-scoped permission for external directory paths', async () => {
       const result = await checkFileAccess('/other/project', defaultCtx, 'search', 'directory')
       expect(result).toBe('/other/project')
-      expect(Permission.ask).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'external_directory',
-          pattern: ['/other/project', '/other/project/*'],
-          title: 'search: project',
-          workingDirectory: '/workspace',
-          metadata: expect.objectContaining({
-            filePath: '/other/project',
-            targetType: 'directory',
-          }),
-        })
-      )
     })
 
     it('should not request permission for exact boundary path', async () => {
       const result = await checkFileAccess('/workspace', defaultCtx, 'read')
       expect(result).toBe('/workspace')
-      expect(Permission.ask).not.toHaveBeenCalled()
+      // PermissionPolicy owns external-directory asks; sandbox only resolves paths.
     })
 
-    it('should propagate permission rejection', async () => {
-      vi.mocked(Permission.ask).mockRejectedValueOnce(new Error('Permission denied'))
-
+    it('should resolve external paths without asking directly', async () => {
       await expect(
         checkFileAccess('/other/file.ts', defaultCtx, 'write')
-      ).rejects.toThrow('Permission denied')
+      ).resolves.toBe('/other/file.ts')
     })
   })
 })

@@ -43,7 +43,7 @@ import {
   buildHistoryMessages,
   filterHistoryForNonToolAPI,
 } from '../engine/stream/message-helpers.js'
-import { buildPromptContext, buildRequestMessages } from '../engine/prompt/index.js'
+import { buildPrompt } from '../engine/prompt/index.js'
 import {
   extractErrorDetails,
   getProviderConfig,
@@ -800,8 +800,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     const toolsForAI = hasTools ? { ...builtinToolsForAI, ...mcpTools } : {}
 
     const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
-    const promptContext = await buildPromptContext({
-      previousState: session.promptContext ?? undefined,
+    const requestMessages = await buildPrompt({
       sessionId,
       agentId: session.agentId,
       providerId,
@@ -816,12 +815,6 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       knownProjects: projectVars.known,
       toolNames: Object.keys(builtinToolsForAI),
       mcpToolNames: Object.keys(mcpTools),
-    })
-    store.updateSessionPromptContext(sessionId, promptContext.state)
-    const requestMessages = buildRequestMessages({
-      providerId,
-      promptContext: promptContext.state,
-      emittedFragments: promptContext.emittedFragments,
       historyMessages: [],
     })
     const { systemPrompt, systemPromptSegments } = requestMessages

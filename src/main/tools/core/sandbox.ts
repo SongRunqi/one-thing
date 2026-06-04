@@ -8,7 +8,6 @@
 
 import * as path from 'path'
 import * as os from 'os'
-import { Permission } from '../../permission/index.js'
 import { getSettings } from '../../stores/settings.js'
 
 /**
@@ -96,7 +95,7 @@ export function findSandboxRootForPath(
 }
 
 /**
- * Check file path access and request permission if outside boundary
+ * Resolve file path access. PermissionPolicy owns external-directory decisions.
  *
  * @param filePath - The file path to check
  * @param ctx - Tool context with sessionId, messageId, toolCallId, workingDirectory
@@ -118,37 +117,8 @@ export async function checkFileAccess(
   // Ensure absolute path
   const absolutePath = resolveToolPath(filePath, ctx.workingDirectory)
 
-  // Get sandbox roots
-  const boundary = getSandboxBoundary(ctx.workingDirectory)
-  const matchingRoot = findSandboxRootForPath(
-    absolutePath,
-    ctx.workingDirectory,
-    ctx.workingDirectoryRoots,
-  )
-
-  // Check if path is within any allowed root
-  if (!matchingRoot) {
-    const pattern = targetType === 'directory'
-      ? [absolutePath, path.join(absolutePath, '*')]
-      : path.join(path.dirname(absolutePath), '*')
-
-    // Request permission for external access
-    await Permission.ask({
-      type: 'external_directory',
-      pattern,
-      sessionId: ctx.sessionId,
-      messageId: ctx.messageId,
-      callId: ctx.toolCallId,
-      title: `${operation}: ${path.basename(absolutePath)}`,
-      workingDirectory: boundary,
-      metadata: {
-        filePath: absolutePath,
-        boundary,
-        operation,
-        targetType,
-      },
-    })
-  }
-
+  void ctx
+  void operation
+  void targetType
   return absolutePath
 }

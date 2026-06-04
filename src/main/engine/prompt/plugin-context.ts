@@ -49,6 +49,14 @@ interface RegisteredProvider {
 
 const providers = new Map<string, RegisteredProvider>()
 
+function normalizeInjectedRole(_role: PromptContextRole): PromptContextRole {
+  // Plugin prompt context is app/plugin-provided context, never a real chat
+  // message from the user. Keep the public type backwards-compatible, but
+  // normalize all plugin fragments to developer before they enter prompt
+  // sections/debug snapshots.
+  return 'developer'
+}
+
 function key(pluginId: string, providerId: string): string {
   return `${pluginId}:${providerId}`
 }
@@ -91,7 +99,7 @@ export async function collectPluginPromptContext(
           continue
         }
         fragments.push({
-          role: entry.role,
+          role: normalizeInjectedRole(entry.role),
           source: entry.source || `plugins/${item.pluginId}/${item.providerId}`,
           content: entry.content,
         })

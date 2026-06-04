@@ -116,15 +116,18 @@
         "danger": "bgDark"
       },
       "code": {
-        "inline": "purple",
+        "inline": "fg",
         "block": "fg",
         "comment": "#5C6370",
         "keyword": "purple",
         "string": "green",
         "number": "orange",
         "function": "blue",
-        "variable": "red",
-        "operator": "cyan"
+        "variable": "fg",
+        "operator": "#5C6370",
+        "type": "cyan",
+        "property": "blue",
+        "punctuation": "#5C6370"
       },
       "menu": {
         "item": "gutter",

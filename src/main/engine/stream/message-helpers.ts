@@ -7,6 +7,7 @@ import type { ChatMessage } from '../../../shared/ipc.js'
 import type { AIMessageContent } from '../../providers/index.js'
 import { getAIToolName } from '../../providers/tool-name-alias.js'
 import { buildSystemPrompt } from '../prompt/index.js'
+import { toolFailureResultForAI } from '../../tools/core/tool-result.js'
 import { logMessageBodyShape } from './chat-logger.js'
 
 /**
@@ -263,7 +264,7 @@ export function buildHistoryMessages(
                 type: 'tool-result' as const,
                 toolCallId: tc.id,
                 toolName: getAIToolName(tc.toolId || tc.toolName),
-                result: tc.status === 'completed' ? sanitizeToolResultForAI(tc.result) : { error: tc.error },
+                result: tc.status === 'completed' ? sanitizeToolResultForAI(tc.result) : toolFailureResultForAI(tc),
               })),
             })
           }
@@ -345,7 +346,7 @@ export function buildHistoryMessages(
             type: 'tool-result' as const,
             toolCallId: tc.id,
             toolName: getAIToolName(tc.toolId || tc.toolName),
-            result: tc.status === 'completed' ? sanitizeToolResultForAI(tc.result) : { error: tc.error },
+            result: tc.status === 'completed' ? sanitizeToolResultForAI(tc.result) : toolFailureResultForAI(tc),
           })),
         })
       }

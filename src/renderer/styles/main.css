@@ -12,6 +12,7 @@
 @import './themes/dark.css';
 @import './components.css';
 @import './hljs-theme.css';
+@import './markdown.css';
 
 :root {
   --breakpoint-mobile: 480px;
@@ -35,6 +36,15 @@ body,
   -moz-osx-font-smoothing: grayscale;
   background: var(--bg);
   color: var(--text);
+}
+
+/* Transparent panel windows (e.g. the standalone Todo window) draw their own
+   rounded surface; keep the root layers transparent so the opaque square
+   background never shows behind the rounded corners. */
+html.transparent-window-root,
+html.transparent-window-root body,
+html.transparent-window-root #app {
+  background: transparent;
 }
 
 button,

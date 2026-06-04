@@ -12,7 +12,7 @@ const TodoPlanParameters = z.object({
   action: z.enum(['list', 'create', 'update', 'rename', 'delete'])
     .describe('List, create, update, rename, or delete todo/plan markdown documents.'),
   scope: z.enum(['user-note', 'workspace-ai-todo']).optional()
-    .describe('Target scope. user-note is global user notes, workspace-ai-todo is per working directory AI work tracking and follow-up work.'),
+    .describe('Target scope. user-note is global user notes, workspace-ai-todo is per-work-directory AI work tracking and follow-up work.'),
   id: z.string().optional()
     .describe('User note id for update/rename/delete. Not needed for workspace-ai-todo.'),
   title: z.string().optional()
@@ -27,7 +27,7 @@ export const TodoPlanTool = Tool.define<typeof TodoPlanParameters>('todo_plan', 
 
 Scopes:
 - user-note: global user-owned markdown todo notes. Use these to help the user remember their own tasks, commitments, reminders, errands, meeting notes, and personal/project notes.
-- workspace-ai-todo: one assistant-owned todo list per workspace. Use this as the only AI work-tracking surface in the same working directory.
+- workspace-ai-todo: one assistant-owned todo list per workspace. Use this as the only AI work-tracking surface in the same work directory.
 
 Workspace AI Todo convention:
 - "## Now" is for the current round or currently active assistant work.
@@ -38,24 +38,37 @@ Workspace AI Todo convention:
 - If the target user note is unclear, list notes first and update the most relevant note or create a concise new one. Ask before writing only when intent is ambiguous.
 - Never delete or rename user-note documents unless the user explicitly asks for that destructive/organizational action.
 
+Every todo_plan call must include action. To replace the workspace AI todo markdown, call todo_plan with action="update", scope="workspace-ai-todo", and content="...".
+
 All documents are markdown and render live in the todo/plan card and detached window.`,
   category: 'builtin',
   enabled: true,
   autoExecute: true,
   permissionGuard: 'safe',
+  executionMode: 'sequential',
+  renderKind: 'text',
+  promptSnippet: 'Read or update todo/plan notes',
   parameters: TodoPlanParameters,
 
   async execute(args, ctx) {
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: `Running todo_plan ${args.action}...` }],
+      details: { phase: 'running', action: args.action, scope: args.scope, id: args.id },
+    })
+
     if (args.action === 'list') {
       const snapshot = await readTodoPlanSnapshot({
         sessionId: ctx.sessionId,
         workingDirectory: ctx.workingDirectory,
       })
+      const workspaceAiTodoText = snapshot.workspaceAiTodo
+        ? `Tasks: ${snapshot.workspaceAiTodo.totalTasks}\n\n${snapshot.workspaceAiTodo.content}`
+        : 'Not created yet. It will be created only after workspace-ai-todo is explicitly written with content.'
       const parts = [
         '# User Notes',
         ...snapshot.userNotes.map(note => `## ${note.title}\nID: ${note.id}\nTasks: ${note.totalTasks}\n\n${note.content}`),
         '# Workspace AI Todo',
-        `Tasks: ${snapshot.workspaceAiTodo.totalTasks}\n\n${snapshot.workspaceAiTodo.content}`,
+        workspaceAiTodoText,
       ]
       ctx.metadata({
         title: 'Listed todo/plan',
@@ -146,5 +159,10 @@ All documents are markdown and render live in the todo/plan card and detached wi
       output: `${document.title} updated`,
       metadata: { id: document.id, scope: document.scope },
     }
+  },
+
+  formatValidationError(error) {
+    const issues = error.issues.map((issue) => `- ${issue.path.join('.')}: ${issue.message}`)
+    return `Invalid todo_plan parameters:\n${issues.join('\n')}\n\nUsage: todo_plan({ action: "list" | "create" | "update" | "rename" | "delete", scope?: "user-note" | "workspace-ai-todo", id?: string, title?: string, content?: string }). action is always required; for workspace-ai-todo content replacement use action="update".`
   },
 })

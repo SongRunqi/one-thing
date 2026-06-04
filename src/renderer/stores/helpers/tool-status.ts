@@ -12,6 +12,7 @@ import type { Step, ToolCall } from '@/types'
 
 export type ToolRenderStatus =
   | 'pending'
+  | 'queued'
   | 'streaming-input'
   | 'awaiting-confirmation'
   | 'executing'
@@ -32,6 +33,7 @@ export function getToolRenderStatus(toolCall?: ToolCall, step?: Step): ToolRende
     return 'awaiting-confirmation'
   }
   if (toolCall?.status === 'input-streaming') return 'streaming-input'
+  if (toolCall?.status === 'queued') return 'queued'
   if (step?.status === 'cancelled' || toolCall?.status === 'cancelled') return 'cancelled'
   if (step?.status === 'failed' || toolCall?.status === 'failed') return 'failed'
   if (step?.status === 'completed' || toolCall?.status === 'completed') return 'completed'

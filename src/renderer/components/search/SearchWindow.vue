@@ -493,10 +493,10 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--bg);
+  background: var(--ui-surface-app-bg, var(--bg));
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 0 0 0.5px var(--border);
+  box-shadow: 0 0 0 0.5px var(--ui-border-default-border, var(--border));
   font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, sans-serif);
   user-select: none;
 }
@@ -506,7 +506,7 @@ onUnmounted(() => {
   display: flex;
   gap: 0;
   padding: 8px 12px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
   -webkit-app-region: drag;
 }
 
@@ -517,18 +517,18 @@ onUnmounted(() => {
   border-bottom: 2px solid transparent;
   padding: 6px 14px 8px;
   font-size: 13px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
 
 .tab:hover {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .tab.active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
+  color: var(--ui-text-primary-fg, var(--text));
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 /* ── Input ──────────────────────────── */
@@ -537,12 +537,12 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .search-icon {
   flex-shrink: 0;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .search-input {
@@ -551,12 +551,12 @@ onUnmounted(() => {
   border: none;
   outline: none;
   font-size: 14px;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-family: inherit;
 }
 
 .search-input::placeholder {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   opacity: 0.6;
 }
 
@@ -570,7 +570,7 @@ onUnmounted(() => {
 .group-header {
   font-size: 11px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   padding: 8px 20px 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -579,12 +579,12 @@ onUnmounted(() => {
 .search-state {
   padding: 24px 20px;
   text-align: center;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 13px;
 }
 
 .search-state.error {
-  color: var(--danger, #d14);
+  color: var(--ui-status-danger-fg, var(--danger, #d14));
 }
 
 .prompt-dialog-backdrop {
@@ -603,9 +603,9 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 10px;
   padding: 14px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 10px;
-  background: var(--panel, var(--bg));
+  background: var(--ui-surface-panel-bg, var(--panel, var(--bg)));
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
 }
 
@@ -626,7 +626,7 @@ onUnmounted(() => {
 .prompt-dialog-close {
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   font-size: 18px;
 }
@@ -635,7 +635,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -645,10 +645,10 @@ onUnmounted(() => {
 .prompt-dialog textarea {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 7px;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--ui-surface-app-bg, var(--bg));
+  color: var(--ui-text-primary-fg, var(--text));
   font: inherit;
   font-size: 13px;
   line-height: 1.45;
@@ -661,9 +661,9 @@ onUnmounted(() => {
 
 .prompt-dialog button[type="submit"],
 .prompt-dialog .secondary {
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 7px;
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
   cursor: pointer;
   font: inherit;
@@ -673,11 +673,11 @@ onUnmounted(() => {
 
 .prompt-dialog .secondary {
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .prompt-dialog-error {
-  color: var(--danger, #d14);
+  color: var(--ui-status-danger-fg, var(--danger, #d14));
   font-size: 12px;
 }
 
@@ -686,15 +686,15 @@ onUnmounted(() => {
   display: flex;
   gap: 16px;
   padding: 6px 14px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .search-footer kbd {
   display: inline-block;
   padding: 0 4px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 3px;
   font-size: 10px;
   font-family: inherit;

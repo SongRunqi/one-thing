@@ -754,9 +754,9 @@ onMounted(async () => {
   position: relative;
   width: min(680px, 100%);
   height: min(720px, 85vh);
-  background: var(--bg);
+  background: var(--ui-surface-app-bg, var(--bg));
   border-radius: 24px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
@@ -785,7 +785,7 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -797,7 +797,7 @@ html[data-theme='light'] .settings-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .header-title h2 {
@@ -813,7 +813,7 @@ html[data-theme='light'] .settings-header {
   border: none;
   background: transparent;
   border-radius: 10px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -822,8 +822,8 @@ html[data-theme='light'] .settings-header {
 }
 
 .close-btn:hover {
-  background: var(--hover);
-  color: var(--text-primary);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 /* Tab Navigation */
@@ -831,7 +831,7 @@ html[data-theme='light'] .settings-header {
   display: flex;
   gap: 2px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
   background: rgba(255, 255, 255, 0.02);
 }
 
@@ -849,19 +849,19 @@ html[data-theme='light'] .tabs-nav {
   border-radius: 8px;
   font-size: var(--type-label-size);
   font-weight: var(--type-label-weight);
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .tab-btn:hover {
-  background: var(--hover);
-  color: var(--text-primary);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .tab-btn.active {
-  background: rgba(59, 130, 246, 0.15);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .tab-btn svg {

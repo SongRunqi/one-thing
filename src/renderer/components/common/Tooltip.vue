@@ -178,8 +178,8 @@ onUnmounted(() => {
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 500;
-  color: #fff;
-  background: rgba(24, 24, 27, 0.95);
+  color: var(--ui-surface-tooltip-fg, var(--ui-text-inverse-fg, #fff));
+  background: var(--ui-surface-tooltip-bg, rgba(24, 24, 27, 0.95));
   border-radius: 6px;
   white-space: pre-line;
   pointer-events: none;
@@ -189,8 +189,8 @@ onUnmounted(() => {
 }
 
 html[data-theme='light'] .tooltip {
-  background: rgba(39, 39, 42, 0.95);
-  color: #fff;
+  background: var(--ui-surface-tooltip-bg, rgba(39, 39, 42, 0.95));
+  color: var(--ui-surface-tooltip-fg, var(--ui-text-inverse-fg, #fff));
 }
 
 .tooltip-arrow {
@@ -200,7 +200,7 @@ html[data-theme='light'] .tooltip {
   height: 0;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-top: 5px solid rgba(24, 24, 27, 0.95);
+  border-top: 5px solid var(--ui-surface-tooltip-bg, rgba(24, 24, 27, 0.95));
 }
 
 html[data-theme='light'] .tooltip-arrow {

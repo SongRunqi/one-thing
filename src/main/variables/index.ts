@@ -121,17 +121,13 @@ export async function listContextVariables(sessionId: string): Promise<ContextVa
 }
 
 /**
- * Build the prompt-injection string for `sessionId`. The system prompt
- * renders the Context Variables block whenever tools are enabled, so
- * this helper guarantees the workdir line is always present — emitting
- * `- workdir: (unset)` when no workdir is set yet. Project directories
- * are rendered separately by the project-dirs module's prompt partials.
+ * Build the prompt-injection string for non-workdir custom variables.
+ * Workdir/cwd is rendered by the prompt builder itself, so it is filtered
+ * out here to avoid duplicate directory instructions.
  */
 export async function buildContextVariablesPromptText(sessionId: string): Promise<string> {
-  const list = await listContextVariables(sessionId)
-  const formatted = formatVariablesForPrompt(list)
-  if (formatted) return formatted
-  return '- workdir: (unset)'
+  const list = (await listContextVariables(sessionId)).filter(variable => variable.name !== 'workdir')
+  return formatVariablesForPrompt(list)
 }
 
 /**

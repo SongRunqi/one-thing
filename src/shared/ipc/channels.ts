@@ -41,6 +41,7 @@ export const IPC_CHANNELS = {
   UPDATE_SESSION_PIN: 'sessions:update-pin',
   UPDATE_SESSION_MODEL: 'sessions:update-model',
   UPDATE_SESSION_AGENT: 'sessions:update-agent',
+  UPDATE_SESSION_PERMISSION_MODE: 'sessions:update-permission-mode',
   UPDATE_SESSION_ARCHIVED: 'sessions:update-archived',
   UPDATE_SESSION_WORKING_DIRECTORY: 'sessions:update-working-directory',
   GET_SESSION: 'sessions:get',
@@ -114,6 +115,8 @@ export const IPC_CHANNELS = {
   EXECUTE_TOOL: 'tools:execute',
   CANCEL_TOOL: 'tools:cancel',
   UPDATE_TOOL_CALL: 'tools:update-tool-call',
+  BACKGROUND_JOBS_LIST: 'tools:background-jobs:list',
+  BACKGROUND_JOBS_STOP: 'tools:background-jobs:stop',
   REFRESH_ASYNC_TOOLS: 'tools:refresh-async',
   STREAM_TOOL_CALL: 'chat:stream-tool-call',
   STREAM_TOOL_RESULT: 'chat:stream-tool-result',
@@ -122,9 +125,12 @@ export const IPC_CHANNELS = {
 
   // Permission related
   PERMISSION_REQUEST: 'permission:request',
-  PERMISSION_RESPOND: 'permission:respond',
   PERMISSION_GET_PENDING: 'permission:get-pending',
   PERMISSION_CLEAR_SESSION: 'permission:clear-session',
+  PERMISSION_LIST_GRANTS: 'permission:list-grants',
+  PERMISSION_REVOKE_GRANT: 'permission:revoke-grant',
+  PERMISSION_CLEAR_SESSION_GRANTS: 'permission:clear-session-grants',
+  PERMISSION_CLEAR_WORKSPACE_GRANTS: 'permission:clear-workspace-grants',
 
   // MCP related
   MCP_GET_SERVERS: 'mcp:get-servers',

@@ -588,6 +588,9 @@ export const FartTool = Tool.define('fart', {
   enabled: true,
   autoExecute: true,
   permissionGuard: 'safe',
+  executionMode: 'parallel',
+  renderKind: 'text',
+  promptSnippet: 'Summon a whimsical ASCII buddy',
 
   parameters: FartParameters,
 
@@ -605,6 +608,10 @@ export const FartTool = Tool.define('fart', {
     for (let i = 0; i < frames.length; i++) {
       if (ctx.abortSignal?.aborted) break
       const f = frames[i]
+      ctx.updateResult?.({
+        content: [{ type: 'text', text: f.art }],
+        details: { phase: 'animating', action, character, style, loudness, frameIndex: i, totalFrames: frames.length },
+      })
       ctx.metadata({
         title: f.label,
         metadata: {
@@ -633,9 +640,15 @@ export const FartTool = Tool.define('fart', {
 
     const headerLabel = action === 'fart' ? `fart (${style}, ${loudness}/10)` : `${action} (${loudness}/10)`
 
+    const output = `\`\`\`\n${strip}\n\`\`\`\n\n${summary}`
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: output }],
+      details: { phase: 'ready', action, character, style, loudness, frameIndex: frames.length - 1, totalFrames: frames.length },
+    })
+
     return {
       title: text ? `💨 ${character} says: ${text.slice(0, 40)}` : `💨 ${character} ${headerLabel}`,
-      output: `\`\`\`\n${strip}\n\`\`\`\n\n${summary}`,
+      output,
       metadata: {
         action,
         character,

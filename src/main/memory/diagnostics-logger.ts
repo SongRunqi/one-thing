@@ -184,7 +184,6 @@ export class MemoryDiagnosticsLogger {
       includeHttpErrorBody: settings?.includeHttpErrorBody ?? DEFAULT_CONFIG.includeHttpErrorBody,
     }
     this.ensureCleanupTimer()
-    void this.cleanup().catch(() => undefined)
   }
 
   getLogDir(): string {

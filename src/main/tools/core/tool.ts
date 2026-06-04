@@ -11,7 +11,8 @@
  */
 
 import { z } from 'zod'
-import type { Step } from '../../../shared/ipc/index.js'
+import type { Step, ToolExecutionMode, ToolPartialResult, ToolRenderKind, ToolRenderShell, ToolResult as StructuredToolResult, ToolResultContentPart } from '../../../shared/ipc/index.js'
+import type { ToolEffect, ToolPreview } from './tool-effect.js'
 
 /**
  * Tool metadata - arbitrary key-value pairs for real-time UI updates
@@ -19,6 +20,11 @@ import type { Step } from '../../../shared/ipc/index.js'
 export interface ToolMetadata {
   [key: string]: unknown
 }
+
+export type { ToolResultContentPart }
+export type ToolPartialResultUpdate = ToolPartialResult
+export type CanonicalToolResult<TDetails = Record<string, unknown> | undefined> = StructuredToolResult<TDetails>
+export type { ToolExecutionMode, ToolRenderKind, ToolRenderShell }
 
 /**
  * Context passed to tool init function for dynamic configuration
@@ -86,12 +92,19 @@ export interface ToolContext<M extends ToolMetadata = ToolMetadata> {
    */
   metadata(input: { title?: string; metadata?: Partial<M> }): void
   /**
+   * Stream a partial tool result to the UI while execution is still running.
+   * This mirrors the final ToolResult output shape instead of using ad-hoc metadata.
+   */
+  updateResult?(input: ToolPartialResultUpdate): void
+  /**
    * Step event callbacks for tools that produce sub-steps
    */
   onStepStart?: (step: Step) => void
   onStepComplete?: (step: Step) => void
   /** Wait before performing filesystem/process/remote side effects. */
   beforeSideEffect?: () => Promise<void>
+  /** Analysis approved by central PermissionPolicy before execute. */
+  approvedAnalysis?: { effects: ToolEffect[]; preview?: ToolPreview }
 }
 
 /**
@@ -133,12 +146,24 @@ export interface ToolInfo<
   enabled?: boolean
   /** Whether tool can be auto-executed without confirmation */
   autoExecute?: boolean
+  /** Analyze call effects before execution. Used by the Orchestrator permission-policy migration. */
+  analyze?(args: z.infer<P>, ctx: ToolContext<M>): Promise<{ effects: ToolEffect[]; preview?: ToolPreview }> | { effects: ToolEffect[]; preview?: ToolPreview }
+  /** Optional one-line snippet for prompt available-tools sections. */
+  promptSnippet?: string
+  /** Optional guideline bullets appended when this tool is active. */
+  promptGuidelines?: string[]
+  /** Per-tool execution scheduling mode. Sequential tools act as scheduler barriers. */
+  executionMode?: ToolExecutionMode
+  /** Whether the renderer should use the default result shell or a self-framed renderer. */
+  renderShell?: ToolRenderShell
+  /** Serializable hint for renderer result selection. */
+  renderKind?: ToolRenderKind
   /**
    * Permission safety model used before injecting/auto-executing tools.
    * - safe: no filesystem/process/network side effects
    * - sandboxed: read-only or bounded access with sandbox checks
    * - internal-check: tool classifies each call and asks/denies dangerous operations
-   * - permission-gated: tool must pass Permission.ask before side effects
+   * - permission-gated: tool must pass centralized PermissionPolicy before side effects
    * - external: opaque tool without a local permission guard
    */
   permissionGuard?: 'safe' | 'sandboxed' | 'internal-check' | 'permission-gated' | 'external'
@@ -167,6 +192,13 @@ export interface ToolInitResult<
   description: string
   /** Zod schema for parameters (can be dynamic) */
   parameters: P
+  /** Analyze call effects before execution. Used by the Orchestrator permission-policy migration. */
+  analyze?(args: z.infer<P>, ctx: ToolContext<M>): Promise<{ effects: ToolEffect[]; preview?: ToolPreview }> | { effects: ToolEffect[]; preview?: ToolPreview }
+  promptSnippet?: string
+  promptGuidelines?: string[]
+  executionMode?: ToolExecutionMode
+  renderShell?: ToolRenderShell
+  renderKind?: ToolRenderKind
   /** Execute the tool with validated arguments */
   execute(args: z.infer<P>, ctx: ToolContext<M>): Promise<ToolResult<M>>
   /** Custom validation error formatter */
@@ -192,6 +224,11 @@ export interface ToolInfoAsync<
   autoExecute?: boolean
   /** Permission safety model used before injecting/auto-executing tools. */
   permissionGuard?: ToolInfo['permissionGuard']
+  promptSnippet?: string
+  promptGuidelines?: string[]
+  executionMode?: ToolExecutionMode
+  renderShell?: ToolRenderShell
+  renderKind?: ToolRenderKind
   /** Async initialization function - called once to get description and parameters */
   init: (ctx?: InitContext) => Promise<ToolInitResult<P, M>>
   /** Cached initialization result (set after first init call) */
@@ -236,6 +273,11 @@ export namespace Tool {
     enabled?: boolean
     autoExecute?: boolean
     permissionGuard?: ToolInfo['permissionGuard']
+    promptSnippet?: string
+    promptGuidelines?: string[]
+    executionMode?: ToolExecutionMode
+    renderShell?: ToolRenderShell
+    renderKind?: ToolRenderKind
   }
 
   /**
@@ -312,6 +354,11 @@ export namespace Tool {
         enabled: config.enabled ?? true,
         autoExecute: config.autoExecute ?? false,
         permissionGuard: config.permissionGuard,
+        promptSnippet: config.promptSnippet,
+        promptGuidelines: config.promptGuidelines,
+        executionMode: config.executionMode,
+        renderShell: config.renderShell,
+        renderKind: config.renderKind,
         init,
       } as ToolInfoAsync<P, M>
     }

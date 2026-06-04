@@ -101,6 +101,7 @@ export interface ThemeTextColors {
     args?: ColorValue
     result?: ColorValue
     error?: ColorValue
+    label?: ColorValue
   }
   sidebar?: {
     title?: ColorValue
@@ -229,6 +230,185 @@ export interface ThemeColors {
 }
 
 // ============================================
+// Highlight Group Types
+// ============================================
+
+export type SemanticHighlightToken =
+  | 'syntax.plain'
+  | 'syntax.comment'
+  | 'syntax.keyword'
+  | 'syntax.atom'
+  | 'syntax.string'
+  | 'syntax.number'
+  | 'syntax.function'
+  | 'syntax.definition'
+  | 'syntax.variable'
+  | 'syntax.property'
+  | 'syntax.type'
+  | 'syntax.tag'
+  | 'syntax.operator'
+  | 'syntax.punctuation'
+  | 'syntax.invalid'
+  | 'syntax.inserted'
+  | 'syntax.deleted'
+  | 'syntax.heading'
+  | 'syntax.link'
+  | 'syntax.emphasis'
+  | 'syntax.strong'
+
+export type HighlightFontStyle =
+  | 'normal'
+  | 'italic'
+  | 'bold'
+  | 'underline'
+  | 'bold italic'
+  | 'bold underline'
+  | 'italic underline'
+  | 'bold italic underline'
+
+export interface HighlightStyle {
+  fg?: ColorValue
+  bg?: ColorValue
+  fontStyle?: HighlightFontStyle
+}
+
+export interface HighlightLink {
+  link: SemanticHighlightToken | string
+}
+
+export type ThemeHighlightGroup = HighlightStyle | HighlightLink
+
+export interface ThemeHighlights {
+  semanticTokens?: Partial<Record<SemanticHighlightToken, HighlightStyle>>
+  groups?: Record<string, ThemeHighlightGroup>
+  aliases?: Record<string, SemanticHighlightToken | string>
+}
+
+// ============================================
+// UI Semantic Token Types
+// ============================================
+
+export type SemanticUIToken =
+  | 'ui.accent.primary'
+  | 'ui.accent.subtle'
+  | 'ui.surface.app'
+  | 'ui.surface.sidebar'
+  | 'ui.surface.chat'
+  | 'ui.surface.panel'
+  | 'ui.surface.elevated'
+  | 'ui.surface.floating'
+  | 'ui.surface.overlay'
+  | 'ui.surface.menu'
+  | 'ui.surface.menuHover'
+  | 'ui.surface.input'
+  | 'ui.surface.inputFocus'
+  | 'ui.surface.codeInline'
+  | 'ui.surface.codeBlock'
+  | 'ui.surface.codeHeader'
+  | 'ui.surface.tooltip'
+  | 'ui.surface.modal'
+  | 'ui.surface.note'
+  | 'ui.surface.previewLight'
+  | 'ui.surface.previewDark'
+  | 'ui.text.primary'
+  | 'ui.text.secondary'
+  | 'ui.text.muted'
+  | 'ui.text.faint'
+  | 'ui.text.inverse'
+  | 'ui.text.placeholder'
+  | 'ui.text.disabled'
+  | 'ui.text.link'
+  | 'ui.text.linkHover'
+  | 'ui.border.default'
+  | 'ui.border.subtle'
+  | 'ui.border.strong'
+  | 'ui.border.divider'
+  | 'ui.border.focus'
+  | 'ui.border.selected'
+  | 'ui.action.primary'
+  | 'ui.action.primaryHover'
+  | 'ui.action.secondary'
+  | 'ui.action.secondaryHover'
+  | 'ui.action.ghost'
+  | 'ui.action.ghostHover'
+  | 'ui.action.danger'
+  | 'ui.action.dangerHover'
+  | 'ui.action.disabled'
+  | 'ui.state.hover'
+  | 'ui.state.active'
+  | 'ui.state.selected'
+  | 'ui.state.selectedHover'
+  | 'ui.state.highlight'
+  | 'ui.state.focus'
+  | 'ui.state.disabled'
+  | 'ui.sidebar.surface'
+  | 'ui.sidebar.item'
+  | 'ui.sidebar.itemHover'
+  | 'ui.sidebar.itemActive'
+  | 'ui.sidebar.itemMuted'
+  | 'ui.sidebar.header'
+  | 'ui.sidebar.action'
+  | 'ui.sidebar.actionHover'
+  | 'ui.sidebar.border'
+  | 'ui.tabBar.surface'
+  | 'ui.tabBar.divider'
+  | 'ui.tabBar.item'
+  | 'ui.tabBar.itemHover'
+  | 'ui.tabBar.itemActive'
+  | 'ui.tabBar.action'
+  | 'ui.tabBar.actionHover'
+  | 'ui.tabBar.danger'
+  | 'ui.status.danger'
+  | 'ui.status.warning'
+  | 'ui.status.success'
+  | 'ui.status.info'
+  | 'ui.message.user'
+  | 'ui.message.userSolid'
+  | 'ui.message.assistant'
+  | 'ui.message.system'
+  | 'ui.message.error'
+  | 'ui.message.hover'
+  | 'ui.message.thinking'
+  | 'ui.tool.surface'
+  | 'ui.tool.surfaceHover'
+  | 'ui.tool.surfaceSubtle'
+  | 'ui.tool.result'
+  | 'ui.tool.error'
+  | 'ui.tool.success'
+  | 'ui.tool.text'
+  | 'ui.tool.textMuted'
+  | 'ui.tool.textFaint'
+  | 'ui.tool.accent'
+  | 'ui.tool.accentOn'
+  | 'ui.tool.successText'
+  | 'ui.tool.dangerText'
+  | 'ui.tool.border'
+  | 'ui.editor.text'
+  | 'ui.editor.placeholder'
+  | 'ui.editor.caret'
+  | 'ui.editor.selection'
+
+export interface UIStyle {
+  fg?: ColorValue
+  bg?: ColorValue
+  border?: ColorValue
+  ring?: ColorValue
+  shadow?: ColorValue
+}
+
+export interface UILink {
+  link: SemanticUIToken | string
+}
+
+export type ThemeUIGroup = UIStyle | UILink
+
+export interface ThemeUITokens {
+  semanticTokens?: Partial<Record<SemanticUIToken, UIStyle>>
+  groups?: Record<string, ThemeUIGroup>
+  aliases?: Record<string, SemanticUIToken | string>
+}
+
+// ============================================
 // Theme Definition
 // ============================================
 
@@ -248,6 +428,8 @@ export interface Theme {
 
   defs: ThemeDefs
   theme: ThemeColors
+  highlights?: ThemeHighlights
+  ui?: ThemeUITokens
 }
 
 /**
@@ -266,6 +448,7 @@ export interface ThemeMeta {
     sidebar: string   // Sidebar color
     accent: string    // Accent color
     text: string      // Text color
+    palette?: string[] // Representative swatches from the theme palette
   }
 }
 

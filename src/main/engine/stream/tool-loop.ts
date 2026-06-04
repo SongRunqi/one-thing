@@ -33,12 +33,12 @@ import { getEventBus } from '../../events/index.js'
 import { saveMediaImage } from '../../ipc/media.js'
 import { sendUIMessageFinish } from './stream-helpers.js'
 import { buildHistoryMessages, sanitizeToolResultForAI, type HistoryMessage } from './message-helpers.js'
+import { toolFailureResultForAI } from '../../tools/core/tool-result.js'
 import { getTextFromContent } from './message-helpers.js'
-import { buildPromptContext, buildRequestMessages } from '../prompt/index.js'
+import { buildPrompt } from '../prompt/index.js'
 import type { PromptSegment } from '../prompt/types.js'
 import { getProviderApiType } from './provider-helpers.js'
-import { executeToolAndUpdate } from './tool-execution.js'
-import { OrderedSideEffectQueue, needsOrderedSideEffectGate } from './tool-execution-order.js'
+import { ToolOrchestrator } from './tool-orchestrator.js'
 import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages, logMessageBodyShape } from './chat-logger.js'
 import { buildContextVariablesPromptText } from '../../variables/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
@@ -76,12 +76,6 @@ interface TurnState {
   orderedParts: ContentPart[]
   finishReason: string
   usage?: { inputTokens: number; outputTokens: number; totalTokens: number }
-}
-
-interface ToolExecutionJob {
-  toolCall: ToolCall
-  promise: Promise<void>
-  settled: boolean
 }
 
 interface ToolLoopCompactOptions {
@@ -252,7 +246,7 @@ function buildContinuationMessages(
       type: 'tool-result' as const,
       toolCallId: tc.id,
       toolName: getAIToolName(tc.toolId),
-      result: tc.status === 'completed' ? sanitizeToolResultForAI(tc.result) : { error: tc.error },
+      result: tc.status === 'completed' ? sanitizeToolResultForAI(tc.result) : toolFailureResultForAI(tc),
     })),
   }
   conversationMessages.push(toolResultMsg)
@@ -402,8 +396,7 @@ async function rebuildConversationMessagesFromSession(options: {
   const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
   const toolNames = Object.keys(options.toolsForAI).filter(name => !name.startsWith('mcp_'))
   const mcpToolNames = Object.keys(options.toolsForAI).filter(name => name.startsWith('mcp_'))
-  const promptContext = await buildPromptContext({
-    previousState: session.promptContext ?? undefined,
+  const requestMessages = await buildPrompt({
     sessionId: options.ctx.sessionId,
     agentId: session.agentId,
     providerId: options.ctx.providerId,
@@ -420,13 +413,6 @@ async function rebuildConversationMessagesFromSession(options: {
     mcpToolNames,
     voiceConversation: options.ctx.voiceConversation,
     speakMode: options.ctx.speakMode ?? options.ctx.voiceConversation,
-  })
-  store.updateSessionPromptContext(options.ctx.sessionId, promptContext.state)
-
-  const requestMessages = buildRequestMessages({
-    providerId: options.ctx.providerId,
-    promptContext: promptContext.state,
-    emittedFragments: promptContext.emittedFragments,
     historyMessages,
   })
 
@@ -635,7 +621,7 @@ export async function runStream(
   let pendingSteering: PendingMessage[] = steeringQueue?.drain() || []
   let needsAssistantAfterCompact = false
 
-  while (currentTurn < MAX_TOOL_TURNS) {
+  while (true) {
     let hasMoreToolCalls = true
     let lastSettledTurn: TurnState | undefined
     let lastTurnInConversation = false
@@ -675,15 +661,14 @@ export async function runStream(
       currentTurn++
       assistantTurn++
       const turn = createTurnState()
-      const executedToolCallIds = new Set<string>()
-      const toolExecutionJobs: ToolExecutionJob[] = []
-      const sideEffectQueue = new OrderedSideEffectQueue()
       let sentToolContentParts = false
 
       logTurnStart(currentTurn)
 
       // Send continuation at the START of each turn (except first) to show waiting indicator
       if (assistantTurn > 1) {
+        // TEMP [WaitingGap] diagnostic: start-of-turn continuation (the older path)
+        console.info('[WaitingGap] continuation emitted @turn-start', { turn: currentTurn, t: Date.now() })
         emitter.sendContinuation(currentTurn)
       }
 
@@ -708,7 +693,7 @@ export async function runStream(
 
     // Resolve temperature with per-model precedence:
     //   1. providerConfig.temperatureByModel[model]
-    //   2. providerConfig.temperature (legacy per-provider)
+    //   2. providerConfig.temperature (per-provider default)
     //   3. settings.ai.temperature (global default)
     // Models that don't accept the temperature parameter (per models.dev) get
     // `undefined` so the SDK skips it entirely — required for reasoning models
@@ -919,42 +904,15 @@ export async function runStream(
       emitter.sendContentPart({ type: 'data-steps', turnIndex: currentTurn })
     }
 
-    const startToolExecution = (
-      toolCall: ToolCall,
-      toolCallData: { toolName: string; args: Record<string, any> },
-      existingStepId?: string,
-    ): void => {
-      if (executedToolCallIds.has(toolCall.id)) return
-
-      sendToolContentPartsOnce()
-      turn.toolCalls.push(toolCall)
-      executedToolCallIds.add(toolCall.id)
-
-      const gate = needsOrderedSideEffectGate(toolCallData.toolName)
-        ? sideEffectQueue.createGate()
-        : undefined
-
-      const job: ToolExecutionJob = {
-        toolCall,
-        settled: false,
-        promise: Promise.resolve(),
-      }
-
-      job.promise = (async () => {
-        try {
-          await executeToolAndUpdate(ctx, toolCall, toolCallData, processor.toolCalls, enabledSkills, currentTurn, existingStepId, {
-            beforeSideEffect: gate?.beforeSideEffect,
-          })
-        } catch (err) {
-          console.error('[ToolLoop] tool execution job error:', err)
-        } finally {
-          gate?.release()
-          job.settled = true
-        }
-      })()
-
-      toolExecutionJobs.push(job)
-    }
+    const toolOrchestrator = new ToolOrchestrator({
+      ctx,
+      processor,
+      enabledSkills,
+      turnIndex: currentTurn,
+      turnToolCalls: turn.toolCalls,
+      emitter,
+      beforeFirstTool: sendToolContentPartsOnce,
+    })
 
     const handleCodexProviderData = async (chunk: StreamChunkWithTools): Promise<void> => {
       const data = chunk.providerData
@@ -1018,7 +976,8 @@ export async function runStream(
         processor.handleToolInputStart(
           toolCallId,
           chunk.toolInputStart.toolName,
-          currentTurn  // Pass turnIndex for proper contentParts ordering
+          currentTurn,  // Pass turnIndex for proper contentParts ordering
+          { publish: !toolOrchestrator.shouldDeferNewToolCall() }
         )
         return
       }
@@ -1033,19 +992,21 @@ export async function runStream(
 
       if (chunk.type === 'tool-call' && chunk.toolCall) {
         const toolCallId = chunk.toolCall.toolCallId
-        if (executedToolCallIds.has(toolCallId)) {
+        if (toolOrchestrator.hasExecuted(toolCallId)) {
           return
         }
 
         // Get the step ID before handleToolCallChunk (which may clear the buffer)
         const existingStepId = processor.getStepIdForToolCall(toolCallId)
 
-        const toolCall = processor.handleToolCallChunk(chunk.toolCall)
+        const toolCall = processor.handleToolCallChunk(chunk.toolCall, {
+          publish: !toolOrchestrator.shouldDeferNewToolCall(),
+        })
 
         // Always execute tools - the tool will decide if it needs confirmation
         // by returning requiresConfirmation: true (e.g., bash for dangerous commands)
         // Pass the resolved toolId for execution, include skills for Tool Agent
-        startToolExecution(toolCall, {
+        toolOrchestrator.start(toolCall, {
           toolName: toolCall.toolId,
           args: chunk.toolCall.args
         }, existingStepId)
@@ -1054,7 +1015,7 @@ export async function runStream(
 
       if (chunk.type === 'tool-input-end' && chunk.toolInputEnd) {
         const toolCallId = chunk.toolInputEnd.toolCallId
-        if (executedToolCallIds.has(toolCallId)) {
+        if (toolOrchestrator.hasExecuted(toolCallId)) {
           return
         }
 
@@ -1064,7 +1025,7 @@ export async function runStream(
           return
         }
 
-        startToolExecution(toolCall, {
+        toolOrchestrator.start(toolCall, {
           toolName: toolCall.toolId,
           args: toolCall.arguments,
         }, existingStepId)
@@ -1151,9 +1112,11 @@ export async function runStream(
 	        }
 	      }
 
-    if (toolExecutionJobs.length > 0) {
-      await Promise.allSettled(toolExecutionJobs.map(job => job.promise))
+    if (toolOrchestrator.jobCount > 0) {
+      await toolOrchestrator.waitForAll()
     }
+    // TEMP [WaitingGap] diagnostic: turn's stream closed + all tools awaited
+    console.info('[WaitingGap] turn settled (stream closed + tools awaited)', { turn: currentTurn, toolCalls: turn.toolCalls.length, t: Date.now() })
 
 	    // Update all steps in this turn with the turn's usage data
     if (turnUsage && turn.toolCalls.length > 0) {
@@ -1214,8 +1177,19 @@ export async function runStream(
       console.log(`[Backend] Not all tools auto-executed in turn ${currentTurn}`)
       hasMoreToolCalls = false
     } else {
-      // All tools executed successfully — build continuation for next inner loop iteration
+      // All tools executed (completed OR failed) — feed the results back and
+      // continue to the next turn.
       hasMoreToolCalls = true
+      // Show the waiting indicator the moment we decide to continue, so there's
+      // no blank gap during the awaited compaction check below or the next
+      // request's latency. The next turn's first text/reasoning/tool event
+      // replaces it; the start-of-turn emit (~L670) re-sends the same turnIndex
+      // and is deduped. If compaction spawns a new assistant message, this
+      // transient is cleared when the old turn message is finalized
+      // (isStreaming:false) — see updateSessionMessage in the chat store.
+      // TEMP [WaitingGap] diagnostic: waiting emitted at decide-continue (my fix)
+      console.info('[WaitingGap] continuation emitted @decide-continue', { turn: currentTurn + 1, t: Date.now() })
+      emitter.sendContinuation(currentTurn + 1)
       const compacted = await maybeCompactToolLoopContext({
         ctx,
         processor,
@@ -1269,9 +1243,6 @@ export async function runStream(
   break
   } // end outer while
 
-  if (currentTurn >= MAX_TOOL_TURNS) {
-    console.log(`[Backend] Reached max tool turns (${MAX_TOOL_TURNS})`)
-  }
 
   return { pausedForConfirmation: false, ctx, processor }
 }
@@ -1421,7 +1392,7 @@ export async function executeStreamGeneration(
       contextParts.push(`Language: ${userProfile.language}`)
     }
     // Add current time (always useful)
-    contextParts.push(`Current time: ${new Date().toLocaleString('zh-CN', { 
+    contextParts.push(`Current time: ${new Date().toLocaleString('zh-CN', {
       timeZone: userProfile?.timezone || 'Asia/Shanghai',
       dateStyle: 'full',
       timeStyle: 'short'
@@ -1429,7 +1400,7 @@ export async function executeStreamGeneration(
     if (userProfile?.customInfo) {
       contextParts.push(`Note: ${userProfile.customInfo}`)
     }
-    
+
     const userContextPrompt = contextParts.length > 0 ? contextParts.join('\n') : undefined
 
     let pausedForConfirmation = false
@@ -1452,8 +1423,7 @@ export async function executeStreamGeneration(
       emitter.sendContentPart({ type: 'loading-memory' })
     }
 
-    const promptContext = await buildPromptContext({
-      previousState: session?.promptContext ?? undefined,
+    const requestMessages = await buildPrompt({
       sessionId: ctx.sessionId,
       agentId: session?.agentId,
       providerId: ctx.providerId,
@@ -1470,6 +1440,7 @@ export async function executeStreamGeneration(
       mcpToolNames: Object.keys(mcpTools),
       voiceConversation: ctx.voiceConversation,
       speakMode: ctx.speakMode ?? ctx.voiceConversation,
+      historyMessages,
     })
 
     if (showActiveMemoryLoading) {
@@ -1479,13 +1450,6 @@ export async function executeStreamGeneration(
       emitter.sendContentPart({ type: 'waiting' })
     }
 
-    store.updateSessionPromptContext(ctx.sessionId, promptContext.state)
-    const requestMessages = buildRequestMessages({
-      providerId: ctx.providerId,
-      promptContext: promptContext.state,
-      emittedFragments: promptContext.emittedFragments,
-      historyMessages,
-    })
     const { systemPrompt, systemPromptSegments } = requestMessages
 
     // Log request start with structured format

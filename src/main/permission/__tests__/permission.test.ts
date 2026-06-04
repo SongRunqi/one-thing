@@ -6,14 +6,7 @@ vi.mock('uuid', () => ({
   v4: vi.fn(() => `test-uuid-${++uuidCounter}`),
 }))
 
-// Mock working directory permissions
-vi.mock('../directory-permissions.js', () => ({
-  areAllApprovedInWorkingDirectory: vi.fn(() => false),
-  approveInWorkingDirectory: vi.fn(),
-}))
-
 import { Permission } from '../index'
-import * as DirectoryPermissions from '../directory-permissions.js'
 
 describe('Permission', () => {
   beforeEach(async () => {
@@ -59,10 +52,8 @@ describe('Permission', () => {
   // ─── ask() ─────────────────────────────────────────────────────────
 
   describe('ask()', () => {
-    it('should auto-approve when working-directory permission exists', async () => {
-      vi.mocked(DirectoryPermissions.areAllApprovedInWorkingDirectory).mockReturnValueOnce(true)
-
-      await Permission.ask({
+    it('should emit asks even with a working directory; scoped grants are handled by PermissionGrants', async () => {
+      const askPromise = Permission.ask({
         type: 'bash',
         title: 'Run command',
         pattern: 'bash:run',
@@ -72,10 +63,17 @@ describe('Permission', () => {
         workingDirectory: '/workspace',
       })
 
-      expect(Permission.getPending('ws-auto-session')).toHaveLength(0)
+      const pending = Permission.getPending('ws-auto-session')
+      expect(pending).toHaveLength(1)
+      Permission.respond({
+        sessionId: 'ws-auto-session',
+        permissionId: pending[0].id,
+        response: 'once',
+      })
+      await askPromise
     })
 
-    it('should auto-approve when session-level permission exists', async () => {
+    it('should leave new grant matching to PermissionPolicy', async () => {
       const askPromise1 = Permission.ask({
         type: 'bash',
         title: 'Run command',
@@ -93,8 +91,7 @@ describe('Permission', () => {
       })
       await askPromise1
 
-      // Second request with same pattern should auto-approve
-      await Permission.ask({
+      const askPromise2 = Permission.ask({
         type: 'bash',
         title: 'Run command again',
         pattern: 'bash:run',
@@ -102,8 +99,14 @@ describe('Permission', () => {
         messageId: 'msg-2',
         metadata: {},
       })
-
-      expect(Permission.getPending('session-auto')).toHaveLength(0)
+      const secondPending = Permission.getPending('session-auto')
+      expect(secondPending).toHaveLength(1)
+      Permission.respond({
+        sessionId: 'session-auto',
+        permissionId: secondPending[0].id,
+        response: 'once',
+      })
+      await askPromise2
     })
 
     it('should emit permission:request event via EventBus when initialized', async () => {
@@ -142,6 +145,60 @@ describe('Permission', () => {
         response: 'once',
       })
       await askPromise
+      Permission.shutdown()
+    })
+
+    it('should expose auto-accept-edits mode to PermissionPolicy', () => {
+      const mockBus = {
+        emit: vi.fn().mockResolvedValue(undefined),
+        onAnySession: vi.fn().mockReturnValue(() => {}),
+      } as any
+
+      Permission.initialize(mockBus, () => 'ipc', () => 'auto-accept-edits')
+      expect(Permission.getMode('auto-edit-session')).toBe('auto-accept-edits')
+      Permission.shutdown()
+    })
+
+    it('should still ask for bash in auto-accept-edits mode', async () => {
+      const mockEmit = vi.fn().mockResolvedValue(undefined)
+      const mockBus = {
+        emit: mockEmit,
+        onAnySession: vi.fn().mockReturnValue(() => {}),
+      } as any
+
+      Permission.initialize(mockBus, () => 'ipc', () => 'auto-accept-edits')
+
+      const askPromise = Permission.ask({
+        type: 'bash',
+        title: 'Run command',
+        sessionId: 'auto-edit-bash-session',
+        messageId: 'msg-1',
+        metadata: {},
+      })
+
+      expect(mockEmit).toHaveBeenCalledWith('auto-edit-bash-session', expect.objectContaining({
+        type: 'permission:request',
+        permissionType: 'bash',
+      }))
+
+      const pending = Permission.getPending('auto-edit-bash-session')
+      Permission.respond({
+        sessionId: 'auto-edit-bash-session',
+        permissionId: pending[0].id,
+        response: 'once',
+      })
+      await askPromise
+      Permission.shutdown()
+    })
+
+    it('should expose dangerously-allow-all mode to PermissionPolicy', () => {
+      const mockBus = {
+        emit: vi.fn().mockResolvedValue(undefined),
+        onAnySession: vi.fn().mockReturnValue(() => {}),
+      } as any
+
+      Permission.initialize(mockBus, () => 'ipc', () => 'dangerously-allow-all')
+      expect(Permission.getMode('danger-session')).toBe('dangerously-allow-all')
       Permission.shutdown()
     })
 
@@ -263,7 +320,7 @@ describe('Permission', () => {
         rejectReason: 'Not allowed',
       })
 
-      await expect(askPromise).rejects.toThrow('User rejected this operation: Not allowed')
+      await expect(askPromise).rejects.toThrow('The user rejected permission for this tool. Reason: Not allowed')
     })
 
     it('should reject with default message when no reason given', async () => {
@@ -282,7 +339,7 @@ describe('Permission', () => {
         response: 'reject',
       })
 
-      await expect(askPromise).rejects.toThrow('The user rejected permission to use this tool')
+      await expect(askPromise).rejects.toThrow('The user rejected permission for this tool.')
     })
 
     it('should store session-level permission and auto-approve matching requests', async () => {
@@ -322,12 +379,7 @@ describe('Permission', () => {
       expect(Permission.getPending('session-level-session')).toHaveLength(0)
     })
 
-    it('should handle working-directory permission and auto-approve matching', async () => {
-      vi.mocked(DirectoryPermissions.areAllApprovedInWorkingDirectory)
-        .mockReturnValueOnce(false)
-        .mockReturnValueOnce(false)
-        .mockReturnValue(true)
-
+    it('should store workspace scoped grants and auto-approve matching pending asks', async () => {
       const ask1 = Permission.ask({
         type: 'bash',
         title: 'Run command 1',
@@ -360,39 +412,9 @@ describe('Permission', () => {
       await ask1
       await ask2
 
-      expect(DirectoryPermissions.approveInWorkingDirectory).toHaveBeenCalledWith('/workspace', ['bash:run'])
       expect(Permission.getPending('ws-level-session')).toHaveLength(0)
     })
 
-    it('should normalize legacy "always" response to "session"', async () => {
-      const askPromise = Permission.ask({
-        type: 'bash',
-        title: 'Run command',
-        pattern: 'bash:run',
-        sessionId: 'legacy-session',
-        messageId: 'msg-1',
-        metadata: {},
-      })
-
-      const pending = Permission.getPending('legacy-session')
-      Permission.respond({
-        sessionId: 'legacy-session',
-        permissionId: pending[0].id,
-        response: 'always',
-      })
-
-      await askPromise
-
-      // The next request with same pattern should auto-approve
-      await Permission.ask({
-        type: 'bash',
-        title: 'Run again',
-        pattern: 'bash:run',
-        sessionId: 'legacy-session',
-        messageId: 'msg-2',
-        metadata: {},
-      })
-    })
   })
 
   // ─── Channel Affinity ─────────────────────────────────────────────
@@ -574,9 +596,7 @@ describe('Permission', () => {
 
     it('should use default message when no reason', () => {
       const error = new Permission.RejectedError('s1', 'p1')
-      expect(error.message).toBe(
-        'The user rejected permission to use this tool. You may try again with different parameters.'
-      )
+      expect(error.message).toBe('The user rejected permission for this tool.')
     })
 
     it('should be an instance of Error', () => {
@@ -606,8 +626,7 @@ describe('Permission', () => {
       })
       await ask1
 
-      // A more specific pattern should be auto-approved
-      await Permission.ask({
+      const ask2 = Permission.ask({
         type: 'bash',
         title: 'Run specific command',
         pattern: 'bash:run',
@@ -615,6 +634,14 @@ describe('Permission', () => {
         messageId: 'msg-2',
         metadata: {},
       })
+      const pending2 = Permission.getPending('wildcard-session')
+      expect(pending2).toHaveLength(1)
+      Permission.respond({
+        sessionId: 'wildcard-session',
+        permissionId: pending2[0].id,
+        response: 'once',
+      })
+      await ask2
     })
   })
 

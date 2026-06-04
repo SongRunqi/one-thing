@@ -83,29 +83,29 @@ function handleOverlayAction() {
   gap: 10px;
   width: min(360px, calc(100vw - 36px));
   padding: 10px 10px 10px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--bg-primary, var(--bg));
+  background: var(--ui-surface-app-bg, var(--bg-primary, var(--bg)));
   box-shadow: var(--shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.24));
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .voice-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--ui-text-muted-fg, var(--muted));
 }
 
 .is-recording .voice-dot,
 .is-transcribing .voice-dot {
-  background: #ef4444;
-  box-shadow: 0 0 0 4px color-mix(in srgb, #ef4444 18%, transparent);
+  background: var(--ui-status-danger-fg, #ef4444);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 18%, transparent);
 }
 
 .is-speaking .voice-dot {
-  background: var(--accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+  background: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 18%, transparent);
 }
 
 .voice-copy {
@@ -128,11 +128,11 @@ function handleOverlayAction() {
   white-space: nowrap;
   font-size: 11px;
   line-height: 1.3;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .voice-error {
-  color: var(--danger, #ef4444);
+  color: var(--ui-status-danger-fg, var(--danger, #ef4444));
 }
 
 .voice-stop {
@@ -141,10 +141,10 @@ function handleOverlayAction() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 6px;
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
 }
 

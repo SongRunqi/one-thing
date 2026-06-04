@@ -151,9 +151,9 @@ const subtitle = computed(() => {
   flex-direction: column;
   gap: 12px;
   padding: 14px;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 8px;
-  background: var(--settings-paper, var(--bg));
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
 }
 
 .auth-main {
@@ -169,10 +169,10 @@ const subtitle = computed(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 8px;
-  background: var(--settings-paper-2, var(--panel-2));
-  color: var(--settings-ink-2, var(--text-secondary));
+  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
 }
 
 .auth-copy {
@@ -189,27 +189,27 @@ const subtitle = computed(() => {
 .auth-title {
   font-size: 14px;
   font-weight: 620;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
 .auth-state {
   padding: 2px 7px;
   border-radius: 999px;
   font-size: 11px;
-  border: 1px solid var(--settings-rule, var(--border));
-  color: var(--settings-ink-3, var(--text-secondary));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
 }
 
 .auth-state.connected {
-  color: var(--text-success, var(--color-success));
+  color: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
 }
 
 .auth-state.error {
-  color: var(--text-error, var(--color-error));
+  color: var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
 }
 
 .auth-state.pending {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .auth-subtitle,
@@ -217,17 +217,17 @@ const subtitle = computed(() => {
 .panel-label {
   margin-top: 3px;
   font-size: 12px;
-  color: var(--settings-ink-3, var(--text-secondary));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
   overflow-wrap: anywhere;
 }
 
 .auth-button {
   min-height: 32px;
   padding: 0 12px;
-  border: 1px solid var(--settings-ink, var(--text));
+  border: 1px solid var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   border-radius: 7px;
-  background: var(--settings-ink, var(--text));
-  color: var(--settings-paper, var(--bg));
+  background: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
   font: inherit;
   font-size: 13px;
   font-weight: 560;
@@ -236,7 +236,7 @@ const subtitle = computed(() => {
 
 .auth-button.secondary {
   background: transparent;
-  color: var(--settings-ink, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
 .auth-button:disabled {
@@ -249,27 +249,27 @@ const subtitle = computed(() => {
   flex-direction: column;
   gap: 8px;
   padding: 12px;
-  border: 1px solid var(--settings-rule-soft, var(--border-subtle));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 8px;
-  background: var(--settings-paper-2, var(--panel-2));
+  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
 }
 
 .panel-link {
   font-size: 12px;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   overflow-wrap: anywhere;
 }
 
 .device-code {
   align-self: flex-start;
   padding: 7px 10px;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 18px;
   letter-spacing: 0;
-  color: var(--settings-ink, var(--text));
-  background: var(--settings-paper, var(--bg));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
 }
 
 .code-entry-form {
@@ -281,17 +281,17 @@ const subtitle = computed(() => {
 .code-input {
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid var(--settings-rule, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
-  background: var(--settings-paper, var(--bg));
-  color: var(--settings-ink, var(--text));
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font: inherit;
   font-size: 13px;
 }
 
 .auth-error {
   font-size: 12px;
-  color: var(--text-error, var(--color-error));
+  color: var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
   overflow-wrap: anywhere;
 }
 </style>

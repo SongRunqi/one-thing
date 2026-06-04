@@ -388,10 +388,10 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   padding: 0 10px;
-  border: 1px solid var(--settings-rule-soft, var(--border));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
   border-radius: 8px;
-  background: var(--settings-paper-3, var(--panel));
-  color: var(--settings-ink-4, var(--text-muted));
+  background: var(--settings-paper-3, var(--ui-surface-panel-bg, var(--panel)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
 }
 
 .prompt-search input {
@@ -400,7 +400,7 @@ onMounted(async () => {
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--settings-ink, var(--text-primary));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font: inherit;
   font-size: 13px;
 }
@@ -409,9 +409,9 @@ onMounted(async () => {
   min-height: 520px;
   display: grid;
   grid-template-columns: minmax(260px, 0.88fr) minmax(420px, 1.35fr);
-  border: 1px solid var(--settings-rule-soft, var(--border));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
   border-radius: 8px;
-  background: var(--settings-paper-3, var(--panel));
+  background: var(--settings-paper-3, var(--ui-surface-panel-bg, var(--panel)));
   overflow: hidden;
 }
 
@@ -419,7 +419,7 @@ onMounted(async () => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--settings-rule-soft, var(--border));
+  border-right: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
 }
 
 .prompt-list-header {
@@ -429,8 +429,8 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 10px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--border));
-  color: var(--settings-ink-4, var(--text-muted));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.04em;
@@ -462,8 +462,8 @@ onMounted(async () => {
 }
 
 .prompt-row.active {
-  border-color: var(--settings-rule-soft, var(--border));
-  background: var(--settings-paper, var(--bg));
+  border-color: var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
 }
 
 .prompt-row-top {
@@ -477,7 +477,7 @@ onMounted(async () => {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  color: var(--settings-ink, var(--text-primary));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 13px;
   font-weight: 650;
   line-height: 1.25;
@@ -487,13 +487,13 @@ onMounted(async () => {
 
 .prompt-row-date {
   flex-shrink: 0;
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 10.5px;
 }
 
 .prompt-row-preview {
   overflow: hidden;
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 12px;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -511,8 +511,8 @@ onMounted(async () => {
   overflow: hidden;
   padding: 2px 5px;
   border-radius: 5px;
-  background: color-mix(in srgb, var(--settings-accent, var(--accent)) 10%, transparent);
-  color: var(--settings-ink-3, var(--text-muted));
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 10%, transparent);
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 10.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -535,14 +535,14 @@ onMounted(async () => {
 
 .prompt-editor-header h3 {
   margin: 0;
-  color: var(--settings-ink, var(--text-primary));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 15px;
   font-weight: 650;
 }
 
 .prompt-editor-header p {
   margin: 4px 0 0;
-  color: var(--settings-ink-4, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 12px;
   line-height: 1.4;
 }
@@ -556,14 +556,14 @@ onMounted(async () => {
 }
 
 .prompt-notice.success {
-  color: var(--success, #1a7f45);
-  background: color-mix(in srgb, var(--success, #1a7f45) 10%, transparent);
+  color: var(--ui-status-success-fg, var(--success, #1a7f45));
+  background: color-mix(in srgb, var(--ui-status-success-fg, var(--success, #1a7f45)) 10%, transparent);
 }
 
 .prompt-notice.error,
 .delete-confirmation,
 .prompt-danger-btn {
-  color: var(--danger, #d14);
+  color: var(--ui-status-danger-fg, var(--danger, #d14));
 }
 
 .prompt-form-group {
@@ -576,11 +576,11 @@ onMounted(async () => {
 .prompt-textarea {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid var(--settings-rule-soft, var(--border));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
   outline: 0;
-  background: var(--settings-paper, var(--bg));
-  color: var(--settings-ink, var(--text-primary));
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font: inherit;
   font-size: 13px;
   line-height: 1.45;
@@ -594,8 +594,8 @@ onMounted(async () => {
 
 .prompt-input:focus,
 .prompt-textarea:focus {
-  border-color: var(--settings-accent, var(--accent));
-  box-shadow: 0 0 0 2px var(--settings-accent-soft, rgba(var(--accent-rgb), 0.12));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: 0 0 0 2px var(--settings-accent-soft, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent));
 }
 
 .prompt-primary-btn,
@@ -606,7 +606,7 @@ onMounted(async () => {
   justify-content: center;
   gap: 6px;
   min-height: 30px;
-  border: 1px solid var(--settings-rule-soft, var(--border));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
   padding: 0 10px;
   font: inherit;
@@ -616,19 +616,19 @@ onMounted(async () => {
 }
 
 .prompt-primary-btn {
-  border-color: color-mix(in srgb, var(--settings-accent, var(--accent)) 72%, var(--settings-rule-soft));
-  background: var(--settings-accent, var(--accent));
+  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 72%, var(--settings-rule-soft));
+  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   color: white;
 }
 
 .prompt-secondary-btn,
 .prompt-danger-btn {
-  background: var(--settings-paper, var(--bg));
-  color: var(--settings-ink, var(--text-primary));
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
 .prompt-danger-btn {
-  color: var(--danger, #d14);
+  color: var(--ui-status-danger-fg, var(--danger, #d14));
 }
 
 .prompt-primary-btn:disabled {
@@ -644,7 +644,7 @@ onMounted(async () => {
   .prompt-list-panel {
     max-height: 280px;
     border-right: 0;
-    border-bottom: 1px solid var(--settings-rule-soft, var(--border));
+    border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
   }
 }
 </style>

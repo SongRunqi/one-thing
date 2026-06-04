@@ -5,6 +5,7 @@ import { nextTick } from 'vue'
 import TextEditor from '../TextEditor.vue'
 import type { EditorHandle } from '../types'
 import { createSkillToken } from '@shared/prompt-references'
+import { DEFAULT_EDITOR_SETTINGS, languageExtensions } from '../extensions'
 
 class ResizeObserverStub {
   observe = vi.fn()
@@ -87,7 +88,7 @@ describe('TextEditor', () => {
   })
 
   afterEach(() => {
-    document.body.innerHTML = ''
+    document.body.textContent = ''
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -166,6 +167,36 @@ describe('TextEditor', () => {
     expect(editor.getSelection()).toEqual({ from: 5, to: 5 })
   })
 
+  it('uses app highlight group variables for CodeMirror syntax highlighting', async () => {
+    await mountEditor({
+      modelValue: 'const value = "Ada"',
+      language: 'javascript',
+      settings: {
+        tabSize: 2,
+        lineWrapping: true,
+        syntaxHighlighting: true,
+        completionEnabled: true,
+        composerMaxHeight: 200,
+      },
+    })
+    await flushEditor()
+
+    const styleText = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent || '')
+      .join('\n')
+    expect(styleText).toContain('--hg-syntax-keyword-fg')
+    expect(styleText).toContain('--hg-syntax-string-fg')
+  })
+
+  it('does not load language or highlight extensions when syntax highlighting is disabled', () => {
+    const extensions = languageExtensions({
+      ...DEFAULT_EDITOR_SETTINGS,
+      syntaxHighlighting: false,
+    }, 'javascript')
+
+    expect(extensions).toEqual([])
+  })
+
   it('renders markdown live preview widgets without breaking v-model updates', async () => {
     const { wrapper, editor } = await mountEditor({
       modelValue: '# Title\n\n- [ ] Task',
@@ -182,6 +213,24 @@ describe('TextEditor', () => {
 
     expect(editor.getValue()).toBe('# Title\n\n- [x] Task')
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['# Title\n\n- [x] Task'])
+  })
+
+  it('uses the theme editor caret token in markdown live preview', async () => {
+    const { wrapper } = await mountEditor({
+      modelValue: '# Title',
+      profile: 'markdown-document',
+      markdownLivePreview: true,
+    })
+
+    await flushEditor()
+
+    const styleText = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent || '')
+      .join('\n')
+    expect(styleText).toContain('--editor-caret')
+    expect(styleText).toContain('caret-color')
+    expect(styleText).toContain('border-left')
+    expect(wrapper.element.querySelector('.md-live-heading-1')).not.toBeNull()
   })
 
   it('removes prompt reference widgets from the composer close button', async () => {

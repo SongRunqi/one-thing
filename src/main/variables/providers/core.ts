@@ -17,7 +17,7 @@
 
 import * as fs from 'fs/promises'
 import * as path from 'path'
-import { Permission } from '../../permission/index.js'
+import { enforcePermissionPolicy } from '../../tools/core/permission-policy.js'
 import {
   VariableError,
   type ContextVariable,
@@ -120,18 +120,30 @@ export class CoreProvider implements VariableProvider {
     const roots = uniqueRoots([...this.gateway.readRoots(ctx.sessionId), resolved], active)
 
     if (ctx.messageId) {
-      await Permission.ask({
-        type: 'external_directory',
-        pattern: [resolved, path.join(resolved, '*')],
+      await enforcePermissionPolicy({
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
-        callId: ctx.toolCallId,
-        title: `Add workdir root: ${resolved}`,
-        workingDirectory: resolved,
-        metadata: {
-          operation: 'append_workdir_root',
-          directory: resolved,
-          activeWorkingDirectory: active || undefined,
+        toolCallId: ctx.toolCallId,
+        toolName: 'workdir',
+        workspaceRoot: active || resolved,
+        effects: [{
+          kind: 'external_directory',
+          resources: [resolved, path.join(resolved, '*')],
+          barrier: true,
+          external: true,
+          metadata: {
+            operation: 'append_workdir_root',
+            directory: resolved,
+            activeWorkingDirectory: active || undefined,
+          },
+        }],
+        preview: {
+          title: `Add workdir root: ${resolved}`,
+          metadata: {
+            operation: 'append_workdir_root',
+            directory: resolved,
+            activeWorkingDirectory: active || undefined,
+          },
         },
       })
     }

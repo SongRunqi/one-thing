@@ -58,8 +58,8 @@
           @click="$emit('open-settings')"
         >
           <Settings
-            :size="18"
-            :stroke-width="1.5"
+            :size="19"
+            :stroke-width="1.8"
           />
         </button>
       </div>
@@ -185,7 +185,7 @@ const sidebarStyle = computed(() => {
 
 // Filtered and flat sessions
 const filteredSessions = computed(() => {
-  const sessions = sessionsStore.filteredSessions
+  const sessions = sessionsStore.sidebarSessions
   if (!localSearchQuery.value.trim()) {
     return sessions
   }
@@ -212,6 +212,7 @@ function handleOverflowChange(_isOverflowing: boolean, hasBelow: boolean) {
 
 // Context menu handlers
 function openContextMenu(event: MouseEvent, session: SessionWithBranches) {
+  if (sessionsStore.isNewChatDraftId(session.id)) return
   contextMenu.value = {
     show: true,
     x: event.clientX,
@@ -247,6 +248,7 @@ async function handleContextDelete() {
 
 // Inline rename handlers
 function startInlineRename(session: SessionWithBranches) {
+  if (sessionsStore.isNewChatDraftId(session.id)) return
   editingSessionId.value = session.id
   editingName.value = session.name || ''
 }
@@ -291,9 +293,11 @@ onUnmounted(() => {
 
 <style scoped>
 .sidebar {
-  --sidebar-bg:
-    linear-gradient(rgba(var(--accent-rgb), 0.06), rgba(var(--accent-rgb), 0.06)),
-    var(--bg-app);
+  --sidebar-bg: var(
+    --ui-sidebar-surface-bg,
+    linear-gradient(color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 6%, transparent), color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 6%, transparent)),
+    var(--ui-surface-app-bg, var(--bg-app))
+  );
   position: relative;
   flex-shrink: 0;
   display: flex;
@@ -415,7 +419,7 @@ onUnmounted(() => {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item)));
   font: inherit;
   font-size: 13px;
   text-align: left;
@@ -425,20 +429,20 @@ onUnmounted(() => {
 }
 
 .workspace-action:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 
 .workspace-action.active {
-  background: color-mix(in srgb, var(--accent-sub, var(--accent-light)) 38%, transparent);
-  color: var(--accent-main, var(--accent));
+  background: var(--ui-sidebar-item-active-bg, color-mix(in srgb, var(--ui-accent-subtle-fg, var(--accent-sub, var(--accent-light))) 38%, transparent));
+  color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
   font-weight: 500;
 }
 
 .workspace-action-icon {
   flex: 0 0 auto;
   color: currentColor;
-  opacity: 0.78;
+  opacity: 0.88;
 }
 
 .workspace-action.active .workspace-action-icon {
@@ -467,15 +471,18 @@ onUnmounted(() => {
   justify-content: center;
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(
+    --ui-sidebar-action-fg,
+    color-mix(in srgb, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 88%, transparent)
+  );
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .sidebar-bottom-btn:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 
 .sidebar-bottom-spacer {

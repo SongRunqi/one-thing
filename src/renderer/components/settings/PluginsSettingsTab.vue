@@ -262,13 +262,13 @@ onMounted(() => {
 .section-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   margin: 0 0 4px;
 }
 
 .section-desc {
   font-size: 12px;
-  color: var(--text-secondary, var(--muted));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
   margin: 0 0 14px;
   line-height: 1.5;
 }
@@ -282,7 +282,7 @@ onMounted(() => {
 
 .settings-card {
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
   overflow: hidden;
 }
@@ -302,13 +302,13 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
   background: rgba(128, 128, 128, 0.04);
 }
 
 .plugin-count {
   font-size: 11px;
-  color: var(--text-secondary, var(--muted));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
   font-weight: 500;
 }
 
@@ -322,7 +322,7 @@ onMounted(() => {
   display: flex;
   align-items: flex-start;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
   transition: opacity 0.15s;
 }
 
@@ -361,12 +361,12 @@ onMounted(() => {
 .plugin-name {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .plugin-version {
   font-size: 11px;
-  color: var(--text-secondary, var(--muted));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
   font-family: monospace;
 }
 
@@ -381,29 +381,29 @@ onMounted(() => {
 
 .status-badge.loaded {
   background: rgba(52, 211, 153, 0.15);
-  color: #34d399;
+  color: var(--ui-status-success-fg, #34d399);
 }
 
 .status-badge.error {
   background: rgba(248, 113, 113, 0.15);
-  color: #f87171;
+  color: var(--ui-status-danger-fg, #f87171);
 }
 
 .status-badge.stopped {
   background: rgba(128, 128, 128, 0.2);
-  color: var(--text-secondary, var(--muted));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
 }
 
 .plugin-desc {
   font-size: 12px;
-  color: var(--text-secondary, var(--muted));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
   margin: 0;
   line-height: 1.45;
 }
 
 .plugin-error {
   font-size: 11px;
-  color: #f87171;
+  color: var(--ui-status-danger-fg, #f87171);
   margin: 0;
   line-height: 1.4;
 }
@@ -417,7 +417,7 @@ onMounted(() => {
 
 .meta-tag {
   font-size: 10px;
-  color: var(--text-secondary, var(--muted));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
   font-family: monospace;
 }
 
@@ -426,15 +426,15 @@ onMounted(() => {
 }
 
 .meta-tag.needs-install {
-  color: #f59e0b;
+  color: var(--ui-status-warning-fg, #f59e0b);
   background: rgba(245, 158, 11, 0.12);
   padding: 1px 5px;
   border-radius: 3px;
 }
 
 .meta-tag.builtin {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
   padding: 1px 5px;
   border-radius: 3px;
 }
@@ -479,7 +479,7 @@ onMounted(() => {
 }
 
 .toggle input:checked + .toggle-slider {
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .toggle input:checked + .toggle-slider::after {
@@ -492,7 +492,7 @@ onMounted(() => {
 .error-state {
   padding: 32px 16px;
   text-align: center;
-  color: var(--text-secondary, var(--muted));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
   font-size: 13px;
 }
 
@@ -521,7 +521,7 @@ onMounted(() => {
   width: 16px;
   height: 16px;
   border: 2px solid rgba(128, 128, 128, 0.2);
-  border-top-color: var(--accent);
+  border-top-color: var(--ui-accent-primary-fg, var(--accent));
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -534,10 +534,10 @@ onMounted(() => {
   margin-top: 8px;
   padding: 4px 12px;
   font-size: 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 4px;
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
 }
 
@@ -547,7 +547,7 @@ onMounted(() => {
 
 .code-block {
   background: rgba(0, 0, 0, 0.15);
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 6px;
   padding: 12px 14px;
   font-size: 11px;
@@ -555,14 +555,14 @@ onMounted(() => {
   margin: 8px 0 0;
   overflow-x: auto;
   white-space: pre;
-  color: var(--text-secondary, var(--muted));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
 }
 
 .install-steps {
   margin: 0;
   padding-left: 18px;
   line-height: 1.8;
-  color: var(--text-secondary, var(--muted));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
   font-size: 12px;
 }
 

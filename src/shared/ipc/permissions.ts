@@ -27,13 +27,10 @@ export interface PermissionInfo {
  */
 export type PermissionResponse = 'once' | 'session' | 'workdir' | 'reject'
 
-/** Legacy alias for backwards compatibility */
-export type LegacyPermissionResponse = 'once' | 'always' | 'workspace' | 'reject'
-
 export interface PermissionRespondRequest {
   sessionId: string
   permissionId: string
-  response: PermissionResponse | LegacyPermissionResponse
+  response: PermissionResponse
   /** Optional reason for rejection */
   rejectReason?: string
 }

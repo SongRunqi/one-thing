@@ -109,8 +109,8 @@ function handleDelete() {
   z-index: var(--z-modal);
   min-width: 160px;
   padding: 6px;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-panel-bg, var(--panel));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
@@ -125,18 +125,18 @@ function handleDelete() {
   background: transparent;
   border-radius: 6px;
   font-size: 13px;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
   text-align: left;
   transition: background 0.1s ease;
 }
 
 .context-item:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .context-item.danger {
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 
 .context-item.danger:hover {
@@ -145,7 +145,7 @@ function handleDelete() {
 
 .context-divider {
   height: 1px;
-  background: var(--border);
+  background: var(--ui-border-default-border, var(--border));
   margin: 4px 0;
 }
 

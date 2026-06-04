@@ -11,6 +11,7 @@ import { ipcMain, shell } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { listFiles } from '../utils/ripgrep.js'
 import { getVariablesStore } from '../variables/store/index.js'
+import { applyFileMutationUndo } from '../tools/core/file-mutation-audit.js'
 
 // Types for file listing
 export interface ListFilesRequest {
@@ -27,14 +28,20 @@ export interface ListFilesResponse {
 
 // Types for file rollback
 export interface RollbackRequest {
-  filePath: string
-  originalContent: string
-  isNew: boolean
+  // Preferred new rollback path: apply a recorded mutation audit snapshot.
+  auditPath?: string
+  // Legacy rollback path retained for older UI callers.
+  filePath?: string
+  originalContent?: string
+  isNew?: boolean
 }
 
 export interface RollbackResponse {
   success: boolean
   error?: string
+  auditId?: string
+  filePath?: string
+  restoredExists?: boolean
 }
 
 // Types for directory listing (for /cd path completion)
@@ -200,24 +207,34 @@ export function registerFilesHandlers() {
   ipcMain.handle(
     IPC_CHANNELS.FILE_ROLLBACK,
     async (_event, request: RollbackRequest): Promise<RollbackResponse> => {
-      const { filePath, originalContent, isNew } = request
-
-      if (!filePath) {
-        return { success: false, error: 'File path is required' }
-      }
+      const { auditPath, filePath, originalContent, isNew } = request
 
       try {
+        if (auditPath) {
+          console.log(`[Files IPC] Rollback: Applying audit snapshot ${auditPath}`)
+          const result = await applyFileMutationUndo(auditPath)
+          return {
+            success: true,
+            auditId: result.auditId,
+            filePath: result.filePath,
+            restoredExists: result.restoredExists,
+          }
+        }
+
+        if (!filePath) {
+          return { success: false, error: 'File path or audit path is required' }
+        }
+
+        // Legacy rollback path. Prefer auditPath so rollback can revalidate hashes.
         if (isNew) {
-          // File was newly created - delete it to rollback
           console.log(`[Files IPC] Rollback: Deleting new file ${filePath}`)
           await fs.unlink(filePath)
         } else {
-          // File existed before - restore original content
           console.log(`[Files IPC] Rollback: Restoring ${filePath}`)
-          await fs.writeFile(filePath, originalContent, 'utf-8')
+          await fs.writeFile(filePath, originalContent ?? '', 'utf-8')
         }
 
-        return { success: true }
+        return { success: true, filePath, restoredExists: !isNew }
       } catch (error) {
         console.error('[Files IPC] Failed to rollback file:', error)
         return {

@@ -1,10 +1,9 @@
 /**
  * Built-in Tool: Write
  *
- * Writes content to a file with support for:
- * - Creating new files
- * - Overwriting existing files
- * - Directory creation (if parent doesn't exist)
+ * Creates or completely overwrites a file. The implementation favors mechanical
+ * reliability: preview before permission, hash revalidation after permission,
+ * and file-level mutation serialization for the final read/approve/write plan.
  */
 
 import { z } from 'zod'
@@ -12,7 +11,9 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Tool } from '../core/tool.js'
 import { findSandboxRootForPath, getSandboxBoundary, resolveToolPath } from '../core/sandbox.js'
-import { Permission } from '../../permission/index.js'
+import { withFileMutationQueue } from '../core/file-mutation-queue.js'
+import { recordFileMutationAudit } from '../core/file-mutation-audit.js'
+import { getFileMutationsDir } from '../../stores/paths.js'
 import { createTwoFilesPatch } from 'diff'
 import {
   countLineChanges,
@@ -20,8 +21,8 @@ import {
   type TextFileSnapshot,
 } from './file-snapshot.js'
 
-function filePermissionPattern(filePath: string): string {
-  return path.join(path.dirname(filePath), '*')
+function filePermissionPattern(targetPath: string): string {
+  return path.join(path.dirname(targetPath), '*')
 }
 
 const MAX_REVALIDATION_ATTEMPTS = 5
@@ -29,8 +30,25 @@ const MAX_REVALIDATION_ATTEMPTS = 5
 /**
  * Write Tool Metadata
  */
-export interface WriteMetadata {
-  filePath: string
+export interface WriteResultMetadata {
+  phase?: 'preparing' | 'preview' | 'ready'
+  path?: string
+  bytesWritten?: number
+  lineCount?: number
+  created?: boolean
+  diff?: string
+  additions?: number
+  deletions?: number
+  originalContent?: string
+  originalContentHash?: string
+  auditId?: string
+  auditPath?: string
+  afterContentHash?: string
+  [key: string]: unknown
+}
+
+export interface WriteMetadata extends WriteResultMetadata {
+  path: string
   bytesWritten: number
   lineCount: number
   created: boolean
@@ -56,12 +74,12 @@ interface WritePlan {
  * Write Tool Parameters Schema
  */
 const WriteParameters = z.object({
-  file_path: z
+  path: z
     .string()
-    .describe('The absolute path to the file to write (must be absolute, not relative)'),
+    .describe('Path to the file to write (relative or absolute)'),
   content: z
     .string()
-    .describe('The content to write to the file'),
+    .describe('Content to write to the file'),
 })
 
 function buildWritePlan(
@@ -91,159 +109,231 @@ function buildWritePlan(
  */
 export const WriteTool = Tool.define<typeof WriteParameters, WriteMetadata>('write', {
   name: 'Write',
-  description: `Writes a file to the local filesystem.
-
-Usage:
-- The file_path parameter must be an absolute path
-- This tool will overwrite the existing file if there is one
-- Parent directories will be created if they don't exist
-- ALWAYS prefer editing existing files using the Edit tool
-- NEVER create documentation files unless explicitly requested`,
+  description: "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
   category: 'builtin',
   enabled: true,
   autoExecute: false, // Requires confirmation for file writes
   permissionGuard: 'permission-gated',
+  executionMode: 'sequential',
+  renderKind: 'diff',
+  promptSnippet: 'Create or overwrite files',
+  promptGuidelines: ['Use write only for new files or complete rewrites.'],
 
   parameters: WriteParameters,
 
-  async execute(args, ctx) {
-    const { file_path, content } = args
-
-    // Resolve path (don't request permission yet - will do after generating diff)
-    const resolvedPath = resolveToolPath(file_path, ctx.workingDirectory)
-
-    // Check if path is outside sandbox boundary
+  async analyze(args, ctx) {
+    const resolvedPath = resolveToolPath(args.path, ctx.workingDirectory)
     const boundary = getSandboxBoundary(ctx.workingDirectory)
-    const matchedRoot = findSandboxRootForPath(
-      resolvedPath,
-      ctx.workingDirectory,
-      ctx.workingDirectoryRoots,
-    )
-    const permissionRoot = matchedRoot ?? boundary
-    const isExternal = !matchedRoot
+    const matchedRoot = findSandboxRootForPath(resolvedPath, ctx.workingDirectory, ctx.workingDirectoryRoots)
+    const bytesWritten = Buffer.byteLength(args.content, 'utf-8')
+    const lineCount = args.content.split('\n').length
+    const plan = buildWritePlan(resolvedPath, args.content, bytesWritten, lineCount, await readTextFileSnapshot(resolvedPath))
+    return {
+      effects: [{
+        kind: 'file_write' as const,
+        resources: [filePermissionPattern(resolvedPath)],
+        barrier: true,
+        external: !matchedRoot,
+        metadata: {
+          path: resolvedPath,
+          created: plan.created,
+          additions: plan.additions,
+          deletions: plan.deletions,
+          originalContentHash: plan.originalContentHash,
+          isExternal: !matchedRoot,
+          boundary: matchedRoot ? undefined : boundary,
+        },
+      }],
+      preview: {
+        title: `${plan.created ? 'Create' : 'Overwrite'} ${path.basename(resolvedPath)}`,
+        path: resolvedPath,
+        diff: plan.diff,
+        additions: plan.additions,
+        deletions: plan.deletions,
+      },
+    }
+  },
 
-    // Calculate stats that do not depend on the current file contents.
+  async execute(args, ctx) {
+    const { path: inputPath, content } = args
+
+    const resolvedPath = resolveToolPath(inputPath, ctx.workingDirectory)
+
     const bytesWritten = Buffer.byteLength(content, 'utf-8')
     const lineCount = content.split('\n').length
+
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: `Preparing write to ${resolvedPath}...` }],
+      details: { phase: 'preparing', path: resolvedPath, bytesWritten, lineCount },
+    })
 
     ctx.metadata({
       title: path.basename(resolvedPath),
       metadata: {
-        filePath: resolvedPath,
+        path: resolvedPath,
         bytesWritten,
         lineCount,
       },
     })
 
-    // Wait before reading the current file and building the write preview so
-    // concurrent mutating tools do not base their final write on stale content.
+    // Preserve model-order side-effect semantics before entering the per-file
+    // mutation queue. The queue then protects this file across sessions/tools.
     await ctx.beforeSideEffect?.()
 
-    const emitPlanMetadata = (plan: WritePlan) => {
-      ctx.metadata({
-        title: path.basename(resolvedPath),
-        metadata: {
-          filePath: resolvedPath,
-          bytesWritten,
-          lineCount,
-          created: plan.created,
-          diff: plan.diff,
-          additions: plan.additions,
-          deletions: plan.deletions,
-          originalContent: plan.snapshot.content,  // For rollback support (empty string for new files)
-          originalContentHash: plan.originalContentHash,
-        },
-      })
+    const throwIfAborted = () => {
+      if (ctx.abortSignal?.aborted) throw new Error('Operation aborted')
     }
+    throwIfAborted()
 
-    const askPermission = async (plan: WritePlan, reconfirm: boolean) => {
-      await Permission.ask({
-        type: 'file_write',
-        pattern: filePermissionPattern(resolvedPath),
-        sessionId: ctx.sessionId,
-        messageId: ctx.messageId,
-        callId: ctx.toolCallId,
-        title: plan.created
-          ? `${reconfirm ? 'Re-confirm create file' : 'Create new file'}: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`
-          : `${reconfirm ? 'Re-confirm overwrite file' : 'Overwrite file'}: ${path.basename(resolvedPath)}${isExternal ? ' (外部目录)' : ''}`,
-        workingDirectory: permissionRoot,
-        metadata: {
-          filePath: resolvedPath,
-          diff: plan.diff,
-          additions: plan.additions,
-          deletions: plan.deletions,
-          bytesWritten,
-          lineCount,
-          operation: plan.created ? 'create' : 'overwrite',
-          originalContentHash: plan.originalContentHash,
-          revalidated: reconfirm,
-          isExternal,
-          boundary: isExternal ? boundary : undefined,
-        },
-      })
-    }
+    return await withFileMutationQueue(resolvedPath, async () => {
+      throwIfAborted()
 
-    let approvedPlan = buildWritePlan(
-      resolvedPath,
-      content,
-      bytesWritten,
-      lineCount,
-      await readTextFileSnapshot(resolvedPath),
-    )
-
-    emitPlanMetadata(approvedPlan)
-    await askPermission(approvedPlan, false)
-
-    let revalidationAttempts = 0
-    while (true) {
-      const latestSnapshot = await readTextFileSnapshot(resolvedPath)
-      if (latestSnapshot.hash === approvedPlan.originalContentHash) {
-        break
+      const emitPlanMetadata = (plan: WritePlan) => {
+        ctx.updateResult?.({
+          content: [{ type: 'text', text: plan.diff || `Preparing ${resolvedPath}` }],
+          details: {
+            phase: 'preview',
+            path: resolvedPath,
+            bytesWritten,
+            lineCount,
+            created: plan.created,
+            additions: plan.additions,
+            deletions: plan.deletions,
+          },
+        })
+        ctx.metadata({
+          title: path.basename(resolvedPath),
+          metadata: {
+            path: resolvedPath,
+            bytesWritten,
+            lineCount,
+            created: plan.created,
+            diff: plan.diff,
+            additions: plan.additions,
+            deletions: plan.deletions,
+            originalContent: plan.snapshot.content,
+            originalContentHash: plan.originalContentHash,
+          },
+        })
       }
 
-      revalidationAttempts++
-      if (revalidationAttempts > MAX_REVALIDATION_ATTEMPTS) {
-        throw new Error(`File changed repeatedly after write approval: ${resolvedPath}. Please retry the write.`)
-      }
+      const policyEffect = ctx.approvedAnalysis?.effects.find(effect => effect.kind === 'file_write')
+      const policyOriginalHash = policyEffect?.metadata?.originalContentHash
+      const policyDiff = ctx.approvedAnalysis?.preview?.diff
 
-      const revalidatedPlan = buildWritePlan(
+      let approvedPlan = buildWritePlan(
         resolvedPath,
         content,
         bytesWritten,
         lineCount,
-        latestSnapshot,
+        await readTextFileSnapshot(resolvedPath),
       )
-      emitPlanMetadata(revalidatedPlan)
-      await askPermission(revalidatedPlan, true)
-      approvedPlan = revalidatedPlan
-    }
+      throwIfAborted()
 
-    // User approved - ensure parent directory exists
-    const parentDir = path.dirname(resolvedPath)
-    await fs.mkdir(parentDir, { recursive: true })
+      if (typeof policyOriginalHash === 'string' && approvedPlan.originalContentHash !== policyOriginalHash) {
+        if (policyDiff && approvedPlan.diff !== policyDiff) {
+          emitPlanMetadata(approvedPlan)
+          throw new Error(`File changed after permission approval and the resulting write diff changed: ${resolvedPath}. Please retry the write.`)
+        }
+      }
 
-    // Write the file
-    await fs.writeFile(resolvedPath, content, 'utf-8')
+      emitPlanMetadata(approvedPlan)
 
-    const metadata: WriteMetadata = {
-      filePath: resolvedPath,
-      bytesWritten,
-      lineCount,
-      created: approvedPlan.created,
-      diff: approvedPlan.diff,
-      additions: approvedPlan.additions,
-      deletions: approvedPlan.deletions,
-      originalContent: approvedPlan.snapshot.content,  // For rollback support
-      originalContentHash: approvedPlan.originalContentHash,
-    }
+      let revalidationAttempts = 0
+      while (true) {
+        const latestSnapshot = await readTextFileSnapshot(resolvedPath)
+        throwIfAborted()
+        if (latestSnapshot.hash === approvedPlan.originalContentHash) {
+          break
+        }
 
-    const action = approvedPlan.created ? 'Created' : 'Updated'
+        revalidationAttempts++
+        if (revalidationAttempts > MAX_REVALIDATION_ATTEMPTS) {
+          throw new Error(`File changed repeatedly after write approval: ${resolvedPath}. Please retry the write.`)
+        }
 
-    return {
-      title: path.basename(resolvedPath),
-      output: `Successfully ${action.toLowerCase()} ${resolvedPath}\n${bytesWritten} bytes written (${lineCount} lines)`,
-      metadata,
-    }
+        const revalidatedPlan = buildWritePlan(
+          resolvedPath,
+          content,
+          bytesWritten,
+          lineCount,
+          latestSnapshot,
+        )
+        emitPlanMetadata(revalidatedPlan)
+        throw new Error(`File changed after permission approval and the resulting write diff changed: ${resolvedPath}. Please retry the write.`)
+      }
+
+      const parentDir = path.dirname(resolvedPath)
+      await fs.mkdir(parentDir, { recursive: true })
+      throwIfAborted()
+
+      await fs.writeFile(resolvedPath, content, 'utf-8')
+      throwIfAborted()
+
+      const audit = await recordFileMutationAudit({
+        auditDir: getFileMutationsDir(),
+        sessionId: ctx.sessionId,
+        messageId: ctx.messageId,
+        toolCallId: ctx.toolCallId,
+        operation: approvedPlan.created ? 'write_create' : 'write_overwrite',
+        path: resolvedPath,
+        beforeExists: approvedPlan.snapshot.exists,
+        beforeContent: approvedPlan.snapshot.content,
+        afterContent: content,
+        diff: approvedPlan.diff,
+        metadata: {
+          bytesWritten,
+          lineCount,
+          additions: approvedPlan.additions,
+          deletions: approvedPlan.deletions,
+        },
+      })
+
+      ctx.metadata({
+        metadata: {
+          path: resolvedPath,
+          bytesWritten,
+          lineCount,
+          created: approvedPlan.created,
+          diff: approvedPlan.diff,
+          additions: approvedPlan.additions,
+          deletions: approvedPlan.deletions,
+          originalContent: approvedPlan.snapshot.content,
+          originalContentHash: approvedPlan.originalContentHash,
+          auditId: audit.id,
+          auditPath: audit.path,
+          afterContentHash: audit.afterHash,
+        },
+      })
+
+      const metadata: WriteMetadata = {
+        path: resolvedPath,
+        bytesWritten,
+        lineCount,
+        created: approvedPlan.created,
+        diff: approvedPlan.diff,
+        additions: approvedPlan.additions,
+        deletions: approvedPlan.deletions,
+        originalContent: approvedPlan.snapshot.content,
+        originalContentHash: approvedPlan.originalContentHash,
+        auditId: audit.id,
+        auditPath: audit.path,
+        afterContentHash: audit.afterHash,
+      }
+
+      const output = `Successfully wrote ${content.length} bytes to ${inputPath}`
+      ctx.updateResult?.({
+        content: [{ type: 'text', text: output }, { type: 'file', path: resolvedPath }],
+        details: { phase: 'ready', ...metadata },
+      })
+
+      return {
+        title: path.basename(resolvedPath),
+        output,
+        metadata,
+        attachments: [{ type: 'file' as const, path: resolvedPath }],
+      }
+    })
   },
 
   formatValidationError(error) {

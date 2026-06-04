@@ -125,9 +125,9 @@ export interface StreamProcessor {
     toolCallId: string
     toolName: string
     args: Record<string, any>
-  }): ToolCall
+  }, options?: { publish?: boolean }): ToolCall
   /** Handle streaming tool input start - creates a pending tool call */
-  handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number): void
+  handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number, options?: { publish?: boolean }): void
   /** Handle streaming tool input delta - accumulates args JSON text */
   handleToolInputDelta(toolCallId: string, argsTextDelta: string): void
   /** Handle streaming tool input end - parses accumulated JSON and returns ToolCall */
@@ -149,7 +149,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
 
   // Buffer for streaming tool input (AI SDK v6 tool-call-streaming-start/delta)
   // Maps toolCallId -> { toolName, argsText (accumulated JSON string), stepId }
-  const toolInputBuffers = new Map<string, { toolName: string; argsText: string; stepId: string }>()
+  const toolInputBuffers = new Map<string, { toolName: string; argsText: string; stepId?: string; visible: boolean }>()
 
   return {
     get accumulatedContent() { return accumulatedContent },
@@ -179,7 +179,8 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       toolCallId: string
       toolName: string
       args: Record<string, any>
-    }): ToolCall {
+    }, options: { publish?: boolean } = {}): ToolCall {
+      const publish = options.publish !== false
       // Check if a placeholder already exists (from handleToolInputStart)
       const existingIndex = toolCalls.findIndex(tc => tc.id === toolCallData.toolCallId)
 
@@ -204,11 +205,15 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
           toolCallData.args
         )
         toolCall.id = toolCallData.toolCallId
-        toolCalls.push(toolCall)
+        if (publish) {
+          toolCalls.push(toolCall)
+        }
       }
 
-      store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
-      emitter.sendToolCall(toolCall)
+      if (publish) {
+        store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+        emitter.sendToolCall(toolCall)
+      }
 
       return toolCall
     },
@@ -217,7 +222,8 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
      * Handle streaming tool input start
      * Creates placeholder ToolCall and Step for real-time streaming display
      */
-    handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number) {
+    handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number, options: { publish?: boolean } = {}) {
+      const visible = options.publish !== false
       // Resolve tool ID using centralized function
       const resolved = resolveToolIdentity(toolName)
 
@@ -231,7 +237,9 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
         streamingArgs: '',
         timestamp: Date.now(),
       }
-      toolCalls.push(placeholderToolCall)
+      if (visible) {
+        toolCalls.push(placeholderToolCall)
+      }
 
       // Determine step type based on tool name
       const stepType: StepType = toolName.toLowerCase() === 'bash' ? 'command' : 'tool-call'
@@ -250,14 +258,16 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       }
 
       // Store stepId for later updates
-      toolInputBuffers.set(toolCallId, { toolName, argsText: '', stepId })
+      toolInputBuffers.set(toolCallId, { toolName, argsText: '', stepId: visible ? stepId : undefined, visible })
 
-      // Add step to store and notify frontend (emitter handles both)
-      store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
-      emitter.sendStepAdded(placeholderStep)
+      if (visible) {
+        // Add step to store and notify frontend (emitter handles both)
+        store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+        emitter.sendStepAdded(placeholderStep)
 
-      // Send tool_input_start with placeholder toolCall
-      emitter.sendToolInputStart(toolCallId, resolved.displayName, placeholderToolCall)
+        // Send tool_input_start with placeholder toolCall
+        emitter.sendToolInputStart(toolCallId, resolved.displayName, placeholderToolCall)
+      }
     },
 
     /**
@@ -274,7 +284,9 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
         // growing-string copy on the main thread and can freeze the app during
         // large write/edit tool inputs. The renderer already has the placeholder
         // from tool-input-start and applies these deltas locally for live UI.
-        emitter.sendToolInputDelta(toolCallId, argsTextDelta)
+        if (buffer.visible) {
+          emitter.sendToolInputDelta(toolCallId, argsTextDelta)
+        }
       }
     },
 
@@ -311,7 +323,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
         toolCallId,
         toolName: buffer.toolName,
         args,
-      })
+      }, { publish: buffer.visible })
     },
 
     /**

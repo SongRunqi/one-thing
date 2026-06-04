@@ -12,6 +12,16 @@
       @pointerdown.stop
       @click.stop
     >
+      <button
+        v-if="showModeSwitch"
+        type="button"
+        class="assistant-nav-mode-switch"
+        aria-label="Show message nav trail"
+        title="Message nav trail"
+        @click.stop="emit('switchMode')"
+      >
+        <span aria-hidden="true">&gt;</span>
+      </button>
       <div
         class="assistant-nav-scroll"
         role="listbox"
@@ -87,10 +97,12 @@ import type { AssistantMessageOutlineMarker } from './assistant-message-outline'
 const props = defineProps<{
   markers: AssistantMessageOutlineMarker[]
   currentIndex: number
+  showModeSwitch?: boolean
 }>()
 
 const emit = defineEmits<{
   navigate: [navIndex: number]
+  switchMode: []
 }>()
 
 const sortedMarkers = computed(() => [...props.markers].sort((a, b) => a.navIndex - b.navIndex))
@@ -249,8 +261,8 @@ onUnmounted(() => {
 }
 
 .assistant-nav-card.open {
-  border-color: color-mix(in srgb, var(--border) 62%, transparent);
-  background: color-mix(in srgb, var(--bg-elevated, var(--bg)) 94%, white 6%);
+  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 62%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 94%, white 6%);
   box-shadow:
     0 22px 48px rgba(0, 0, 0, 0.13),
     0 2px 8px rgba(0, 0, 0, 0.08);
@@ -276,7 +288,8 @@ onUnmounted(() => {
 .assistant-nav-page {
   display: grid;
   grid-template-rows: repeat(var(--assistant-nav-visible-count), var(--assistant-nav-row-height));
-  align-content: space-between;
+  align-content: start;
+  row-gap: var(--assistant-nav-row-gap);
   width: 100%;
   height: 100%;
   will-change: opacity, transform, filter;
@@ -293,7 +306,7 @@ onUnmounted(() => {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text-muted, var(--muted));
+  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
   cursor: pointer;
   font: inherit;
   overflow: visible;
@@ -312,7 +325,7 @@ onUnmounted(() => {
   width: calc(var(--assistant-nav-expanded-width) - 82px);
   min-width: 0;
   overflow: hidden;
-  color: var(--text-secondary, var(--text));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
   font-size: 13px;
   line-height: 1;
   opacity: 0;
@@ -343,7 +356,7 @@ onUnmounted(() => {
 
 .assistant-nav-card.open .assistant-nav-row:hover .assistant-nav-label,
 .assistant-nav-card.open .assistant-nav-row:focus-visible .assistant-nav-label {
-  color: var(--accent, #3b82f6);
+  color: var(--ui-accent-primary-fg, var(--accent));
   opacity: 1;
 }
 
@@ -354,7 +367,7 @@ onUnmounted(() => {
   width: 14px;
   height: 2px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text-muted, var(--muted)) 34%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 34%, transparent);
   opacity: 0.74;
   transform: translateY(-50%);
   transition:
@@ -382,7 +395,7 @@ onUnmounted(() => {
 .assistant-nav-row:hover .assistant-nav-marker,
 .assistant-nav-row:focus-visible .assistant-nav-marker {
   opacity: 1;
-  background: color-mix(in srgb, var(--accent, #3b82f6) 72%, var(--text-muted, var(--muted)));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 72%, var(--ui-text-muted-fg, var(--text-muted, var(--muted))));
 }
 
 .assistant-nav-row:focus-visible {
@@ -390,7 +403,7 @@ onUnmounted(() => {
 }
 
 .assistant-nav-card.open .assistant-nav-row.active .assistant-nav-label {
-  color: var(--accent, #3b82f6);
+  color: var(--ui-text-primary-fg, var(--text));
   font-weight: 650;
   opacity: 1;
   visibility: visible;
@@ -399,8 +412,8 @@ onUnmounted(() => {
 .assistant-nav-row.active .assistant-nav-marker {
   width: 20px;
   opacity: 1;
-  background: var(--accent, #3b82f6);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent);
+  background: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
 .assistant-nav-scroll-thumb {
@@ -410,7 +423,7 @@ onUnmounted(() => {
   display: none;
   width: 5px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 36%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 36%, transparent);
   pointer-events: none;
 }
 
@@ -418,6 +431,7 @@ onUnmounted(() => {
   display: block;
 }
 
+.assistant-nav-mode-switch,
 .assistant-nav-page-cue {
   position: absolute;
   right: 0;
@@ -430,7 +444,7 @@ onUnmounted(() => {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: color-mix(in srgb, var(--text-muted, var(--muted)) 58%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 58%, transparent);
   cursor: pointer;
   opacity: 0.42;
   pointer-events: auto;
@@ -440,14 +454,24 @@ onUnmounted(() => {
     opacity 0.12s ease;
 }
 
+.assistant-nav-mode-switch {
+  top: 2px;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.assistant-nav-card.open .assistant-nav-mode-switch,
 .assistant-nav-card.open .assistant-nav-page-cue {
   opacity: 0.55;
 }
 
+.assistant-nav-mode-switch:hover,
+.assistant-nav-mode-switch:focus-visible,
 .assistant-nav-page-cue:hover,
 .assistant-nav-page-cue:focus-visible {
-  background: color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent);
-  color: var(--accent, #3b82f6);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   opacity: 0.9;
   outline: none;
 }

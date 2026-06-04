@@ -234,9 +234,9 @@ function handleSave() {
 }
 
 .dialog {
-  background: var(--bg-elevated);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   width: 90%;
   max-width: 480px;
   box-shadow: var(--shadow);
@@ -251,11 +251,11 @@ function handleSave() {
   align-items: center;
   gap: 12px;
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .dialog-header svg {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   flex-shrink: 0;
 }
 
@@ -276,7 +276,7 @@ function handleSave() {
   justify-content: flex-end;
   gap: 10px;
   padding: 16px 24px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .custom-provider-dialog .dialog-actions {
@@ -300,37 +300,37 @@ function handleSave() {
   display: block;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   margin-bottom: 8px;
 }
 
 .form-label .required {
-  color: var(--danger);
+  color: var(--ui-status-danger-fg, var(--danger));
 }
 
 .form-input {
   width: 100%;
   padding: 10px 14px;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-panel-bg, var(--panel));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: var(--radius-sm);
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   font-size: 14px;
   outline: none;
   transition: border-color 0.15s ease;
 }
 
 .form-input:focus {
-  border-color: var(--accent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .form-input::placeholder {
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .form-hint {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   margin-top: 6px;
 }
 
@@ -346,24 +346,24 @@ function handleSave() {
   justify-content: center;
   gap: 8px;
   padding: 12px;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-panel-bg, var(--panel));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: var(--radius-sm);
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 13px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .api-type-btn:hover {
-  border-color: var(--accent);
-  color: var(--text-primary);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .api-type-btn.active {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: var(--accent);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .error-message {
@@ -371,7 +371,7 @@ function handleSave() {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: var(--radius-sm);
-  color: var(--danger);
+  color: var(--ui-status-danger-fg, var(--danger));
   font-size: 13px;
   margin-top: 16px;
 }
@@ -391,32 +391,32 @@ function handleSave() {
 }
 
 .btn.primary {
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
 }
 
 .btn.primary:hover {
-  background: #2563eb;
+  background: var(--ui-action-primary-hover-bg, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .btn.secondary {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
+  background: var(--ui-surface-panel-bg, var(--panel));
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .btn.secondary:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .btn.danger {
   background: transparent;
   border: 1px solid rgba(239, 68, 68, 0.4);
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 
 .btn.danger:hover {
   background: rgba(239, 68, 68, 0.1);
-  border-color: #ef4444;
+  border-color: var(--ui-status-danger-fg, #ef4444);
 }
 </style>

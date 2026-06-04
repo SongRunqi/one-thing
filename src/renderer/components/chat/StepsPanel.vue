@@ -18,6 +18,7 @@
         class="tool-activity"
         :class="[
           `status-${activity.status}`,
+          `tool-${activity.toolName}`,
           {
             expanded: isExpanded(activity),
             awaiting: activity.isAwaitingConfirmation,
@@ -93,12 +94,16 @@
               v-else
               class="activity-target"
             >{{ activity.target }}</span>
+            <span
+              v-if="activity.targetMeta"
+              class="activity-target-meta"
+            >{{ activity.targetMeta }}</span>
           </span>
 
           <span class="activity-spacer" />
 
           <span
-            v-if="activity.stats"
+            v-if="activity.stats && activity.status !== 'failed' && activity.status !== 'rejected'"
             class="activity-meta stats"
           >{{ activity.stats }}</span>
           <span
@@ -117,21 +122,10 @@
             v-else-if="activity.status === 'failed'"
             class="activity-badge danger"
           >Failed</span>
-
           <span
-            v-if="activity.isAwaitingConfirmation"
-            class="confirm-actions"
-            @click.stop
-          >
-            <AllowSplitButton @confirm="(response) => emit('confirm', activity.toolCall, response)" />
-            <button
-              class="btn-reject"
-              type="button"
-              @click="emit('reject', activity.toolCall)"
-            >
-              Reject
-            </button>
-          </span>
+            v-else-if="activity.status === 'queued'"
+            class="activity-badge"
+          >Queued</span>
 
           <ChevronDown
             class="expand-icon"
@@ -148,7 +142,6 @@
         >
           <ToolStepDetails
             :view="detailedView(activity)"
-            @open-file="(filePath) => emit('open-file', filePath)"
           />
         </div>
       </section>
@@ -167,7 +160,6 @@ import {
 } from '@/stores/helpers/tool-activity-view'
 import type { ToolRenderStatus } from '@/stores/helpers/tool-status'
 import type { ToolStepView } from '@/stores/helpers/tool-step-view'
-import AllowSplitButton from '../common/AllowSplitButton.vue'
 import FartCallItem from './FartCallItem.vue'
 import ToolStepDetails from './ToolStepDetails.vue'
 
@@ -183,7 +175,7 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  confirm: [toolCall: ToolCall, response: 'once' | 'session' | 'workdir' | 'always']
+  confirm: [toolCall: ToolCall, response: 'once']
   reject: [toolCall: ToolCall]
   'open-file': [filePath: string]
 }>()
@@ -223,6 +215,7 @@ function isLive(status: ToolRenderStatus): boolean {
 
 function statusTitle(status: ToolRenderStatus): string {
   switch (status) {
+    case 'queued': return 'Queued'
     case 'streaming-input': return 'Reading tool input'
     case 'executing': return 'Running'
     case 'awaiting-confirmation': return 'Needs confirmation'
@@ -290,16 +283,18 @@ function detailedView(activity: ToolActivityView): ToolStepView {
 .tool-activity-timeline {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   margin: 4px 0 6px;
-  color: var(--text-secondary);
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  font-family: var(--tool-font-sans);
 }
 
 .tool-activity {
   position: relative;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm, 8px);
-  background: transparent;
+  overflow: hidden;
+  border: 0.5px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 72%, var(--ui-tool-text-fg, var(--tool-ink)) 28%);
+  border-radius: var(--tool-radius);
+  background: var(--ui-tool-surface-bg, var(--tool-surface));
   transition:
     background var(--duration-fast, 0.15s) var(--ease-default, ease),
     border-color var(--duration-fast, 0.15s) var(--ease-default, ease);
@@ -307,21 +302,21 @@ function detailedView(activity: ToolActivityView): ToolStepView {
 
 .tool-activity.expanded,
 .tool-activity:hover {
-  background: color-mix(in srgb, var(--bg-tool-call) 76%, transparent);
-  border-color: color-mix(in srgb, var(--border-subtle) 70%, transparent);
+  background: var(--ui-tool-surface-bg, var(--tool-surface));
+  border-color: color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 58%, var(--ui-tool-text-fg, var(--tool-ink)) 42%);
 }
 
 .tool-activity.awaiting {
-  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
-  border-color: color-mix(in srgb, var(--border-warning) 28%, transparent);
+  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 7%, var(--ui-tool-surface-bg, var(--tool-surface)));
+  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 30%, var(--ui-tool-border-border, var(--tool-border)));
 }
 
 .activity-main {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 34px;
-  padding: 4px 8px;
+  min-height: 38px;
+  padding: 7px 10px;
   overflow: hidden;
   border-radius: inherit;
 }
@@ -332,52 +327,52 @@ function detailedView(activity: ToolActivityView): ToolStepView {
 
 .activity-main:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 64%, var(--ui-tool-text-fg, var(--tool-ink)) 36%);
 }
 
 .status-mark {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
   border-radius: 999px;
-  color: var(--text-faint);
-  background: color-mix(in srgb, var(--bg-elevated) 68%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border-subtle) 75%, transparent);
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  background: color-mix(in srgb, var(--ui-tool-text-fg, var(--tool-ink)) 7%, transparent);
+  border: 0.5px solid var(--ui-tool-border-border, var(--tool-border));
 }
 
 .status-completed .status-mark {
-  color: var(--text-success);
-  background: color-mix(in srgb, var(--color-success) 12%, transparent);
-  border-color: color-mix(in srgb, var(--border-success) 24%, transparent);
+  color: var(--ui-tool-success-text-fg, var(--tool-ok));
+  background: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 18%, transparent);
+  border-color: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 28%, transparent);
 }
 
 .status-failed .status-mark {
-  color: var(--text-error);
-  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
-  border-color: color-mix(in srgb, var(--border-error) 24%, transparent);
+  color: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
+  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 12%, transparent);
+  border-color: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 24%, transparent);
 }
 
-.status-rejected .status-mark {
-  color: var(--text-warning);
-  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
-  border-color: color-mix(in srgb, var(--border-warning) 24%, transparent);
+.tool-activity.status-failed {
+  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 5%, var(--ui-tool-surface-bg, var(--tool-surface)));
+  box-shadow: inset 3px 0 0 var(--ui-tool-danger-text-fg, var(--tool-del-bar));
 }
 
+.status-rejected .status-mark,
 .status-awaiting-confirmation .status-mark {
-  color: var(--text-warning);
-  background: color-mix(in srgb, var(--color-warning) 13%, transparent);
-  border-color: color-mix(in srgb, var(--border-warning) 30%, transparent);
+  color: var(--ui-tool-accent-fg, var(--tool-accent));
+  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 13%, transparent);
+  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 28%, transparent);
 }
 
 .status-streaming-input .status-mark,
 .status-executing .status-mark,
 .status-pending .status-mark {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 11%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: var(--ui-tool-accent-fg, var(--tool-accent));
+  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 11%, transparent);
+  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 24%, transparent);
 }
 
 .spin {
@@ -397,9 +392,10 @@ function detailedView(activity: ToolActivityView): ToolStepView {
 }
 
 .activity-verb {
-  color: var(--text-primary);
-  font-size: var(--font-size-sm, 12px);
-  font-weight: var(--font-weight-medium, 500);
+  color: var(--ui-tool-text-fg, var(--tool-ink));
+  font-family: var(--tool-font-sans);
+  font-size: var(--tool-font-size-title);
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -408,9 +404,20 @@ function detailedView(activity: ToolActivityView): ToolStepView {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm, 12px);
+  color: var(--hg-syntax-string-fg, var(--syntax-string));
+  font-family: var(--tool-font-mono);
+  font-size: var(--tool-font-size-title);
+  font-weight: 400;
+}
+
+.activity-target-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  font-family: var(--tool-font-mono);
+  font-size: var(--tool-font-size-body);
 }
 
 button.activity-target {
@@ -422,11 +429,16 @@ button.activity-target {
 }
 
 .activity-target.link {
-  color: var(--text-link);
+  color: var(--hg-syntax-string-fg, var(--syntax-string));
 }
 
 .activity-target.link:hover {
   text-decoration: underline;
+}
+
+.tool-bash .activity-target,
+.tool-bash .activity-target.link {
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
 }
 
 .activity-spacer {
@@ -436,37 +448,46 @@ button.activity-target {
 .activity-meta,
 .activity-badge {
   flex: 0 0 auto;
-  font-size: var(--font-size-xs, 11px);
+  font-family: var(--tool-font-sans);
+  font-size: var(--tool-font-size-meta);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+}
+
+.activity-meta.duration {
+  padding: 2px 8px;
+  border-radius: calc(var(--tool-radius) - 3px);
+  background: color-mix(in srgb, var(--ui-tool-text-faint-fg, var(--tool-faint)) 16%, transparent);
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
 }
 
 .activity-meta.stats {
-  color: var(--text-muted);
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
 }
 
 .activity-badge {
   padding: 2px 7px;
   border-radius: 999px;
-  border: 1px solid transparent;
+  border: 0.5px solid transparent;
 }
 
 .activity-badge.warning {
-  color: var(--text-warning);
-  background: color-mix(in srgb, var(--color-warning) 11%, transparent);
-  border-color: color-mix(in srgb, var(--border-warning) 24%, transparent);
+  color: var(--ui-tool-accent-fg, var(--tool-accent));
+  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 11%, transparent);
+  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 24%, transparent);
 }
 
 .activity-badge.rejected {
-  color: var(--text-warning);
-  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
-  border-color: color-mix(in srgb, var(--border-warning) 22%, transparent);
+  color: var(--ui-tool-accent-fg, var(--tool-accent));
+  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 10%, transparent);
+  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 22%, transparent);
 }
 
 .activity-badge.danger {
-  color: var(--text-error);
-  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-  border-color: color-mix(in srgb, var(--border-error) 20%, transparent);
+  color: var(--ui-tool-accent-on-fg, var(--tool-accent-on));
+  background: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
+  border-color: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
 }
 
 .confirm-actions {
@@ -477,24 +498,26 @@ button.activity-target {
 }
 
 .btn-reject {
-  height: 26px;
+  height: 24px;
   padding: 0 10px;
-  border-radius: var(--radius-sm, 8px);
-  border: 1px solid color-mix(in srgb, var(--border-error) 18%, transparent);
-  background: color-mix(in srgb, var(--color-danger) 5%, transparent);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm, 12px);
+  border-radius: var(--tool-radius);
+  border: 0.5px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 20%, transparent);
+  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 5%, transparent);
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  font-family: var(--tool-font-sans);
+  font-size: var(--tool-font-size-meta);
+  font-weight: 500;
   cursor: pointer;
 }
 
 .btn-reject:hover {
-  color: var(--text-error);
-  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  color: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
+  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 10%, transparent);
 }
 
 .expand-icon {
   flex: 0 0 auto;
-  color: var(--text-faint);
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
   transition: transform 0.16s ease;
 }
 
@@ -507,7 +530,9 @@ button.activity-target {
 }
 
 .activity-details {
-  margin: 2px 8px 8px 38px;
+  margin: 0;
+  border-top: 0.5px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 70%, var(--ui-tool-text-fg, var(--tool-ink)) 30%);
+  padding: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

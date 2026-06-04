@@ -35,10 +35,10 @@ defineProps<{
   max-width: min(260px, 100%);
   margin: 0 2px;
   padding: 3px 7px;
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, var(--ui-border-default-border, var(--border)));
   border-radius: 7px;
-  background: color-mix(in srgb, var(--accent) 9%, var(--bg));
-  color: var(--text);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 9%, var(--ui-surface-app-bg, var(--bg)));
+  color: var(--ui-text-primary-fg, var(--text));
   vertical-align: baseline;
   cursor: default;
   outline: none;
@@ -46,7 +46,7 @@ defineProps<{
 
 .prompt-ref-card:hover,
 .prompt-ref-card:focus {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 55%, var(--ui-border-default-border, var(--border)));
 }
 
 .prompt-ref-title {
@@ -68,10 +68,10 @@ defineProps<{
   flex-direction: column;
   gap: 7px;
   padding: 10px 11px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--panel, var(--bg));
-  color: var(--text);
+  background: var(--ui-surface-panel-bg, var(--panel, var(--bg)));
+  color: var(--ui-text-primary-fg, var(--text));
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.2);
   z-index: 50;
   white-space: normal;
@@ -84,7 +84,7 @@ defineProps<{
 }
 
 .prompt-ref-description {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
 }
 

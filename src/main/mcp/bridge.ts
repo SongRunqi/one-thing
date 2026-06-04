@@ -25,6 +25,12 @@ let toolsCatalogGenerated = false
  */
 const sanitizedToOriginalMap = new Map<string, { serverId: string; toolName: string }>()
 
+type ModelFacingToolDefinition = {
+  description: string
+  parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }>
+  parameterSchema?: Record<string, unknown>
+}
+
 /**
  * Sanitize a string to match the API tool name pattern: ^[a-zA-Z0-9_-]+
  * Replaces invalid characters with hyphens
@@ -61,6 +67,7 @@ export function mcpToolToToolDefinition(mcpTool: MCPToolInfo): ToolDefinition {
     name: mcpTool.name,
     description: mcpTool.description || `MCP tool: ${mcpTool.name}`,
     parameters,
+    parameterSchema: mcpTool.inputSchema,
     enabled: true,
     autoExecute: false, // MCP tools are opaque; execution asks for permission.
     permissionGuard: 'permission-gated',
@@ -296,8 +303,8 @@ function truncateDescription(desc: string, maxLength: number = 100): string {
 export function getMCPToolsForAI(
   toolsSettings?: Record<string, { enabled: boolean; autoExecute: boolean }>,
   useCondensed: boolean = toolsCatalogGenerated
-): Record<string, { description: string; parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> }> {
-  const result: Record<string, any> = {}
+): Record<string, ModelFacingToolDefinition> {
+  const result: Record<string, ModelFacingToolDefinition> = {}
 
   if (!MCPManager.isEnabled) {
     return result
@@ -377,6 +384,7 @@ export function getMCPToolsForAI(
     result[toolId] = {
       description,
       parameters,
+      parameterSchema: mcpTool.inputSchema,
     }
   }
 

@@ -54,22 +54,52 @@ describe('DeepSeek provider streaming tool calls', () => {
     fetchHolder.current = vi.fn(async () => new Response('', { status: 500 })) as unknown as typeof globalThis.fetch
   })
 
+  it('sends only official DeepSeek reasoning effort values', async () => {
+    const fetchImpl = vi.fn(async () => new Response('', { status: 200 })) as unknown as typeof globalThis.fetch
+    fetchHolder.current = fetchImpl
+    const model = deepseekProvider
+      .create({ apiKey: 'test-key', baseUrl: 'https://deepseek.test' })
+      .createModel('deepseek-v4-pro') as any
+
+    await model.doStream({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'Think' }] }],
+      providerOptions: {
+        deepseek: {
+          thinking: 'enabled',
+          reasoningEffort: 'max',
+        },
+      },
+    } as any)
+
+    let body = JSON.parse((fetchImpl as any).mock.calls[0][1].body)
+    expect(body.reasoning_effort).toBe('max')
+
+    await model.doStream({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'Think' }] }],
+      providerOptions: {
+        deepseek: {
+          thinking: 'enabled',
+          reasoningEffort: 'medium',
+        },
+      },
+    } as any)
+
+    body = JSON.parse((fetchImpl as any).mock.calls[1][1].body)
+    expect(body.reasoning_effort).toBe('high')
+  })
+
   it('emits tool input end as soon as each streamed tool argument JSON is complete', async () => {
     const harness = createControlledSseFetch()
     fetchHolder.current = harness.fetchImpl
 
     const tmpFile = `${process.cwd()}/TMP/deepseek-provider-order.md`
     const argsA = {
-      file_path: tmpFile,
-      old_string: 'A0',
-      new_string: 'A1',
-      replace_all: false,
+      path: tmpFile,
+      edits: [{ oldText: 'A0', newText: 'A1' }],
     }
     const argsB = {
-      file_path: tmpFile,
-      old_string: 'B0',
-      new_string: 'B1',
-      replace_all: false,
+      path: tmpFile,
+      edits: [{ oldText: 'B0', newText: 'B1' }],
     }
     const argsAText = JSON.stringify(argsA)
     const argsBText = JSON.stringify(argsB)
@@ -231,6 +261,119 @@ describe('DeepSeek provider streaming tool calls', () => {
         outputTokens: 20,
         totalTokens: 30,
       },
+    })
+  })
+
+  it('closes the reasoning block before emitting tool input when thinking goes straight to a tool call', async () => {
+    const harness = createControlledSseFetch()
+    fetchHolder.current = harness.fetchImpl
+
+    const args = { city: 'Shanghai' }
+    const argsText = JSON.stringify(args)
+
+    const model = deepseekProvider
+      .create({ apiKey: 'test-key', baseUrl: 'https://deepseek.test' })
+      .createModel('deepseek-v4-pro') as any
+
+    const result = await model.doStream({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'Weather?' }] }],
+      providerOptions: { deepseek: { thinking: 'enabled' } },
+      tools: [{
+        type: 'function',
+        name: 'get_weather',
+        description: 'Get weather',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+      }],
+    } as any)
+
+    const chunks: any[] = []
+    const reader = result.stream.getReader()
+    const collecting = (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          chunks.push(value)
+        }
+      } finally {
+        reader.releaseLock()
+      }
+    })()
+
+    // Thinking phase first.
+    harness.enqueue(sse({
+      choices: [{
+        index: 0,
+        delta: { reasoning_content: 'Let me think about the weather.' },
+        finish_reason: null,
+      }],
+    }))
+    await waitFor(() => chunks.length >= 2, 'reasoning chunks were not emitted')
+    expect(chunks[0]).toEqual({ type: 'reasoning-start', id: 'reasoning-0' })
+    expect(chunks[1]).toEqual({
+      type: 'reasoning-delta',
+      id: 'reasoning-0',
+      delta: 'Let me think about the weather.',
+    })
+
+    // Model decides to call a tool with no intervening `content`.
+    harness.enqueue(sse({
+      choices: [{
+        index: 0,
+        delta: {
+          tool_calls: [{
+            index: 0,
+            id: 'call_w',
+            type: 'function',
+            function: { name: 'get_weather', arguments: argsText },
+          }],
+        },
+        finish_reason: null,
+      }],
+    }))
+    await waitFor(() => chunks.length >= 5, 'reasoning-end + tool input chunks were not emitted')
+
+    // The reasoning block must be closed *before* the tool input starts.
+    expect(chunks[2]).toEqual({ type: 'reasoning-end', id: 'reasoning-0' })
+    expect(chunks[3]).toEqual({
+      type: 'tool-input-start',
+      toolCallId: 'call_w',
+      toolName: 'get_weather',
+    })
+    expect(chunks[4]).toEqual({
+      type: 'tool-input-delta',
+      toolCallId: 'call_w',
+      inputTextDelta: argsText,
+    })
+    // tool-input-end fires as soon as the JSON args are complete.
+    await waitFor(
+      () => chunks.some(c => c.type === 'tool-input-end'),
+      'tool-input-end was not emitted',
+    )
+
+    // reasoning-end must appear exactly once (not re-emitted at finish).
+    const finishChunk = (() => {
+      harness.enqueue(sse({
+        choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+      }))
+      return undefined
+    })()
+    void finishChunk
+    harness.enqueue(sse({
+      choices: [],
+      usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 },
+    }))
+    harness.close()
+    await collecting
+
+    expect(chunks.filter(c => c.type === 'reasoning-end')).toHaveLength(1)
+    expect(chunks.filter(c => c.type === 'tool-call')).toEqual([
+      { type: 'tool-call', toolCallId: 'call_w', toolName: 'get_weather', input: args },
+    ])
+    expect(chunks[chunks.length - 1]).toEqual({
+      type: 'finish',
+      finishReason: 'tool-calls',
+      usage: { inputTokens: 5, outputTokens: 7, totalTokens: 12 },
     })
   })
 })

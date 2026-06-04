@@ -1,18 +1,13 @@
 /**
- * Prompt Template Types
+ * Prompt Types
  *
- * Type definitions for the Handlebars-based prompt template system.
+ * Type definitions for TypeScript-based prompt construction.
  */
 
-/**
- * Operating system type for OS-specific prompts
- */
 export type OSType = 'macos' | 'windows' | 'linux'
 
 /**
- * One slice of a rendered prompt, attributed to a specific .hbs template.
- * `source` is the template path relative to resources/templates (no extension).
- * `absolutePath` is the on-disk path of that .hbs file, for opening in an editor.
+ * One slice of a rendered prompt, attributed to a stable prompt source id.
  */
 export interface PromptSegment {
   source: string
@@ -29,19 +24,6 @@ export interface PromptSegment {
   emittedThisTurn?: boolean
 }
 
-/**
- * Template names that can be rendered
- */
-export type TemplateName =
-  | 'main/system-prompt'
-  | 'main/context-compact'
-  | 'skills/awareness'
-  | 'skills/direct'
-  | 'skills/tool'
-
-/**
- * Skill definition for template rendering
- */
 export interface TemplateSkill {
   name: string
   description: string
@@ -52,7 +34,7 @@ export interface TemplateSkill {
   instructions?: string
 }
 
-/** Project directory data fed into the system prompt's project partials. */
+/** Project directory data fed into prompt context builders. */
 export interface PromptActiveProject {
   hasActive: boolean
   path?: string
@@ -63,63 +45,3 @@ export interface PromptKnownProjects {
   hasAny: boolean
   entries: Array<{ path: string; displayPath: string; description: string }>
 }
-
-/**
- * Variables for system prompt template (main/system-prompt.hbs)
- */
-export interface SystemPromptVariables {
-  // Feature flags
-  hasTools: boolean
-
-  // Agent/workspace persona
-  workspaceSystemPrompt?: string
-
-  // Context
-  workingDirectory?: string
-  workingDirectoryRoots?: string[]
-  workingDirectoryRootDisplays?: Array<{ path: string; displayPath: string }>
-  displayPath?: string
-  baseDirectory: string
-  osType: OSType
-  contextVariables?: string
-
-  // Project directories — owned by the project-dirs subsystem.
-  // Both fields are present whenever hasTools is true; partials gate
-  // their own visibility.
-  activeProject?: PromptActiveProject
-  knownProjects?: PromptKnownProjects
-
-  // Skills (currently unused in system prompt, but kept for flexibility)
-  skills?: TemplateSkill[]
-
-  // macOS automation docs path (for AI to reference osascript examples)
-  macosAutomationDocsPath?: string
-
-  // Tool usage guide path (for AI to reference detailed tool usage examples)
-  toolUsageDocsPath?: string
-}
-
-/**
- * Variables for skills templates
- */
-export interface SkillsVariables {
-  skills: TemplateSkill[]
-  maxInstructionLength?: number
-}
-
-/**
- * Variables for context compact template (main/context-compact.hbs)
- */
-export interface ContextCompactVariables {
-  messages: string
-  previousSummary?: string
-}
-
-/**
- * Union type of all template variable types
- */
-export type TemplateVariables =
-  | SystemPromptVariables
-  | SkillsVariables
-  | ContextCompactVariables
-  | Record<string, unknown>

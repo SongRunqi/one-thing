@@ -110,7 +110,7 @@ describe('ThinkToggle', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
-    document.body.innerHTML = ''
+    document.body.textContent = ''
   })
 
   it('renders Codex as one compact dropdown with thinking and speed groups', async () => {
@@ -165,6 +165,10 @@ describe('ThinkToggle', () => {
 
     expect(panelText()).toContain('Thinking')
     expect(panelText()).not.toContain('Speed')
+    expect(panelText()).toContain('High')
     expect(panelText()).toContain('Max')
+    expect(panelText()).not.toContain('Low')
+    expect(panelText()).not.toContain('Medium')
+    expect(panelText()).not.toContain('X High')
   })
 })

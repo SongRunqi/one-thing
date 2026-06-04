@@ -84,11 +84,11 @@ withDefaults(defineProps<{
   z-index: calc(var(--z-dropdown) + 1);
   width: calc(100% - 20px);
   margin: 0 auto -1px;
-  border: 0.5px solid color-mix(in srgb, rgba(var(--accent-rgb), 0.30) 30%, var(--border));
-  border-bottom-color: rgba(var(--accent-rgb), 0.18);
+  border: 0.5px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 9%, var(--ui-border-default-border, var(--border)));
+  border-bottom-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 18%, transparent);
   border-radius: 14px 14px 8px 8px;
-  background: rgba(var(--bg-rgb, 30, 30, 35), 0.66);
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.10), 0 0 0 0.5px rgba(var(--accent-rgb), 0.06);
+  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 66%, transparent);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.10), 0 0 0 0.5px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 6%, transparent);
   backdrop-filter: blur(24px) saturate(1.16);
   -webkit-backdrop-filter: blur(24px) saturate(1.16);
   overflow: hidden;
@@ -101,7 +101,7 @@ withDefaults(defineProps<{
   gap: 12px;
   min-height: 36px;
   padding: 8px 12px 7px;
-  border-bottom: 0.5px solid rgba(var(--accent-rgb), 0.12);
+  border-bottom: 0.5px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
 }
 
 .composer-extension-title,
@@ -113,18 +113,18 @@ withDefaults(defineProps<{
 
 .composer-extension-title {
   gap: 8px;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 12px;
   font-weight: 600;
 }
 
 .composer-extension-title :deep(svg) {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   flex-shrink: 0;
 }
 
 .composer-extension-status {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   flex-shrink: 0;
 }
 
@@ -136,8 +136,8 @@ withDefaults(defineProps<{
   justify-content: center;
   padding: 0 7px;
   border-radius: 999px;
-  background: rgba(var(--accent-rgb), 0.10);
-  color: var(--text-muted, var(--muted));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
   font-size: 11px;
   font-weight: 600;
 }
@@ -147,7 +147,7 @@ withDefaults(defineProps<{
   overflow-y: auto;
   padding: 6px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(var(--accent-rgb), 0.32) transparent;
+  scrollbar-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 32%, transparent) transparent;
 }
 
 .composer-extension-body::-webkit-scrollbar {
@@ -159,7 +159,7 @@ withDefaults(defineProps<{
 }
 
 .composer-extension-body::-webkit-scrollbar-thumb {
-  background: rgba(var(--accent-rgb), 0.28);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, transparent);
   border-radius: 999px;
 }
 
@@ -170,7 +170,7 @@ withDefaults(defineProps<{
   justify-content: center;
   gap: 8px;
   padding: 18px;
-  color: var(--text-muted, var(--muted));
+  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
   font-size: 13px;
   text-align: center;
 }
@@ -193,14 +193,14 @@ withDefaults(defineProps<{
   min-height: 38px;
   padding: 6px 8px;
   border-radius: 8px;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 :deep(.composer-extension-row:hover),
 :deep(.composer-extension-row.selected) {
-  background: rgba(var(--accent-rgb), 0.10);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
 :deep(.composer-extension-row-icon) {
@@ -210,13 +210,13 @@ withDefaults(defineProps<{
   align-items: center;
   justify-content: center;
   border-radius: 7px;
-  background: rgba(var(--accent-rgb), 0.08);
-  color: var(--muted);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 :deep(.composer-extension-row.selected .composer-extension-row-icon) {
-  color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.16);
+  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 16%, transparent);
 }
 
 :deep(.composer-extension-row-main) {
@@ -236,13 +236,13 @@ withDefaults(defineProps<{
 }
 
 :deep(.composer-extension-row-title) {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 13px;
   font-weight: 600;
 }
 
 :deep(.composer-extension-row-description) {
-  color: var(--text-muted, var(--muted));
+  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
   font-size: 11px;
   line-height: 1.25;
   opacity: 0.72;
@@ -250,13 +250,13 @@ withDefaults(defineProps<{
 
 :deep(.composer-extension-row-meta) {
   max-width: 150px;
-  color: var(--text-muted, var(--muted));
+  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
   font-size: 11px;
   opacity: 0.62;
 }
 
 :deep(.composer-extension-row.selected .composer-extension-row-meta) {
-  color: var(--accent);
+  color: var(--ui-text-primary-fg, var(--text));
   opacity: 0.9;
 }
 

@@ -436,7 +436,7 @@ function equalizeAllPanels() {
 
 // Create new session from empty state
 async function createNewSession() {
-  await sessionsStore.createSession('New Chat')
+  sessionsStore.openNewChatDraft('New Chat')
 }
 
 // Focus input of first panel
@@ -506,7 +506,7 @@ onUnmounted(() => {
 .chat-container-wrapper {
   flex: 1;
   padding: 0;
-  background: var(--bg-sunken, color-mix(in srgb, var(--bg) 95%, black));
+  background: var(--bg-sunken, color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 95%, black));
   min-width: 0;
   display: flex;
   position: relative;
@@ -546,7 +546,7 @@ onUnmounted(() => {
 
 .panel-resizer:hover,
 .panel-resizer:active {
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
 }
 
 /* Session Picker Dialog */
@@ -571,9 +571,9 @@ onUnmounted(() => {
 .session-picker-dialog {
   width: 400px;
   max-height: 500px;
-  background: var(--panel);
+  background: var(--ui-surface-panel-bg, var(--panel));
   border-radius: 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
@@ -597,14 +597,14 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .session-picker-header h3 {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .session-picker-header .close-btn {
@@ -616,14 +616,14 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .session-picker-header .close-btn:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .session-picker-search {
@@ -631,11 +631,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .session-picker-search svg {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   flex-shrink: 0;
 }
 
@@ -644,12 +644,12 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   font-size: 14px;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   outline: none;
 }
 
 .session-picker-search input::placeholder {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .session-picker-list {
@@ -667,7 +667,7 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   border-radius: 8px;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 14px;
   text-align: left;
   cursor: pointer;
@@ -675,15 +675,15 @@ onUnmounted(() => {
 }
 
 .session-picker-item:hover {
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .session-picker-item.current {
-  background: rgba(var(--accent-rgb), 0.1);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
 .session-picker-item svg {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   flex-shrink: 0;
 }
 
@@ -697,30 +697,30 @@ onUnmounted(() => {
 .session-picker-item .current-badge {
   font-size: 11px;
   padding: 2px 6px;
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
   border-radius: 4px;
   flex-shrink: 0;
 }
 
 .session-picker-item.new-chat-item {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
   margin-bottom: 4px;
   padding-bottom: 10px;
 }
 
 .session-picker-item.new-chat-item svg {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .session-picker-item.new-chat-item:hover {
-  background: rgba(var(--accent-rgb), 0.1);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
 .session-picker-item .new-badge {
   font-size: 11px;
   padding: 2px 6px;
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
   border-radius: 4px;
   flex-shrink: 0;
@@ -729,7 +729,7 @@ onUnmounted(() => {
 .no-sessions {
   padding: 20px;
   text-align: center;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 14px;
 }
 
@@ -737,7 +737,7 @@ onUnmounted(() => {
 .full-page-container {
   flex: 1;
   display: flex;
-  background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
+  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat))));
   border-radius: var(--radius-lg);
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.15),
@@ -753,7 +753,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-panel, var(--bg-elevated, var(--bg-chat)));
+  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat))));
   position: relative;
   -webkit-app-region: drag;
 }
@@ -763,7 +763,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   text-align: center;
   -webkit-app-region: no-drag;
 }
@@ -776,7 +776,7 @@ onUnmounted(() => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .empty-state-content p {
@@ -790,7 +790,7 @@ onUnmounted(() => {
   gap: 8px;
   margin-top: 8px;
   padding: 10px 20px;
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
   border: none;
   border-radius: 8px;
@@ -802,7 +802,7 @@ onUnmounted(() => {
 }
 
 .new-chat-btn:hover {
-  background: var(--accent-hover, var(--accent));
+  background: var(--accent-hover, var(--ui-accent-primary-fg, var(--accent)));
   transform: translateY(-1px);
 }
 </style>

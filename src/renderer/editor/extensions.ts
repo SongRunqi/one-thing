@@ -1,7 +1,7 @@
 import type { Extension } from '@codemirror/state'
 import { Compartment, EditorState } from '@codemirror/state'
 import {
-  defaultHighlightStyle,
+  HighlightStyle,
   indentUnit,
   syntaxHighlighting,
 } from '@codemirror/language'
@@ -20,6 +20,7 @@ import {
   placeholder as placeholderExtension,
   type ViewUpdate,
 } from '@codemirror/view'
+import { tags } from '@lezer/highlight'
 import {
   DEFAULT_EDITOR_SETTINGS,
   normalizeEditorSettings,
@@ -169,6 +170,91 @@ export function placeholderExtensions(text?: string): Extension {
   return text ? placeholderExtension(text) : []
 }
 
+function cmHighlight(token: string, fallback: string) {
+  return {
+    color: `var(--hg-${token}-fg, ${fallback})`,
+    backgroundColor: `var(--hg-${token}-bg, transparent)`,
+    fontStyle: `var(--hg-${token}-font-style, normal)`,
+    fontWeight: `var(--hg-${token}-font-weight, 400)`,
+    textDecoration: `var(--hg-${token}-text-decoration, none)`,
+  }
+}
+
+const appHighlightStyle = HighlightStyle.define([
+  {
+    tag: [tags.keyword, tags.modifier, tags.operatorKeyword],
+    ...cmHighlight('syntax-keyword', 'var(--text-code-keyword)'),
+  },
+  {
+    tag: [tags.atom, tags.bool, tags.null],
+    ...cmHighlight('syntax-atom', 'var(--text-code-keyword)'),
+  },
+  {
+    tag: [tags.number, tags.integer, tags.float],
+    ...cmHighlight('syntax-number', 'var(--text-code-number)'),
+  },
+  {
+    tag: [tags.string, tags.special(tags.string), tags.regexp],
+    ...cmHighlight('syntax-string', 'var(--text-code-string)'),
+  },
+  {
+    tag: [tags.comment, tags.lineComment, tags.blockComment],
+    ...cmHighlight('syntax-comment', 'var(--text-code-comment)'),
+  },
+  {
+    tag: [tags.definition(tags.variableName)],
+    ...cmHighlight('syntax-definition', 'var(--text-code-function)'),
+  },
+  {
+    tag: [tags.function(tags.variableName), tags.function(tags.propertyName)],
+    ...cmHighlight('syntax-function', 'var(--text-code-function)'),
+  },
+  {
+    tag: tags.variableName,
+    ...cmHighlight('syntax-variable', 'var(--text-code-variable, var(--text-code-block))'),
+  },
+  {
+    tag: tags.propertyName,
+    ...cmHighlight('syntax-property', 'var(--text-code-property, var(--text-code-variable))'),
+  },
+  {
+    tag: [tags.typeName, tags.className, tags.namespace],
+    ...cmHighlight('syntax-type', 'var(--text-code-type, var(--text-code-variable))'),
+  },
+  {
+    tag: [tags.tagName, tags.attributeName],
+    ...cmHighlight('syntax-tag', 'var(--text-code-type, var(--text-code-keyword))'),
+  },
+  {
+    tag: [tags.punctuation, tags.bracket, tags.separator],
+    ...cmHighlight('syntax-punctuation', 'var(--text-code-punctuation, var(--text-code-operator))'),
+  },
+  {
+    tag: [tags.invalid, tags.deleted],
+    ...cmHighlight('syntax-invalid', 'var(--ui-status-danger-fg, var(--text-error))'),
+  },
+  {
+    tag: tags.inserted,
+    ...cmHighlight('syntax-inserted', 'var(--ui-status-success-fg, var(--text-success))'),
+  },
+  {
+    tag: tags.heading,
+    ...cmHighlight('syntax-heading', 'var(--text-code-function)'),
+  },
+  {
+    tag: tags.link,
+    ...cmHighlight('syntax-link', 'var(--ui-text-link-fg, var(--text-link))'),
+  },
+  {
+    tag: tags.emphasis,
+    ...cmHighlight('syntax-emphasis', 'var(--hg-syntax-plain-fg, var(--text-code-block))'),
+  },
+  {
+    tag: tags.strong,
+    ...cmHighlight('syntax-strong', 'var(--hg-syntax-plain-fg, var(--text-code-block))'),
+  },
+])
+
 export function languageExtensions(
   settings: Required<EditorSettings>,
   language?: EditorLanguage,
@@ -177,7 +263,7 @@ export function languageExtensions(
   if (!settings.syntaxHighlighting) return []
   return [
     ...languageExtension(language, path),
-    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    syntaxHighlighting(appHighlightStyle, { fallback: true }),
   ]
 }
 
@@ -196,7 +282,7 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
     '&': {
       height: 'auto',
       minHeight: 'var(--editor-min-height)',
-      color: 'var(--editor-text, var(--text-input, var(--text)))',
+      color: 'var(--editor-text, var(--ui-editor-text-fg, var(--text-input, var(--text))))',
       backgroundColor: 'transparent',
       fontFamily,
       fontSize: isInlineMessage ? 'var(--message-font-size, 15px)' : 'var(--editor-font-size, 15px)',
@@ -210,15 +296,16 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       overflowX: 'auto',
       overflowY: 'auto',
       scrollbarWidth: 'thin',
-      scrollbarColor: 'color-mix(in srgb, var(--text-muted, var(--muted)) 42%, transparent) transparent',
+      scrollbarColor: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 42%, transparent) transparent',
       scrollbarGutter: 'stable',
       fontFamily: 'inherit',
       lineHeight: 'inherit',
     },
     '.cm-content': {
       minHeight: 'var(--editor-min-height)',
-      padding: isComposer ? '12px 0 0 0' : '0',
+      padding: isComposer ? '12px 18px 0 0' : '0',
       cursor: 'text',
+      caretColor: 'var(--ui-editor-caret-fg, var(--editor-caret, var(--text-input, var(--text))))',
       whiteSpace: 'pre',
       wordBreak: 'normal',
     },
@@ -244,16 +331,16 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       boxSizing: 'border-box',
     },
     '.cm-placeholder': {
-      color: 'var(--text-input-placeholder, var(--text-muted))',
+      color: 'var(--ui-editor-placeholder-fg, var(--text-input-placeholder, var(--text-muted)))',
       userSelect: 'none',
       pointerEvents: 'none',
     },
     '.cm-cursor, .cm-dropCursor': {
-      borderLeft: '1.2px solid var(--editor-caret, var(--accent))',
+      borderLeft: '1.2px solid var(--ui-editor-caret-fg, var(--editor-caret, var(--text-input, var(--text))))',
       marginLeft: '-0.6px',
     },
     '.cm-selectionBackground': {
-      backgroundColor: 'rgba(var(--accent-rgb, 59, 130, 246), 0.22) !important',
+      backgroundColor: 'var(--ui-editor-selection-bg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 22%, transparent)) !important',
     },
     '.cm-gutters': {
       display: 'none',
@@ -274,21 +361,21 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       maxWidth: '220px',
       margin: '0 2px',
       padding: '2px 7px',
-      border: '1px solid color-mix(in srgb, var(--accent) 28%, var(--border))',
+      border: '1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, var(--ui-border-default-border, var(--border)))',
       borderRadius: '7px',
-      background: 'color-mix(in srgb, var(--accent) 9%, transparent)',
-      color: 'var(--text)',
+      background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 9%, transparent)',
+      color: 'var(--ui-text-primary-fg, var(--text))',
       verticalAlign: 'baseline',
       cursor: 'default',
       lineHeight: '18px',
     },
     '.prompt-ref-widget.is-skill': {
-      borderColor: 'color-mix(in srgb, var(--success, #2f8f5b) 24%, var(--border))',
-      background: 'color-mix(in srgb, var(--success, #2f8f5b) 8%, transparent)',
+      borderColor: 'color-mix(in srgb, var(--ui-status-success-fg, var(--success, #2f8f5b)) 24%, var(--ui-border-default-border, var(--border)))',
+      background: 'color-mix(in srgb, var(--ui-status-success-fg, var(--success, #2f8f5b)) 8%, transparent)',
     },
     '.prompt-ref-widget.is-command': {
-      borderColor: 'color-mix(in srgb, var(--text-muted, var(--muted)) 24%, var(--border))',
-      background: 'color-mix(in srgb, var(--text-muted, var(--muted)) 7%, transparent)',
+      borderColor: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 24%, var(--ui-border-default-border, var(--border)))',
+      background: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 7%, transparent)',
     },
     '.prompt-ref-widget-icon': {
       width: '14px',
@@ -296,18 +383,18 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       borderRadius: '4px',
       display: 'inline-grid',
       placeItems: 'center',
-      background: 'color-mix(in srgb, var(--accent) 18%, transparent)',
-      color: 'var(--accent)',
+      background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 18%, transparent)',
+      color: 'var(--ui-accent-primary-fg, var(--accent))',
       fontSize: '9px',
       fontWeight: '700',
     },
     '.prompt-ref-widget.is-skill .prompt-ref-widget-icon': {
-      background: 'color-mix(in srgb, var(--success, #2f8f5b) 16%, transparent)',
-      color: 'var(--success, #2f8f5b)',
+      background: 'color-mix(in srgb, var(--ui-status-success-fg, var(--success, #2f8f5b)) 16%, transparent)',
+      color: 'var(--ui-status-success-fg, var(--success, #2f8f5b))',
     },
     '.prompt-ref-widget.is-command .prompt-ref-widget-icon': {
-      background: 'color-mix(in srgb, var(--text-muted, var(--muted)) 16%, transparent)',
-      color: 'var(--text-muted, var(--muted))',
+      background: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 16%, transparent)',
+      color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
       fontSize: '11px',
     },
     '.prompt-ref-widget-title': {
@@ -329,7 +416,7 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       border: '0',
       borderRadius: '5px',
       background: 'transparent',
-      color: 'var(--muted)',
+      color: 'var(--ui-text-muted-fg, var(--muted))',
       cursor: 'pointer',
       font: 'inherit',
       fontSize: '13px',
@@ -348,8 +435,8 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       pointerEvents: 'auto',
     },
     '.prompt-ref-widget-close:hover': {
-      background: 'color-mix(in srgb, var(--danger, #d14) 12%, transparent)',
-      color: 'var(--danger, #d14)',
+      background: 'color-mix(in srgb, var(--ui-status-danger-fg, var(--danger, #d14)) 12%, transparent)',
+      color: 'var(--ui-status-danger-fg, var(--danger, #d14))',
     },
     '.prompt-ref-widget-popover': {
       position: 'absolute',
@@ -361,10 +448,10 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       flexDirection: 'column',
       gap: '7px',
       padding: '10px 11px',
-      border: '1px solid var(--border)',
+      border: '1px solid var(--ui-border-default-border, var(--border))',
       borderRadius: '8px',
-      background: 'var(--panel, var(--bg))',
-      color: 'var(--text)',
+      background: 'var(--ui-surface-panel-bg, var(--panel, var(--bg)))',
+      color: 'var(--ui-text-primary-fg, var(--text))',
       boxShadow: '0 16px 42px rgba(0, 0, 0, 0.2)',
       zIndex: '50',
       whiteSpace: 'normal',
@@ -373,7 +460,7 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       display: 'flex',
     },
     '.prompt-ref-widget-description': {
-      color: 'var(--muted)',
+      color: 'var(--ui-text-muted-fg, var(--muted))',
       fontSize: '12px',
     },
     '.prompt-ref-widget-content': {
@@ -391,13 +478,13 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       background: 'transparent',
     },
     '.cm-scroller::-webkit-scrollbar-thumb': {
-      background: 'color-mix(in srgb, var(--text-muted, var(--muted)) 42%, transparent)',
+      background: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 42%, transparent)',
       borderRadius: '999px',
       border: '2px solid transparent',
       backgroundClip: 'padding-box',
     },
     '.cm-scroller::-webkit-scrollbar-thumb:hover': {
-      background: 'color-mix(in srgb, var(--text-muted, var(--muted)) 62%, transparent)',
+      background: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 62%, transparent)',
       backgroundClip: 'padding-box',
     },
     '.cm-scroller::-webkit-scrollbar-corner': {

@@ -153,7 +153,6 @@ export async function compactSessionContext(options: {
     // no longer describes the next request, so clear it until the provider reports
     // fresh usage for the next turn.
     store.updateSessionContextSize(options.sessionId, 0)
-    store.updateSessionPromptContext(options.sessionId, null)
     store.updateMessageContent(options.sessionId, compactMessage.id, finalContent)
     await options.onMessageUpdated?.(compactMessage.id, { content: finalContent })
 

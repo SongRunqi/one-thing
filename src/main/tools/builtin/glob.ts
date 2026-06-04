@@ -37,7 +37,7 @@ const GlobParameters = z.object({
     .string()
     .optional()
     .describe(
-      'The directory to search in. If not specified, the current working directory will be used. ' +
+      'The directory to search in. If not specified, the current work directory will be used. ' +
       'IMPORTANT: Omit this field to use the default directory. DO NOT enter "undefined" or "null".'
     ),
 })
@@ -57,6 +57,9 @@ Use this tool when you need to find files by name patterns.`,
   enabled: true,
   autoExecute: true, // Safe read-only operation
   permissionGuard: 'sandboxed',
+  executionMode: 'parallel',
+  renderKind: 'search',
+  promptSnippet: 'Find files by glob pattern',
 
   parameters: GlobParameters,
 
@@ -72,6 +75,11 @@ Use this tool when you need to find files by name patterns.`,
       searchPath = path.resolve(workDir, searchPath)
     }
     searchPath = await checkFileAccess(searchPath, ctx, 'Search directory', 'directory')
+
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: `Matching ${pattern} in ${searchPath}...` }],
+      details: { phase: 'searching', pattern, searchPath, count: 0 },
+    })
 
     // Update metadata with initial state
     ctx.metadata({
@@ -113,6 +121,12 @@ Use this tool when you need to find files by name patterns.`,
         }
 
         files.push({ path: fullPath, mtime })
+        if (files.length % 25 === 0) {
+          ctx.updateResult?.({
+            content: [{ type: 'text', text: `Found ${files.length} file${files.length !== 1 ? 's' : ''} so far...` }],
+            details: { phase: 'searching', pattern, searchPath, count: files.length },
+          })
+        }
       }
       console.log(`[Glob] Search completed: found ${files.length} files in ${Date.now() - startTime}ms`)
     } catch (error: any) {
@@ -143,6 +157,11 @@ Use this tool when you need to find files by name patterns.`,
       count: files.length,
       truncated,
     }
+
+    ctx.updateResult?.({
+      content: [{ type: 'text', text: outputLines.join('\n') }],
+      details: { phase: 'ready', ...metadata },
+    })
 
     return {
       title: `${files.length} file${files.length !== 1 ? 's' : ''}`,

@@ -64,7 +64,6 @@ import { getVariablesStore } from '../../variables/index.js'
 import { expandPath, isPathContained } from '../../tools/core/sandbox.js'
 import { generateChatResponse } from '../../providers/index.js'
 import { resolveProviderAuth } from '../../engine/stream/provider-helpers.js'
-import { getPromptManager } from '../../engine/prompt/index.js'
 import { embedTexts } from '../../embeddings/index.js'
 import * as store from '../../store.js'
 import { PluginStore } from '../store.js'
@@ -82,6 +81,14 @@ import {
 } from '../../memory/diagnostics-logger.js'
 
 const SOUL_MEMORY_PLUGIN_ID = 'soul-memory'
+
+const SOUL_MEMORY_RULES_PROMPT = `# Soul Memory Rules
+
+- SQLite graph memory is the source of truth for user identity, preferences, durable user facts, project facts, and relationships.
+- memory/YYYY-MM-DD.md is for AI daily working notes, session process, and medium-confidence context.
+- DREAMS.md is for scheduled sweep reports and reviewable memory synthesis.
+- SOUL.md is user-editable voice and continuity context; do not rely on it for memory mechanics or tool/security policy.
+- SOUL.md changes only when the user explicitly asks to revise voice, stance, output style, teaching style, or collaboration style.`
 
 export const soulMemoryManifest = {
   name: SOUL_MEMORY_PLUGIN_ID,
@@ -325,7 +332,7 @@ This file is the durable voice, output style, teaching style, and continuity lay
 - Write for a person, not a console log.
 - Use GitHub-flavored Markdown when it helps structure the answer.
 - Only use emojis if the user explicitly asks.
-- When referencing code, include file_path:line_number so the user can navigate quickly.
+- When referencing code, include path:line_number so the user can navigate quickly.
 - When referencing GitHub issues or pull requests, use owner/repo#123.
 - Do not use a colon immediately before a tool call; say what you are doing as a normal sentence.
 - Prefer flowing prose and short lists. Use tables only for compact enumerable facts, not for dense reasoning.
@@ -522,7 +529,6 @@ async function ensureWorkspace(settings?: AppSettings, agentId = DEFAULT_AGENT_I
   await fsp.mkdir(workspace.memoryDir, { recursive: true })
   await fsp.mkdir(path.dirname(workspace.dbPath), { recursive: true })
   await writeIfMissing(workspace.soulPath, SOUL_TEMPLATE)
-  await writeIfMissing(workspace.todayPath, `# ${todayString()}\n\n`)
   ensureIndexWatcher(workspace)
   return workspace
 }
@@ -1590,7 +1596,11 @@ async function appendMemory(options: {
   const content = options.content.trim()
   if (!content) throw new Error('Memory content is empty')
   await fsp.mkdir(path.dirname(target.absolutePath), { recursive: true })
-  await fsp.appendFile(target.absolutePath, `\n## ${heading}\n\n${content}\n`, 'utf-8')
+  const exists = Boolean(await fsp.stat(target.absolutePath).catch(() => null))
+  const newDailyPrefix = !exists && target.relativePath.startsWith('memory/')
+    ? `# ${path.basename(target.relativePath, '.md')}\n\n`
+    : '\n'
+  await fsp.appendFile(target.absolutePath, `${newDailyPrefix}## ${heading}\n\n${content}\n`, 'utf-8')
   logMemoryDiagnostic({
     subsystem: 'daily',
     operation: 'append-note',
@@ -7018,8 +7028,8 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
     const fragments: Array<{ role: 'developer' | 'user'; source: string; content: string }> = [
       {
         role: 'developer' as const,
-        source: 'partials/memory/soul-memory-rules',
-        content: getPromptManager().renderPartial('memory/soul-memory-rules'),
+        source: 'memory/soul-memory-rules',
+        content: SOUL_MEMORY_RULES_PROMPT,
       },
       {
         role: 'developer' as const,

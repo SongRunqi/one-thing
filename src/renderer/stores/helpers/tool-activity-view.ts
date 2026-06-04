@@ -5,7 +5,7 @@ import {
   getToolFilePath,
   type ToolStepView,
 } from './tool-step-view'
-import { basename } from './tool-preview'
+import { basename, shortenPath } from './tool-preview'
 import type { ToolRenderStatus } from './tool-status'
 
 export interface ToolActivityView {
@@ -16,6 +16,7 @@ export interface ToolActivityView {
   status: ToolRenderStatus
   verb: string
   target: string
+  targetMeta: string
   filePath: string
   canOpenFile: boolean
   stats: string
@@ -36,6 +37,7 @@ export function buildToolActivityView(step: Step): ToolActivityView {
   const toolName = view.toolName
   const filePath = getToolFilePath(toolCall, getDiffFromStep(step))
   const target = buildTarget(view, filePath)
+  const targetMeta = buildTargetMeta(view)
 
   return {
     id: view.id,
@@ -43,8 +45,9 @@ export function buildToolActivityView(step: Step): ToolActivityView {
     toolCall,
     toolName,
     status: view.status,
-    verb: buildVerb(toolName, view.status),
+    verb: buildVerb(toolName, view.status, toolCall),
     target,
+    targetMeta,
     filePath,
     canOpenFile: !!filePath && ['read', 'write', 'edit'].includes(toolName),
     stats: buildStats(step, toolCall),
@@ -61,13 +64,37 @@ export function buildDetailedToolStepView(activity: ToolActivityView): ToolStepV
 }
 
 function buildTarget(view: ToolStepView, filePath: string): string {
+  if (view.toolName === 'variable') return buildVariableTarget(view.toolCall)
   if (view.preview) return view.preview
   if (filePath) return basename(filePath)
   return view.displayName
 }
 
-function buildVerb(toolName: string, status: ToolRenderStatus): string {
+function buildTargetMeta(view: ToolStepView): string {
+  if (view.toolName !== 'variable') return ''
+  const args = view.toolCall.arguments || {}
+  const action = String(args.action || '').toLowerCase()
+  const value = typeof args.value === 'string' ? args.value : ''
+  if (!value) return ''
+  if (action === 'set') return `= ${shortenPath(value, 42)}`
+  if (action === 'append') return `+ ${shortenPath(value, 42)}`
+  if (action === 'remove') return `− ${shortenPath(value, 42)}`
+  return ''
+}
+
+function buildVariableTarget(toolCall: ToolCall): string {
+  const args = toolCall.arguments || {}
+  const action = String(args.action || '').toLowerCase()
+  const name = typeof args.name === 'string' ? args.name : ''
+  if (action === 'list') return 'variables'
+  if (action === 'append' && name === 'workdir') return 'workdir root'
+  if (action === 'remove' && name === 'workdir') return 'workdir root'
+  return name || 'variable'
+}
+
+function buildVerb(toolName: string, status: ToolRenderStatus, toolCall?: ToolCall): string {
   if (status === 'rejected') return 'Rejected'
+  if (status === 'queued') return 'Queued'
 
   const running = status === 'pending' || status === 'streaming-input' || status === 'executing'
   const awaiting = status === 'awaiting-confirmation'
@@ -78,7 +105,23 @@ function buildVerb(toolName: string, status: ToolRenderStatus): string {
   if (toolName === 'glob') return running ? 'Matching' : 'Matched'
   if (toolName === 'write') return running ? 'Writing' : 'Wrote'
   if (toolName === 'edit') return running ? 'Editing' : 'Edited'
+  if (toolName === 'variable') return buildVariableVerb(toolCall, running, awaiting)
   return running ? 'Using' : 'Used'
+}
+
+function buildVariableVerb(toolCall: ToolCall | undefined, running: boolean, awaiting: boolean): string {
+  const action = String(toolCall?.arguments?.action || '').toLowerCase()
+  const verbs: Record<string, { run: string; wait: string; done: string }> = {
+    list: { run: 'Listing', wait: 'List', done: 'Listed' },
+    set: { run: 'Setting', wait: 'Set', done: 'Set' },
+    append: { run: 'Adding', wait: 'Add', done: 'Added' },
+    remove: { run: 'Removing', wait: 'Remove', done: 'Removed' },
+    delete: { run: 'Deleting', wait: 'Delete', done: 'Deleted' },
+  }
+  const match = verbs[action]
+  if (!match) return running ? 'Using' : 'Used'
+  if (awaiting) return match.wait
+  return running ? match.run : match.done
 }
 
 function buildStats(step: Step, toolCall: ToolCall): string {

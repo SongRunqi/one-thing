@@ -130,8 +130,8 @@ defineEmits<{
 
 <style scoped>
 .skill-item {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-sidebar-bg, var(--panel-2));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 12px;
   overflow: hidden;
   transition: all 0.15s ease;
@@ -142,7 +142,7 @@ defineEmits<{
 }
 
 .skill-item.expanded {
-  border-color: var(--accent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .skill-header {
@@ -163,13 +163,13 @@ defineEmits<{
 .skill-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   font-family: 'SF Mono', 'Monaco', monospace;
 }
 
 .skill-description {
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   margin-top: 4px;
   line-height: 1.4;
   display: -webkit-box;
@@ -187,7 +187,7 @@ defineEmits<{
 
 .expand-chevron {
   transition: transform 0.2s ease;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .skill-item.expanded .expand-chevron {
@@ -196,7 +196,7 @@ defineEmits<{
 
 .skill-expanded {
   padding: 0 16px 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
   animation: slideDown 0.2s ease;
 }
 
@@ -219,12 +219,12 @@ defineEmits<{
 }
 
 .meta-label {
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   font-weight: 500;
 }
 
 .meta-value {
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .meta-value.description-full {
@@ -242,13 +242,13 @@ defineEmits<{
 .instructions-content {
   font-size: 12px;
   font-family: 'SF Mono', 'Monaco', monospace;
-  background: var(--hover);
+  background: var(--ui-state-hover-bg, var(--hover));
   padding: 12px;
   border-radius: 8px;
   margin: 8px 0 0 0;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text-primary);
+  color: var(--ui-text-primary-fg, var(--text-primary));
   max-height: 200px;
   overflow-y: auto;
 }
@@ -297,7 +297,7 @@ defineEmits<{
 }
 
 .toggle input:checked + .toggle-slider {
-  background-color: var(--accent);
+  background-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .toggle input:checked + .toggle-slider:before {
@@ -311,7 +311,7 @@ defineEmits<{
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: var(--text-muted);
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -320,12 +320,12 @@ defineEmits<{
 }
 
 .icon-btn:hover {
-  background: var(--hover);
-  color: var(--text-primary);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .icon-btn.danger:hover {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--ui-status-danger-fg, #ef4444);
 }
 </style>

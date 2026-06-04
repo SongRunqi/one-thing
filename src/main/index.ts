@@ -9,7 +9,6 @@ import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
 import { initializeStreamEngine, shutdownStreamEngine, getStreamEngine, getStreamEngineSafe } from './engine/index.js'
 import { getMediaImagesDir } from './stores/paths.js'
-import { initializePromptManager, startTemplateWatcher, stopTemplateWatcher } from './engine/prompt/index.js'
 import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge } from './events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
 import { Permission } from './permission/index.js'
@@ -20,6 +19,7 @@ import { applyNetworkProxySettings } from './network/proxy.js'
 import { registerGlobalWindowShortcuts, unregisterGlobalWindowShortcuts } from './shortcuts/global-shortcuts.js'
 import { getVoiceService } from './voice/service.js'
 import { attachVoiceTrayMainWindow, markVoiceQuitRequested } from './voice/tray.js'
+import { killTrackedDetachedChildren } from './tools/core/bash-executor.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -88,16 +88,11 @@ app.on('ready', async () => {
   Permission.initialize(
     (await import('./events/index.js')).getEventBus(),
     (sessionId) => getStreamEngine().getChannel(sessionId),
+    (sessionId) => getStreamEngine().getPermissionMode(sessionId),
   )
 
   // Clean up interrupted sessions from previous app instance
   sanitizeAllSessionsOnStartup()
-
-  // Initialize PromptManager for template-based prompts
-  await initializePromptManager()
-
-  // Start template watcher in development mode (hot reload)
-  startTemplateWatcher()
 
   // Bootstrap variable subsystem (registers built-in providers, bridges
   // change events to EventBus). Must run after EventBus init and before
@@ -219,12 +214,13 @@ app.on('activate', () => {
 app.on('before-quit', async () => {
   markVoiceQuitRequested()
   getVoiceService().shutdown()
-  // Stop template watcher
-  stopTemplateWatcher()
   unregisterGlobalWindowShortcuts()
 
   // Shutdown MCP
   await shutdownMCP()
+
+  // Stop any detached bash process groups that are still tracked.
+  killTrackedDetachedChildren()
 
   // Shutdown engine, permission, session layer, and event system (reverse init order)
   shutdownStreamEngine()

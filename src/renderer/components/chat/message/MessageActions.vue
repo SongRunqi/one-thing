@@ -521,7 +521,7 @@ onUnmounted(() => {
   border-radius: 6px;
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -532,8 +532,8 @@ onUnmounted(() => {
 }
 
 .action-btn:hover {
-  background: rgba(var(--accent-rgb), 0.1);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .action-btn:active {
@@ -549,16 +549,16 @@ onUnmounted(() => {
 
 /* Copy button success state - when showing check icon */
 .copy-btn:has(.lucide-check) {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 /* Speak button speaking state */
 .speak-btn.speaking {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .speak-btn.speaking:hover {
-  background: rgba(var(--accent-rgb), 0.15);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
 }
 
 /* Branch button with count */
@@ -574,7 +574,7 @@ onUnmounted(() => {
 }
 
 .action-btn.has-branches {
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .branch-count-badge {
@@ -584,7 +584,7 @@ onUnmounted(() => {
   min-width: 14px;
   height: 14px;
   padding: 0 4px;
-  background: var(--accent);
+  background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
   font-size: 10px;
   font-weight: 600;
@@ -600,9 +600,9 @@ onUnmounted(() => {
   z-index: 1000;
   min-width: 180px;
   max-width: 280px;
-  background: var(--bg-floating);
+  background: var(--ui-surface-floating-bg, var(--bg-floating));
   backdrop-filter: blur(20px);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--ui-border-strong-border, var(--border-strong));
   border-radius: 12px;
   box-shadow: var(--shadow-floating);
   overflow: hidden;
@@ -635,7 +635,7 @@ onUnmounted(() => {
   padding: 8px 12px;
   border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 13px;
   text-align: left;
   border-radius: 8px;
@@ -644,7 +644,7 @@ onUnmounted(() => {
 }
 
 .branch-menu-item:hover {
-  background: rgba(var(--accent-rgb), 0.1);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
 .branch-name {
@@ -656,7 +656,7 @@ onUnmounted(() => {
 
 .branch-menu-footer {
   padding: 4px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .branch-menu-new {
@@ -667,7 +667,7 @@ onUnmounted(() => {
   padding: 8px 12px;
   border: none;
   background: transparent;
-  color: var(--accent);
+  color: var(--ui-accent-primary-fg, var(--accent));
   font-size: 13px;
   border-radius: 8px;
   cursor: pointer;
@@ -675,7 +675,7 @@ onUnmounted(() => {
 }
 
 .branch-menu-new:hover {
-  background: rgba(var(--accent-rgb), 0.1);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
 /* More menu */
@@ -695,9 +695,9 @@ onUnmounted(() => {
 <style>
 .more-menu {
   min-width: 180px;
-  background: var(--bg-floating);
+  background: var(--ui-surface-floating-bg, var(--bg-floating));
   backdrop-filter: blur(20px);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--ui-border-strong-border, var(--border-strong));
   border-radius: 10px;
   box-shadow: var(--shadow-floating);
   overflow: hidden;
@@ -727,7 +727,7 @@ onUnmounted(() => {
   padding: 8px 10px;
   border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 13px;
   text-align: left;
   border-radius: 6px;
@@ -736,19 +736,19 @@ onUnmounted(() => {
 }
 
 .more-menu-item:hover {
-  background: rgba(var(--accent-rgb), 0.1);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
 .more-menu-item-badge {
   margin-left: auto;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   font-variant-numeric: tabular-nums;
 }
 
 .more-menu-details {
   padding: 8px 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
   background: rgba(0, 0, 0, 0.02);
 }
 
@@ -761,11 +761,11 @@ onUnmounted(() => {
 }
 
 .token-detail-row span:first-child {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .token-detail-row span:last-child {
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-variant-numeric: tabular-nums;
 }
 

@@ -58,6 +58,7 @@ describe('OrderedSideEffectQueue', () => {
     expect(needsOrderedSideEffectGate('edit')).toBe(true)
     expect(needsOrderedSideEffectGate('write')).toBe(true)
     expect(needsOrderedSideEffectGate('bash')).toBe(true)
+    expect(needsOrderedSideEffectGate('variable')).toBe(true)
     expect(needsOrderedSideEffectGate('mcp:server:tool')).toBe(true)
     expect(needsOrderedSideEffectGate('mcp_server_tool')).toBe(true)
     expect(needsOrderedSideEffectGate('read')).toBe(false)

@@ -669,7 +669,7 @@ onUnmounted(() => {
   width: 100vw;
   height: 100vh;
   display: flex;
-  background: var(--bg-primary);
+  background: var(--ui-surface-app-bg, var(--bg-primary));
   overflow: hidden;
 }
 
@@ -687,8 +687,8 @@ onUnmounted(() => {
 .gallery-sidebar {
   width: 180px;
   min-width: 180px;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-primary);
+  background: var(--ui-surface-panel-bg, var(--bg-secondary));
+  border-right: 1px solid var(--ui-border-default-border, var(--border-primary));
   display: flex;
   flex-direction: column;
   padding-top: 38px; /* Account for drag region */
@@ -696,12 +696,12 @@ onUnmounted(() => {
 
 .sidebar-header {
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-primary);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border-primary));
 }
 
 .image-count {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--ui-text-secondary-fg, var(--text-secondary));
   font-weight: 500;
 }
 
@@ -722,16 +722,16 @@ onUnmounted(() => {
   cursor: pointer;
   border: 2px solid transparent;
   transition: all 0.15s ease;
-  background: var(--bg-tertiary);
+  background: var(--ui-surface-elevated-bg, var(--bg-tertiary));
 }
 
 .thumbnail-item:hover {
-  border-color: var(--border-secondary);
+  border-color: var(--ui-border-subtle-border, var(--border-secondary));
 }
 
 .thumbnail-item.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 20%, transparent);
 }
 
 .thumbnail-item img {
@@ -784,14 +784,14 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: var(--text-secondary);
+  color: var(--ui-text-secondary-fg, var(--text-secondary));
 }
 
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid var(--border-primary);
-  border-top-color: var(--accent);
+  border: 3px solid var(--ui-border-default-border, var(--border-primary));
+  border-top-color: var(--ui-accent-primary-fg, var(--accent));
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -805,8 +805,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-primary);
+  background: var(--ui-surface-panel-bg, var(--bg-secondary));
+  border-top: 1px solid var(--ui-border-default-border, var(--border-primary));
   gap: 16px;
 }
 
@@ -834,7 +834,7 @@ onUnmounted(() => {
 
 .image-name {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--ui-text-secondary-fg, var(--text-secondary));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -849,14 +849,14 @@ onUnmounted(() => {
   background: transparent;
   border: none;
   border-radius: 6px;
-  color: var(--text-secondary);
+  color: var(--ui-text-secondary-fg, var(--text-secondary));
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .control-btn:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: var(--ui-surface-elevated-bg, var(--bg-tertiary));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .control-btn:disabled {
@@ -870,7 +870,7 @@ onUnmounted(() => {
   text-align: center;
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--ui-text-secondary-fg, var(--text-secondary));
   font-variant-numeric: tabular-nums;
 }
 
@@ -881,7 +881,7 @@ onUnmounted(() => {
 .divider {
   width: 1px;
   height: 20px;
-  background: var(--border-primary);
+  background: var(--ui-border-default-border, var(--border-primary));
   margin: 0 4px;
 }
 </style>

@@ -58,49 +58,13 @@
       </div>
     </div>
 
-    <div
-      v-if="showNavModeToggle"
-      class="nav-mode-toggle"
-      role="group"
-      aria-label="Navigation mode"
-      @pointerdown.stop
-      @click.stop
-    >
-      <button
-        type="button"
-        class="nav-mode-button"
-        :class="{ active: effectiveNavRailMode === 'outline' }"
-        title="AI outline"
-        aria-label="Show AI outline"
-        :aria-pressed="effectiveNavRailMode === 'outline'"
-        @click="setNavRailMode('outline')"
-      >
-        <ListTree
-          :size="15"
-          :stroke-width="2"
-        />
-      </button>
-      <button
-        type="button"
-        class="nav-mode-button"
-        :class="{ active: effectiveNavRailMode === 'trail' }"
-        title="Message nav trail"
-        aria-label="Show message nav trail"
-        :aria-pressed="effectiveNavRailMode === 'trail'"
-        @click="setNavRailMode('trail')"
-      >
-        <MessagesSquare
-          :size="15"
-          :stroke-width="2"
-        />
-      </button>
-    </div>
-
     <AssistantMessageNavRail
       v-if="effectiveNavRailMode === 'outline'"
       :markers="assistantOutlineMarkers"
       :current-index="currentAssistantOutlineIndex"
+      :show-mode-switch="showNavModeToggle"
       @navigate="navigateToAssistantOutline"
+      @switch-mode="setNavRailMode('trail')"
     />
 
     <UserMessageNavRail
@@ -108,7 +72,9 @@
       :markers="displayNavMarkers"
       :current-index="currentUserMessageNavIndex"
       :total-count="displayNavMarkers.length"
+      :show-mode-switch="showNavModeToggle"
       @navigate="navigateToUserMessage"
+      @switch-mode="setNavRailMode('outline')"
     />
 
     <Transition name="scroll-bottom-btn">
@@ -203,7 +169,7 @@ import {
   shouldShowAssistantMessageOutline,
   type AssistantMessageOutlineMarker,
 } from './assistant-message-outline'
-import { ArrowDown, ListTree, MessagesSquare } from 'lucide-vue-next'
+import { ArrowDown } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
@@ -1266,26 +1232,14 @@ const currentPendingPermission = computed<{ message: ChatMessage; toolCall: Tool
 })
 
 // Setup keyboard shortcuts for permission confirmation
-// Enter = once (本次), S = session (本会话), W = workdir (本工作目录), D/Escape = reject
+// Enter = allow current tool, D/Escape = reject
 usePermissionShortcuts(
   () => !!currentPendingPermission.value && !showRejectDialog.value,
   {
-    onAllowOnce: () => {
+    onAllow: () => {
       const pending = currentPendingPermission.value
       if (pending) {
         handleConfirmTool(pending.toolCall, 'once')
-      }
-    },
-    onAllowSession: () => {
-      const pending = currentPendingPermission.value
-      if (pending) {
-        handleConfirmTool(pending.toolCall, 'session')
-      }
-    },
-    onAllowWorkdir: () => {
-      const pending = currentPendingPermission.value
-      if (pending) {
-        handleConfirmTool(pending.toolCall, 'workdir')
       }
     },
     onReject: () => {
@@ -1555,10 +1509,10 @@ async function handleExecuteTool(toolCall: any) {
   }
 }
 
-// Handle tool confirmation (for dangerous bash commands)
-// response: 'once' = allow this time, 'session' = allow for session, 'workdir' = allow permanently in this working directory
-// Note: 'always' is kept for backwards compatibility and maps to 'session'
-async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | 'workdir' | 'always' = 'once') {
+// Handle tool confirmation (for permission-gated tool calls)
+type PermissionResponse = 'once' | 'session' | 'workdir'
+
+async function handleConfirmTool(toolCall: any, response: PermissionResponse = 'once') {
   const currentSession = panelSession.value
   if (!currentSession) return
 
@@ -1599,99 +1553,7 @@ async function handleConfirmTool(toolCall: any, response: 'once' | 'session' | '
     }
   }
 
-  // Fallback: Legacy flow - re-execute tool directly with confirmed: true
-  // Record start time
-  const startTime = Date.now()
-  if (tc) {
-    tc.status = 'executing'
-    tc.startTime = startTime
-    tc.requiresConfirmation = false
-  }
-
-  // Update step to running
-  if (step) {
-    step.status = 'running'
-    // Force reactivity
-    if (message?.steps) {
-      message.steps = [...message.steps]
-    }
-  }
-
-  try {
-    // Re-execute the tool with confirmed: true
-    const result = await window.electronAPI.executeTool(
-      toolCall.toolId,
-      { ...toolCall.arguments, confirmed: true },
-      toolCall.id,
-      currentSession.id
-    )
-
-    // Record end time and update status
-    const endTime = Date.now()
-    if (tc) {
-      tc.endTime = endTime
-      tc.status = result.success ? 'completed' : 'failed'
-      tc.result = result.result
-      tc.error = result.error
-    }
-
-    // Update step status (step-own fields only; step.toolCall === tc above
-    // so the field updates on tc already cover the canonical toolCall).
-    if (step) {
-      step.status = result.success ? 'completed' : 'failed'
-      step.result = typeof result.result === 'string' ? result.result : JSON.stringify(result.result)
-      step.error = result.error
-      // Force reactivity
-      if (message?.steps) {
-        message.steps = [...message.steps]
-      }
-    }
-
-    // Persist to backend
-    if (message) {
-      await window.electronAPI.updateToolCall(currentSession.id, message.id, toolCall.id, {
-        status: result.success ? 'completed' : 'failed',
-        startTime,
-        endTime,
-        result: result.result,
-        error: result.error,
-        requiresConfirmation: false,
-      })
-
-      // Resume the LLM conversation to process the tool result
-      console.log('[Frontend] Resuming LLM after tool confirm')
-      await window.electronAPI.resumeAfterToolConfirm(currentSession.id, message.id)
-    }
-  } catch (error) {
-    console.error('Failed to confirm tool:', error)
-    const endTime = Date.now()
-    if (tc) {
-      tc.endTime = endTime
-      tc.status = 'failed'
-      tc.error = String(error)
-    }
-
-    // Update step status on error
-    if (step) {
-      step.status = 'failed'
-      step.error = String(error)
-      // Force reactivity
-      if (message?.steps) {
-        message.steps = [...message.steps]
-      }
-    }
-
-    // Persist to backend
-    if (message) {
-      await window.electronAPI.updateToolCall(currentSession.id, message.id, toolCall.id, {
-        status: 'failed',
-        startTime,
-        endTime,
-        error: String(error),
-        requiresConfirmation: false,
-      })
-    }
-  }
+  console.warn('[Frontend] Permission response ignored: missing permissionId', toolCall.id)
 }
 
 // Open the reject reason dialog
@@ -1750,8 +1612,8 @@ async function handleRejectTool(toolCall: any, rejectReasonArg?: string) {
 
   if (message) {
     const rejectionMessage = rejectReasonArg
-      ? `User rejected this operation: ${rejectReasonArg}`
-      : 'User rejected this operation'
+      ? `The user rejected permission for this tool. Reason: ${rejectReasonArg}`
+      : 'The user rejected permission for this tool.'
     const tc = message.toolCalls?.find(t => t.id === toolCall.id)
     if (tc) {
       tc.status = 'failed'
@@ -1815,6 +1677,14 @@ function finishSessionSwitchFromViewport() {
 }
 
 defineExpose({
+  confirmTool: (toolCall: ToolCall, response: PermissionResponse = 'once') => handleConfirmTool(toolCall, response),
+  rejectTool: (toolCall: ToolCall, reason?: string) => {
+    if (reason) {
+      void handleRejectTool(toolCall, reason)
+    } else {
+      openRejectDialog(toolCall)
+    }
+  },
   getIsFollowing: () => follow.isFollowing.value,
   getDistanceToBottom: () => {
     const el = messageListRef.value
@@ -1925,9 +1795,9 @@ defineExpose({
   width: 34px;
   height: 34px;
   border-radius: 999px;
-  border: 0.5px solid color-mix(in srgb, var(--border) 80%, transparent);
-  background: color-mix(in srgb, var(--bg-elevated, var(--bg-panel)) 78%, transparent);
-  color: var(--text);
+  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 80%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel))) 78%, transparent);
+  color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10);
   backdrop-filter: blur(14px) saturate(1.1);
@@ -1937,63 +1807,12 @@ defineExpose({
 }
 
 .scroll-to-bottom-btn:hover {
-  background: var(--bg-elevated, var(--bg-panel));
-  color: var(--accent);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel)));
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .scroll-to-bottom-btn:active {
   transform: translateX(-50%) scale(0.94);
-}
-
-.nav-mode-toggle {
-  position: absolute;
-  top: 16px;
-  right: 14px;
-  z-index: var(--z-dropdown);
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border: 0.5px solid color-mix(in srgb, var(--border) 74%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-elevated, var(--bg-panel)) 82%, transparent);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10);
-  backdrop-filter: blur(14px) saturate(1.1);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
-  pointer-events: auto;
-}
-
-.nav-mode-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-muted, var(--muted));
-  cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease,
-    transform 0.15s ease;
-}
-
-.nav-mode-button:hover,
-.nav-mode-button:focus-visible {
-  color: var(--accent, #3b82f6);
-  outline: none;
-}
-
-.nav-mode-button.active {
-  background: color-mix(in srgb, var(--accent, #3b82f6) 14%, transparent);
-  color: var(--accent, #3b82f6);
-}
-
-.nav-mode-button:active {
-  transform: scale(0.94);
 }
 
 .scroll-bottom-btn-enter-active,
@@ -2011,7 +1830,7 @@ defineExpose({
   overflow-y: auto;
   overflow-anchor: auto;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 45%, transparent) transparent;
   padding: 18px;
   background: transparent;
   border-bottom-left-radius: var(--radius-lg);
@@ -2028,14 +1847,14 @@ defineExpose({
 }
 
 .message-list::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted) 34%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 34%, transparent);
   border: 3px solid transparent;
   border-radius: 999px;
   background-clip: content-box;
 }
 
 .message-list::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--muted) 52%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 52%, transparent);
   border: 3px solid transparent;
   background-clip: content-box;
 }
@@ -2056,10 +1875,10 @@ defineExpose({
   min-height: 28px;
   margin: 0 auto 14px;
   padding: 0 12px;
-  border: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 64%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-elevated, var(--bg-panel)) 84%, transparent);
-  color: var(--text-muted, var(--muted));
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel))) 84%, transparent);
+  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -2069,9 +1888,9 @@ defineExpose({
 }
 
 .history-page-summary:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent, #3b82f6) 36%, var(--border));
-  background: color-mix(in srgb, var(--accent, #3b82f6) 8%, var(--bg-elevated, var(--bg-panel)));
-  color: var(--accent, #3b82f6);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, var(--ui-border-default-border, var(--border)));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel))));
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .history-page-summary:disabled {
@@ -2163,7 +1982,6 @@ defineExpose({
 }
 
 @container (max-width: 560px) {
-  .nav-mode-toggle,
   .assistant-nav-rail,
   .user-nav-rail {
     display: none;
@@ -2175,10 +1993,6 @@ defineExpose({
 }
 
 @media (max-width: 480px) {
-  .nav-mode-toggle {
-    display: none;
-  }
-
   .message-list {
     padding: 10px 8px;
     gap: 10px;
@@ -2223,8 +2037,8 @@ defineExpose({
 }
 
 .reject-dialog {
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--ui-surface-panel-bg, var(--panel));
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 16px;
   width: 90%;
   max-width: 420px;
@@ -2237,13 +2051,13 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .reject-dialog-title {
   font-size: 16px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .reject-dialog-close {
@@ -2256,13 +2070,13 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   transition: all 0.15s ease;
 }
 
 .reject-dialog-close:hover {
-  background: var(--hover);
-  color: var(--text);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .reject-dialog-body {
@@ -2273,10 +2087,10 @@ defineExpose({
   width: 100%;
   min-height: 80px;
   padding: 12px 14px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 10px;
   background: var(--base);
-  color: var(--text);
+  color: var(--ui-text-primary-fg, var(--text));
   font-size: 14px;
   line-height: 1.5;
   resize: vertical;
@@ -2285,19 +2099,19 @@ defineExpose({
 }
 
 .reject-reason-input::placeholder {
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .reject-reason-input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
 }
 
 .reject-dialog-hint {
   margin-top: 8px;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--ui-text-muted-fg, var(--muted));
   text-align: right;
 }
 
@@ -2305,7 +2119,7 @@ defineExpose({
   display: flex;
   gap: 10px;
   padding: 16px 20px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border-default-border, var(--border));
   justify-content: flex-end;
 }
 
@@ -2320,9 +2134,9 @@ defineExpose({
 }
 
 .reject-dialog-btn-cancel {
-  background: var(--hover);
-  color: var(--text);
-  border-color: var(--border);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
+  border-color: var(--ui-border-default-border, var(--border));
 }
 
 .reject-dialog-btn-cancel:hover {
@@ -2330,13 +2144,13 @@ defineExpose({
 }
 
 .reject-dialog-btn-confirm {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  background: linear-gradient(135deg, var(--ui-status-danger-fg, #ef4444) 0%, var(--ui-status-danger-fg, #dc2626) 100%);
   color: white;
-  border-color: #dc2626;
+  border-color: var(--ui-status-danger-fg, #dc2626);
 }
 
 .reject-dialog-btn-confirm:hover {
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  background: linear-gradient(135deg, var(--ui-status-danger-fg, #dc2626) 0%, var(--ui-status-danger-fg, #b91c1c) 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
 }

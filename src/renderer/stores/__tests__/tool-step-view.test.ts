@@ -32,7 +32,7 @@ describe('buildToolStepView', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         status: 'input-streaming',
-        streamingArgs: '{"file_path":"/Users/me/project/src/a.ts","content":"hello\\nworld"}',
+        streamingArgs: '{"path":"/Users/me/project/src/a.ts","content":"hello\\nworld"}',
       }),
     }))
 
@@ -49,7 +49,7 @@ describe('buildToolStepView', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         status: 'input-streaming',
-        streamingArgs: '{"file_path":"/Users/me/project/src/a.ts","content":"hello\\nworld"}',
+        streamingArgs: '{"path":"/Users/me/project/src/a.ts","content":"hello\\nworld"}',
       }),
     }), { includeDetails: false })
 
@@ -70,7 +70,7 @@ describe('buildToolStepView', () => {
       toolCall: tc({
         status: 'pending',
         requiresConfirmation: true,
-        streamingArgs: '{"file_path":"src/a.ts","content":"stale"}',
+        streamingArgs: '{"path":"src/a.ts","content":"stale"}',
         changes: {
           diff: '--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new\n',
           filePath: '/Users/me/project/src/a.ts',
@@ -105,17 +105,37 @@ describe('buildToolStepView', () => {
     expect(view.defaultExpanded).toBe(false)
   })
 
+  it('exposes running bash partial output as live output for details UI', () => {
+    const view = buildToolStepView(step({
+      result: 'fallback output\n',
+      partialResult: {
+        content: [{ type: 'text', text: 'line 1\nline 2\n' }],
+        details: { elapsedMs: 10 },
+      },
+      partialResultIsPartial: true,
+      toolCall: tc({
+        toolId: 'bash',
+        toolName: 'bash',
+        status: 'executing',
+        arguments: { command: 'printf "line 1\\nline 2\\n"' },
+      }),
+    }))
+
+    expect(view.liveOutput).toBe('line 1\nline 2\n')
+    expect(view.hasDetails).toBe(true)
+  })
+
   it('renders permission rejection as rejected instead of failed error preview', () => {
     const view = buildToolStepView(step({
       status: 'failed',
-      error: 'User rejected this operation',
+      error: 'The user rejected permission for this tool.',
       rejected: true,
       toolCall: tc({
         toolId: 'bash',
         toolName: 'bash',
         status: 'failed',
         rejected: true,
-        error: 'User rejected this operation',
+        error: 'The user rejected permission for this tool.',
       }),
     }))
 
@@ -128,7 +148,7 @@ describe('buildToolStepView', () => {
     const streamingStep = step({
       toolCall: tc({
         status: 'input-streaming',
-        streamingArgs: '{"file_path":"src/a.ts","content":"cached"}',
+        streamingArgs: '{"path":"src/a.ts","content":"cached"}',
       }),
     })
 
@@ -143,7 +163,7 @@ describe('buildToolStepView', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         status: 'input-streaming',
-        streamingArgs: JSON.stringify({ file_path: 'src/large.ts', content }),
+        streamingArgs: JSON.stringify({ path: 'src/large.ts', content }),
       }),
     }))
 

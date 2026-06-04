@@ -24,23 +24,33 @@ type VariableAction = 'list' | 'set' | 'append' | 'remove' | 'delete'
 interface VariableMetadata {
   action: VariableAction
   name?: string
-  variables: Array<{ name: string; scope?: 'global' | 'session'; readonly?: boolean }>
+  variables: Array<{
+    name: string
+    value?: string
+    values?: string[]
+    scope?: 'global' | 'session'
+    readonly?: boolean
+    description?: string
+  }>
   [key: string]: unknown
 }
 
 const VariableParameters = z.object({
   action: z.enum(['list', 'set', 'append', 'remove', 'delete']).describe('Operation to perform on context variables.'),
   name: z.string().optional().describe('Variable name (required for set/append/remove/delete).'),
-  value: z.string().optional().describe('Variable value (required for set/append/remove; for workdir/note dirs, must be an existing directory).'),
-  scope: z.enum(['session', 'global']).optional().describe('Scope for custom variables. Defaults to session. Built-in note dirs are global; workdir is session.'),
+  value: z.string().optional().describe('Variable value (required for set/append/remove; for the work directory and note directories, must be an existing directory).'),
+  scope: z.enum(['session', 'global']).optional().describe('Scope for custom variables. Defaults to session. Built-in note directories are global; the work directory variable is session-scoped.'),
   description: z.string().optional().describe('Short description, surfaced in the prompt and the Context inspector.'),
 })
 
-function summarizeForMetadata(snapshot: ContextVariable[]) {
+function summarizeForMetadata(snapshot: ContextVariable[]): VariableMetadata['variables'] {
   return snapshot.map(v => ({
     name: v.name,
+    value: v.value,
+    values: v.values,
     scope: v.scope,
     readonly: v.readonly,
+    description: v.description,
   }))
 }
 
@@ -73,7 +83,7 @@ export const VariableTool = Tool.define<typeof VariableParameters, VariableMetad
 Use this tool when the user asks to switch projects, change directories, remember a project hint, or adjust context for future tool calls.
 
 System variables:
-- workdir: ordered workdir list. The first value is the active cwd for relative paths, bash defaults, AGENTS.md, project skills, and project todo state. Later values are additional sandbox roots for file/bash tools. Use action=set to change the active cwd, action=append to add a root needed for the current task, and action=remove to remove an extra root. It cannot be deleted.
+- work directory (variable name: workdir): ordered directory list. The first value is the active directory for relative paths, bash defaults, AGENTS.md, project skills, and project todo state. Later values are additional sandbox roots for file/bash tools. Use action=set to change the active work directory, action=append to add a root needed for the current task, and action=remove to remove an extra root. It cannot be deleted.
 - ai_note_dir: directory where the assistant stores its scratch notes (default ~/.onething/notes).
 - user_note_dir: directory where the user keeps personal notes. Read for context; only modify with explicit user permission.
 - work_note_dir: directory where work or project notes are kept. Read for context; only modify with explicit user permission.
@@ -85,6 +95,9 @@ Project directories (the "project_dirs" list) are managed by a separate tool —
   enabled: true,
   autoExecute: true,
   permissionGuard: 'safe',
+  executionMode: 'sequential',
+  renderKind: 'text',
+  promptSnippet: 'Manage session variables such as workdir',
 
   parameters: VariableParameters,
 
@@ -121,6 +134,12 @@ Project directories (the "project_dirs" list) are managed by a separate tool —
 
       const snapshot = await registry.list(variableCtx)
       const metadataSummary = summarizeForMetadata(snapshot)
+      const output = renderForOutput(snapshot)
+
+      ctx.updateResult?.({
+        content: [{ type: 'text', text: output }],
+        details: { phase: 'ready', action, name: args.name, variables: metadataSummary },
+      })
 
       ctx.metadata({
         title: action === 'list' ? 'Listed variables' : `${action[0].toUpperCase()}${action.slice(1)} ${args.name}`,
@@ -133,7 +152,7 @@ Project directories (the "project_dirs" list) are managed by a separate tool —
 
       return {
         title: action === 'list' ? 'Variables' : `Variable ${action}`,
-        output: renderForOutput(snapshot),
+        output,
         metadata: {
           action,
           name: args.name,
