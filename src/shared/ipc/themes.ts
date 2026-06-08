@@ -403,8 +403,19 @@ export interface UILink {
 export type ThemeUIGroup = UIStyle | UILink
 
 export interface ThemeUITokens {
+  /**
+   * @deprecated Runtime UI colors are derived by the shared role mapping in
+   * resolveThemeUI(). Theme-level UI overrides are kept only for legacy theme
+   * file compatibility and should not be used for product chrome.
+   */
   semanticTokens?: Partial<Record<SemanticUIToken, UIStyle>>
+  /**
+   * @deprecated Runtime UI colors are derived by the shared role mapping.
+   */
   groups?: Record<string, ThemeUIGroup>
+  /**
+   * @deprecated Runtime UI colors are derived by the shared role mapping.
+   */
   aliases?: Record<string, SemanticUIToken | string>
 }
 

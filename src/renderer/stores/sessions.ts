@@ -20,6 +20,11 @@ const SWITCH_INITIAL_MESSAGE_LIMIT = 6;
 const SWITCH_TARGET_MESSAGE_LIMIT = 16;
 
 let switchGeneration = 0;
+const sessionNameAnimationTimers = new Map<
+	string,
+	ReturnType<typeof setTimeout>
+>();
+const sessionNameAnimationTokens = new Map<string, number>();
 
 export const useSessionsStore = defineStore("sessions", () => {
 	// Sessions list stores metadata-only items initially
@@ -73,6 +78,72 @@ export const useSessionsStore = defineStore("sessions", () => {
 	});
 
 	const filteredSessionCount = computed(() => filteredSessions.value.length);
+
+	function findSessionItem(sessionId: string): VisibleSessionListItem | undefined {
+		return (
+			sessions.value.find((s) => s.id === sessionId) ||
+			newChatDrafts.value.find((draft) => draft.id === sessionId)
+		);
+	}
+
+	function nextSessionNameAnimationToken(sessionId: string): number {
+		const token = (sessionNameAnimationTokens.get(sessionId) ?? 0) + 1;
+		sessionNameAnimationTokens.set(sessionId, token);
+		const timer = sessionNameAnimationTimers.get(sessionId);
+		if (timer) {
+			clearTimeout(timer);
+			sessionNameAnimationTimers.delete(sessionId);
+		}
+		return token;
+	}
+
+	function cancelSessionNameAnimation(sessionId: string): void {
+		const timer = sessionNameAnimationTimers.get(sessionId);
+		if (timer) {
+			clearTimeout(timer);
+			sessionNameAnimationTimers.delete(sessionId);
+		}
+		sessionNameAnimationTokens.delete(sessionId);
+	}
+
+	function setSessionName(sessionId: string, name: string): void {
+		const session = findSessionItem(sessionId);
+		if (!session) return;
+		session.name = name;
+	}
+
+	function updateSessionNameAnimated(sessionId: string, nextName: string): void {
+		const targetName = nextName.trim();
+		if (!targetName) return;
+
+		const session = findSessionItem(sessionId);
+		if (!session) return;
+		if (session.name === targetName) return;
+
+		const token = nextSessionNameAnimationToken(sessionId);
+		const chars = Array.from(targetName);
+		let index = 0;
+
+		const step = () => {
+			if (sessionNameAnimationTokens.get(sessionId) !== token) return;
+			const currentSession = findSessionItem(sessionId);
+			if (!currentSession) return;
+
+			index += 1;
+			currentSession.name = chars.slice(0, index).join("");
+			if (index < chars.length) {
+				const delay = chars.length > 24 ? 24 : 32;
+				sessionNameAnimationTimers.set(sessionId, setTimeout(step, delay));
+				return;
+			}
+
+			currentSession.name = targetName;
+			sessionNameAnimationTimers.delete(sessionId);
+			sessionNameAnimationTokens.delete(sessionId);
+		};
+
+		step();
+	}
 
 	/**
 	 * Load sessions list (metadata only, no messages)
@@ -592,10 +663,8 @@ export const useSessionsStore = defineStore("sessions", () => {
 				newName,
 			);
 			if (response.success) {
-				const session = sessions.value.find((s) => s.id === sessionId);
-				if (session) {
-					session.name = newName;
-				}
+				cancelSessionNameAnimation(sessionId);
+				setSessionName(sessionId, newName);
 			}
 		} catch (error) {
 			console.error("Failed to rename session:", error);
@@ -874,6 +943,8 @@ export const useSessionsStore = defineStore("sessions", () => {
 		fetchVariables,
 		setVariable,
 		deleteVariable,
+		setSessionName,
+		updateSessionNameAnimated,
 		restoreSession,
 		permanentlyDeleteSession,
 		renameSession,

@@ -1,0 +1,92 @@
+.todo-plan-panel .todo-popover {
+  position: absolute;
+  top: var(--todo-popover-top);
+  left: 50%;
+  right: auto;
+  z-index: 6;
+  box-sizing: border-box;
+  width: var(--todo-popover-width);
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--todo-rule);
+  border-radius: var(--todo-popover-radius);
+  background: var(--todo-popover-bg);
+  background-clip: padding-box;
+  box-shadow: var(--todo-popover-shadow);
+  transform: translateX(-50%);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.25;
+  container-type: inline-size;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.todo-plan-panel .todo-popover-notes,
+.todo-plan-panel .todo-popover-actions {
+  height: var(--todo-popover-height);
+  max-height: var(--todo-popover-height);
+}
+
+.todo-plan-panel .todo-popover-search {
+  box-sizing: border-box;
+  flex: 0 0 var(--todo-popover-search-height);
+  height: var(--todo-popover-search-height);
+  padding: 0 var(--todo-popover-search-padding-x);
+  display: flex;
+  align-items: center;
+  gap: var(--todo-popover-search-gap);
+  border-bottom: 1px solid var(--todo-rule-soft);
+  color: var(--todo-muted);
+  background: var(--todo-popover-search-bg);
+  font-size: var(--todo-popover-search-font-size);
+  line-height: 1.25;
+}
+
+.todo-plan-panel .todo-popover-search svg {
+  flex: 0 0 auto;
+}
+
+.todo-plan-panel .todo-popover-search input {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--todo-text);
+  font: inherit;
+  line-height: inherit;
+}
+
+.todo-plan-panel .todo-popover-search input::placeholder {
+  color: var(--todo-muted);
+  opacity: 0.68;
+}
+
+.todo-plan-panel .todo-popover-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding:
+    var(--todo-popover-list-padding)
+    0
+    var(--todo-popover-list-padding)
+    var(--todo-popover-list-padding);
+  background: var(--todo-popover-bg);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--todo-muted) 34%, transparent) transparent;
+}
+
+.todo-plan-panel .todo-popover-actions .action-section {
+  padding-right: var(--todo-popover-list-padding);
+}
+
+.todo-plan-panel .todo-popover-notes .switcher-header-row,
+.todo-plan-panel .todo-popover-notes .switcher-label,
+.todo-plan-panel .todo-popover-notes .note-option {
+  width: auto;
+  margin-right: var(--todo-popover-list-padding);
+}

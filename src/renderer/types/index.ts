@@ -214,6 +214,9 @@ import type {
   SchedulerRunNowResponse,
   SchedulerSetEnabledRequest,
   SchedulerSetEnabledResponse,
+  SearchRequest,
+  SearchResponse,
+  SearchWindowGuideState,
   // Permission types
   PermissionInfo,
   PermissionResponse,
@@ -811,7 +814,8 @@ export interface ElectronAPI {
   toggleSearchWindow: () => Promise<{ success: boolean }>
   closeSearchWindow: () => Promise<{ success: boolean }>
   onSearchWindowShown: (callback: () => void) => () => void
-  searchQuery: (req: { query: string; category: string; limit?: number }) => Promise<{ success: boolean; results: import('@shared/ipc/search').SearchResult[] }>
+  onSearchWindowGuides: (callback: (state: SearchWindowGuideState) => void) => () => void
+  searchQuery: (req: SearchRequest) => Promise<SearchResponse>
   searchExecuteAction: (actionId: string) => Promise<{ success: boolean }>
   onSearchAction: (callback: (actionId: string) => void) => () => void
 

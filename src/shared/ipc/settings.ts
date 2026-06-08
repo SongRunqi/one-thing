@@ -37,6 +37,7 @@ export interface ShortcutSettings {
   toggleSidebar: KeyboardShortcut    // Toggle sidebar
   focusInput: KeyboardShortcut       // Focus input (default /)
   searchEverywhere?: KeyboardShortcut      // Toggle Search Everywhere window
+  searchOverlay?: KeyboardShortcut         // Deprecated: legacy Search Everywhere shortcut
   toggleTodoPlanWindow?: KeyboardShortcut  // Toggle standalone todo/plan window
   toggleTodoPlan?: KeyboardShortcut        // Toggle todo/plan card
 }

@@ -2,23 +2,18 @@ import type { Component } from 'vue'
 import type { EditorSelection } from '@/editor/types'
 import type { TodoPlanDocument } from '@/types'
 import type { MarkdownCommand } from '@/editor/markdown-document'
-import type { TodoPlanSurface } from './todo-plan-utils'
 
 export type TodoNotesActionGroup =
   | 'Note Actions'
   | 'Markdown Formatting'
   | 'Insert'
   | 'Navigation'
-  | 'Window/Card'
 
-export interface TodoNotesSurfaceActionContext {
-  surface: TodoPlanSurface
+export interface TodoNotesActionContext {
   activeDocument?: TodoPlanDocument
   selection: EditorSelection
   canEditNote: boolean
   canDeleteNote: boolean
-  pinned: boolean
-  docked: boolean
 }
 
 export interface TodoNotesAction {
@@ -40,5 +35,4 @@ export const TODO_NOTES_ACTION_GROUPS: TodoNotesActionGroup[] = [
   'Markdown Formatting',
   'Insert',
   'Navigation',
-  'Window/Card',
 ]

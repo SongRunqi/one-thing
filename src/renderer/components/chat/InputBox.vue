@@ -2,7 +2,10 @@
   <div
     ref="composerWrapperRef"
     class="composer-wrapper"
-    :class="{ 'has-extension': activeExtensionVisible }"
+    :class="{
+      'has-extension': activeExtensionVisible,
+      'command-palette-open': activeExtension.type === 'palette',
+    }"
   >
     <TransitionGroup
       name="queued-message"
@@ -55,47 +58,52 @@
       </div>
     </TransitionGroup>
 
-    <CommandPicker
-      :visible="activeExtension.type === 'palette'"
-      :items="activeExtension.items"
-      :selected-index="activeExtension.selectedIndex"
-      :query="activeExtension.query"
-      :loading="activeExtension.loading"
-      :error="activeExtension.error"
-      @select="handleCommandSelect"
-      @highlight="highlightActiveSelection"
-      @close="handleCommandPickerClose"
-    />
+    <div class="composer-stack">
+      <CommandPicker
+        :visible="activeExtension.type === 'palette'"
+        :items="activeExtension.items"
+        :selected-index="activeExtension.selectedIndex"
+        :query="activeExtension.query"
+        :loading="activeExtension.loading"
+        :error="activeExtension.error"
+        @select="handleCommandSelect"
+        @highlight="highlightActiveSelection"
+        @close="handleCommandPickerClose"
+      />
 
-    <FilePicker
-      :visible="activeExtension.type === 'files'"
-      :items="activeExtension.items"
-      :selected-index="activeExtension.selectedIndex"
-      :query="activeExtension.query"
-      :loading="activeExtension.loading"
-      :error="activeExtension.error"
-      @select="handleFilePickerSelect"
-      @highlight="highlightActiveSelection"
-      @close="handleFilePickerClose"
-    />
+      <FilePicker
+        :visible="activeExtension.type === 'files'"
+        :items="activeExtension.items"
+        :selected-index="activeExtension.selectedIndex"
+        :query="activeExtension.query"
+        :loading="activeExtension.loading"
+        :error="activeExtension.error"
+        @select="handleFilePickerSelect"
+        @highlight="highlightActiveSelection"
+        @close="handleFilePickerClose"
+      />
 
-    <PathPicker
-      :visible="activeExtension.type === 'paths'"
-      :items="activeExtension.items"
-      :selected-index="activeExtension.selectedIndex"
-      :path-input="activeExtension.query"
-      :loading="activeExtension.loading"
-      :error="activeExtension.error"
-      @select="handlePathPickerSelect"
-      @highlight="highlightActiveSelection"
-      @close="handlePathPickerClose"
-    />
+      <PathPicker
+        :visible="activeExtension.type === 'paths'"
+        :items="activeExtension.items"
+        :selected-index="activeExtension.selectedIndex"
+        :path-input="activeExtension.query"
+        :loading="activeExtension.loading"
+        :error="activeExtension.error"
+        @select="handlePathPickerSelect"
+        @highlight="highlightActiveSelection"
+        @close="handlePathPickerClose"
+      />
 
-    <div
-      class="composer"
-      :class="{ focused: isFocused, 'extension-open': activeExtensionVisible }"
-      @click="focusEditor"
-    >
+      <div
+        class="composer"
+        :class="{
+          focused: isFocused,
+          'extension-open': activeExtensionVisible,
+          'command-mode': activeExtension.type === 'palette',
+        }"
+        @click="focusEditor"
+      >
       <div
         v-if="quotedText || commandFeedback"
         class="composer-context-stack"
@@ -139,7 +147,7 @@
           :prompt-refs="promptsStore.prompts"
           :skill-refs="enabledSkills"
           :command-refs="commandRefs"
-          :min-height="56"
+          :min-height="42"
           :max-height="composerMaxHeight"
           @keydown="handleKeyDown"
           @paste="handlePasteAttachments"
@@ -318,6 +326,7 @@
         </div>
       </div>
     </div>
+    </div>
   </div>
 </template>
 
@@ -441,6 +450,8 @@ const {
   activeExtension,
   activeExtensionVisible,
   moveActiveSelection,
+  setActiveSelection,
+  pageActiveSelection,
   highlightActiveSelection,
   confirmActiveExtension,
   loadSkills,
@@ -735,6 +746,28 @@ function handleKeyDown(e: KeyboardEvent) {
       e.preventDefault()
       moveActiveSelection(1)
       return
+    }
+    if (activeExtension.value.type === 'palette') {
+      if (e.key === 'Home') {
+        e.preventDefault()
+        setActiveSelection(0)
+        return
+      }
+      if (e.key === 'End') {
+        e.preventDefault()
+        setActiveSelection(activeExtension.value.items.length - 1)
+        return
+      }
+      if (e.key === 'PageUp') {
+        e.preventDefault()
+        pageActiveSelection(-1)
+        return
+      }
+      if (e.key === 'PageDown') {
+        e.preventDefault()
+        pageActiveSelection(1)
+        return
+      }
     }
     if (e.key === 'Escape') {
       e.preventDefault()
@@ -1094,9 +1127,19 @@ defineExpose({
 
 <style scoped>
 .composer-wrapper {
-  width: var(--chat-content-width, min(70%, 800px));
-  margin: 0 auto;
+  width: var(--chat-composer-width, var(--chat-content-width, min(70%, 740px)));
+  margin: 0 var(--chat-content-column-right, auto) 0 var(--chat-content-column-left, auto);
   position: relative;
+}
+
+.composer-wrapper.has-extension {
+  --composer-stack-divider: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 24%, transparent);
+  --composer-stack-top-highlight: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 1.2%, transparent);
+}
+
+.composer-stack {
+  position: relative;
+  width: 100%;
 }
 
 .composer-context-stack {
@@ -1151,8 +1194,8 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: calc(100% - 72px);
-  margin: 0 auto -12px;
+  width: calc(100% - 48px);
+  margin: 0 auto -8px;
   position: relative;
   z-index: 2;
   pointer-events: none;
@@ -1169,7 +1212,7 @@ defineExpose({
   border-radius: 12px 12px 7px 7px;
   background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))) 88%, transparent);
   color: var(--ui-text-muted-fg, var(--text-muted));
-  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.035);
+  box-shadow: var(--ui-surface-composer-queue-shadow, 0 -1px 6px rgba(0, 0, 0, 0.035));
   backdrop-filter: blur(8px) saturate(1.02);
   -webkit-backdrop-filter: blur(8px) saturate(1.02);
   pointer-events: auto;
@@ -1252,21 +1295,23 @@ defineExpose({
 
 /* Main composer container */
 .composer {
-  --composer-surface: color-mix(in srgb, var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))))) 78%, var(--ui-surface-chat-bg, var(--bg-chat, var(--bg))) 22%);
-  --composer-border: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 64%, transparent);
+  --composer-surface: color-mix(in srgb, var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))))) 44%, var(--ui-surface-chat-bg, var(--bg-chat, var(--bg))) 56%);
+  --composer-border: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 36%, transparent);
 
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  border-radius: 14px;
+  border-radius: 10px;
   border: 0.5px solid var(--composer-border);
   background: var(--composer-surface);
-  box-shadow:
-    0 8px 20px rgba(0, 0, 0, 0.08),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
-  backdrop-filter: blur(6px) saturate(1.02);
-  -webkit-backdrop-filter: blur(6px) saturate(1.02);
+  box-shadow: var(
+    --ui-surface-composer-shadow,
+    0 1px 3px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 1.8%, transparent)
+  );
+  backdrop-filter: blur(4px) saturate(1.01);
+  -webkit-backdrop-filter: blur(4px) saturate(1.01);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
   overflow: hidden;
 }
@@ -1274,19 +1319,52 @@ defineExpose({
 .composer.focused {
   border-color: color-mix(
     in srgb,
-    var(--ui-surface-input-focus-border, var(--ui-state-focus-border, var(--ui-accent-primary-fg, var(--accent)))) 34%,
+    var(--ui-surface-input-focus-border, var(--ui-state-focus-border, var(--ui-accent-primary-fg, var(--accent)))) 14%,
     var(--composer-border)
   );
-  background: var(--composer-surface);
-  box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.1),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent),
-    0 0 0 2px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent))) 6%, transparent);
+  background: color-mix(in srgb, var(--composer-surface) 92%, var(--ui-surface-input-focus-bg, var(--bg-input-focus, var(--composer-surface))) 8%);
+  box-shadow: var(
+    --ui-surface-composer-focus-shadow,
+    0 1px 5px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.2%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent))) 4.5%, transparent)
+  );
 }
 
 .composer.extension-open {
+  border-top-color: var(--composer-stack-divider, var(--composer-border));
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+  box-shadow: var(
+    --ui-surface-composer-shadow,
+    0 1px 3px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 var(--composer-stack-top-highlight)
+  );
+}
+
+.composer.command-mode.extension-open {
+  border-top-color: var(--composer-border);
   border-top-left-radius: 10px;
   border-top-right-radius: 10px;
+  box-shadow: var(
+    --ui-surface-composer-shadow,
+    0 1px 3px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 1.8%, transparent)
+  );
+}
+
+.composer.command-mode.extension-open.focused {
+  border-color: color-mix(
+    in srgb,
+    var(--ui-surface-input-focus-border, var(--ui-state-focus-border, var(--ui-accent-primary-fg, var(--accent)))) 14%,
+    var(--composer-border)
+  );
+  box-shadow: var(
+    --ui-surface-composer-focus-shadow,
+    0 1px 5px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.2%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent))) 4.5%, transparent)
+  );
 }
 
 .composer-context-stack :deep(.quoted-context) {
@@ -1297,13 +1375,13 @@ defineExpose({
 .input-area {
   position: relative;
   /* Keep the editor scroller flush with the composer edge; text padding lives in CodeMirror. */
-  padding: 0 0 6px 18px;
+  padding: 0 0 0 12px;
 }
 
 .composer-input {
   width: 100%;
   --editor-font-size: 15px;
-  min-height: 56px;
+  min-height: 42px;
 }
 
 .attachment-tray {
@@ -1531,8 +1609,8 @@ defineExpose({
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
-  gap: 8px;
+  padding: 2px 8px 6px;
+  gap: 6px;
   user-select: none;
 }
 
@@ -1548,7 +1626,7 @@ defineExpose({
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -1559,8 +1637,8 @@ defineExpose({
   --permission-mode-border-hover: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 35%, var(--ui-border-default-border, var(--border)));
   --permission-mode-bg: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 88%, transparent);
 
-  height: 28px;
-  padding: 0 9px;
+  height: 26px;
+  padding: 0 8px;
   border-radius: 999px;
   border: 1px solid var(--permission-mode-border);
   background: var(--permission-mode-bg);
@@ -1621,11 +1699,11 @@ defineExpose({
 }
 
 .voice-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-state-hover-bg, var(--hover));
+  width: 29px;
+  height: 29px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 42%, transparent);
+  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 48%, transparent);
   color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   display: inline-flex;
@@ -1656,7 +1734,7 @@ defineExpose({
   color: var(--ui-status-danger-fg, #ef4444);
   border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 45%, var(--ui-border-default-border, var(--border)));
   background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent);
+  box-shadow: var(--ui-status-danger-ring-shadow, 0 0 0 4px color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent));
 }
 
 .voice-btn.transcribing {
@@ -1676,9 +1754,9 @@ defineExpose({
 
 /* Send button */
 .send-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 33px;
+  height: 33px;
+  border-radius: 10px;
   border: 1px solid transparent;
   background: var(--ui-action-primary-bg, var(--accent));
   color: var(--ui-action-primary-fg, var(--text-btn-primary));
@@ -1688,24 +1766,24 @@ defineExpose({
   justify-content: center;
   transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
   flex-shrink: 0;
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 22%, transparent);
+  box-shadow: var(--ui-action-primary-shadow, 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 22%, transparent));
 }
 
 .send-btn:hover:not(:disabled) {
   background: var(--ui-action-primary-hover-bg, var(--bg-btn-primary-hover));
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 24%, transparent);
+  box-shadow: var(--ui-action-primary-hover-shadow, 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 24%, transparent));
 }
 
 .send-btn:active:not(:disabled) {
   transform: scale(0.97);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 18%, transparent);
+  box-shadow: var(--ui-action-primary-active-shadow, 0 1px 3px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 18%, transparent));
 }
 
 .send-btn:disabled {
-  background: color-mix(in srgb, var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel)))) 68%, transparent);
-  border-color: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 58%, transparent);
-  color: color-mix(in srgb, var(--ui-editor-placeholder-fg, var(--ui-text-muted-fg, var(--text-muted))) 72%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel)))) 22%, transparent);
+  border-color: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 24%, transparent);
+  color: color-mix(in srgb, var(--ui-editor-placeholder-fg, var(--ui-text-muted-fg, var(--text-muted))) 40%, transparent);
   cursor: default;
   box-shadow: none;
 }
@@ -1731,10 +1809,10 @@ defineExpose({
 
 /* Responsive styles */
 @media (max-width: 768px) {
-  .composer { border-radius: 14px; }
+  .composer { border-radius: 10px; }
   .composer-input { font-size: 15px; }
-  .toolbar-btn { width: 32px; height: 32px; }
-  .send-btn { width: 36px; height: 36px; }
+  .toolbar-btn { width: 30px; height: 30px; }
+  .send-btn { width: 33px; height: 33px; }
 }
 
 @media (max-width: 600px) {
@@ -1743,9 +1821,9 @@ defineExpose({
 }
 
 @media (max-width: 480px) {
-  .composer { border-radius: 12px; }
-  .input-area { padding: 10px 12px 0; }
-  .composer-toolbar { padding: 6px 8px; }
+  .composer { border-radius: 10px; }
+  .input-area { padding: 8px 10px 0; }
+  .composer-toolbar { padding: 5px 7px; }
   .composer-input { font-size: 15px; }
   .voice-capture-bar {
     grid-template-columns: 18px minmax(0, 1fr) auto;
@@ -1756,6 +1834,6 @@ defineExpose({
     align-items: flex-start;
     gap: 2px;
   }
-  .send-btn { width: 34px; height: 34px; }
+  .send-btn { width: 33px; height: 33px; }
 }
 </style>

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { Theme } from '../../../shared/ipc/themes.js'
 import { generateCSSVariables } from '../css-mapper.js'
 import { resolveTheme, resolveThemeUI } from '../resolver.js'
@@ -218,8 +218,7 @@ describe('theme UI semantic tokens', () => {
     expect(cssVariables['--color-danger']).toBe('#dd3333')
   })
 
-  it('resolves UI semantic tokens, linked groups, aliases, and circular fallback', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  it('ignores theme UI overrides so every theme uses shared role mapping', () => {
     const theme = makeTheme({
       ui: {
         semanticTokens: {
@@ -242,24 +241,21 @@ describe('theme UI semantic tokens', () => {
     const resolvedUI = resolveThemeUI(theme, 'dark', resolvedTheme)
     const cssVariables = generateCSSVariables(resolvedTheme, undefined, resolvedUI)
 
-    expect(resolvedUI['ui.text.primary'].fg).toBe('#ff00ff')
+    expect(resolvedUI['ui.text.primary'].fg).toBe('#eeeeee')
     expect(resolvedUI['ui.action.primary']).toMatchObject({
-      bg: '#ff00ff',
+      bg: '#3388dd',
       fg: '#101010',
-      border: '#ff00ff',
+      border: '#3388dd',
     })
     expect(resolvedUI['ui.tool.surface']).toMatchObject({
-      bg: '#ff00ff',
-      fg: '#101010',
-      border: '#ff00ff',
+      bg: '#202020',
+      border: '#282828',
     })
     expect(resolvedUI['ui.text.faint'].fg).toBe('#555555')
-    expect(cssVariables['--ui-action-primary-bg']).toBe('#ff00ff')
-    expect(cssVariables['--bg-btn-primary']).toBe('#ff00ff')
-    expect(cssVariables['--ui-tool-surface-bg']).toBe('#ff00ff')
-    expect(cssVariables['--tool-surface']).toBe('#ff00ff')
-    expect(warn).toHaveBeenCalled()
-    warn.mockRestore()
+    expect(cssVariables['--ui-action-primary-bg']).toBe('#3388dd')
+    expect(cssVariables['--bg-btn-primary']).toBe('#3388dd')
+    expect(cssVariables['--ui-tool-surface-bg']).toBe('#202020')
+    expect(cssVariables['--tool-surface']).toBe('#202020')
   })
 
   it('repairs flattened legacy surfaces into distinct app roles', () => {

@@ -15,6 +15,8 @@ import type {
 	SchedulerGetRunRequest,
 	SchedulerListRunsRequest,
 	SchedulerUpdateTaskRequest,
+	SearchRequest,
+	SearchWindowGuideState,
 	TodoPlanWindowActionRequest,
 	UIMessageStreamData,
 } from "../shared/ipc.js";
@@ -1206,7 +1208,14 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_WINDOW_SHOWN, listener);
 	},
 
-	searchQuery: (req: { query: string; category: string; limit?: number }) =>
+	onSearchWindowGuides: (callback: (state: SearchWindowGuideState) => void) => {
+		const listener = (_event: any, state: SearchWindowGuideState) => callback(state);
+		ipcRenderer.on(IPC_CHANNELS.SEARCH_WINDOW_GUIDES, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_WINDOW_GUIDES, listener);
+	},
+
+	searchQuery: (req: SearchRequest) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SEARCH_QUERY, req),
 
 	searchExecuteAction: (actionId: string) =>
@@ -1214,8 +1223,8 @@ const electronAPI = {
 
 	onSearchAction: (callback: (actionId: string) => void) => {
 		const listener = (_event: any, actionId: string) => callback(actionId);
-		ipcRenderer.on("search:action", listener);
-		return () => ipcRenderer.removeListener("search:action", listener);
+		ipcRenderer.on(IPC_CHANNELS.SEARCH_ACTION, listener);
+		return () => ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_ACTION, listener);
 	},
 
 	// Todo / Plan

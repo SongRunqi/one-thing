@@ -2,19 +2,16 @@
   <section
     ref="panelRef"
     class="todo-plan-panel"
-    :class="[
-      `surface-${surface}`,
-      {
-        pinned,
-        docked,
-        collapsed,
-        standalone: isStandalone,
-        'find-open': findOpen,
-        'switcher-open': switcherOpen,
-        'action-panel-open': actionPanelOpen,
-        'format-buffer-open': formatBufferOpen,
-      },
-    ]"
+    :class="{
+      pinned,
+      collapsed,
+      standalone: isStandalone,
+      'popover-open': popoverOpen,
+      'find-open': findOpen,
+      'switcher-open': switcherOpen,
+      'action-panel-open': actionPanelOpen,
+      'format-buffer-open': formatBufferOpen,
+    }"
     :style="panelStyle"
     @mouseenter="handlePanelMouseEnter"
     @mouseleave="handlePanelMouseLeave"
@@ -28,7 +25,7 @@
       aria-label="Show Todo / Notes"
       @click="collapsed = false"
     >
-      <FileText :size="17" />
+      <FileText :size="15" />
     </button>
 
     <template v-else>
@@ -39,20 +36,7 @@
           aria-hidden="true"
         />
 
-        <div
-          v-if="!isStandalone"
-          class="title-display"
-        >
-          <span class="panel-title">
-            <strong>{{ panelChromeTitle }}</strong>
-            <span>{{ headerSummary }}</span>
-          </span>
-        </div>
-
-        <div
-          v-else
-          class="window-title"
-        >
+        <div class="window-title">
           {{ displayTitle }}
         </div>
 
@@ -64,7 +48,7 @@
             aria-label="Command Panel"
             @click="openActionPanel"
           >
-            <Command :size="isStandalone ? 14 : 15" />
+            <Command :size="14" />
           </button>
           <button
             ref="titleButtonRef"
@@ -74,7 +58,7 @@
             aria-label="Browse notes"
             @click="openSwitcher"
           >
-            <FileText :size="isStandalone ? 14 : 15" />
+            <FileText :size="14" />
           </button>
           <button
             class="icon-button"
@@ -83,38 +67,17 @@
             aria-label="New note"
             @click="createNote"
           >
-            <Plus :size="isStandalone ? 14 : 15" />
+            <Plus :size="14" />
           </button>
           <button
             class="icon-button"
             :class="{ active: pinned }"
             type="button"
-            :title="isStandalone ? (pinned ? 'Disable always on top' : 'Always on top') : (pinned ? 'Allow card to collapse' : 'Keep card open')"
-            :aria-label="isStandalone ? (pinned ? 'Disable always on top' : 'Always on top') : (pinned ? 'Allow card to collapse' : 'Keep card open')"
+            :title="pinControlLabel"
+            :aria-label="pinControlLabel"
             @click="togglePinned"
           >
-            <Pin :size="isStandalone ? 14 : 15" />
-          </button>
-          <button
-            v-if="!isStandalone"
-            class="icon-button"
-            :class="{ active: docked }"
-            type="button"
-            :title="docked ? 'Float card' : 'Dock card'"
-            :aria-label="docked ? 'Float card' : 'Dock card'"
-            @click="toggleDocked"
-          >
-            <PanelRight :size="15" />
-          </button>
-          <button
-            v-if="!isStandalone"
-            class="icon-button"
-            type="button"
-            title="Open in window"
-            aria-label="Open in window"
-            @click="openWindow"
-          >
-            <ExternalLink :size="15" />
+            <Pin :size="14" />
           </button>
         </div>
       </header>
@@ -123,7 +86,6 @@
         :visible="actionPanelOpen"
         :query="actionQuery"
         :actions="todoActions"
-        :surface="surface"
         @update:query="actionQuery = $event"
         @select="runAction"
         @close="closeActionPanel"
@@ -132,10 +94,10 @@
       <div
         v-if="switcherOpen"
         ref="switcherRef"
-        class="note-switcher"
+        class="note-switcher todo-popover todo-popover-notes"
       >
-        <label class="switcher-search">
-          <Search :size="14" />
+        <label class="switcher-search todo-popover-search">
+          <Search :size="15" />
           <input
             ref="switcherInputRef"
             v-model="switcherQuery"
@@ -145,7 +107,7 @@
           >
         </label>
 
-        <div class="switcher-list">
+        <div class="switcher-list todo-popover-list">
           <div class="switcher-header-row">
             <strong>Notes</strong>
             <span>
@@ -232,7 +194,7 @@
         ref="findBarRef"
         class="floating-find-bar"
       >
-        <Search :size="14" />
+        <Search :size="15" />
         <input
           ref="findInputRef"
           v-model="findQuery"
@@ -456,7 +418,7 @@
       </footer>
 
       <div
-        v-if="surface === 'chat-floating-card'"
+        v-if="!isStandalone"
         class="resize-handle"
         title="Resize card"
         @pointerdown="startResize"
@@ -475,7 +437,6 @@ import {
   Code2,
   Command,
   Copy,
-  ExternalLink,
   FileText,
   FolderOpen,
   Heading1,
@@ -489,7 +450,6 @@ import {
   ListChecks,
   ListOrdered,
   Minus,
-  PanelRight,
   Pencil,
   Pin,
   Plus,
@@ -513,13 +473,11 @@ import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 import TodoNotesActionPanel from './TodoNotesActionPanel.vue'
 import {
   findMarkdownMatches,
-  parseTasks,
   titleFromMarkdown,
-  type TodoPlanSurface,
 } from './todo-plan-utils'
 import type {
   TodoNotesAction,
-  TodoNotesSurfaceActionContext,
+  TodoNotesActionContext,
 } from './todo-notes-actions'
 
 const props = defineProps<{
@@ -534,7 +492,6 @@ const storagePrefix = props.standalone ? 'todoPlanWindow' : 'todoPlanCard'
 const legacyChatStorage: Record<string, string> = {
   ActiveId: 'todoPlanActiveId',
   Pinned: 'todoPlanPinned',
-  Docked: 'todoPlanDocked',
   Collapsed: 'todoPlanCollapsed',
   Height: 'todoPlanHeight',
 }
@@ -573,7 +530,6 @@ const snapshot = ref<TodoPlanSnapshot | null>(null)
 const activeId = ref(readStorage('ActiveId'))
 const draft = ref('')
 const pinned = ref(props.standalone ? true : readStorage('Pinned', 'false') === 'true')
-const docked = ref(!props.standalone && readStorage('Docked', 'false') === 'true')
 const collapsed = ref(props.standalone ? false : readStorage('Collapsed', 'true') !== 'false')
 const panelHeight = ref(readPanelHeight())
 const switcherOpen = ref(false)
@@ -611,14 +567,11 @@ const todoMarkdownFeatures: MarkdownFeatureSet = {
 const editorSettings = computed(() => settingsStore.settings.general.editor)
 
 const isStandalone = computed(() => props.standalone === true)
-const surface = computed<TodoPlanSurface>(() => {
-  if (isStandalone.value) return 'standalone-window'
-  return docked.value ? 'chat-docked-card' : 'chat-floating-card'
-})
 const panelStyle = computed(() => {
-  if (collapsed.value || isStandalone.value || docked.value) return {}
+  if (collapsed.value || isStandalone.value) return {}
   return { height: `${panelHeight.value}px` }
 })
+const popoverOpen = computed(() => switcherOpen.value || actionPanelOpen.value || findOpen.value)
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId || undefined)
 const effectiveWorkingDirectory = computed(() => {
   if (props.workingDirectory !== undefined) return props.workingDirectory || undefined
@@ -633,31 +586,19 @@ const allDocuments = computed(() => {
   ]
 })
 const activeDocument = computed(() => allDocuments.value.find(doc => doc.id === activeId.value) || allDocuments.value[0])
-const tasks = computed(() => parseTasks(draft.value))
-const openTaskCount = computed(() => tasks.value.filter(task => !task.done).length)
 const displayTitle = computed(() => titleFromMarkdown(draft.value, activeDocument.value?.title || 'Todo / Notes'))
-const panelChromeTitle = computed(() => 'Notes')
-const headerSummary = computed(() => {
-  const kind = activeDocument.value?.scope === 'workspace-ai-todo' ? 'AI Todo' : 'Markdown note'
-  if (!tasks.value.length) return kind
-  if (!openTaskCount.value) return 'All tasks done'
-  const taskLabel = openTaskCount.value === 1 ? 'task' : 'tasks'
-  return `${openTaskCount.value} open ${taskLabel}`
-})
+const pinControlLabel = computed(() => pinned.value ? 'Unpin Todo' : 'Pin Todo')
 const noteCountLabel = computed(() => {
   const count = snapshot.value?.userNotes.length || 0
   const label = count === 1 ? 'Note' : 'Notes'
   return `${count} ${label}`
 })
 const characterCountLabel = computed(() => `${draft.value.length} characters`)
-const actionContext = computed<TodoNotesSurfaceActionContext>(() => ({
-  surface: surface.value,
+const actionContext = computed<TodoNotesActionContext>(() => ({
   activeDocument: activeDocument.value,
   selection: editorRef.value?.getSelection() || { from: 0, to: 0 },
   canEditNote: Boolean(activeDocument.value),
   canDeleteNote: activeDocument.value?.scope === 'user-note',
-  pinned: pinned.value,
-  docked: docked.value,
 }))
 const todoActions = computed<TodoNotesAction[]>(() => {
   const context = actionContext.value
@@ -748,36 +689,6 @@ const todoActions = computed<TodoNotesAction[]>(() => {
       keywords: ['search'],
       run: openFind,
     },
-    {
-      id: 'keep-card-open',
-      title: pinned.value ? 'Allow Card to Collapse' : 'Keep Card Open',
-      subtitle: 'Toggle chat card pinning',
-      group: 'Window/Card',
-      icon: Pin,
-      visible: !isStandalone.value,
-      keywords: ['pin'],
-      run: togglePinned,
-    },
-    {
-      id: 'dock-card',
-      title: docked.value ? 'Float Card' : 'Dock Card',
-      subtitle: 'Toggle docked chat card layout',
-      group: 'Window/Card',
-      icon: PanelRight,
-      visible: !isStandalone.value,
-      keywords: ['dock', 'float'],
-      run: toggleDocked,
-    },
-    {
-      id: 'open-window',
-      title: 'Open in Window',
-      subtitle: 'Open the standalone Todo / Notes window',
-      group: 'Window/Card',
-      icon: ExternalLink,
-      visible: !isStandalone.value,
-      keywords: ['standalone'],
-      run: openWindow,
-    },
   ]
 })
 const sortedUserNotes = computed(() => {
@@ -829,10 +740,9 @@ watch(activeDocument, (doc) => {
   draft.value = doc.content || ''
 }, { immediate: true })
 
-watch([pinned, docked, collapsed], () => {
+watch([pinned, collapsed], () => {
   localStorage.setItem(storageKey('Pinned'), String(pinned.value))
   if (!isStandalone.value) {
-    localStorage.setItem(storageKey('Docked'), String(docked.value))
     localStorage.setItem(storageKey('Collapsed'), String(collapsed.value))
   }
 })
@@ -1355,19 +1265,6 @@ function togglePinned() {
   }
 }
 
-function toggleDocked() {
-  if (isStandalone.value) return
-  docked.value = !docked.value
-  if (docked.value) collapsed.value = false
-}
-
-function openWindow() {
-  window.electronAPI.openTodoPlanWindow({
-    activation: 'focus-if-app-active',
-    preserveMainWindowVisibility: true,
-  })
-}
-
 function startResize(event: PointerEvent) {
   resizing = true
   resizeStartY = event.clientY
@@ -1404,7 +1301,7 @@ function expandFromEdge() {
 
 function collapseToEdge() {
   if (isStandalone.value) return
-  if (pinned.value || docked.value) return
+  if (pinned.value) return
   collapsed.value = true
 }
 
@@ -1457,46 +1354,59 @@ onUnmounted(() => {
 <style scoped>
 .todo-plan-panel {
   --todo-plan-nav-gutter: 52px;
-  --todo-card-bg: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel)));
-  --todo-card-bg-soft: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 92%, var(--ui-surface-app-bg, var(--bg)) 8%);
-  --todo-rule: var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.24)));
-  --todo-rule-soft: color-mix(in srgb, var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.24))) 58%, transparent);
+  --todo-card-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 92%, var(--ui-surface-note-bg) 8%);
+  --todo-card-bg-soft: color-mix(in srgb, var(--todo-card-bg) 86%, var(--ui-surface-app-bg, var(--bg-app)) 14%);
+  --todo-rule: var(--ui-border-default-border, var(--border-default));
+  --todo-rule-soft: color-mix(in srgb, var(--todo-rule) 58%, transparent);
   --todo-text: var(--ui-text-primary-fg, var(--text));
   --todo-muted: var(--ui-text-muted-fg, var(--muted));
   --todo-accent: var(--ui-accent-primary-fg, var(--accent));
   --todo-accent-soft: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 14%, transparent);
   --todo-accent-border: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
   --todo-plan-width: 280px;
-  --todo-popover-top: 44px;
-  --todo-popover-width: min(430px, calc(100% - 18px));
-  --todo-popover-radius: 12px;
-  --todo-popover-shadow: 0 16px 42px rgba(0, 0, 0, 0.2);
-  --todo-popover-search-height: 38px;
-  --todo-popover-search-padding-x: 12px;
-  --todo-popover-search-gap: 8px;
-  --todo-popover-search-font-size: 13px;
-  --todo-switcher-popover-max-height: min(286px, calc(100vh - 94px));
-  --todo-action-popover-max-height: min(286px, calc(100vh - 94px));
+  --todo-popover-inline-inset: 12px;
+  --todo-popover-top: clamp(58px, 12vh, 88px);
+  --todo-popover-width: min(520px, calc(100% - (var(--todo-popover-inline-inset) * 2)));
+  --todo-popover-radius: 14px;
+  --todo-popover-shadow: var(--ui-surface-tooltip-shadow, var(--shadow-floating));
+  --todo-popover-bg: var(--ui-surface-app-bg, var(--bg-app));
+  --todo-popover-search-bg: var(--todo-popover-bg);
+  --todo-popover-search-height: 46px;
+  --todo-popover-search-padding-x: 16px;
+  --todo-popover-search-gap: 10px;
+  --todo-popover-search-font-size: 15px;
+  --todo-popover-list-padding: 8px;
+  --todo-note-row-min-height: 52px;
+  --todo-action-row-min-height: 52px;
+  --todo-popover-content-height: 226px;
+  --todo-popover-height: min(
+    calc(var(--todo-popover-search-height) + var(--todo-popover-content-height)),
+    calc(100% - var(--todo-popover-top) - 12px)
+  );
 
   position: absolute;
-  top: 52px;
+  top: 40px;
   right: 12px;
   z-index: calc(var(--z-dropdown, 100) + 2);
   width: min(var(--todo-plan-width), calc(100vw - var(--todo-plan-nav-gutter) - 18px));
   min-height: 220px;
   border: 1px solid var(--todo-rule);
-  border-radius: 14px;
+  border-radius: 22px;
   background: var(--todo-card-bg);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16);
+  box-shadow: none;
   color: var(--todo-text);
+  overflow: hidden;
+}
+
+.todo-plan-panel.popover-open {
   overflow: hidden;
 }
 
 .todo-plan-panel.collapsed {
   top: 74px;
   right: 0;
-  width: 28px;
-  height: 56px !important;
+  width: 20px;
+  height: 46px !important;
   min-height: 0;
   border: 0;
   border-radius: 999px 0 0 999px;
@@ -1506,35 +1416,12 @@ onUnmounted(() => {
 }
 
 .todo-plan-panel.collapsed:hover {
-  transform: translateX(-2px);
-}
-
-.todo-plan-panel.docked {
-  top: 44px;
-  right: 12px;
-  bottom: 0;
-  height: auto !important;
-  border-radius: 12px 0 0 0;
+  transform: translateX(-1px);
 }
 
 .todo-plan-panel.standalone {
-  --todo-card-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 92%, var(--ui-surface-note-bg) 8%);
-  --todo-card-bg-soft: color-mix(in srgb, var(--todo-card-bg) 86%, var(--ui-surface-app-bg, #fff) 14%);
-  --todo-popover-top: clamp(58px, 12vh, 88px);
-  --todo-popover-width: min(520px, calc(100% - 56px));
-  --todo-popover-radius: 14px;
-  --todo-popover-shadow: 0 18px 52px rgba(0, 0, 0, 0.22);
-  --todo-popover-search-height: 46px;
-  --todo-popover-search-padding-x: 16px;
-  --todo-popover-search-gap: 10px;
-  --todo-popover-search-font-size: 15px;
-  --todo-switcher-popover-max-height: min(330px, calc(100vh - 94px));
-  --todo-action-popover-max-height: min(330px, calc(100vh - 94px));
-
   width: 100%;
   min-height: 100%;
-  border-radius: 22px;
-  box-shadow: none;
 }
 
 .wake-button,
@@ -1559,13 +1446,13 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--todo-rule);
+  border: 1px solid color-mix(in srgb, var(--todo-rule) 42%, transparent);
   border-right: 0;
   border-radius: 999px 0 0 999px;
-  background: var(--todo-card-bg);
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--todo-text) 16%, transparent);
-  color: var(--todo-muted);
-  opacity: 0.92;
+  background: color-mix(in srgb, var(--todo-card-bg) 44%, transparent);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--todo-text) 4%, transparent);
+  color: color-mix(in srgb, var(--todo-muted) 58%, transparent);
+  opacity: 0.34;
 }
 
 .wake-button::before {
@@ -1576,28 +1463,24 @@ onUnmounted(() => {
 }
 
 .wake-button:hover {
-  border-color: var(--todo-accent-border);
-  background: color-mix(in srgb, var(--todo-card-bg) 86%, var(--todo-accent) 14%);
-  color: var(--todo-accent);
-  opacity: 1;
+  border-color: color-mix(in srgb, var(--todo-accent-border) 58%, transparent);
+  background: color-mix(in srgb, var(--todo-card-bg) 64%, var(--todo-accent) 5%);
+  color: color-mix(in srgb, var(--todo-accent) 68%, var(--todo-muted) 32%);
+  opacity: 0.72;
 }
 
 .panel-header {
   position: relative;
-  height: 50px;
-  padding: 0 10px;
+  height: 30px;
+  padding: 0 10px 0 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid var(--todo-rule-soft);
-  background: var(--todo-card-bg);
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--todo-card-bg) 84%, transparent);
 }
 
 .todo-plan-panel.standalone .panel-header {
-  height: 30px;
-  padding: 0 10px 0 0;
-  border-bottom: 0;
-  background: color-mix(in srgb, var(--todo-card-bg) 84%, transparent);
   -webkit-app-region: drag;
 }
 
@@ -1636,92 +1519,48 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.title-display {
-  min-width: 0;
-  flex: 1;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  text-align: left;
-}
-
-.icon-button:hover,
-.mini-button:hover,
 .note-option:hover {
   color: var(--todo-text);
   background: var(--ui-state-hover-bg, var(--hover, color-mix(in srgb, var(--text) 8%, transparent)));
-}
-
-.panel-title {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  line-height: 1.18;
-}
-
-.panel-title strong {
-  overflow: hidden;
-  color: var(--todo-text);
-  font-size: 14px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.panel-title span {
-  margin-top: 3px;
-  overflow: hidden;
-  color: var(--todo-muted);
-  font-size: 11px;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .panel-actions {
   margin-left: auto;
   display: flex;
   flex: 0 0 auto;
-  gap: 6px;
-}
-
-.todo-plan-panel.standalone .panel-actions {
-  opacity: 1;
-  pointer-events: auto;
   gap: 4px;
 }
 
-.icon-button,
-.mini-button {
-  width: 28px;
-  height: 28px;
+.icon-button {
+  width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 6px;
+  color: color-mix(in srgb, var(--todo-text) 66%, transparent);
 }
 
-.todo-plan-panel.standalone .icon-button {
-  width: 22px;
-  height: 22px;
+.mini-button {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 6px;
   color: color-mix(in srgb, var(--todo-text) 66%, transparent);
 }
 
-.todo-plan-panel.standalone .icon-button:hover,
-.todo-plan-panel.standalone .icon-button.active:hover {
+.icon-button:hover,
+.icon-button.active:hover,
+.mini-button:hover {
   color: var(--todo-text);
   background: color-mix(in srgb, var(--todo-text) 10%, transparent);
 }
 
-.todo-plan-panel.standalone .icon-button.active {
+.icon-button.active {
   color: color-mix(in srgb, var(--todo-text) 66%, transparent);
   background: transparent;
-}
-
-.icon-button.active {
-  color: var(--todo-text);
-  background: var(--todo-accent-soft);
 }
 
 .icon-button:focus-visible,
@@ -1731,37 +1570,6 @@ onUnmounted(() => {
   outline-offset: 2px;
 }
 
-.todo-plan-panel.standalone .icon-button:focus,
-.todo-plan-panel.standalone .icon-button:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-
-.note-switcher {
-  position: absolute;
-  top: var(--todo-popover-top);
-  left: 50%;
-  z-index: 5;
-  width: var(--todo-popover-width);
-  max-height: var(--todo-switcher-popover-max-height);
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--todo-rule);
-  border-radius: var(--todo-popover-radius);
-  background: var(--todo-card-bg);
-  box-shadow: var(--todo-popover-shadow);
-  transform: translateX(-50%);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.25;
-  overflow: hidden;
-}
-
-.todo-plan-panel.standalone .note-switcher {
-  background: color-mix(in srgb, var(--todo-card-bg) 96%, var(--ui-surface-app-bg, #fff) 4%);
-}
-
-.switcher-search,
 .floating-find-bar {
   display: flex;
   align-items: center;
@@ -1770,46 +1578,26 @@ onUnmounted(() => {
   background: var(--todo-card-bg-soft);
 }
 
-.switcher-search {
-  height: var(--todo-popover-search-height);
-  padding: 0 var(--todo-popover-search-padding-x);
-  gap: var(--todo-popover-search-gap);
-  border-bottom: 1px solid var(--todo-rule-soft);
-  font-size: var(--todo-popover-search-font-size);
-  line-height: 1.25;
-}
-
-.switcher-search svg {
-  flex: 0 0 auto;
-}
-
-.switcher-search input,
 .floating-find-bar input {
   min-width: 0;
   flex: 1;
+  height: 100%;
   border: 0;
   outline: 0;
   background: transparent;
   color: var(--todo-text);
   font: inherit;
+  line-height: inherit;
 }
 
-.switcher-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  max-height: 254px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.todo-plan-panel.standalone .switcher-list {
-  max-height: 282px;
-  padding: 7px;
+.floating-find-bar input::placeholder {
+  color: var(--todo-muted);
+  opacity: 0.68;
 }
 
 .switcher-header-row {
-  height: 24px;
+  height: 28px;
+  padding: 0 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1826,12 +1614,6 @@ onUnmounted(() => {
   font-weight: 650;
 }
 
-.todo-plan-panel.standalone .switcher-header-row {
-  height: 28px;
-  padding: 0 6px;
-  font-size: 13px;
-}
-
 .switcher-label {
   padding: 8px 2px 5px;
   color: var(--todo-muted);
@@ -1843,7 +1625,7 @@ onUnmounted(() => {
 
 .note-option {
   width: 100%;
-  min-height: 58px;
+  min-height: var(--todo-note-row-min-height);
   padding: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1851,16 +1633,6 @@ onUnmounted(() => {
   gap: 6px;
   border-radius: 12px;
   text-align: left;
-}
-
-.surface-chat-floating-card .note-option,
-.surface-chat-docked-card .note-option {
-  min-height: 52px;
-}
-
-.todo-plan-panel.standalone .note-option {
-  min-height: 52px;
-  border-radius: 12px;
 }
 
 .note-option.active,
@@ -1886,14 +1658,9 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
   border-radius: inherit;
   text-align: left;
-}
-
-.todo-plan-panel.standalone .note-option-main {
-  padding: 8px 10px;
-  gap: 4px;
 }
 
 .note-option-main:hover {
@@ -1914,10 +1681,6 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
-.todo-plan-panel.standalone .note-option strong {
-  font-size: 14px;
-}
-
 .note-option small {
   display: flex;
   align-items: center;
@@ -1925,10 +1688,6 @@ onUnmounted(() => {
   color: var(--todo-muted);
   font-size: 12px;
   font-style: normal;
-}
-
-.todo-plan-panel.standalone .note-option small {
-  font-size: 12px;
 }
 
 .note-option small i {
@@ -1940,7 +1699,7 @@ onUnmounted(() => {
 }
 
 .note-option small i.current {
-  background: var(--ui-status-danger-fg, #ff5f57);
+  background: var(--ui-status-danger-fg, var(--color-danger));
 }
 
 .note-option small b {
@@ -1965,26 +1724,7 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
-.todo-plan-panel.standalone .note-option-actions {
-  padding-right: 10px;
-  gap: 6px;
-}
-
-.todo-plan-panel.standalone .note-option-actions button {
-  width: 24px;
-  height: 24px;
-}
-
 @media (max-width: 460px) {
-  .todo-plan-panel.standalone {
-    --todo-popover-width: min(360px, calc(100% - 32px));
-    --todo-popover-search-height: 44px;
-    --todo-popover-search-padding-x: 14px;
-    --todo-popover-search-font-size: 14px;
-    --todo-switcher-popover-max-height: min(308px, calc(100vh - 84px));
-    --todo-action-popover-max-height: min(308px, calc(100vh - 84px));
-  }
-
   .todo-plan-panel.standalone .window-traffic-spacer {
     flex-basis: 76px;
   }
@@ -1995,26 +1735,24 @@ onUnmounted(() => {
     font-size: 13px;
   }
 
-  .todo-plan-panel.standalone .switcher-header-row {
+}
+
+@container (max-width: 360px) {
+  .switcher-header-row {
     height: 30px;
     font-size: 13px;
   }
 
-  .todo-plan-panel.standalone .note-option {
+  .note-option {
     min-height: 50px;
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .todo-plan-panel.standalone .note-option strong {
-    font-size: 14px;
-  }
-
-  .todo-plan-panel.standalone .note-option small {
+  .note-option small {
     max-width: 100%;
-    font-size: 12px;
   }
 
-  .todo-plan-panel.standalone .note-option-actions {
+  .note-option-actions {
     display: none;
   }
 }
@@ -2026,58 +1764,43 @@ onUnmounted(() => {
 
 .floating-find-bar {
   position: absolute;
-  top: 62px;
-  right: 12px;
+  top: 58px;
+  right: 14px;
   z-index: 4;
-  width: min(300px, calc(100% - 24px));
-  height: 34px;
-  padding: 0 7px 0 10px;
+  width: min(340px, calc(100% - 28px));
+  height: 40px;
+  padding: 0 8px 0 12px;
   border: 1px solid var(--todo-rule);
-  border-radius: 9px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
+  border-radius: 11px;
+  box-shadow: var(--ui-surface-tooltip-shadow, var(--shadow-md));
+  font-size: 14px;
+  line-height: 1;
 }
 
 .floating-find-bar span {
   flex: 0 0 auto;
-  min-width: 36px;
+  min-width: 40px;
   color: var(--todo-muted);
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 600;
   text-align: center;
 }
 
 .panel-body {
-  height: calc(100% - 88px);
-  min-height: 132px;
-  overflow: auto;
-  background: var(--todo-card-bg);
-}
-
-.todo-plan-panel.standalone .panel-body {
   height: calc(100% - 68px);
   min-height: 120px;
+  overflow: hidden;
+  background: var(--todo-card-bg);
 }
 
 .markdown-editor {
   width: 100%;
   height: 100%;
-  --editor-font-size: 14px;
-  min-height: 96px;
-  padding: 14px;
-  min-width: 0;
-}
-
-.todo-plan-panel.standalone .markdown-editor {
   --editor-font-size: 15px;
-  /* Only keep the left text inset on the wrapper: let the CodeMirror scroller
-     reach the panel edges on top/right/bottom so the scrollbar sits flush and
-     spans the full height. Text insets are restored on .cm-content below. */
+  min-height: 96px;
   padding: 0 0 0 18px;
-}
-
-.todo-plan-panel.standalone .markdown-editor :deep(.cm-content) {
-  padding-top: 10px;
-  padding-right: 12px;
-  padding-bottom: 10px;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .markdown-editor :deep(.cm-editor),
@@ -2194,40 +1917,6 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--todo-text) 72%, transparent);
 }
 
-.todo-plan-panel.standalone .note-footer {
-  height: 38px;
-  padding-right: 18px;
-  font-size: 13px;
-}
-
-.todo-plan-panel.standalone .note-footer.formatting {
-  padding: 0 8px;
-}
-
-.todo-plan-panel.standalone .format-buffer {
-  gap: 5px;
-}
-
-.todo-plan-panel.standalone .format-command {
-  width: 30px;
-  height: 30px;
-}
-
-.todo-plan-panel.standalone .heading-command {
-  width: 42px;
-  font-size: 22px;
-}
-
-.todo-plan-panel.standalone .format-separator {
-  height: 28px;
-  margin-right: 8px;
-}
-
-.todo-plan-panel.standalone .close-format {
-  width: 30px;
-  height: 30px;
-}
-
 .resize-handle {
   position: absolute;
   left: 0;
@@ -2242,7 +1931,6 @@ onUnmounted(() => {
     right: 8px;
     top: 46px;
     width: min(340px, calc(100vw - 16px));
-    border-right: 0;
   }
 
   .todo-plan-panel.collapsed {
@@ -2255,7 +1943,6 @@ onUnmounted(() => {
     left: auto;
     right: 6px;
     width: min(340px, calc(100vw - 12px));
-    border-radius: 10px;
   }
 
   .panel-actions {

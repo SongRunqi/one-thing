@@ -32,8 +32,8 @@
 
     "bg": {
       "app": "nord0",
-      "sidebar": "nord1",
-      "chat": "nord0",
+      "sidebar": "nord0",
+      "chat": "nord1",
       "panel": "nord1",
       "elevated": "nord2",
       "floating": "nord3",
@@ -48,7 +48,7 @@
       "toolCall": "nord1",
       "toolCallHover": "nord2",
       "toolResult": "nord1",
-      "input": "nord1",
+      "input": "nord2",
       "inputFocus": "nord2",
       "btn": {
         "primary": "nord8",
@@ -58,19 +58,19 @@
         "ghost": "transparent",
         "ghostHover": "nord2",
         "danger": "nord11",
-        "dangerHover": "#C77680"
+        "dangerHover": "nord11"
       },
       "code": {
-        "inline": "nord2",
+        "inline": "nord0",
         "block": "nord0",
-        "header": "nord2"
+        "header": "nord1"
       },
       "menu": "nord2",
       "menuItemHover": "nord3",
       "tooltip": "nord4",
       "modal": "nord1",
-      "selected": "rgba(136, 192, 208, 0.14)",
-      "selectedHover": "rgba(136, 192, 208, 0.2)",
+      "selected": "rgba(136, 192, 208, 0.18)",
+      "selectedHover": "rgba(136, 192, 208, 0.24)",
       "highlight": "rgba(235, 203, 139, 0.2)",
       "hover": "rgba(216, 222, 233, 0.05)",
       "active": "rgba(216, 222, 233, 0.1)"
@@ -78,9 +78,9 @@
 
     "text": {
       "primary": "nord6",
-      "secondary": "nord5",
+      "secondary": "nord4",
       "muted": "nord4",
-      "faint": "nord4",
+      "faint": "rgba(216, 222, 233, 0.62)",
       "error": "nord11",
       "warning": "nord12",
       "success": "nord14",
@@ -97,7 +97,7 @@
         "thinking": "nord4"
       },
       "tool": {
-        "name": "nord15",
+        "name": "nord8",
         "args": "nord4",
         "result": "nord4",
         "error": "nord11"
@@ -142,20 +142,20 @@
     },
 
     "border": {
-      "default": "rgba(216, 222, 233, 0.18)",
-      "subtle": "rgba(216, 222, 233, 0.1)",
-      "strong": "#5B677D",
+      "default": "rgba(216, 222, 233, 0.13)",
+      "subtle": "rgba(216, 222, 233, 0.08)",
+      "strong": "nord2",
       "accent": "nord8",
       "error": "nord11",
       "success": "nord14",
       "warning": "nord12",
-      "input": "rgba(216, 222, 233, 0.18)",
+      "input": "rgba(216, 222, 233, 0.13)",
       "inputFocus": "nord8",
       "inputError": "nord11",
-      "message": "rgba(216, 222, 233, 0.1)",
-      "messageUser": "rgba(216, 222, 233, 0.18)",
-      "code": "rgba(216, 222, 233, 0.18)",
-      "divider": "rgba(216, 222, 233, 0.1)"
+      "message": "rgba(216, 222, 233, 0.08)",
+      "messageUser": "nord1",
+      "code": "nord1",
+      "divider": "rgba(216, 222, 233, 0.08)"
     },
 
     "shadow": {

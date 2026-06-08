@@ -6,18 +6,37 @@ import { BrowserWindow, nativeTheme } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { getSettings } from '../stores/settings.js'
-import { getThemeBackgroundColor, } from '../themes/index.js'
+import { getThemeBackgroundColor } from '../themes/index.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import type { SearchWindowGuideState } from '../../shared/ipc/search.js'
+import {
+  getDefaultSearchWindowBounds,
+  getSearchWindowGuideState,
+  getSearchWindowSizeConstraints,
+  SEARCH_WINDOW_MIN_HEIGHT,
+  SEARCH_WINDOW_MIN_WIDTH,
+} from './window-layout.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+const HIDDEN_GUIDES: SearchWindowGuideState = {
+  visible: false,
+  centerX: false,
+  defaultTop: false,
+  defaultHeight: false,
+  defaultBounds: false,
+}
+const GUIDE_HIDE_DELAY_MS = 700
 
 function getRendererDevUrl(): string {
   return process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:5173'
 }
 
 let searchWindow: BrowserWindow | null = null
-let shouldShowWhenReady = false
+let searchParentWindow: BrowserWindow | null = null
+let pendingShowParentWindow: BrowserWindow | null = null
+let isSearchWindowReady = false
+let guideHideTimer: ReturnType<typeof setTimeout> | null = null
 
 function getEffectiveTheme(): 'light' | 'dark' {
   const settings = getSettings()
@@ -33,25 +52,69 @@ function getEffectiveThemeId(mode: 'dark' | 'light'): string {
   return general?.lightThemeId || general?.themeId || 'flexoki'
 }
 
+function clearGuideHideTimer(): void {
+  if (!guideHideTimer) return
+  clearTimeout(guideHideTimer)
+  guideHideTimer = null
+}
+
+function applySearchWindowConstraints(win: BrowserWindow, parentWindow: BrowserWindow): void {
+  const constraints = getSearchWindowSizeConstraints(parentWindow.getBounds())
+  win.setMinimumSize(constraints.minWidth, constraints.minHeight)
+  win.setMaximumSize(constraints.maxWidth, constraints.maxHeight)
+}
+
+function getGuideParentWindow(): BrowserWindow | null {
+  if (searchParentWindow && !searchParentWindow.isDestroyed()) return searchParentWindow
+  const parentWindow = searchWindow?.getParentWindow()
+  return parentWindow && !parentWindow.isDestroyed() ? parentWindow : null
+}
+
+function emitSearchWindowGuides(state: SearchWindowGuideState): void {
+  if (!searchWindow || searchWindow.isDestroyed()) return
+  searchWindow.webContents.send(IPC_CHANNELS.SEARCH_WINDOW_GUIDES, state)
+}
+
+function updateSearchWindowGuides(): void {
+  if (!searchWindow || searchWindow.isDestroyed() || !searchWindow.isVisible()) return
+
+  const parentWindow = getGuideParentWindow()
+  if (!parentWindow) return
+
+  clearGuideHideTimer()
+  const defaultBounds = getDefaultSearchWindowBounds(parentWindow.getBounds())
+  emitSearchWindowGuides(getSearchWindowGuideState(searchWindow.getBounds(), defaultBounds, true))
+  guideHideTimer = setTimeout(() => {
+    emitSearchWindowGuides(HIDDEN_GUIDES)
+    guideHideTimer = null
+  }, GUIDE_HIDE_DELAY_MS)
+}
+
 function positionSearchWindow(win: BrowserWindow, parentWindow: BrowserWindow): void {
-  const WIDTH = 640
-  const HEIGHT = 480
-  const parentBounds = parentWindow.getBounds()
-  const x = Math.round(parentBounds.x + (parentBounds.width - WIDTH) / 2)
-  const y = Math.round(parentBounds.y + parentBounds.height * 0.22)
-  win.setBounds({ width: WIDTH, height: HEIGHT, x, y })
+  applySearchWindowConstraints(win, parentWindow)
+  win.setBounds(getDefaultSearchWindowBounds(parentWindow.getBounds()))
 }
 
 function showSearchWindow(parentWindow: BrowserWindow): void {
   if (!searchWindow || searchWindow.isDestroyed()) return
+
+  if (!isSearchWindowReady) {
+    pendingShowParentWindow = parentWindow
+    return
+  }
+
+  searchWindow.setParentWindow(parentWindow)
+  searchParentWindow = parentWindow
   positionSearchWindow(searchWindow, parentWindow)
   searchWindow.show()
   searchWindow.focus()
+  pendingShowParentWindow = null
+  emitSearchWindowGuides(HIDDEN_GUIDES)
   searchWindow.webContents.send(IPC_CHANNELS.SEARCH_WINDOW_SHOWN)
 }
 
 function createSearchWindow(parentWindow: BrowserWindow, showOnReady: boolean): BrowserWindow {
-  shouldShowWhenReady = showOnReady
+  if (showOnReady) pendingShowParentWindow = parentWindow
   if (searchWindow && !searchWindow.isDestroyed()) {
     if (showOnReady) showSearchWindow(parentWindow)
     return searchWindow
@@ -66,14 +129,15 @@ function createSearchWindow(parentWindow: BrowserWindow, showOnReady: boolean): 
   const colorTheme = getSettings().general?.colorTheme || 'blue'
 
   searchWindow = new BrowserWindow({
-    width: 640,
-    height: 480,
+    ...getDefaultSearchWindowBounds(parentWindow.getBounds()),
+    minWidth: SEARCH_WINDOW_MIN_WIDTH,
+    minHeight: SEARCH_WINDOW_MIN_HEIGHT,
     frame: false,
     titleBarStyle: 'customButtonsOnHover',
     trafficLightPosition: { x: -20, y: -20 },
     transparent: isMac,
     backgroundColor: isMac ? undefined : backgroundColor,
-    resizable: false,
+    resizable: true,
     maximizable: false,
     minimizable: false,
     fullscreenable: false,
@@ -88,11 +152,15 @@ function createSearchWindow(parentWindow: BrowserWindow, showOnReady: boolean): 
       nodeIntegration: false,
     },
   })
+  searchParentWindow = parentWindow
+  isSearchWindowReady = false
   positionSearchWindow(searchWindow, parentWindow)
 
   searchWindow.once('ready-to-show', () => {
-    if (shouldShowWhenReady && searchWindow && !searchWindow.isDestroyed()) {
-      showSearchWindow(parentWindow)
+    isSearchWindowReady = true
+    const parent = pendingShowParentWindow
+    if (parent && !parent.isDestroyed()) {
+      showSearchWindow(parent)
     }
   })
 
@@ -101,8 +169,20 @@ function createSearchWindow(parentWindow: BrowserWindow, showOnReady: boolean): 
     closeSearchWindow()
   })
 
+  searchWindow.on('move', () => {
+    updateSearchWindowGuides()
+  })
+
+  searchWindow.on('resize', () => {
+    updateSearchWindowGuides()
+  })
+
   searchWindow.on('closed', () => {
+    clearGuideHideTimer()
     searchWindow = null
+    searchParentWindow = null
+    pendingShowParentWindow = null
+    isSearchWindowReady = false
   })
 
   const themeParams = `theme=${effectiveTheme}&colorTheme=${colorTheme}`
@@ -127,7 +207,9 @@ export function warmSearchWindow(parentWindow: BrowserWindow): BrowserWindow {
 
 export function closeSearchWindow(): void {
   if (searchWindow && !searchWindow.isDestroyed()) {
-    shouldShowWhenReady = false
+    clearGuideHideTimer()
+    pendingShowParentWindow = null
+    emitSearchWindowGuides(HIDDEN_GUIDES)
     searchWindow.hide()
   }
 }

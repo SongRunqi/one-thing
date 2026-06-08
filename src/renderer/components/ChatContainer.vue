@@ -505,7 +505,7 @@ onUnmounted(() => {
 <style scoped>
 .chat-container-wrapper {
   flex: 1;
-  padding: 5px 8px 8px 0;
+  padding: 0;
   background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
   min-width: 0;
   display: flex;
@@ -514,7 +514,7 @@ onUnmounted(() => {
 }
 
 .chat-container-wrapper.sidebar-collapsed {
-  padding-left: 8px;
+  padding-left: 0;
 }
 
 /* Hover trigger for floating sidebar */
@@ -800,8 +800,8 @@ onUnmounted(() => {
   gap: 8px;
   margin-top: 8px;
   padding: 10px 20px;
-  background: var(--ui-accent-primary-fg, var(--accent));
-  color: white;
+  background: var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--ui-action-primary-fg, var(--ui-text-inverse-fg, white));
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -812,7 +812,7 @@ onUnmounted(() => {
 }
 
 .new-chat-btn:hover {
-  background: var(--accent-hover, var(--ui-accent-primary-fg, var(--accent)));
+  background: var(--ui-action-primary-hover-bg, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))));
   transform: translateY(-1px);
 }
 </style>

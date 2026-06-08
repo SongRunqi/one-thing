@@ -2,7 +2,13 @@
  * Search Everywhere — shared types
  */
 
-export type SearchCategory = 'all' | 'chats' | 'messages' | 'actions' | 'files' | 'daily' | 'prompts'
+export const SEARCH_CATEGORIES = ['all', 'chats', 'messages', 'actions', 'files', 'daily', 'prompts'] as const
+
+export type SearchCategory = typeof SEARCH_CATEGORIES[number]
+
+export function isSearchCategory(value: unknown): value is SearchCategory {
+  return typeof value === 'string' && SEARCH_CATEGORIES.includes(value as SearchCategory)
+}
 
 export interface SearchRequest {
   query: string
@@ -28,4 +34,12 @@ export interface SearchResult {
 export interface SearchResponse {
   success: boolean
   results: SearchResult[]
+}
+
+export interface SearchWindowGuideState {
+  visible: boolean
+  centerX: boolean
+  defaultTop: boolean
+  defaultHeight: boolean
+  defaultBounds: boolean
 }

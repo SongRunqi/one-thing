@@ -16,7 +16,11 @@
         :disabled="isLoading"
         @click="$emit('refresh')"
       >
-        {{ isLoading ? 'Refreshing...' : 'Refresh' }}
+        <RefreshCw
+          :class="{ spinning: isLoading }"
+          :size="13"
+        />
+        <span>{{ isLoading ? 'Refreshing...' : 'Refresh' }}</span>
       </button>
     </div>
 
@@ -112,6 +116,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { RefreshCw } from 'lucide-vue-next'
 import type { CodexProviderUsage, CodexUsageLimit, CodexUsageWindow, ProviderUsageResponse } from '@/types'
 
 const props = defineProps<{
@@ -241,6 +246,10 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 }
 
 .usage-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-height: 32px;
   padding: 0 12px;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
@@ -256,6 +265,14 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 .usage-button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.spinning {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .usage-metrics {

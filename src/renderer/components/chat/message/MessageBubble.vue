@@ -106,10 +106,10 @@
             name="text-fade"
             :css="false"
           >
-            <div
-              v-if="firstTextPart"
-              class="content"
-            >
+	            <div
+	              v-if="firstTextPart"
+	              class="content md-code-block-scope md-inline-code-scope"
+	            >
               <StreamingMarkdown
                 v-if="shouldUseStreamingMarkdown(role === 'user')"
                 :content="firstTextPart.content"
@@ -166,10 +166,10 @@
                 :description="part.description"
               />
               <!-- Additional text parts (after the first one) -->
-              <div
-                v-else-if="part.type === 'text'"
-                class="content"
-              >
+	              <div
+	                v-else-if="part.type === 'text'"
+	                class="content md-code-block-scope md-inline-code-scope"
+	              >
                 <StreamingMarkdown
                   v-if="shouldUseStreamingMarkdown(role === 'user')"
                   :content="part.content"
@@ -269,10 +269,10 @@
              empty edge cases). Assistant messages always have contentParts
              populated by rebuildContentParts before reaching here, so no
              tool-call rendering is needed in this branch. -->
-        <div
-          v-else
-          class="content"
-        >
+	        <div
+	          v-else
+	          class="content md-code-block-scope md-inline-code-scope"
+	        >
           <StreamingMarkdown
             v-if="shouldUseStreamingMarkdown(role === 'user')"
             :content="content"
@@ -694,7 +694,7 @@ function handleContentClick(event: MouseEvent) {
   background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   position: relative;
   transition: all 0.2s ease;
-  box-shadow: var(--shadow);
+  box-shadow: var(--ui-message-surface-shadow, var(--shadow));
 }
 
 .bubble.editing {
@@ -714,15 +714,26 @@ function handleContentClick(event: MouseEvent) {
 
 /* User message bubble */
 .bubble.user {
-  background: var(--ui-message-user-bg, var(--user-bubble));
-  border-radius: 18px 18px 4px 18px;
-  border: 1px solid var(--ui-message-user-border, var(--user-bubble-border));
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --user-bubble-surface: color-mix(
+    in srgb,
+    var(--ui-message-user-bg, var(--user-bubble)) 72%,
+    var(--ui-surface-chat-bg, var(--bg-chat, transparent)) 28%
+  );
+
+  max-width: min(74%, 680px);
+  background: var(--user-bubble-surface);
+  border-radius: 14px 14px 5px 14px;
+  border: 1px solid color-mix(in srgb, var(--ui-message-user-border, var(--user-bubble-border)) 46%, transparent);
+  box-shadow: var(
+    --ui-message-user-shadow,
+    0 1px 4px rgba(0, 0, 0, 0.075),
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.5%, transparent)
+  );
   width: fit-content;
 }
 
 html[data-theme='light'] .bubble.user {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--ui-message-user-shadow, 0 4px 12px rgba(0, 0, 0, 0.04));
 }
 
 /* Custom text selection highlight for AI messages */
@@ -913,7 +924,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   background: linear-gradient(
     to bottom,
     transparent,
-    var(--ui-message-user-bg, var(--user-bubble))
+    var(--user-bubble-surface, var(--ui-message-user-bg, var(--user-bubble)))
   );
   pointer-events: none;
 }
@@ -925,12 +936,12 @@ html[data-theme='light'] .image-generation-skeleton::after {
   justify-content: center;
   gap: 4px;
   width: 100%;
-  padding: 8px 0;
-  margin-top: 4px;
+  padding: 6px 0 5px;
+  margin-top: 2px;
   background: transparent;
   border: none;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 13px;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 82%, transparent);
+  font-size: 12.5px;
   cursor: pointer;
   transition: color 0.2s ease;
 }
@@ -948,14 +959,28 @@ html[data-theme='light'] .image-generation-skeleton::after {
 }
 
 .content {
+  --md-code-block-margin: calc(var(--content-spacing-px, 10px) * 0.98) 0;
+  --md-code-copy-width: 22px;
+  --md-code-copy-height: 21px;
+  --md-code-copy-gap: 0;
+  --md-code-copy-padding: 0;
+  --md-code-copy-justify-content: center;
+  --md-code-copy-transition: all 0.15s ease;
+  --md-code-copy-check-display: none;
+  --md-code-copy-copied-icon-display: none;
+  --md-code-copy-copied-check-display: block;
+  --md-code-copy-copied-check-color: var(--ui-accent-primary-fg, var(--accent));
+  --md-code-line-height: 20px;
+  --md-code-plain-fg: var(--hg-syntax-plain-fg, var(--text-code-block));
+
   display: flow-root;
   word-wrap: break-word;
   overflow-wrap: anywhere;
   font-family: var(--font-body);
   line-height: var(--message-line-height-px, 24px);
   font-size: var(--message-font-size, 15px);
-  color: var(--ui-text-primary-fg, var(--text));
-  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 96%, var(--ui-text-secondary-fg, var(--text-secondary)) 4%);
+  letter-spacing: 0;
 }
 
 /* AI message text */
@@ -1168,7 +1193,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
 .content :deep(h4) {
   max-width: 100%;
   margin: var(--content-heading-top-gap, 8px) 0 var(--content-heading-bottom-gap, 3px) 0;
-  font-weight: 600;
+  font-weight: 620;
   line-height: var(--content-heading-line-height-px, 20px);
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -1200,10 +1225,10 @@ html[data-theme='light'] .image-generation-skeleton::after {
 
 .content :deep(blockquote) {
   margin: var(--content-paragraph-gap, 8px) 0;
-  padding: 0.3em 0.8em;
-  border-left: 2px solid var(--ui-text-muted-fg, var(--muted));
-  color: var(--ui-text-muted-fg, var(--muted));
-  border-radius: 0 4px 4px 0;
+  padding: 0.35em 0 0.35em 0.85em;
+  border-left: 2px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 42%, transparent);
+  color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary)) 88%, var(--ui-text-muted-fg, var(--muted)) 12%);
+  border-radius: 0;
 }
 
 .content :deep(a) {
@@ -1232,22 +1257,22 @@ html[data-theme='light'] .image-generation-skeleton::after {
   height: auto;
   border-radius: 12px;
   margin: 8px 0;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--ui-message-media-shadow, 0 4px 16px rgba(0, 0, 0, 0.2));
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .content :deep(img:hover) {
   transform: scale(1.02);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--ui-message-media-hover-shadow, 0 8px 24px rgba(0, 0, 0, 0.3));
 }
 
 html[data-theme='light'] .content :deep(img) {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--ui-message-media-shadow, 0 4px 16px rgba(0, 0, 0, 0.1));
 }
 
 html[data-theme='light'] .content :deep(img:hover) {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--ui-message-media-hover-shadow, 0 8px 24px rgba(0, 0, 0, 0.15));
 }
 
 /* Table styles */
@@ -1269,93 +1294,7 @@ html[data-theme='light'] .content :deep(img:hover) {
   font-weight: 600;
 }
 
-/* Inline code */
-.content :deep(.inline-code) {
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: var(--hg-syntax-plain-fg, var(--text-code-inline));
-  background: var(--ui-surface-code-inline-bg, var(--bg-code-inline));
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 0.9em;
-}
-
-/* Code block container */
-.content :deep(.code-block-container) {
-  margin: var(--content-spacing-px, 11px) 0;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid var(--ui-surface-code-block-border, var(--border-code, var(--border)));
-  background: var(--ui-surface-code-block-bg, var(--bg-code-block));
-}
-
-.content :deep(.code-block-header) {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 2px 10px;
-  background: var(--ui-surface-code-header-bg, var(--bg-code-header));
-  border-bottom: 1px solid var(--ui-surface-code-block-border, var(--border-code, var(--border)));
-}
-
-.content :deep(.code-block-lang) {
-  font-size: 11px;
-  line-height: 20px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
-  text-transform: lowercase;
-}
-
-.content :deep(.code-block-copy) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border-radius: 6px;
-  background: transparent;
-  border: none;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.content :deep(.code-block-copy:hover) {
-  background: var(--ui-state-hover-bg, var(--bg-hover));
-  color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
-.content :deep(.code-block-copy .check-icon) {
-  display: none;
-}
-
-.content :deep(.code-block-copy.copied .copy-icon) {
-  display: none;
-}
-
-.content :deep(.code-block-copy.copied .check-icon) {
-  display: block;
-  color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.content :deep(pre) {
-  margin: 0;
-  padding: 12px 14px;
-  overflow-x: auto;
-}
-
-.content :deep(code) {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 13px;
-  line-height: 20px;
-}
-
-/* highlight.js base - syntax colors are handled by global hljs-theme.css */
-.content :deep(.hljs) {
-  background: transparent;
-  color: var(--hg-syntax-plain-fg, var(--text-code-block));
-}
-
-/* Light theme code block - colors are now controlled by theme variables */
+/* Code visuals are shared in styles/markdown.css via .md-code-block-scope and .md-inline-code-scope. */
 
 /* MathJax / LaTeX styles */
 .content :deep(mjx-container) {

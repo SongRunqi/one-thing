@@ -13,15 +13,16 @@ import type {
   ThemeColors,
   ThemeDefs,
   ThemeHighlightGroup,
-  ThemeUIGroup,
-  UIStyle,
 } from '../../shared/ipc/themes.js'
 import type { ThemeSurfaceRoles } from './role-mapping.js'
 import {
+  colorMeetsContrast,
   colorToRgbString,
   deriveSurfaceRoles,
+  mixCssColors,
   readableAgainst,
   resolveColorOverBackground,
+  rgbaFromCssColor,
 } from './role-mapping.js'
 
 type ResolvedColorValue = string | { dark: string; light: string }
@@ -167,8 +168,6 @@ export const SEMANTIC_UI_TOKENS: SemanticUIToken[] = [
   'ui.editor.selection',
 ]
 
-const SEMANTIC_UI_TOKEN_SET = new Set<string>(SEMANTIC_UI_TOKENS)
-
 const VALID_HIGHLIGHT_FONT_STYLES = new Set<HighlightFontStyle>([
   'normal',
   'italic',
@@ -229,71 +228,6 @@ const DEFAULT_HIGHLIGHT_ALIASES: Record<string, SemanticHighlightToken> = {
   DiffDelete: 'syntax.deleted',
   Title: 'syntax.heading',
   Underlined: 'syntax.link',
-}
-
-const DEFAULT_UI_ALIASES: Record<string, SemanticUIToken> = {
-  Accent: 'ui.accent.primary',
-  AccentSubtle: 'ui.accent.subtle',
-  Background: 'ui.surface.app',
-  Sidebar: 'ui.surface.sidebar',
-  ChatSurface: 'ui.surface.chat',
-  Panel: 'ui.surface.panel',
-  Elevated: 'ui.surface.elevated',
-  Floating: 'ui.surface.floating',
-  Popover: 'ui.surface.floating',
-  Menu: 'ui.surface.menu',
-  Input: 'ui.surface.input',
-  CodeSurface: 'ui.surface.codeBlock',
-  Tooltip: 'ui.surface.tooltip',
-  Modal: 'ui.surface.modal',
-  NoteSurface: 'ui.surface.note',
-  PreviewLight: 'ui.surface.previewLight',
-  PreviewDark: 'ui.surface.previewDark',
-  Text: 'ui.text.primary',
-  TextPrimary: 'ui.text.primary',
-  TextSecondary: 'ui.text.secondary',
-  TextMuted: 'ui.text.muted',
-  TextFaint: 'ui.text.faint',
-  Link: 'ui.text.link',
-  Border: 'ui.border.default',
-  BorderSubtle: 'ui.border.subtle',
-  Focus: 'ui.state.focus',
-  Selected: 'ui.state.selected',
-  Hover: 'ui.state.hover',
-  SidebarSurface: 'ui.sidebar.surface',
-  SidebarItem: 'ui.sidebar.item',
-  SidebarItemHover: 'ui.sidebar.itemHover',
-  SidebarItemActive: 'ui.sidebar.itemActive',
-  SidebarItemMuted: 'ui.sidebar.itemMuted',
-  SidebarHeader: 'ui.sidebar.header',
-  SidebarAction: 'ui.sidebar.action',
-  SidebarActionHover: 'ui.sidebar.actionHover',
-  SidebarBorder: 'ui.sidebar.border',
-  TabBarSurface: 'ui.tabBar.surface',
-  TabBarDivider: 'ui.tabBar.divider',
-  TabBarItem: 'ui.tabBar.item',
-  TabBarItemHover: 'ui.tabBar.itemHover',
-  TabBarItemActive: 'ui.tabBar.itemActive',
-  TabBarAction: 'ui.tabBar.action',
-  TabBarActionHover: 'ui.tabBar.actionHover',
-  TabBarDanger: 'ui.tabBar.danger',
-  PrimaryButton: 'ui.action.primary',
-  SecondaryButton: 'ui.action.secondary',
-  GhostButton: 'ui.action.ghost',
-  DangerButton: 'ui.action.danger',
-  Danger: 'ui.status.danger',
-  Error: 'ui.status.danger',
-  Warning: 'ui.status.warning',
-  Success: 'ui.status.success',
-  Info: 'ui.status.info',
-  UserMessage: 'ui.message.user',
-  AssistantMessage: 'ui.message.assistant',
-  ToolCard: 'ui.tool.surface',
-  ToolSurface: 'ui.tool.surface',
-  ToolText: 'ui.tool.text',
-  ToolMuted: 'ui.tool.textMuted',
-  Editor: 'ui.editor.text',
-  EditorCaret: 'ui.editor.caret',
 }
 
 /**
@@ -451,15 +385,7 @@ function isSemanticHighlightToken(value: string): value is SemanticHighlightToke
   return SEMANTIC_HIGHLIGHT_TOKEN_SET.has(value)
 }
 
-function isSemanticUIToken(value: string): value is SemanticUIToken {
-  return SEMANTIC_UI_TOKEN_SET.has(value)
-}
-
 function isHighlightLink(value: ThemeHighlightGroup): value is { link: string } {
-  return typeof value === 'object' && value !== null && 'link' in value
-}
-
-function isUILink(value: ThemeUIGroup): value is { link: string } {
   return typeof value === 'object' && value !== null && 'link' in value
 }
 
@@ -521,45 +447,6 @@ function mergeHighlightStyle(
   }
 }
 
-function resolveUIColor(
-  value: ColorValue | undefined,
-  defs: ThemeDefs,
-  resolvedMap: Map<string, ResolvedColorValue>,
-  mode: 'dark' | 'light'
-): string | undefined {
-  if (value === undefined) return undefined
-  const resolvedValue = resolveColorValue(value, defs, resolvedMap, new Set())
-  return selectModeValue(resolvedValue, mode)
-}
-
-function resolveUIStyle(
-  style: UIStyle,
-  defs: ThemeDefs,
-  resolvedMap: Map<string, ResolvedColorValue>,
-  mode: 'dark' | 'light'
-): ResolvedUIStyle {
-  return {
-    fg: resolveUIColor(style.fg, defs, resolvedMap, mode),
-    bg: resolveUIColor(style.bg, defs, resolvedMap, mode),
-    border: resolveUIColor(style.border, defs, resolvedMap, mode),
-    ring: resolveUIColor(style.ring, defs, resolvedMap, mode),
-    shadow: resolveUIColor(style.shadow, defs, resolvedMap, mode),
-  }
-}
-
-function mergeUIStyle(
-  base: ResolvedUIStyle,
-  override: ResolvedUIStyle
-): ResolvedUIStyle {
-  return {
-    fg: override.fg ?? base.fg,
-    bg: override.bg ?? base.bg,
-    border: override.border ?? base.border,
-    ring: override.ring ?? base.ring,
-    shadow: override.shadow ?? base.shadow,
-  }
-}
-
 function getResolvedThemeValue(
   resolvedTheme: Record<string, string>,
   ...paths: string[]
@@ -571,10 +458,15 @@ function getResolvedThemeValue(
   return undefined
 }
 
+function deriveLightSurface(base: string, primaryText: string | undefined, strength: number): string {
+  return mixCssColors(primaryText, base, strength) || base
+}
+
 function fallbackUIStyle(
   resolvedTheme: Record<string, string>,
   token: SemanticUIToken,
-  surfaceRoles: ThemeSurfaceRoles
+  surfaceRoles: ThemeSurfaceRoles,
+  mode: 'dark' | 'light'
 ): ResolvedUIStyle {
   const get = (...paths: string[]) => getResolvedThemeValue(resolvedTheme, ...paths)
 
@@ -606,7 +498,11 @@ function fallbackUIStyle(
     case 'ui.surface.menu':
       return { bg: get('bg.menu') || surfaceRoles.floatingBg }
     case 'ui.surface.menuHover':
-      return { bg: get('bg.menuItemHover', 'bg.hover') }
+      return {
+        bg: mode === 'light'
+          ? rgbaFromCssColor(get('accentMain', 'accent'), 0.12)
+          : get('bg.menuItemHover', 'bg.hover'),
+      }
     case 'ui.surface.input':
       return {
         bg: get('bg.input') || surfaceRoles.panelBg,
@@ -620,18 +516,24 @@ function fallbackUIStyle(
       }
     case 'ui.surface.codeInline':
       return {
-        bg: get('bg.code.inline') || surfaceRoles.elevatedBg,
+        bg: get('bg.code.inline') || (surfaceRoles.elevatedBg),
         fg: get('text.code.inline', 'text.primary'),
         border: get('border.code', 'border.subtle'),
       }
     case 'ui.surface.codeBlock':
       return {
-        bg: get('bg.code.block') || surfaceRoles.panelBg,
+        bg: mode === 'light'
+          ? deriveLightSurface(surfaceRoles.chatBg, get('text.primary'), 0.035)
+          : (get('bg.code.block') || surfaceRoles.panelBg),
         fg: get('text.code.block', 'text.primary'),
         border: get('border.code', 'border.subtle'),
       }
     case 'ui.surface.codeHeader':
-      return { bg: get('bg.code.header') || surfaceRoles.elevatedBg }
+      return {
+        bg: mode === 'light'
+          ? deriveLightSurface(surfaceRoles.chatBg, get('text.primary'), 0.055)
+          : (get('bg.code.header') || surfaceRoles.elevatedBg),
+      }
     case 'ui.surface.tooltip':
       {
         const bg = get('bg.tooltip') || surfaceRoles.floatingBg
@@ -917,16 +819,16 @@ function fallbackUIStyle(
       }
     case 'ui.tabBar.itemActive':
       {
-        const bg = surfaceRoles.tabBarBg
-        const activeBg = get('bg.selected', 'accentSub')
-        const activeSurface = colorToRgbString(resolveColorOverBackground(activeBg, bg)) || activeBg || bg
+        const activeBg = get('bg.selected') || surfaceRoles.elevatedBg
         return {
           bg: activeBg,
-          fg: readableAgainst(activeSurface, [
+          fg: readableAgainst(colorToRgbString(resolveColorOverBackground(activeBg, surfaceRoles.tabBarBg)) || activeBg, [
             get('text.primary'),
             get('text.sidebar.itemActive'),
             get('text.secondary'),
             get('text.btn.secondary'),
+            '#F9FAFB',
+            '#111827',
           ], get('text.primary'), 4.5),
           border: 'transparent',
         }
@@ -1185,6 +1087,56 @@ function fallbackHighlightStyle(theme: Theme, token: SemanticHighlightToken): Hi
   }
 }
 
+function readableSyntaxColor(
+  color: string | undefined,
+  background: string,
+  primaryText: string | undefined,
+  minimumContrast: number
+): string | undefined {
+  if (!color || colorMeetsContrast(color, background, minimumContrast)) return color
+  if (!primaryText) return color
+
+  for (let weight = 0.14; weight <= 0.58; weight += 0.04) {
+    const mixed = mixCssColors(primaryText, color, weight)
+    if (mixed && colorMeetsContrast(mixed, background, minimumContrast)) return mixed
+  }
+
+  return color
+}
+
+function ensureLightHighlightContrast(
+  styles: Map<SemanticHighlightToken, ResolvedHighlightStyle>,
+  resolvedTheme: Record<string, string>,
+  codeBlockBg: string
+): void {
+  const primaryText = resolvedTheme['text.primary']
+  const minimumByToken: Partial<Record<SemanticHighlightToken, number>> = {
+    'syntax.plain': 4.5,
+    'syntax.comment': 3.5,
+    'syntax.keyword': 4,
+    'syntax.atom': 4,
+    'syntax.string': 3.5,
+    'syntax.number': 4,
+    'syntax.function': 4,
+    'syntax.definition': 4,
+    'syntax.variable': 4,
+    'syntax.property': 4,
+    'syntax.type': 4,
+    'syntax.tag': 4,
+    'syntax.operator': 3.5,
+    'syntax.punctuation': 3.5,
+  }
+
+  for (const [token, minimumContrast] of Object.entries(minimumByToken) as Array<[SemanticHighlightToken, number]>) {
+    const style = styles.get(token)
+    if (!style?.fg) continue
+    styles.set(token, {
+      ...style,
+      fg: readableSyntaxColor(style.fg, codeBlockBg, primaryText, minimumContrast),
+    })
+  }
+}
+
 /**
  * Resolve app-level highlight groups from a theme. Themes without `highlights`
  * are upgraded from `theme.text.code.*` so old JSON files continue to work.
@@ -1288,29 +1240,40 @@ export function resolveThemeHighlights(
     }
   }
 
+  if (mode === 'light') {
+    const surfaceRoles = deriveSurfaceRoles({
+      colorScheme: mode,
+      app: resolvedTheme['bg.app'],
+      sidebar: resolvedTheme['bg.sidebar'],
+      chat: resolvedTheme['bg.chat'],
+      panel: resolvedTheme['bg.panel'],
+      elevated: resolvedTheme['bg.elevated'],
+      floating: resolvedTheme['bg.floating'],
+      primaryText: resolvedTheme['text.primary'],
+    })
+    ensureLightHighlightContrast(
+      styles,
+      resolvedTheme,
+      deriveLightSurface(surfaceRoles.chatBg, resolvedTheme['text.primary'], 0.035)
+    )
+  }
+
   return Object.fromEntries(
     SEMANTIC_HIGHLIGHT_TOKENS.map(token => [token, styles.get(token) || {}])
   ) as Record<SemanticHighlightToken, ResolvedHighlightStyle>
 }
 
 /**
- * Resolve app UI semantic tokens from a theme. Themes without `ui` are
- * upgraded from the existing `theme.bg/text/border/color/*` structure.
+ * Resolve app UI semantic tokens from the shared role mapping. `theme.ui` is
+ * intentionally not applied here: product chrome should be derived from the
+ * same role contract for every theme instead of per-theme semantic overrides.
  */
 export function resolveThemeUI(
   theme: Theme,
   mode: 'dark' | 'light',
   resolvedTheme: Record<string, string> = resolveTheme(theme, mode)
 ): Record<SemanticUIToken, ResolvedUIStyle> {
-  const defs = theme.defs || {}
-  const resolvedMap = buildResolvedMap(resolvedTheme)
   const styles = new Map<SemanticUIToken, ResolvedUIStyle>()
-  const ui = theme.ui
-  const groups = ui?.groups || {}
-  const aliases = {
-    ...DEFAULT_UI_ALIASES,
-    ...(ui?.aliases || {}),
-  }
   const surfaceRoles = deriveSurfaceRoles({
     colorScheme: mode,
     app: resolvedTheme['bg.app'],
@@ -1323,87 +1286,7 @@ export function resolveThemeUI(
   })
 
   for (const token of SEMANTIC_UI_TOKENS) {
-    styles.set(token, fallbackUIStyle(resolvedTheme, token, surfaceRoles))
-  }
-
-  for (const [token, style] of Object.entries(ui?.semanticTokens || {})) {
-    if (!isSemanticUIToken(token)) {
-      console.warn(`[ThemeResolver] Unknown semantic UI token: ${token}`)
-      continue
-    }
-    styles.set(token, mergeUIStyle(
-      styles.get(token) || {},
-      resolveUIStyle(style, defs, resolvedMap, mode)
-    ))
-  }
-
-  const resolveSemanticTarget = (
-    name: string,
-    visited: Set<string> = new Set()
-  ): SemanticUIToken | null => {
-    if (isSemanticUIToken(name)) return name
-    if (visited.has(name)) {
-      console.warn(`[ThemeResolver] Circular UI alias detected: ${name}`)
-      return null
-    }
-    visited.add(name)
-
-    const aliasTarget = aliases[name]
-    if (aliasTarget) {
-      return resolveSemanticTarget(aliasTarget, visited)
-    }
-
-    const group = groups[name]
-    if (group && isUILink(group)) {
-      return resolveSemanticTarget(group.link, visited)
-    }
-
-    return null
-  }
-
-  const resolveGroupDefinition = (
-    name: string,
-    visited: Set<string> = new Set()
-  ): ResolvedUIStyle | null => {
-    if (visited.has(name)) {
-      console.warn(`[ThemeResolver] Circular UI group link detected: ${name}`)
-      return null
-    }
-    visited.add(name)
-
-    const group = groups[name]
-    if (!group) {
-      if (isSemanticUIToken(name)) return styles.get(name) || null
-      const aliasTarget = aliases[name]
-      return aliasTarget ? resolveGroupDefinition(aliasTarget, visited) : null
-    }
-
-    if (isUILink(group)) {
-      return resolveGroupDefinition(group.link, visited)
-    }
-
-    return resolveUIStyle(group, defs, resolvedMap, mode)
-  }
-
-  for (const token of SEMANTIC_UI_TOKENS) {
-    if (!groups[token]) continue
-    const groupStyle = resolveGroupDefinition(token)
-    if (groupStyle) {
-      styles.set(token, mergeUIStyle(styles.get(token) || {}, groupStyle))
-    }
-  }
-
-  for (const [groupName, targetName] of Object.entries(aliases)) {
-    if (!groups[groupName]) continue
-    const token = resolveSemanticTarget(targetName)
-    if (!token) {
-      console.warn(`[ThemeResolver] Unknown UI alias target: ${groupName} -> ${targetName}`)
-      continue
-    }
-    const groupStyle = resolveGroupDefinition(groupName)
-    if (groupStyle) {
-      styles.set(token, mergeUIStyle(styles.get(token) || {}, groupStyle))
-    }
+    styles.set(token, fallbackUIStyle(resolvedTheme, token, surfaceRoles, mode))
   }
 
   return Object.fromEntries(
@@ -1423,6 +1306,9 @@ export function extractPreviewColors(theme: Theme): {
   palette: string[]
 } {
   const defs = theme.defs || {}
+  const mode = theme.colorScheme === 'light' ? 'light' : 'dark'
+  const resolvedTheme = resolveTheme(theme, mode)
+  const resolvedUI = resolveThemeUI(theme, mode, resolvedTheme)
 
   function resolveOptional(value: ColorValue | undefined): string | undefined {
     if (!value) return undefined
@@ -1510,10 +1396,10 @@ export function extractPreviewColors(theme: Theme): {
   }
 
   return {
-    bg: resolveSimple(theme.theme.bg?.app),
-    sidebar: resolveSimple(theme.theme.bg?.sidebar),
-    accent: resolveSimple(theme.theme.accent),
-    text: resolveSimple(theme.theme.text?.primary),
+    bg: resolvedUI['ui.surface.chat'].bg || resolveSimple(theme.theme.bg?.chat),
+    sidebar: resolvedUI['ui.sidebar.surface'].bg || resolveSimple(theme.theme.bg?.sidebar),
+    accent: resolvedUI['ui.accent.primary'].fg || resolveSimple(theme.theme.accent),
+    text: resolvedUI['ui.text.primary'].fg || resolveSimple(theme.theme.text?.primary),
     palette: palette.slice(0, 10),
   }
 }

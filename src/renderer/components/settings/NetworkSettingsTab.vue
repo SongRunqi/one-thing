@@ -18,34 +18,30 @@
           </label>
         </SettingRow>
 
-        <SettingRow layout="stack">
-          <SettingsField
-            label="Proxy URL"
-            hint="Supports http, https, and socks5 proxies. Authentication can be included in the URL."
+        <SettingRow
+          label="Proxy URL"
+          description="Supports http, https, and socks5 proxies. Authentication can be included in the URL."
+        >
+          <input
+            class="form-input"
+            :value="proxy.url"
+            placeholder="http://127.0.0.1:7890 or socks5://127.0.0.1:7890"
+            spellcheck="false"
+            @input="updateProxy({ url: ($event.target as HTMLInputElement).value })"
           >
-            <input
-              class="form-input"
-              :value="proxy.url"
-              placeholder="http://127.0.0.1:7890 or socks5://127.0.0.1:7890"
-              spellcheck="false"
-              @input="updateProxy({ url: ($event.target as HTMLInputElement).value })"
-            >
-          </SettingsField>
         </SettingRow>
 
-        <SettingRow layout="stack">
-          <SettingsField
-            label="Bypass Rules"
-            hint="Separate hosts with semicolons or commas. Add a host here, such as api.deepseek.com, when that service should use direct connection."
+        <SettingRow
+          label="Bypass Rules"
+          description="Separate hosts with semicolons or commas. Add a host here when that service should use direct connection."
+        >
+          <input
+            class="form-input"
+            :value="proxy.bypassRules || ''"
+            placeholder="localhost;127.0.0.1;::1;*.local"
+            spellcheck="false"
+            @input="updateProxy({ bypassRules: ($event.target as HTMLInputElement).value })"
           >
-            <input
-              class="form-input"
-              :value="proxy.bypassRules || ''"
-              placeholder="localhost;127.0.0.1;::1;*.local"
-              spellcheck="false"
-              @input="updateProxy({ bypassRules: ($event.target as HTMLInputElement).value })"
-            >
-          </SettingsField>
         </SettingRow>
 
         <SettingRow>
@@ -74,7 +70,6 @@ import { computed, ref, toRaw } from 'vue'
 import type { AppSettings, ProxySettings } from '@/types'
 import {
   SettingRow,
-  SettingsField,
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'

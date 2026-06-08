@@ -6,6 +6,7 @@
     :loading="loading"
     :error="error"
     :empty-text="emptyText"
+    :empty-hint="emptyHint"
     loading-text="Searching files..."
   >
     <template #icon>
@@ -76,6 +77,12 @@ const listRef = ref<HTMLElement | null>(null)
 const emptyText = computed(() => {
   const query = props.query.trim()
   return query ? `No files found for "${query}"` : 'No files found'
+})
+
+const emptyHint = computed(() => {
+  return props.query.trim()
+    ? 'Try another name or path'
+    : 'Type after @ to search files'
 })
 
 function selectFile(item: ComposerExtensionItem) {

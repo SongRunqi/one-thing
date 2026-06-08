@@ -1,7 +1,5 @@
 import type { EditorSelection } from '@/editor/types'
 
-export type TodoPlanSurface = 'standalone-window' | 'chat-floating-card' | 'chat-docked-card'
-
 export interface ParsedTask {
   lineIndex: number
   done: boolean

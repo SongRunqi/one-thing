@@ -359,7 +359,7 @@ onUnmounted(() => {
   align-items: flex-start;
   animation: fadeIn 0.18s ease-out;
   width: 100%;
-  margin-bottom: 4px;
+  margin-bottom: 12px;
 }
 
 .message.user {
@@ -417,7 +417,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 6px;
+  margin-top: 5px;
   padding: 0 4px;
   min-height: 28px;
   /* Keep the footer (timestamp + actions) quiet until the message is
@@ -444,13 +444,13 @@ onUnmounted(() => {
 
 /* AI messages: adjust footer for clean layout */
 .message.assistant .message-footer {
-  margin-top: 12px;
+  margin-top: 9px;
   padding-left: 0;
   flex-direction: row-reverse;
 }
 
 .meta {
-  font-size: 12px;
+  font-size: 11.5px;
   line-height: 28px;
   color: var(--ui-text-muted-fg, var(--muted));
   user-select: none;

@@ -232,6 +232,11 @@ function surfaceDistance(first: string | undefined, second: string | undefined):
   return colorDistance(firstColor, secondColor)
 }
 
+function surfaceLuminance(value: string | undefined): number | null {
+  const color = parseCssColor(value)
+  return color ? relativeLuminance(color) : null
+}
+
 function isDistinctSurface(
   candidate: string | undefined,
   base: string,
@@ -296,51 +301,156 @@ function ensureDistinctSurfaceFromMany(
   return isDistinctFromSurfaces(mixed, bases, minDistance) ? mixed : current
 }
 
+function ensureSubtleSurfaceFromMany(
+  current: string,
+  bases: string[],
+  primaryText: string,
+  strength: number,
+  minDistance = 4
+): string {
+  if (isDistinctFromSurfaces(current, bases, minDistance)) return current
+
+  const mixed = deriveRaisedSurface(current, primaryText, strength)
+  return isDistinctFromSurfaces(mixed, bases, minDistance) ? mixed : current
+}
+
+function isLightSurfaceBelow(
+  candidate: string | undefined,
+  base: string,
+  minDistance: number,
+  minLuminanceDelta = 0.006
+): candidate is string {
+  if (!isDistinctSurface(candidate, base, minDistance)) return false
+  const candidateLuminance = surfaceLuminance(candidate)
+  const baseLuminance = surfaceLuminance(base)
+  if (candidateLuminance === null || baseLuminance === null) return true
+  return candidateLuminance < baseLuminance - minLuminanceDelta
+}
+
+function isLightSurfaceAbove(
+  candidate: string | undefined,
+  base: string,
+  minDistance: number,
+  minLuminanceDelta = 0.006
+): candidate is string {
+  if (!isDistinctSurface(candidate, base, minDistance)) return false
+  const candidateLuminance = surfaceLuminance(candidate)
+  const baseLuminance = surfaceLuminance(base)
+  if (candidateLuminance === null || baseLuminance === null) return true
+  return candidateLuminance > baseLuminance + minLuminanceDelta
+}
+
+function ensureLightSidebarBelowChat(
+  sidebar: string,
+  chat: string,
+  primaryText: string,
+  minDistance = 4
+): string {
+  if (isLightSurfaceBelow(sidebar, chat, minDistance)) return sidebar
+
+  const derived = deriveRaisedSurface(chat, primaryText, 0.035)
+  return isLightSurfaceBelow(derived, chat, minDistance) ? derived : sidebar
+}
+
+function ensureLightChatAboveSidebar(
+  chat: string,
+  sidebar: string,
+  minDistance = 4
+): string {
+  if (isLightSurfaceAbove(chat, sidebar, minDistance)) return chat
+
+  const lifted = mixCssColors('#FFFFFF', chat, 0.04) || chat
+  return isLightSurfaceAbove(lifted, sidebar, minDistance) ? lifted : chat
+}
+
 export function deriveSurfaceRoles(input: ThemeSurfaceRoleInput): ThemeSurfaceRoles {
   const defaultBg = input.colorScheme === 'dark' ? '#101010' : '#FFFFFF'
   const defaultText = input.colorScheme === 'dark' ? '#F9FAFB' : '#111827'
   const primaryText = firstDefinedColor(input.primaryText, defaultText) || defaultText
 
   const appBg = firstDefinedColor(input.app, input.chat, defaultBg) || defaultBg
-  const sidebarBg = appBg
+  let sidebarBg = input.colorScheme === 'dark'
+    ? appBg
+    : ensureDistinctSurface(
+      firstDefinedColor(input.sidebar, input.panel, input.elevated, appBg) || appBg,
+      firstDefinedColor(input.chat, input.app, appBg) || appBg,
+      [input.sidebar, input.panel, input.elevated, input.floating],
+      primaryText,
+      0.045,
+      4
+    )
 
-  let chatBg = firstDefinedColor(input.panel, input.sidebar, input.elevated, input.chat, appBg) || appBg
+  let chatBg = input.colorScheme === 'dark'
+    ? firstDefinedColor(input.panel, input.sidebar, input.elevated, input.chat, appBg) || appBg
+    : firstDefinedColor(input.chat, input.app, input.panel, input.sidebar, appBg) || appBg
+
+  if (input.colorScheme === 'light') {
+    sidebarBg = ensureLightSidebarBelowChat(sidebarBg, chatBg, primaryText)
+    chatBg = ensureLightChatAboveSidebar(chatBg, sidebarBg)
+  }
+
   chatBg = ensureDistinctSurface(
     chatBg,
-    appBg,
-    [input.panel, input.sidebar, input.elevated, input.floating],
+    sidebarBg,
+    input.colorScheme === 'dark'
+      ? [input.panel, input.sidebar, input.elevated, input.floating]
+      : [input.chat, input.app, input.panel, input.elevated],
     primaryText,
     input.colorScheme === 'dark' ? 0.08 : 0.055
   )
 
   let panelBg = firstDefinedColor(input.panel, chatBg, input.elevated, sidebarBg, appBg) || chatBg
-  panelBg = ensureDistinctSurface(
-    panelBg,
-    appBg,
-    [input.panel, chatBg, input.elevated, input.floating],
-    primaryText,
-    input.colorScheme === 'dark' ? 0.08 : 0.055
-  )
+  panelBg = input.colorScheme === 'dark'
+    ? ensureDistinctSurface(
+      panelBg,
+      appBg,
+      [input.panel, chatBg, input.elevated, input.floating],
+      primaryText,
+      0.08
+    )
+    : ensureSubtleSurfaceFromMany(
+      panelBg,
+      [chatBg],
+      primaryText,
+      0.018,
+      4
+    )
 
   let elevatedBg = firstDefinedColor(input.elevated, input.floating, panelBg) || panelBg
-  elevatedBg = ensureDistinctSurface(
-    elevatedBg,
-    panelBg,
-    [input.elevated, input.floating],
-    primaryText,
-    input.colorScheme === 'dark' ? 0.075 : 0.05,
-    6
-  )
+  elevatedBg = input.colorScheme === 'dark'
+    ? ensureDistinctSurface(
+      elevatedBg,
+      panelBg,
+      [input.elevated, input.floating],
+      primaryText,
+      0.075,
+      6
+    )
+    : ensureSubtleSurfaceFromMany(
+      firstDefinedColor(panelBg, input.elevated, input.floating) || panelBg,
+      [chatBg, panelBg],
+      primaryText,
+      0.032,
+      4
+    )
 
   let floatingBg = firstDefinedColor(input.floating, elevatedBg, panelBg) || elevatedBg
-  floatingBg = ensureDistinctSurface(
-    floatingBg,
-    elevatedBg,
-    [input.floating],
-    primaryText,
-    input.colorScheme === 'dark' ? 0.1 : 0.07,
-    6
-  )
+  floatingBg = input.colorScheme === 'dark'
+    ? ensureDistinctSurface(
+      floatingBg,
+      elevatedBg,
+      [input.floating],
+      primaryText,
+      0.1,
+      6
+    )
+    : ensureSubtleSurfaceFromMany(
+      elevatedBg,
+      [chatBg, panelBg, elevatedBg],
+      primaryText,
+      0.048,
+      4
+    )
 
   const tabBarBg = chatBg
 

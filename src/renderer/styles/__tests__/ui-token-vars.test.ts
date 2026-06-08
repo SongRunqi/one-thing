@@ -6,9 +6,11 @@ import { describe, expect, it } from 'vitest'
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const rendererDir = path.resolve(dirname, '..', '..')
 const componentStyleRoots = ['components', 'editor']
+const componentStyleFiles = ['styles/components.css']
 const styleFileExtensions = new Set(['.vue', '.ts', '.css'])
 const legacyColorVars = new Set([
   '--accent',
+  '--accent-hover',
   '--accent-main',
   '--accent-sub',
   '--accent-light',
@@ -31,6 +33,7 @@ const legacyColorVars = new Set([
   '--bg-tertiary',
   '--bg-muted',
   '--bg-hover',
+  '--bg-sunken',
   '--bg-active',
   '--bg-selected',
   '--bg-selected-hover',
@@ -68,6 +71,16 @@ const legacyColorVars = new Set([
   '--hover-bg',
   '--text-code-inline',
   '--text-code-block',
+  '--text-code-comment',
+  '--text-code-keyword',
+  '--text-code-string',
+  '--text-code-number',
+  '--text-code-function',
+  '--text-code-variable',
+  '--text-code-operator',
+  '--text-code-type',
+  '--text-code-property',
+  '--text-code-punctuation',
   '--syntax-string',
 ])
 
@@ -137,7 +150,10 @@ function isInsideSemanticVar(text: string, offset: number): boolean {
 
 function collectDirectLegacyColorUsage(): string[] {
   const reports: string[] = []
-  const files = componentStyleRoots.flatMap((root) => listStyleFiles(path.join(rendererDir, root)))
+  const files = [
+    ...componentStyleRoots.flatMap((root) => listStyleFiles(path.join(rendererDir, root))),
+    ...componentStyleFiles.map((file) => path.join(rendererDir, file)),
+  ]
 
   for (const file of files) {
     const text = fs.readFileSync(file, 'utf8')
@@ -178,9 +194,16 @@ describe('renderer UI semantic variables', () => {
     expect(variables).toContain('--ui-surface-note-bg')
     expect(variables).toContain('--ui-surface-tooltip-border')
     expect(variables).toContain('--ui-surface-tooltip-shadow')
+    expect(variables).toContain('--ui-surface-chat-panel-shadow')
+    expect(variables).toContain('--ui-surface-composer-shadow')
+    expect(variables).toContain('--ui-surface-code-inline-fg')
+    expect(variables).toContain('--ui-surface-code-block-shadow')
     expect(variables).toContain('--ui-surface-preview-light-bg')
     expect(variables).toContain('--ui-sidebar-item-active-bg')
     expect(variables).toContain('--ui-tab-bar-item-active-bg')
+    expect(variables).toContain('--ui-message-user-shadow')
+    expect(variables).toContain('--ui-content-media-shadow')
+    expect(variables).toContain('--ui-action-primary-shadow')
     expect(variables).toContain('--ui-tool-surface-bg')
     expect(variables).toContain('--ui-editor-caret-fg')
     expect(variables).toContain('--tool-surface: var(--ui-tool-surface-bg')
@@ -197,29 +220,77 @@ describe('renderer UI semantic variables', () => {
     const chatContainer = readRendererFile('components/ChatContainer.vue')
     const sidebar = readRendererFile('components/sidebar/Sidebar.vue')
     const sessionItem = readRendererFile('components/sidebar/SessionItem.vue')
+    const sessionContextMenu = readRendererFile('components/sidebar/SessionContextMenu.vue')
+    const todoPlanWindow = readRendererFile('components/TodoPlanWindow.vue')
+    const todoPlanPanel = readRendererFile('components/chat/TodoPlanPanel.vue')
+    const todoNotesActionPanel = readRendererFile('components/chat/TodoNotesActionPanel.vue')
+    const todoPopover = readRendererFile('components/chat/todo-popover.css')
     const tabBar = readRendererFile('components/chat/TabBar.vue')
     const tabItem = readRendererFile('components/chat/TabItem.vue')
     const tooltip = readRendererFile('components/common/Tooltip.vue')
     const editorExtensions = readRendererFile('editor/extensions.ts')
+    const markdownStyles = readRendererFile('styles/markdown.css')
 
     expect(stepsPanel).toContain('var(--ui-tool-surface-bg')
     expect(stepsPanel).toContain('var(--ui-tool-danger-text-fg')
     expect(toolDiffPreview).toContain('var(--ui-tool-surface-subtle-bg')
     expect(messageBubble).toContain('var(--ui-message-user-bg')
+    expect(messageBubble).toContain('var(--ui-message-user-shadow')
+    expect(messageBubble).toContain('md-inline-code-scope')
     expect(inputBox).toContain('var(--ui-action-primary-bg')
+    expect(inputBox).toContain('--ui-surface-composer-shadow')
     expect(inputBox).toContain('var(--ui-status-success-fg')
     expect(chatWindow).toContain('var(--ui-surface-chat-bg')
+    expect(chatWindow).toContain('--ui-surface-chat-panel-shadow')
     expect(chatContainer).toContain('var(--ui-surface-chat-bg')
     expect(sidebar).toContain('--ui-sidebar-surface-bg')
     expect(sessionItem).toContain('var(--ui-sidebar-item-active-bg')
+    expect(sessionContextMenu).toContain('var(--ui-surface-menu-bg')
+    expect(sessionContextMenu).toContain('var(--ui-surface-menu-hover-bg')
+    expect(sessionContextMenu).toContain('var(--ui-surface-tooltip-shadow')
+    expect(sessionContextMenu).toContain('var(--ui-status-danger-fg')
+    expect(todoPlanWindow).toContain('var(--ui-surface-elevated-bg')
+    expect(todoPlanPanel).toContain('var(--ui-surface-elevated-bg')
+    expect(todoPlanPanel).toContain('var(--ui-border-default-border')
+    expect(todoPlanPanel).toContain('var(--ui-status-danger-fg')
+    expect(todoPlanPanel).toContain('--todo-popover-content-height')
+    expect(todoPlanPanel).toContain('--todo-popover-height')
+    expect(todoPlanPanel).not.toContain('--todo-popover-max-height')
+    expect(todoPlanPanel).not.toContain('--todo-switcher-popover-max-height')
+    expect(todoPlanPanel).not.toContain('--todo-action-popover-max-height')
+    expect(todoPopover).toContain('var(--todo-popover-search-height')
+    expect(todoPopover).toContain('var(--todo-popover-height')
+    expect(todoNotesActionPanel).toContain('var(--todo-action-row-min-height')
     expect(tabBar).toContain('var(--ui-tab-bar-surface-bg')
     expect(tabItem).toContain('var(--ui-tab-bar-item-active-border')
     expect(tooltip).toContain('var(--ui-surface-tooltip-bg')
     expect(tooltip).toContain('var(--ui-surface-tooltip-fg')
     expect(editorExtensions).toContain('var(--ui-editor-caret-fg')
+    expect(markdownStyles).toContain('--md-inline-code-bg')
+    expect(markdownStyles).toContain('var(--ui-content-media-shadow')
   })
 
   it('keeps component colors routed through UI, highlight, or diff semantic variables', () => {
     expect(collectDirectLegacyColorUsage()).toEqual([])
+  })
+
+  it('keeps the todo window startup surface on semantic color fallbacks', () => {
+    const html = fs.readFileSync(path.resolve(rendererDir, '..', '..', 'index.html'), 'utf8')
+    const todoPlanWindow = readRendererFile('components/TodoPlanWindow.vue')
+    const todoPlanPanel = readRendererFile('components/chat/TodoPlanPanel.vue')
+    const todoNotesActionPanel = readRendererFile('components/chat/TodoNotesActionPanel.vue')
+    const todoPopover = readRendererFile('components/chat/todo-popover.css')
+
+    expect(html).not.toContain('#282726')
+    expect(html).toContain('var(--ui-surface-app-bg')
+    expect(todoPlanWindow).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/)
+    expect(todoPlanPanel).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/)
+    expect(todoNotesActionPanel).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/)
+    expect(todoPopover).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/)
+    expect(todoPlanPanel).toContain('padding: 0 0 0 18px')
+    expect(todoPlanPanel).not.toContain('flush')
+    expect(todoPlanPanel).toContain('overflow: hidden;')
+    expect(todoPlanPanel).toContain('popover-open')
+    expect(todoPlanPanel).not.toContain('surface-chat-floating-card.action-panel-open')
   })
 })

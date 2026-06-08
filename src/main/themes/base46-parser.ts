@@ -11,7 +11,6 @@ import type {
   Theme,
   ThemeDefs,
   ThemeHighlights,
-  ThemeUITokens,
 } from '../../shared/ipc/themes.js'
 import type { ThemeColorScheme } from './role-mapping.js'
 import {
@@ -338,48 +337,6 @@ function deriveBase46AppRoles(
   }
 }
 
-function buildBase46UI(roles: Base46AppRoles): ThemeUITokens {
-  return {
-    semanticTokens: {
-      'ui.accent.primary': { fg: roles.accent },
-      'ui.accent.subtle': { fg: roles.accentSub },
-      'ui.surface.app': { bg: roles.appBg },
-      'ui.surface.sidebar': { bg: roles.sidebarBg },
-      'ui.surface.chat': { bg: roles.chatBg },
-      'ui.surface.panel': { bg: roles.panelBg },
-      'ui.surface.elevated': { bg: roles.elevatedBg },
-      'ui.surface.floating': { bg: roles.floatingBg },
-      'ui.surface.input': { bg: roles.panelBg, border: roles.borderDefault },
-      'ui.surface.inputFocus': { bg: roles.elevatedBg, border: roles.accent, ring: roles.accent },
-      'ui.text.primary': { fg: roles.primaryText },
-      'ui.text.secondary': { fg: roles.secondaryText },
-      'ui.text.muted': { fg: roles.mutedText },
-      'ui.text.faint': { fg: roles.faintText },
-      'ui.text.placeholder': { fg: roles.placeholderText },
-      'ui.border.default': { border: roles.borderDefault },
-      'ui.border.subtle': { border: roles.borderSubtle },
-      'ui.border.strong': { border: roles.borderStrong },
-      'ui.state.hover': { bg: roles.hoverBg },
-      'ui.state.active': { bg: roles.activeBg },
-      'ui.state.selected': { bg: roles.selectedBg, fg: roles.primaryText, border: roles.accent },
-      'ui.state.selectedHover': { bg: roles.selectedHoverBg, fg: roles.primaryText, border: roles.accent },
-      'ui.sidebar.surface': {
-        bg: roles.sidebarBg,
-        fg: roles.sidebarItemText,
-        border: roles.borderSubtle,
-      },
-      'ui.sidebar.item': { fg: roles.sidebarItemText },
-      'ui.sidebar.itemMuted': { fg: roles.sidebarMutedText },
-      'ui.sidebar.header': { fg: roles.sidebarTitleText },
-      'ui.sidebar.action': { fg: roles.sidebarItemText, bg: 'transparent' },
-      'ui.tabBar.surface': { bg: roles.tabBarBg, border: roles.borderSubtle },
-      'ui.tabBar.item': { fg: roles.mutedText },
-      'ui.tabBar.itemActive': { bg: roles.selectedBg, fg: roles.primaryText, border: 'transparent' },
-      'ui.editor.placeholder': { fg: roles.placeholderText },
-    },
-  }
-}
-
 /**
  * Convert Base46 theme to our JSON theme format
  */
@@ -606,7 +563,6 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
     },
 
     highlights: buildBase46Highlights(b30, b16),
-    ui: buildBase46UI(roles),
   }
 
   return theme

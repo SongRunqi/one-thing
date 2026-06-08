@@ -170,7 +170,9 @@ export function placeholderExtensions(text?: string): Extension {
   return text ? placeholderExtension(text) : []
 }
 
-function cmHighlight(token: string, fallback: string) {
+const plainHighlightFallback = 'var(--hg-syntax-plain-fg, var(--ui-text-primary-fg, currentColor))'
+
+function cmHighlight(token: string, fallback = plainHighlightFallback) {
   return {
     color: `var(--hg-${token}-fg, ${fallback})`,
     backgroundColor: `var(--hg-${token}-bg, transparent)`,
@@ -183,51 +185,51 @@ function cmHighlight(token: string, fallback: string) {
 const appHighlightStyle = HighlightStyle.define([
   {
     tag: [tags.keyword, tags.modifier, tags.operatorKeyword],
-    ...cmHighlight('syntax-keyword', 'var(--text-code-keyword)'),
+    ...cmHighlight('syntax-keyword'),
   },
   {
     tag: [tags.atom, tags.bool, tags.null],
-    ...cmHighlight('syntax-atom', 'var(--text-code-keyword)'),
+    ...cmHighlight('syntax-atom'),
   },
   {
     tag: [tags.number, tags.integer, tags.float],
-    ...cmHighlight('syntax-number', 'var(--text-code-number)'),
+    ...cmHighlight('syntax-number'),
   },
   {
     tag: [tags.string, tags.special(tags.string), tags.regexp],
-    ...cmHighlight('syntax-string', 'var(--text-code-string)'),
+    ...cmHighlight('syntax-string'),
   },
   {
     tag: [tags.comment, tags.lineComment, tags.blockComment],
-    ...cmHighlight('syntax-comment', 'var(--text-code-comment)'),
+    ...cmHighlight('syntax-comment'),
   },
   {
     tag: [tags.definition(tags.variableName)],
-    ...cmHighlight('syntax-definition', 'var(--text-code-function)'),
+    ...cmHighlight('syntax-definition'),
   },
   {
     tag: [tags.function(tags.variableName), tags.function(tags.propertyName)],
-    ...cmHighlight('syntax-function', 'var(--text-code-function)'),
+    ...cmHighlight('syntax-function'),
   },
   {
     tag: tags.variableName,
-    ...cmHighlight('syntax-variable', 'var(--text-code-variable, var(--text-code-block))'),
+    ...cmHighlight('syntax-variable'),
   },
   {
     tag: tags.propertyName,
-    ...cmHighlight('syntax-property', 'var(--text-code-property, var(--text-code-variable))'),
+    ...cmHighlight('syntax-property'),
   },
   {
     tag: [tags.typeName, tags.className, tags.namespace],
-    ...cmHighlight('syntax-type', 'var(--text-code-type, var(--text-code-variable))'),
+    ...cmHighlight('syntax-type'),
   },
   {
     tag: [tags.tagName, tags.attributeName],
-    ...cmHighlight('syntax-tag', 'var(--text-code-type, var(--text-code-keyword))'),
+    ...cmHighlight('syntax-tag'),
   },
   {
     tag: [tags.punctuation, tags.bracket, tags.separator],
-    ...cmHighlight('syntax-punctuation', 'var(--text-code-punctuation, var(--text-code-operator))'),
+    ...cmHighlight('syntax-punctuation'),
   },
   {
     tag: [tags.invalid, tags.deleted],
@@ -239,7 +241,7 @@ const appHighlightStyle = HighlightStyle.define([
   },
   {
     tag: tags.heading,
-    ...cmHighlight('syntax-heading', 'var(--text-code-function)'),
+    ...cmHighlight('syntax-heading'),
   },
   {
     tag: tags.link,
@@ -247,11 +249,11 @@ const appHighlightStyle = HighlightStyle.define([
   },
   {
     tag: tags.emphasis,
-    ...cmHighlight('syntax-emphasis', 'var(--hg-syntax-plain-fg, var(--text-code-block))'),
+    ...cmHighlight('syntax-emphasis'),
   },
   {
     tag: tags.strong,
-    ...cmHighlight('syntax-strong', 'var(--hg-syntax-plain-fg, var(--text-code-block))'),
+    ...cmHighlight('syntax-strong'),
   },
 ])
 

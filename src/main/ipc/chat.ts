@@ -536,11 +536,18 @@ async function handleSendMessage(sessionId: string, messageContent: string) {
 async function handleGenerateTitle(userMessage: string) {
   try {
     const settings = store.getSettings()
-    const providerId = settings.ai.provider
-    const providerConfig = getProviderConfig(settings)
+    const configuredProviderId = settings.tools?.toolCallModel?.providerId?.trim()
+    const configuredModel = settings.tools?.toolCallModel?.model?.trim()
+    const providerId = configuredProviderId && settings.ai.providers[configuredProviderId]
+      ? configuredProviderId
+      : settings.ai.provider
+    const providerConfig = settings.ai.providers[providerId] || getProviderConfig(settings)
+    const model = providerId === configuredProviderId && configuredModel
+      ? configuredModel
+      : providerConfig?.model || providerConfig?.selectedModels?.[0] || ''
 
     const authContext = await resolveProviderAuth(providerId, providerConfig)
-    if (!authContext || !isProviderSupported(providerId)) {
+    if (!model || !authContext || !isProviderSupported(providerId)) {
       // Fallback to simple truncation
       return {
         success: true,
@@ -556,10 +563,14 @@ async function handleGenerateTitle(userMessage: string) {
         authContext,
         oauthToken: authContext.kind === 'oauth' ? authContext.token : providerConfig?.oauthToken,
         baseUrl: providerConfig?.baseUrl,
-        model: providerConfig?.model || '',
+        model,
         apiType,
       },
-      userMessage
+      userMessage,
+      {
+        thinking: settings.tools?.toolCallModel?.thinking === true,
+        thinkingEffort: settings.tools?.toolCallModel?.thinkingEffort,
+      }
     )
 
     return { success: true, title }

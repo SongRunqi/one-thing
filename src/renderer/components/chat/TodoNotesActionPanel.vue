@@ -3,10 +3,10 @@
     <div
       v-if="visible"
       ref="panelRef"
-      :class="['todo-notes-action-panel', `surface-${surface}`]"
+      class="todo-notes-action-panel todo-popover todo-popover-actions"
     >
-      <label class="action-search">
-        <Search :size="14" />
+      <label class="action-search todo-popover-search">
+        <Search :size="15" />
         <input
           ref="inputRef"
           :value="query"
@@ -19,7 +19,7 @@
 
       <div
         ref="listRef"
-        class="action-list"
+        class="action-list todo-popover-list"
       >
         <template
           v-for="(group, groupIndex) in groupedActions"
@@ -42,7 +42,7 @@
                 <component
                   :is="item.action.icon"
                   v-if="item.action.icon"
-                  :size="isStandalone ? 16 : 17"
+                  :size="16"
                 />
               </span>
               <span class="action-copy">
@@ -87,7 +87,6 @@ const props = defineProps<{
   visible: boolean
   query: string
   actions: TodoNotesAction[]
-  surface?: string
 }>()
 
 const emit = defineEmits<{
@@ -100,8 +99,6 @@ const selectedIndex = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
 const panelRef = ref<HTMLElement | null>(null)
 const listRef = ref<HTMLElement | null>(null)
-const surface = computed(() => props.surface || 'chat-floating-card')
-const isStandalone = computed(() => surface.value === 'standalone-window')
 
 const filteredActions = computed(() => {
   const query = props.query.trim().toLowerCase()
@@ -229,70 +226,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.todo-notes-action-panel {
-  position: absolute;
-  top: var(--todo-popover-top, 44px);
-  left: 50%;
-  z-index: 6;
-  width: var(--todo-popover-width, min(430px, calc(100% - 18px)));
-  max-height: var(--todo-action-popover-max-height, min(286px, calc(100vh - 94px)));
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--todo-rule);
-  border-radius: var(--todo-popover-radius, 12px);
-  background: color-mix(in srgb, var(--todo-card-bg) 94%, var(--ui-surface-app-bg, #fff) 6%);
-  box-shadow: var(--todo-popover-shadow, 0 16px 42px rgba(0, 0, 0, 0.2));
-  transform: translateX(-50%);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.25;
-  overflow: hidden;
-}
-
-.todo-notes-action-panel.surface-standalone-window {
-  background: color-mix(in srgb, var(--todo-card-bg) 96%, var(--ui-surface-app-bg, #fff) 4%);
-}
-
-.action-search {
-  height: var(--todo-popover-search-height, 38px);
-  padding: 0 var(--todo-popover-search-padding-x, 12px);
-  display: flex;
-  align-items: center;
-  gap: var(--todo-popover-search-gap, 8px);
-  border-bottom: 1px solid var(--todo-rule-soft);
-  color: var(--todo-muted);
-  background: var(--todo-card-bg-soft);
-  font-size: var(--todo-popover-search-font-size, 13px);
-  line-height: 1.25;
-}
-
-.action-search svg {
-  flex: 0 0 auto;
-}
-
-.action-search input {
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  outline: 0;
-  color: var(--todo-text);
-  background: transparent;
-  font: inherit;
-  line-height: inherit;
-}
-
-.action-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 7px;
-}
-
-.surface-standalone-window .action-list {
-  padding: 7px;
-}
-
 .action-section {
   padding-top: 7px;
   margin-top: 7px;
@@ -305,19 +238,14 @@ onBeforeUnmount(() => {
   border-top: 0;
 }
 
-.surface-standalone-window .action-section {
-  padding-top: 6px;
-  margin-top: 6px;
-}
-
 .action-row {
   width: 100%;
-  min-height: 46px;
-  padding: 7px 8px;
+  min-height: var(--todo-action-row-min-height, 52px);
+  padding: 8px 10px;
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   border: 0;
   border-radius: 10px;
   color: var(--todo-text);
@@ -325,14 +253,6 @@ onBeforeUnmount(() => {
   text-align: left;
   cursor: pointer;
   font: inherit;
-}
-
-.surface-standalone-window .action-row {
-  min-height: 38px;
-  padding: 5px 8px;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  gap: 9px;
-  border-radius: 10px;
 }
 
 .action-row.selected,
@@ -346,24 +266,19 @@ onBeforeUnmount(() => {
 }
 
 .action-icon {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: color-mix(in srgb, var(--todo-text) 82%, transparent);
 }
 
-.surface-standalone-window .action-icon {
-  width: 22px;
-  height: 22px;
-}
-
 .action-copy {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .action-copy strong,
@@ -374,22 +289,14 @@ onBeforeUnmount(() => {
 }
 
 .action-copy strong {
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 650;
-}
-
-.surface-standalone-window .action-copy strong {
-  font-size: 13px;
-  font-weight: 620;
 }
 
 .action-copy small {
   color: var(--todo-muted);
-  font-size: 11px;
-}
-
-.surface-standalone-window .action-copy small {
-  display: none;
+  font-size: 11.5px;
+  line-height: 1.2;
 }
 
 .shortcut-cluster {
@@ -415,25 +322,12 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.surface-standalone-window .shortcut-cluster {
-  gap: 4px;
-}
-
-.surface-standalone-window .shortcut-keycap {
-  min-width: 24px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 7px;
-  font-size: 11px;
-  font-weight: 650;
-}
-
-@media (max-width: 460px) {
-  .surface-standalone-window .action-row {
+@container (max-width: 360px) {
+  .action-row {
     grid-template-columns: 22px minmax(0, 1fr);
   }
 
-  .surface-standalone-window .shortcut-cluster {
+  .shortcut-cluster {
     display: none;
   }
 }

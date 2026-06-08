@@ -1,26 +1,60 @@
 <template>
   <nav
     class="user-nav-rail"
+    :class="{ 'with-mode-tabs': showModeSwitch && panelAvailable && effectiveOpen }"
     aria-label="User message navigation"
   >
     <div
       class="user-nav-card"
-      :class="{ open: isOpen }"
+      :class="{ open: effectiveOpen }"
       @mouseenter="openPanel"
       @mouseleave="closePanel"
       @focusin="openPanel"
       @pointerdown.stop
       @click.stop
     >
-      <button
-        v-if="showModeSwitch"
-        type="button"
-        class="user-nav-mode-switch"
-        aria-label="Show AI outline"
-        title="AI outline"
-        @click.stop="emit('switchMode')"
+      <div
+        v-if="showModeSwitch && panelAvailable && effectiveOpen"
+        class="user-nav-mode-tabs"
+        aria-label="Navigation mode"
       >
-        <span aria-hidden="true">&lt;</span>
+        <button
+          type="button"
+          class="user-nav-mode-tab"
+          aria-label="Show AI outline"
+          title="AI outline"
+          @click.stop="emit('switchMode')"
+        >
+          Outline
+        </button>
+        <span
+          class="user-nav-mode-tab active"
+          aria-current="true"
+        >
+          Trail
+        </span>
+      </div>
+      <button
+        v-if="panelAvailable && effectiveOpen"
+        type="button"
+        class="user-nav-close"
+        :class="{ 'can-pin': isAutoPanelDismissed }"
+        :aria-label="isAutoPanelDismissed ? 'Pin navigation panel' : 'Close navigation panel'"
+        :title="isAutoPanelDismissed ? 'Pin panel' : 'Close panel'"
+        @click.stop="toggleAutoPanelPin"
+      >
+        <Pin
+          v-if="isAutoPanelDismissed"
+          :size="12"
+          :stroke-width="2.2"
+          aria-hidden="true"
+        />
+        <X
+          v-else
+          :size="12"
+          :stroke-width="2.2"
+          aria-hidden="true"
+        />
       </button>
       <div
         class="user-nav-scroll"
@@ -87,6 +121,7 @@
 </template>
 
 <script setup lang="ts">
+import { Pin, X } from 'lucide-vue-next'
 import { computed, onUnmounted, ref, watch } from 'vue'
 
 export interface UserMessageNavMarker {
@@ -98,12 +133,16 @@ export interface UserMessageNavMarker {
   preview?: string
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   markers: UserMessageNavMarker[]
   currentIndex: number
   totalCount?: number
   showModeSwitch?: boolean
-}>()
+  panelAvailable?: boolean
+}>(), {
+  panelAvailable: true,
+  totalCount: 0,
+})
 
 const emit = defineEmits<{
   navigate: [navIndex: number]
@@ -112,6 +151,7 @@ const emit = defineEmits<{
 
 const sortedMarkers = computed(() => [...props.markers].sort((a, b) => a.navIndex - b.navIndex))
 const isOpen = ref(false)
+const isAutoPanelDismissed = ref(false)
 const pageStartIndex = ref(0)
 const pageDirection = ref<1 | -1>(1)
 let pageWheelLockTimer: ReturnType<typeof setTimeout> | null = null
@@ -149,6 +189,7 @@ const scrollThumbStyle = computed(() => {
 })
 
 const pageTransitionName = computed(() => pageDirection.value > 0 ? 'nav-page-next' : 'nav-page-prev')
+const effectiveOpen = computed(() => isOpen.value || (props.panelAvailable && !isAutoPanelDismissed.value))
 
 function openPanel() {
   isOpen.value = true
@@ -195,6 +236,30 @@ function handleNavigate(navIndex: number) {
   emit('navigate', navIndex)
 }
 
+function dismissAutoPanel() {
+  isAutoPanelDismissed.value = true
+  isOpen.value = false
+}
+
+function toggleAutoPanelPin() {
+  if (isAutoPanelDismissed.value) {
+    isAutoPanelDismissed.value = false
+    isOpen.value = false
+    return
+  }
+
+  dismissAutoPanel()
+}
+
+watch(
+  () => props.panelAvailable,
+  available => {
+    if (!available) {
+      isAutoPanelDismissed.value = false
+    }
+  },
+)
+
 watch(
   [() => props.currentIndex, () => props.markers.length],
   () => {
@@ -227,17 +292,20 @@ onUnmounted(() => {
   --user-nav-row-gap: 7px;
   --user-nav-visible-count: 8;
   --user-nav-vertical-padding: 22px;
-  --user-nav-collapsed-width: 34px;
-  --user-nav-expanded-width: min(306px, calc(100vw - 64px));
+  --user-nav-header-offset: 0px;
+  --user-nav-header-offset-half: 0px;
+  --user-nav-collapsed-width: 24px;
+  --user-nav-expanded-width: min(286px, calc(100vw - 64px));
   position: absolute;
-  top: 50%;
-  right: 12px;
+  top: calc(50% - var(--user-nav-header-offset-half));
+  right: 6px;
   bottom: auto;
   width: var(--user-nav-expanded-width);
   height: calc(
     var(--user-nav-row-height) * var(--user-nav-visible-count) +
     var(--user-nav-row-gap) * (var(--user-nav-visible-count) - 1) +
-    var(--user-nav-vertical-padding) * 2
+    var(--user-nav-vertical-padding) * 2 +
+    var(--user-nav-header-offset)
   );
   z-index: var(--z-dropdown);
   pointer-events: none;
@@ -245,40 +313,46 @@ onUnmounted(() => {
   transform: translateY(-50%);
 }
 
+.user-nav-rail.with-mode-tabs {
+  --user-nav-header-offset: 28px;
+  --user-nav-header-offset-half: 14px;
+}
+
 .user-nav-card {
   position: absolute;
   top: 50%;
   right: 0;
   box-sizing: border-box;
-  width: var(--user-nav-expanded-width);
+  width: var(--user-nav-collapsed-width);
   height: 100%;
   padding: 0;
   overflow: visible;
   border: 1px solid transparent;
-  border-radius: 18px;
+  border-radius: 14px;
   background: transparent;
   box-shadow: none;
-  pointer-events: none;
+  pointer-events: auto;
   transform: translateY(-50%);
   transition:
     opacity 0.14s ease,
+    width 0.16s ease,
     border-color 0.16s ease,
     background-color 0.16s ease,
     box-shadow 0.16s ease;
 }
 
 .user-nav-card.open {
-  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 62%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 94%, white 6%);
+  width: var(--user-nav-expanded-width);
+  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 34%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 64%, transparent);
   box-shadow:
-    0 22px 48px rgba(0, 0, 0, 0.13),
-    0 2px 8px rgba(0, 0, 0, 0.08);
-  pointer-events: auto;
+    0 8px 18px rgba(0, 0, 0, 0.045),
+    0 1px 3px rgba(0, 0, 0, 0.035);
 }
 
 .user-nav-scroll {
   position: absolute;
-  top: var(--user-nav-vertical-padding);
+  top: calc(var(--user-nav-vertical-padding) + var(--user-nav-header-offset));
   right: 0;
   bottom: var(--user-nav-vertical-padding);
   left: 0;
@@ -332,12 +406,12 @@ onUnmounted(() => {
 .user-nav-label {
   position: absolute;
   top: 50%;
-  right: 48px;
-  width: calc(var(--user-nav-expanded-width) - 82px);
+  right: 42px;
+  width: calc(var(--user-nav-expanded-width) - 72px);
   min-width: 0;
   overflow: hidden;
   color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
-  font-size: 14px;
+  font-size: 12.5px;
   line-height: 1;
   opacity: 0;
   text-align: right;
@@ -351,7 +425,7 @@ onUnmounted(() => {
 }
 
 .user-nav-card.open .user-nav-label {
-  opacity: 0.72;
+  opacity: 0.7;
   visibility: visible;
 }
 
@@ -364,12 +438,12 @@ onUnmounted(() => {
 .user-nav-marker {
   position: absolute;
   top: 50%;
-  right: 7px;
+  right: 5px;
   width: 14px;
   height: 2px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 34%, transparent);
-  opacity: 0.74;
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 42%, transparent);
+  opacity: 0.62;
   transform: translateY(-50%);
   transition:
     width 0.12s ease,
@@ -380,8 +454,8 @@ onUnmounted(() => {
 
 .user-nav-row:hover .user-nav-marker,
 .user-nav-row:focus-visible .user-nav-marker {
-  opacity: 1;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 72%, var(--ui-text-muted-fg, var(--text-muted, var(--muted))));
+  opacity: 0.92;
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 64%, var(--ui-text-muted-fg, var(--text-muted, var(--muted))));
 }
 
 .user-nav-row:focus-visible {
@@ -396,20 +470,20 @@ onUnmounted(() => {
 }
 
 .user-nav-row.active .user-nav-marker {
-  width: 18px;
+  width: 14px;
   opacity: 1;
-  background: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 84%, var(--ui-text-muted-fg, var(--muted)));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
 }
 
 .user-nav-scroll-thumb {
   position: absolute;
-  top: var(--user-nav-vertical-padding);
-  right: 2px;
+  top: calc(var(--user-nav-vertical-padding) + var(--user-nav-header-offset));
+  right: 1px;
   display: none;
-  width: 5px;
+  width: 3px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 36%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 24%, transparent);
   pointer-events: none;
 }
 
@@ -417,7 +491,6 @@ onUnmounted(() => {
   display: block;
 }
 
-.user-nav-mode-switch,
 .user-nav-page-cue {
   position: absolute;
   right: 0;
@@ -426,11 +499,11 @@ onUnmounted(() => {
   justify-content: flex-end;
   width: var(--user-nav-collapsed-width);
   height: 18px;
-  padding: 0 10px 0 0;
+  padding: 0 7px 0 0;
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 58%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 62%, transparent);
   cursor: pointer;
   opacity: 0.42;
   pointer-events: auto;
@@ -440,26 +513,121 @@ onUnmounted(() => {
     opacity 0.12s ease;
 }
 
-.user-nav-mode-switch {
-  top: 2px;
-  font-size: 15px;
-  font-weight: 650;
-  line-height: 1;
-}
-
-.user-nav-card.open .user-nav-mode-switch,
 .user-nav-card.open .user-nav-page-cue {
-  opacity: 0.55;
+  opacity: 0.58;
 }
 
-.user-nav-mode-switch:hover,
-.user-nav-mode-switch:focus-visible,
 .user-nav-page-cue:hover,
 .user-nav-page-cue:focus-visible {
   background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
   color: var(--ui-accent-primary-fg, var(--accent));
   opacity: 0.9;
   outline: none;
+}
+
+.user-nav-mode-tabs {
+  position: absolute;
+  top: 8px;
+  right: 32px;
+  z-index: 2;
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  height: 20px;
+  padding: 1px;
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 28%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 52%, transparent);
+  opacity: 0.5;
+  pointer-events: auto;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.user-nav-card.open .user-nav-mode-tabs {
+  opacity: 0.72;
+}
+
+.user-nav-mode-tabs:hover,
+.user-nav-mode-tabs:focus-within {
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 22%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 76%, transparent);
+  opacity: 1;
+}
+
+.user-nav-mode-tab {
+  box-sizing: border-box;
+  min-width: 42px;
+  height: 16px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 72%, transparent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 16px;
+  text-align: center;
+}
+
+.user-nav-mode-tab.active {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--ui-accent-primary-fg, var(--accent)) 18%);
+  cursor: default;
+}
+
+.user-nav-mode-tab:not(.active):hover,
+.user-nav-mode-tab:not(.active):focus-visible {
+  color: var(--ui-accent-primary-fg, var(--accent));
+  outline: none;
+}
+
+.user-nav-close {
+  position: absolute;
+  top: 7px;
+  left: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 56%, transparent);
+  cursor: pointer;
+  opacity: 0.42;
+  pointer-events: auto;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.user-nav-close:hover,
+.user-nav-close:focus-visible {
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
+  color: var(--ui-text-primary-fg, var(--text));
+  opacity: 0.9;
+  outline: none;
+}
+
+.user-nav-close.can-pin {
+  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 76%, var(--ui-text-muted-fg, var(--muted)));
+  opacity: 0.7;
+}
+
+.user-nav-close.can-pin:hover,
+.user-nav-close.can-pin:focus-visible {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
+  opacity: 1;
 }
 
 .user-nav-page-cue-icon {
@@ -470,7 +638,7 @@ onUnmounted(() => {
 }
 
 .user-nav-page-cue-top {
-  top: 5px;
+  top: calc(var(--user-nav-header-offset) + 5px);
 }
 
 .user-nav-page-cue-top .user-nav-page-cue-icon {

@@ -101,6 +101,10 @@ export class Session {
         this._state.activeMessageId = event.message.id
         break
 
+      case 'session:renamed':
+        this._state.name = event.name
+        break
+
       case 'tool:call':
       case 'tool:result':
       case 'tool:input-start':
@@ -118,7 +122,6 @@ export class Session {
       case 'permission:timeout':
       case 'tool:executing':
       case 'tool:metadata':
-      case 'session:renamed':
       case 'message:updated':
         // These events are tracked for replay but don't
         // update the validation-relevant state fields yet

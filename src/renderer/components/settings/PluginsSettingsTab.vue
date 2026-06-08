@@ -46,7 +46,8 @@
           class="btn-sm"
           @click="refreshPlugins"
         >
-          🔄 Refresh
+          <RefreshCw :size="13" />
+          <span>Refresh</span>
         </button>
       </div>
 
@@ -61,7 +62,8 @@
             class="btn-sm refresh-btn"
             @click="refreshPlugins"
           >
-            🔄 Refresh
+            <RefreshCw :size="13" />
+            <span>Refresh</span>
           </button>
         </div>
         <div
@@ -148,7 +150,7 @@
         <div class="card-row">
           <ol class="install-steps">
             <li>Copy the plugin folder to <code>~/.onething/plugins/</code></li>
-            <li>Open this settings page and click <strong>🔄 Refresh</strong></li>
+            <li>Open this settings page and click <strong>Refresh</strong></li>
             <li>If the plugin has a <code>package.json</code>, dependencies are auto-installed on first load</li>
           </ol>
         </div>
@@ -159,6 +161,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { RefreshCw } from 'lucide-vue-next'
 
 interface PluginInfo {
   id: string
@@ -531,6 +534,10 @@ onMounted(() => {
 }
 
 .btn-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   margin-top: 8px;
   padding: 4px 12px;
   font-size: 12px;

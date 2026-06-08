@@ -49,6 +49,22 @@ type RuntimeProviderConfig = ProviderConfig & {
 	apiType?: "openai" | "anthropic";
 };
 
+type ChatGenerationOptions = {
+	temperature?: number;
+	maxTokens?: number;
+	abortSignal?: AbortSignal;
+	/** Explicit thinking toggle for provider-native reasoning controls. */
+	thinking?: boolean;
+	/** Provider-specific thinking effort. */
+	thinkingEffort?: ThinkingEffort;
+	/** Provider-specific service tier, used by Codex speed controls. */
+	serviceTier?: string;
+	/** Optional request dump label for utility calls. */
+	debugPurpose?: string;
+	/** Optional session correlation written to provider request dump files. */
+	debugSessionId?: string;
+};
+
 // Gate per-chunk provider-layer logs. Every streamed delta went through JSON.stringify
 // before this gate, which measurably slowed streaming output.
 const DEBUG_STREAM =
@@ -152,6 +168,55 @@ function prepareProviderCallOptions<T extends ProviderCallOptions>(
 		isReasoningModel: context.isReasoningModel,
 	});
 	return (prepared ?? options) as T;
+}
+
+function applyReasoningProviderOptions<T extends Record<string, any>>(
+	providerId: string,
+	callOptions: T,
+	options: Pick<
+		ChatGenerationOptions,
+		"thinking" | "thinkingEffort" | "serviceTier"
+	>,
+): T {
+	const callOptionsAny = callOptions as Record<string, any>;
+
+	if (
+		providerId === "deepseek" &&
+		(options.thinking !== undefined || options.thinkingEffort !== undefined)
+	) {
+		callOptionsAny.providerOptions = {
+			...(callOptionsAny.providerOptions ?? {}),
+			deepseek: {
+				...(callOptionsAny.providerOptions?.deepseek ?? {}),
+				...(options.thinking !== undefined
+					? { thinking: options.thinking ? "enabled" : "disabled" }
+					: {}),
+				...(options.thinkingEffort !== undefined
+					? { reasoningEffort: options.thinkingEffort }
+					: {}),
+			},
+		};
+	}
+
+	if (providerId === "codex") {
+		callOptionsAny.providerOptions = {
+			...(callOptionsAny.providerOptions ?? {}),
+			codex: {
+				...(callOptionsAny.providerOptions?.codex ?? {}),
+				...(options.thinking !== undefined
+					? { thinking: options.thinking ? "enabled" : "disabled" }
+					: {}),
+				...(options.thinkingEffort !== undefined
+					? { reasoningEffort: options.thinkingEffort }
+					: {}),
+				...(options.serviceTier !== undefined
+					? { serviceTier: options.serviceTier }
+					: {}),
+			},
+		};
+	}
+
+	return callOptions;
 }
 
 function parseProviderResponseBody(body: unknown): string | undefined {
@@ -434,6 +499,72 @@ export interface AIToolDefinition {
 	execute?: (args: any) => Promise<any>;
 }
 
+function stringifyMessageContent(content: AIMessageContent): string {
+	if (typeof content === "string") return content;
+	return content
+		.map((part) => {
+			if (part.type === "text") return part.text;
+			return "";
+		})
+		.filter(Boolean)
+		.join("\n");
+}
+
+function mergeSystemMessagesForGenerateIfNeeded(
+	providerId: string,
+	messages: Array<{
+		role: "user" | "assistant" | "system";
+		content: AIMessageContent;
+		reasoningContent?: string;
+	}>,
+): Array<{
+	role: "user" | "assistant" | "system";
+	content: AIMessageContent;
+	reasoningContent?: string;
+}> {
+	if (!requiresSystemMergeFromRegistry(providerId)) return messages;
+
+	const systemMessages: string[] = [];
+	const nonSystemMessages: Array<{
+		role: "user" | "assistant";
+		content: AIMessageContent;
+		reasoningContent?: string;
+	}> = [];
+
+	for (const msg of messages) {
+		if (msg.role === "system") {
+			systemMessages.push(stringifyMessageContent(msg.content));
+		} else {
+			nonSystemMessages.push({
+				role: msg.role,
+				content: msg.content,
+				reasoningContent: msg.reasoningContent,
+			});
+		}
+	}
+
+	if (systemMessages.length === 0) return messages;
+	const firstUserIndex = nonSystemMessages.findIndex((msg) => msg.role === "user");
+	if (firstUserIndex === -1) return messages;
+
+	const systemPrefix = systemMessages.filter(Boolean).join("\n\n");
+	const originalContent = nonSystemMessages[firstUserIndex].content;
+	const mergedPrefix = `[System Instructions]\n${systemPrefix}\n\n[User Message]\n`;
+
+	nonSystemMessages[firstUserIndex] = {
+		...nonSystemMessages[firstUserIndex],
+		content:
+			typeof originalContent === "string"
+				? `${mergedPrefix}${originalContent}`
+				: [
+						{ type: "text", text: mergedPrefix },
+						...originalContent,
+					],
+	};
+
+	return nonSystemMessages;
+}
+
 /**
  * Convert tool parameters to Zod schema
  */
@@ -493,7 +624,7 @@ export async function generateChatResponse(
 	providerId: string,
 	config: RuntimeProviderConfig,
 	messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
-	options: { temperature?: number; maxTokens?: number } = {},
+	options: ChatGenerationOptions = {},
 ): Promise<string> {
 	const result = await generateChatResponseWithReasoning(
 		providerId,
@@ -522,7 +653,7 @@ export async function* streamChatResponse(
 	// Build streamText options
 	let streamOptions: Parameters<typeof streamText>[0] = {
 		model,
-		messages,
+		messages: messages as any,
 		maxOutputTokens: options.maxTokens || 4096,
 	};
 
@@ -586,15 +717,22 @@ export async function* streamChatResponseWithReasoning(
 		temperature?: number;
 		maxTokens?: number;
 		abortSignal?: AbortSignal;
+		thinking?: boolean;
+		thinkingEffort?: ThinkingEffort;
+		serviceTier?: string;
 	} = {},
 ): AsyncGenerator<ReasoningStreamChunk, void, unknown> {
 	const provider = createProvider(providerId, config);
 	const model = provider.createModel(config.model);
 
 	const isReasoning = isReasoningModel(config.model, providerId);
+	const effectiveMessages = mergeSystemMessagesForGenerateIfNeeded(
+		providerId,
+		messages,
+	);
 
 	// Convert messages to include reasoning_content for DeepSeek Reasoner
-	const convertedMessages = messages.map((msg) => {
+	const convertedMessages = effectiveMessages.map((msg) => {
 		if (msg.role === "assistant" && msg.reasoningContent) {
 			return {
 				role: msg.role,
@@ -621,6 +759,12 @@ export async function* streamChatResponseWithReasoning(
 	if (options.abortSignal) {
 		streamOptions.abortSignal = options.abortSignal;
 	}
+
+	streamOptions = applyReasoningProviderOptions(
+		providerId,
+		streamOptions as any,
+		options,
+	) as Parameters<typeof streamText>[0];
 
 	streamOptions = prepareProviderCallOptions(
 		providerId,
@@ -790,15 +934,19 @@ export async function generateChatResponseWithReasoning(
 		content: AIMessageContent;
 		reasoningContent?: string;
 	}>,
-	options: { temperature?: number; maxTokens?: number } = {},
+	options: ChatGenerationOptions = {},
 ): Promise<ChatResponseResult> {
 	const provider = createProvider(providerId, config);
 	const model = provider.createModel(config.model);
 
 	const isReasoning = isReasoningModel(config.model, providerId);
+	const effectiveMessages = mergeSystemMessagesForGenerateIfNeeded(
+		providerId,
+		messages,
+	);
 
 	// Convert messages to include reasoning_content for DeepSeek Reasoner
-	const convertedMessages = messages.map((msg) => {
+	const convertedMessages = effectiveMessages.map((msg) => {
 		if (msg.role === "assistant" && msg.reasoningContent) {
 			return {
 				role: msg.role,
@@ -809,10 +957,17 @@ export async function generateChatResponseWithReasoning(
 		return { role: msg.role, content: msg.content };
 	});
 
-	// For DeepSeek reasoning models, use streamText to capture reasoning
-	// DeepSeek only exposes reasoning through streaming
-	if (isReasoning && providerId === "deepseek") {
-		return generateWithStreamForReasoning(model, convertedMessages, options);
+	// DeepSeek custom provider implements streaming; reasoning models also only
+	// expose reasoning through streaming.
+	if (providerId === "deepseek") {
+		return generateWithStreamForReasoning(
+			providerId,
+			config.model,
+			model,
+			convertedMessages,
+			options,
+			isReasoning,
+		);
 	}
 
 	// For non-reasoning models, use generateText
@@ -826,6 +981,12 @@ export async function generateChatResponseWithReasoning(
 	if (!isReasoning && options.temperature !== undefined) {
 		generateOptions.temperature = options.temperature;
 	}
+
+	generateOptions = applyReasoningProviderOptions(
+		providerId,
+		generateOptions as any,
+		options,
+	) as Parameters<typeof generateText>[0];
 
 	generateOptions = prepareProviderCallOptions(
 		providerId,
@@ -843,6 +1004,12 @@ export async function generateChatResponseWithReasoning(
 		"generate",
 		generateOptions as any,
 		convertedMessages,
+		options.debugPurpose || options.debugSessionId
+			? {
+					purpose: options.debugPurpose,
+					sessionId: options.debugSessionId,
+				}
+			: undefined,
 	);
 
 	const result = await generateText(generateOptions);
@@ -879,15 +1046,55 @@ export async function generateChatResponseWithReasoning(
  * Collects the full stream and extracts reasoning and text parts
  */
 async function generateWithStreamForReasoning(
+	providerId: string,
+	modelId: string,
 	model: any,
-	messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
-	options: { temperature?: number; maxTokens?: number } = {},
+	messages: Array<{
+		role: "user" | "assistant" | "system";
+		content: AIMessageContent;
+	}>,
+	options: ChatGenerationOptions = {},
+	isReasoning = true,
 ): Promise<ChatResponseResult> {
-	const streamOptions: Parameters<typeof streamText>[0] = {
+	let streamOptions: Parameters<typeof streamText>[0] = {
 		model,
-		messages,
+		messages: messages as any,
 		maxOutputTokens: options.maxTokens || 4096,
 	};
+
+	if (!isReasoning && options.temperature !== undefined) {
+		streamOptions.temperature = options.temperature;
+	}
+
+	streamOptions = applyReasoningProviderOptions(
+		providerId,
+		streamOptions as any,
+		options,
+	) as Parameters<typeof streamText>[0];
+
+	streamOptions = prepareProviderCallOptions(
+		providerId,
+		modelId,
+		streamOptions as any,
+		{
+			mode: "stream",
+			isReasoningModel: isReasoning,
+		},
+	) as Parameters<typeof streamText>[0];
+
+	await dumpAISDKRequest(
+		providerId,
+		modelId,
+		"stream-reasoning",
+		streamOptions as any,
+		messages,
+		options.debugPurpose || options.debugSessionId
+			? {
+					purpose: options.debugPurpose,
+					sessionId: options.debugSessionId,
+				}
+			: undefined,
+	);
 
 	const result = streamText(streamOptions);
 
@@ -940,18 +1147,44 @@ export async function generateChatTitle(
 	providerId: string,
 	config: RuntimeProviderConfig,
 	userMessage: string,
+	options: Pick<
+		ChatGenerationOptions,
+		"thinking" | "thinkingEffort" | "serviceTier" | "debugSessionId"
+	> = {},
 ): Promise<string> {
-	const prompt = `Generate a short, concise title (max 6 words) for a chat conversation that starts with this message. Only respond with the title, nothing else:\n\n"${userMessage}"`;
+	const systemPrompt = [
+		"Create a short topic title from the user's first message.",
+		"Use the same language as the message when possible.",
+		"Compress the message into its core subject or task instead of copying it verbatim.",
+		"Prefer 2-5 English words or 4-12 CJK characters when possible.",
+		"Respond with the title only. Do not add quotes, punctuation wrappers, or explanations.",
+	].join("\n");
 
 	const response = await generateChatResponse(
 		providerId,
 		config,
-		[{ role: "user", content: prompt }],
-		{ temperature: 0.7, maxTokens: 20 },
+		[
+			{ role: "system", content: systemPrompt },
+			{ role: "user", content: userMessage },
+		],
+		{
+			temperature: 0.2,
+			maxTokens: 20,
+			thinking: options.thinking ?? false,
+			thinkingEffort: options.thinking ? options.thinkingEffort : undefined,
+			serviceTier: options.serviceTier,
+			debugPurpose: "chat-title",
+			debugSessionId: options.debugSessionId,
+		},
 	);
 
 	// Clean up the title - remove quotes
-	return response.trim().replace(/^["']|["']$/g, "");
+	return response
+		.replace(/\s+/g, " ")
+		.replace(/^title\s*:\s*/i, "")
+		.trim()
+		.replace(/^[`"'“”‘’#:\-\s]+/, "")
+		.replace(/[`"'“”‘’\s]+$/, "");
 }
 
 /**

@@ -523,13 +523,13 @@ export function useProviderSettings(
       providerConfig.selectedModels = [...providerConfig.selectedModels]
     }
 
-    if (!providerConfig.selectedModels.includes(modelId)) {
-      providerConfig.selectedModels.push(modelId)
+    if (providerConfig.selectedModels.includes(modelId)) {
+      modelError.value = `"${modelId}" is already in this provider's model list.`
+      return
     }
 
-    if (!providerConfig.model) {
-      providerConfig.model = modelId
-    }
+    providerConfig.selectedModels.push(modelId)
+    providerConfig.model = modelId
 
     if (!availableModels.value.find(m => m.id === modelId)) {
       settingsStore.addCustomModelToCache(viewingProvider.value, createCustomModel(modelId))
@@ -537,6 +537,8 @@ export function useProviderSettings(
 
     providers[viewingProvider.value] = providerConfig
     updateSettings({ ai: { ...props.settings.ai, providers } })
+    modelSearchQuery.value = ''
+    modelError.value = ''
     newModelInput.value = ''
   }
 

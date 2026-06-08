@@ -1,13 +1,22 @@
 <template>
   <div class="memory-panel-content">
     <div class="memory-header">
-      <div class="memory-title-row">
-        <div class="memory-title">
-          <Brain
-            :size="19"
-            :stroke-width="1.7"
-          />
-          <span>Memory</span>
+      <div class="memory-commandbar">
+        <div class="memory-title-block">
+          <div class="memory-title">
+            <Brain
+              :size="18"
+              :stroke-width="1.7"
+            />
+            <span>Memory</span>
+          </div>
+          <div class="memory-state-line">
+            <span :class="['state-indicator', { off: overview?.enabled === false }]">
+              <span class="state-dot" />
+              {{ overview?.enabled === false ? 'Off' : 'On' }}
+            </span>
+            <span>{{ indexStateLabel }}</span>
+          </div>
         </div>
         <div class="memory-actions">
           <button
@@ -38,34 +47,20 @@
         </div>
       </div>
 
-      <div class="memory-stats">
-        <span :class="['status-pill', { off: overview?.enabled === false }]">
-          {{ overview?.enabled === false ? 'Off' : 'On' }}
-        </span>
-        <span>{{ overview?.graph?.entities ?? 0 }} entities</span>
-        <span>{{ overview?.graph?.observations ?? 0 }} facts</span>
-        <span>{{ overview?.files.length ?? 0 }} files</span>
-        <span>{{ overview?.status.indexedChunks ?? 0 }} chunks</span>
-        <span>{{ overview?.status.ftsTokenizer || 'FTS' }}</span>
-      </div>
-
-      <div class="root-path">
-        {{ overview?.root || 'Loading...' }}
-      </div>
-
-      <div class="memory-tabs">
+      <div
+        class="memory-tabs"
+        role="tablist"
+        aria-label="Memory sections"
+      >
         <button
           v-for="tab in tabs"
           :key="tab.id"
           :class="['memory-tab', { active: activeTab === tab.id }]"
           type="button"
+          role="tab"
+          :aria-selected="activeTab === tab.id"
           @click="activeTab = tab.id"
         >
-          <component
-            :is="tab.icon"
-            :size="14"
-            :stroke-width="1.8"
-          />
           <span>{{ tab.label }}</span>
         </button>
       </div>
@@ -93,204 +88,244 @@
 
       <template v-else-if="activeTab === 'overview'">
         <div class="overview-stack">
-          <section class="memory-section">
-            <div class="overview-grid">
-              <div>
-                <span class="setting-title">Index</span>
-                <strong>{{ overview?.status.indexedFiles ?? 0 }} files / {{ overview?.status.indexedChunks ?? 0 }} chunks</strong>
-                <span class="setting-meta">{{ overview?.status.embeddingProvider ? `${overview.status.embeddingProvider}/${overview.status.embeddingModel}` : 'FTS fallback' }}</span>
-              </div>
-              <div>
-                <span class="setting-title">Capture</span>
-                <strong>{{ overview?.status.lastCaptureStatus || memorySettings.capture.mode }}</strong>
-                <span class="setting-meta">{{ formatMaybeDate(overview?.status.lastCaptureAt) }}</span>
-              </div>
-              <div>
-                <span class="setting-title">Flush</span>
-                <strong>{{ overview?.status.lastFlushError ? 'error' : 'ready' }}</strong>
-                <span class="setting-meta">{{ formatMaybeDate(overview?.status.lastFlushAt) }}</span>
-              </div>
-              <div>
-                <span class="setting-title">Dreaming</span>
-                <strong :class="['status-line', dreamingStatusClass]">
-                  <Loader2
-                    v-if="isDreamingInFlight"
-                    :size="13"
-                    :stroke-width="1.8"
-                    class="spinning"
-                  />
-                  <span>{{ dreamingStatusLabel }}</span>
-                </strong>
-                <span class="setting-meta">{{ dreamingMetaLine }}</span>
+          <section class="memory-hero">
+            <div class="memory-hero-main">
+              <span class="section-kicker">What AI knows</span>
+              <strong>{{ memoryHeroTitle }}</strong>
+              <span>{{ memoryHeroSubtitle }}</span>
+            </div>
+            <div
+              class="memory-hero-stats"
+              aria-label="Memory summary"
+            >
+              <div
+                v-for="stat in memoryHeroStats"
+                :key="stat.id"
+              >
+                <strong>{{ stat.value }}</strong>
+                <span>{{ stat.label }}</span>
               </div>
             </div>
-            <div class="action-row">
-              <button
-                class="secondary-action inline"
-                type="button"
-                :disabled="loading"
-                @click="rebuildIndex"
+            <div class="memory-hero-highlights">
+              <div
+                v-for="highlight in memoryHeroHighlights"
+                :key="highlight.id"
+                class="memory-highlight"
               >
-                <Database
-                  :size="15"
-                  :stroke-width="1.8"
-                />
-                <span>Reindex</span>
-              </button>
-              <button
-                class="secondary-action inline"
-                type="button"
-                :disabled="isDreamingInFlight"
-                @click="runDreaming"
-              >
-                <Loader2
-                  v-if="isDreamingInFlight"
-                  :size="15"
-                  :stroke-width="1.8"
-                  class="spinning"
-                />
-                <Sparkles
-                  v-else
-                  :size="15"
-                  :stroke-width="1.8"
-                />
-                <span>{{ isDreamingInFlight ? 'Running...' : 'Run dreaming' }}</span>
-              </button>
+                <span>{{ highlight.label }}</span>
+                <strong>{{ highlight.title }}</strong>
+                <p>{{ highlight.body }}</p>
+              </div>
             </div>
           </section>
 
           <section
-            v-if="overview?.status.lastError || overview?.status.lastCaptureError || overview?.status.lastFlushError || overview?.dreaming.lastError"
-            class="memory-section"
+            class="memory-activity"
+            aria-labelledby="memory-activity-title"
           >
-            <div
-              v-if="overview?.status.lastError"
-              class="inline-error"
-            >
-              Index: {{ overview.status.lastError }}
+            <div class="overview-domain-head">
+              <span class="section-kicker">Activity</span>
+              <strong id="memory-activity-title">What AI learned recently</strong>
             </div>
-            <div
-              v-if="overview?.status.lastCaptureError"
-              class="inline-error"
-            >
-              Capture: {{ overview.status.lastCaptureError }}
-            </div>
-            <div
-              v-if="overview?.status.lastFlushError"
-              class="inline-error"
-            >
-              Flush: {{ overview.status.lastFlushError }}
-            </div>
-            <div
-              v-if="overview?.dreaming.lastError"
-              class="inline-error"
-            >
-              Dreaming: {{ overview.dreaming.lastError }}
+            <div class="recent-memory-list">
+              <div
+                v-for="activity in recentMemoryActivity"
+                :key="activity.id"
+                class="recent-memory-row"
+              >
+                <span>
+                  <strong>{{ activity.title }}</strong>
+                  <small>{{ activity.meta }}</small>
+                </span>
+                <p>{{ activity.body }}</p>
+              </div>
             </div>
           </section>
 
-          <section class="memory-section">
-            <div class="file-list compact">
-              <button
-                v-for="file in overview?.files.filter(item => item.kind !== 'daily') || []"
-                :key="file.relativePath"
-                class="file-row"
-                type="button"
-                @click="openFileInTab(file)"
+          <details
+            :class="['diagnostics-panel', 'diagnostics-domain', diagnosticsTone]"
+          >
+            <summary>
+              <span>
+                <strong>Diagnostics</strong>
+                <small>How memory is operating</small>
+              </span>
+              <em>{{ diagnosticsSummary }}</em>
+            </summary>
+            <div class="diagnostics-content">
+              <div class="health-cards">
+                <div
+                  v-for="card in healthCards"
+                  :key="card.id"
+                  :class="['health-card', card.tone]"
+                >
+                  <span class="health-card-dot" />
+                  <span>
+                    <strong>{{ card.title }}</strong>
+                    <small>{{ card.detail }}</small>
+                  </span>
+                  <em>{{ card.status }}</em>
+                </div>
+              </div>
+
+              <div
+                v-if="hasMemoryErrors"
+                class="diagnostic-errors"
               >
-                <component
-                  :is="kindIcon(file.kind)"
-                  :size="17"
-                  :stroke-width="1.8"
-                  class="file-icon"
-                />
-                <span class="file-main">
-                  <span class="file-name">{{ file.relativePath }}</span>
-                  <span class="file-meta">{{ kindLabel(file.kind) }} · {{ file.lineCount }} lines · {{ formatSize(file.size) }}</span>
-                </span>
-              </button>
+                <div
+                  v-if="overview?.status.lastError"
+                  class="inline-error"
+                >
+                  Index: {{ overview.status.lastError }}
+                </div>
+                <div
+                  v-if="overview?.status.lastCaptureError"
+                  class="inline-error"
+                >
+                  Capture: {{ overview.status.lastCaptureError }}
+                </div>
+                <div
+                  v-if="overview?.status.lastFlushError"
+                  class="inline-error"
+                >
+                  Flush: {{ overview.status.lastFlushError }}
+                </div>
+                <div
+                  v-if="overview?.dreaming.lastError"
+                  class="inline-error"
+                >
+                  Dreaming: {{ overview.dreaming.lastError }}
+                </div>
+              </div>
+
+              <div class="path-grid">
+                <span>Root</span>
+                <code>{{ overview?.root || '...' }}</code>
+                <span>Memory dir</span>
+                <code>{{ overview?.memoryDir || '...' }}</code>
+                <span>Profile</span>
+                <code>{{ overview?.soulPath || '...' }}</code>
+                <span>AI notes</span>
+                <code>{{ overview?.memoryPath || '...' }}</code>
+                <span>Dreams</span>
+                <code>{{ overview?.dreamsPath || '...' }}</code>
+                <span>Today</span>
+                <code>{{ overview?.todayPath || '...' }}</code>
+                <span>Index DB</span>
+                <code>{{ overview?.dbPath || '...' }}</code>
+              </div>
             </div>
-          </section>
+          </details>
         </div>
       </template>
 
       <template v-else-if="activeTab === 'profile'">
-        <div class="profile-toolbar">
-          <form
-            class="search-row"
-            @submit.prevent="loadGraph"
-          >
-            <input
-              v-model="graphSearch"
-              class="memory-input"
-              type="text"
-              placeholder="Search graph memory..."
-              spellcheck="false"
-            >
+        <div class="memory-tab-page profile-page">
+          <section class="memory-tab-intro profile-intro">
+            <div class="tab-intro-main">
+              <span class="section-kicker">Profile</span>
+              <strong>Shape what AI knows about you</strong>
+              <span>Review durable facts, entities, and relationships before they steer future conversations.</span>
+            </div>
+            <div class="tab-intro-stats">
+              <span>
+                <strong>{{ activeGraphFactCount }}</strong>
+                <small>Active facts</small>
+              </span>
+              <span>
+                <strong>{{ graphEntities.length }}</strong>
+                <small>Entities</small>
+              </span>
+              <span>
+                <strong>{{ graphRelations.length }}</strong>
+                <small>Connections</small>
+              </span>
+            </div>
+            <div class="tab-intro-actions">
+              <form
+                class="search-row"
+                @submit.prevent="loadGraph"
+              >
+                <input
+                  v-model="graphSearch"
+                  class="memory-input"
+                  type="text"
+                  placeholder="Search profile..."
+                  spellcheck="false"
+                >
+                <button
+                  class="primary-btn"
+                  type="submit"
+                  :disabled="profileLoading"
+                >
+                  <Search
+                    :size="15"
+                    :stroke-width="1.8"
+                  />
+                  <span>Search</span>
+                </button>
+              </form>
+              <div class="toolbar-actions">
+                <button
+                  class="secondary-action inline"
+                  type="button"
+                  @click="newGraphRecord"
+                >
+                  {{ graphView === 'entities' ? 'New entity' : graphView === 'relations' ? 'New connection' : 'New fact' }}
+                </button>
+                <button
+                  class="secondary-action inline"
+                  type="button"
+                  :disabled="profileLoading"
+                  @click="loadGraph"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <div class="segmented graph-tabs">
             <button
-              class="primary-btn"
-              type="submit"
-              :disabled="profileLoading"
-            >
-              <Search
-                :size="15"
-                :stroke-width="1.8"
-              />
-              <span>Search</span>
-            </button>
-          </form>
-          <div class="action-row">
-            <button
-              class="secondary-action inline"
+              :class="{ active: graphView === 'observations' }"
               type="button"
-              @click="newGraphRecord"
+              @click="graphView = 'observations'"
             >
-              {{ graphView === 'entities' ? 'New entity' : graphView === 'relations' ? 'New relation' : 'New observation' }}
+              Facts {{ graphObservations.length }}
             </button>
             <button
-              class="secondary-action inline"
+              :class="{ active: graphView === 'relations' }"
               type="button"
-              :disabled="profileLoading"
-              @click="loadGraph"
+              @click="graphView = 'relations'"
             >
-              Refresh
+              Connections {{ graphRelations.length }}
+            </button>
+            <button
+              :class="{ active: graphView === 'entities' }"
+              type="button"
+              @click="graphView = 'entities'"
+            >
+              Entities {{ graphEntities.length }}
+            </button>
+            <button
+              :class="{ active: graphView === 'duplicates' }"
+              type="button"
+              @click="graphView = 'duplicates'"
+            >
+              Duplicates {{ graphDuplicates.length }}
             </button>
           </div>
-        </div>
 
-        <div class="segmented graph-tabs">
-          <button
-            :class="{ active: graphView === 'observations' }"
-            type="button"
-            @click="graphView = 'observations'"
-          >
-            Observations {{ graphObservations.length }}
-          </button>
-          <button
-            :class="{ active: graphView === 'relations' }"
-            type="button"
-            @click="graphView = 'relations'"
-          >
-            Relations {{ graphRelations.length }}
-          </button>
-          <button
-            :class="{ active: graphView === 'entities' }"
-            type="button"
-            @click="graphView = 'entities'"
-          >
-            Entities {{ graphEntities.length }}
-          </button>
-          <button
-            :class="{ active: graphView === 'duplicates' }"
-            type="button"
-            @click="graphView = 'duplicates'"
-          >
-            Duplicates {{ graphDuplicates.length }}
-          </button>
-        </div>
-
-        <div class="profile-layout graph-layout">
-          <div class="profile-list">
+          <div class="profile-layout graph-layout memory-workspace">
+            <section class="profile-list-surface memory-surface">
+              <div class="workspace-head">
+                <span>
+                  <strong>{{ profileListTitle }}</strong>
+                  <small>{{ profileListSubtitle }}</small>
+                </span>
+                <em>{{ graphCurrentListCount }} items</em>
+              </div>
+              <div class="profile-list">
             <template v-if="graphView === 'observations'">
               <button
                 v-for="memory in graphObservations"
@@ -300,7 +335,7 @@
                 @click="selectGraphObservation(memory)"
               >
                 <span class="profile-row-top">
-                  <code :title="`${memory.entityDisplayName || memory.entityId} / ${memory.slot}`">{{ memory.entityDisplayName || memory.entityId }} / {{ memory.slot }}</code>
+                  <code :title="`${memory.entityDisplayName || memory.entityId} / ${memory.slot}`">{{ observationActivityTitle(memory) }}</code>
                   <span>{{ memory.confidence.toFixed(2) }}</span>
                 </span>
                 <strong>{{ memory.text }}</strong>
@@ -487,22 +522,19 @@
               v-if="!profileLoading && graphCurrentListCount === 0"
               class="notice compact"
             >
-              No graph memory rows yet.
+              No profile rows yet.
             </div>
-          </div>
+              </div>
+            </section>
 
-          <section class="profile-editor memory-section">
+            <section class="profile-editor memory-surface">
+              <div class="workspace-head">
+                <span>
+                  <strong>{{ profileEditorTitle }}</strong>
+                  <small>{{ profileEditorSubtitle }}</small>
+                </span>
+              </div>
             <template v-if="graphView === 'entities'">
-              <label>
-                <span class="setting-label">Entity id</span>
-                <input
-                  v-model="graphEntityForm.id"
-                  class="memory-input"
-                  type="text"
-                  placeholder="project:onething"
-                  spellcheck="false"
-                >
-              </label>
               <div class="profile-grid">
                 <label>
                   <span class="setting-label">Type</span>
@@ -548,6 +580,57 @@
                   spellcheck="false"
                 >
               </label>
+              <details class="profile-advanced">
+                <summary>Advanced</summary>
+                <label>
+                  <span class="setting-label">Entity id</span>
+                  <input
+                    v-model="graphEntityForm.id"
+                    class="memory-input"
+                    type="text"
+                    placeholder="project:onething"
+                    spellcheck="false"
+                  >
+                </label>
+                <div class="profile-grid">
+                  <label>
+                    <span class="setting-label">Confidence</span>
+                    <input
+                      v-model.number="graphEntityForm.confidence"
+                      class="memory-input"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                    >
+                  </label>
+                  <label>
+                    <span class="setting-label">Sensitivity</span>
+                    <select
+                      v-model="graphEntityForm.sensitivity"
+                      class="memory-select"
+                    >
+                      <option value="normal">
+                        Normal
+                      </option>
+                      <option value="sensitive">
+                        Sensitive
+                      </option>
+                      <option value="secret">
+                        Secret
+                      </option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  <span class="setting-label">Evidence</span>
+                  <textarea
+                    v-model="graphEntityForm.evidence"
+                    class="memory-textarea compact-area"
+                    spellcheck="true"
+                  />
+                </label>
+              </details>
               <div class="action-row">
                 <button
                   class="primary-btn"
@@ -611,25 +694,83 @@
                   </select>
                 </label>
                 <label>
-                  <span class="setting-label">Confidence</span>
+                  <span class="setting-label">Text</span>
                   <input
-                    v-model.number="graphRelationForm.confidence"
+                    v-model="graphRelationForm.text"
                     class="memory-input"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
+                    type="text"
+                    spellcheck="true"
                   >
                 </label>
               </div>
-              <label>
-                <span class="setting-label">Text</span>
-                <textarea
-                  v-model="graphRelationForm.text"
-                  class="memory-textarea"
-                  spellcheck="true"
-                />
-              </label>
+              <details class="profile-advanced">
+                <summary>Advanced</summary>
+                <div
+                  v-if="graphRelationForm.id"
+                  class="profile-id-row"
+                >
+                  <span>ID</span>
+                  <code>{{ graphRelationForm.id }}</code>
+                </div>
+                <div class="profile-grid">
+                  <label>
+                    <span class="setting-label">Confidence</span>
+                    <input
+                      v-model.number="graphRelationForm.confidence"
+                      class="memory-input"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                    >
+                  </label>
+                  <label>
+                    <span class="setting-label">Status</span>
+                    <select
+                      v-model="graphRelationForm.status"
+                      class="memory-select"
+                    >
+                      <option value="active">
+                        Active
+                      </option>
+                      <option value="superseded">
+                        Superseded
+                      </option>
+                      <option value="conflict">
+                        Conflict
+                      </option>
+                      <option value="deleted">
+                        Deleted
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span class="setting-label">Sensitivity</span>
+                    <select
+                      v-model="graphRelationForm.sensitivity"
+                      class="memory-select"
+                    >
+                      <option value="normal">
+                        Normal
+                      </option>
+                      <option value="sensitive">
+                        Sensitive
+                      </option>
+                      <option value="secret">
+                        Secret
+                      </option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  <span class="setting-label">Evidence</span>
+                  <textarea
+                    v-model="graphRelationForm.evidence"
+                    class="memory-textarea compact-area"
+                    spellcheck="true"
+                  />
+                </label>
+              </details>
               <div class="action-row">
                 <button
                   class="primary-btn"
@@ -647,6 +788,13 @@
                 >
                   Delete
                 </button>
+              </div>
+            </template>
+
+            <template v-else-if="graphView === 'duplicates'">
+              <div class="review-empty">
+                <strong>Possible duplicates are review-only here.</strong>
+                <span>Use Merge or Ignore from the review list. New facts are created from the Facts tab.</span>
               </div>
             </template>
 
@@ -693,26 +841,15 @@
                   >
                 </label>
                 <label>
-                  <span class="setting-label">Confidence</span>
+                  <span class="setting-label">Value</span>
                   <input
-                    v-model.number="graphObservationForm.confidence"
+                    v-model="graphObservationForm.value"
                     class="memory-input"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
+                    type="text"
+                    spellcheck="true"
                   >
                 </label>
               </div>
-              <label>
-                <span class="setting-label">Value</span>
-                <input
-                  v-model="graphObservationForm.value"
-                  class="memory-input"
-                  type="text"
-                  spellcheck="true"
-                >
-              </label>
               <label>
                 <span class="setting-label">Text</span>
                 <textarea
@@ -721,14 +858,74 @@
                   spellcheck="true"
                 />
               </label>
-              <label>
-                <span class="setting-label">Evidence</span>
-                <textarea
-                  v-model="graphObservationForm.evidence"
-                  class="memory-textarea compact-area"
-                  spellcheck="true"
-                />
-              </label>
+              <details class="profile-advanced">
+                <summary>Advanced</summary>
+                <div
+                  v-if="graphObservationForm.id"
+                  class="profile-id-row"
+                >
+                  <span>ID</span>
+                  <code>{{ graphObservationForm.id }}</code>
+                </div>
+                <div class="profile-grid">
+                  <label>
+                    <span class="setting-label">Confidence</span>
+                    <input
+                      v-model.number="graphObservationForm.confidence"
+                      class="memory-input"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                    >
+                  </label>
+                  <label>
+                    <span class="setting-label">Status</span>
+                    <select
+                      v-model="graphObservationForm.status"
+                      class="memory-select"
+                    >
+                      <option value="active">
+                        Active
+                      </option>
+                      <option value="superseded">
+                        Superseded
+                      </option>
+                      <option value="conflict">
+                        Conflict
+                      </option>
+                      <option value="deleted">
+                        Deleted
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span class="setting-label">Sensitivity</span>
+                    <select
+                      v-model="graphObservationForm.sensitivity"
+                      class="memory-select"
+                    >
+                      <option value="normal">
+                        Normal
+                      </option>
+                      <option value="sensitive">
+                        Sensitive
+                      </option>
+                      <option value="secret">
+                        Secret
+                      </option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  <span class="setting-label">Evidence</span>
+                  <textarea
+                    v-model="graphObservationForm.evidence"
+                    class="memory-textarea compact-area"
+                    spellcheck="true"
+                  />
+                </label>
+              </details>
               <div class="action-row">
                 <button
                   class="primary-btn"
@@ -750,1250 +947,291 @@
             </template>
             <div
               v-if="graphAudit.length"
-              class="audit-list"
+              class="audit-list profile-advanced"
             >
-              <strong>Audit</strong>
-              <div
-                v-for="event in graphAudit"
-                :key="event.id"
-                class="audit-row"
-              >
-                <span>{{ event.action }}</span>
-                <span>{{ formatMaybeDate(event.createdAt) }}</span>
-              </div>
+              <details>
+                <summary>Audit</summary>
+                <div
+                  v-for="event in graphAudit"
+                  :key="event.id"
+                  class="audit-row"
+                >
+                  <span>{{ event.action }}</span>
+                  <span>{{ formatMaybeDate(event.createdAt) }}</span>
+                </div>
+              </details>
             </div>
           </section>
         </div>
+        </div>
       </template>
 
-      <template v-else-if="isFileTab">
-        <div class="file-list">
-          <button
-            v-for="file in visibleFiles"
-            :key="file.relativePath"
-            :class="['file-row', { active: selectedPath === file.relativePath }]"
-            type="button"
-            @click="selectFile(file)"
-          >
-            <component
-              :is="kindIcon(file.kind)"
-              :size="17"
-              :stroke-width="1.8"
-              class="file-icon"
-            />
-            <span class="file-main">
-              <span class="file-name">{{ file.relativePath }}</span>
-              <span class="file-meta">{{ kindLabel(file.kind) }} · {{ file.lineCount }} lines · {{ formatSize(file.size) }}</span>
-              <span
-                v-if="file.preview"
-                class="file-preview"
-              >{{ file.preview }}</span>
-            </span>
-            <span class="file-date">{{ formatShortDate(file.mtimeMs) }}</span>
-          </button>
-        </div>
+      <template v-else-if="activeTab === 'notes'">
+        <div class="memory-tab-page notes-page">
+          <section class="memory-tab-intro notes-intro">
+            <div class="tab-intro-main">
+              <span class="section-kicker">Notes</span>
+              <strong>Review raw memory notes</strong>
+              <span>Use notes as source evidence; keep the user-facing profile clean and the raw capture editable.</span>
+            </div>
+            <div class="tab-intro-stats">
+              <span>
+                <strong>{{ noteCount('ai') }}</strong>
+                <small>AI notes</small>
+              </span>
+              <span>
+                <strong>{{ noteCount('daily') }}</strong>
+                <small>Daily captures</small>
+              </span>
+              <span>
+                <strong>{{ noteCount('dreams') }}</strong>
+                <small>Reflections</small>
+              </span>
+            </div>
+            <div class="segmented notes-tabs">
+              <button
+                v-for="filter in noteFilters"
+                :key="filter.id"
+                :class="{ active: noteFilter === filter.id }"
+                type="button"
+                @click="noteFilter = filter.id"
+              >
+                {{ filter.label }} {{ noteCount(filter.id) }}
+              </button>
+            </div>
+          </section>
 
-        <div
-          v-if="selectedFile"
-          class="viewer"
-        >
-          <div class="viewer-header">
-            <span>{{ selectedFile.relativePath }}:{{ selectedFile.startLine }}-{{ selectedFile.endLine }}</span>
-            <button
-              class="text-btn"
-              type="button"
-              :disabled="savingFile"
-              @click="saveSelectedFile"
-            >
-              Save
-            </button>
-            <button
-              class="text-btn"
-              type="button"
-              @click="readSelectedFile(undefined, true)"
-            >
-              Reload
-            </button>
-            <button
-              class="text-btn"
-              type="button"
-              @click="openSelectedPath"
-            >
-              Open
-            </button>
-          </div>
-          <textarea
-            v-model="selectedFileText"
-            class="memory-editor"
-            spellcheck="true"
-          />
+          <div class="notes-workspace memory-workspace">
+            <section class="notes-list-surface memory-surface">
+              <div class="workspace-head">
+                <span>
+                  <strong>Memory notes</strong>
+                  <small>{{ visibleFiles.length }} visible notes</small>
+                </span>
+              </div>
+              <div class="file-list">
+                <button
+                  v-for="file in visibleFiles"
+                  :key="file.relativePath"
+                  :class="['file-row', { active: selectedPath === file.relativePath }]"
+                  type="button"
+                  :title="file.relativePath"
+                  @click="selectFile(file)"
+                >
+                  <component
+                    :is="kindIcon(file.kind)"
+                    :size="17"
+                    :stroke-width="1.8"
+                    class="file-icon"
+                  />
+                  <span class="file-main">
+                    <span class="file-name">{{ memoryFileDisplayName(file) }}</span>
+                    <span class="file-meta">{{ memoryFileMeta(file) }}</span>
+                    <span
+                      v-if="file.preview"
+                      class="file-preview"
+                    >{{ cleanMemoryPreview(file.preview, 120) }}</span>
+                  </span>
+                  <span class="file-date">{{ formatShortDate(file.mtimeMs) }}</span>
+                </button>
+              </div>
+            </section>
+
           <div
-            v-if="selectedFile.truncated"
-            class="notice compact"
+            v-if="selectedFile"
+            class="viewer memory-surface"
           >
-            File is truncated in the editor.
+            <div class="viewer-header">
+              <span>
+                <strong>{{ selectedFileDisplayTitle }}</strong>
+                <small>{{ selectedFile.relativePath }}:{{ selectedFile.startLine }}-{{ selectedFile.endLine }}</small>
+              </span>
+              <em :class="['save-state', { dirty: selectedFileIsDirty }]">{{ selectedFileStatus }}</em>
+              <button
+                class="text-btn"
+                type="button"
+                :disabled="savingFile || !selectedFileIsDirty"
+                @click="saveSelectedFile"
+              >
+                Save
+              </button>
+              <button
+                class="text-btn"
+                type="button"
+                @click="readSelectedFile(undefined, true)"
+              >
+                Reload
+              </button>
+              <button
+                class="text-btn"
+                type="button"
+                @click="openSelectedPath"
+              >
+                Open
+              </button>
+            </div>
+            <textarea
+              v-model="selectedFileText"
+              class="memory-editor"
+              spellcheck="true"
+            />
+            <div
+              v-if="selectedFile.truncated"
+              class="notice compact"
+            >
+              File is truncated in the editor.
+            </div>
           </div>
+        </div>
         </div>
       </template>
 
       <template v-else-if="activeTab === 'search'">
-        <form
-          class="search-row"
-          @submit.prevent="runSearch"
-        >
-          <input
-            v-model="searchQuery"
-            class="memory-input"
-            type="text"
-            placeholder="Search memory..."
-            spellcheck="false"
-          >
-          <button
-            class="primary-btn"
-            type="submit"
-            :disabled="searching || !searchQuery.trim()"
-          >
-            <Search
-              :size="15"
-              :stroke-width="1.8"
-            />
-            <span>Search</span>
-          </button>
-        </form>
-
-        <div class="append-box">
-          <div class="append-top">
-            <select
-              v-model="appendTarget"
-              class="memory-select"
-            >
-              <option value="daily">
-                Daily note
-              </option>
-            </select>
-            <input
-              v-model="appendHeading"
-              class="memory-input compact"
-              type="text"
-              placeholder="Heading"
-              spellcheck="false"
-            >
-          </div>
-          <textarea
-            v-model="appendContent"
-            class="memory-textarea"
-            placeholder="Append memory..."
-            spellcheck="true"
-          />
-          <button
-            class="secondary-action"
-            type="button"
-            :disabled="appending || !appendContent.trim()"
-            @click="appendMemory"
-          >
-            <Plus
-              :size="15"
-              :stroke-width="1.8"
-            />
-            <span>Append</span>
-          </button>
-        </div>
-
-        <div
-          v-if="searching"
-          class="notice"
-        >
-          Searching...
-        </div>
-        <div
-          v-else-if="searchResults.length === 0 && searched"
-          class="notice"
-        >
-          No matches.
-        </div>
-        <div
-          v-else
-          class="search-results"
-        >
-          <button
-            v-for="hit in searchResults"
-            :key="hit.id"
-            class="result-row"
-            type="button"
-            @click="openSearchHit(hit)"
-          >
-            <span class="result-path">{{ hit.path }}:{{ hit.startLine }}-{{ hit.endLine }}</span>
-            <span class="result-score">{{ hit.score.toFixed(3) }}</span>
-            <span class="result-content">{{ hit.content }}</span>
-          </button>
-        </div>
-      </template>
-
-      <template v-else-if="activeTab === 'logs'">
-        <div class="settings-stack">
-          <section class="memory-section">
-            <div class="setting-row">
-              <div>
-                <span class="setting-title">Diagnostics logs</span>
-                <span class="setting-meta">
-                  {{ memoryLogStats?.entriesInBuffer ?? memoryLogs.length }} buffered · {{ memoryLogStats?.files ?? 0 }} files · {{ memoryLogStats?.retainedDays ?? memorySettings.logging.retentionDays }} days
-                </span>
-              </div>
-              <div class="action-row compact-actions">
-                <button
-                  class="secondary-action inline"
-                  type="button"
-                  :disabled="logsLoading"
-                  @click="loadMemoryLogs"
-                >
-                  <RefreshCw
-                    :size="15"
-                    :stroke-width="1.8"
-                    :class="{ spinning: logsLoading }"
-                  />
-                  <span>Refresh</span>
-                </button>
-                <button
-                  class="secondary-action inline"
-                  type="button"
-                  @click="openLogFolder"
-                >
-                  <FolderOpen
-                    :size="15"
-                    :stroke-width="1.8"
-                  />
-                  <span>Open</span>
-                </button>
-                <button
-                  class="secondary-action inline"
-                  type="button"
-                  :disabled="logsLoading"
-                  @click="cleanupLogs"
-                >
-                  Clean
-                </button>
-              </div>
+        <div class="memory-tab-page search-page">
+          <section class="memory-tab-intro search-intro">
+            <div class="tab-intro-main">
+              <span class="section-kicker">Recall and capture</span>
+              <strong>Find or add memory</strong>
+              <span>Search what AI can recall, capture a fresh note, then review the evidence before jumping into Profile or Notes.</span>
             </div>
-            <div class="log-filter-grid">
-              <input
-                v-model="logQuery"
-                class="memory-input"
-                type="search"
-                placeholder="Search logs"
-                spellcheck="false"
-              >
-              <select
-                v-model="logSubsystem"
-                class="memory-select"
-              >
-                <option
-                  v-for="item in logSubsystemOptions"
-                  :key="item"
-                  :value="item"
-                >
-                  {{ item }}
-                </option>
-              </select>
-              <select
-                v-model="logLevel"
-                class="memory-select"
-              >
-                <option
-                  v-for="item in logLevelOptions"
-                  :key="item"
-                  :value="item"
-                >
-                  {{ item }}
-                </option>
-              </select>
-              <select
-                v-model="logStatus"
-                class="memory-select"
-              >
-                <option
-                  v-for="item in logStatusOptions"
-                  :key="item"
-                  :value="item"
-                >
-                  {{ item }}
-                </option>
-              </select>
-            </div>
-            <label class="mini-toggle log-auto-toggle">
-              <input
-                v-model="logAutoRefresh"
-                type="checkbox"
-              >
-              <span>Auto refresh</span>
-            </label>
           </section>
 
-          <section class="memory-section log-layout">
-            <div class="log-list">
-              <button
-                v-for="group in logGroups"
-                :key="group.id"
-                :class="['log-row', group.level, { active: selectedLogGroupId === group.id }]"
-                type="button"
-                @click="selectLogGroup(group)"
+          <div class="search-workspace memory-workspace">
+            <section class="task-surface search-surface memory-surface">
+              <div class="section-head">
+                <div>
+                  <span class="section-kicker">Recall</span>
+                  <strong>Recall memory</strong>
+                  <small>Search facts, profile records, and raw notes.</small>
+                </div>
+              </div>
+              <form
+                class="search-row"
+                @submit.prevent="runSearch"
               >
-                <span class="log-time">{{ formatMaybeDate(group.latestAt) }}</span>
-                <span class="log-main">
-                  <strong>{{ group.subsystem }}</strong>
-                  <span>{{ group.operationLabel }}</span>
-                  <span class="log-chain">{{ group.count }} event{{ group.count === 1 ? '' : 's' }} · {{ group.stageLabel }}</span>
-                </span>
-                <code class="log-status">{{ group.status }}</code>
-                <span
-                  v-if="group.durationMs !== undefined"
-                  class="log-duration"
+                <input
+                  v-model="searchQuery"
+                  class="memory-input"
+                  type="text"
+                  placeholder="Search memory..."
+                  spellcheck="false"
                 >
-                  {{ group.durationMs }}ms
-                </span>
-                <span class="log-summary">{{ group.summary }}</span>
-                <span
-                  v-if="selectedLogGroupId === group.id"
-                  class="log-timeline"
+                <button
+                  class="primary-btn"
+                  type="submit"
+                  :disabled="searching || !searchQuery.trim()"
                 >
-                  <span
-                    v-for="event in group.entries"
-                    :key="event.id"
-                    class="log-event"
+                  <Search
+                    :size="15"
+                    :stroke-width="1.8"
+                  />
+                  <span>Search</span>
+                </button>
+              </form>
+            </section>
+
+            <section class="task-surface capture-surface memory-surface">
+              <div class="section-head">
+                <div>
+                  <span class="section-kicker">Capture</span>
+                  <strong>Append note</strong>
+                  <small>Save a quick observation to today&apos;s memory note.</small>
+                </div>
+              </div>
+              <div class="append-box">
+                <div class="append-top">
+                  <select
+                    v-model="appendTarget"
+                    class="memory-select"
                   >
-                    <span class="log-event-head">
-                      <code>{{ event.operation }} / {{ event.stage }}</code>
-                      <span>{{ event.status }}</span>
-                      <span v-if="event.durationMs !== undefined">{{ event.durationMs }}ms</span>
-                    </span>
-                    <span class="log-event-summary">{{ event.summary || event.error?.message || '' }}</span>
-                  </span>
-                </span>
-                <span
-                  v-if="selectedLogGroupId === group.id"
-                  class="log-inline-detail"
-                >
-                  {{ formatLogGroupDetails(group) }}
-                </span>
-              </button>
-              <div
-                v-if="!logsLoading && memoryLogs.length === 0"
-                class="notice compact"
-              >
-                No memory logs yet.
-              </div>
-            </div>
-          </section>
-        </div>
-      </template>
-
-      <template v-else>
-        <div class="settings-stack">
-          <div class="settings-group-title">
-            Core
-          </div>
-          <section class="memory-section">
-            <div class="setting-row">
-              <label class="toggle-row">
-                <span>
-                  <span class="setting-title">Soul Memory plugin</span>
-                  <span class="setting-meta">Master switch · SOUL.md and graph profile injection</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.enabled !== false"
-                  @change="updateSoulMemory({ enabled: ($event.target as HTMLInputElement).checked })"
-                >
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <label class="setting-label">Directory</label>
-              <div class="segmented">
+                    <option value="daily">
+                      Daily note
+                    </option>
+                  </select>
+                  <input
+                    v-model="appendHeading"
+                    class="memory-input compact"
+                    type="text"
+                    placeholder="Heading"
+                    spellcheck="false"
+                  >
+                </div>
+                <textarea
+                  v-model="appendContent"
+                  class="memory-textarea"
+                  placeholder="Append memory..."
+                  spellcheck="true"
+                />
                 <button
-                  :class="{ active: memorySettings.directoryMode === 'ai-note-dir' }"
+                  class="secondary-action"
                   type="button"
-                  @click="updateSoulMemory({ directoryMode: 'ai-note-dir' })"
+                  :disabled="appending || !appendContent.trim()"
+                  @click="appendMemory"
                 >
-                  AI note dir
-                </button>
-                <button
-                  :class="{ active: memorySettings.directoryMode === 'custom' }"
-                  type="button"
-                  @click="updateSoulMemory({ directoryMode: 'custom' })"
-                >
-                  Custom
-                </button>
-              </div>
-              <div
-                v-if="memorySettings.directoryMode === 'custom'"
-                class="inline-field"
-              >
-                <input
-                  class="memory-input"
-                  :value="memorySettings.customDirectory"
-                  spellcheck="false"
-                  placeholder="/path/to/memory"
-                  @change="updateSoulMemory({ customDirectory: ($event.target as HTMLInputElement).value })"
-                >
-                <button
-                  class="icon-btn bordered"
-                  type="button"
-                  title="Choose directory"
-                  @click="chooseMemoryDirectory"
-                >
-                  <FolderOpen
+                  <Plus
                     :size="15"
                     :stroke-width="1.8"
                   />
+                  <span>Append</span>
                 </button>
+                <span
+                  v-if="appendFeedback"
+                  class="inline-feedback"
+                >
+                  {{ appendFeedback }}
+                </span>
+              </div>
+            </section>
+          </div>
+
+          <section class="task-surface results-surface memory-surface">
+            <div class="section-head">
+              <div>
+                <span class="section-kicker">Review</span>
+                <strong>{{ searchStatusLabel }}</strong>
+                <small>Open graph matches in Profile and note matches in Notes.</small>
               </div>
             </div>
-
-            <div class="setting-row">
-              <label class="range-label">
-                <span>Prompt cap</span>
-                <strong>{{ memorySettings.bootstrapMaxChars }}</strong>
-              </label>
-              <input
-                class="memory-range"
-                type="range"
-                :min="2000"
-                :max="50000"
-                :step="1000"
-                :value="memorySettings.bootstrapMaxChars"
-                :disabled="memorySettings.enabled === false"
-                @change="updateSoulMemory({ bootstrapMaxChars: Number(($event.target as HTMLInputElement).value) })"
-              >
-            </div>
-          </section>
-
-          <section class="memory-section">
-            <div class="setting-row">
-              <label class="toggle-row">
-                <span>
-                  <span class="setting-title">Graph Memory</span>
-                  <span class="setting-meta">SQLite source of truth · {{ overview?.graph?.entities ?? 0 }} entities / {{ overview?.graph?.observations ?? 0 }} observations</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.canonicalMemory.enabled !== false"
-                  :disabled="memorySettings.enabled === false"
-                  @change="updateSoulMemory({ canonicalMemory: { ...memorySettings.canonicalMemory, enabled: ($event.target as HTMLInputElement).checked } })"
-                >
-              </label>
-            </div>
-            <div class="behavior-note">
-              Stores durable user identity, preferences, facts, constraints, project relationships, and accepted decisions. This graph summary is read into prompts.
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>High-confidence threshold</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  :value="memorySettings.canonicalMemory.highConfidenceThreshold"
-                  :disabled="memorySettings.enabled === false || memorySettings.canonicalMemory.enabled === false"
-                  @change="updateSoulMemory({ canonicalMemory: { ...memorySettings.canonicalMemory, highConfidenceThreshold: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-              <label class="field">
-                <span>Semantic dedupe threshold</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  :value="memorySettings.canonicalMemory.semanticDedupeThreshold"
-                  :disabled="memorySettings.enabled === false || memorySettings.canonicalMemory.enabled === false"
-                  @change="updateSoulMemory({ canonicalMemory: { ...memorySettings.canonicalMemory, semanticDedupeThreshold: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-            </div>
-          </section>
-
-          <div class="settings-group-title">
-            Writes
-          </div>
-          <section class="memory-section">
-            <div class="setting-row">
-              <label class="toggle-row">
-                <span>
-                  <span class="setting-title">Capture after response</span>
-                  <span class="setting-meta">writes memory · {{ memorySettings.capture.mode }} · {{ memorySettings.capture.targetPolicy }}</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.capture.enabled !== false"
-                  :disabled="memorySettings.enabled === false"
-                  @change="updateSoulMemory({ capture: { ...memorySettings.capture, enabled: ($event.target as HTMLInputElement).checked } })"
-                >
-              </label>
-            </div>
-            <div class="behavior-note">
-              Runs after an assistant reply. High-confidence user-backed facts go to SQLite; medium-confidence working notes go to today's daily note.
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Mode</span>
-                <select
-                  class="memory-select"
-                  :value="memorySettings.capture.mode"
-                  :disabled="memorySettings.enabled === false || memorySettings.capture.enabled === false"
-                  @change="updateSoulMemory({ capture: { ...memorySettings.capture, mode: ($event.target as HTMLSelectElement).value as any } })"
-                >
-                  <option value="explicit-only">
-                    Explicit only
-                  </option>
-                  <option value="auto">
-                    Auto
-                  </option>
-                  <option value="off">
-                    Off
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Target policy</span>
-                <select
-                  class="memory-select"
-                  :value="memorySettings.capture.targetPolicy"
-                  :disabled="memorySettings.enabled === false || memorySettings.capture.enabled === false"
-                  @change="updateSoulMemory({ capture: { ...memorySettings.capture, targetPolicy: ($event.target as HTMLSelectElement).value as any } })"
-                >
-                  <option value="canonical-first">
-                    Graph first
-                  </option>
-                  <option value="daily-only">
-                    Daily only
-                  </option>
-                  <option value="hybrid">
-                    Hybrid
-                  </option>
-                </select>
-              </label>
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Policy</span>
-                <select
-                  class="memory-select"
-                  :value="memorySettings.capture.policy"
-                  :disabled="memorySettings.enabled === false || memorySettings.capture.enabled === false"
-                  @change="updateSoulMemory({ capture: { ...memorySettings.capture, policy: ($event.target as HTMLSelectElement).value as any } })"
-                >
-                  <option value="high-confidence">
-                    High confidence
-                  </option>
-                  <option value="aggressive">
-                    Aggressive
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Long-term confidence</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  :value="memorySettings.capture.longTermMinConfidence"
-                  :disabled="memorySettings.enabled === false || memorySettings.capture.enabled === false"
-                  @change="updateSoulMemory({ capture: { ...memorySettings.capture, longTermMinConfidence: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Daily confidence</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  :value="memorySettings.capture.dailyMinConfidence"
-                  :disabled="memorySettings.enabled === false || memorySettings.capture.enabled === false"
-                  @change="updateSoulMemory({ capture: { ...memorySettings.capture, dailyMinConfidence: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-              <label class="field">
-                <span>Timeout ms</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="1000"
-                  max="60000"
-                  step="1000"
-                  :value="memorySettings.capture.timeoutMs"
-                  :disabled="memorySettings.enabled === false || memorySettings.capture.enabled === false"
-                  @change="updateSoulMemory({ capture: { ...memorySettings.capture, timeoutMs: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-            </div>
-          </section>
-
-          <div class="settings-group-title">
-            Read / Recall
-          </div>
-          <section class="memory-section">
-            <div class="setting-row">
-              <label class="toggle-row">
-                <span>
-                  <span class="setting-title">Active Memory</span>
-                  <span class="setting-meta">reads before each turn · {{ memorySettings.activeMemory.queryMode }} · {{ memorySettings.activeMemory.promptStyle }}</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.activeMemory.enabled !== false"
-                  :disabled="memorySettings.enabled === false"
-                  @change="updateSoulMemory({ activeMemory: { ...memorySettings.activeMemory, enabled: ($event.target as HTMLInputElement).checked } })"
-                >
-              </label>
-            </div>
-            <div class="behavior-note">
-              Searches SQLite graph memory and Markdown notes before a request, then injects matching context as untrusted recall.
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Query</span>
-                <select
-                  class="memory-select"
-                  :value="memorySettings.activeMemory.queryMode"
-                  :disabled="memorySettings.enabled === false || memorySettings.activeMemory.enabled === false"
-                  @change="updateSoulMemory({ activeMemory: { ...memorySettings.activeMemory, queryMode: ($event.target as HTMLSelectElement).value as any } })"
-                >
-                  <option value="recent">
-                    Recent
-                  </option>
-                  <option value="message">
-                    Message
-                  </option>
-                  <option value="full">
-                    Full tail
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Style</span>
-                <select
-                  class="memory-select"
-                  :value="memorySettings.activeMemory.promptStyle"
-                  :disabled="memorySettings.enabled === false || memorySettings.activeMemory.enabled === false"
-                  @change="updateSoulMemory({ activeMemory: { ...memorySettings.activeMemory, promptStyle: ($event.target as HTMLSelectElement).value as any } })"
-                >
-                  <option value="balanced">
-                    Balanced
-                  </option>
-                  <option value="strict">
-                    Strict
-                  </option>
-                  <option value="contextual">
-                    Contextual
-                  </option>
-                  <option value="recall-heavy">
-                    Recall-heavy
-                  </option>
-                  <option value="precision-heavy">
-                    Precision-heavy
-                  </option>
-                  <option value="preference-only">
-                    Preference-only
-                  </option>
-                </select>
-              </label>
-            </div>
-          </section>
-
-          <div class="settings-group-title">
-            Maintenance
-          </div>
-          <section class="memory-section">
-            <div class="setting-row">
-              <label class="toggle-row">
-                <span>
-                  <span class="setting-title">Search index</span>
-                  <span class="setting-meta">derived index · {{ memorySettings.search.maxResults }} results · {{ memorySettings.search.chunkTokens }} tokens</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.search.enabled !== false"
-                  :disabled="memorySettings.enabled === false"
-                  @change="updateSoulMemory({ search: { ...memorySettings.search, enabled: ($event.target as HTMLInputElement).checked } })"
-                >
-              </label>
-            </div>
-            <div class="behavior-note">
-              Maintains SQLite FTS and chunk metadata for Markdown notes. It is rebuildable infrastructure, not the memory source of truth.
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Results</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="1"
-                  max="20"
-                  :value="memorySettings.search.maxResults"
-                  :disabled="memorySettings.enabled === false || memorySettings.search.enabled === false"
-                  @change="updateSoulMemory({ search: { ...memorySettings.search, maxResults: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-              <label class="field">
-                <span>Chunk tokens</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="100"
-                  max="2000"
-                  step="50"
-                  :value="memorySettings.search.chunkTokens"
-                  :disabled="memorySettings.enabled === false || memorySettings.search.enabled === false"
-                  @change="updateSoulMemory({ search: { ...memorySettings.search, chunkTokens: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Overlap</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="0"
-                  max="1000"
-                  step="10"
-                  :value="memorySettings.search.chunkOverlap"
-                  :disabled="memorySettings.enabled === false || memorySettings.search.enabled === false"
-                  @change="updateSoulMemory({ search: { ...memorySettings.search, chunkOverlap: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-              <label class="field">
-                <span>Half-life days</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="1"
-                  max="365"
-                  :value="memorySettings.search.temporalDecayHalfLifeDays"
-                  :disabled="memorySettings.enabled === false || memorySettings.search.enabled === false"
-                  @change="updateSoulMemory({ search: { ...memorySettings.search, temporalDecayHalfLifeDays: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-            </div>
-            <div class="setting-row">
-              <label class="toggle-row">
-                <span>
-                  <span class="setting-title">MMR dedupe</span>
-                  <span class="setting-meta">{{ memorySettings.search.mmrEnabled ? 'on' : 'off' }}</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.search.mmrEnabled !== false"
-                  :disabled="memorySettings.enabled === false || memorySettings.search.enabled === false"
-                  @change="updateSoulMemory({ search: { ...memorySettings.search, mmrEnabled: ($event.target as HTMLInputElement).checked } })"
-                >
-              </label>
-            </div>
-          </section>
-
-          <section class="memory-section">
-            <div class="setting-row">
-              <label class="toggle-row">
-                <span>
-                  <span class="setting-title">Embeddings</span>
-                  <span class="setting-meta">search vectors · {{ embeddingTarget.providerLabel }} · {{ embeddingTarget.model }}</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.embeddings.enabled !== false"
-                  :disabled="memorySettings.enabled === false"
-                  @change="updateSoulMemory({ embeddings: { ...memorySettings.embeddings, enabled: ($event.target as HTMLInputElement).checked } })"
-                >
-              </label>
-            </div>
-            <div class="behavior-note">
-              Used for vector search and semantic duplicate hints. Prompt injection and FTS search still work when embeddings are unavailable.
-            </div>
-
-            <div :class="['embedding-target', { warning: !embeddingTarget.available }]">
-              <span>Provider</span>
-              <strong>{{ embeddingTarget.providerLabel }}</strong>
-              <span>Model</span>
-              <code>{{ embeddingTarget.model }}</code>
-              <span>Base URL</span>
-              <code>{{ embeddingTarget.baseUrl || 'Custom base URL required' }}</code>
-              <span>Key</span>
-              <strong>{{ embeddingTarget.apiKeyHint }}</strong>
-            </div>
-
-            <div class="grid-two">
-              <label class="field">
-                <span>Provider</span>
-                <select
-                  class="memory-select"
-                  :value="memorySettings.embeddings.providerId"
-                  :disabled="memorySettings.enabled === false || memorySettings.embeddings.enabled === false"
-                  @change="updateSoulMemory({ embeddings: { ...memorySettings.embeddings, providerId: ($event.target as HTMLSelectElement).value } })"
-                >
-                  <option value="auto">
-                    Auto
-                  </option>
-                  <option value="openai">
-                    OpenAI
-                  </option>
-                  <option value="gemini">
-                    Gemini
-                  </option>
-                  <option value="openrouter">
-                    OpenRouter
-                  </option>
-                  <option value="custom">
-                    Custom
-                  </option>
-                  <option value="ollama">
-                    Ollama
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Model</span>
-                <input
-                  class="memory-input"
-                  :value="memorySettings.embeddings.model"
-                  :placeholder="embeddingTarget.model"
-                  spellcheck="false"
-                  :disabled="memorySettings.enabled === false || memorySettings.embeddings.enabled === false"
-                  @change="updateSoulMemory({ embeddings: { ...memorySettings.embeddings, model: ($event.target as HTMLInputElement).value } })"
-                >
-              </label>
-            </div>
-
-            <label
-              v-if="memorySettings.embeddings.providerId === 'custom'"
-              class="field"
-            >
-              <span>Custom provider</span>
-              <select
-                class="memory-select"
-                :value="memorySettings.embeddings.customProviderId"
-                :disabled="memorySettings.enabled === false || memorySettings.embeddings.enabled === false"
-                @change="updateSoulMemory({ embeddings: { ...memorySettings.embeddings, customProviderId: ($event.target as HTMLSelectElement).value } })"
-              >
-                <option value="">
-                  First compatible provider
-                </option>
-                <option
-                  v-for="provider in openAICompatibleCustomProviders"
-                  :key="provider.id"
-                  :value="provider.id"
-                >
-                  {{ provider.name || provider.id }}
-                </option>
-              </select>
-            </label>
-
             <div
-              v-if="memorySettings.embeddings.providerId !== 'auto'"
-              class="grid-two"
+              v-if="searching"
+              class="notice"
             >
-              <label class="field">
-                <span>API key</span>
-                <input
-                  class="memory-input"
-                  type="password"
-                  :value="memorySettings.embeddings.apiKey"
-                  placeholder="Provider key"
-                  autocomplete="off"
-                  spellcheck="false"
-                  :disabled="memorySettings.enabled === false || memorySettings.embeddings.enabled === false"
-                  @change="updateSoulMemory({ embeddings: { ...memorySettings.embeddings, apiKey: ($event.target as HTMLInputElement).value } })"
-                >
-              </label>
-              <label class="field">
-                <span>Dimensions</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  :value="memorySettings.embeddings.dimensions || ''"
-                  placeholder="Default"
-                  :disabled="memorySettings.enabled === false || memorySettings.embeddings.enabled === false"
-                  @change="updateSoulMemory({ embeddings: { ...memorySettings.embeddings, dimensions: Number(($event.target as HTMLInputElement).value) || 0 } })"
-                >
-              </label>
+              Searching...
             </div>
-
-            <label
-              v-if="memorySettings.embeddings.providerId !== 'auto'"
-              class="field"
+            <div
+              v-else-if="searchResults.length === 0 && searched"
+              class="notice"
             >
-              <span>Base URL</span>
-              <input
-                class="memory-input"
-                :value="memorySettings.embeddings.baseUrl"
-                :placeholder="embeddingTarget.baseUrl || 'OpenAI-compatible /v1 endpoint'"
-                spellcheck="false"
-                :disabled="memorySettings.enabled === false || memorySettings.embeddings.enabled === false"
-                @change="updateSoulMemory({ embeddings: { ...memorySettings.embeddings, baseUrl: ($event.target as HTMLInputElement).value } })"
-              >
-            </label>
-          </section>
-
-          <section class="memory-section">
-            <div class="setting-row">
-              <label class="toggle-row">
-                <span>
-                  <span class="setting-title">Diagnostics logging</span>
-                  <span class="setting-meta">{{ memorySettings.logging.level }} · {{ memorySettings.logging.retentionDays }} days · {{ memorySettings.logging.maxPreviewChars }} chars</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.logging.enabled !== false"
-                  :disabled="memorySettings.enabled === false"
-                  @change="updateSoulMemory({ logging: { ...memorySettings.logging, enabled: ($event.target as HTMLInputElement).checked } })"
-                >
-              </label>
+              No matches.
             </div>
-            <div class="behavior-note">
-              Records redacted memory and embedding diagnostics: API timing, provider/model, status, errors, fallback, and memory routing. API keys, full prompts, full user messages, and vectors are not saved.
+            <div
+              v-else-if="!searched"
+              class="search-empty-state"
+            >
+              <strong>Ready to recall</strong>
+              <span>Try a project, preference, decision, or phrase from a recent conversation.</span>
             </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Level</span>
-                <select
-                  class="memory-select"
-                  :value="memorySettings.logging.level"
-                  :disabled="memorySettings.enabled === false || memorySettings.logging.enabled === false"
-                  @change="updateSoulMemory({ logging: { ...memorySettings.logging, level: ($event.target as HTMLSelectElement).value as any } })"
-                >
-                  <option value="debug">
-                    debug
-                  </option>
-                  <option value="info">
-                    info
-                  </option>
-                  <option value="warn">
-                    warn
-                  </option>
-                  <option value="error">
-                    error
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Retention days</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="1"
-                  max="90"
-                  :value="memorySettings.logging.retentionDays"
-                  :disabled="memorySettings.enabled === false || memorySettings.logging.enabled === false"
-                  @change="updateSoulMemory({ logging: { ...memorySettings.logging, retentionDays: Number(($event.target as HTMLInputElement).value) || 7 } })"
-                >
-              </label>
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Preview chars</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="120"
-                  max="4000"
-                  step="20"
-                  :value="memorySettings.logging.maxPreviewChars"
-                  :disabled="memorySettings.enabled === false || memorySettings.logging.enabled === false"
-                  @change="updateSoulMemory({ logging: { ...memorySettings.logging, maxPreviewChars: Number(($event.target as HTMLInputElement).value) || 600 } })"
-                >
-              </label>
-              <label class="field toggle-row">
-                <span>
-                  <span class="setting-title">HTTP error body</span>
-                  <span class="setting-meta">redacted preview only</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.logging.includeHttpErrorBody !== false"
-                  :disabled="memorySettings.enabled === false || memorySettings.logging.enabled === false"
-                  @change="updateSoulMemory({ logging: { ...memorySettings.logging, includeHttpErrorBody: ($event.target as HTMLInputElement).checked } })"
-                >
-              </label>
-            </div>
-          </section>
-
-          <div class="settings-group-title">
-            Read / Recall
-          </div>
-          <section class="memory-section">
-            <div class="setting-row">
-              <label class="toggle-row">
-                <span>
-                  <span class="setting-title">Daily context</span>
-                  <span class="setting-meta">reads daily notes · {{ memorySettings.dailyContext.mode }} · {{ memorySettings.dailyContext.daysBack }} days</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.dailyContext.enabled !== false"
-                  :disabled="memorySettings.enabled === false"
-                  @change="updateSoulMemory({ dailyContext: { ...memorySettings.dailyContext, enabled: ($event.target as HTMLInputElement).checked } })"
-                >
-              </label>
-            </div>
-            <div class="behavior-note">
-              Injects recent daily note excerpts into the prompt. It only reads files; it does not create or update memory.
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Mode</span>
-                <select
-                  class="memory-select"
-                  :value="memorySettings.dailyContext.mode"
-                  :disabled="memorySettings.enabled === false || memorySettings.dailyContext.enabled === false"
-                  @change="updateSoulMemory({ dailyContext: { ...memorySettings.dailyContext, mode: ($event.target as HTMLSelectElement).value as any } })"
-                >
-                  <option value="session-start">
-                    New chats
-                  </option>
-                  <option value="always">
-                    Every turn
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Days back</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="0"
-                  max="14"
-                  :value="memorySettings.dailyContext.daysBack"
-                  :disabled="memorySettings.enabled === false || memorySettings.dailyContext.enabled === false"
-                  @change="updateSoulMemory({ dailyContext: { ...memorySettings.dailyContext, daysBack: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-            </div>
-          </section>
-
-          <div class="settings-group-title">
-            Writes / Background
-          </div>
-          <section class="memory-section">
-            <div class="setting-row">
-              <label class="toggle-row">
-                <span>
-                  <span class="setting-title">Compact Memory Flush</span>
-                  <span class="setting-meta">writes before compact · {{ memorySettings.memoryFlush.maxInputChars }} chars</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.memoryFlush.enabled !== false"
-                  :disabled="memorySettings.enabled === false"
-                  @change="updateSoulMemory({ memoryFlush: { ...memorySettings.memoryFlush, enabled: ($event.target as HTMLInputElement).checked } })"
-                >
-              </label>
-            </div>
-            <div class="behavior-note">
-              Runs only before context compact. Turning this off does not disable chat compacting; it only stops compact-time memory writes.
-            </div>
-            <div class="setting-row">
-              <label class="toggle-row">
-                <span>
-                  <span class="setting-title">Memory Dreaming</span>
-                  <span class="setting-meta">scheduled writes · {{ overview?.dreaming.frequency || memorySettings.dreaming.frequency }}</span>
-                </span>
-                <input
-                  type="checkbox"
-                  :checked="memorySettings.dreaming.enabled === true"
-                  :disabled="memorySettings.enabled === false"
-                  @change="updateSoulMemory({ dreaming: { ...memorySettings.dreaming, enabled: ($event.target as HTMLInputElement).checked } })"
-                >
-              </label>
-            </div>
-            <div class="behavior-note">
-              Runs as a managed scheduler task. It reviews notes/signals/sessions, then writes reports and thresholded promotions.
-            </div>
-            <div class="dreaming-status">
-              <span>Next</span>
-              <strong>{{ formatMaybeDate(overview?.dreaming.nextRunAt) }}</strong>
-              <span>Last</span>
-              <strong>{{ formatMaybeDate(overview?.dreaming.lastRunAt) }}</strong>
-              <span>Status</span>
-              <strong>{{ overview?.dreaming.lastStatus || 'none' }}</strong>
-            </div>
-            <div class="action-row">
+            <div
+              v-else
+              class="search-results"
+            >
               <button
-                class="secondary-action inline"
+                v-for="hit in searchResults"
+                :key="hit.id"
+                class="result-row"
                 type="button"
-                :disabled="isDreamingInFlight"
-                @click="runDreaming"
+                @click="openSearchHit(hit)"
               >
-                <Sparkles
-                  :size="15"
-                  :stroke-width="1.8"
-                />
-                <span>{{ isDreamingInFlight ? 'Running...' : 'Run now' }}</span>
+                <span class="result-path">{{ searchHitTitle(hit) }}</span>
+                <span class="result-score">{{ hit.score.toFixed(3) }}</span>
+                <span class="result-meta">{{ searchHitMeta(hit) }}</span>
+                <span class="result-content">{{ hit.content }}</span>
               </button>
             </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Schedule</span>
-                <input
-                  class="memory-input"
-                  :value="memorySettings.dreaming.frequency"
-                  spellcheck="false"
-                  :disabled="memorySettings.enabled === false || memorySettings.dreaming.enabled !== true"
-                  @change="updateSoulMemory({ dreaming: { ...memorySettings.dreaming, frequency: ($event.target as HTMLInputElement).value } })"
-                >
-              </label>
-              <label class="field">
-                <span>Timezone</span>
-                <input
-                  class="memory-input"
-                  :value="memorySettings.dreaming.timezone"
-                  placeholder="System"
-                  spellcheck="false"
-                  :disabled="memorySettings.enabled === false || memorySettings.dreaming.enabled !== true"
-                  @change="updateSoulMemory({ dreaming: { ...memorySettings.dreaming, timezone: ($event.target as HTMLInputElement).value } })"
-                >
-              </label>
-            </div>
-            <label class="field">
-              <span>Model</span>
-              <input
-                class="memory-input"
-                :value="memorySettings.dreaming.model"
-                placeholder="Current chat model"
-                spellcheck="false"
-                :disabled="memorySettings.enabled === false || memorySettings.dreaming.enabled !== true"
-                @change="updateSoulMemory({ dreaming: { ...memorySettings.dreaming, model: ($event.target as HTMLInputElement).value } })"
-              >
-            </label>
-            <div class="source-toggles">
-              <label
-                v-for="source in dreamSourceOptions"
-                :key="source"
-                class="mini-toggle"
-              >
-                <input
-                  type="checkbox"
-                  :checked="(memorySettings.dreaming.sources || []).includes(source)"
-                  :disabled="memorySettings.enabled === false || memorySettings.dreaming.enabled !== true"
-                  @change="toggleDreamingSource(source, ($event.target as HTMLInputElement).checked)"
-                >
-                <span>{{ source }}</span>
-              </label>
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Lookback days</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="1"
-                  max="365"
-                  :value="memorySettings.dreaming.lookbackDays"
-                  :disabled="memorySettings.enabled === false || memorySettings.dreaming.enabled !== true"
-                  @change="updateSoulMemory({ dreaming: { ...memorySettings.dreaming, lookbackDays: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-              <label class="field">
-                <span>Promotions</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="0"
-                  max="100"
-                  :value="memorySettings.dreaming.maxPromotions"
-                  :disabled="memorySettings.enabled === false || memorySettings.dreaming.enabled !== true"
-                  @change="updateSoulMemory({ dreaming: { ...memorySettings.dreaming, maxPromotions: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Source files</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="1"
-                  max="100"
-                  :value="memorySettings.dreaming.maxSourceFiles"
-                  :disabled="memorySettings.enabled === false || memorySettings.dreaming.enabled !== true"
-                  @change="updateSoulMemory({ dreaming: { ...memorySettings.dreaming, maxSourceFiles: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-              <label class="field">
-                <span>Sessions</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="0"
-                  max="100"
-                  :value="memorySettings.dreaming.maxSessions"
-                  :disabled="memorySettings.enabled === false || memorySettings.dreaming.enabled !== true"
-                  @change="updateSoulMemory({ dreaming: { ...memorySettings.dreaming, maxSessions: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-            </div>
-            <div class="grid-two">
-              <label class="field">
-                <span>Messages / session</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="1"
-                  max="200"
-                  :value="memorySettings.dreaming.maxMessagesPerSession"
-                  :disabled="memorySettings.enabled === false || memorySettings.dreaming.enabled !== true"
-                  @change="updateSoulMemory({ dreaming: { ...memorySettings.dreaming, maxMessagesPerSession: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-              <label class="field">
-                <span>Input chars</span>
-                <input
-                  class="memory-input"
-                  type="number"
-                  min="2000"
-                  max="200000"
-                  step="1000"
-                  :value="memorySettings.dreaming.maxInputChars"
-                  :disabled="memorySettings.enabled === false || memorySettings.dreaming.enabled !== true"
-                  @change="updateSoulMemory({ dreaming: { ...memorySettings.dreaming, maxInputChars: Number(($event.target as HTMLInputElement).value) } })"
-                >
-              </label>
-            </div>
-            <label class="field">
-              <span>Timeout ms</span>
-              <input
-                class="memory-input"
-                type="number"
-                min="5000"
-                max="300000"
-                step="5000"
-                :value="memorySettings.dreaming.timeoutMs"
-                :disabled="memorySettings.enabled === false || memorySettings.dreaming.enabled !== true"
-                @change="updateSoulMemory({ dreaming: { ...memorySettings.dreaming, timeoutMs: Number(($event.target as HTMLInputElement).value) } })"
-              >
-            </label>
-            <button
-              class="secondary-action"
-              type="button"
-              :disabled="loading"
-              @click="rebuildIndex"
-            >
-              <Database
-                :size="15"
-                :stroke-width="1.8"
-              />
-              <span>Reindex</span>
-            </button>
           </section>
         </div>
       </template>
+
     </div>
   </div>
 </template>
@@ -2004,17 +1242,13 @@ import {
   BookOpen,
   Brain,
   Clock,
-  Database,
-  FileText,
   FolderOpen,
   Loader2,
   Plus,
   RefreshCw,
   Search,
-  Settings,
   Sparkles,
 } from 'lucide-vue-next'
-import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import type {
   MemoryGraphAuditEvent,
@@ -2025,33 +1259,44 @@ import type {
   MemoryGraphObservationKind,
   MemoryGraphRelation,
   MemoryGraphStatus,
-  MemoryDiagnosticLogEntry,
-  MemoryLogsStatsResponse,
   MemoryManagedFile,
   MemoryOverview,
   MemoryReadResponse,
   MemorySearchHit,
-  SoulMemorySettings,
 } from '@shared/ipc'
 import { normalizeSoulMemorySettings } from '@shared/defaults/settings'
-import { resolveSoulMemoryEmbeddingTarget } from '@shared/embeddings/defaults'
 
-type TabId = 'overview' | 'profile' | 'ai-notes' | 'daily' | 'dreams' | 'search' | 'logs' | 'settings'
-type MemoryLogGroup = {
+type TabId = 'overview' | 'profile' | 'notes' | 'search'
+type NoteFilter = 'all' | 'ai' | 'daily' | 'dreams'
+
+interface MemoryHeroHighlight {
   id: string
-  subsystem: string
-  level: MemoryDiagnosticLogEntry['level']
-  status: MemoryDiagnosticLogEntry['status']
-  operationLabel: string
-  stageLabel: string
-  summary: string
-  count: number
-  latestAt: number
-  durationMs?: number
-  entries: MemoryDiagnosticLogEntry[]
+  label: string
+  title: string
+  body: string
 }
 
-const settingsStore = useSettingsStore()
+interface MemoryHeroStat {
+  id: string
+  value: string
+  label: string
+}
+
+interface RecentMemoryActivity {
+  id: string
+  title: string
+  meta: string
+  body: string
+}
+
+interface HealthCard {
+  id: string
+  title: string
+  status: string
+  detail: string
+  tone: 'healthy' | 'warning' | 'danger' | 'muted'
+}
+
 const sessionsStore = useSessionsStore()
 const activeAgentId = computed(() => sessionsStore.currentSession?.agentId || 'default')
 
@@ -2060,26 +1305,17 @@ const loading = ref(false)
 const searching = ref(false)
 const appending = ref(false)
 const savingFile = ref(false)
-const dreamingRunning = ref(false)
-const logsLoading = ref(false)
 const profileLoading = ref(false)
 const profileSaving = ref(false)
 const searched = ref(false)
 const error = ref('')
 const activeTab = ref<TabId>('overview')
+const noteFilter = ref<NoteFilter>('all')
 const selectedPath = ref('SOUL.md')
 const selectedFile = ref<MemoryReadResponse['file'] | null>(null)
 const selectedFileText = ref('')
 const searchQuery = ref('')
 const searchResults = ref<MemorySearchHit[]>([])
-const memoryLogs = ref<MemoryDiagnosticLogEntry[]>([])
-const memoryLogStats = ref<MemoryLogsStatsResponse['stats'] | null>(null)
-const selectedLogGroupId = ref('')
-const logQuery = ref('')
-const logLevel = ref('all')
-const logSubsystem = ref('all')
-const logStatus = ref('all')
-const logAutoRefresh = ref(false)
 const graphEntities = ref<MemoryGraphEntity[]>([])
 const graphObservations = ref<MemoryGraphObservation[]>([])
 const graphRelations = ref<MemoryGraphRelation[]>([])
@@ -2090,7 +1326,7 @@ const graphView = ref<'observations' | 'relations' | 'entities' | 'duplicates'>(
 const appendTarget = ref<'daily'>('daily')
 const appendHeading = ref('Manual memory')
 const appendContent = ref('')
-const dreamSourceOptions = ['daily', 'sessions', 'short-term', 'recall'] as const
+const appendFeedback = ref('')
 const graphEntityTypes: MemoryGraphEntityType[] = ['user', 'project', 'tech', 'component', 'decision', 'concept', 'person', 'organization']
 const graphObservationKinds: MemoryGraphObservationKind[] = ['identity', 'preference', 'constraint', 'decision', 'project', 'fact', 'summary', 'episodic']
 const graphEntityAliases = ref('')
@@ -2127,47 +1363,218 @@ const graphRelationForm = ref({
   status: 'active' as MemoryGraphStatus,
   evidence: '',
 })
-let overviewRefreshTimer: number | null = null
 let dreamingPollTimer: number | null = null
-let logsPollTimer: number | null = null
 
-const tabs: Array<{ id: TabId; label: string; icon: Component }> = [
-  { id: 'overview', label: 'Overview', icon: FileText },
-  { id: 'profile', label: 'Graph Memory', icon: Database },
-  { id: 'ai-notes', label: 'AI Notes', icon: BookOpen },
-  { id: 'daily', label: 'Daily', icon: Clock },
-  { id: 'dreams', label: 'Dreams', icon: Brain },
-  { id: 'search', label: 'Search', icon: Search },
-  { id: 'logs', label: 'Logs', icon: FileText },
-  { id: 'settings', label: 'Settings', icon: Settings },
+const tabs: Array<{ id: TabId; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'profile', label: 'Profile' },
+  { id: 'notes', label: 'Notes' },
+  { id: 'search', label: 'Search' },
 ]
 
-const logSubsystemOptions = ['all', 'embedding', 'index', 'search', 'capture', 'graph', 'daily', 'active-memory', 'flush', 'dreaming', 'scheduler', 'ipc']
-const logLevelOptions = ['all', 'debug', 'info', 'warn', 'error']
-const logStatusOptions = ['all', 'started', 'ok', 'error', 'skipped', 'fallback']
+const noteFilters: Array<{ id: NoteFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'ai', label: 'AI Notes' },
+  { id: 'daily', label: 'Daily' },
+  { id: 'dreams', label: 'Dreams' },
+]
 
 const memorySettings = computed(() =>
-  normalizeSoulMemorySettings(settingsStore.settings.general.soulMemory),
+  normalizeSoulMemorySettings(overview.value?.settings),
 )
 
-const openAICompatibleCustomProviders = computed(() =>
-  (settingsStore.settings.ai.customProviders || []).filter(provider => provider.apiType === 'openai'),
+const loadedFactCount = computed(() =>
+  graphObservations.value.filter(item => item.status === 'active').length,
 )
 
-const embeddingTarget = computed(() =>
-  resolveSoulMemoryEmbeddingTarget({
-    providerId: memorySettings.value.embeddings.providerId,
-    customProviderId: memorySettings.value.embeddings.customProviderId,
-    apiKey: memorySettings.value.embeddings.apiKey,
-    model: memorySettings.value.embeddings.model,
-    baseUrl: memorySettings.value.embeddings.baseUrl,
-    providers: settingsStore.settings.ai.providers,
-    customProviders: settingsStore.settings.ai.customProviders,
-  }),
+const durableFactCount = computed(() =>
+  Math.max(overview.value?.graph?.observations ?? 0, loadedFactCount.value),
 )
+
+const knownEntityCount = computed(() =>
+  Math.max(overview.value?.graph?.entities ?? 0, graphEntities.value.length),
+)
+
+const memoryHeroTitle = computed(() => {
+  if (durableFactCount.value > 0) {
+    return `Memory has learned ${durableFactCount.value} durable ${durableFactCount.value === 1 ? 'fact' : 'facts'}`
+  }
+  const fileCount = overview.value?.files.length ?? 0
+  if (fileCount > 0) return `Memory is learning from ${fileCount} notes`
+  return 'Memory is ready to learn from your work'
+})
+
+const memoryHeroSubtitle = computed(() => {
+  const entities = knownEntityCount.value
+  const daily = noteCount('daily')
+  const parts = [
+    entities > 0 ? `${entities} entities` : '',
+    daily > 0 ? `${daily} daily captures` : '',
+    overview.value?.dreaming.lastApplied ? `${overview.value.dreaming.lastApplied} promoted insights` : '',
+  ].filter(Boolean)
+  return parts.length
+    ? parts.join(' · ')
+    : 'Profile facts, daily notes, and recall signals will appear here as memory learns.'
+})
+
+const memoryHeroStats = computed<MemoryHeroStat[]>(() => [
+  {
+    id: 'facts',
+    value: String(durableFactCount.value),
+    label: 'Durable facts',
+  },
+  {
+    id: 'entities',
+    value: String(knownEntityCount.value),
+    label: 'Known entities',
+  },
+  {
+    id: 'daily',
+    value: String(noteCount('daily')),
+    label: 'Daily captures',
+  },
+])
+
+const memoryHeroHighlights = computed<MemoryHeroHighlight[]>(() => {
+  const observations = graphObservations.value
+    .filter(item => item.status === 'active')
+    .slice(0, 3)
+    .map(item => ({
+      id: item.id,
+      label: kindTitle(item.kind),
+      title: observationActivityTitle(item),
+      body: cleanMemoryPreview(item.text || item.value, 132),
+    }))
+
+  if (observations.length > 0) return observations
+
+  const files = [...(overview.value?.files || [])]
+    .filter(file => file.preview.trim())
+    .sort((a, b) => fileSignalWeight(b) - fileSignalWeight(a) || b.mtimeMs - a.mtimeMs)
+    .slice(0, 3)
+
+  if (files.length > 0) {
+    return files.map(file => ({
+      id: file.relativePath,
+      label: kindLabel(file.kind),
+      title: memoryFileHighlightTitle(file),
+      body: cleanMemoryPreview(file.preview, 132),
+    }))
+  }
+
+  return [{
+    id: 'empty',
+    label: 'Ready',
+    title: 'No learned memory yet',
+    body: 'Facts and notes captured from conversations will become visible here.',
+  }]
+})
+
+const recentMemoryActivity = computed<RecentMemoryActivity[]>(() => {
+  const pending = (overview.value?.pendingCaptures || []).slice(0, 1).map(item => ({
+    id: `pending:${item.id}`,
+    title: item.heading ? `Capture: ${item.heading}` : 'Capture waiting to be reviewed',
+    meta: activityMeta('Capture', item.createdAt),
+    body: cleanMemoryPreview(item.userPreview || item.assistantPreview || item.content, 150),
+  }))
+
+  const observations = graphObservations.value
+    .filter(item => item.status === 'active')
+    .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0))
+    .slice(0, Math.max(0, 4 - pending.length))
+    .map(item => ({
+      id: `observation:${item.id}`,
+      title: observationActivityTitle(item),
+      meta: activityMeta(kindTitle(item.kind), item.updatedAt || item.createdAt),
+      body: cleanMemoryPreview(item.text || item.value, 150),
+    }))
+
+  const files = [...(overview.value?.files || [])]
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, Math.max(0, 4 - pending.length - observations.length))
+    .map(file => ({
+      id: `file:${file.relativePath}`,
+      title: memoryFileActivityTitle(file),
+      meta: activityMeta(kindLabel(file.kind), file.mtimeMs),
+      body: cleanMemoryPreview(file.preview || `${file.lineCount} lines`, 150),
+    }))
+
+  const items = [...pending, ...observations, ...files]
+  if (items.length > 0) return items
+  return [{
+    id: 'empty',
+    title: 'No activity yet',
+    meta: 'Memory',
+    body: 'Captured notes and promoted insights will appear here.',
+  }]
+})
+
+const hasMemoryErrors = computed(() =>
+  Boolean(
+    overview.value?.status.lastError ||
+    overview.value?.status.lastCaptureError ||
+    overview.value?.status.lastFlushError ||
+    overview.value?.dreaming.lastError,
+  ),
+)
+
+const diagnosticsSummary = computed(() => {
+  if (hasMemoryErrors.value) return 'Needs attention'
+  const indexed = overview.value?.status.indexedFiles ?? 0
+  if (indexed > 0) return `${indexed} indexed files · ${dreamingStatusLabel.value}`
+  return 'Ready'
+})
+
+const diagnosticsTone = computed(() => {
+  if (hasMemoryErrors.value) return 'danger'
+  if (isDreamingInFlight.value) return 'warning'
+  return 'muted'
+})
+
+const healthCards = computed<HealthCard[]>(() => {
+  const status = overview.value?.status
+  const dreaming = overview.value?.dreaming
+  return [
+    {
+      id: 'capture',
+      title: 'Capture',
+      status: status?.lastCaptureError ? 'Needs attention' : (status?.lastCaptureStatus || 'Ready'),
+      detail: status?.lastCaptureError || `Last ${formatStatusDate(status?.lastCaptureAt)}`,
+      tone: status?.lastCaptureError ? 'danger' : 'healthy',
+    },
+    {
+      id: 'recall',
+      title: 'Recall index',
+      status: status?.lastError ? 'Needs attention' : status?.indexedFiles ? 'Ready' : 'Not indexed',
+      detail: status?.lastError || `${status?.indexedFiles ?? 0} files searchable`,
+      tone: status?.lastError ? 'danger' : status?.indexedFiles ? 'healthy' : 'muted',
+    },
+    {
+      id: 'dreaming',
+      title: 'Dreaming',
+      status: dreaming?.lastError ? 'Needs attention' : dreamingStatusLabel.value,
+      detail: dreaming?.lastError || `Next ${formatStatusDate(dreaming?.nextRunAt)}`,
+      tone: dreaming?.lastError ? 'danger' : isDreamingInFlight.value ? 'warning' : dreaming?.enabled ? 'healthy' : 'muted',
+    },
+    {
+      id: 'sync',
+      title: 'Compact flush',
+      status: status?.lastFlushError ? 'Needs attention' : 'Ready',
+      detail: status?.lastFlushError || `Last ${formatStatusDate(status?.lastFlushAt)}`,
+      tone: status?.lastFlushError ? 'danger' : 'healthy',
+    },
+  ]
+})
+
+const indexStateLabel = computed(() => {
+  const status = overview.value?.status
+  if (!status) return 'Loading index'
+  if (status.lastError) return 'Index needs attention'
+  if (status.indexedFiles > 0) return `${status.indexedFiles} files indexed`
+  return 'Index not built'
+})
 
 const isDreamingInFlight = computed(() =>
-  dreamingRunning.value ||
   overview.value?.dreaming.inFlight === true,
 )
 
@@ -2195,12 +1602,6 @@ const dreamingMetaLine = computed(() => {
   return parts.join(' · ')
 })
 
-const isFileTab = computed(() =>
-  activeTab.value === 'ai-notes' ||
-  activeTab.value === 'daily' ||
-  activeTab.value === 'dreams',
-)
-
 const graphCurrentListCount = computed(() => {
   if (graphView.value === 'entities') return graphEntities.value.length
   if (graphView.value === 'relations') return graphRelations.value.length
@@ -2208,46 +1609,88 @@ const graphCurrentListCount = computed(() => {
   return graphObservations.value.length
 })
 
-const logGroups = computed(() => buildMemoryLogGroups(memoryLogs.value))
+const activeGraphFactCount = computed(() =>
+  graphObservations.value.filter(item => item.status === 'active').length,
+)
+
+const profileListTitle = computed(() => {
+  if (graphView.value === 'entities') return 'Known entities'
+  if (graphView.value === 'relations') return 'Connections'
+  if (graphView.value === 'duplicates') return 'Possible duplicates'
+  return 'Facts to review'
+})
+
+const profileListSubtitle = computed(() => {
+  if (graphView.value === 'entities') return 'People, projects, systems, and concepts memory can attach facts to.'
+  if (graphView.value === 'relations') return 'How remembered entities relate to each other.'
+  if (graphView.value === 'duplicates') return 'Review possible overlap before merging durable memory.'
+  return 'Durable facts that shape future assistant behavior.'
+})
+
+const profileEditorTitle = computed(() => {
+  if (graphView.value === 'entities') return graphEntityForm.value.id ? 'Edit entity' : 'Create entity'
+  if (graphView.value === 'relations') return graphRelationForm.value.id ? 'Edit connection' : 'Create connection'
+  if (graphView.value === 'duplicates') return 'Review duplicates'
+  return graphObservationForm.value.id ? 'Edit fact' : 'Create fact'
+})
+
+const profileEditorSubtitle = computed(() => {
+  if (graphView.value === 'entities') return 'Define the thing memory can recognize.'
+  if (graphView.value === 'relations') return 'Describe a relationship between two remembered things.'
+  if (graphView.value === 'duplicates') return 'Duplicate actions happen from the review list.'
+  return 'Turn a useful observation into structured memory.'
+})
 
 const visibleFiles = computed(() => {
   const files = overview.value?.files || []
-  if (activeTab.value === 'ai-notes') return files.filter(file => file.kind === 'soul')
-  if (activeTab.value === 'daily') return files.filter(file => file.kind === 'daily')
-  if (activeTab.value === 'dreams') return files.filter(file => file.kind === 'dreams')
-  return []
+  if (noteFilter.value === 'all') return files
+  if (noteFilter.value === 'ai') return files.filter(file => file.kind === 'soul' || file.kind === 'memory')
+  return files.filter(file => file.kind === noteFilter.value)
+})
+
+const selectedManagedFile = computed(() =>
+  overview.value?.files.find(file => file.relativePath === selectedPath.value) || null,
+)
+
+const selectedFileIsDirty = computed(() =>
+  Boolean(selectedFile.value && selectedFileText.value !== selectedFile.value.text),
+)
+
+const selectedFileStatus = computed(() => {
+  if (savingFile.value) return 'Saving...'
+  return selectedFileIsDirty.value ? 'Unsaved changes' : 'Saved'
+})
+
+const selectedFileDisplayTitle = computed(() => {
+  if (selectedManagedFile.value) return memoryFileDisplayName(selectedManagedFile.value)
+  return selectedFile.value?.relativePath || 'Selected note'
+})
+
+const searchStatusLabel = computed(() => {
+  if (searching.value) return 'Searching...'
+  if (!searched.value) return 'Ready'
+  return `${searchResults.value.length} ${searchResults.value.length === 1 ? 'match' : 'matches'}`
 })
 
 watch(
   () => activeTab.value,
   async (tab) => {
-    if (isFileTab.value && overview.value) {
+    if (tab === 'notes' && overview.value) {
       await ensureFileSelectionForTab()
     }
     if (tab === 'profile') {
       await loadGraph()
     }
-    if (tab === 'logs') {
-      await loadMemoryLogs()
-      syncLogsPolling()
-    } else {
-      stopLogsPolling()
-    }
   },
 )
 
 watch(
-  () => [logQuery.value, logLevel.value, logSubsystem.value, logStatus.value],
-  () => {
-    if (activeTab.value === 'logs') {
-      void loadMemoryLogs()
+  () => noteFilter.value,
+  async () => {
+    if (activeTab.value === 'notes' && overview.value) {
+      await ensureFileSelectionForTab()
     }
   },
-)
-
-watch(
-  () => logAutoRefresh.value,
-  () => syncLogsPolling(),
 )
 
 watch(
@@ -2262,15 +1705,10 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  if (overviewRefreshTimer) {
-    window.clearTimeout(overviewRefreshTimer)
-    overviewRefreshTimer = null
-  }
   if (dreamingPollTimer) {
     window.clearTimeout(dreamingPollTimer)
     dreamingPollTimer = null
   }
-  stopLogsPolling()
 })
 
 async function loadOverview(): Promise<void> {
@@ -2282,12 +1720,13 @@ async function loadOverview(): Promise<void> {
       throw new Error(response.error || 'Failed to load memory')
     }
     overview.value = response.overview
+    void loadOverviewMemoryFacts()
     if (!overview.value.files.some(file => file.relativePath === selectedPath.value)) {
       selectedPath.value = overview.value.files.find(file => file.relativePath === 'SOUL.md')?.relativePath ||
         overview.value.files[0]?.relativePath ||
         ''
     }
-    if (isFileTab.value && selectedPath.value) {
+    if (activeTab.value === 'notes' && selectedPath.value) {
       await ensureFileSelectionForTab()
     }
     if (activeTab.value === 'profile') {
@@ -2298,6 +1737,24 @@ async function loadOverview(): Promise<void> {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
     loading.value = false
+  }
+}
+
+async function loadOverviewMemoryFacts(): Promise<void> {
+  try {
+    const agentId = activeAgentId.value
+    const [entities, observations] = await Promise.all([
+      window.electronAPI.listMemoryGraphEntities({ agentId, limit: 40 }),
+      window.electronAPI.listMemoryGraphObservations({ agentId, limit: 8 }),
+    ])
+    if (entities.success && entities.entities) {
+      graphEntities.value = entities.entities
+    }
+    if (observations.success && observations.observations) {
+      graphObservations.value = observations.observations
+    }
+  } catch {
+    // Overview memory previews are supplemental; the page should stay usable if graph recall is unavailable.
   }
 }
 
@@ -2316,8 +1773,13 @@ async function rebuildIndex(): Promise<void> {
 }
 
 async function selectFile(file: MemoryManagedFile): Promise<void> {
+  if (file.relativePath !== selectedPath.value && !confirmDiscardSelectedFileChanges()) return
   selectedPath.value = file.relativePath
   await readSelectedFile(undefined, true)
+}
+
+function confirmDiscardSelectedFileChanges(): boolean {
+  return !selectedFileIsDirty.value || window.confirm('Discard unsaved note changes?')
 }
 
 async function ensureFileSelectionForTab(): Promise<void> {
@@ -2711,17 +2173,22 @@ async function openSearchHit(hit: MemorySearchHit): Promise<void> {
     }
     return
   }
-  activeTab.value = hit.kind === 'daily' ? 'daily' : 'ai-notes'
+  if (!confirmDiscardSelectedFileChanges()) return
+  activeTab.value = 'notes'
+  noteFilter.value = hit.kind === 'daily' ? 'daily' : hit.kind === 'memory' ? 'ai' : 'all'
   selectedPath.value = hit.path
   await readSelectedFile(hit.startLine)
 }
 
 async function openFileInTab(file: MemoryManagedFile): Promise<void> {
-  activeTab.value = file.kind === 'daily'
+  activeTab.value = 'notes'
+  noteFilter.value = file.kind === 'daily'
     ? 'daily'
     : file.kind === 'dreams'
       ? 'dreams'
-      : 'ai-notes'
+      : file.kind === 'soul' || file.kind === 'memory'
+        ? 'ai'
+        : 'all'
   selectedPath.value = file.relativePath
   await readSelectedFile(undefined, true)
 }
@@ -2731,6 +2198,7 @@ async function appendMemory(): Promise<void> {
   if (!content) return
   appending.value = true
   error.value = ''
+  appendFeedback.value = ''
   try {
     const response = await window.electronAPI.appendMemory({
       content,
@@ -2740,28 +2208,13 @@ async function appendMemory(): Promise<void> {
     })
     if (!response.success) throw new Error(response.error || 'Failed to append memory')
     appendContent.value = ''
+    appendFeedback.value = `Saved to ${memoryAppendTargetLabel(response.target?.relativePath)}`
     selectedPath.value = response.target?.relativePath || selectedPath.value
     await loadOverview()
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
     appending.value = false
-  }
-}
-
-async function runDreaming(): Promise<void> {
-  dreamingRunning.value = true
-  error.value = ''
-  syncDreamingPolling()
-  try {
-    const response = await window.electronAPI.runMemoryDreaming(activeAgentId.value)
-    if (!response.success) throw new Error(response.error || 'Failed to run dreaming')
-    await loadOverview()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
-  } finally {
-    dreamingRunning.value = false
-    syncDreamingPolling()
   }
 }
 
@@ -2779,200 +2232,6 @@ function syncDreamingPolling(): void {
     await loadOverview()
     syncDreamingPolling()
   }, 1500)
-}
-
-async function loadMemoryLogs(): Promise<void> {
-  logsLoading.value = true
-  error.value = ''
-  try {
-    const response = await window.electronAPI.listMemoryLogs({
-      limit: 200,
-      query: logQuery.value.trim() || undefined,
-      level: logLevel.value as any,
-      subsystem: logSubsystem.value as any,
-      status: logStatus.value as any,
-    })
-    if (!response.success || !response.entries) throw new Error(response.error || 'Failed to load memory logs')
-    memoryLogs.value = response.entries
-    const groups = buildMemoryLogGroups(response.entries)
-    if (selectedLogGroupId.value && !groups.some(group => group.id === selectedLogGroupId.value)) {
-      selectedLogGroupId.value = ''
-    }
-    if (!selectedLogGroupId.value && groups[0]) {
-      selectedLogGroupId.value = groups[0].id
-    }
-    const stats = await window.electronAPI.getMemoryLogStats()
-    memoryLogStats.value = stats.success ? stats.stats || null : null
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
-  } finally {
-    logsLoading.value = false
-  }
-}
-
-function syncLogsPolling(): void {
-  stopLogsPolling()
-  if (activeTab.value !== 'logs' || !logAutoRefresh.value) return
-  logsPollTimer = window.setTimeout(async () => {
-    logsPollTimer = null
-    await loadMemoryLogs()
-    syncLogsPolling()
-  }, 2000)
-}
-
-function stopLogsPolling(): void {
-  if (logsPollTimer) {
-    window.clearTimeout(logsPollTimer)
-    logsPollTimer = null
-  }
-}
-
-async function cleanupLogs(): Promise<void> {
-  logsLoading.value = true
-  error.value = ''
-  try {
-    const response = await window.electronAPI.cleanupMemoryLogs()
-    if (!response.success) throw new Error(response.error || 'Failed to clean memory logs')
-    await loadMemoryLogs()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
-  } finally {
-    logsLoading.value = false
-  }
-}
-
-async function openLogFolder(): Promise<void> {
-  const response = await window.electronAPI.openMemoryLogFolder()
-  if (!response.success) {
-    error.value = response.error || 'Failed to open memory log folder'
-  }
-}
-
-function selectLogGroup(group: MemoryLogGroup): void {
-  selectedLogGroupId.value = selectedLogGroupId.value === group.id ? '' : group.id
-}
-
-function formatLogGroupDetails(group: MemoryLogGroup): string {
-  return JSON.stringify({
-    id: group.id,
-    subsystem: group.subsystem,
-    status: group.status,
-    operation: group.operationLabel,
-    events: group.entries,
-  }, null, 2)
-}
-
-function buildMemoryLogGroups(entries: MemoryDiagnosticLogEntry[]): MemoryLogGroup[] {
-  const byGroup = new Map<string, MemoryDiagnosticLogEntry[]>()
-  for (const entry of entries) {
-    const key = entry.runId
-      ? `${entry.subsystem}:${entry.runId}`
-      : `${entry.subsystem}:${entry.operation}:${entry.sessionId || 'global'}:${entry.id}`
-    const list = byGroup.get(key)
-    if (list) {
-      list.push(entry)
-    } else {
-      byGroup.set(key, [entry])
-    }
-  }
-  return Array.from(byGroup.entries())
-    .map(([id, groupEntries]) => summarizeLogGroup(id, groupEntries))
-    .sort((a, b) => b.latestAt - a.latestAt)
-}
-
-function summarizeLogGroup(id: string, entries: MemoryDiagnosticLogEntry[]): MemoryLogGroup {
-  const sorted = [...entries].sort((a, b) => a.timestamp - b.timestamp)
-  const latest = sorted[sorted.length - 1]
-  const terminal = [...sorted].reverse().find(entry =>
-    entry.status === 'error' ||
-    entry.status === 'ok' ||
-    entry.status === 'skipped' ||
-    entry.status === 'fallback',
-  ) || latest
-  const first = sorted[0]
-  const operations = Array.from(new Set(sorted.map(entry => entry.operation)))
-  const stages = Array.from(new Set(sorted.map(entry => entry.stage)))
-  const durationMs = typeof terminal.durationMs === 'number'
-    ? terminal.durationMs
-    : sorted.length > 1
-      ? Math.max(0, latest.timestamp - first.timestamp)
-      : undefined
-  return {
-    id,
-    subsystem: latest.subsystem,
-    level: sorted.reduce((level, entry) => logLevelWeight(entry.level) > logLevelWeight(level) ? entry.level : level, latest.level),
-    status: terminal.status,
-    operationLabel: operations.length === 1 ? operations[0] : `${operations[0]} -> ${operations[operations.length - 1]}`,
-    stageLabel: stages.join(' -> '),
-    summary: terminal.summary || logErrorMessage(terminal) || latest.summary || logErrorMessage(latest) || '',
-    count: sorted.length,
-    latestAt: latest.timestamp,
-    ...(durationMs !== undefined ? { durationMs } : {}),
-    entries: sorted,
-  }
-}
-
-function logErrorMessage(entry: MemoryDiagnosticLogEntry): string {
-  const message = entry.error?.message
-  return typeof message === 'string' ? message : ''
-}
-
-function logLevelWeight(level: MemoryDiagnosticLogEntry['level']): number {
-  if (level === 'error') return 4
-  if (level === 'warn') return 3
-  if (level === 'info') return 2
-  return 1
-}
-
-async function updateSoulMemory(patch: Partial<SoulMemorySettings>): Promise<void> {
-  const nextSettings = {
-    ...settingsStore.settings,
-    general: {
-      ...settingsStore.settings.general,
-      soulMemory: {
-        ...memorySettings.value,
-        ...patch,
-      },
-    },
-  }
-  await settingsStore.saveSettings(nextSettings)
-  scheduleOverviewRefresh()
-}
-
-async function toggleDreamingSource(source: typeof dreamSourceOptions[number], checked: boolean): Promise<void> {
-  const current = new Set(memorySettings.value.dreaming.sources)
-  if (checked) current.add(source)
-  else current.delete(source)
-  await updateSoulMemory({
-    dreaming: {
-      ...memorySettings.value.dreaming,
-      sources: Array.from(current),
-    },
-  })
-}
-
-function scheduleOverviewRefresh(): void {
-  if (overviewRefreshTimer) {
-    window.clearTimeout(overviewRefreshTimer)
-  }
-  overviewRefreshTimer = window.setTimeout(() => {
-    overviewRefreshTimer = null
-    void loadOverview()
-  }, 350)
-}
-
-async function chooseMemoryDirectory(): Promise<void> {
-  const result = await window.electronAPI.showOpenDialog({
-    title: 'Choose Memory Directory',
-    properties: ['openDirectory'],
-    defaultPath: memorySettings.value.customDirectory || undefined,
-  })
-  if (!result.canceled && result.filePaths[0]) {
-    await updateSoulMemory({
-      directoryMode: 'custom',
-      customDirectory: result.filePaths[0],
-    })
-  }
 }
 
 async function revealMemoryRoot(): Promise<void> {
@@ -3001,15 +2260,136 @@ function kindLabel(kind: MemoryManagedFile['kind']): string {
   return 'Daily'
 }
 
+function memoryFileDisplayName(file: MemoryManagedFile): string {
+  if (file.kind === 'soul') return 'Profile guidance'
+  if (file.kind === 'memory') return 'Long-term memory note'
+  if (file.kind === 'dreams') return 'Reflection report'
+  const date = memoryFileDateLabel(file)
+  return date ? `Daily capture · ${date}` : 'Daily capture'
+}
+
+function memoryFileMeta(file: MemoryManagedFile): string {
+  return `${kindLabel(file.kind)} · ${file.lineCount} lines · ${formatSize(file.size)}`
+}
+
+function memoryAppendTargetLabel(relativePath?: string): string {
+  const file = overview.value?.files.find(item => item.relativePath === relativePath)
+  if (file) return memoryFileDisplayName(file)
+  return relativePath || 'daily memory'
+}
+
+function memoryFileDateLabel(file: MemoryManagedFile): string {
+  if (file.date) {
+    const ms = Date.parse(`${file.date}T12:00:00`)
+    if (!Number.isNaN(ms)) return formatShortDate(ms)
+  }
+  return formatShortDate(file.mtimeMs)
+}
+
+function kindTitle(kind: MemoryGraphObservationKind): string {
+  if (kind === 'identity') return 'Identity'
+  if (kind === 'preference') return 'Preference'
+  if (kind === 'constraint') return 'Constraint'
+  if (kind === 'decision') return 'Decision'
+  if (kind === 'project') return 'Project'
+  if (kind === 'summary') return 'Summary'
+  if (kind === 'episodic') return 'Episode'
+  return 'Fact'
+}
+
+function observationActivityTitle(item: MemoryGraphObservation): string {
+  const slot = humanizeMemoryLabel(item.slot)
+  if (item.entityDisplayName && slot) return `${item.entityDisplayName}: ${slot}`
+  if (slot) return slot
+  return kindTitle(item.kind)
+}
+
+function humanizeMemoryLabel(value: string): string {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\w/, letter => letter.toUpperCase())
+}
+
+function memoryFileHighlightTitle(file: MemoryManagedFile): string {
+  if (file.kind === 'soul') return 'Profile facts'
+  if (file.kind === 'memory') return 'Long-term notes'
+  if (file.kind === 'dreams') return 'Promoted insights'
+  return 'Daily capture'
+}
+
+function memoryFileActivityTitle(file: MemoryManagedFile): string {
+  if (file.kind === 'soul') return 'Profile memory refined'
+  if (file.kind === 'memory') return 'Long-term notes updated'
+  if (file.kind === 'dreams') return 'Reflection summary refreshed'
+  return 'Daily memory captured'
+}
+
+function searchHitTitle(hit: MemorySearchHit): string {
+  if (hit.kind === 'graph' || hit.kind === 'canonical') {
+    if (hit.path.startsWith('entity:')) return 'Profile entity'
+    if (hit.path.startsWith('relation:')) return 'Memory connection'
+    return 'Structured memory fact'
+  }
+  if (hit.kind === 'daily') {
+    const date = hit.date ? formatShortDate(Date.parse(`${hit.date}T12:00:00`)) : ''
+    return date ? `Daily capture · ${date}` : 'Daily capture'
+  }
+  return 'AI memory note'
+}
+
+function searchHitMeta(hit: MemorySearchHit): string {
+  const source = hit.kind === 'graph' || hit.kind === 'canonical'
+    ? 'Profile'
+    : hit.kind === 'daily'
+      ? 'Notes'
+      : 'AI notes'
+  return `${source} · ${hit.path}:${hit.startLine}-${hit.endLine}`
+}
+
+function fileSignalWeight(file: MemoryManagedFile): number {
+  if (file.kind === 'soul') return 40
+  if (file.kind === 'memory') return 30
+  if (file.kind === 'dreams') return 20
+  return 10
+}
+
+function cleanMemoryPreview(value: string, maxLength = 180): string {
+  const clean = value
+    .replace(/^#+\s*/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!clean) return 'No preview available yet.'
+  return clean.length > maxLength ? `${clean.slice(0, maxLength - 3).trim()}...` : clean
+}
+
+function noteCount(filter: NoteFilter): number {
+  const files = overview.value?.files || []
+  if (filter === 'all') return files.length
+  if (filter === 'ai') return files.filter(file => file.kind === 'soul' || file.kind === 'memory').length
+  return files.filter(file => file.kind === filter).length
+}
+
 function formatSize(size: number): string {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 
-function formatShortDate(ms: number): string {
-  if (!ms) return ''
+function activityMeta(label: string, ms?: number): string {
+  const date = formatShortDate(ms)
+  return date ? `${label} · ${date}` : label
+}
+
+function formatShortDate(ms?: number): string {
+  if (!ms || ms < 100000000000) return ''
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function formatStatusDate(ms?: number): string {
+  if (!ms) return 'never'
+  return formatShortDate(ms)
 }
 
 function formatMaybeDate(ms?: number): string {
@@ -3032,15 +2412,14 @@ function formatMaybeDate(ms?: number): string {
 .memory-header {
   min-width: 0;
   flex-shrink: 0;
-  padding: 16px 4px 10px;
+  padding: 10px 4px 8px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
-.memory-title-row,
+.memory-commandbar,
 .memory-actions,
-.memory-stats,
 .memory-tabs,
 .append-top,
 .inline-field {
@@ -3049,9 +2428,15 @@ function formatMaybeDate(ms?: number): string {
   align-items: center;
 }
 
-.memory-title-row {
+.memory-commandbar {
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
+}
+
+.memory-title-block {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
 }
 
 .memory-title {
@@ -3060,8 +2445,8 @@ function formatMaybeDate(ms?: number): string {
   gap: 8px;
   min-width: 0;
   color: var(--ui-text-primary-fg, var(--text));
-  font-size: 15px;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .memory-title span {
@@ -3069,6 +2454,35 @@ function formatMaybeDate(ms?: number): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.memory-state-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
+}
+
+.state-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ui-status-success-fg, #16a34a);
+  font-weight: 700;
+}
+
+.state-indicator.off {
+  color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
 }
 
 .memory-actions {
@@ -3104,71 +2518,28 @@ function formatMaybeDate(ms?: number): string {
   cursor: default;
 }
 
-.memory-stats {
-  flex-wrap: wrap;
-  gap: 6px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-}
-
-.memory-stats span {
-  max-width: 100%;
-  min-height: 22px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 8px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.status-pill {
-  color: var(--ui-accent-primary-fg, var(--accent)) !important;
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 38%, var(--ui-border-default-border, var(--border))) !important;
-}
-
-.status-pill.off {
-  color: var(--ui-text-muted-fg, var(--muted)) !important;
-  border-color: var(--ui-border-default-border, var(--border)) !important;
-}
-
-.root-path {
-  min-height: 28px;
-  padding: 7px 9px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .memory-tabs {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
-  gap: 6px;
+  display: flex;
+  gap: 18px;
+  padding: 0 1px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 58%, transparent);
 }
 
 .memory-tab {
+  position: relative;
   min-width: 0;
-  width: 100%;
-  min-height: 30px;
+  width: auto;
+  min-height: 27px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  padding: 0 10px;
+  border: 0;
+  border-radius: 0;
+  padding: 0 0 7px;
   background: transparent;
   color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
+  font-weight: 650;
   cursor: pointer;
 }
 
@@ -3181,8 +2552,18 @@ function formatMaybeDate(ms?: number): string {
 
 .memory-tab.active {
   color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-active-bg, var(--active));
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, var(--ui-border-default-border, var(--border)));
+  background: transparent;
+}
+
+.memory-tab.active::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .memory-body {
@@ -3226,50 +2607,204 @@ function formatMaybeDate(ms?: number): string {
   animation: spin 0.8s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+	@keyframes spin {
+	  to { transform: rotate(360deg); }
+	}
 
-.file-list,
-.search-results,
-.settings-stack,
-.overview-stack {
+	@keyframes memoryRiseIn {
+	  from {
+	    opacity: 0;
+	    transform: translateY(6px);
+	  }
+	  to {
+	    opacity: 1;
+	    transform: translateY(0);
+	  }
+	}
+
+	.file-list,
+	.search-results,
+	.overview-stack,
+	.memory-tab-page {
+	  min-width: 0;
+	  display: flex;
+	  flex-direction: column;
+	  gap: 8px;
+	}
+
+	.memory-tab-page {
+	  gap: 14px;
+	  animation: memoryRiseIn 0.18s ease-out;
+	}
+
+	.memory-tab-intro,
+	.memory-surface {
+	  min-width: 0;
+	  border-radius: 8px;
+	  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 3.5%, transparent);
+	}
+
+	.memory-tab-intro {
+	  display: grid;
+	  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.52fr);
+	  gap: 12px;
+	  align-items: end;
+	  padding: 14px;
+	}
+
+	.tab-intro-main,
+	.workspace-head > span,
+	.section-head > div {
+	  min-width: 0;
+	  display: grid;
+	  gap: 3px;
+	}
+
+	.tab-intro-main strong {
+	  color: var(--ui-text-primary-fg, var(--text));
+	  font-size: 18px;
+	  font-weight: 760;
+	  line-height: 1.2;
+	  overflow-wrap: anywhere;
+	}
+
+	.tab-intro-main > span:last-child,
+	.workspace-head small,
+	.section-head small {
+	  color: var(--ui-text-muted-fg, var(--muted));
+	  font-size: 12px;
+	  line-height: 1.4;
+	  overflow-wrap: anywhere;
+	}
+
+	.tab-intro-stats {
+	  min-width: 0;
+	  display: grid;
+	  grid-template-columns: repeat(3, minmax(0, 1fr));
+	  gap: 8px;
+	}
+
+	.tab-intro-stats span {
+	  min-width: 0;
+	  display: grid;
+	  gap: 2px;
+	  padding: 9px;
+	  border-radius: 8px;
+	  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 68%, transparent);
+	}
+
+	.tab-intro-stats strong {
+	  color: var(--ui-text-primary-fg, var(--text));
+	  font-size: 16px;
+	  line-height: 1.1;
+	}
+
+	.tab-intro-stats small {
+	  color: var(--ui-text-muted-fg, var(--muted));
+	  font-size: 11px;
+	  line-height: 1.25;
+	}
+
+	.tab-intro-actions {
+	  min-width: 0;
+	  grid-column: 1 / -1;
+	  display: grid;
+	  grid-template-columns: minmax(0, 1fr) auto;
+	  gap: 8px;
+	  align-items: center;
+	}
+
+	.memory-workspace {
+	  min-width: 0;
+	}
+
+	.workspace-head {
+	  min-width: 0;
+	  display: flex;
+	  align-items: start;
+	  justify-content: space-between;
+	  gap: 12px;
+	  margin-bottom: 8px;
+	}
+
+	.workspace-head strong {
+	  color: var(--ui-text-primary-fg, var(--text));
+	  font-size: 13px;
+	  line-height: 1.25;
+	}
+
+	.workspace-head em {
+	  color: var(--ui-text-muted-fg, var(--muted));
+	  font-size: 11px;
+	  font-style: normal;
+	  font-weight: 700;
+	  white-space: nowrap;
+	}
+
+	.file-list.compact {
+	  gap: 0;
+	}
+
+.notes-workspace {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(260px, 0.42fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
 }
 
-.file-list.compact {
-  gap: 0;
-}
+	.notes-workspace .file-list {
+	  gap: 2px;
+	  min-height: 0;
+	}
 
-.file-row,
-.result-row {
+	.notes-list-surface,
+	.profile-list-surface,
+	.profile-editor,
+	.viewer,
+	.task-surface {
+	  padding: 10px;
+	  animation: memoryRiseIn 0.18s ease-out;
+	}
+
+	.file-row,
+	.result-row {
   width: 100%;
   min-width: 0;
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 0;
   border-radius: 8px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: transparent;
   color: var(--ui-text-primary-fg, var(--text));
-  padding: 10px;
+  padding: 8px;
   cursor: pointer;
   text-align: left;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
-.file-row:hover,
-.result-row:hover,
-.file-row.active {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 38%, var(--ui-border-default-border, var(--border)));
-  background: var(--ui-state-active-bg, var(--active));
+	.file-row:hover,
+	.result-row:hover,
+	.file-row.active {
+	  background: var(--ui-state-active-bg, var(--active));
+	  transform: translateY(-1px);
+	}
+
+.file-row.active,
+.result-row:hover {
+  box-shadow: inset 3px 0 0 var(--ui-accent-primary-fg, var(--accent));
 }
 
 .file-icon {
   flex-shrink: 0;
   margin-top: 1px;
+  color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.file-row.active .file-icon {
   color: var(--ui-accent-primary-fg, var(--accent));
 }
 
@@ -3303,7 +2838,7 @@ function formatMaybeDate(ms?: number): string {
   font-size: 12px;
   line-height: 1.45;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -3313,14 +2848,13 @@ function formatMaybeDate(ms?: number): string {
   flex-shrink: 0;
 }
 
-.viewer {
-  min-width: 0;
-  margin-top: 10px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  overflow: hidden;
-}
+	.viewer {
+	  min-width: 0;
+	  margin-top: 0;
+	  border: 0;
+	  border-radius: 8px;
+	  overflow: hidden;
+	}
 
 .viewer-header {
   min-width: 0;
@@ -3336,11 +2870,37 @@ function formatMaybeDate(ms?: number): string {
   font-size: 12px;
 }
 
-.viewer-header span {
-  min-width: 0;
-  margin-right: auto;
-  overflow-wrap: anywhere;
-}
+	.viewer-header span {
+	  min-width: 0;
+	  display: grid;
+	  gap: 2px;
+	  margin-right: auto;
+	  overflow-wrap: anywhere;
+	}
+
+	.viewer-header strong {
+	  color: var(--ui-text-primary-fg, var(--text));
+	  font-size: 12px;
+	  line-height: 1.25;
+	}
+
+	.viewer-header small,
+	.save-state {
+	  color: var(--ui-text-muted-fg, var(--muted));
+	  font-size: 11px;
+	  line-height: 1.25;
+	}
+
+	.save-state {
+	  font-style: normal;
+	  font-weight: 700;
+	  white-space: nowrap;
+	}
+
+	.save-state.dirty,
+	.inline-feedback {
+	  color: var(--ui-accent-primary-fg, var(--accent));
+	}
 
 .memory-editor {
   width: 100%;
@@ -3397,26 +2957,312 @@ function formatMaybeDate(ms?: number): string {
   cursor: default;
 }
 
-.overview-grid {
+.memory-hero,
+.task-surface {
+  min-width: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
+}
+
+.overview-stack {
+  gap: 14px;
+}
+
+.memory-hero {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent), transparent 52%),
+    color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
+}
+
+.memory-hero-main,
+.section-head > div,
+.health-card,
+.recent-memory-row > span,
+.overview-domain-head,
+.diagnostics-panel summary > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.memory-hero-main strong {
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 24px;
+  font-weight: 760;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.memory-hero-main > span:last-child,
+.memory-highlight p,
+.recent-memory-row p,
+.recent-memory-row small,
+.health-card small,
+.diagnostics-panel small {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.memory-hero-stats {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.memory-hero-stats div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 78%, transparent);
+}
+
+.memory-hero-stats strong {
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.memory-hero-stats span {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.memory-hero-highlights {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.memory-highlight {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  min-height: 108px;
+  padding: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 72%, transparent);
+}
+
+.memory-highlight span,
+.overview-domain-head .section-kicker {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1.2;
+}
+
+.memory-highlight strong,
+.recent-memory-row strong,
+.section-head strong,
+.overview-domain-head strong,
+.diagnostics-panel summary strong,
+.health-card strong {
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.section-kicker {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.section-head,
+.overview-domain-head {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 8px;
+}
+
+.overview-domain-head {
+  display: grid;
+  justify-content: stretch;
+  padding: 0;
+}
+
+.memory-activity {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 3%, transparent);
+}
+
+.recent-memory-list {
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  background: var(--ui-border-default-border, var(--border));
+  gap: 8px;
 }
 
-.overview-grid > div {
+.recent-memory-row,
+.health-card {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 10px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
-.overview-grid strong {
+.health-card em {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.recent-memory-row {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 112px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 70%, transparent);
+}
+
+.memory-highlight p,
+.recent-memory-row p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.health-cards {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.health-card {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 7px 8px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2%, transparent);
+}
+
+.health-card em {
+  grid-column: 2;
+}
+
+.health-card-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: var(--ui-text-muted-fg, var(--muted));
+}
+
+.health-card.healthy .health-card-dot {
+  background: var(--ui-status-success-fg, #16a34a);
+}
+
+.health-card.warning .health-card-dot {
+  background: var(--ui-status-warning-fg, #f59e0b);
+}
+
+.health-card.danger .health-card-dot {
+  background: var(--ui-status-danger-fg, #ef4444);
+}
+
+.diagnostics-panel {
+  min-width: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.diagnostics-domain[open] {
+  padding: 0 10px 10px;
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.5%, transparent);
+}
+
+.diagnostics-panel summary {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 2px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.diagnostics-domain[open] summary {
+  padding: 10px 0;
+}
+
+.diagnostics-panel summary em {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.diagnostics-panel.danger summary em {
+  color: var(--ui-status-danger-fg, #ef4444);
+}
+
+.diagnostics-content {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.diagnostic-errors {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.diagnostics-panel .path-grid,
+.diagnostic-errors {
+  padding: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 55%, transparent);
+}
+
+.path-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
+}
+
+.path-grid span {
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.path-grid code {
+  min-width: 0;
   color: var(--ui-text-primary-fg, var(--text));
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
@@ -3448,8 +3294,8 @@ function formatMaybeDate(ms?: number): string {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 10px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
+  padding: 0;
+  border-top: 0;
 }
 
 .action-row > * {
@@ -3516,6 +3362,7 @@ function formatMaybeDate(ms?: number): string {
 .memory-select:focus,
 .memory-textarea:focus {
   border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
 }
 
 .primary-btn,
@@ -3565,12 +3412,34 @@ function formatMaybeDate(ms?: number): string {
   cursor: default;
 }
 
+.primary-btn:not(:disabled),
+.secondary-action:not(:disabled),
+.memory-tab,
+.segmented button,
+.text-btn:not(:disabled),
+.icon-btn:not(:disabled) {
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.primary-btn:hover:not(:disabled),
+.secondary-action:hover:not(:disabled),
+.text-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
 .append-box {
-  margin-bottom: 12px;
-  padding: 10px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .append-top {
@@ -3599,28 +3468,113 @@ function formatMaybeDate(ms?: number): string {
   -webkit-line-clamp: 4;
 }
 
+.result-meta {
+  grid-column: 1 / -1;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.search-empty-state,
+.review-empty {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 55%, transparent);
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.search-empty-state strong,
+.review-empty strong {
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.inline-feedback {
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.panel-toolbar,
 .profile-toolbar {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.toolbar-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .profile-toolbar .search-row {
   margin-bottom: 0;
 }
 
-.profile-toolbar .action-row {
-  padding: 0;
-  border-top: 0;
+.task-surface {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.task-surface .section-head {
+  padding: 0 0 2px;
+}
+
+.task-surface .search-row {
+  margin-bottom: 0;
+}
+
+.search-workspace {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.search-surface {
+  flex: 1 1 58%;
+  align-self: start;
+  height: max-content;
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 24%, transparent);
+}
+
+.capture-surface {
+  flex: 0 1 42%;
+  align-self: start;
+  height: max-content;
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.5%, transparent);
+}
+
+.search-workspace .memory-textarea {
+  min-height: 72px;
+}
+
+.results-surface {
+  min-width: 0;
+}
+
+.results-surface .search-results {
+  gap: 2px;
 }
 
 .profile-layout {
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-  gap: 10px;
+  gap: 14px;
 }
 
 .graph-layout {
@@ -3630,7 +3584,7 @@ function formatMaybeDate(ms?: number): string {
 .profile-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
   min-width: 0;
   max-height: 420px;
   overflow: auto;
@@ -3641,19 +3595,30 @@ function formatMaybeDate(ms?: number): string {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 0;
   border-radius: 8px;
-  padding: 9px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  padding: 8px;
+  background: transparent;
   color: var(--ui-text-primary-fg, var(--text));
   text-align: left;
   cursor: pointer;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .profile-row:hover,
 .profile-row.active {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 38%, var(--ui-border-default-border, var(--border)));
   background: var(--ui-state-active-bg, var(--active));
+}
+
+.profile-row:hover {
+  transform: translateY(-1px);
+}
+
+.profile-row.active {
+  box-shadow: inset 3px 0 0 var(--ui-accent-primary-fg, var(--accent));
 }
 
 .profile-row-top,
@@ -3714,6 +3679,7 @@ function formatMaybeDate(ms?: number): string {
   border-top: 1px solid var(--ui-border-default-border, var(--border));
   text-align: left;
   cursor: default;
+  animation: memoryRiseIn 0.16s ease-out;
 }
 
 .profile-detail-grid {
@@ -3764,7 +3730,10 @@ function formatMaybeDate(ms?: number): string {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 10px;
+}
+
+.profile-editor .action-row {
+  margin-top: 2px;
 }
 
 .profile-grid {
@@ -3772,6 +3741,45 @@ function formatMaybeDate(ms?: number): string {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.profile-advanced {
+  min-width: 0;
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 3%, transparent);
+  padding: 8px;
+}
+
+.profile-advanced > summary,
+.profile-advanced summary {
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.profile-advanced[open],
+.profile-advanced details[open] {
+  display: grid;
+  gap: 9px;
+}
+
+.profile-id-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  font-size: 12px;
+}
+
+.profile-id-row code {
+  min-width: 0;
+  color: var(--ui-text-primary-fg, var(--text));
+  overflow-wrap: anywhere;
 }
 
 .compact-area {
@@ -3784,235 +3792,16 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .audit-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
-  padding-top: 8px;
+  display: block;
 }
 
 .memory-section {
   min-width: 0;
   max-width: 100%;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  overflow: hidden;
-}
-
-.settings-group-title {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-  font-weight: 720;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.behavior-note {
-  padding: 0 10px 10px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.compact-actions {
-  justify-content: flex-end;
-  padding: 0;
-  border-top: 0;
-}
-
-.log-filter-grid {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 128px), 1fr));
-  gap: 8px;
-  padding: 10px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.log-filter-grid .memory-input {
-  grid-column: 1 / -1;
-}
-
-.log-auto-toggle {
-  margin: 10px;
-}
-
-.log-layout {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.log-list {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: visible;
-}
-
-.log-row {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: start;
-  gap: 4px 8px;
-  padding: 9px 10px;
   border: 0;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-  background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
-  text-align: left;
-  cursor: pointer;
-}
-
-.log-row:hover,
-.log-row.active {
-  background: var(--ui-state-active-bg, var(--active));
-}
-
-.log-row.warn {
-  border-left: 3px solid var(--ui-status-warning-fg, #f59e0b);
-}
-
-.log-row.error {
-  border-left: 3px solid var(--ui-status-danger-fg, #ef4444);
-}
-
-.log-row strong,
-.log-row span,
-.log-row code {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 11px;
-}
-
-.log-row strong {
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.log-row span,
-.log-row code {
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.log-row code {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-}
-
-.log-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.log-chain {
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.log-status {
-  justify-self: end;
-  padding: 1px 6px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 999px;
-  background: var(--ui-state-hover-bg, var(--hover));
-}
-
-.log-duration {
-  justify-self: end;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-}
-
-.log-time,
-.log-summary {
-  grid-column: 1 / -1;
-}
-
-.log-summary {
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.log-timeline {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-  padding: 8px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 68%, transparent);
-}
-
-.log-event {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.log-event:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.log-event-head {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.log-event-head code {
-  flex: 1 1 150px;
-}
-
-.log-event-summary {
-  color: var(--ui-text-primary-fg, var(--text));
-  line-height: 1.35;
-}
-
-.log-inline-detail {
-  grid-column: 1 / -1;
-  display: block;
-  max-height: 320px;
-  margin-top: 6px;
-  padding: 8px;
-  overflow: auto;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px;
-  line-height: 1.45;
-  text-align: left;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.log-detail {
-  margin: 0;
-  padding: 10px;
-  max-width: 100%;
-  max-height: 420px;
-  overflow: auto;
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  font-size: 11px;
-  line-height: 1.45;
-  tab-size: 2;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
+  overflow: hidden;
 }
 
 .setting-row,
@@ -4116,9 +3905,19 @@ function formatMaybeDate(ms?: number): string {
   margin-bottom: 8px;
 }
 
-.segmented.graph-tabs button {
+.segmented.graph-tabs button,
+.segmented.notes-tabs button {
   min-height: 28px;
   padding: 0 4px;
+}
+
+.segmented.notes-tabs {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.notes-intro .notes-tabs,
+.search-intro .tab-intro-main {
+  grid-column: 1 / -1;
 }
 
 .segmented button.active {
@@ -4140,14 +3939,6 @@ function formatMaybeDate(ms?: number): string {
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.source-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .mini-toggle {
@@ -4177,57 +3968,52 @@ function formatMaybeDate(ms?: number): string {
   flex-direction: column;
 }
 
-.embedding-target,
-.dreaming-status {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
-  gap: 6px 8px;
-  padding: 10px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-}
-
-.embedding-target.warning {
-  border-color: color-mix(in srgb, var(--ui-status-warning-fg, #f59e0b) 45%, var(--ui-border-default-border, var(--border)));
-}
-
-.embedding-target strong,
-.embedding-target code,
-.dreaming-status strong {
-  min-width: 0;
-  color: var(--ui-text-primary-fg, var(--text));
-  overflow-wrap: anywhere;
-}
-
-.embedding-target code {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px;
-}
-
 @media (max-width: 720px) {
   .profile-layout,
-  .log-layout {
+  .notes-workspace,
+  .search-workspace,
+  .memory-tab-intro,
+  .tab-intro-actions {
     grid-template-columns: 1fr;
   }
 
-  .log-list {
-    border-right: 0;
-    border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  .memory-hero-highlights,
+  .memory-hero-stats,
+  .tab-intro-stats,
+  .recent-memory-list,
+  .health-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .search-workspace {
+    flex-direction: column;
+  }
+
+  .search-surface,
+  .capture-surface {
+    width: 100%;
+    flex-basis: auto;
   }
 }
 
 @media (max-width: 640px) {
   .grid-two,
-  .profile-grid,
-  .log-filter-grid,
-  .overview-grid {
+  .profile-grid {
     grid-template-columns: 1fr;
+  }
+
+  .segmented.notes-tabs,
+  .segmented.graph-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 520px) {
+  .memory-tabs {
+    gap: 12px;
+    overflow-x: auto;
+  }
+
   .search-row {
     align-items: stretch;
     flex-direction: column;
@@ -4235,6 +4021,17 @@ function formatMaybeDate(ms?: number): string {
 
   .primary-btn {
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
   }
 }
 </style>

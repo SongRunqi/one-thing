@@ -345,12 +345,12 @@ onUnmounted(() => {
 .sessions-list {
   --sidebar-list-meta-fg: color-mix(
     in srgb,
-    var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 88%,
+    var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 72%,
     transparent
   );
   --sidebar-list-meta-fg-strong: color-mix(
     in srgb,
-    var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 96%,
+    var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 84%,
     transparent
   );
 
@@ -362,7 +362,7 @@ onUnmounted(() => {
   overflow-x: hidden;
   min-height: 0;
   min-width: 0;
-  padding: 2px 8px 60px 10px;
+  padding: 3px 10px 64px 12px;
   scrollbar-gutter: stable;
   contain: strict;
   content-visibility: auto;
@@ -381,15 +381,15 @@ onUnmounted(() => {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 5px;
-  margin-right: 4px;
-  padding: 15px 8px 5px;
+  gap: 6px;
+  margin-right: 6px;
+  padding: 16px 8px 6px;
   border: none;
   background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--sidebar-bg)));
   font-size: 11px;
-  font-weight: var(--font-weight-normal);
+  font-weight: 430;
   line-height: 1.35;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   color: var(--sidebar-list-meta-fg);
   text-align: left;
   cursor: pointer;
@@ -403,7 +403,7 @@ onUnmounted(() => {
 
 /* First section header sits flush at the top */
 .session-group:first-child .session-group-header {
-  padding-top: 4px;
+  padding-top: 5px;
 }
 
 .group-chevron {
@@ -433,7 +433,7 @@ onUnmounted(() => {
 
 /* Show-more affordance per section */
 .load-more-btn {
-  margin: 2px 4px 4px;
+  margin: 4px 4px 6px;
   padding: 5px 10px;
   border: none;
   border-radius: 6px;

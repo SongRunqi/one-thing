@@ -7,21 +7,14 @@
       </h3>
       <button
         class="refresh-btn"
+        type="button"
         :disabled="isLoading"
         @click="$emit('refresh')"
       >
-        <svg
+        <RefreshCw
           :class="{ spinning: isLoading }"
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M23 4v6h-6M1 20v-6h6" />
-          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-        </svg>
+          :size="12"
+        />
         {{ isLoading ? 'Loading...' : models.length === 0 ? 'Fetch Models' : 'Refresh' }}
       </button>
     </div>
@@ -35,50 +28,50 @@
 
     <!-- Models group container -->
     <div class="settings-group">
-      <!-- Search row -->
-      <div
-        v-if="models.length > 0"
-        class="search-row"
-      >
-        <svg
-          class="search-icon"
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
+      <div class="model-toolbar">
+        <label
+          v-if="models.length > 0"
+          class="model-search-field"
         >
-          <circle
-            cx="11"
-            cy="11"
-            r="8"
-          />
-          <path d="M21 21l-4.35-4.35" />
-        </svg>
-        <input
-          :value="searchQuery"
-          type="text"
-          class="search-input"
-          placeholder="Search models..."
-          @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
-        >
-        <button
-          v-if="searchQuery"
-          class="search-clear"
-          @click="$emit('update:searchQuery', '')"
-        >
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
+          <Search :size="14" />
+          <input
+            :value="searchQuery"
+            type="text"
+            class="search-input"
+            placeholder="Search models"
+            @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
           >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
+          <button
+            v-if="searchQuery"
+            class="search-clear"
+            type="button"
+            title="Clear search"
+            @click="$emit('update:searchQuery', '')"
+          >
+            <X :size="12" />
+          </button>
+        </label>
+
+        <div class="add-model-row">
+          <input
+            ref="addModelInputRef"
+            :value="newModelInput"
+            type="text"
+            class="add-model-input"
+            placeholder="Add model ID, e.g. gpt-4o"
+            @input="$emit('update:newModelInput', ($event.target as HTMLInputElement).value)"
+            @keydown.enter.prevent="submitCustomModel"
+          >
+          <button
+            class="add-model-btn"
+            type="button"
+            :disabled="!newModelInput.trim()"
+            @click="submitCustomModel"
+          >
+            <Plus :size="13" />
+            Add
+          </button>
+        </div>
       </div>
 
       <!-- Selected models (always shown) -->
@@ -86,29 +79,49 @@
         v-if="selectedModelsList.length > 0 && models.length === 0"
         class="model-list-static"
       >
-        <label
+        <div
           v-for="modelId in selectedModelsList"
           :key="modelId"
-          class="model-row selected"
+          :class="['model-row', 'selected', { 'is-active': modelId === activeModelId }]"
+          :title="`Click to configure ${modelId}`"
+          @click="$emit('select-active', modelId)"
         >
-          <span class="model-check checked">
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="3"
-            >
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
+          <span
+            class="model-check checked"
+            role="checkbox"
+            tabindex="0"
+            aria-checked="true"
+            title="Deselect"
+            @click.stop="$emit('toggle', modelId)"
+            @keydown.space.prevent="$emit('toggle', modelId)"
+            @keydown.enter.prevent="$emit('toggle', modelId)"
+          >
+            <Check :size="11" />
           </span>
-          <span class="model-name">{{ modelId }}</span>
-        </label>
+          <span class="model-identity">
+            <span class="model-primary">{{ modelId }}</span>
+            <span class="model-secondary">Selected custom model</span>
+          </span>
+          <span
+            v-if="modelId === activeModelId"
+            class="model-active-pill"
+          >Active</span>
+        </div>
       </div>
 
       <!-- Model rows (virtual scroll, shown after fetch) -->
       <template v-if="models.length > 0">
+        <div
+          v-if="filteredModels.length > 0"
+          class="model-table-head"
+        >
+          <span />
+          <span>Model</span>
+          <span>Capabilities</span>
+          <span>Context</span>
+          <span>Output</span>
+          <span />
+        </div>
         <div
           v-if="filteredModels.length > 0"
           ref="listRef"
@@ -119,7 +132,7 @@
             <div
               v-for="model in visibleModels"
               :key="model.id"
-              :class="['model-row', { 'is-active': model.id === activeModelId }]"
+              :class="['model-row', { selected: isModelSelected(model.id), 'is-active': model.id === activeModelId }]"
               :title="`Click to configure ${model.id}`"
               @click="$emit('select-active', model.id)"
             >
@@ -133,19 +146,98 @@
                 @keydown.space.prevent="$emit('toggle', model.id)"
                 @keydown.enter.prevent="$emit('toggle', model.id)"
               >
-                <svg
+                <Check
                   v-if="isModelSelected(model.id)"
-                  width="10"
-                  height="10"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="3"
-                >
-                  <path d="M20 6L9 17l-5-5" />
-                </svg>
+                  :size="11"
+                />
               </span>
-              <span class="model-name">{{ model.name || model.id }}</span>
+              <span class="model-identity">
+                <span class="model-primary">{{ model.name || model.id }}</span>
+                <span
+                  v-if="model.name && model.name !== model.id"
+                  class="model-secondary"
+                >{{ model.id }}</span>
+              </span>
+              <span
+                class="model-capabilities"
+                @click.stop
+              >
+                <span
+                  v-if="model.id === activeModelId"
+                  class="model-active-pill"
+                >Active</span>
+                <Tooltip
+                  v-if="hasVision(model)"
+                  text="Image input"
+                >
+                  <Eye :size="12" />
+                </Tooltip>
+                <Tooltip
+                  v-if="hasImageGeneration(model)"
+                  text="Image generation"
+                >
+                  <Image :size="12" />
+                </Tooltip>
+                <Tooltip
+                  v-if="hasTools(model)"
+                  text="Tool calling"
+                >
+                  <Wrench :size="12" />
+                </Tooltip>
+                <Tooltip
+                  v-if="hasReasoning(model)"
+                  text="Reasoning model"
+                >
+                  <Brain :size="12" />
+                </Tooltip>
+              </span>
+              <Tooltip
+                v-if="model.context_length"
+                :text="`Context window: ${model.context_length.toLocaleString()} tokens`"
+              >
+                <span class="model-ctx">
+                  <ArrowDownToLine
+                    :size="10"
+                    class="ctx-icon"
+                  />{{ formatContextLength(model.context_length) }}
+                </span>
+              </Tooltip>
+              <span
+                v-else
+                class="model-ctx"
+              >{{ formatContextLength(model.context_length) }}</span>
+              <Tooltip
+                :text="getMaxOutputTooltip(model)"
+              >
+                <span
+                  class="model-out-wrap"
+                  :class="{ overridden: maxOutputs[model.id] != null }"
+                  @click.stop
+                >
+                  <ArrowUpFromLine
+                    :size="10"
+                    class="out-icon"
+                  />
+                  <NumberStepper
+                    class="model-out-stepper"
+                    size="compact"
+                    :model-value="getMaxOutputValue(model)"
+                    :min="1"
+                    :max="getModelMaxLimit(model) || undefined"
+                    :step="getModelMaxOutputStep(model)"
+                    :aria-label="`max output for ${model.name || model.id}`"
+                    @click.stop
+                    @update:model-value="onMaxOutStep(model.id, $event)"
+                  />
+                  <button
+                    v-if="maxOutputs[model.id] != null"
+                    class="model-out-clear"
+                    type="button"
+                    title="Reset to default (half of model limit)"
+                    @click.stop="emit('update-max-output', model.id, null)"
+                  >×</button>
+                </span>
+              </Tooltip>
               <button
                 class="model-caps-edit"
                 :class="{ 'has-override': hasCapabilityOverride(model.id) }"
@@ -153,7 +245,7 @@
                 type="button"
                 @click.stop="(e) => toggleCapabilityEditor(model.id, e.currentTarget as HTMLElement)"
               >
-                <SlidersHorizontal :size="11" />
+                <SlidersHorizontal :size="13" />
               </button>
               <Teleport
                 v-if="capabilityEditorOpenFor === model.id"
@@ -246,82 +338,6 @@
                   </p>
                 </div>
               </Teleport>
-              <span
-                class="model-caps"
-                @click.stop
-              >
-                <Tooltip
-                  v-if="hasVision(model)"
-                  text="Image input"
-                >
-                  <Eye :size="12" />
-                </Tooltip>
-                <Tooltip
-                  v-if="hasImageGeneration(model)"
-                  text="Image generation"
-                >
-                  <Image :size="12" />
-                </Tooltip>
-                <Tooltip
-                  v-if="hasTools(model)"
-                  text="Tool calling"
-                >
-                  <Wrench :size="12" />
-                </Tooltip>
-                <Tooltip
-                  v-if="hasReasoning(model)"
-                  text="Reasoning model"
-                >
-                  <Brain :size="12" />
-                </Tooltip>
-              </span>
-              <Tooltip
-                v-if="model.context_length"
-                :text="`Context window: ${model.context_length.toLocaleString()} tokens`"
-              >
-                <span class="model-ctx">
-                  <ArrowDownToLine
-                    :size="10"
-                    class="ctx-icon"
-                  />{{ formatContextLength(model.context_length) }}
-                </span>
-              </Tooltip>
-              <span
-                v-else
-                class="model-ctx"
-              >{{ formatContextLength(model.context_length) }}</span>
-              <Tooltip
-                :text="getMaxOutputTooltip(model)"
-              >
-                <span
-                  class="model-out-wrap"
-                  :class="{ overridden: maxOutputs[model.id] != null }"
-                  @click.stop
-                >
-                  <ArrowUpFromLine
-                    :size="10"
-                    class="out-icon"
-                  />
-                  <NumberStepper
-                    class="model-out-stepper"
-                    size="compact"
-                    :model-value="getMaxOutputValue(model)"
-                    :min="1"
-                    :max="getModelMaxLimit(model) || undefined"
-                    :step="getModelMaxOutputStep(model)"
-                    :aria-label="`max output for ${model.name || model.id}`"
-                    @click.stop
-                    @update:model-value="onMaxOutStep(model.id, $event)"
-                  />
-                  <button
-                    v-if="maxOutputs[model.id] != null"
-                    class="model-out-clear"
-                    type="button"
-                    title="Reset to default (half of model limit)"
-                    @click.stop="emit('update-max-output', model.id, null)"
-                  >×</button>
-                </span>
-              </Tooltip>
             </div>
           </div>
         </div>
@@ -334,32 +350,13 @@
           No models match "{{ searchQuery }}"
         </div>
       </template>
-
-      <!-- Add custom model -->
-      <div class="add-model-row">
-        <input
-          :value="newModelInput"
-          type="text"
-          class="add-model-input"
-          placeholder="Enter model ID (e.g., gpt-4o)"
-          @input="$emit('update:newModelInput', ($event.target as HTMLInputElement).value)"
-          @keydown.enter="$emit('add-custom')"
-        >
-        <button
-          class="add-model-btn"
-          :disabled="!newModelInput.trim()"
-          @click="$emit('add-custom')"
-        >
-          Add
-        </button>
-      </div>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { Eye, Image, Wrench, Brain, ArrowDownToLine, ArrowUpFromLine, SlidersHorizontal, AudioLines } from 'lucide-vue-next'
+import { Eye, Image, Wrench, Brain, ArrowDownToLine, ArrowUpFromLine, SlidersHorizontal, AudioLines, RefreshCw, Search, X, Plus, Check } from 'lucide-vue-next'
 import type { OpenRouterModel, ModelCapabilityOverride } from '@/types'
 import Tooltip from '@/components/common/Tooltip.vue'
 import NumberStepper from '../NumberStepper.vue'
@@ -389,8 +386,8 @@ const TRISTATE_OPTIONS: Array<{
   { value: false, label: 'Off', title: 'Force disabled' },
 ]
 
-const ROW_HEIGHT = 34
-const CONTAINER_HEIGHT = 240
+const ROW_HEIGHT = 44
+const CONTAINER_HEIGHT = 308
 const BUFFER = 5
 
 interface Props {
@@ -633,6 +630,7 @@ function onResetCapabilities(modelId: string) {
 }
 
 const listRef = ref<HTMLElement | null>(null)
+const addModelInputRef = ref<HTMLInputElement | null>(null)
 const scrollTop = ref(0)
 
 const startIndex = computed(() => Math.max(0, Math.floor(scrollTop.value / ROW_HEIGHT) - BUFFER))
@@ -647,6 +645,14 @@ const bottomPad = computed(() => Math.max(0, (props.filteredModels.length - endI
 
 function onScroll(e: Event) {
   scrollTop.value = (e.target as HTMLElement).scrollTop
+}
+
+function submitCustomModel() {
+  if (!props.newModelInput.trim()) return
+  emit('add-custom')
+  window.requestAnimationFrame(() => {
+    addModelInputRef.value?.focus()
+  })
 }
 
 // Reset scroll when search query or model list changes
@@ -719,7 +725,7 @@ watch(() => props.filteredModels.length, () => {
   cursor: not-allowed;
 }
 
-.refresh-btn svg.spinning {
+.refresh-btn .spinning {
   animation: spin 1s linear infinite;
 }
 
@@ -732,83 +738,199 @@ watch(() => props.filteredModels.length, () => {
 .settings-group {
   border: 1px solid var(--settings-rule, rgba(128, 128, 128, 0.1));
   background: var(--settings-paper, color-mix(in srgb, var(--settings-paper-2, transparent) 44%, transparent));
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
 }
 
-/* ── Search row ── */
-.search-row {
+/* ── Model toolbar ── */
+.model-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  min-height: 52px;
-  padding: 0 16px;
+  gap: 10px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.1));
 }
 
-.search-icon {
+.model-search-field {
+  display: inline-flex;
+  align-items: center;
+  flex: 1 1 280px;
+  min-width: 220px;
+  height: 32px;
+  gap: 8px;
+  padding: 0 9px;
+  border: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.14));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--settings-paper, transparent) 82%, transparent);
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
-  flex-shrink: 0;
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.model-search-field:focus-within {
+  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, var(--settings-rule, transparent));
+  background: var(--settings-paper, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 8%, transparent);
 }
 
 .search-input {
   flex: 1;
+  min-width: 0;
   border: none;
+  outline: none;
   background: transparent;
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 13px;
-  outline: none;
 }
 
-.search-input::placeholder {
+.search-input::placeholder,
+.add-model-input::placeholder {
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
 }
 
 .search-clear {
-  width: 18px;
-  height: 18px;
-  border: none;
-  background: transparent;
-  border-radius: 3px;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
-  cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  cursor: pointer;
 }
 
 .search-clear:hover {
+  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
-/* ── Model list (virtual scroll container) ── */
+.add-model-row {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 370px;
+  min-width: 260px;
+  gap: 8px;
+}
+
+.model-toolbar > .add-model-row:only-child {
+  flex-basis: 440px;
+  max-width: 100%;
+}
+
+.add-model-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.14));
+  border-radius: 6px;
+  outline: none;
+  background: color-mix(in srgb, var(--settings-paper, transparent) 82%, transparent);
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  font-size: 13px;
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.add-model-input:focus,
+.add-model-input:focus-visible {
+  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, var(--settings-rule, transparent));
+  background: var(--settings-paper, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 8%, transparent);
+}
+
+.add-model-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 40%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 12%, transparent);
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+}
+
+.add-model-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 18%, transparent);
+  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 58%, transparent);
+}
+
+.add-model-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+/* ── Model list ── */
+.model-table-head,
+.model-row {
+  display: grid;
+  grid-template-columns: 22px minmax(180px, 1.6fr) minmax(112px, auto) minmax(64px, 0.44fr) minmax(126px, 0.58fr) 28px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.model-table-head {
+  height: 30px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.08));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  font-size: 10.5px;
+  font-weight: 620;
+  line-height: 1;
+}
+
+.model-table-head span:nth-child(4),
+.model-table-head span:nth-child(5) {
+  justify-self: end;
+}
+
 .model-list {
-  height: 300px;
+  height: 308px;
   overflow-y: auto;
 }
 
-.model-list::-webkit-scrollbar { width: 8px; }
-.model-list::-webkit-scrollbar-track { background: transparent; }
-.model-list::-webkit-scrollbar-thumb {
+.model-list::-webkit-scrollbar,
+.model-list-static::-webkit-scrollbar {
+  width: 8px;
+}
+
+.model-list::-webkit-scrollbar-track,
+.model-list-static::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.model-list::-webkit-scrollbar-thumb,
+.model-list-static::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: 8px;
   background: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, #000)) 16%, transparent);
   background-clip: padding-box;
 }
 
+.model-list-static {
+  max-height: 242px;
+  overflow-y: auto;
+}
+
 .model-row {
   position: relative;
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  padding: 0 16px;
-  gap: 10px;
-  font-size: 14px;
   height: 44px;
+  padding: 0 12px;
   box-sizing: border-box;
   border-bottom: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.06));
-  transition: background 0.08s ease;
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  font-size: 13px;
   cursor: pointer;
+  transition: background 0.1s ease;
 }
 
 .model-row:last-child {
@@ -816,135 +938,171 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-row:hover {
-  background: var(--settings-paper-2, color-mix(in srgb, var(--settings-paper, transparent) 68%, transparent));
+  background: color-mix(in srgb, var(--settings-paper-3, var(--settings-paper, transparent)) 62%, transparent);
 }
 
-/* Active model: the one whose temperature / max-output the sliders below
-   are configuring. Marked with a left accent stripe + light tint. */
+.model-row.selected .model-primary,
+.model-row.is-active .model-primary {
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  font-weight: 620;
+}
+
 .model-row.is-active {
-  background: var(--settings-accent-tint, color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 8%, transparent));
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 8%, transparent);
 }
 
 .model-row.is-active::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 4px;
-  bottom: 4px;
+  top: 6px;
+  bottom: 6px;
   width: 2px;
   border-radius: 2px;
   background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
-.model-row.is-active:hover {
-  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 11%, transparent);
-}
-
-.model-row.is-active .model-name {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
-  font-weight: 600;
-}
-
-/* Checkbox is now the only click target for selection.
-   Larger invisible hit area via padding + negative margin so users don't
-   need pixel-perfect aim, while the visual square stays compact. */
 .model-check {
-  width: 14px;
-  height: 14px;
-  padding: 4px;
-  margin: -4px;
-  border: 1.5px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 4px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  justify-self: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--settings-paper, transparent) 80%, transparent);
+  color: var(--ui-action-primary-fg, var(--text-btn-primary, var(--settings-paper)));
   cursor: pointer;
-  background-clip: content-box;
-  transition: border-color 0.12s ease, background-color 0.12s ease;
+  transition: border-color 0.12s ease, background 0.12s ease;
 }
 
 .model-check:hover {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 34%, var(--settings-rule, transparent));
 }
 
 .model-check:focus-visible {
-  outline: 2px solid var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, transparent);
   outline-offset: 2px;
 }
 
 .model-check.checked {
-  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) content-box;
   border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  color: var(--ui-action-primary-fg, var(--text-btn-primary, var(--settings-paper)));
+  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
-.model-name {
-  flex: 1;
-  font-weight: 450;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+.model-check svg {
+  stroke-width: 3;
+}
+
+.model-identity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.model-primary,
+.model-secondary {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.model-caps {
-  display: flex;
-  gap: 2px;
-  flex-shrink: 0;
+.model-primary {
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text)));
+  font-weight: 470;
+}
+
+.model-secondary {
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 10.5px;
+}
+
+.model-capabilities {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+}
+
+.model-capabilities :deep(.tooltip-wrapper) {
+  color: inherit;
+}
+
+.model-capabilities svg {
+  opacity: 0.82;
+}
+
+.model-active-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 36%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 10%, transparent);
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  font-size: 11px;
+  font-weight: 620;
+  letter-spacing: 0;
+}
+
+.model-row > :deep(.tooltip-wrapper) {
+  justify-self: end;
+  min-width: 0;
 }
 
 .model-ctx {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 3px;
+  min-width: 44px;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
-  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 10.5px;
   font-variant-numeric: tabular-nums;
-  min-width: 36px;
   text-align: right;
+  white-space: nowrap;
+}
+
+.ctx-icon,
+.out-icon {
+  opacity: 0.62;
   flex-shrink: 0;
 }
 
-.ctx-icon { opacity: 0.55; }
-
-/* Per-model max-output cell: arrow icon + input + clear (×).
-   Wrapped in a single bordered pill so it reads as one control distinct
-   from the context-length number. */
 .model-out-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  height: 22px;
-  padding: 0 4px 0 6px;
+  justify-content: flex-end;
+  gap: 3px;
+  height: 26px;
+  min-width: 116px;
+  padding: 0 5px 0 6px;
   border: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.18));
   border-radius: 6px;
-  background: var(--settings-paper, rgba(128, 128, 128, 0.04));
-  flex-shrink: 0;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  background: color-mix(in srgb, var(--settings-paper, transparent) 78%, transparent);
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
 }
 
 .model-out-wrap:hover {
   border-color: var(--settings-rule, rgba(128, 128, 128, 0.4));
-  background: var(--settings-paper-2, rgba(128, 128, 128, 0.08));
+  background: var(--settings-paper, rgba(128, 128, 128, 0.05));
 }
 
 .model-out-wrap:focus-within {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 7%, transparent);
+  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, var(--settings-rule, transparent));
+  background: var(--settings-paper, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 8%, transparent);
 }
 
 .model-out-wrap.overridden {
-  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 45%, transparent);
+  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 42%, transparent);
   background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 8%, transparent);
-}
-
-.out-icon {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
-  opacity: 0.7;
-  flex-shrink: 0;
 }
 
 .model-out-wrap.overridden .out-icon {
@@ -952,16 +1110,26 @@ watch(() => props.filteredModels.length, () => {
   opacity: 1;
 }
 
-.model-out-stepper {
+.model-out-wrap :deep(.number-stepper.model-out-stepper) {
+  min-height: 22px;
   border: 0;
   background: transparent;
+  box-shadow: none;
+}
+
+.model-out-wrap :deep(.number-stepper.model-out-stepper:focus-within) {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .model-out-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   width: 14px;
   height: 14px;
   padding: 0;
-  margin-left: 2px;
   border: none;
   border-radius: 50%;
   background: transparent;
@@ -969,10 +1137,6 @@ watch(() => props.filteredModels.length, () => {
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
   transition: background 0.12s ease, color 0.12s ease;
 }
 
@@ -981,8 +1145,39 @@ watch(() => props.filteredModels.length, () => {
   color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
 }
 
+.model-caps-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: end;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.model-caps-edit:hover {
+  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+}
+
+.model-caps-edit:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, transparent);
+  outline-offset: 2px;
+}
+
+.model-caps-edit.has-override {
+  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 40%, transparent);
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+}
+
 .empty-row {
-  padding: 20px;
+  padding: 22px 16px;
   text-align: center;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-size: 13px;
@@ -997,104 +1192,42 @@ watch(() => props.filteredModels.length, () => {
   margin-bottom: 8px;
 }
 
-/* ── Static selected models (before fetch) ── */
-.model-list-static {
-  max-height: 200px;
-  overflow-y: auto;
+@media (max-width: 980px) {
+  .model-table-head,
+  .model-row {
+    grid-template-columns: 22px minmax(150px, 1fr) minmax(64px, 0.42fr) minmax(126px, 0.62fr) 28px;
+  }
+
+  .model-table-head span:nth-child(3),
+  .model-capabilities {
+    display: none;
+  }
 }
 
-/* ── Fetch button ── */
-.fetch-row {
-  padding: 12px;
-  display: flex;
-  justify-content: center;
-}
+@media (max-width: 720px) {
+  .model-search-field,
+  .add-model-row {
+    flex-basis: 100%;
+    min-width: 0;
+  }
 
-.fetch-btn {
-  padding: 6px 16px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 7px;
-  background: var(--settings-paper, transparent);
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.1s ease;
-}
+  .model-table-head {
+    display: none;
+  }
 
-.fetch-btn:hover:not(:disabled) {
-  background: var(--settings-paper-2, rgba(128, 128, 128, 0.1));
-}
+  .model-row {
+    grid-template-columns: 22px minmax(0, 1fr) 28px;
+    min-height: 48px;
+    height: auto;
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
 
-.fetch-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* ── Add model ── */
-.add-model-row {
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-  min-height: 52px;
-  padding: 0 16px;
-  border-top: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.08));
-}
-
-.add-model-input {
-  flex: 1;
-  padding: 6px 8px;
-  border: none;
-  background: transparent;
-  min-width: 0;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-  font-size: 13px;
-  outline: none;
-}
-
-.add-model-input::placeholder {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
-}
-
-.add-model-btn {
-  padding: 4px 12px;
-  border: none;
-  border-radius: 7px;
-  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  color: var(--ui-action-primary-fg, var(--text-btn-primary, var(--settings-paper)));
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.add-model-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* Per-model capability override editor — trigger button (stays in-flow) */
-.model-caps-edit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  margin-left: 4px;
-  padding: 0;
-  border: 1px solid transparent;
-  background: transparent;
-  border-radius: 4px;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-.model-caps-edit:hover {
-  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-}
-.model-caps-edit.has-override {
-  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 40%, transparent);
-  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  .model-row > :deep(.tooltip-wrapper),
+  .model-ctx,
+  .model-out-wrap {
+    display: none;
+  }
 }
 </style>
 
@@ -1243,7 +1376,8 @@ watch(() => props.filteredModels.length, () => {
   outline: none;
 }
 .model-caps-id-input:focus {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-border-default-border, var(--border));
+  box-shadow: none;
 }
 
 .model-caps-id-save {

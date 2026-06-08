@@ -14,7 +14,11 @@
             :disabled="loading"
             @click="loadJobs"
           >
-            {{ loading ? 'Refreshing…' : 'Refresh' }}
+            <RefreshCw
+              :class="{ spinning: loading }"
+              :size="13"
+            />
+            <span>{{ loading ? 'Refreshing...' : 'Refresh' }}</span>
           </button>
         </div>
       </SettingRow>
@@ -61,6 +65,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { RefreshCw } from 'lucide-vue-next'
 import {
   SettingRow,
   SettingsEmptyState,
@@ -113,7 +118,7 @@ onMounted(() => {
   gap: 12px;
   padding: 12px;
   border: 1px solid var(--ui-border-default-border, var(--border-color));
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--ui-surface-panel-bg, var(--bg-secondary));
 }
 
@@ -153,6 +158,10 @@ onMounted(() => {
 }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border: 1px solid var(--ui-border-default-border, var(--border-color));
   border-radius: 8px;
   padding: 6px 10px;
@@ -168,5 +177,13 @@ onMounted(() => {
 
 .btn.danger {
   color: var(--ui-status-danger-fg, var(--danger-color, #dc2626));
+}
+
+.spinning {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

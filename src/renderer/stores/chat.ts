@@ -889,11 +889,7 @@ export const useChatStore = defineStore('chat', () => {
       try {
         const { useSessionsStore } = await import('./sessions')
         const sessionsStore = useSessionsStore()
-        const sessionInStore = sessionsStore.sessions.find(s => s.id === sessionId)
-        if (sessionInStore) {
-          sessionInStore.name = data.sessionName
-          sessionInStore.updatedAt = Date.now()
-        }
+        sessionsStore.updateSessionNameAnimated(sessionId, data.sessionName)
       } catch (e) {
         console.error('[Chat Store] Failed to update session name:', e)
       }
@@ -1583,11 +1579,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const { useSessionsStore } = await import('./sessions')
       const sessionsStore = useSessionsStore()
-      const session = sessionsStore.sessions.find(s => s.id === data.sessionId)
-      if (session) {
-        session.name = data.name
-        session.updatedAt = Date.now()
-      }
+      sessionsStore.updateSessionNameAnimated(data.sessionId, data.name)
     } catch (e) {
       console.error('[Chat Store] Failed to update session name:', e)
     }

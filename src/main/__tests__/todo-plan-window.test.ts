@@ -126,6 +126,10 @@ const mocks = vi.hoisted(() => {
       window.alwaysOnTop = pinned
       return true
     }),
+    getSettings: vi.fn(() => ({
+      theme: 'dark',
+      general: {},
+    })),
     readJsonFile: vi.fn((_path: string, defaultValue: unknown) => defaultValue),
     writeJsonFile: vi.fn(),
   }
@@ -159,10 +163,7 @@ vi.mock('../stores/paths.js', () => ({
 }))
 
 vi.mock('../stores/settings.js', () => ({
-  getSettings: vi.fn(() => ({
-    theme: 'dark',
-    general: {},
-  })),
+  getSettings: mocks.getSettings,
 }))
 
 vi.mock('../themes/index.js', () => ({
@@ -210,6 +211,10 @@ describe('todo plan standalone window controls', () => {
     mocks.setNonActivatingPanelPinned.mockImplementation((window: InstanceType<typeof mocks.MockBrowserWindow>, pinned: boolean) => {
       window.alwaysOnTop = pinned
       return true
+    })
+    mocks.getSettings.mockReturnValue({
+      theme: 'dark',
+      general: {},
     })
     mocks.isMainAppWindowUrl.mockReturnValue(false)
     mocks.readJsonFile.mockImplementation((_path: string, defaultValue: unknown) => defaultValue)
@@ -446,6 +451,23 @@ describe('todo plan standalone window controls', () => {
     } else {
       expect(win.options.titleBarStyle).toBe('default')
     }
+  })
+
+  it('passes the current color theme into the standalone todo renderer route', async () => {
+    mocks.getSettings.mockReturnValue({
+      theme: 'light',
+      general: {
+        colorTheme: 'pink',
+        lightThemeId: 'catppuccin-latte',
+      },
+    } as any)
+
+    const { openTodoPlanWindow } = await loadWindowModule()
+    const win = openTodoPlanWindow() as unknown as InstanceType<typeof mocks.MockBrowserWindow>
+
+    expect(win.url).toContain('/todo-plan?')
+    expect(win.url).toContain('theme=light')
+    expect(win.url).toContain('colorTheme=pink')
   })
 
   it('warms the standalone todo window without presenting it', async () => {

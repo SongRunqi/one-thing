@@ -30,330 +30,327 @@
         <div
           v-for="provider in providers"
           :key="provider.id"
-          :class="['provider-row', { active: providerSettings.viewingProvider.value === provider.id }]"
-          role="button"
-          tabindex="0"
-          @click="providerSettings.switchViewingProvider(provider.id)"
-          @keydown.enter.prevent="providerSettings.switchViewingProvider(provider.id)"
-          @keydown.space.prevent="providerSettings.switchViewingProvider(provider.id)"
+          class="provider-row-block"
         >
-          <span class="provider-icon-tile">
-            <ProviderIcon
-              :provider="provider.id"
-              :size="18"
-            />
-            <span
-              class="provider-status-dot"
-              :class="providerStatus(provider.id)"
-            />
-          </span>
-
-          <span class="provider-row-main">
-            <span class="provider-row-title">
-              <span class="provider-name">{{ provider.name }}</span>
+          <div
+            :class="['provider-row', { active: isProviderExpanded(provider.id) }]"
+            role="button"
+            tabindex="0"
+            :aria-expanded="isProviderExpanded(provider.id)"
+            @click="toggleProviderDetail(provider.id)"
+            @keydown.enter.prevent="toggleProviderDetail(provider.id)"
+            @keydown.space.prevent="toggleProviderDetail(provider.id)"
+          >
+            <span class="provider-icon-tile">
+              <ProviderIcon
+                :provider="provider.id"
+                :size="18"
+              />
               <span
-                v-if="settings.ai.provider === provider.id"
-                class="provider-pill blue"
-              >Default</span>
-              <span
-                v-if="providerSettings.isUserCustomProvider(provider.id)"
-                class="provider-pill"
-              >Custom</span>
+                class="provider-status-dot"
+                :class="providerStatus(provider.id)"
+              />
             </span>
-            <span class="provider-row-model">{{ providerModelLabel(provider.id) }}</span>
-          </span>
 
-          <span class="provider-key-preview">{{ providerKeyPreview(provider.id) }}</span>
-          <span
-            class="provider-pill"
-            :class="providerSettings.isProviderEnabled(provider.id) ? 'green' : 'mute'"
-          >
-            {{ providerSettings.isProviderEnabled(provider.id) ? 'active' : 'off' }}
-          </span>
-          <span class="provider-configure">
-            Configure
-          </span>
-          <button
-            v-if="providerSettings.isUserCustomProvider(provider.id)"
-            class="provider-row-edit"
-            type="button"
-            title="Edit provider"
-            @click.stop="$emit('edit-custom-provider', provider.id)"
-          >
-            Edit
-          </button>
+            <span class="provider-row-main">
+              <span class="provider-row-title">
+                <span class="provider-name">{{ provider.name }}</span>
+                <span
+                  v-if="settings.ai.provider === provider.id"
+                  class="provider-pill blue"
+                >Default</span>
+                <span
+                  v-if="providerSettings.isUserCustomProvider(provider.id)"
+                  class="provider-pill"
+                >Custom</span>
+              </span>
+              <span class="provider-row-model">{{ providerModelLabel(provider.id) }}</span>
+            </span>
+
+            <span class="provider-key-preview">{{ providerKeyPreview(provider.id) }}</span>
+            <span
+              class="provider-pill"
+              :class="providerSettings.isProviderEnabled(provider.id) ? 'green' : 'mute'"
+            >
+              {{ providerSettings.isProviderEnabled(provider.id) ? 'active' : 'off' }}
+            </span>
+            <button
+              class="provider-configure"
+              type="button"
+              :aria-label="`${isProviderExpanded(provider.id) ? 'Collapse' : 'Expand'} ${provider.name} settings`"
+              @click.stop="toggleProviderDetail(provider.id)"
+            >
+              Configure
+              <ChevronDown
+                class="provider-configure-icon"
+                :class="{ expanded: isProviderExpanded(provider.id) }"
+                :size="14"
+              />
+            </button>
+            <button
+              v-if="providerSettings.isUserCustomProvider(provider.id)"
+              class="provider-row-edit"
+              type="button"
+              title="Edit provider"
+              @click.stop="$emit('edit-custom-provider', provider.id)"
+            >
+              Edit
+            </button>
+          </div>
+
+          <Transition name="provider-config">
+            <div
+              v-if="isProviderExpanded(provider.id) && providerSettings.viewingProvider.value === provider.id"
+              class="provider-inline-detail"
+              @click.stop
+            >
+              <main class="provider-detail">
+                <!-- Provider Header -->
+                <div class="detail-header">
+                  <h2 class="detail-title">
+                    {{ providerSettings.currentProviderName.value }}
+                  </h2>
+                  <label class="enable-toggle">
+                    <input
+                      type="checkbox"
+                      :checked="providerSettings.isProviderEnabled(providerSettings.viewingProvider.value)"
+                      @change="providerSettings.toggleProviderEnabled(providerSettings.viewingProvider.value)"
+                    >
+                    <span class="toggle-switch" />
+                  </label>
+                </div>
+
+                <!-- API Configuration -->
+                <section class="detail-section">
+                  <h3 class="section-label">
+                    API Configuration
+                  </h3>
+
+                  <!-- OAuth Provider Login -->
+                  <div
+                    v-if="providerSettings.isOAuthProvider.value"
+                    class="oauth-config-stack"
+                  >
+                    <AuthCard
+                      :provider-id="providerSettings.viewingProvider.value"
+                      :provider-name="providerSettings.currentProviderName.value"
+                      :oauth-status="providerSettings.oauthStatus.value"
+                      :is-loading="providerSettings.isOAuthLoading.value"
+                      :device-flow-info="providerSettings.deviceFlowInfo.value"
+                      :code-entry-info="providerSettings.codeEntryInfo.value"
+                      :manual-code="providerSettings.manualCode.value"
+                      :is-submitting-code="providerSettings.isSubmittingCode.value"
+                      :code-entry-error="providerSettings.codeEntryError.value"
+                      @start-login="providerSettings.startOAuthLogin"
+                      @logout="providerSettings.logoutOAuth"
+                      @update:manual-code="providerSettings.manualCode.value = $event"
+                      @submit-code="providerSettings.submitManualCode"
+                    />
+
+                    <ProviderUsageCard
+                      v-if="providerUsage.shouldShow.value"
+                      :response="providerUsage.response.value"
+                      :is-loading="providerUsage.isLoading.value"
+                      :error="providerUsage.error.value"
+                      @refresh="providerUsage.refresh(true)"
+                    />
+                  </div>
+
+                  <!-- Traditional API Key Input -->
+                  <div
+                    v-else
+                    class="settings-group"
+                  >
+                    <div class="settings-row">
+                      <span class="row-label">API Key</span>
+                      <div class="row-input-wrap">
+                        <input
+                          :value="settings.ai.providers?.[providerSettings.viewingProvider.value]?.apiKey"
+                          :type="showApiKey ? 'text' : 'password'"
+                          class="row-input"
+                          :placeholder="`Enter ${providerSettings.currentProviderName.value} key...`"
+                          @input="providerSettings.updateProviderApiKey(($event.target as HTMLInputElement).value)"
+                        >
+                        <button
+                          class="input-toggle"
+                          type="button"
+                          :title="showApiKey ? 'Hide API key' : 'Show API key'"
+                          @click="showApiKey = !showApiKey"
+                        >
+                          <EyeOff
+                            v-if="showApiKey"
+                            :size="14"
+                          />
+                          <Eye
+                            v-else
+                            :size="14"
+                          />
+                        </button>
+                      </div>
+                    </div>
+                    <div class="settings-row">
+                      <span class="row-label">Base URL</span>
+                      <input
+                        :value="settings.ai.providers?.[providerSettings.viewingProvider.value]?.baseUrl"
+                        type="text"
+                        class="row-input"
+                        :placeholder="providerSettings.getDefaultBaseUrl()"
+                        @input="providerSettings.updateProviderBaseUrl(($event.target as HTMLInputElement).value)"
+                      >
+                    </div>
+                  </div>
+                </section>
+
+                <!-- Models Section -->
+                <ProviderModels
+                  :models="providerSettings.availableModels.value"
+                  :filtered-models="providerSettings.filteredModels.value"
+                  :selected-count="providerSettings.currentSelectedModels.value.length"
+                  :selected-models-list="providerSettings.currentSelectedModels.value"
+                  :search-query="providerSettings.modelSearchQuery.value"
+                  :new-model-input="providerSettings.newModelInput.value"
+                  :is-loading="providerSettings.isLoadingModels.value"
+                  :error="providerSettings.modelError.value"
+                  :max-outputs="providerSettings.currentProviderMaxOutputs.value"
+                  :model-capabilities="providerSettings.currentProviderModelCapabilities.value"
+                  :rename-model="providerSettings.renameModel"
+                  :active-model-id="providerSettings.activeModelId.value"
+                  :is-model-selected="providerSettings.isModelSelected"
+                  :has-vision="providerSettings.hasVision"
+                  :has-image-generation="providerSettings.hasImageGeneration"
+                  :has-tools="providerSettings.hasTools"
+                  :has-reasoning="providerSettings.hasReasoning"
+                  :format-context-length="providerSettings.formatContextLength"
+                  @refresh="providerSettings.fetchModels(true)"
+                  @toggle="providerSettings.toggleModelSelection"
+                  @update:search-query="providerSettings.modelSearchQuery.value = $event"
+                  @update:new-model-input="providerSettings.newModelInput.value = $event"
+                  @add-custom="providerSettings.addCustomModel"
+                  @update-max-output="providerSettings.updateModelMaxOutput"
+                  @update-capability="providerSettings.updateModelCapability"
+                  @reset-capabilities="providerSettings.resetModelCapabilities"
+                  @select-active="providerSettings.setActiveModel"
+                />
+
+                <!-- Temperature Section (per-provider, falls back to global default when unset).
+                     Disabled when the active model rejects `temperature` (e.g. reasoning models). -->
+                <section class="detail-section">
+                  <h3 class="section-label">
+                    Temperature
+                    <span
+                      class="section-value"
+                      :class="{ muted: !providerSettings.activeModelSupportsTemperature.value }"
+                    >{{ providerSettings.currentTemperature.value.toFixed(1) }}</span>
+                    <span
+                      v-if="!providerSettings.activeModelSupportsTemperature.value"
+                      class="section-hint"
+                    >not supported by this model</span>
+                    <span
+                      v-else-if="!providerSettings.hasProviderTemperatureOverride.value"
+                      class="section-hint"
+                    >(default)</span>
+                    <button
+                      v-else
+                      class="section-reset"
+                      type="button"
+                      @click="providerSettings.resetProviderTemperature"
+                    >
+                      Reset
+                    </button>
+                  </h3>
+                  <div
+                    class="settings-group"
+                    :class="{ 'is-disabled': !providerSettings.activeModelSupportsTemperature.value }"
+                  >
+                    <div class="stepper-row">
+                      <NumberStepper
+                        :model-value="providerSettings.currentTemperature.value"
+                        :min="0"
+                        :max="2"
+                        :step="0.1"
+                        :disabled="!providerSettings.activeModelSupportsTemperature.value"
+                        aria-label="temperature"
+                        @update:model-value="providerSettings.updateProviderTemperature"
+                      />
+                      <div class="stepper-labels">
+                        <span>Precise</span>
+                        <span v-if="providerSettings.activeModelId.value">
+                          for <code>{{ providerSettings.activeModelId.value }}</code>
+                        </span>
+                        <span>Creative</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <!-- Max Output Tokens — slider configures the override for the active model.
+                     Mirrors the Temperature section's structure (default hint + Reset button). -->
+                <section class="detail-section">
+                  <h3 class="section-label">
+                    Max Output
+                    <span
+                      class="section-value"
+                      :class="{ muted: !providerSettings.activeModelMaxLimit.value }"
+                    >{{ providerSettings.activeModelMaxOutput.value.toLocaleString() }}</span>
+                    <span
+                      v-if="!providerSettings.activeModelId.value"
+                      class="section-hint"
+                    >no model selected</span>
+                    <span
+                      v-else-if="!providerSettings.activeModelMaxLimit.value"
+                      class="section-hint"
+                    >no limit data for this model</span>
+                    <span
+                      v-else-if="!providerSettings.hasActiveModelMaxOverride.value"
+                      class="section-hint"
+                    >(half of {{ providerSettings.activeModelMaxLimit.value.toLocaleString() }})</span>
+                    <button
+                      v-else
+                      class="section-reset"
+                      type="button"
+                      @click="providerSettings.resetActiveModelMaxOutput"
+                    >
+                      Reset
+                    </button>
+                  </h3>
+                  <div
+                    class="settings-group"
+                    :class="{ 'is-disabled': !providerSettings.activeModelMaxLimit.value }"
+                  >
+                    <div class="stepper-row">
+                      <NumberStepper
+                        :model-value="providerSettings.activeModelMaxOutput.value"
+                        :min="1"
+                        :max="Math.max(1, providerSettings.activeModelMaxLimit.value)"
+                        :step="providerSettings.activeModelMaxOutputStep.value"
+                        :disabled="!providerSettings.activeModelMaxLimit.value"
+                        aria-label="max output tokens"
+                        @update:model-value="providerSettings.updateActiveModelMaxOutput"
+                      />
+                      <div class="stepper-labels">
+                        <span>1</span>
+                        <span v-if="providerSettings.activeModelId.value">
+                          for <code>{{ providerSettings.activeModelId.value }}</code>
+                        </span>
+                        <span>{{ providerSettings.activeModelMaxLimit.value
+                          ? providerSettings.formatContextLength(providerSettings.activeModelMaxLimit.value)
+                          : '—' }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </main>
+            </div>
+          </Transition>
         </div>
       </div>
     </section>
-
-    <!-- Selected Provider Detail -->
-    <div class="provider-tab">
-      <main class="provider-detail">
-        <!-- Provider Header -->
-        <div class="detail-header">
-          <h2 class="detail-title">
-            {{ providerSettings.currentProviderName.value }}
-          </h2>
-          <label class="enable-toggle">
-            <input
-              type="checkbox"
-              :checked="providerSettings.isProviderEnabled(providerSettings.viewingProvider.value)"
-              @change="providerSettings.toggleProviderEnabled(providerSettings.viewingProvider.value)"
-            >
-            <span class="toggle-switch" />
-          </label>
-        </div>
-
-        <!-- API Configuration -->
-        <section class="detail-section">
-          <h3 class="section-label">
-            API Configuration
-          </h3>
-
-          <!-- OAuth Provider Login -->
-          <div
-            v-if="providerSettings.isOAuthProvider.value"
-            class="oauth-config-stack"
-          >
-            <AuthCard
-              :provider-id="providerSettings.viewingProvider.value"
-              :provider-name="providerSettings.currentProviderName.value"
-              :oauth-status="providerSettings.oauthStatus.value"
-              :is-loading="providerSettings.isOAuthLoading.value"
-              :device-flow-info="providerSettings.deviceFlowInfo.value"
-              :code-entry-info="providerSettings.codeEntryInfo.value"
-              :manual-code="providerSettings.manualCode.value"
-              :is-submitting-code="providerSettings.isSubmittingCode.value"
-              :code-entry-error="providerSettings.codeEntryError.value"
-              @start-login="providerSettings.startOAuthLogin"
-              @logout="providerSettings.logoutOAuth"
-              @update:manual-code="providerSettings.manualCode.value = $event"
-              @submit-code="providerSettings.submitManualCode"
-            />
-
-            <ProviderUsageCard
-              v-if="providerUsage.shouldShow.value"
-              :response="providerUsage.response.value"
-              :is-loading="providerUsage.isLoading.value"
-              :error="providerUsage.error.value"
-              @refresh="providerUsage.refresh(true)"
-            />
-          </div>
-
-          <!-- Traditional API Key Input -->
-          <div
-            v-else
-            class="settings-group"
-          >
-            <div class="settings-row">
-              <span class="row-label">API Key</span>
-              <div class="row-input-wrap">
-                <input
-                  :value="settings.ai.providers?.[providerSettings.viewingProvider.value]?.apiKey"
-                  :type="showApiKey ? 'text' : 'password'"
-                  class="row-input"
-                  :placeholder="`Enter ${providerSettings.currentProviderName.value} key...`"
-                  @input="providerSettings.updateProviderApiKey(($event.target as HTMLInputElement).value)"
-                >
-                <button
-                  class="input-toggle"
-                  type="button"
-                  @click="showApiKey = !showApiKey"
-                >
-                  <svg
-                    v-if="showApiKey"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
-                    <line
-                      x1="1"
-                      y1="1"
-                      x2="23"
-                      y2="23"
-                    />
-                  </svg>
-                  <svg
-                    v-else
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle
-                      cx="12"
-                      cy="12"
-                      r="3"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div class="settings-row">
-              <span class="row-label">Base URL</span>
-              <input
-                :value="settings.ai.providers?.[providerSettings.viewingProvider.value]?.baseUrl"
-                type="text"
-                class="row-input"
-                :placeholder="providerSettings.getDefaultBaseUrl()"
-                @input="providerSettings.updateProviderBaseUrl(($event.target as HTMLInputElement).value)"
-              >
-            </div>
-          </div>
-        </section>
-
-        <!-- Models Section -->
-        <ProviderModels
-          :models="providerSettings.availableModels.value"
-          :filtered-models="providerSettings.filteredModels.value"
-          :selected-count="providerSettings.currentSelectedModels.value.length"
-          :selected-models-list="providerSettings.currentSelectedModels.value"
-          :search-query="providerSettings.modelSearchQuery.value"
-          :new-model-input="providerSettings.newModelInput.value"
-          :is-loading="providerSettings.isLoadingModels.value"
-          :error="providerSettings.modelError.value"
-          :max-outputs="providerSettings.currentProviderMaxOutputs.value"
-          :model-capabilities="providerSettings.currentProviderModelCapabilities.value"
-          :rename-model="providerSettings.renameModel"
-          :active-model-id="providerSettings.activeModelId.value"
-          :is-model-selected="providerSettings.isModelSelected"
-          :has-vision="providerSettings.hasVision"
-          :has-image-generation="providerSettings.hasImageGeneration"
-          :has-tools="providerSettings.hasTools"
-          :has-reasoning="providerSettings.hasReasoning"
-          :format-context-length="providerSettings.formatContextLength"
-          @refresh="providerSettings.fetchModels(true)"
-          @toggle="providerSettings.toggleModelSelection"
-          @update:search-query="providerSettings.modelSearchQuery.value = $event"
-          @update:new-model-input="providerSettings.newModelInput.value = $event"
-          @add-custom="providerSettings.addCustomModel"
-          @update-max-output="providerSettings.updateModelMaxOutput"
-          @update-capability="providerSettings.updateModelCapability"
-          @reset-capabilities="providerSettings.resetModelCapabilities"
-          @select-active="providerSettings.setActiveModel"
-        />
-
-        <!-- Temperature Section (per-provider, falls back to global default when unset).
-             Disabled when the active model rejects `temperature` (e.g. reasoning models). -->
-        <section class="detail-section">
-          <h3 class="section-label">
-            Temperature
-            <span
-              class="section-value"
-              :class="{ muted: !providerSettings.activeModelSupportsTemperature.value }"
-            >{{ providerSettings.currentTemperature.value.toFixed(1) }}</span>
-            <span
-              v-if="!providerSettings.activeModelSupportsTemperature.value"
-              class="section-hint"
-            >not supported by this model</span>
-            <span
-              v-else-if="!providerSettings.hasProviderTemperatureOverride.value"
-              class="section-hint"
-            >(default)</span>
-            <button
-              v-else
-              class="section-reset"
-              type="button"
-              @click="providerSettings.resetProviderTemperature"
-            >
-              Reset
-            </button>
-          </h3>
-          <div
-            class="settings-group"
-            :class="{ 'is-disabled': !providerSettings.activeModelSupportsTemperature.value }"
-          >
-            <div class="stepper-row">
-              <NumberStepper
-                :model-value="providerSettings.currentTemperature.value"
-                :min="0"
-                :max="2"
-                :step="0.1"
-                :disabled="!providerSettings.activeModelSupportsTemperature.value"
-                aria-label="temperature"
-                @update:model-value="providerSettings.updateProviderTemperature"
-              />
-              <div class="stepper-labels">
-                <span>Precise</span>
-                <span v-if="providerSettings.activeModelId.value">
-                  for <code>{{ providerSettings.activeModelId.value }}</code>
-                </span>
-                <span>Creative</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Max Output Tokens — slider configures the override for the active model.
-             Mirrors the Temperature section's structure (default hint + Reset button). -->
-        <section class="detail-section">
-          <h3 class="section-label">
-            Max Output
-            <span
-              class="section-value"
-              :class="{ muted: !providerSettings.activeModelMaxLimit.value }"
-            >{{ providerSettings.activeModelMaxOutput.value.toLocaleString() }}</span>
-            <span
-              v-if="!providerSettings.activeModelId.value"
-              class="section-hint"
-            >no model selected</span>
-            <span
-              v-else-if="!providerSettings.activeModelMaxLimit.value"
-              class="section-hint"
-            >no limit data for this model</span>
-            <span
-              v-else-if="!providerSettings.hasActiveModelMaxOverride.value"
-              class="section-hint"
-            >(half of {{ providerSettings.activeModelMaxLimit.value.toLocaleString() }})</span>
-            <button
-              v-else
-              class="section-reset"
-              type="button"
-              @click="providerSettings.resetActiveModelMaxOutput"
-            >
-              Reset
-            </button>
-          </h3>
-          <div
-            class="settings-group"
-            :class="{ 'is-disabled': !providerSettings.activeModelMaxLimit.value }"
-          >
-            <div class="stepper-row">
-              <NumberStepper
-                :model-value="providerSettings.activeModelMaxOutput.value"
-                :min="1"
-                :max="Math.max(1, providerSettings.activeModelMaxLimit.value)"
-                :step="providerSettings.activeModelMaxOutputStep.value"
-                :disabled="!providerSettings.activeModelMaxLimit.value"
-                aria-label="max output tokens"
-                @update:model-value="providerSettings.updateActiveModelMaxOutput"
-              />
-              <div class="stepper-labels">
-                <span>1</span>
-                <span v-if="providerSettings.activeModelId.value">
-                  for <code>{{ providerSettings.activeModelId.value }}</code>
-                </span>
-                <span>{{ providerSettings.activeModelMaxLimit.value
-                  ? providerSettings.formatContextLength(providerSettings.activeModelMaxLimit.value)
-                  : '—' }}</span>
-              </div>
-            </div>
-          </div>
-        </section>
-      </main>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { ChevronDown, Eye, EyeOff } from 'lucide-vue-next'
 import type { AppSettings, ProviderInfo } from '@/types'
 import GlobalDefaultSelector from './GlobalDefaultSelector.vue'
 import ProviderIcon from '../ProviderIcon.vue'
@@ -379,6 +376,21 @@ const showApiKey = ref(false)
 
 const providerSettings = useProviderSettings(props, (event, value) => emit(event, value))
 const providerUsage = useProviderUsage(providerSettings.viewingProvider, providerSettings.oauthStatus)
+const expandedProviderId = ref<string | null>(props.settings.ai.provider)
+
+function isProviderExpanded(providerId: string): boolean {
+  return expandedProviderId.value === providerId
+}
+
+async function toggleProviderDetail(providerId: string) {
+  if (expandedProviderId.value === providerId) {
+    expandedProviderId.value = null
+    return
+  }
+
+  await providerSettings.switchViewingProvider(providerId)
+  expandedProviderId.value = providerId
+}
 
 function providerModelLabel(providerId: string): string {
   const config = props.settings.ai.providers?.[providerId]
@@ -455,10 +467,36 @@ onUnmounted(() => {
 }
 
 .provider-rows {
+  padding: 8px;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
-  overflow: hidden;
+  overflow: visible;
+}
+
+.provider-row-block {
+  position: relative;
+  border-radius: 10px;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.provider-row-block + .provider-row-block {
+  margin-top: 8px;
+}
+
+.provider-row-block + .provider-row-block::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+}
+
+.provider-row-block:has(.provider-row.active) {
+  background: color-mix(in srgb, var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2))) 48%, transparent);
+  box-shadow: inset 0 0 0 1px var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
 }
 
 .provider-row {
@@ -468,23 +506,28 @@ onUnmounted(() => {
   gap: 16px;
   width: 100%;
   min-height: 64px;
-  padding: 14px 16px;
+  padding: 13px 14px;
   border: 0;
-  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-radius: 9px;
   background: transparent;
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   cursor: pointer;
   font: inherit;
   text-align: left;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
 }
 
-.provider-row:first-child {
-  border-top: 0;
+.provider-row:hover {
+  background: color-mix(in srgb, var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2))) 58%, transparent);
 }
 
-.provider-row:hover,
 .provider-row.active {
-  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
+  background: transparent;
+}
+
+.provider-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted))) 70%, transparent);
 }
 
 .provider-icon-tile {
@@ -561,12 +604,11 @@ onUnmounted(() => {
   background: transparent;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 560;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   line-height: 1.4;
   padding: 2px 7px;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -587,6 +629,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   min-height: 30px;
   padding: 0 12px;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
@@ -596,6 +639,20 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 560;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.provider-configure {
+  min-width: 112px;
+}
+
+.provider-configure-icon {
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  transition: transform 0.16s ease;
+}
+
+.provider-configure-icon.expanded {
+  transform: rotate(180deg);
 }
 
 .provider-row-edit {
@@ -603,12 +660,44 @@ onUnmounted(() => {
 }
 
 .provider-row-edit:hover,
+.provider-configure:hover,
 .provider-row:hover .provider-configure {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-color: var(--settings-rule-strong, var(--settings-ink-4, var(--ui-border-default-border, var(--border))));
+  background: color-mix(in srgb, var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2))) 48%, var(--settings-paper, transparent));
 }
 
-.provider-tab {
-  min-width: 0;
+.provider-row-edit:focus-visible,
+.provider-configure:focus-visible {
+  outline: none;
+  border-color: var(--settings-rule-strong, var(--settings-ink-4, var(--ui-border-default-border, var(--border))));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted))) 26%, transparent);
+}
+
+.provider-inline-detail {
+  margin: 0 10px;
+  padding: 14px 6px 16px;
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  background: transparent;
+}
+
+.provider-config-enter-active,
+.provider-config-leave-active {
+  overflow: hidden;
+  transition: opacity 0.18s ease, max-height 0.22s ease, transform 0.18s ease;
+}
+
+.provider-config-enter-from,
+.provider-config-leave-to {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.provider-config-enter-to,
+.provider-config-leave-from {
+  max-height: 2400px;
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .provider-detail {
@@ -621,11 +710,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 .detail-title {
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 650;
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   margin: 0;
@@ -745,14 +834,14 @@ onUnmounted(() => {
 .settings-group {
   border: 1px solid var(--settings-rule, rgba(128, 128, 128, 0.1));
   background: var(--settings-paper, color-mix(in srgb, var(--settings-paper-2, transparent) 44%, transparent));
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
 }
 
 .settings-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(240px, 420px);
   align-items: center;
-  justify-content: space-between;
   min-height: 54px;
   padding: 0 16px;
   gap: 24px;
@@ -771,27 +860,32 @@ onUnmounted(() => {
 }
 
 .row-input-wrap {
-  flex: 1;
-  display: flex;
-  align-items: center;
+  position: relative;
+  width: 100%;
   min-width: 0;
 }
 
 .row-input {
-  flex: 1;
+  width: 100%;
   min-width: 0;
+  min-height: 34px;
   padding: 7px 10px;
-  border: none;
+  border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 7px;
-  background: transparent;
+  background: var(--settings-paper-2, var(--ui-surface-input-bg, var(--bg-input, var(--bg))));
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 13px;
-  text-align: right;
+  text-align: left;
+}
+
+.row-input-wrap .row-input {
+  padding-right: 34px;
 }
 
 .row-input:focus {
   outline: none;
-  background: var(--settings-paper-2, rgba(128, 128, 128, 0.08));
+  border-color: var(--settings-rule-strong, var(--settings-rule, var(--ui-border-default-border, var(--border))));
+  box-shadow: none;
 }
 
 .row-input::placeholder {
@@ -810,6 +904,10 @@ onUnmounted(() => {
 }
 
 .input-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
   width: 24px;
   height: 24px;
   border: none;

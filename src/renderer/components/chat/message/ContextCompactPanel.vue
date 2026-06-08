@@ -51,11 +51,11 @@
     </div>
 
     <Transition name="summary">
-      <div
-        v-if="canExpand && isExpanded"
-        class="summary-content"
-        v-html="renderedSummary"
-      />
+	      <div
+	        v-if="canExpand && isExpanded"
+	        class="summary-content md-inline-code-scope"
+	        v-html="renderedSummary"
+	      />
     </Transition>
   </div>
 </template>
@@ -252,13 +252,10 @@ const renderedSummary = computed(() => renderMarkdown(props.summary, false))
   font-weight: 600;
 }
 
-.summary-content :deep(.inline-code) {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 16%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 0.9em;
+.summary-content {
+  --md-inline-code-padding: 1px 5px;
+  --md-inline-code-bg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 16%, transparent);
+  --md-inline-code-fg: var(--ui-text-primary-fg, var(--text));
 }
 
 .summary-enter-active,

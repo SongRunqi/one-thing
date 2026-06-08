@@ -3,8 +3,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
 import type { Theme } from '../../../shared/ipc/themes.js'
-import { extractPreviewColors, resolveTheme, resolveThemeUI } from '../resolver.js'
-import { CSS_VAR_MAP } from '../css-mapper.js'
+import { extractPreviewColors, resolveTheme, resolveThemeHighlights, resolveThemeUI } from '../resolver.js'
+import { CSS_VAR_MAP, generateCSSVariables } from '../css-mapper.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const builtinThemeDir = path.resolve(dirname, '../builtin')
@@ -154,6 +154,12 @@ function solidColorKey(value: string | undefined): string | null {
   return `${Math.round(color.red)},${Math.round(color.green)},${Math.round(color.blue)}`
 }
 
+function rgbTriplet(value: string | undefined): string | null {
+  const color = parseCssColor(value)
+  if (!color || color.alpha < 0.999) return null
+  return `${Math.round(color.red)}, ${Math.round(color.green)}, ${Math.round(color.blue)}`
+}
+
 describe('theme CSS variable mapping', () => {
   it('maps text.input to the shared editor caret token', () => {
     expect(CSS_VAR_MAP['text.input']).toContain('--text-input')
@@ -201,6 +207,13 @@ describe('built-in theme text contrast', () => {
       'nord9',
     ])
     expect(theme.defs).not.toHaveProperty('nordSurface')
+  })
+
+  it('keeps built-in themes free of per-theme UI semantic overrides', () => {
+    for (const fileName of builtinThemeFiles) {
+      const theme = loadBuiltinTheme(fileName)
+      expect(theme.ui, `${theme.name} should use shared role mapping instead of theme.ui overrides`).toBeUndefined()
+    }
   })
 
   it('keeps Nord sidebar metadata readable against the sidebar surface', () => {
@@ -283,6 +296,109 @@ describe('built-in theme text contrast', () => {
     }
   })
 
+  it('routes legacy surface CSS variables through semantic role mapping for every built-in theme', () => {
+    const roleBackedVariables = [
+      ['--bg-app', 'ui.surface.app', 'bg'],
+      ['--bg-sidebar', 'ui.surface.sidebar', 'bg'],
+      ['--bg-chat', 'ui.surface.chat', 'bg'],
+      ['--bg-panel', 'ui.surface.panel', 'bg'],
+      ['--bg-elevated', 'ui.surface.elevated', 'bg'],
+      ['--bg-floating', 'ui.surface.floating', 'bg'],
+      ['--tab-bar-bg', 'ui.tabBar.surface', 'bg'],
+      ['--bg-input', 'ui.surface.input', 'bg'],
+    ] as const
+
+    for (const fileName of builtinThemeFiles) {
+      const theme = loadBuiltinTheme(fileName)
+      const mode = theme.colorScheme === 'light' ? 'light' : 'dark'
+      const resolvedTheme = resolveTheme(theme, mode)
+      const resolvedUI = resolveThemeUI(theme, mode, resolvedTheme)
+      const cssVariables = generateCSSVariables(resolvedTheme, undefined, resolvedUI)
+
+      for (const [cssVariable, token, field] of roleBackedVariables) {
+        expect(
+          cssVariables[cssVariable],
+          `${theme.name} ${cssVariable} should be produced by ${token}.${field}`
+        ).toBe(resolvedUI[token][field])
+      }
+
+      expect(cssVariables['--bg-rgb']).toBe(rgbTriplet(cssVariables['--bg-app']))
+      expect(cssVariables['--sidebar-rgb']).toBe(rgbTriplet(cssVariables['--bg-sidebar']))
+    }
+  })
+
+  it('uses semantic role-mapped colors for settings theme previews', () => {
+    for (const fileName of builtinThemeFiles) {
+      const theme = loadBuiltinTheme(fileName)
+      const mode = theme.colorScheme === 'light' ? 'light' : 'dark'
+      const resolvedTheme = resolveTheme(theme, mode)
+      const resolvedUI = resolveThemeUI(theme, mode, resolvedTheme)
+      const preview = extractPreviewColors(theme)
+
+      expect(preview.bg, `${theme.name} preview bg should match chat role`).toBe(resolvedUI['ui.surface.chat'].bg)
+      expect(preview.sidebar, `${theme.name} preview sidebar should match sidebar role`).toBe(resolvedUI['ui.sidebar.surface'].bg)
+      expect(preview.accent, `${theme.name} preview accent should match accent role`).toBe(resolvedUI['ui.accent.primary'].fg)
+      expect(preview.text, `${theme.name} preview text should match primary text role`).toBe(resolvedUI['ui.text.primary'].fg)
+    }
+  })
+
+  it('keeps light theme code blocks subtle and syntax readable', () => {
+    for (const fileName of builtinThemeFiles) {
+      const theme = loadBuiltinTheme(fileName)
+      const mode = theme.colorScheme === 'light' ? 'light' : 'dark'
+      if (mode !== 'light') continue
+
+      const resolvedTheme = resolveTheme(theme, mode)
+      const resolvedUI = resolveThemeUI(theme, mode, resolvedTheme)
+      const resolvedHighlights = resolveThemeHighlights(theme, mode, resolvedTheme)
+      const themeName = theme.name
+      const chatSurface = resolvedUI['ui.surface.chat'].bg || resolvedTheme['bg.chat']
+      const codeSurface = resolvedUI['ui.surface.codeBlock'].bg || resolvedTheme['bg.code.block']
+      const codeHeaderSurface = resolvedUI['ui.surface.codeHeader'].bg || resolvedTheme['bg.code.header']
+      const chatColor = resolveColorOver(chatSurface, '#ffffff')
+      const codeColor = resolveColorOver(codeSurface, '#ffffff')
+      const codeHeaderColor = resolveColorOver(codeHeaderSurface, '#ffffff')
+
+      expect(
+        colorDistance(codeColor, chatColor),
+        `${themeName} light code block should differ subtly from chat surface`
+      ).toBeGreaterThanOrEqual(8)
+      expect(
+        colorDistance(codeColor, chatColor),
+        `${themeName} light code block should not become a heavy panel`
+      ).toBeLessThanOrEqual(45)
+      expect(
+        colorDistance(codeHeaderColor, codeColor),
+        `${themeName} light code header should stay close to code block surface`
+      ).toBeLessThanOrEqual(30)
+
+      expectReadable(themeName, 'light code plain', resolvedHighlights['syntax.plain'].fg, codeSurface, 4.5)
+      expectReadable(themeName, 'light code comment', resolvedHighlights['syntax.comment'].fg, codeSurface, 3.5)
+      expectReadable(themeName, 'light code keyword', resolvedHighlights['syntax.keyword'].fg, codeSurface, 4)
+      expectReadable(themeName, 'light code string', resolvedHighlights['syntax.string'].fg, codeSurface, 3.5)
+    }
+  })
+
+  it('keeps light theme menu hover states subtle and visible', () => {
+    for (const fileName of builtinThemeFiles) {
+      const theme = loadBuiltinTheme(fileName)
+      const mode = theme.colorScheme === 'light' ? 'light' : 'dark'
+      if (mode !== 'light') continue
+
+      const resolvedTheme = resolveTheme(theme, mode)
+      const resolvedUI = resolveThemeUI(theme, mode, resolvedTheme)
+      const themeName = theme.name
+      const menuSurface = resolvedUI['ui.surface.menu'].bg || resolvedTheme['bg.menu']
+      const menuHoverSurface = resolvedUI['ui.surface.menuHover'].bg || resolvedTheme['bg.menuItemHover']
+      const menuColor = resolveColorOver(menuSurface, '#ffffff')
+      const menuHoverColor = resolveColorOver(menuHoverSurface, menuSurface)
+      const distance = colorDistance(menuHoverColor, menuColor)
+
+      expect(distance, `${themeName} light menu hover should be visible`).toBeGreaterThanOrEqual(8)
+      expect(distance, `${themeName} light menu hover should not become a heavy solid block`).toBeLessThanOrEqual(60)
+    }
+  })
+
   it('keeps active states visible without leaking solid accent into neutral chrome', () => {
     for (const fileName of builtinThemeFiles) {
       const theme = loadBuiltinTheme(fileName)
@@ -341,14 +457,21 @@ describe('built-in theme text contrast', () => {
       const sidebarColor = resolveColorOver(sidebarSurface, '#ffffff')
       const tabBarColor = resolveColorOver(tabBarSurface, '#ffffff')
 
-      expect(
-        colorDistance(appColor, chatColor),
-        `${themeName} app canvas should differ from chat panel`
-      ).toBeGreaterThanOrEqual(6)
-      expect(
-        colorDistance(sidebarColor, appColor),
-        `${themeName} sidebar surface should sit on the app canvas`
-      ).toBeLessThanOrEqual(1)
+      if (mode === 'dark') {
+        expect(
+          colorDistance(appColor, chatColor),
+          `${themeName} dark app canvas should differ from chat panel`
+        ).toBeGreaterThanOrEqual(6)
+        expect(
+          colorDistance(sidebarColor, appColor),
+          `${themeName} dark sidebar surface should sit on the app canvas`
+        ).toBeLessThanOrEqual(1)
+      } else {
+        expect(
+          relativeLuminance(chatColor),
+          `${themeName} light chat surface should be lighter than sidebar`
+        ).toBeGreaterThan(relativeLuminance(sidebarColor))
+      }
       expect(
         colorDistance(sidebarColor, chatColor),
         `${themeName} sidebar surface should differ from chat surface`

@@ -1,26 +1,60 @@
 <template>
   <nav
     class="assistant-nav-rail"
+    :class="{ 'with-mode-tabs': showModeSwitch && panelAvailable && effectiveOpen }"
     aria-label="Assistant message outline"
   >
     <div
       class="assistant-nav-card"
-      :class="{ open: isOpen }"
+      :class="{ open: effectiveOpen }"
       @mouseenter="openPanel"
       @mouseleave="closePanel"
       @focusin="openPanel"
       @pointerdown.stop
       @click.stop
     >
-      <button
-        v-if="showModeSwitch"
-        type="button"
-        class="assistant-nav-mode-switch"
-        aria-label="Show message nav trail"
-        title="Message nav trail"
-        @click.stop="emit('switchMode')"
+      <div
+        v-if="showModeSwitch && panelAvailable && effectiveOpen"
+        class="assistant-nav-mode-tabs"
+        aria-label="Navigation mode"
       >
-        <span aria-hidden="true">&gt;</span>
+        <span
+          class="assistant-nav-mode-tab active"
+          aria-current="true"
+        >
+          Outline
+        </span>
+        <button
+          type="button"
+          class="assistant-nav-mode-tab"
+          aria-label="Show message nav trail"
+          title="Message nav trail"
+          @click.stop="emit('switchMode')"
+        >
+          Trail
+        </button>
+      </div>
+      <button
+        v-if="panelAvailable && effectiveOpen"
+        type="button"
+        class="assistant-nav-close"
+        :class="{ 'can-pin': isAutoPanelDismissed }"
+        :aria-label="isAutoPanelDismissed ? 'Pin navigation panel' : 'Close navigation panel'"
+        :title="isAutoPanelDismissed ? 'Pin panel' : 'Close panel'"
+        @click.stop="toggleAutoPanelPin"
+      >
+        <Pin
+          v-if="isAutoPanelDismissed"
+          :size="12"
+          :stroke-width="2.2"
+          aria-hidden="true"
+        />
+        <X
+          v-else
+          :size="12"
+          :stroke-width="2.2"
+          aria-hidden="true"
+        />
       </button>
       <div
         class="assistant-nav-scroll"
@@ -91,14 +125,18 @@
 </template>
 
 <script setup lang="ts">
+import { Pin, X } from 'lucide-vue-next'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import type { AssistantMessageOutlineMarker } from './assistant-message-outline'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   markers: AssistantMessageOutlineMarker[]
   currentIndex: number
   showModeSwitch?: boolean
-}>()
+  panelAvailable?: boolean
+}>(), {
+  panelAvailable: true,
+})
 
 const emit = defineEmits<{
   navigate: [navIndex: number]
@@ -107,6 +145,7 @@ const emit = defineEmits<{
 
 const sortedMarkers = computed(() => [...props.markers].sort((a, b) => a.navIndex - b.navIndex))
 const isOpen = ref(false)
+const isAutoPanelDismissed = ref(false)
 const pageStartIndex = ref(0)
 const pageDirection = ref<1 | -1>(1)
 let pageWheelLockTimer: ReturnType<typeof setTimeout> | null = null
@@ -144,6 +183,7 @@ const scrollThumbStyle = computed(() => {
 })
 
 const pageTransitionName = computed(() => pageDirection.value > 0 ? 'assistant-nav-page-next' : 'assistant-nav-page-prev')
+const effectiveOpen = computed(() => isOpen.value || (props.panelAvailable && !isAutoPanelDismissed.value))
 
 function openPanel() {
   isOpen.value = true
@@ -190,6 +230,30 @@ function handleNavigate(navIndex: number) {
   emit('navigate', navIndex)
 }
 
+function dismissAutoPanel() {
+  isAutoPanelDismissed.value = true
+  isOpen.value = false
+}
+
+function toggleAutoPanelPin() {
+  if (isAutoPanelDismissed.value) {
+    isAutoPanelDismissed.value = false
+    isOpen.value = false
+    return
+  }
+
+  dismissAutoPanel()
+}
+
+watch(
+  () => props.panelAvailable,
+  available => {
+    if (!available) {
+      isAutoPanelDismissed.value = false
+    }
+  },
+)
+
 watch(
   [() => props.currentIndex, () => props.markers.length],
   () => {
@@ -222,16 +286,19 @@ onUnmounted(() => {
   --assistant-nav-row-gap: 7px;
   --assistant-nav-visible-count: 8;
   --assistant-nav-vertical-padding: 22px;
-  --assistant-nav-collapsed-width: 34px;
-  --assistant-nav-expanded-width: min(306px, calc(100vw - 64px));
+  --assistant-nav-header-offset: 0px;
+  --assistant-nav-header-offset-half: 0px;
+  --assistant-nav-collapsed-width: 24px;
+  --assistant-nav-expanded-width: min(286px, calc(100vw - 64px));
   position: absolute;
-  top: 50%;
-  right: 12px;
+  top: calc(50% - var(--assistant-nav-header-offset-half));
+  right: 6px;
   width: var(--assistant-nav-expanded-width);
   height: calc(
     var(--assistant-nav-row-height) * var(--assistant-nav-visible-count) +
     var(--assistant-nav-row-gap) * (var(--assistant-nav-visible-count) - 1) +
-    var(--assistant-nav-vertical-padding) * 2
+    var(--assistant-nav-vertical-padding) * 2 +
+    var(--assistant-nav-header-offset)
   );
   z-index: var(--z-dropdown);
   pointer-events: none;
@@ -239,39 +306,45 @@ onUnmounted(() => {
   transform: translateY(-50%);
 }
 
+.assistant-nav-rail.with-mode-tabs {
+  --assistant-nav-header-offset: 28px;
+  --assistant-nav-header-offset-half: 14px;
+}
+
 .assistant-nav-card {
   position: absolute;
   top: 50%;
   right: 0;
   box-sizing: border-box;
-  width: var(--assistant-nav-expanded-width);
+  width: var(--assistant-nav-collapsed-width);
   height: 100%;
   overflow: visible;
   border: 1px solid transparent;
-  border-radius: 18px;
+  border-radius: 14px;
   background: transparent;
   box-shadow: none;
-  pointer-events: none;
+  pointer-events: auto;
   transform: translateY(-50%);
   transition:
     opacity 0.14s ease,
+    width 0.16s ease,
     border-color 0.16s ease,
     background-color 0.16s ease,
     box-shadow 0.16s ease;
 }
 
 .assistant-nav-card.open {
-  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 62%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 94%, white 6%);
+  width: var(--assistant-nav-expanded-width);
+  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 34%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 64%, transparent);
   box-shadow:
-    0 22px 48px rgba(0, 0, 0, 0.13),
-    0 2px 8px rgba(0, 0, 0, 0.08);
-  pointer-events: auto;
+    0 8px 18px rgba(0, 0, 0, 0.045),
+    0 1px 3px rgba(0, 0, 0, 0.035);
 }
 
 .assistant-nav-scroll {
   position: absolute;
-  top: var(--assistant-nav-vertical-padding);
+  top: calc(var(--assistant-nav-vertical-padding) + var(--assistant-nav-header-offset));
   right: 0;
   bottom: var(--assistant-nav-vertical-padding);
   left: 0;
@@ -321,12 +394,12 @@ onUnmounted(() => {
 .assistant-nav-label {
   position: absolute;
   top: 50%;
-  right: 48px;
-  width: calc(var(--assistant-nav-expanded-width) - 82px);
+  right: 42px;
+  width: calc(var(--assistant-nav-expanded-width) - 72px);
   min-width: 0;
   overflow: hidden;
   color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1;
   opacity: 0;
   text-align: right;
@@ -340,7 +413,7 @@ onUnmounted(() => {
 }
 
 .assistant-nav-card.open .assistant-nav-label {
-  opacity: 0.72;
+  opacity: 0.7;
   visibility: visible;
 }
 
@@ -351,7 +424,7 @@ onUnmounted(() => {
 
 .assistant-nav-row.level-3 .assistant-nav-label,
 .assistant-nav-row.level-4 .assistant-nav-label {
-  opacity: 0.6;
+  opacity: 0.68;
 }
 
 .assistant-nav-card.open .assistant-nav-row:hover .assistant-nav-label,
@@ -363,12 +436,12 @@ onUnmounted(() => {
 .assistant-nav-marker {
   position: absolute;
   top: 50%;
-  right: 7px;
+  right: 5px;
   width: 14px;
   height: 2px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 34%, transparent);
-  opacity: 0.74;
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 42%, transparent);
+  opacity: 0.62;
   transform: translateY(-50%);
   transition:
     width 0.12s ease,
@@ -378,11 +451,11 @@ onUnmounted(() => {
 }
 
 .assistant-nav-row.level-3 .assistant-nav-marker {
-  width: 11px;
+  width: 14px;
 }
 
 .assistant-nav-row.level-4 .assistant-nav-marker {
-  width: 8px;
+  width: 14px;
   opacity: 0.62;
 }
 
@@ -394,8 +467,8 @@ onUnmounted(() => {
 
 .assistant-nav-row:hover .assistant-nav-marker,
 .assistant-nav-row:focus-visible .assistant-nav-marker {
-  opacity: 1;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 72%, var(--ui-text-muted-fg, var(--text-muted, var(--muted))));
+  opacity: 0.92;
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 64%, var(--ui-text-muted-fg, var(--text-muted, var(--muted))));
 }
 
 .assistant-nav-row:focus-visible {
@@ -410,20 +483,20 @@ onUnmounted(() => {
 }
 
 .assistant-nav-row.active .assistant-nav-marker {
-  width: 20px;
+  width: 14px;
   opacity: 1;
-  background: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 84%, var(--ui-text-muted-fg, var(--muted)));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
 }
 
 .assistant-nav-scroll-thumb {
   position: absolute;
-  top: var(--assistant-nav-vertical-padding);
-  right: 2px;
+  top: calc(var(--assistant-nav-vertical-padding) + var(--assistant-nav-header-offset));
+  right: 1px;
   display: none;
-  width: 5px;
+  width: 3px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 36%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 24%, transparent);
   pointer-events: none;
 }
 
@@ -431,7 +504,6 @@ onUnmounted(() => {
   display: block;
 }
 
-.assistant-nav-mode-switch,
 .assistant-nav-page-cue {
   position: absolute;
   right: 0;
@@ -440,11 +512,11 @@ onUnmounted(() => {
   justify-content: flex-end;
   width: var(--assistant-nav-collapsed-width);
   height: 18px;
-  padding: 0 10px 0 0;
+  padding: 0 7px 0 0;
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 58%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 62%, transparent);
   cursor: pointer;
   opacity: 0.42;
   pointer-events: auto;
@@ -454,26 +526,121 @@ onUnmounted(() => {
     opacity 0.12s ease;
 }
 
-.assistant-nav-mode-switch {
-  top: 2px;
-  font-size: 15px;
-  font-weight: 650;
-  line-height: 1;
-}
-
-.assistant-nav-card.open .assistant-nav-mode-switch,
 .assistant-nav-card.open .assistant-nav-page-cue {
-  opacity: 0.55;
+  opacity: 0.58;
 }
 
-.assistant-nav-mode-switch:hover,
-.assistant-nav-mode-switch:focus-visible,
 .assistant-nav-page-cue:hover,
 .assistant-nav-page-cue:focus-visible {
   background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
   color: var(--ui-accent-primary-fg, var(--accent));
   opacity: 0.9;
   outline: none;
+}
+
+.assistant-nav-mode-tabs {
+  position: absolute;
+  top: 8px;
+  right: 32px;
+  z-index: 2;
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  height: 20px;
+  padding: 1px;
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 28%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 52%, transparent);
+  opacity: 0.5;
+  pointer-events: auto;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.assistant-nav-card.open .assistant-nav-mode-tabs {
+  opacity: 0.72;
+}
+
+.assistant-nav-mode-tabs:hover,
+.assistant-nav-mode-tabs:focus-within {
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 22%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 76%, transparent);
+  opacity: 1;
+}
+
+.assistant-nav-mode-tab {
+  box-sizing: border-box;
+  min-width: 42px;
+  height: 16px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 72%, transparent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 16px;
+  text-align: center;
+}
+
+.assistant-nav-mode-tab.active {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--ui-accent-primary-fg, var(--accent)) 18%);
+  cursor: default;
+}
+
+.assistant-nav-mode-tab:not(.active):hover,
+.assistant-nav-mode-tab:not(.active):focus-visible {
+  color: var(--ui-accent-primary-fg, var(--accent));
+  outline: none;
+}
+
+.assistant-nav-close {
+  position: absolute;
+  top: 7px;
+  left: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 56%, transparent);
+  cursor: pointer;
+  opacity: 0.42;
+  pointer-events: auto;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.assistant-nav-close:hover,
+.assistant-nav-close:focus-visible {
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
+  color: var(--ui-text-primary-fg, var(--text));
+  opacity: 0.9;
+  outline: none;
+}
+
+.assistant-nav-close.can-pin {
+  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 76%, var(--ui-text-muted-fg, var(--muted)));
+  opacity: 0.7;
+}
+
+.assistant-nav-close.can-pin:hover,
+.assistant-nav-close.can-pin:focus-visible {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
+  opacity: 1;
 }
 
 .assistant-nav-page-cue-icon {
@@ -484,7 +651,7 @@ onUnmounted(() => {
 }
 
 .assistant-nav-page-cue-top {
-  top: 5px;
+  top: calc(var(--assistant-nav-header-offset) + 5px);
 }
 
 .assistant-nav-page-cue-top .assistant-nav-page-cue-icon {

@@ -40,10 +40,10 @@
       </svg>
     </div>
     <div class="system-bubble">
-      <div
-        class="system-content"
-        v-html="renderedContent"
-      />
+	      <div
+	        class="system-content md-inline-code-scope"
+	        v-html="renderedContent"
+	      />
       <div class="system-footer">
         <span class="system-time">{{ formattedTime }}</span>
       </div>
@@ -183,16 +183,13 @@ async function handleClose() {
   margin: 0.25em 0;
 }
 
-.system-content :deep(.inline-code) {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  font-size: 0.9em;
+.system-content {
+  --md-inline-code-bg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
+  --md-inline-code-fg: currentColor;
 }
 
-html[data-theme='light'] .system-content :deep(.inline-code) {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+html[data-theme='light'] .system-content {
+  --md-inline-code-bg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
 .system-footer {

@@ -90,28 +90,30 @@
           />
         </SettingRow>
 
-        <SettingRow layout="stack">
-          <SettingsField label="Note Attachment Folder">
-            <input
-              class="form-input"
-              :value="currentEditor.markdownNoteAttachmentDirectory"
-              placeholder="Required for non-Obsidian note roots"
-              spellcheck="false"
-              @input="updateEditor({ markdownNoteAttachmentDirectory: ($event.target as HTMLInputElement).value })"
-            >
-          </SettingsField>
+        <SettingRow
+          label="Note Attachment Folder"
+          description="Required for non-Obsidian note roots."
+        >
+          <input
+            class="form-input"
+            :value="currentEditor.markdownNoteAttachmentDirectory"
+            placeholder="Required for non-Obsidian note roots"
+            spellcheck="false"
+            @input="updateEditor({ markdownNoteAttachmentDirectory: ($event.target as HTMLInputElement).value })"
+          >
         </SettingRow>
 
-        <SettingRow layout="stack">
-          <SettingsField label="Project Attachment Folder">
-            <input
-              class="form-input"
-              :value="currentEditor.markdownProjectAttachmentDirectory"
-              placeholder="Default: project root"
-              spellcheck="false"
-              @input="updateEditor({ markdownProjectAttachmentDirectory: ($event.target as HTMLInputElement).value })"
-            >
-          </SettingsField>
+        <SettingRow
+          label="Project Attachment Folder"
+          description="Where project note attachments are written."
+        >
+          <input
+            class="form-input"
+            :value="currentEditor.markdownProjectAttachmentDirectory"
+            placeholder="Default: project root"
+            spellcheck="false"
+            @input="updateEditor({ markdownProjectAttachmentDirectory: ($event.target as HTMLInputElement).value })"
+          >
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -141,7 +143,6 @@ import { computed } from 'vue'
 import type { AppSettings, EditorSettings } from '@/types'
 import {
   SettingRow,
-  SettingsField,
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'

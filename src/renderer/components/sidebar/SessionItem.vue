@@ -181,10 +181,10 @@ function cancelRename() {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 34px;
-  padding: 6px 10px;
-  margin: 1px 2px;
-  border-radius: 7px;
+  min-height: 36px;
+  padding: 7px 10px;
+  margin: 2px 2px;
+  border-radius: 8px;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -198,12 +198,12 @@ function cancelRename() {
 }
 
 .session-item:not(.active):hover {
-  background: color-mix(in srgb, var(--ui-sidebar-item-hover-bg, var(--ui-state-hover-bg, var(--hover))) 78%, transparent);
+  background: color-mix(in srgb, var(--ui-sidebar-item-hover-bg, var(--ui-state-hover-bg, var(--hover))) 54%, transparent);
 }
 
 .session-item.active {
-  background: color-mix(in srgb, var(--ui-sidebar-item-active-bg, var(--ui-state-selected-bg, var(--session-highlight))) 76%, transparent);
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-sidebar-item-active-border, var(--ui-accent-primary-fg, var(--accent))) 58%, transparent);
+  background: color-mix(in srgb, var(--ui-sidebar-item-active-bg, var(--ui-state-selected-bg, var(--session-highlight))) 54%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-sidebar-item-active-border, var(--ui-accent-primary-fg, var(--accent))) 52%, transparent);
 }
 
 .session-item.hidden {
@@ -250,7 +250,7 @@ function cancelRename() {
   bottom: 0;
   width: 1px;
   background: var(--ui-sidebar-border-border, var(--ui-border-default-border, var(--border)));
-  opacity: 0.5;
+  opacity: 0.34;
 }
 
 /* L 形连接线 (当前节点) */
@@ -264,7 +264,7 @@ function cancelRename() {
   border-left: 1px solid var(--ui-sidebar-border-border, var(--ui-border-default-border, var(--border)));
   border-bottom: 1px solid var(--ui-sidebar-border-border, var(--ui-border-default-border, var(--border)));
   border-bottom-left-radius: 4px;
-  opacity: 0.5;
+  opacity: 0.34;
 }
 
 /* 非最后子节点：T 形（延续垂直线） */
@@ -276,7 +276,7 @@ function cancelRename() {
   bottom: 0;
   width: 1px;
   background: var(--ui-sidebar-border-border, var(--ui-border-default-border, var(--border)));
-  opacity: 0.5;
+  opacity: 0.34;
 }
 
 /* 右侧状态区域 - 固定宽度 */
@@ -288,6 +288,7 @@ function cancelRename() {
   min-width: 42px;
   flex-shrink: 0;
   justify-content: flex-end;
+  transition: opacity 0.12s ease;
 }
 
 /* Generating dot - 始终存在，用 class 控制显隐 */
@@ -353,7 +354,7 @@ function cancelRename() {
 .session-time {
   display: block;
   width: 100%;
-  font-size: 11px;
+  font-size: 11.5px;
   line-height: 1;
   color: var(
     --sidebar-list-meta-fg,
@@ -367,16 +368,16 @@ function cancelRename() {
   transition: opacity 0.12s ease;
 }
 
-.session-item:hover .session-time {
-  opacity: 0;
-}
-
 .session-item.active .session-time {
   color: var(
     --sidebar-list-meta-fg-strong,
     color-mix(in srgb, var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 96%, transparent)
   );
   opacity: 1;
+}
+
+.session-item:hover .status-area {
+  opacity: 0;
 }
 
 /* Session name tooltip wrapper - override default tooltip-wrapper styles */
@@ -390,10 +391,10 @@ function cancelRename() {
 .session-name {
   flex: 1;
   min-width: 0;
-  font-size: var(--type-body-size);
+  font-size: 13.5px;
   font-weight: var(--type-body-weight);
   line-height: 20px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   color: var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item)));
   white-space: nowrap;
   overflow: hidden;
@@ -406,7 +407,7 @@ function cancelRename() {
 }
 
 .session-item.active .session-name {
-  font-weight: var(--type-label-weight);
+  font-weight: 520;
   color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
@@ -417,7 +418,7 @@ function cancelRename() {
   margin: 0;
   border: none;
   background: transparent;
-  font-size: var(--type-body-size);
+  font-size: 13.5px;
   font-weight: var(--type-body-weight);
   line-height: 20px;
   color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
@@ -427,11 +428,11 @@ function cancelRename() {
 /* Hover action: progressive disclosure (⋯ → context menu) */
 .more-btn {
   position: absolute;
-  right: 6px;
+  right: 7px;
   top: 50%;
   transform: translateY(-50%);
-  width: 24px;
-  height: 24px;
+  width: 23px;
+  height: 23px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -449,7 +450,7 @@ function cancelRename() {
 }
 
 .session-item:hover .more-btn {
-  opacity: 1;
+  opacity: 0.9;
   pointer-events: auto;
 }
 

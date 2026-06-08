@@ -63,6 +63,7 @@ function mountSettingsPage() {
         SkillsSettingsPanel: { template: '<div class="stub-skills">skills tab</div>' },
         PromptsSettingsPanel: { template: '<div class="stub-prompts">prompts tab</div>' },
         PluginsSettingsTab: { template: '<div class="stub-plugins">plugins tab</div>' },
+        MemorySettingsTab: { template: '<div class="stub-memory">memory tab</div>' },
         CustomProviderDialog: { template: '<div />' },
         UnsavedChangesDialog: { template: '<div />' },
       },
@@ -101,6 +102,12 @@ describe('SettingsPage shell', () => {
 
     expect(wrapper.find('.content-header h1').text()).toBe('Prompts')
     expect(wrapper.find('.stub-prompts').exists()).toBe(true)
+
+    await wrapper.findAll('.sidebar-item').find(item => item.text().includes('Memory'))!.trigger('click')
+    await settle()
+
+    expect(wrapper.find('.content-header h1').text()).toBe('Memory')
+    expect(wrapper.find('.stub-memory').exists()).toBe(true)
   })
 
   it('filters navigation from the sidebar search', async () => {
@@ -121,6 +128,12 @@ describe('SettingsPage shell', () => {
     const subnavText = () => wrapper.findAll('.sidebar-subnav').map(nav => nav.text()).join(' ')
     const entryByLabel = (label: string) =>
       wrapper.findAll('.sidebar-entry').find(entry => entry.find('.sidebar-label').text() === label)!
+
+    expect(subnavText()).not.toContain('Theme')
+    expect(subnavText()).not.toContain('Text Editor')
+
+    await entryByLabel('General').find('.sidebar-disclosure-button').trigger('click')
+    await settle()
 
     expect(subnavText()).toContain('Theme')
     expect(subnavText()).not.toContain('Text Editor')

@@ -338,19 +338,23 @@ defineExpose({
 
 <style scoped>
 .chat {
+  --chat-surface: var(--ui-surface-chat-bg, var(--bg-chat, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated)))));
+
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated)))));
+  background: var(--chat-surface);
   position: relative;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 84%, transparent);
-  border-radius: 10px;
-  background-clip: padding-box;
-  box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 52%, transparent);
+  border-radius: 9px;
+  box-shadow: var(
+    --ui-surface-chat-panel-shadow,
+    0 10px 28px rgba(0, 0, 0, 0.11),
+    0 1px 5px rgba(0, 0, 0, 0.055),
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.8%, transparent)
+  );
   contain: layout style;
 }
 

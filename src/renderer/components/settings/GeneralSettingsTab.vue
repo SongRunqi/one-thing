@@ -2,54 +2,28 @@
   <div class="tab-content">
     <!-- Mode (Light/Dark/System) -->
     <SettingsSection title="Mode">
-      <div class="settings-card theme-cards">
-        <div
-          :class="['theme-card', { active: settings.theme === 'system' }]"
-          @click="updateTheme('system')"
+      <SettingsGroup>
+        <SettingRow
+          label="Theme Mode"
+          description="Choose a fixed appearance or follow the system setting."
         >
-          <div class="theme-preview system">
-            <div class="preview-half light">
-              <div class="preview-sidebar" />
-              <div class="preview-content">
-                <div class="preview-line" />
-              </div>
-            </div>
-            <div class="preview-half dark">
-              <div class="preview-sidebar" />
-              <div class="preview-content">
-                <div class="preview-line" />
-              </div>
-            </div>
-          </div>
-          <span>System</span>
-        </div>
-        <div
-          :class="['theme-card', { active: settings.theme === 'light' }]"
-          @click="updateTheme('light')"
-        >
-          <div class="theme-preview light">
-            <div class="preview-sidebar" />
-            <div class="preview-content">
-              <div class="preview-line" />
-              <div class="preview-line short" />
-            </div>
-          </div>
-          <span>Light</span>
-        </div>
-        <div
-          :class="['theme-card', { active: settings.theme === 'dark' }]"
-          @click="updateTheme('dark')"
-        >
-          <div class="theme-preview dark">
-            <div class="preview-sidebar" />
-            <div class="preview-content">
-              <div class="preview-line" />
-              <div class="preview-line short" />
-            </div>
-          </div>
-          <span>Dark</span>
-        </div>
-      </div>
+          <select
+            class="form-select prefer-select"
+            :value="settings.theme"
+            @change="updateTheme(($event.target as HTMLSelectElement).value as 'light' | 'dark' | 'system')"
+          >
+            <option value="system">
+              System
+            </option>
+            <option value="light">
+              Light
+            </option>
+            <option value="dark">
+              Dark
+            </option>
+          </select>
+        </SettingRow>
+      </SettingsGroup>
     </SettingsSection>
 
     <!-- Theme Selection -->
@@ -61,10 +35,10 @@
     <SettingsSection title="Typography">
       <SettingsGroup>
         <!-- Font Size -->
-        <div class="card-row setting-control-row">
-          <div class="setting-copy">
+        <SettingRow description="Font size for chat text.">
+          <template #label>
             <span class="setting-title-row">
-              <span class="toggle-title">Font Size</span>
+              <span>Font Size</span>
               <button
                 class="reset-inline"
                 type="button"
@@ -74,8 +48,7 @@
                 <RotateCcw :size="14" />
               </button>
             </span>
-            <span class="toggle-desc">Font size for chat text.</span>
-          </div>
+          </template>
           <NumberStepper
             :model-value="currentFontSize"
             :min="minFontSize"
@@ -83,31 +56,29 @@
             aria-label="font size"
             @update:model-value="updateFontSize"
           />
-        </div>
+        </SettingRow>
       </SettingsGroup>
     </SettingsSection>
 
     <SettingsSection title="Context Compact">
       <SettingsGroup>
-        <div class="card-row">
-          <label class="toggle-row">
-            <span>
-              <span class="toggle-title">Enable automatic compact</span>
-              <span class="toggle-desc">Summarizes older chat history before the context limit. Memory writes during compact are controlled separately in Memory settings.</span>
-            </span>
+        <SettingRow
+          label="Enable automatic compact"
+          description="Summarizes older chat history before the context limit. Memory writes during compact are controlled separately in Memory settings."
+        >
+          <label class="native-toggle">
             <input
               type="checkbox"
               :checked="contextCompactEnabled"
               @change="updateContextCompactEnabled(($event.target as HTMLInputElement).checked)"
             >
           </label>
-        </div>
+        </SettingRow>
 
-        <div class="card-row setting-control-row">
-          <div class="setting-copy">
-            <span class="toggle-title">Auto compact threshold</span>
-            <span class="toggle-desc">Compact older chat history when context usage reaches this percentage.</span>
-          </div>
+        <SettingRow
+          label="Auto compact threshold"
+          description="Compact older chat history when context usage reaches this percentage."
+        >
           <NumberStepper
             :model-value="contextCompactThreshold"
             :min="50"
@@ -118,13 +89,12 @@
             aria-label="auto compact threshold"
             @update:model-value="updateContextCompactThreshold"
           />
-        </div>
+        </SettingRow>
 
-        <div class="card-row setting-control-row">
-          <div class="setting-copy">
-            <span class="toggle-title">Keep recent turns</span>
-            <span class="toggle-desc">Keep this many recent turns verbatim before summarizing older context.</span>
-          </div>
+        <SettingRow
+          label="Keep recent turns"
+          description="Keep this many recent turns verbatim before summarizing older context."
+        >
           <NumberStepper
             :model-value="contextCompactKeepRecentTurns"
             :min="1"
@@ -133,18 +103,17 @@
             aria-label="recent turns to keep"
             @update:model-value="updateContextCompactKeepRecentTurns"
           />
-        </div>
+        </SettingRow>
       </SettingsGroup>
     </SettingsSection>
 
     <!-- English Font -->
     <SettingsSection title="Fonts">
       <SettingsGroup>
-        <div class="card-row setting-control-row">
-          <div class="setting-copy">
-            <span class="toggle-title">English Font</span>
-            <span class="toggle-desc">Primary Latin text face.</span>
-          </div>
+        <SettingRow
+          label="English Font"
+          description="Primary Latin text face."
+        >
           <select
             class="form-select font-select"
             :value="currentFontEn"
@@ -159,14 +128,13 @@
               {{ font.name }}
             </option>
           </select>
-        </div>
+        </SettingRow>
 
         <!-- Chinese Font -->
-        <div class="card-row setting-control-row">
-          <div class="setting-copy">
-            <span class="toggle-title">中文字体</span>
-            <span class="toggle-desc">Primary CJK text face.</span>
-          </div>
+        <SettingRow
+          label="中文字体"
+          description="Primary CJK text face."
+        >
           <select
             class="form-select font-select"
             :value="currentFontZh"
@@ -181,49 +149,53 @@
               {{ font.name }}
             </option>
           </select>
-        </div>
+        </SettingRow>
       </SettingsGroup>
     </SettingsSection>
 
     <SettingsSection title="Daily Notes">
       <SettingsGroup>
-        <div class="card-row">
-          <label class="toggle-row">
-            <span>
-              <span class="toggle-title">Enable Search Everywhere daily notes</span>
-              <span class="toggle-desc">Adds the Daily tab and today shortcut.</span>
-            </span>
+        <SettingRow
+          label="Enable Search Everywhere daily notes"
+          description="Adds the Daily tab and today shortcut."
+        >
+          <label class="native-toggle">
             <input
               type="checkbox"
               :checked="dailyNotes.enabled !== false"
               @change="updateDailyNotes({ enabled: ($event.target as HTMLInputElement).checked })"
             >
           </label>
-        </div>
+        </SettingRow>
 
-        <div class="card-row">
-          <div class="form-group">
-            <label class="form-label">Source Directory</label>
-            <div class="segmented-control">
-              <button
-                :class="['segment-btn', { active: (dailyNotes.directoryMode || 'personal') === 'personal' }]"
-                type="button"
-                @click="updateDailyNotes({ directoryMode: 'personal' })"
-              >
-                Personal note dir
-              </button>
-              <button
-                :class="['segment-btn', { active: dailyNotes.directoryMode === 'custom' }]"
-                type="button"
-                @click="updateDailyNotes({ directoryMode: 'custom' })"
-              >
-                Custom directory
-              </button>
-            </div>
+        <SettingRow
+          label="Source Directory"
+          description="Choose where daily note files are read from."
+        >
+          <div class="segmented-control">
+            <button
+              :class="['segment-btn', { active: (dailyNotes.directoryMode || 'personal') === 'personal' }]"
+              type="button"
+              @click="updateDailyNotes({ directoryMode: 'personal' })"
+            >
+              Personal note dir
+            </button>
+            <button
+              :class="['segment-btn', { active: dailyNotes.directoryMode === 'custom' }]"
+              type="button"
+              @click="updateDailyNotes({ directoryMode: 'custom' })"
+            >
+              Custom directory
+            </button>
           </div>
+        </SettingRow>
 
+        <SettingRow
+          v-if="dailyNotes.directoryMode === 'custom'"
+          label="Custom Directory"
+          description="Folder containing daily note files."
+        >
           <div
-            v-if="dailyNotes.directoryMode === 'custom'"
             class="directory-field"
           >
             <input
@@ -241,74 +213,72 @@
               Choose
             </button>
           </div>
-        </div>
+        </SettingRow>
 
-        <div class="card-row">
-          <label class="toggle-row">
-            <span>
-              <span class="toggle-title">Use Obsidian Daily Notes config</span>
-              <span class="toggle-desc">Reads .obsidian/daily-notes.json when available.</span>
-            </span>
+        <SettingRow
+          label="Use Obsidian Daily Notes config"
+          description="Reads .obsidian/daily-notes.json when available."
+        >
+          <label class="native-toggle">
             <input
               type="checkbox"
               :checked="dailyNotes.useObsidianConfig !== false"
               @change="updateDailyNotes({ useObsidianConfig: ($event.target as HTMLInputElement).checked })"
             >
           </label>
-        </div>
+        </SettingRow>
 
-        <div class="card-row">
-          <div class="form-group">
-            <label class="form-label">Fallback Date Format</label>
-            <input
-              class="form-input"
-              :value="dailyNotes.format || 'YYYY-MM-DD'"
-              placeholder="YYYY-MM-DD"
-              spellcheck="false"
-              @input="updateDailyNotes({ format: ($event.target as HTMLInputElement).value })"
-            >
-          </div>
-        </div>
+        <SettingRow
+          label="Fallback Date Format"
+          description="Used when Obsidian daily note config is unavailable."
+        >
+          <input
+            class="form-input"
+            :value="dailyNotes.format || 'YYYY-MM-DD'"
+            placeholder="YYYY-MM-DD"
+            spellcheck="false"
+            @input="updateDailyNotes({ format: ($event.target as HTMLInputElement).value })"
+          >
+        </SettingRow>
       </SettingsGroup>
     </SettingsSection>
 
     <SettingsSection title="Todo / Plan">
       <SettingsGroup>
-        <div class="card-row">
-          <label class="toggle-row">
-            <span>
-              <span class="toggle-title">Enable todo card</span>
-              <span class="toggle-desc">Shows the markdown todo and plan card in chat.</span>
-            </span>
+        <SettingRow
+          label="Enable todo card"
+          description="Shows the markdown todo and plan card in chat."
+        >
+          <label class="native-toggle">
             <input
               type="checkbox"
               :checked="todoPlan.enabled !== false"
               @change="updateTodoPlan({ enabled: ($event.target as HTMLInputElement).checked })"
             >
           </label>
-        </div>
+        </SettingRow>
 
-        <div class="card-row">
-          <div class="form-group">
-            <label class="form-label">Markdown Directory</label>
-            <div class="directory-field">
-              <input
-                class="form-input"
-                :value="todoPlan.directory || ''"
-                placeholder="Default: ~/.onething/todo-plan"
-                spellcheck="false"
-                @input="updateTodoPlan({ directory: ($event.target as HTMLInputElement).value })"
-              >
-              <button
-                class="secondary-btn"
-                type="button"
-                @click="chooseTodoPlanDirectory"
-              >
-                Choose
-              </button>
-            </div>
+        <SettingRow
+          label="Markdown Directory"
+          description="Folder where todo and plan markdown files are stored."
+        >
+          <div class="directory-field">
+            <input
+              class="form-input"
+              :value="todoPlan.directory || ''"
+              placeholder="Default: ~/.onething/todo-plan"
+              spellcheck="false"
+              @input="updateTodoPlan({ directory: ($event.target as HTMLInputElement).value })"
+            >
+            <button
+              class="secondary-btn"
+              type="button"
+              @click="chooseTodoPlanDirectory"
+            >
+              Choose
+            </button>
           </div>
-        </div>
+        </SettingRow>
       </SettingsGroup>
     </SettingsSection>
   </div>
@@ -324,6 +294,7 @@ import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
 import NumberStepper from './NumberStepper.vue'
 import { getFontsByLang, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '@shared/fonts'
 import {
+  SettingRow,
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'
@@ -716,6 +687,7 @@ async function chooseTodoPlanDirectory() {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
+  width: 100%;
   padding: 2px;
   border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 8px;
@@ -752,6 +724,7 @@ async function chooseTodoPlanDirectory() {
   display: flex;
   gap: 8px;
   align-items: center;
+  width: 100%;
 }
 
 .directory-field .form-input {
@@ -804,6 +777,12 @@ async function chooseTodoPlanDirectory() {
   width: 16px;
   height: 16px;
   accent-color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.native-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .label-value {

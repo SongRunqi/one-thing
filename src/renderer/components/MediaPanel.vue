@@ -8,6 +8,7 @@
       <div
         v-if="mode !== 'main'"
         class="media-nav"
+        :class="{ 'media-nav-tasks': activeNav === 'tasks' }"
       >
         <div class="traffic-lights-space" />
         <div class="nav-items">
@@ -266,7 +267,6 @@ import {
   FileText,
   Images,
   Music,
-  Upload,
   Video,
 } from 'lucide-vue-next'
 
@@ -275,6 +275,7 @@ const props = withDefaults(defineProps<{
   initialTab?: string
   mode?: 'side' | 'main'
 }>(), {
+  initialTab: '',
   mode: 'side',
 })
 
@@ -449,7 +450,7 @@ onUnmounted(() => {
   width: 560px;
   flex-shrink: 0;
   display: flex;
-  background: var(--bg-sunken, color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 95%, black));
+  background: var(--ui-surface-panel-bg, var(--ui-surface-app-bg, var(--bg)));
   overflow: hidden;
 }
 
@@ -471,10 +472,20 @@ onUnmounted(() => {
   z-index: 1;
 }
 
+.media-nav.media-nav-tasks {
+  border-right-color: transparent;
+  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)));
+  box-shadow: none;
+}
+
 html[data-theme='light'] .media-nav {
   box-shadow:
     2px 0 8px rgba(0, 0, 0, 0.04),
     4px 0 16px rgba(0, 0, 0, 0.02);
+}
+
+html[data-theme='light'] .media-nav.media-nav-tasks {
+  box-shadow: none;
 }
 
 .traffic-lights-space {

@@ -404,9 +404,9 @@ onUnmounted(() => {
 .sidebar-workspace-actions {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 6px 4px 8px 0;
-  margin: 0 4px 4px 0;
+  gap: 5px;
+  padding: 6px 6px 10px 0;
+  margin: 0 6px 6px 0;
   flex-shrink: 0;
 }
 
@@ -415,7 +415,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 9px;
   width: 100%;
-  min-height: 32px;
+  min-height: 34px;
   padding: 0 10px;
   border: none;
   border-radius: 8px;
@@ -430,15 +430,15 @@ onUnmounted(() => {
 }
 
 .workspace-action:hover {
-  background: color-mix(in srgb, var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover))) 76%, transparent);
+  background: color-mix(in srgb, var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover))) 58%, transparent);
   color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 
 .workspace-action.active {
-  background: color-mix(in srgb, var(--ui-sidebar-item-active-bg, color-mix(in srgb, var(--ui-accent-subtle-fg, var(--accent-sub, var(--accent-light))) 38%, transparent)) 76%, transparent);
+  background: color-mix(in srgb, var(--ui-sidebar-item-active-bg, color-mix(in srgb, var(--ui-accent-subtle-fg, var(--accent-sub, var(--accent-light))) 38%, transparent)) 56%, transparent);
   color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
   font-weight: 500;
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-sidebar-item-active-border, var(--ui-accent-primary-fg, var(--accent))) 58%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-sidebar-item-active-border, var(--ui-accent-primary-fg, var(--accent))) 50%, transparent);
 }
 
 .workspace-action-icon {

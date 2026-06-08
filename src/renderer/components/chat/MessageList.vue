@@ -1,5 +1,8 @@
 <template>
-  <div class="message-list-wrapper">
+  <div
+    class="message-list-wrapper"
+    :style="messageListStyles"
+  >
     <div
       ref="messageListRef"
       :class="['message-list', `density-${messageListDensity}`]"
@@ -62,6 +65,7 @@
       v-if="effectiveNavRailMode === 'outline'"
       :markers="assistantOutlineMarkers"
       :current-index="currentAssistantOutlineIndex"
+      :panel-available="hasNavPanelRoom"
       :show-mode-switch="showNavModeToggle"
       @navigate="navigateToAssistantOutline"
       @switch-mode="setNavRailMode('trail')"
@@ -72,6 +76,7 @@
       :markers="displayNavMarkers"
       :current-index="currentUserMessageNavIndex"
       :total-count="displayNavMarkers.length"
+      :panel-available="hasNavPanelRoom"
       :show-mode-switch="showNavModeToggle"
       @navigate="navigateToUserMessage"
       @switch-mode="setNavRailMode('outline')"
@@ -87,7 +92,7 @@
         @click="scrollToBottomFromButton"
       >
         <ArrowDown
-          :size="18"
+          :size="16"
           :stroke-width="2"
         />
       </button>
@@ -176,7 +181,6 @@ import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
 import {
   useFollowScroll,
-  FOLLOW_BOTTOM_GAP,
   shouldShowScrollToBottomButton,
 } from '@/composables/useFollowScroll'
 import { useMessageScrollCoordinator } from '@/composables/useMessageScrollCoordinator'
@@ -206,6 +210,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   isLoading: false,
+  sessionId: undefined,
 })
 
 const emit = defineEmits<{
@@ -226,6 +231,7 @@ const bottomSentinelRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
 const assistantOutlineMarkers = ref<AssistantMessageOutlineMarker[]>([])
 const preferredNavRailMode = ref<NavRailMode>('outline')
+const hasNavPanelRoom = ref(false)
 const showScrollToBottomButton = ref(false)
 const searchHighlightedMessageId = ref<string | null>(null)
 let searchHighlightTimer: ReturnType<typeof setTimeout> | null = null
@@ -310,7 +316,7 @@ const messageListStyles = computed(() => {
   styles['--content-heading-top-gap'] = px(fontSize * 0.55)
   styles['--content-heading-bottom-gap'] = px(fontSize * 0.18)
   styles['--content-heading-line-height-px'] = px(fontSize * 1.32)
-  styles['--follow-bottom-gap'] = `${FOLLOW_BOTTOM_GAP}px`
+  styles['--chat-composer-safe-gap'] = px(fontSize * 1.75)
   return Object.keys(styles).length > 0 ? styles : undefined
 })
 
@@ -326,6 +332,7 @@ const hasNavigated = ref(false)
 let isActivelyNavigating = false
 let navigationCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let navMarkerUpdateFrame: number | null = null
+let navPanelRoomUpdateFrame: number | null = null
 let assistantOutlineUpdateFrame: number | null = null
 let visibleUserMessageFrame: number | null = null
 let measurementRefreshFrame: number | null = null
@@ -344,6 +351,7 @@ interface TopAnchor {
 }
 
 const NAV_VIEWPORT_OFFSET_RATIO = 0.18
+const NAV_PANEL_MIN_RIGHT_GAP = 300
 const SCROLL_ANCHOR_LOCK_MS = 2400
 const SESSION_RESTORE_ANCHOR_LOCK_MS = 120_000
 
@@ -374,8 +382,8 @@ const scrollCoordinator = useMessageScrollCoordinator({
 })
 
 // Auto-scroll: when following, keep the scroller pinned to its natural bottom.
-// The visual composer gap comes from FOLLOW_BOTTOM_GAP tail space below the
-// real list content, so "follow" and the real scrollbar bottom are identical.
+// Composer safety is real tail padding below the list content, so "follow" and
+// the real scrollbar bottom stay identical even as the composer changes height.
 const effectiveScrollVersion = computed(() => chatStore.getScrollVersion(effectiveSessionId.value))
 
 let followNudgeFrame: number | null = null
@@ -453,6 +461,7 @@ watch(
     if (!el || typeof ResizeObserver === 'undefined') return
     navContentResizeObserver = new ResizeObserver(() => {
       scheduleNavMarkerUpdate()
+      scheduleNavPanelRoomUpdate()
       scheduleAssistantOutlineUpdate()
       scheduleMeasurementRefresh()
       // Always notify the coordinator — it routes itself based on tail / anchor / idle.
@@ -527,6 +536,30 @@ const effectiveNavRailMode = computed<NavRailMode | null>(() => {
 
 function setNavRailMode(mode: NavRailMode) {
   preferredNavRailMode.value = mode
+}
+
+function updateNavPanelRoom() {
+  const scroller = messageListRef.value
+  const content = messageListContentRef.value
+  if (!scroller || !content) {
+    hasNavPanelRoom.value = false
+    return
+  }
+
+  const scrollerRect = scroller.getBoundingClientRect()
+  const contentRect = content.getBoundingClientRect()
+  const rightGap = scrollerRect.right - contentRect.right
+  hasNavPanelRoom.value = rightGap >= NAV_PANEL_MIN_RIGHT_GAP
+}
+
+function scheduleNavPanelRoomUpdate() {
+  if (navPanelRoomUpdateFrame !== null) {
+    cancelAnimationFrame(navPanelRoomUpdateFrame)
+  }
+  navPanelRoomUpdateFrame = requestAnimationFrame(() => {
+    navPanelRoomUpdateFrame = null
+    updateNavPanelRoom()
+  })
 }
 
 // Get the currently highlighted message ID for navigation
@@ -1117,11 +1150,6 @@ const canCreateBranch = computed(() => {
   return !currentSession.parentSessionId
 })
 
-// Check if there's already a streaming message (to avoid double loading indicator)
-const hasStreamingMessage = computed(() => {
-  return props.messages.some(m => m.isStreaming)
-})
-
 // Compute branches for each message
 // Returns a map of messageId -> branches created from that message
 const messageBranches = computed(() => {
@@ -1269,6 +1297,7 @@ onMounted(() => {
     if (typeof ResizeObserver !== 'undefined') {
       navResizeObserver = new ResizeObserver(() => {
         scheduleNavMarkerUpdate()
+        scheduleNavPanelRoomUpdate()
         scheduleAssistantOutlineUpdate()
         scheduleMeasurementRefresh()
       })
@@ -1282,6 +1311,7 @@ onMounted(() => {
       scrollCoordinator.setTail()
     }
     scheduleNavMarkerUpdate()
+    scheduleNavPanelRoomUpdate()
     scheduleAssistantOutlineUpdate()
     scheduleMeasurementRefresh()
   })
@@ -1303,6 +1333,10 @@ onUnmounted(() => {
   if (navMarkerUpdateFrame !== null) {
     cancelAnimationFrame(navMarkerUpdateFrame)
     navMarkerUpdateFrame = null
+  }
+  if (navPanelRoomUpdateFrame !== null) {
+    cancelAnimationFrame(navPanelRoomUpdateFrame)
+    navPanelRoomUpdateFrame = null
   }
   if (assistantOutlineUpdateFrame !== null) {
     cancelAnimationFrame(assistantOutlineUpdateFrame)
@@ -1695,6 +1729,10 @@ defineExpose({
   getAnchorMessageId: () => captureTopAnchor()?.messageId ?? null,
   getAnchorOffset: () => captureTopAnchor()?.offsetWithinMessage ?? 0,
   getNavMessageId: () => displayNavMarkers.value[currentUserMessageNavIndex.value]?.messageId ?? null,
+  notifyLayoutChange: () => {
+    scheduleFollowNudge('composer-resize')
+    updateScrollToBottomButton()
+  },
 
   prepareForSwitch: () => {
     scrollCoordinator.clear()
@@ -1772,6 +1810,13 @@ defineExpose({
 
 <style scoped>
 .message-list-wrapper {
+  --chat-scroll-safe-gap: var(
+    --chat-composer-safe-gap,
+    max(calc(var(--content-spacing-px, 8px) * 3), calc(var(--message-line-height-px, 20px) * 1.25))
+  );
+  --chat-scroll-tail-reserve: var(--chat-scroll-safe-gap);
+  --scroll-bottom-button-offset: var(--chat-scroll-safe-gap);
+
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1786,33 +1831,35 @@ defineExpose({
 
 .scroll-to-bottom-btn {
   position: absolute;
-  left: 50%;
-  bottom: 32px;
-  transform: translateX(-50%);
+  left: var(--chat-content-column-center, 50%);
+  bottom: var(--scroll-bottom-button-offset);
+  transform: translateX(-50%) translateY(50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
-  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 80%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel))) 78%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
+  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 34%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel))) 48%, transparent);
+  color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 68%, transparent);
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10);
-  backdrop-filter: blur(14px) saturate(1.1);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.055);
+  backdrop-filter: blur(10px) saturate(1.03);
+  -webkit-backdrop-filter: blur(10px) saturate(1.03);
+  opacity: 0.58;
   transition: background 0.15s ease, transform 0.15s ease, color 0.15s ease;
   z-index: 4;
 }
 
 .scroll-to-bottom-btn:hover {
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel)));
-  color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel))) 82%, transparent);
+  color: var(--ui-text-primary-fg, var(--text));
+  opacity: 1;
 }
 
 .scroll-to-bottom-btn:active {
-  transform: translateX(-50%) scale(0.94);
+  transform: translateX(-50%) translateY(50%) scale(0.94);
 }
 
 .scroll-bottom-btn-enter-active,
@@ -1822,7 +1869,7 @@ defineExpose({
 .scroll-bottom-btn-enter-from,
 .scroll-bottom-btn-leave-to {
   opacity: 0;
-  transform: translateX(-50%) translateY(6px);
+  transform: translateX(-50%) translateY(50%) translateY(6px);
 }
 
 .message-list {
@@ -1830,8 +1877,8 @@ defineExpose({
   overflow-y: auto;
   overflow-anchor: auto;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 45%, transparent) transparent;
-  padding: 18px;
+  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 20%, transparent) transparent;
+  padding: 28px 28px 10px;
   background: transparent;
   border-bottom-left-radius: var(--radius-lg);
   border-bottom-right-radius: var(--radius-lg);
@@ -1839,7 +1886,7 @@ defineExpose({
 }
 
 .message-list::-webkit-scrollbar {
-  width: 10px;
+  width: 7px;
 }
 
 .message-list::-webkit-scrollbar-track {
@@ -1847,23 +1894,23 @@ defineExpose({
 }
 
 .message-list::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 34%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 18%, transparent);
   border: 3px solid transparent;
   border-radius: 999px;
   background-clip: content-box;
 }
 
 .message-list::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 52%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 34%, transparent);
   border: 3px solid transparent;
   background-clip: content-box;
 }
 
 .message-list-content {
   position: relative;
-  width: var(--chat-content-width, min(70%, 800px));
+  width: var(--chat-content-width, min(68%, 740px));
   margin: 0 auto;
-  padding-bottom: var(--follow-bottom-gap, 64px);
+  padding-bottom: var(--chat-scroll-tail-reserve);
 }
 
 .history-page-summary {
@@ -1927,7 +1974,7 @@ defineExpose({
   --content-heading-bottom-gap: 3px;
   --content-heading-line-height-px: 18px;
   gap: 6px;
-  padding: 12px;
+  padding: 18px 16px 8px;
 }
 
 .message-list.density-comfortable {
@@ -1935,18 +1982,18 @@ defineExpose({
   --message-padding: 14px 18px;
   --message-font-size: 15px;
   --message-line-height: 1.6;
-  --message-line-height-px: 24px;
+  --message-line-height-px: 25px;
   --avatar-size: 32px;
   --content-spacing: 0.75em;
-  --content-spacing-px: 11px;
-  --content-paragraph-gap: 8px;
-  --content-list-gap: 6px;
+  --content-spacing-px: 12px;
+  --content-paragraph-gap: 9px;
+  --content-list-gap: 8px;
   --content-list-item-gap: 2px;
-  --content-heading-top-gap: 8px;
-  --content-heading-bottom-gap: 3px;
-  --content-heading-line-height-px: 20px;
+  --content-heading-top-gap: 14px;
+  --content-heading-bottom-gap: 5px;
+  --content-heading-line-height-px: 22px;
   gap: 14px;
-  padding: 18px;
+  padding: 28px 28px 10px;
 }
 
 .message-list.density-spacious {
@@ -1965,7 +2012,7 @@ defineExpose({
   --content-heading-bottom-gap: 3px;
   --content-heading-line-height-px: 21px;
   gap: 24px;
-  padding: 24px;
+  padding: 32px 28px 14px;
 }
 /* Responsive styles */
 @media (max-width: 768px) {
@@ -1988,7 +2035,7 @@ defineExpose({
   }
 
   .scroll-to-bottom-btn {
-    bottom: 20px;
+    bottom: var(--scroll-bottom-button-offset);
   }
 }
 

@@ -1,36 +1,10 @@
 <template>
   <div
-    :class="['search-result-item', { selected }]"
+    :class="['search-result-item', { selected, 'has-meta': showKind }]"
     @click="$emit('select')"
     @mouseenter="$emit('hover')"
   >
-    <div class="result-icon">
-      <MessageSquare
-        v-if="result.type === 'chat'"
-        :size="16"
-      />
-      <File
-        v-else-if="result.type === 'file'"
-        :size="16"
-      />
-      <CalendarDays
-        v-else-if="result.type === 'daily'"
-        :size="16"
-      />
-      <NotebookPen
-        v-else-if="result.type === 'prompt'"
-        :size="16"
-      />
-      <FileText
-        v-else-if="result.type === 'message'"
-        :size="16"
-      />
-      <Zap
-        v-else-if="result.type === 'action'"
-        :size="16"
-      />
-    </div>
-    <div class="result-body">
+    <div :class="['result-body', { 'has-context': hasContext }]">
       <span
         class="result-title"
       >
@@ -43,33 +17,42 @@
         </template>
       </span>
       <span
-        v-if="result.subtitle"
-        class="result-subtitle"
-      >{{ result.subtitle }}</span>
-      <span
-        v-if="result.detail"
-        class="result-detail"
-      >{{ result.detail }}</span>
+        v-if="hasContext"
+        class="result-context"
+      >
+        <span
+          v-if="contextSubtitle"
+          class="result-subtitle"
+        >{{ contextSubtitle }}</span>
+        <span
+          v-if="contextSubtitle && contextDetail"
+          class="result-separator"
+        >/</span>
+        <span
+          v-if="contextDetail"
+          class="result-detail"
+        >{{ contextDetail }}</span>
+      </span>
     </div>
-    <span
-      v-if="result.shortcut"
-      class="result-shortcut"
-    >{{ result.shortcut }}</span>
-    <span
-      v-else-if="result.timestamp"
-      class="result-time"
-    >{{ formatTime(result.timestamp) }}</span>
+    <div
+      v-if="showKind"
+      class="result-meta"
+    >
+      <span
+        class="result-kind"
+      >{{ kindLabel }}</span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { MessageSquare, File, FileText, Zap, CalendarDays, NotebookPen } from 'lucide-vue-next'
 import type { SearchResult } from '@shared/ipc/search'
 
 const props = defineProps<{
   result: SearchResult
   selected: boolean
+  showKind?: boolean
 }>()
 
 defineEmits<{
@@ -95,72 +78,172 @@ const titleSegments = computed(() => {
   return segments
 })
 
-function formatTime(ts: number): string {
-  const diff = Date.now() - ts
-  if (diff < 60_000) return 'just now'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d`
-  return new Date(ts).toLocaleDateString()
-}
+const contextSubtitle = computed(() => (
+  props.result.type === 'prompt' || props.result.type === 'action' ? '' : props.result.subtitle || ''
+))
+
+const contextDetail = computed(() => (
+  props.result.type === 'prompt' || props.result.type === 'action' ? '' : props.result.detail || ''
+))
+
+const hasContext = computed(() => !!contextSubtitle.value || !!contextDetail.value)
+
+const kindLabel = computed(() => {
+  switch (props.result.type) {
+    case 'chat':
+      return 'Chat'
+    case 'message':
+      return 'Message'
+    case 'action':
+      return 'Command'
+    case 'file':
+      return 'File'
+    case 'daily':
+      return 'Daily'
+    case 'prompt':
+      return 'Prompt'
+  }
+})
 </script>
 
 <style scoped>
 .search-result-item {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  padding: 6px 14px;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 11px 0 12px;
   cursor: pointer;
-  border-radius: 6px;
-  margin: 0 6px;
+  border-radius: 5px;
+  margin: 0 3px;
+  color: var(--ui-text-primary-fg, var(--text));
+  transition: background 0.12s var(--ease-default), color 0.12s var(--ease-default);
+}
+
+.search-result-item::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 72%, transparent);
+  opacity: 0;
+  transition: opacity 0.12s var(--ease-default);
+}
+
+.search-result-item.has-meta {
+  grid-template-columns: minmax(0, 1fr) minmax(34px, auto);
 }
 
 .search-result-item.selected {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: color-mix(in srgb, var(--ui-state-selected-bg, var(--hover)) 42%, transparent);
 }
 
-.result-icon {
-  flex-shrink: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
-  display: flex;
-  align-items: center;
+.search-result-item.selected::before {
+  opacity: 0.62;
 }
 
-.search-result-item.selected .result-icon {
-  color: var(--ui-text-primary-fg, var(--text));
+.search-result-item:hover:not(.selected) {
+  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 24%, transparent);
 }
 
 .result-body {
-  flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: baseline;
+  gap: 4px;
 }
 
 .result-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 60%;
   font-size: 13px;
+  font-weight: 590;
+  line-height: 1.16;
   color: var(--ui-text-primary-fg, var(--text));
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-body:not(.has-context) .result-title {
+  flex: 1 1 auto;
+  max-width: 100%;
+}
+
+.result-context {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 72%, transparent);
+  font-size: 12px;
+  line-height: 1.16;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-subtitle,
+.result-detail {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .result-subtitle {
-  font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  flex: 0 1 auto;
+}
+
+.result-detail {
+  flex: 1 1 auto;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 48%, transparent);
+}
+
+.result-separator {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 34%, transparent);
+}
+
+.search-result-item.selected .result-context,
+.search-result-item.selected .result-detail {
+  color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 70%, transparent);
+}
+
+.result-meta {
+  justify-self: end;
+  min-width: 0;
+  max-width: 76px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.result-kind {
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel))) 34%, transparent);
+  font-size: 10px;
+  font-weight: 540;
+  line-height: 1;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 62%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.result-detail {
-  font-size: 11px;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 78%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.search-result-item.selected .result-kind {
+  background: color-mix(in srgb, var(--ui-state-selected-bg, var(--selection, var(--ui-accent-primary-fg, var(--accent)))) 20%, transparent);
+  color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 66%, transparent);
 }
 
 .result-title mark {
@@ -170,16 +253,4 @@ function formatTime(ts: number): string {
   padding: 0 1px;
 }
 
-.result-shortcut {
-  flex-shrink: 0;
-  font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-family: var(--font-mono, monospace);
-}
-
-.result-time {
-  flex-shrink: 0;
-  font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
-}
 </style>

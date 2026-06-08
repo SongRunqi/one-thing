@@ -29,9 +29,63 @@ vi.mock('@/stores/agents', () => ({
   useAgentsStore: () => agentsStore,
 }))
 
+const settingsStore = vi.hoisted(() => {
+  const makeSettings = () => ({
+    theme: 'dark',
+    general: {
+      soulMemory: {
+        dreaming: {
+          enabled: true,
+          frequency: '0 3 * * *',
+          timezone: '',
+          model: '',
+          sources: ['daily', 'sessions', 'short-term'],
+          lookbackDays: 30,
+          maxSourceFiles: 12,
+          maxSessions: 12,
+          maxMessagesPerSession: 24,
+          maxInputChars: 48000,
+          maxPromotions: 10,
+          minScore: 0.78,
+          minRecallCount: 1,
+          minUniqueSources: 1,
+          timeoutMs: 60000,
+        },
+      },
+    },
+    chat: {},
+    ai: {
+      provider: 'openai',
+      providers: {},
+      customProviders: [],
+    },
+    tools: {
+      enableToolCalls: true,
+      tools: {},
+    },
+  })
+  const store = {
+    settings: makeSettings(),
+    makeSettings,
+    loadSettings: vi.fn(),
+    saveSettings: vi.fn(),
+  }
+  return store
+})
+
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: () => settingsStore,
+}))
+
 describe('SchedulerPanelContent', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     agentsStore.loadAgents.mockResolvedValue(agentsStore.agents)
+    settingsStore.settings = settingsStore.makeSettings()
+    settingsStore.loadSettings.mockResolvedValue(undefined)
+    settingsStore.saveSettings.mockImplementation(async (nextSettings: any) => {
+      settingsStore.settings = nextSettings
+    })
     Object.defineProperty(window, 'electronAPI', {
       value: {
         listSchedulerTasks: vi.fn().mockResolvedValue({
@@ -45,7 +99,7 @@ describe('SchedulerPanelContent', () => {
               source: 'plugin',
               readonly: true,
               enabled: true,
-              tags: ['soul-memory'],
+              tags: ['soul-memory', 'dreaming'],
               inFlight: false,
               runCount: 1,
               successCount: 1,
@@ -88,10 +142,40 @@ describe('SchedulerPanelContent', () => {
             },
           ],
         }),
-        runSchedulerTaskNow: vi.fn(),
-        setSchedulerTaskEnabled: vi.fn(),
-        createSchedulerTask: vi.fn(),
-        updateSchedulerTask: vi.fn(),
+        runSchedulerTaskNow: vi.fn().mockResolvedValue({ success: true }),
+        setSchedulerTaskEnabled: vi.fn().mockResolvedValue({ success: true }),
+        createSchedulerTask: vi.fn().mockResolvedValue({
+          success: true,
+          task: {
+            id: 'user:new-task',
+            name: 'Morning digest',
+            kind: 'agent',
+            source: 'user',
+            readonly: false,
+            enabled: true,
+            tags: ['agent'],
+            inFlight: false,
+            runCount: 0,
+            successCount: 0,
+            failureCount: 0,
+          },
+        }),
+        updateSchedulerTask: vi.fn().mockResolvedValue({
+          success: true,
+          task: {
+            id: 'user:task-1',
+            name: 'Morning news updated',
+            kind: 'agent',
+            source: 'user',
+            readonly: false,
+            enabled: true,
+            tags: ['agent'],
+            inFlight: false,
+            runCount: 1,
+            successCount: 1,
+            failureCount: 0,
+          },
+        }),
         deleteSchedulerTask: vi.fn(),
         updateSessionArchived: vi.fn(),
         switchSession: vi.fn(),
@@ -118,5 +202,138 @@ describe('SchedulerPanelContent', () => {
 
     await wrapper.find('.run-row').trigger('click')
     expect(wrapper.text()).toContain('Run detail')
+  })
+
+  it('keeps task creation in a drawer instead of the main page hierarchy', async () => {
+    const wrapper = mount(SchedulerPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Morning news')
+    })
+
+    expect(wrapper.find('.editor-section').exists()).toBe(false)
+    expect(wrapper.find('.task-editor-dialog').exists()).toBe(false)
+
+    await wrapper.findAll('button').find(button => button.text().includes('New Task'))!.trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.find('.task-editor-dialog').exists()).toBe(true)
+    })
+    expect(wrapper.find('.tasks-layout').exists()).toBe(true)
+    expect(wrapper.find('.editor-section').exists()).toBe(false)
+
+    await wrapper.find('.task-editor-dialog button[title="Close"]').trigger('click')
+    expect(wrapper.find('.task-editor-dialog').exists()).toBe(false)
+
+    await wrapper.findAll('button').find(button => button.text().includes('New Task'))!.trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.find('.task-editor-dialog').exists()).toBe(true)
+    })
+
+    await wrapper.find('input[aria-label="Task name"]').setValue('Morning digest')
+    await wrapper.find('textarea[aria-label="Task prompt"]').setValue('Summarize the day ahead.')
+    await wrapper.findAll('.task-editor-dialog .primary-btn').find(button => button.text().includes('Create Task'))!.trigger('click')
+
+    await vi.waitFor(() => {
+      expect(window.electronAPI.createSchedulerTask).toHaveBeenCalled()
+    })
+    expect(window.electronAPI.createSchedulerTask).toHaveBeenCalledWith(expect.objectContaining({
+      agentId: 'default',
+      enabled: true,
+      name: 'Morning digest',
+      prompt: 'Summarize the day ahead.',
+      schedule: expect.objectContaining({
+        expr: '0 9 * * *',
+        kind: 'cron',
+      }),
+    }))
+  })
+
+  it('edits an existing user task in the same drawer flow', async () => {
+    const wrapper = mount(SchedulerPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Morning news')
+    })
+
+    await wrapper.find('button[title="Edit"]').trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.find('.task-editor-dialog').exists()).toBe(true)
+    })
+    expect(wrapper.find('.editor-section').exists()).toBe(false)
+    expect(wrapper.find('.task-editor-dialog').text()).toContain('Edit task')
+
+    await wrapper.find('input[aria-label="Task name"]').setValue('Morning news updated')
+    await wrapper.findAll('.task-editor-dialog .primary-btn').find(button => button.text().includes('Save Changes'))!.trigger('click')
+
+    await vi.waitFor(() => {
+      expect(window.electronAPI.updateSchedulerTask).toHaveBeenCalled()
+    })
+    expect(window.electronAPI.updateSchedulerTask).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'user:task-1',
+      name: 'Morning news updated',
+      prompt: 'Check the news',
+      schedule: expect.objectContaining({
+        expr: '0 9 * * *',
+        kind: 'cron',
+      }),
+    }))
+  })
+
+  it('manages Memory Dreaming task settings and uses scheduler actions', async () => {
+    const wrapper = mount(SchedulerPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Memory Dreaming Promotion')
+    })
+
+    await wrapper.findAll('.task-row').find(row => row.text().includes('Memory Dreaming Promotion'))!.trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Memory Dreaming')
+      expect(wrapper.find('input[aria-label="Dreaming cron"]').exists()).toBe(true)
+    })
+
+    const detailText = wrapper.find('.task-detail').text()
+    const orderedLabels = [
+      'Memory Dreaming Promotion',
+      'All clear',
+      'Run Now',
+      'Runtime',
+      'Run history',
+      'Configuration',
+      'Basic',
+      'Sources',
+      'Limits',
+      'Scoring',
+    ]
+    const orderedIndexes = orderedLabels.map(label => detailText.indexOf(label))
+    expect(orderedIndexes.every(index => index >= 0)).toBe(true)
+    expect([...orderedIndexes].sort((a, b) => a - b)).toEqual(orderedIndexes)
+    expect(wrapper.find('.config-disclosure-head').exists()).toBe(false)
+    expect(wrapper.findAll('.config-section-head').map(section => section.text())).toEqual([
+      'Basic',
+      'Sources',
+      'Limits',
+      'Scoring',
+    ])
+
+    await wrapper.find('button[title="Run now"]').trigger('click')
+    expect(window.electronAPI.runSchedulerTaskNow).toHaveBeenCalledWith({
+      id: 'plugin:soul-memory:memory-dreaming-promotion',
+      force: true,
+    })
+
+    await wrapper.find('input[aria-label="Dreaming cron"]').setValue('30 2 * * *')
+    await wrapper.find('input[aria-label="Dreaming source files"]').setValue('20')
+    await wrapper.findAll('.managed-section .primary-btn').find(button => button.text().includes('Save Changes'))!.trigger('click')
+
+    await vi.waitFor(() => {
+      expect(settingsStore.saveSettings).toHaveBeenCalled()
+    })
+    const nextSettings = settingsStore.saveSettings.mock.calls.at(-1)![0]
+    expect(nextSettings.general.soulMemory.dreaming.frequency).toBe('30 2 * * *')
+    expect(nextSettings.general.soulMemory.dreaming.maxSourceFiles).toBe(20)
+    expect(nextSettings.general.soulMemory.dreaming.enabled).toBe(true)
+    expect(window.electronAPI.setSchedulerTaskEnabled).toHaveBeenCalledWith({
+      id: 'plugin:soul-memory:memory-dreaming-promotion',
+      enabled: true,
+    })
+    expect(window.electronAPI.listSchedulerTasks).toHaveBeenCalledTimes(3)
   })
 })

@@ -44,6 +44,100 @@
       </SettingsGroup>
     </SettingsSection>
 
+    <SettingsSection
+      title="Tool Call Model"
+      description="Choose the already-configured provider and model used for lightweight AI utility calls, including automatic chat naming."
+    >
+      <SettingsGroup>
+        <SettingRow
+          label="Tool Call Provider"
+          description="Only providers with selected models are shown."
+        >
+          <select
+            class="form-input model-setting-select"
+            :value="selectedToolCallProvider"
+            :disabled="configuredProviders.length === 0"
+            @change="updateToolCallProvider(($event.target as HTMLSelectElement).value)"
+          >
+            <option
+              v-if="configuredProviders.length === 0"
+              value=""
+            >
+              No configured providers
+            </option>
+            <option
+              v-for="provider in configuredProviders"
+              :key="provider.id"
+              :value="provider.id"
+            >
+              {{ provider.name }}
+            </option>
+          </select>
+        </SettingRow>
+
+        <SettingRow
+          label="Model"
+          :description="toolCallModelHint"
+        >
+          <select
+            class="form-input model-setting-select"
+            :value="selectedToolCallModel"
+            :disabled="selectedToolCallModels.length === 0"
+            @change="updateToolCallModel(($event.target as HTMLSelectElement).value)"
+          >
+            <option
+              v-if="selectedToolCallModels.length === 0"
+              value=""
+            >
+              No selected models
+            </option>
+            <option
+              v-for="model in selectedToolCallModels"
+              :key="model"
+              :value="model"
+            >
+              {{ getModelName(model) }}
+            </option>
+          </select>
+        </SettingRow>
+
+        <SettingRow
+          label="Think Mode"
+          description="Independent from the chat Think control. Disabled by default for fast utility calls."
+        >
+          <label class="toggle">
+            <input
+              type="checkbox"
+              :checked="toolCallThinkingEnabled"
+              :disabled="!selectedToolCallModel"
+              @change="updateToolCallThinking(($event.target as HTMLInputElement).checked)"
+            >
+            <span class="toggle-slider" />
+          </label>
+        </SettingRow>
+
+        <SettingRow
+          label="Thinking Effort"
+          description="Used only when Tool Call Think Mode is enabled."
+        >
+          <select
+            class="form-input model-setting-select"
+            :value="selectedToolCallThinkingEffort"
+            :disabled="!toolCallThinkingEnabled || !selectedToolCallModel"
+            @change="updateToolCallThinkingEffort(($event.target as HTMLSelectElement).value as ThinkingEffort)"
+          >
+            <option
+              v-for="option in thinkingEffortOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+        </SettingRow>
+      </SettingsGroup>
+    </SettingsSection>
+
     <!-- Available Tools -->
     <SettingsSection
       v-if="settings.tools.enableToolCalls"
@@ -92,19 +186,17 @@
       description="Configure credentials for external search tools."
     >
       <SettingsGroup>
-        <SettingRow layout="stack">
-          <SettingsField
-            label="Brave Search API Key"
-            hint="Get your free API key at brave.com/search/api (2,000 queries/month free)."
+        <SettingRow
+          label="Brave Search API Key"
+          description="Get your free API key at brave.com/search/api (2,000 queries/month free)."
+        >
+          <input
+            type="password"
+            class="form-input"
+            :value="settings.tools.webSearch?.braveApiKey || ''"
+            placeholder="Enter your Brave Search API key"
+            @input="updateBraveApiKey(($event.target as HTMLInputElement).value)"
           >
-            <input
-              type="password"
-              class="form-input"
-              :value="settings.tools.webSearch?.braveApiKey || ''"
-              placeholder="Enter your Brave Search API key"
-              @input="updateBraveApiKey(($event.target as HTMLInputElement).value)"
-            >
-          </SettingsField>
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -123,13 +215,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AppSettings, ToolDefinition } from '@/types'
+import type { ThinkingEffort } from '@shared/ipc/providers'
 import type { PermissionMode, WebSearchSettings } from '@shared/ipc/tools'
+import { useSettingsStore } from '@/stores/settings'
 import BashSettingsPanel from './BashSettingsPanel.vue'
 import BackgroundJobsPanel from './BackgroundJobsPanel.vue'
 import {
   SettingRow,
   SettingsEmptyState,
-  SettingsField,
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'
@@ -143,8 +236,73 @@ const emit = defineEmits<{
   'update:settings': [settings: AppSettings]
 }>()
 
+const settingsStore = useSettingsStore()
+
+const thinkingEffortOptions: Array<{ value: ThinkingEffort; label: string }> = [
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'X High' },
+  { value: 'max', label: 'Max' },
+]
+
 const displayTools = computed(() => {
   return props.tools
+})
+
+const configuredProviders = computed(() => {
+  return settingsStore.availableProviders.filter(provider => {
+    const config = props.settings.ai.providers[provider.id]
+    return config?.enabled !== false && getProviderModelIds(provider.id).length > 0
+  })
+})
+
+const selectedToolCallProvider = computed(() => {
+  const configured = props.settings.tools.toolCallModel?.providerId
+  if (configured && configuredProviders.value.some(provider => provider.id === configured)) {
+    return configured
+  }
+
+  const defaultProvider = props.settings.ai.provider
+  if (configuredProviders.value.some(provider => provider.id === defaultProvider)) {
+    return defaultProvider
+  }
+
+  return configuredProviders.value[0]?.id || ''
+})
+
+const selectedToolCallModels = computed(() => {
+  return getProviderModelIds(selectedToolCallProvider.value)
+})
+
+const selectedToolCallModel = computed(() => {
+  const configured = props.settings.tools.toolCallModel?.model
+  if (configured && selectedToolCallModels.value.includes(configured)) {
+    return configured
+  }
+
+  const providerConfig = props.settings.ai.providers[selectedToolCallProvider.value]
+  if (providerConfig?.model && selectedToolCallModels.value.includes(providerConfig.model)) {
+    return providerConfig.model
+  }
+
+  return selectedToolCallModels.value[0] || ''
+})
+
+const toolCallModelHint = computed(() => {
+  if (!selectedToolCallProvider.value) return 'Select models in Providers before choosing a tool call model.'
+  if (selectedToolCallModels.value.length === 0) return 'This provider has no selected models.'
+  return 'Used asynchronously for chat naming without blocking the main response.'
+})
+
+const toolCallThinkingEnabled = computed(() => {
+  return props.settings.tools.toolCallModel?.thinking === true
+})
+
+const selectedToolCallThinkingEffort = computed<ThinkingEffort>(() => {
+  const effort = props.settings.tools.toolCallModel?.thinkingEffort
+  return normalizeThinkingEffort(effort) ?? 'medium'
 })
 
 // Check if bash tool is available
@@ -168,6 +326,89 @@ function updatePermissionMode(permissionMode: PermissionMode) {
   emit('update:settings', {
     ...props.settings,
     tools: { ...props.settings.tools, permissionMode }
+  })
+}
+
+function getProviderModelIds(providerId: string): string[] {
+  if (!providerId) return []
+  const config = props.settings.ai.providers[providerId]
+  if (!config) return []
+  if (config.selectedModels?.length) return config.selectedModels
+  return config.model ? [config.model] : []
+}
+
+function getModelName(modelId: string): string {
+  return settingsStore.getModelDisplayName(modelId) || modelId
+}
+
+function normalizeThinkingEffort(value: unknown): ThinkingEffort | null {
+  return thinkingEffortOptions.some(option => option.value === value)
+    ? value as ThinkingEffort
+    : null
+}
+
+function updateToolCallProvider(providerId: string) {
+  const modelIds = getProviderModelIds(providerId)
+  const providerConfig = props.settings.ai.providers[providerId]
+  const model = providerConfig?.model && modelIds.includes(providerConfig.model)
+    ? providerConfig.model
+    : modelIds[0] || ''
+
+  emit('update:settings', {
+    ...props.settings,
+    tools: {
+      ...props.settings.tools,
+      toolCallModel: {
+        ...props.settings.tools.toolCallModel,
+        providerId,
+        model,
+      },
+    },
+  })
+}
+
+function updateToolCallModel(model: string) {
+  emit('update:settings', {
+    ...props.settings,
+    tools: {
+      ...props.settings.tools,
+      toolCallModel: {
+        ...props.settings.tools.toolCallModel,
+        providerId: selectedToolCallProvider.value,
+        model,
+      },
+    },
+  })
+}
+
+function updateToolCallThinking(thinking: boolean) {
+  emit('update:settings', {
+    ...props.settings,
+    tools: {
+      ...props.settings.tools,
+      toolCallModel: {
+        ...props.settings.tools.toolCallModel,
+        providerId: selectedToolCallProvider.value,
+        model: selectedToolCallModel.value,
+        thinking,
+        thinkingEffort: selectedToolCallThinkingEffort.value,
+      },
+    },
+  })
+}
+
+function updateToolCallThinkingEffort(thinkingEffort: ThinkingEffort) {
+  emit('update:settings', {
+    ...props.settings,
+    tools: {
+      ...props.settings.tools,
+      toolCallModel: {
+        ...props.settings.tools.toolCallModel,
+        providerId: selectedToolCallProvider.value,
+        model: selectedToolCallModel.value,
+        thinkingEffort,
+      },
+    },
   })
 }
 
@@ -426,6 +667,11 @@ function updateBraveApiKey(apiKey: string) {
 
 .mode-select {
   max-width: 220px;
+}
+
+.model-setting-select {
+  min-width: 220px;
+  max-width: min(360px, 100%);
 }
 
 /* Link */

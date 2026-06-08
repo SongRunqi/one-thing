@@ -1,5 +1,8 @@
 <template>
-  <div class="chat-panel">
+  <div
+    ref="chatPanelRef"
+    class="chat-panel"
+  >
     <MessageList
       ref="messageListRef"
       :messages="panelMessages"
@@ -21,6 +24,7 @@
 
     <div
       v-memo="[isGenerating, effectiveSessionId, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, showRejectInstruction]"
+      ref="composerContainerRef"
       class="composer-container"
     >
       <BackgroundJobsStatusBar />
@@ -209,11 +213,117 @@ watch(currentPendingPermission, () => {
 
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
+const chatPanelRef = ref<HTMLElement | null>(null)
+const composerContainerRef = ref<HTMLElement | null>(null)
 const TAIL_SNAPSHOT_DISTANCE_PX = 4
 const RESTORE_WAIT_FRAME_LIMIT = 120
+let composerResizeObserver: ResizeObserver | null = null
+let composerMeasureFrame: number | null = null
+let lastMeasuredComposerHeight = -1
+let contentColumnResizeObserver: ResizeObserver | null = null
+let contentColumnMeasureFrame: number | null = null
+
+const CONTENT_COLUMN_VAR_NAMES = [
+  '--chat-composer-width',
+  '--chat-content-column-left',
+  '--chat-content-column-right',
+  '--chat-content-column-center',
+] as const
 
 function nextFrame(): Promise<void> {
   return new Promise(resolve => requestAnimationFrame(() => resolve()))
+}
+
+function getContentColumnElement(): HTMLElement | null {
+  return chatPanelRef.value?.querySelector<HTMLElement>('.message-list-content') ?? null
+}
+
+function clearContentColumnVariables() {
+  const panel = chatPanelRef.value
+  if (!panel) return
+  for (const name of CONTENT_COLUMN_VAR_NAMES) {
+    panel.style.removeProperty(name)
+  }
+}
+
+function cssPx(value: number): string {
+  return `${Math.max(0, value).toFixed(2)}px`
+}
+
+function measureContentColumn() {
+  contentColumnMeasureFrame = null
+
+  const panel = chatPanelRef.value
+  const column = getContentColumnElement()
+  if (!panel || !column) {
+    clearContentColumnVariables()
+    return
+  }
+
+  const panelRect = panel.getBoundingClientRect()
+  const columnRect = column.getBoundingClientRect()
+  const left = columnRect.left - panelRect.left
+  const right = panelRect.right - columnRect.right
+  const width = columnRect.width
+  const center = left + width / 2
+
+  panel.style.setProperty('--chat-composer-width', cssPx(width))
+  panel.style.setProperty('--chat-content-column-left', cssPx(left))
+  panel.style.setProperty('--chat-content-column-right', cssPx(right))
+  panel.style.setProperty('--chat-content-column-center', cssPx(center))
+}
+
+function scheduleContentColumnMeasure() {
+  if (contentColumnMeasureFrame !== null) return
+  contentColumnMeasureFrame = requestAnimationFrame(measureContentColumn)
+}
+
+function observeContentColumn() {
+  contentColumnResizeObserver?.disconnect()
+  contentColumnResizeObserver = null
+  scheduleContentColumnMeasure()
+
+  const panel = chatPanelRef.value
+  if (!panel || typeof ResizeObserver === 'undefined') return
+
+  contentColumnResizeObserver = new ResizeObserver(scheduleContentColumnMeasure)
+  contentColumnResizeObserver.observe(panel)
+
+  const column = getContentColumnElement()
+  if (column) {
+    contentColumnResizeObserver.observe(column)
+  }
+}
+
+function setComposerHeightVariable(height: number) {
+  const measuredHeight = Math.max(0, Math.ceil(height))
+  if (measuredHeight === lastMeasuredComposerHeight) return
+  lastMeasuredComposerHeight = measuredHeight
+  chatPanelRef.value?.style.setProperty('--chat-composer-height', `${measuredHeight}px`)
+  messageListRef.value?.notifyLayoutChange?.()
+}
+
+function measureComposerHeight() {
+  composerMeasureFrame = null
+  const composer = composerContainerRef.value
+  setComposerHeightVariable(composer?.getBoundingClientRect().height ?? 0)
+}
+
+function scheduleComposerMeasure() {
+  if (composerMeasureFrame !== null) return
+  composerMeasureFrame = requestAnimationFrame(measureComposerHeight)
+}
+
+function observeComposerHeight() {
+  composerResizeObserver?.disconnect()
+  composerResizeObserver = null
+  scheduleComposerMeasure()
+
+  const composer = composerContainerRef.value
+  if (!composer || typeof ResizeObserver === 'undefined') return
+
+  composerResizeObserver = new ResizeObserver(scheduleComposerMeasure)
+  composerResizeObserver.observe(composer)
 }
 
 function permissionTitle(toolCall: ToolCall): string {
@@ -322,6 +432,8 @@ async function restoreCurrentSnapshot(sessionId: string) {
 }
 
 onMounted(() => {
+  observeComposerHeight()
+  observeContentColumn()
   const sessionId = effectiveSessionId.value
   if (sessionId) {
     restoreCurrentSnapshot(sessionId)
@@ -329,6 +441,19 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  composerResizeObserver?.disconnect()
+  composerResizeObserver = null
+  if (composerMeasureFrame !== null) {
+    cancelAnimationFrame(composerMeasureFrame)
+    composerMeasureFrame = null
+  }
+  contentColumnResizeObserver?.disconnect()
+  contentColumnResizeObserver = null
+  if (contentColumnMeasureFrame !== null) {
+    cancelAnimationFrame(contentColumnMeasureFrame)
+    contentColumnMeasureFrame = null
+  }
+
   const sessionId = effectiveSessionId.value
   if (sessionId) {
     saveCurrentSnapshot(sessionId)
@@ -369,6 +494,10 @@ watch(effectiveSessionId, async (newId, oldId) => {
     })
   })
 })
+
+watch(() => panelMessages.value.length, () => {
+  nextTick(observeContentColumn)
+}, { flush: 'post' })
 
 async function handleSendMessage(
   message: string,
@@ -455,7 +584,9 @@ defineExpose({
 
 <style scoped>
 .chat-panel {
-  --chat-content-width: min(680px, max(64%, calc(100% - 96px)));
+  --chat-content-width: min(740px, max(58%, calc(100% - 144px)));
+  --chat-composer-width: var(--chat-content-width);
+  --chat-composer-height: 0px;
 
   display: flex;
   flex-direction: column;
@@ -468,10 +599,13 @@ defineExpose({
 
 .composer-container {
   flex-shrink: 0;
-  padding: 0 16px 18px;
+  padding: 0 0 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  background: transparent;
+  position: relative;
+  z-index: 3;
 }
 
 .session-permission-panel {
@@ -486,8 +620,8 @@ defineExpose({
   --permission-reject-border: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 42%, var(--ui-border-default-border, var(--border)));
   --permission-reject-bg: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 8%, transparent);
 
-  width: var(--chat-content-width);
-  margin: 0 0 8px;
+  width: var(--chat-composer-width);
+  margin: 0 var(--chat-content-column-right, auto) 8px var(--chat-content-column-left, auto);
   padding: 10px 12px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

@@ -174,7 +174,7 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
 
 <style scoped>
 .tab-bar {
-  --ot-active-bg: var(--ui-tab-bar-item-active-bg, color-mix(in srgb, var(--ui-accent-subtle-fg, var(--accent-sub, var(--accent-light))) 42%, transparent));
+  --ot-active-bg: var(--ui-tab-bar-item-active-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 58%, transparent));
   --ot-active-text: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
   --ot-hover-bg: var(--ui-tab-bar-item-hover-bg, color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4.5%, transparent));
   --ot-divider: var(--ui-tab-bar-divider-border, color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 70%, var(--ui-text-muted-fg, var(--muted))));
@@ -182,8 +182,8 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 38px;
-  padding: 0 8px 0 0;
+  height: 40px;
+  padding: 0 10px 0 0;
   user-select: none;
   flex-shrink: 0;
   position: relative;
@@ -198,7 +198,7 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   bottom: 0;
   left: 0;
   height: 1px;
-  background: color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle))) 28%, transparent);
+  background: color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle))) 18%, transparent);
   pointer-events: none;
   z-index: 0;
 }
@@ -224,13 +224,13 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
 }
 
 .topbar-sidebar-actions-slot.reserved {
-  width: 164px;
-  padding-left: 78px;
+  width: 176px;
+  padding-left: 86px;
 }
 
 .topbar-sidebar-actions-slot.reserved.media-panel-open {
-  width: 90px;
-  padding-left: 8px;
+  width: 96px;
+  padding-left: 10px;
 }
 
 /* ── Left: tabs ──────────────────── */
@@ -247,11 +247,11 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
 .tab-list {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   overflow-x: auto;
   overflow-y: visible;
   scrollbar-width: none;
-  padding: 0 8px 0 10px;
+  padding: 0 10px 0 12px;
   min-width: 0;
   -webkit-app-region: no-drag;
 }
@@ -285,8 +285,8 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   justify-content: flex-end;
   min-width: 60px;
   flex-shrink: 0;
-  gap: 6px;
-  padding-left: 12px;
+  gap: 8px;
+  padding-left: 14px;
   position: relative;
   z-index: 1;
   -webkit-app-region: no-drag;

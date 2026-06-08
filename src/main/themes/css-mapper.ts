@@ -692,7 +692,7 @@ export function generateCSSVariables(
 
   // Generate RGB triplet variables for transparency patterns
   // These are used in rgba(var(--bg-rgb), opacity) patterns
-  const bgAppColor = resolvedTheme['bg.app']
+  const bgAppColor = result['--bg-app'] || resolvedTheme['bg.app']
   if (bgAppColor) {
     const bgRgb = hexToRgbTriplet(bgAppColor)
     if (bgRgb) {
@@ -712,7 +712,7 @@ export function generateCSSVariables(
   }
 
   // Also generate for specific colors that need RGB triplets
-  const sidebarColor = resolvedTheme['bg.sidebar']
+  const sidebarColor = result['--bg-sidebar'] || resolvedTheme['bg.sidebar']
   if (sidebarColor) {
     const sidebarRgb = hexToRgbTriplet(sidebarColor)
     if (sidebarRgb) {

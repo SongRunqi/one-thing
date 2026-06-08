@@ -115,10 +115,10 @@ function onDrop(e: DragEvent) {
 <style scoped>
 .tab-item {
   --tab-active-bg: var(--ui-surface-panel-bg, var(--bg-panel));
-  --tab-radius: 7px;
-  --tab-height: 26px;
-  --tab-min-width: 72px;
-  --tab-max-width: 190px;
+  --tab-radius: 8px;
+  --tab-height: 28px;
+  --tab-min-width: 82px;
+  --tab-max-width: 220px;
   position: relative;
   flex: 0 1 auto;
   min-width: var(--tab-min-width);
@@ -129,7 +129,7 @@ function onDrop(e: DragEvent) {
   cursor: pointer;
   white-space: nowrap;
   font-family: var(--type-label-font);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 400;
   line-height: 1;
   color: var(--ui-tab-bar-item-fg, var(--ui-text-muted-fg, var(--muted)));
@@ -151,7 +151,7 @@ function onDrop(e: DragEvent) {
   gap: 7px;
   width: 100%;
   height: 100%;
-  padding: 0 8px;
+  padding: 0 10px;
   box-sizing: border-box;
   border: 0.5px solid transparent;
   border-bottom-color: transparent;
@@ -169,7 +169,7 @@ function onDrop(e: DragEvent) {
 }
 
 .tab-item:hover .tab-surface {
-  background: color-mix(in srgb, var(--ot-hover-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 32%, transparent)) 78%, transparent);
+  background: color-mix(in srgb, var(--ot-hover-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 32%, transparent)) 64%, transparent);
   color: var(--ui-tab-bar-item-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 
@@ -179,10 +179,10 @@ function onDrop(e: DragEvent) {
 }
 
 .tab-item.active .tab-surface {
-  background: color-mix(in srgb, var(--ot-active-bg, color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 9%, transparent)) 58%, transparent);
-  border-color: color-mix(in srgb, var(--ui-tab-bar-item-active-border, var(--ui-border-subtle-border, var(--border-subtle))) 34%, transparent);
+  background: color-mix(in srgb, var(--ot-active-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 58%, transparent)) 68%, transparent);
+  border-color: color-mix(in srgb, var(--ui-tab-bar-item-active-border, var(--ui-border-subtle-border, var(--border-subtle))) 18%, transparent);
   border-radius: var(--tab-radius);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 3%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.5%, transparent);
 }
 
 .tab-item.drag-over {

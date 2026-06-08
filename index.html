@@ -28,7 +28,7 @@
             }
 
             // Set background color
-            var bgColor = variables['--bg-app'] || variables['--bg'] || '#282726';
+            var bgColor = variables['--ui-surface-app-bg'] || variables['--bg-app'] || variables['--bg'] || 'Canvas';
             document.documentElement.style.backgroundColor = isTransparentWindow ? 'transparent' : bgColor;
             document.documentElement.style.margin = '0';
             document.documentElement.style.padding = '0';
@@ -36,13 +36,13 @@
             console.log('[Theme] Applied cached CSS via inline style (highest specificity)');
           } else {
             // No cache - just set basic background (will be overridden by theme later)
-            document.documentElement.style.backgroundColor = isTransparentWindow ? 'transparent' : '#282726';
+            document.documentElement.style.backgroundColor = isTransparentWindow ? 'transparent' : 'var(--ui-surface-app-bg, var(--bg-app, var(--bg, Canvas)))';
             document.documentElement.style.margin = '0';
             document.documentElement.style.padding = '0';
           }
         } catch (e) {
           console.warn('[Theme] Failed to apply cached theme:', e);
-          document.documentElement.style.backgroundColor = isTransparentWindow ? 'transparent' : '#282726';
+          document.documentElement.style.backgroundColor = isTransparentWindow ? 'transparent' : 'var(--ui-surface-app-bg, var(--bg-app, var(--bg, Canvas)))';
         }
       })();
     </script>

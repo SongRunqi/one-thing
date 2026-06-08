@@ -318,6 +318,12 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
 export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
   enableToolCalls: true,
   permissionMode: 'normal',
+  toolCallModel: {
+    providerId: '',
+    model: '',
+    thinking: false,
+    thinkingEffort: 'medium',
+  },
   // Per-tool settings are user overrides keyed by the dynamic tool registry.
   // Tool defaults come from each ToolDefinition, so new tools do not require
   // editing this settings file.
@@ -489,6 +495,10 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     tools: {
       ...defaults.tools,
       ...settings.tools,
+      toolCallModel: {
+        ...defaults.tools.toolCallModel,
+        ...settings.tools?.toolCallModel,
+      },
       bash: {
         ...defaults.tools.bash,
         ...settings.tools?.bash,

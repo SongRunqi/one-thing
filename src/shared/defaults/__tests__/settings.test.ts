@@ -23,6 +23,35 @@ describe('compact settings defaults', () => {
   })
 })
 
+describe('tool call model settings defaults', () => {
+  it('uses chat defaults until a provider/model is selected', () => {
+    const settings = createDefaultSettings()
+
+    expect(settings.tools.toolCallModel).toEqual({
+      providerId: '',
+      model: '',
+      thinking: false,
+      thinkingEffort: 'medium',
+    })
+  })
+
+  it('backfills tool call model settings for older settings files', () => {
+    const settings = mergeWithDefaults({
+      tools: {
+        enableToolCalls: true,
+        tools: {},
+      },
+    } as any)
+
+    expect(settings.tools.toolCallModel).toEqual({
+      providerId: '',
+      model: '',
+      thinking: false,
+      thinkingEffort: 'medium',
+    })
+  })
+})
+
 describe('editor settings defaults', () => {
   it('provides stable editor defaults', () => {
     const settings = createDefaultSettings()

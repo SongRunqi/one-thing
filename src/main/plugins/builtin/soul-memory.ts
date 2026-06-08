@@ -43,24 +43,13 @@ import type {
   MemorySearchHit,
   MemorySearchRequest,
   ProviderConfig,
-  SoulMemoryActiveSettings,
-  SoulMemoryCanonicalSettings,
-  SoulMemoryDailyContextSettings,
-  SoulMemoryDreamingSettings,
-  SoulMemoryEmbeddingSettings,
-  SoulMemoryFlushSettings,
   SoulMemoryCaptureSettings,
-  SoulMemoryReadSettings,
-  SoulMemoryLoggingSettings,
-  SoulMemorySearchSettings,
+  SoulMemoryDreamingSettings,
   SoulMemorySettings,
   SchedulerRunTimelineEntryDTO,
 } from '../../../shared/ipc.js'
 import { DEFAULT_AGENT_ID } from '../../../shared/ipc.js'
-import { normalizeSoulMemorySettings } from '../../../shared/defaults/settings.js'
-import { getAgentsDir, getStorePath } from '../../stores/paths.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
-import { getVariablesStore } from '../../variables/index.js'
 import { expandPath, isPathContained } from '../../tools/core/sandbox.js'
 import { generateChatResponse } from '../../providers/index.js'
 import { resolveProviderAuth } from '../../engine/stream/provider-helpers.js'
@@ -79,16 +68,138 @@ import {
   configureMemoryDiagnosticsLogger,
   logMemoryDiagnostic,
 } from '../../memory/diagnostics-logger.js'
+import type {
+  CanonicalMemoryInput,
+  CanonicalUpsertResult,
+  CaptureCandidate,
+  CaptureCandidateKind,
+  CaptureModelResult,
+  DreamingSource,
+  GraphEntityInput,
+  GraphEvidenceInput,
+  GraphMergeResult,
+  GraphObservationInput,
+  GraphRelationInput,
+  IndexStatus,
+  MemoryChunk,
+  MemoryIndexFile,
+  MemoryIndexFileStat,
+  MemoryWorkspace,
+  ResolvedSoulMemorySettings,
+  SearchHit,
+  ShortTermMemorySignal,
+} from '../../memory/types.js'
+import {
+  CAPTURE_MAX_PENDING,
+  CAPTURE_PENDING_STORE_KEY,
+  CANONICAL_MIGRATION_STORE_KEY,
+  dateString,
+  dateStringDaysAgo,
+  DREAMING_END_MARKER,
+  DREAMING_MEMORY_BUDGET_CHARS,
+  DREAMING_MEMORY_SECTION,
+  DREAMING_SCHEDULER_TASK_ID,
+  DREAMING_START_MARKER,
+  DREAMS_TEMPLATE,
+  estimateTokens,
+  getWorkspace,
+  GRAPH_MIGRATION_STORE_KEY,
+  isIndexableMarkdownPath,
+  normalizeMemoryRelativePath,
+  readLimited,
+  replaceFileAtomic,
+  resolveSessionAgentId,
+  resolveSettings,
+  SCOPED_DREAMING_SCHEDULER_TASK_ID,
+  SESSION_INGESTION_STORE_KEY,
+  sha,
+  SHORT_TERM_SIGNAL_RELATIVE_PATH,
+  SOUL_MEMORY_PLUGIN_ID,
+  SOUL_MEMORY_RULES_PROMPT,
+  SOUL_TEMPLATE,
+  todayString,
+  truncate,
+  USER_SELF_ENTITY_ID,
+  writeIfMissing,
+  normalizeBulletText,
+  asBullet,
+  slugifyMemoryKeyPart,
+  sanitizeMemoryKey,
+  extractCandidateValue,
+  looksLikeNameValue,
+  previewLine,
+  normalizeForDedupe,
+  canonicalKindFromCaptureKind,
+  canonicalTokens,
+  tokenJaccard,
+  isDurableCandidate,
+  cosine,
+  ftsQuery,
+} from '../../memory/workspace.js'
 
-const SOUL_MEMORY_PLUGIN_ID = 'soul-memory'
+import {
+  closeDb,
+  getDb,
+  getFtsTokenizer,
+  setOnDbSwitch,
+} from '../../memory/database.js'
+import {
+  appendGraphEvidence,
+  appendMemoryEvent,
+  ensureUserSelfEntity,
+  entityIdFor,
+  getGraphEntityById,
+  getGraphMemoryByIdentifier,
+  getGraphObservationById,
+  getGraphOverview,
+  getGraphRelationById,
+  graphDisplayName,
+  graphEntityLabel,
+  graphInputsFromCandidate,
+  graphSearchContent,
+  graphSlotFromCandidate,
+  listGraphDuplicates,
+  listGraphEntities,
+  listGraphObservations,
+  listGraphRelations,
+  mergeGraphMemory,
+  normalizeEntityType,
+  normalizeGraphStatus,
+  normalizeObservationKind,
+  normalizeRelationType,
+  reconcileSingletonGraphObservations,
+  rowToGraphAuditEvent,
+  rowToGraphDuplicate,
+  rowToGraphEntity,
+  rowToGraphObservation,
+  rowToGraphRelation,
+  syncGraphFts,
+  upsertGraphCandidates,
+  upsertGraphEntity,
+  upsertGraphObservation,
+  upsertGraphRelation,
+  type GraphEmbeddingFn,
+} from '../../memory/graph.js'
+import {
+  appendCanonicalAudit,
+  buildCanonicalProfileSummary,
+  buildGraphProfileSummary,
+  canonicalDisplayText,
+  deriveCanonicalMemoryInput,
+  findCanonicalDuplicate,
+  getCanonicalMemoryByIdOrKey,
+  getCanonicalMemoryCount,
+  listCanonicalMemories,
+  rowToCanonicalAuditEvent,
+  rowToCanonicalMemory,
+  syncCanonicalFts,
+  upsertCanonicalCandidates,
+  upsertCanonicalMemory,
+  type CanonicalEmbeddingFn,
+} from '../../memory/canonical.js'
 
-const SOUL_MEMORY_RULES_PROMPT = `# Soul Memory Rules
-
-- SQLite graph memory is the source of truth for user identity, preferences, durable user facts, project facts, and relationships.
-- memory/YYYY-MM-DD.md is for AI daily working notes, session process, and medium-confidence context.
-- DREAMS.md is for scheduled sweep reports and reviewable memory synthesis.
-- SOUL.md is user-editable voice and continuity context; do not rely on it for memory mechanics or tool/security policy.
-- SOUL.md changes only when the user explicitly asks to revise voice, stance, output style, teaching style, or collaboration style.`
+export { SOUL_MEMORY_PLUGIN_ID } from '../../memory/workspace.js'
+export type { MemoryWorkspace, ResolvedSoulMemorySettings } from '../../memory/types.js'
 
 export const soulMemoryManifest = {
   name: SOUL_MEMORY_PLUGIN_ID,
@@ -97,299 +208,15 @@ export const soulMemoryManifest = {
   author: 'onething',
 }
 
-type ResolvedSoulMemorySettings = Omit<
-  Required<SoulMemorySettings>,
-  'activeMemory' | 'search' | 'embeddings' | 'memoryFlush' | 'capture' | 'dreaming' | 'dailyContext' | 'read' | 'logging'
-> & {
-  activeMemory: Required<SoulMemoryActiveSettings>
-  search: Required<SoulMemorySearchSettings>
-  embeddings: Required<SoulMemoryEmbeddingSettings>
-  memoryFlush: Required<SoulMemoryFlushSettings>
-  capture: Required<SoulMemoryCaptureSettings>
-  canonicalMemory: Required<SoulMemoryCanonicalSettings>
-  dreaming: Required<SoulMemoryDreamingSettings>
-  dailyContext: Required<SoulMemoryDailyContextSettings>
-  read: Required<SoulMemoryReadSettings>
-  logging: Required<SoulMemoryLoggingSettings>
-}
-
-interface MemoryWorkspace {
-  settings: ResolvedSoulMemorySettings
-  agentId: string
-  root: string
-  memoryDir: string
-  soulPath: string
-  memoryPath: string
-  dreamsPath: string
-  todayPath: string
-  dbPath: string
-}
-
-interface MemoryChunk {
-  id: string
-  path: string
-  kind: 'memory' | 'daily'
-  date?: string
-  chunkIndex: number
-  startLine: number
-  endLine: number
-  content: string
-  hash: string
-  tokenCount: number
-  embedding?: number[]
-  embeddingProvider?: string
-  embeddingModel?: string
-  mtimeMs: number
-}
-
-interface MemoryIndexFile {
-  absolutePath: string
-  relativePath: string
-  kind: 'memory' | 'daily'
-  date?: string
-}
-
-interface MemoryIndexFileStat extends MemoryIndexFile {
-  mtimeMs: number
-  size: number
-}
-
-interface SearchHit {
-  id: string
-  path: string
-  kind: 'memory' | 'daily' | 'canonical' | 'graph'
-  date?: string
-  chunkIndex: number
-  startLine: number
-  endLine: number
-  content: string
-  score: number
-  keywordScore?: number
-  vectorScore?: number
-}
-
-type CaptureCandidateKind =
-  | 'identity'
-  | 'preference'
-  | 'decision'
-  | 'project'
-  | 'constraint'
-  | 'fact'
-  | 'summary'
-  | 'episodic'
-  | 'ignore'
-
-interface CaptureCandidate {
-  kind: CaptureCandidateKind
-  source: 'user' | 'assistant' | 'conversation'
-  confidence: number
-  text: string
-  memoryKey?: string
-  value?: string
-  entityType?: MemoryGraphEntityType
-  entityName?: string
-  slot?: string
-  relationType?: string
-  fromEntityType?: MemoryGraphEntityType
-  fromEntityName?: string
-  toEntityType?: MemoryGraphEntityType
-  toEntityName?: string
-  reason?: string
-  sensitivity?: 'normal' | 'sensitive' | 'secret'
-  target?: 'memory' | 'daily' | 'ignore'
-  explicit?: boolean
-}
-
-interface CaptureModelResult {
-  candidates: CaptureCandidate[]
-  confidence: number
-  explicit: boolean
-  reason?: string
-}
-
-interface CanonicalMemoryInput {
-  memoryKey?: string
-  kind: CanonicalMemoryKind
-  subject?: string
-  value: string
-  text?: string
-  confidence?: number
-  sensitivity?: 'normal' | 'sensitive' | 'secret'
-  source?: string
-  evidence?: string
-  sessionId?: string
-  messageId?: string
-}
-
-interface CanonicalUpsertResult {
-  memory: CanonicalMemoryRecord
-  action: 'create' | 'update' | 'duplicate'
-}
-
-interface GraphEvidenceInput {
-  source: string
-  evidence?: string
-  sessionId?: string
-  messageId?: string
-}
-
-interface GraphEntityInput extends GraphEvidenceInput {
-  id?: string
-  entityType: MemoryGraphEntityType
-  name: string
-  displayName?: string
-  aliases?: string[]
-  confidence?: number
-  sensitivity?: 'normal' | 'sensitive' | 'secret'
-}
-
-interface GraphObservationInput extends GraphEvidenceInput {
-  id?: string
-  entityId: string
-  kind: MemoryGraphObservationKind
-  slot: string
-  value: string
-  text?: string
-  confidence?: number
-  sensitivity?: 'normal' | 'sensitive' | 'secret'
-  status?: MemoryGraphStatus
-}
-
-interface GraphRelationInput extends GraphEvidenceInput {
-  id?: string
-  fromEntityId: string
-  relationType: string
-  toEntityId: string
-  text?: string
-  confidence?: number
-  sensitivity?: 'normal' | 'sensitive' | 'secret'
-  status?: MemoryGraphStatus
-}
-
-interface GraphMergeResult {
-  applied: number
-  updated: number
-  duplicates: number
-  conflicts: number
-  entities: MemoryGraphEntity[]
-  observations: MemoryGraphObservation[]
-  relations: MemoryGraphRelation[]
-}
-
-interface ShortTermMemorySignal {
-  id: string
-  createdAt: number
-  sourceType: 'capture' | 'flush' | 'daily' | 'session' | 'recall'
-  source: string
-  kind: string
-  content: string
-  confidence: number
-  explicit?: boolean
-  promotedAt?: number
-}
-
-interface DreamingSource {
-  sourceType: 'daily' | 'session' | 'short-term' | 'recall'
-  relativePath: string
-  content: string
-  mtimeMs: number
-}
-
-interface IndexStatus {
-  indexedFiles: number
-  indexedChunks: number
-  ftsTokenizer: string
-  embeddingProvider?: string
-  embeddingModel?: string
-  lastIndexedAt?: number
-  lastError?: string
-  lastFlushAt?: number
-  lastFlushError?: string
-  lastCaptureAt?: number
-  lastCaptureError?: string
-  lastCaptureStatus?: string
-  lastDreamingAt?: number
-  lastDreamingError?: string
-  lastDreamingApplied?: number
-  lastDreamingStatus?: string
-  lastDreamingSourceFiles?: string[]
-  lastDreamingNextRunAt?: number
-}
-
-const SOUL_TEMPLATE = `# SOUL.md - Voice and Continuity
-
-This file is the durable voice, output style, teaching style, and continuity layer. The app/system prompt and plugin prompts remain authoritative for tools, security, permissions, memory mechanics, and execution behavior.
-
-## Voice
-
-- Be direct, warm, curious, and capable.
-- Prefer concrete help over performance.
-- Keep answers compact when the path is clear, and slow down when the work needs care.
-- Have a useful point of view: explain tradeoffs plainly and call out weak assumptions.
-
-## Output Style
-
-- Write for a person, not a console log.
-- Use GitHub-flavored Markdown when it helps structure the answer.
-- Only use emojis if the user explicitly asks.
-- When referencing code, include path:line_number so the user can navigate quickly.
-- When referencing GitHub issues or pull requests, use owner/repo#123.
-- Do not use a colon immediately before a tool call; say what you are doing as a normal sentence.
-- Prefer flowing prose and short lists. Use tables only for compact enumerable facts, not for dense reasoning.
-- Avoid filler, excessive ceremony, and overexplaining small wins.
-
-## Collaboration
-
-- Treat the user's notes, projects, conversations, and memory as private context.
-- Preserve a sense of continuity without pretending certainty when memory is missing.
-- Be comfortable doing local investigation and reversible work when it helps the user.
-- Before the first tool call, briefly state what you are about to do.
-- While working, give short updates when you find a root cause, change direction, or make meaningful progress.
-- Write updates so the user can return cold and still understand the current state.
-
-## Teaching
-
-- When explaining concepts, start with the high-level shape, then break down the parts.
-- Use examples and analogies when they make a hard idea easier.
-- Match depth to the user's current level and goal.
-- When suggesting learning paths, prefer active practice and experiments over passive reading.
-- Recommend resources only when they fit the user's level and the thing they are trying to build.
-
-If this file conflicts with the base prompt or higher-priority instructions, follow the higher-priority instructions.
-`
-
-const DREAMS_TEMPLATE = `# DREAMS.md
-
-Human-readable reports from scheduled memory dreaming sweeps.
-
-Dreaming reads daily memory notes, short-term signals, and capped session summaries. High-confidence user/project facts and relationships are promoted into SQLite graph memory; AI working observations and review reports stay in Markdown.
-`
-
 const ACTIVE_MEMORY_CACHE = new Map<string, { expiresAt: number; content: string | null }>()
 const ACTIVE_MEMORY_TIMEOUTS = new Map<string, { count: number; cooldownUntil: number }>()
 let activeSoulMemoryPluginApi: PluginAPI | null = null
-const DREAMING_SCHEDULER_TASK_ID = 'memory-dreaming-promotion'
-const SCOPED_DREAMING_SCHEDULER_TASK_ID = `plugin:${SOUL_MEMORY_PLUGIN_ID}:${DREAMING_SCHEDULER_TASK_ID}`
-const CAPTURE_PENDING_STORE_KEY = 'pendingCaptures'
-const CAPTURE_MAX_PENDING = 20
-const CANONICAL_MIGRATION_STORE_KEY = 'canonicalMemoryMigrationV1Done'
-const GRAPH_MIGRATION_STORE_KEY = 'graphMemoryMigrationV1Done'
-const USER_SELF_ENTITY_ID = 'user:self'
-const SHORT_TERM_SIGNAL_RELATIVE_PATH = path.join('memory', '.dreams', 'short-term.jsonl')
-const SESSION_INGESTION_STORE_KEY = 'dreamingSessionIngestion'
-const DREAMING_MEMORY_SECTION = '## Dreaming Promotions'
-const DREAMING_START_MARKER = '<!-- soul-memory:dreaming:start -->'
-const DREAMING_END_MARKER = '<!-- soul-memory:dreaming:end -->'
-const DREAMING_MEMORY_BUDGET_CHARS = 10000
 const DEFAULT_STATUS: IndexStatus = {
   indexedFiles: 0,
   indexedChunks: 0,
   ftsTokenizer: 'unknown',
 }
 
-let db: Database.Database | null = null
-let dbPath = ''
-let ftsTokenizer = 'unknown'
 let lastStatus: IndexStatus = { ...DEFAULT_STATUS }
 let indexDirty = true
 let indexDirtyReason = 'startup'
@@ -399,17 +226,6 @@ let indexSyncInFlight: Promise<IndexStatus> | null = null
 let indexWatcher: fs.FSWatcher | null = null
 let indexWatcherRoot = ''
 let indexWatcherDebounce: NodeJS.Timeout | null = null
-
-function normalizeMemoryRelativePath(value: string): string {
-  return value.split(path.sep).join('/')
-}
-
-function isIndexableMarkdownPath(relativePath: string): boolean {
-  const normalized = normalizeMemoryRelativePath(relativePath)
-  return normalized.startsWith('memory/') &&
-    !normalized.startsWith('memory/.dreams/') &&
-    normalized.toLowerCase().endsWith('.md')
-}
 
 function markIndexDirty(reason: string, metadata?: Record<string, unknown>): void {
   indexDirty = true
@@ -432,94 +248,6 @@ function markIndexClean(revision: number): void {
   indexedRevision = Math.max(indexedRevision, revision)
   indexDirty = indexDirtyRevision > indexedRevision
   if (!indexDirty) indexDirtyReason = ''
-}
-
-function todayString(): string {
-  const now = new Date()
-  return dateString(now)
-}
-
-function dateString(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function dateStringDaysAgo(daysAgo: number): string {
-  const date = new Date()
-  date.setDate(date.getDate() - daysAgo)
-  return dateString(date)
-}
-
-function sha(value: string): string {
-  return crypto.createHash('sha256').update(value).digest('hex')
-}
-
-function truncate(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value
-  return `${value.slice(0, Math.max(0, maxChars - 80)).trimEnd()}\n\n[Truncated at ${maxChars} chars]`
-}
-
-function estimateTokens(value: string): number {
-  const words = value.trim().split(/\s+/).filter(Boolean).length
-  const charEstimate = Math.ceil(value.length / 4)
-  return Math.max(words, charEstimate, 1)
-}
-
-function resolveSettings(settings?: AppSettings): ResolvedSoulMemorySettings {
-  return normalizeSoulMemorySettings(settings?.general?.soulMemory) as ResolvedSoulMemorySettings
-}
-
-function sanitizeAgentPathSegment(agentId: string): string {
-  return agentId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_AGENT_ID
-}
-
-function resolveSessionAgentId(sessionId?: string): string {
-  if (!sessionId) return DEFAULT_AGENT_ID
-  return store.getSession(sessionId)?.agentId || DEFAULT_AGENT_ID
-}
-
-function resolveRoot(settings: ResolvedSoulMemorySettings, agentId = DEFAULT_AGENT_ID): string {
-  if (agentId !== DEFAULT_AGENT_ID) {
-    return path.join(getAgentsDir(), sanitizeAgentPathSegment(agentId))
-  }
-  if (settings.directoryMode === 'custom' && settings.customDirectory.trim()) {
-    return path.resolve(expandPath(settings.customDirectory.trim()))
-  }
-  const aiNoteDir = getVariablesStore().getAiNoteDir() || '~/.onething/notes'
-  return path.resolve(expandPath(aiNoteDir))
-}
-
-function getWorkspace(appSettings?: AppSettings, agentId = DEFAULT_AGENT_ID): MemoryWorkspace {
-  const settings = resolveSettings(appSettings || getSettings())
-  const resolvedAgentId = agentId || DEFAULT_AGENT_ID
-  const root = resolveRoot(settings, resolvedAgentId)
-  const memoryDir = path.join(root, 'memory')
-  const today = todayString()
-  const dataDir = resolvedAgentId === DEFAULT_AGENT_ID
-    ? path.join(getStorePath(), 'plugin-data')
-    : path.join(root, 'plugin-data')
-  return {
-    settings,
-    agentId: resolvedAgentId,
-    root,
-    memoryDir,
-    soulPath: path.join(root, 'SOUL.md'),
-    memoryPath: path.join(root, 'MEMORY.md'),
-    dreamsPath: path.join(root, 'DREAMS.md'),
-    todayPath: path.join(memoryDir, `${today}.md`),
-    dbPath: path.join(dataDir, 'soul-memory.sqlite'),
-  }
-}
-
-async function writeIfMissing(filePath: string, content: string): Promise<void> {
-  try {
-    await fsp.access(filePath, fs.constants.F_OK)
-  } catch {
-    await fsp.mkdir(path.dirname(filePath), { recursive: true })
-    await fsp.writeFile(filePath, content, 'utf-8')
-  }
 }
 
 async function ensureWorkspace(settings?: AppSettings, agentId = DEFAULT_AGENT_ID): Promise<MemoryWorkspace> {
@@ -635,25 +363,6 @@ function scheduleIndexSync(options: {
   void indexSyncInFlight.catch(() => {})
 }
 
-function readLimited(filePath: string, maxChars: number): string {
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8')
-    return truncate(content, maxChars)
-  } catch {
-    return ''
-  }
-}
-
-async function replaceFileAtomic(filePath: string, content: string): Promise<void> {
-  await fsp.mkdir(path.dirname(filePath), { recursive: true })
-  const tmpPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`,
-  )
-  await fsp.writeFile(tmpPath, content, 'utf-8')
-  await fsp.rename(tmpPath, filePath)
-}
-
 async function updateSoulFile(options: {
   settings?: AppSettings
   agentId?: string
@@ -678,213 +387,11 @@ async function updateSoulFile(options: {
   return { absolutePath: workspace.soulPath, mode: 'replace' }
 }
 
-function getDb(workspace: MemoryWorkspace): Database.Database {
-  if (db && dbPath === workspace.dbPath) return db
-  db?.close()
-  dbPath = workspace.dbPath
-  ftsTokenizer = 'unknown'
-  indexDirty = true
-  indexDirtyReason = `workspace:${workspace.agentId}`
-  indexDirtyRevision++
-  db = new Database(workspace.dbPath)
-  db.pragma('journal_mode = WAL')
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS files (
-      path TEXT PRIMARY KEY,
-      kind TEXT NOT NULL,
-      absolute_path TEXT NOT NULL,
-      mtime_ms REAL NOT NULL,
-      size INTEGER NOT NULL,
-      hash TEXT NOT NULL,
-      indexed_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS chunks (
-      id TEXT PRIMARY KEY,
-      path TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      date TEXT,
-      chunk_index INTEGER NOT NULL,
-      start_line INTEGER NOT NULL,
-      end_line INTEGER NOT NULL,
-      content TEXT NOT NULL,
-      hash TEXT NOT NULL,
-      token_count INTEGER NOT NULL,
-      embedding_json TEXT,
-      embedding_provider TEXT,
-      embedding_model TEXT,
-      mtime_ms REAL NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path);
-    CREATE INDEX IF NOT EXISTS idx_chunks_kind ON chunks(kind);
-    CREATE TABLE IF NOT EXISTS canonical_memories (
-      id TEXT PRIMARY KEY,
-      memory_key TEXT NOT NULL UNIQUE,
-      kind TEXT NOT NULL,
-      subject TEXT NOT NULL,
-      value TEXT NOT NULL,
-      text TEXT NOT NULL,
-      normalized_text TEXT NOT NULL,
-      confidence REAL NOT NULL,
-      sensitivity TEXT NOT NULL DEFAULT 'normal',
-      source TEXT NOT NULL,
-      evidence TEXT,
-      session_id TEXT,
-      message_id TEXT,
-      embedding_json TEXT,
-      embedding_provider TEXT,
-      embedding_model TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      deleted_at INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_canonical_memory_key ON canonical_memories(memory_key);
-    CREATE INDEX IF NOT EXISTS idx_canonical_kind ON canonical_memories(kind);
-    CREATE INDEX IF NOT EXISTS idx_canonical_deleted ON canonical_memories(deleted_at);
-    CREATE TABLE IF NOT EXISTS memory_entities (
-      id TEXT PRIMARY KEY,
-      entity_type TEXT NOT NULL,
-      name TEXT NOT NULL,
-      display_name TEXT NOT NULL,
-      aliases_json TEXT NOT NULL DEFAULT '[]',
-      confidence REAL NOT NULL,
-      sensitivity TEXT NOT NULL DEFAULT 'normal',
-      source TEXT NOT NULL,
-      evidence TEXT,
-      embedding_json TEXT,
-      embedding_provider TEXT,
-      embedding_model TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      deleted_at INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_memory_entities_type ON memory_entities(entity_type);
-    CREATE INDEX IF NOT EXISTS idx_memory_entities_deleted ON memory_entities(deleted_at);
-    CREATE TABLE IF NOT EXISTS memory_observations (
-      id TEXT PRIMARY KEY,
-      entity_id TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      slot TEXT NOT NULL,
-      value TEXT NOT NULL,
-      text TEXT NOT NULL,
-      normalized_text TEXT NOT NULL,
-      confidence REAL NOT NULL,
-      sensitivity TEXT NOT NULL DEFAULT 'normal',
-      source TEXT NOT NULL,
-      evidence TEXT,
-      session_id TEXT,
-      message_id TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
-      embedding_json TEXT,
-      embedding_provider TEXT,
-      embedding_model TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      deleted_at INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_memory_observations_entity ON memory_observations(entity_id);
-    CREATE INDEX IF NOT EXISTS idx_memory_observations_slot ON memory_observations(entity_id, slot);
-    CREATE INDEX IF NOT EXISTS idx_memory_observations_status ON memory_observations(status, deleted_at);
-    CREATE TABLE IF NOT EXISTS memory_relations (
-      id TEXT PRIMARY KEY,
-      from_entity_id TEXT NOT NULL,
-      relation_type TEXT NOT NULL,
-      to_entity_id TEXT NOT NULL,
-      text TEXT NOT NULL,
-      confidence REAL NOT NULL,
-      sensitivity TEXT NOT NULL DEFAULT 'normal',
-      source TEXT NOT NULL,
-      evidence TEXT,
-      session_id TEXT,
-      message_id TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
-      embedding_json TEXT,
-      embedding_provider TEXT,
-      embedding_model TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      deleted_at INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_memory_relations_from ON memory_relations(from_entity_id);
-    CREATE INDEX IF NOT EXISTS idx_memory_relations_to ON memory_relations(to_entity_id);
-    CREATE INDEX IF NOT EXISTS idx_memory_relations_exact ON memory_relations(from_entity_id, relation_type, to_entity_id);
-    CREATE TABLE IF NOT EXISTS memory_evidence (
-      id TEXT PRIMARY KEY,
-      owner_type TEXT NOT NULL,
-      owner_id TEXT NOT NULL,
-      source TEXT NOT NULL,
-      evidence TEXT,
-      session_id TEXT,
-      message_id TEXT,
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_memory_evidence_owner ON memory_evidence(owner_type, owner_id, created_at DESC);
-    CREATE TABLE IF NOT EXISTS memory_possible_duplicates (
-      id TEXT PRIMARY KEY,
-      kind TEXT NOT NULL,
-      source_id TEXT NOT NULL,
-      target_id TEXT NOT NULL,
-      score REAL NOT NULL,
-      reason TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_memory_possible_duplicates_status ON memory_possible_duplicates(status, kind);
-    CREATE TABLE IF NOT EXISTS memory_events (
-      id TEXT PRIMARY KEY,
-      memory_id TEXT NOT NULL,
-      action TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      payload_json TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_memory_events_memory ON memory_events(memory_id, created_at DESC);
-  `)
-  ensureFtsTable(db)
-  ensureCanonicalFtsTable(db)
-  ensureGraphFtsTable(db)
-  return db
-}
-
-function ensureFtsTable(database: Database.Database): void {
-  const existing = database.prepare(`
-    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'chunks_fts'
-  `).get()
-  if (existing) return
-
-  try {
-    database.exec("CREATE VIRTUAL TABLE chunks_fts USING fts5(id UNINDEXED, path UNINDEXED, content, tokenize='trigram')")
-    ftsTokenizer = 'trigram'
-  } catch {
-    database.exec("CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(id UNINDEXED, path UNINDEXED, content, tokenize='unicode61')")
-    ftsTokenizer = 'unicode61'
-  }
-}
-
-function ensureCanonicalFtsTable(database: Database.Database): void {
-  const existing = database.prepare(`
-    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'canonical_memories_fts'
-  `).get()
-  if (existing) return
-
-  try {
-    database.exec("CREATE VIRTUAL TABLE canonical_memories_fts USING fts5(id UNINDEXED, memory_key UNINDEXED, text, value, tokenize='trigram')")
-  } catch {
-    database.exec("CREATE VIRTUAL TABLE IF NOT EXISTS canonical_memories_fts USING fts5(id UNINDEXED, memory_key UNINDEXED, text, value, tokenize='unicode61')")
-  }
-}
-
-function ensureGraphFtsTable(database: Database.Database): void {
-  const existing = database.prepare(`
-    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'graph_memory_fts'
-  `).get()
-  if (existing) return
-
-  try {
-    database.exec("CREATE VIRTUAL TABLE graph_memory_fts USING fts5(id UNINDEXED, owner_type UNINDEXED, owner_id UNINDEXED, content, tokenize='trigram')")
-  } catch {
-    database.exec("CREATE VIRTUAL TABLE IF NOT EXISTS graph_memory_fts USING fts5(id UNINDEXED, owner_type UNINDEXED, owner_id UNINDEXED, content, tokenize='unicode61')")
-  }
-}
+// getDb, ensureFtsTable, ensureCanonicalFtsTable, ensureGraphFtsTable → ../../memory/database.ts
+// Wire the db-switch callback to mark the index dirty when workspace changes.
+setOnDbSwitch((agentId) => {
+  markIndexDirty(`workspace:${agentId}`)
+})
 
 async function listMemoryFiles(workspace: MemoryWorkspace): Promise<MemoryIndexFile[]> {
   const files: MemoryIndexFile[] = []
@@ -991,21 +498,6 @@ function temporalFactor(chunk: Pick<MemoryChunk, 'kind' | 'date'>, halfLifeDays:
   return Math.max(0.18, Math.pow(0.5, days / Math.max(1, halfLifeDays)))
 }
 
-function cosine(left?: number[], right?: number[]): number {
-  if (!left || !right || left.length === 0 || right.length === 0) return 0
-  const count = Math.min(left.length, right.length)
-  let dot = 0
-  let leftNorm = 0
-  let rightNorm = 0
-  for (let i = 0; i < count; i++) {
-    dot += left[i] * right[i]
-    leftNorm += left[i] * left[i]
-    rightNorm += right[i] * right[i]
-  }
-  if (leftNorm === 0 || rightNorm === 0) return 0
-  return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))
-}
-
 function readIndexCounts(database: Database.Database): Pick<IndexStatus, 'indexedFiles' | 'indexedChunks'> {
   const countFiles = database.prepare('SELECT COUNT(*) AS count FROM files').get() as { count: number }
   const countChunks = database.prepare('SELECT COUNT(*) AS count FROM chunks').get() as { count: number }
@@ -1020,7 +512,7 @@ function refreshIndexStatus(database: Database.Database): IndexStatus {
   lastStatus = {
     ...lastStatus,
     ...counts,
-    ftsTokenizer,
+    ftsTokenizer: getFtsTokenizer(),
   }
   return lastStatus
 }
@@ -1260,7 +752,7 @@ async function syncIndex(options: { settings?: AppSettings; force?: boolean; age
           deletedFiles: 0,
           indexedFiles: status.indexedFiles,
           indexedChunks: status.indexedChunks,
-          ftsTokenizer,
+          ftsTokenizer: getFtsTokenizer(),
         },
       })
       return status
@@ -1275,7 +767,7 @@ async function syncIndex(options: { settings?: AppSettings; force?: boolean; age
       ...lastStatus,
       indexedFiles: counts.indexedFiles,
       indexedChunks: counts.indexedChunks,
-      ftsTokenizer,
+      ftsTokenizer: getFtsTokenizer(),
       lastIndexedAt: Date.now(),
     }
     markIndexClean(syncRevision)
@@ -1292,7 +784,7 @@ async function syncIndex(options: { settings?: AppSettings; force?: boolean; age
         deletedFiles: freshness.deletedPaths.length,
         indexedFiles: counts.indexedFiles,
         indexedChunks: counts.indexedChunks,
-        ftsTokenizer,
+        ftsTokenizer: getFtsTokenizer(),
         embeddingProvider: lastStatus.embeddingProvider || '',
         embeddingModel: lastStatus.embeddingModel || '',
       },
@@ -1310,15 +802,6 @@ async function syncIndex(options: { settings?: AppSettings; force?: boolean; age
     })
     throw error
   }
-}
-
-function ftsQuery(query: string): string {
-  const terms = query
-    .normalize('NFKC')
-    .match(/[\p{L}\p{N}_-]+/gu)
-    ?.slice(0, 12) || []
-  if (terms.length === 0) return `"${query.replace(/"/g, '""').slice(0, 80)}"`
-  return terms.map(term => `"${term.replace(/"/g, '""')}"`).join(' OR ')
 }
 
 async function searchMemory(options: {
@@ -1625,1520 +1108,10 @@ async function appendMemory(options: {
   return target
 }
 
-function normalizeBulletText(value: string): string {
-  return value
-    .replace(/^\s*[-*]\s+/, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
+// Graph CRUD functions extracted to ../../memory/graph.ts
 
-function asBullet(value: string): string {
-  const text = normalizeBulletText(value)
-  return text ? `- ${text}` : ''
-}
 
-function canonicalKindFromCaptureKind(kind: CaptureCandidateKind | string): CanonicalMemoryKind {
-  if (
-    kind === 'identity' ||
-    kind === 'preference' ||
-    kind === 'decision' ||
-    kind === 'project' ||
-    kind === 'constraint'
-  ) {
-    return kind
-  }
-  return 'fact'
-}
-
-function slugifyMemoryKeyPart(value: string): string {
-  const slug = value
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/['"`]/g, '')
-    .replace(/[^\p{L}\p{N}]+/gu, '.')
-    .replace(/^\.+|\.+$/g, '')
-    .slice(0, 80)
-  return slug || sha(value).slice(0, 10)
-}
-
-function sanitizeMemoryKey(value: string): string {
-  return value
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/[^a-z0-9_.-]+/g, '.')
-    .replace(/\.{2,}/g, '.')
-    .replace(/^\.+|\.+$/g, '')
-    .slice(0, 160)
-}
-
-function extractCandidateValue(text: string): string {
-  const cleaned = normalizeBulletText(text).replace(/\.$/, '').trim()
-  const patterns = [
-    /(?:user(?:'s)? name is|user is named|user identifies as|user is known as|call the user|call user)\s+([^.;,\n]+)/i,
-    /(?:user is|the user is)\s+([^.;,\n]+)/i,
-    /(?:my name is|i am|i'm|call me)\s+([^.;,\n]+)/i,
-    /(?:我叫|我是|我的名字是)\s*([^。；，\n]+)/,
-  ]
-  for (const pattern of patterns) {
-    const match = cleaned.match(pattern)
-    if (match?.[1]) return match[1].replace(/^["'“”]+|["'“”]+$/g, '').trim()
-  }
-  return cleaned
-}
-
-function looksLikeNameValue(value: string): boolean {
-  const words = value.trim().split(/\s+/).filter(Boolean)
-  return words.length <= 3 && value.length <= 80 && !/\b(prefers?|likes?|works?|uses?|wants?|needs?|developer|engineer|project)\b/i.test(value)
-}
-
-function normalizeGraphStatus(value?: string): MemoryGraphStatus {
-  return value === 'superseded' || value === 'conflict' || value === 'deleted' ? value : 'active'
-}
-
-function normalizeEntityType(value?: string): MemoryGraphEntityType {
-  const normalized = String(value || '').toLowerCase()
-  if (
-    normalized === 'user' ||
-    normalized === 'project' ||
-    normalized === 'tech' ||
-    normalized === 'component' ||
-    normalized === 'decision' ||
-    normalized === 'concept' ||
-    normalized === 'person' ||
-    normalized === 'organization'
-  ) {
-    return normalized
-  }
-  return 'concept'
-}
-
-function normalizeObservationKind(value?: string): MemoryGraphObservationKind {
-  const normalized = String(value || '').toLowerCase()
-  if (
-    normalized === 'identity' ||
-    normalized === 'preference' ||
-    normalized === 'decision' ||
-    normalized === 'project' ||
-    normalized === 'constraint' ||
-    normalized === 'summary' ||
-    normalized === 'episodic'
-  ) {
-    return normalized
-  }
-  return 'fact'
-}
-
-function normalizeRelationType(value: string): string {
-  return slugifyMemoryKeyPart(value || 'related_to')
-    .replace(/\./g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 80) || 'related_to'
-}
-
-function entityIdFor(type: MemoryGraphEntityType, name: string): string {
-  if (type === 'user') return USER_SELF_ENTITY_ID
-  const slug = slugifyMemoryKeyPart(name || type).replace(/\.+/g, '-').replace(/^-+|-+$/g, '')
-  return `${type}:${slug || sha(name || type).slice(0, 10)}`
-}
-
-function graphDisplayName(value: string): string {
-  return normalizeBulletText(value).replace(/^["'“”]+|["'“”]+$/g, '').trim()
-}
-
-function rowToGraphEntity(row: any): MemoryGraphEntity {
-  let aliases: string[] = []
-  try {
-    const parsed = JSON.parse(row.aliases_json || '[]')
-    aliases = Array.isArray(parsed) ? parsed.map(item => String(item)).filter(Boolean) : []
-  } catch {
-    aliases = []
-  }
-  return {
-    id: row.id,
-    entityType: normalizeEntityType(row.entity_type),
-    name: row.name,
-    displayName: row.display_name,
-    aliases,
-    confidence: row.confidence,
-    sensitivity: row.sensitivity || 'normal',
-    source: row.source,
-    evidence: row.evidence || undefined,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at || undefined,
-  }
-}
-
-function rowToGraphObservation(row: any): MemoryGraphObservation {
-  return {
-    id: row.id,
-    entityId: row.entity_id,
-    entityDisplayName: row.entity_display_name || undefined,
-    kind: normalizeObservationKind(row.kind),
-    slot: row.slot,
-    value: row.value,
-    text: row.text,
-    confidence: row.confidence,
-    sensitivity: row.sensitivity || 'normal',
-    source: row.source,
-    evidence: row.evidence || undefined,
-    sessionId: row.session_id || undefined,
-    messageId: row.message_id || undefined,
-    status: normalizeGraphStatus(row.status),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at || undefined,
-  }
-}
-
-function rowToGraphRelation(row: any): MemoryGraphRelation {
-  return {
-    id: row.id,
-    fromEntityId: row.from_entity_id,
-    fromDisplayName: row.from_display_name || undefined,
-    relationType: row.relation_type,
-    toEntityId: row.to_entity_id,
-    toDisplayName: row.to_display_name || undefined,
-    text: row.text,
-    confidence: row.confidence,
-    sensitivity: row.sensitivity || 'normal',
-    source: row.source,
-    evidence: row.evidence || undefined,
-    sessionId: row.session_id || undefined,
-    messageId: row.message_id || undefined,
-    status: normalizeGraphStatus(row.status),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at || undefined,
-  }
-}
-
-function rowToGraphDuplicate(row: any): MemoryGraphDuplicate {
-  return {
-    id: row.id,
-    kind: row.kind,
-    sourceId: row.source_id,
-    targetId: row.target_id,
-    score: row.score,
-    reason: row.reason,
-    status: row.status,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }
-}
-
-function rowToGraphAuditEvent(row: any): MemoryGraphAuditEvent {
-  let payload: Record<string, unknown> = {}
-  try {
-    payload = JSON.parse(row.payload_json || '{}') as Record<string, unknown>
-  } catch {
-    payload = {}
-  }
-  return {
-    id: row.id,
-    memoryId: row.memory_id,
-    action: row.action,
-    createdAt: row.created_at,
-    payload,
-  }
-}
-
-function appendMemoryEvent(
-  database: Database.Database,
-  memoryId: string,
-  action: CanonicalMemoryAuditEvent['action'],
-  payload: Record<string, unknown>,
-): void {
-  const createdAt = Date.now()
-  database.prepare(`
-    INSERT INTO memory_events (id, memory_id, action, created_at, payload_json)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(
-    sha(`${memoryId}:${action}:${createdAt}:${JSON.stringify(payload)}`),
-    memoryId,
-    action,
-    createdAt,
-    JSON.stringify(payload),
-  )
-}
-
-function appendGraphEvidence(
-  database: Database.Database,
-  ownerType: 'entity' | 'observation' | 'relation',
-  ownerId: string,
-  input: GraphEvidenceInput,
-): void {
-  if (!input.evidence && !input.sessionId && !input.messageId) return
-  const createdAt = Date.now()
-  database.prepare(`
-    INSERT INTO memory_evidence (id, owner_type, owner_id, source, evidence, session_id, message_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    sha(`${ownerType}:${ownerId}:${createdAt}:${input.source}:${input.evidence || ''}`),
-    ownerType,
-    ownerId,
-    input.source,
-    input.evidence || null,
-    input.sessionId || null,
-    input.messageId || null,
-    createdAt,
-  )
-}
-
-function syncGraphFts(
-  database: Database.Database,
-  ownerType: 'entity' | 'observation' | 'relation',
-  ownerId: string,
-  content: string | null,
-): void {
-  const id = `${ownerType}:${ownerId}`
-  database.prepare('DELETE FROM graph_memory_fts WHERE id = ?').run(id)
-  if (content?.trim()) {
-    database.prepare('INSERT INTO graph_memory_fts (id, owner_type, owner_id, content) VALUES (?, ?, ?, ?)').run(
-      id,
-      ownerType,
-      ownerId,
-      content.trim(),
-    )
-  }
-}
-
-function ensureUserSelfEntity(workspace: MemoryWorkspace): MemoryGraphEntity {
-  const existing = getGraphEntityById(workspace, USER_SELF_ENTITY_ID, false)
-  if (existing) return existing
-  return upsertGraphEntity(workspace, {
-    id: USER_SELF_ENTITY_ID,
-    entityType: 'user',
-    name: 'self',
-    displayName: 'User',
-    confidence: 1,
-    source: 'system',
-  }).entity
-}
-
-async function graphEmbedding(
-  settings: AppSettings | undefined,
-  text: string,
-): Promise<{ embedding?: number[]; provider?: string; model?: string }> {
-  return canonicalEmbedding(settings, text)
-}
-
-function upsertGraphEntity(
-  workspace: MemoryWorkspace,
-  input: GraphEntityInput,
-  options: { settings?: AppSettings; action?: CanonicalMemoryAuditEvent['action'] } = {},
-): { entity: MemoryGraphEntity; action: 'create' | 'update' | 'duplicate' } {
-  const database = getDb(workspace)
-  const now = Date.now()
-  const entityType = normalizeEntityType(input.entityType)
-  const name = graphDisplayName(input.name || input.displayName || entityType)
-  const id = input.id || entityIdFor(entityType, name)
-  const displayName = graphDisplayName(input.displayName || name || id)
-  const aliases = Array.from(new Set([...(input.aliases || []), name, displayName].map(graphDisplayName).filter(Boolean)))
-  const confidence = Math.max(0, Math.min(1, input.confidence ?? workspace.settings.canonicalMemory.highConfidenceThreshold))
-  const existing = database.prepare('SELECT * FROM memory_entities WHERE id = ? AND deleted_at IS NULL').get(id) as any
-
-  if (!existing) {
-    const entity: MemoryGraphEntity = {
-      id,
-      entityType,
-      name,
-      displayName,
-      aliases,
-      confidence,
-      sensitivity: input.sensitivity || 'normal',
-      source: input.source,
-      evidence: input.evidence,
-      createdAt: now,
-      updatedAt: now,
-    }
-    const tx = database.transaction(() => {
-      database.prepare(`
-        INSERT INTO memory_entities (
-          id, entity_type, name, display_name, aliases_json, confidence, sensitivity, source, evidence,
-          embedding_json, embedding_provider, embedding_model, created_at, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)
-      `).run(
-        entity.id,
-        entity.entityType,
-        entity.name,
-        entity.displayName,
-        JSON.stringify(entity.aliases),
-        entity.confidence,
-        entity.sensitivity,
-        entity.source,
-        entity.evidence || null,
-        entity.createdAt,
-        entity.updatedAt,
-      )
-      syncGraphFts(database, 'entity', entity.id, `${entity.id}\n${entity.entityType}\n${entity.displayName}\n${entity.aliases.join('\n')}`)
-      appendGraphEvidence(database, 'entity', entity.id, input)
-      appendMemoryEvent(database, entity.id, options.action || 'create', { input })
-    })
-    tx()
-    return { entity, action: 'create' }
-  }
-
-  const entity = rowToGraphEntity(existing)
-  const mergedAliases = Array.from(new Set([...entity.aliases, ...aliases]))
-  const normalizedSame = normalizeForDedupe(entity.displayName) === normalizeForDedupe(displayName) &&
-    JSON.stringify(entity.aliases) === JSON.stringify(mergedAliases) &&
-    confidence <= entity.confidence
-  if (normalizedSame) {
-    appendMemoryEvent(database, entity.id, 'duplicate', { input })
-    return { entity, action: 'duplicate' }
-  }
-
-  const updated: MemoryGraphEntity = {
-    ...entity,
-    displayName: displayName || entity.displayName,
-    aliases: mergedAliases,
-    confidence: Math.max(entity.confidence, confidence),
-    sensitivity: input.sensitivity || entity.sensitivity,
-    source: input.source || entity.source,
-    evidence: input.evidence || entity.evidence,
-    updatedAt: now,
-  }
-  const tx = database.transaction(() => {
-    database.prepare(`
-      UPDATE memory_entities SET
-        display_name = ?, aliases_json = ?, confidence = ?, sensitivity = ?, source = ?, evidence = ?,
-        updated_at = ?, deleted_at = NULL
-      WHERE id = ?
-    `).run(
-      updated.displayName,
-      JSON.stringify(updated.aliases),
-      updated.confidence,
-      updated.sensitivity,
-      updated.source,
-      updated.evidence || null,
-      updated.updatedAt,
-      updated.id,
-    )
-    syncGraphFts(database, 'entity', updated.id, `${updated.id}\n${updated.entityType}\n${updated.displayName}\n${updated.aliases.join('\n')}`)
-    appendGraphEvidence(database, 'entity', updated.id, input)
-    appendMemoryEvent(database, updated.id, options.action || 'update', { input, previous: entity })
-  })
-  tx()
-  return { entity: updated, action: 'update' }
-}
-
-const SINGLETON_GRAPH_SLOTS = new Set(['name', 'language_preference', 'response_style_preference', 'call_sign'])
-const SINGLETON_GRAPH_KINDS = new Set<MemoryGraphObservationKind>(['identity', 'preference', 'constraint'])
-
-function isSingletonGraphObservation(kind: MemoryGraphObservationKind, slot: string): boolean {
-  return SINGLETON_GRAPH_SLOTS.has(slot) || SINGLETON_GRAPH_KINDS.has(kind)
-}
-
-async function upsertGraphObservation(
-  workspace: MemoryWorkspace,
-  input: GraphObservationInput,
-  options: { settings?: AppSettings; action?: CanonicalMemoryAuditEvent['action'] } = {},
-): Promise<{ observation: MemoryGraphObservation; action: 'create' | 'update' | 'duplicate' | 'conflict' }> {
-  const database = getDb(workspace)
-  const now = Date.now()
-  const kind = normalizeObservationKind(input.kind)
-  const slot = slugifyMemoryKeyPart(input.slot || kind).replace(/\./g, '_')
-  const value = normalizeBulletText(input.value)
-  const text = normalizeBulletText(input.text || value)
-  const normalizedText = normalizeForDedupe(`${input.entityId} ${slot} ${value} ${text}`)
-  const confidence = Math.max(0, Math.min(1, input.confidence ?? workspace.settings.canonicalMemory.highConfidenceThreshold))
-  const status = normalizeGraphStatus(input.status)
-  if (input.id) {
-    const existingById = getGraphObservationById(workspace, input.id, true)
-    if (existingById) {
-      const embedding = await graphEmbedding(options.settings, `${input.entityId}\n${slot}\n${text}\n${value}`)
-      const updated: MemoryGraphObservation = {
-        ...existingById,
-        entityId: input.entityId,
-        kind,
-        slot,
-        value,
-        text,
-        confidence,
-        sensitivity: input.sensitivity || existingById.sensitivity,
-        source: input.source || existingById.source,
-        evidence: input.evidence || existingById.evidence,
-        sessionId: input.sessionId || existingById.sessionId,
-        messageId: input.messageId || existingById.messageId,
-        status,
-        updatedAt: now,
-        deletedAt: undefined,
-      }
-      const tx = database.transaction(() => {
-        database.prepare(`
-          UPDATE memory_observations SET
-            entity_id = ?, kind = ?, slot = ?, value = ?, text = ?, normalized_text = ?,
-            confidence = ?, sensitivity = ?, source = ?, evidence = ?, session_id = ?, message_id = ?, status = ?,
-            embedding_json = COALESCE(?, embedding_json),
-            embedding_provider = COALESCE(?, embedding_provider),
-            embedding_model = COALESCE(?, embedding_model),
-            updated_at = ?, deleted_at = NULL
-          WHERE id = ?
-        `).run(
-          updated.entityId,
-          updated.kind,
-          updated.slot,
-          updated.value,
-          updated.text,
-          normalizedText,
-          updated.confidence,
-          updated.sensitivity,
-          updated.source,
-          updated.evidence || null,
-          updated.sessionId || null,
-          updated.messageId || null,
-          updated.status,
-          embedding.embedding ? JSON.stringify(embedding.embedding) : null,
-          embedding.provider || null,
-          embedding.model || null,
-          updated.updatedAt,
-          updated.id,
-        )
-        syncGraphFts(database, 'observation', updated.id, `${updated.entityId}\n${updated.kind}\n${updated.slot}\n${updated.value}\n${updated.text}`)
-        appendGraphEvidence(database, 'observation', updated.id, input)
-        appendMemoryEvent(database, updated.id, options.action || 'update', { input, previous: existingById })
-      })
-      tx()
-      return { observation: updated, action: 'update' }
-    }
-  }
-  const existingExact = database.prepare(`
-    SELECT o.*, e.display_name AS entity_display_name
-    FROM memory_observations o
-    LEFT JOIN memory_entities e ON e.id = o.entity_id
-    WHERE o.entity_id = ? AND o.slot = ? AND o.normalized_text = ? AND o.deleted_at IS NULL
-    LIMIT 1
-  `).get(input.entityId, slot, normalizedText) as any
-  if (existingExact) {
-    const observation = rowToGraphObservation(existingExact)
-    appendMemoryEvent(database, observation.id, 'duplicate', { input })
-    appendGraphEvidence(database, 'observation', observation.id, input)
-    return { observation, action: 'duplicate' }
-  }
-
-  const activeSameSlot = database.prepare(`
-    SELECT o.*, e.display_name AS entity_display_name
-    FROM memory_observations o
-    LEFT JOIN memory_entities e ON e.id = o.entity_id
-    WHERE o.entity_id = ? AND o.slot = ? AND o.deleted_at IS NULL AND o.status = 'active'
-    ORDER BY o.updated_at DESC
-    LIMIT 1
-  `).get(input.entityId, slot) as any
-  if (
-    activeSameSlot &&
-    isSingletonGraphObservation(kind, slot) &&
-    normalizeForDedupe(activeSameSlot.value || '') === normalizeForDedupe(value)
-  ) {
-    const observation = rowToGraphObservation(activeSameSlot)
-    const nextConfidence = Math.max(observation.confidence, confidence)
-    const nextEvidence = input.evidence || observation.evidence
-    const tx = database.transaction(() => {
-      database.prepare(`
-        UPDATE memory_observations SET confidence = ?, evidence = ?, updated_at = ? WHERE id = ?
-      `).run(nextConfidence, nextEvidence || null, now, observation.id)
-      appendGraphEvidence(database, 'observation', observation.id, input)
-      appendMemoryEvent(database, observation.id, 'duplicate', { input, duplicateReason: 'same singleton slot value' })
-    })
-    tx()
-    return {
-      observation: {
-        ...observation,
-        confidence: nextConfidence,
-        evidence: nextEvidence,
-        updatedAt: now,
-      },
-      action: 'duplicate',
-    }
-  }
-  const id = input.id || sha(`${input.entityId}:${slot}:${normalizedText}:${now}`)
-  const embedding = await graphEmbedding(options.settings, `${input.entityId}\n${slot}\n${text}\n${value}`)
-  const observation: MemoryGraphObservation = {
-    id,
-    entityId: input.entityId,
-    kind,
-    slot,
-    value,
-    text,
-    confidence,
-    sensitivity: input.sensitivity || 'normal',
-    source: input.source,
-    evidence: input.evidence,
-    sessionId: input.sessionId,
-    messageId: input.messageId,
-    status,
-    createdAt: now,
-    updatedAt: now,
-  }
-  const conflict = Boolean(activeSameSlot && isSingletonGraphObservation(kind, slot))
-  const tx = database.transaction(() => {
-    if (conflict) {
-      database.prepare(`
-        UPDATE memory_observations SET status = 'superseded', updated_at = ? WHERE id = ?
-      `).run(now, activeSameSlot.id)
-      appendMemoryEvent(database, activeSameSlot.id, 'conflict', { supersededBy: id, input })
-    }
-    database.prepare(`
-      INSERT INTO memory_observations (
-        id, entity_id, kind, slot, value, text, normalized_text, confidence, sensitivity,
-        source, evidence, session_id, message_id, status,
-        embedding_json, embedding_provider, embedding_model, created_at, updated_at, deleted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
-    `).run(
-      observation.id,
-      observation.entityId,
-      observation.kind,
-      observation.slot,
-      observation.value,
-      observation.text,
-      normalizedText,
-      observation.confidence,
-      observation.sensitivity,
-      observation.source,
-      observation.evidence || null,
-      observation.sessionId || null,
-      observation.messageId || null,
-      observation.status,
-      embedding.embedding ? JSON.stringify(embedding.embedding) : null,
-      embedding.provider || null,
-      embedding.model || null,
-      observation.createdAt,
-      observation.updatedAt,
-    )
-    syncGraphFts(database, 'observation', observation.id, `${observation.entityId}\n${observation.kind}\n${observation.slot}\n${observation.value}\n${observation.text}`)
-    appendGraphEvidence(database, 'observation', observation.id, input)
-    appendMemoryEvent(database, observation.id, conflict ? 'conflict' : (options.action || 'create'), {
-      input,
-      ...(conflict ? { previous: rowToGraphObservation(activeSameSlot) } : {}),
-    })
-  })
-  tx()
-  maybeRecordObservationDuplicate(database, workspace, observation, normalizedText)
-  return { observation, action: conflict ? 'conflict' : 'create' }
-}
-
-function maybeRecordObservationDuplicate(
-  database: Database.Database,
-  workspace: MemoryWorkspace,
-  observation: MemoryGraphObservation,
-  normalizedText: string,
-): void {
-  const rows = database.prepare(`
-    SELECT id, normalized_text, text FROM memory_observations
-    WHERE id != ? AND entity_id = ? AND deleted_at IS NULL
-    ORDER BY updated_at DESC
-    LIMIT 80
-  `).all(observation.id, observation.entityId) as any[]
-  let best: { id: string; score: number; text: string } | null = null
-  for (const row of rows) {
-    const score = tokenJaccard(normalizedText, row.normalized_text || row.text)
-    if (score >= workspace.settings.canonicalMemory.semanticDedupeThreshold && (!best || score > best.score)) {
-      best = { id: row.id, score, text: row.text }
-    }
-  }
-  if (!best) return
-  const existing = database.prepare(`
-    SELECT id FROM memory_possible_duplicates
-    WHERE kind = 'observation' AND source_id = ? AND target_id = ? AND status = 'pending'
-  `).get(observation.id, best.id)
-  if (existing) return
-  const now = Date.now()
-  database.prepare(`
-    INSERT INTO memory_possible_duplicates (id, kind, source_id, target_id, score, reason, status, created_at, updated_at)
-    VALUES (?, 'observation', ?, ?, ?, ?, 'pending', ?, ?)
-  `).run(
-    sha(`observation:${observation.id}:${best.id}`),
-    observation.id,
-    best.id,
-    best.score,
-    `Similar observation: ${best.text}`,
-    now,
-    now,
-  )
-}
-
-function reconcileSingletonGraphObservations(workspace: MemoryWorkspace): number {
-  const database = getDb(workspace)
-  const rows = database.prepare(`
-    SELECT *
-    FROM memory_observations
-    WHERE deleted_at IS NULL AND status = 'active'
-    ORDER BY entity_id ASC, kind ASC, slot ASC, updated_at DESC
-  `).all() as any[]
-  const groups = new Map<string, any[]>()
-  for (const row of rows) {
-    const kind = normalizeObservationKind(row.kind)
-    const slot = String(row.slot || '')
-    if (!isSingletonGraphObservation(kind, slot)) continue
-    const key = `${row.entity_id}:${kind}:${slot}`
-    const group = groups.get(key)
-    if (group) group.push(row)
-    else groups.set(key, [row])
-  }
-
-  let superseded = 0
-  const now = Date.now()
-  const tx = database.transaction(() => {
-    for (const group of groups.values()) {
-      if (group.length < 2) continue
-      const [keeper, ...olderRows] = group.sort((a, b) => {
-        const updatedDelta = Number(b.updated_at || 0) - Number(a.updated_at || 0)
-        if (updatedDelta !== 0) return updatedDelta
-        return Number(b.confidence || 0) - Number(a.confidence || 0)
-      })
-      for (const row of olderRows) {
-        database.prepare(`
-          UPDATE memory_observations
-          SET status = 'superseded', updated_at = ?
-          WHERE id = ? AND status = 'active'
-        `).run(now, row.id)
-        appendMemoryEvent(database, row.id, 'conflict', {
-          supersededBy: keeper.id,
-          reason: 'singleton observation slot reconciliation',
-          entityId: row.entity_id,
-          kind: row.kind,
-          slot: row.slot,
-        })
-        superseded++
-      }
-    }
-  })
-  tx()
-  if (superseded > 0) {
-    logMemoryDiagnostic({
-      subsystem: 'graph',
-      operation: 'singleton-reconcile',
-      stage: 'finish',
-      status: 'ok',
-      response: { superseded },
-      summary: `Superseded ${superseded} duplicate singleton graph observations.`,
-    })
-  }
-  return superseded
-}
-
-async function upsertGraphRelation(
-  workspace: MemoryWorkspace,
-  input: GraphRelationInput,
-  options: { settings?: AppSettings; action?: CanonicalMemoryAuditEvent['action'] } = {},
-): Promise<{ relation: MemoryGraphRelation; action: 'create' | 'update' | 'duplicate' }> {
-  const database = getDb(workspace)
-  const now = Date.now()
-  const relationType = normalizeRelationType(input.relationType)
-  if (input.id) {
-    const existingById = getGraphRelationById(workspace, input.id, true)
-    if (existingById) {
-      const fromEntity = getGraphEntityById(workspace, input.fromEntityId, true)
-      const toEntity = getGraphEntityById(workspace, input.toEntityId, true)
-      const text = normalizeBulletText(input.text || `${fromEntity?.displayName || input.fromEntityId} ${relationType.replace(/_/g, ' ')} ${toEntity?.displayName || input.toEntityId}.`)
-      const confidence = Math.max(0, Math.min(1, input.confidence ?? existingById.confidence))
-      const embedding = await graphEmbedding(options.settings, `${input.fromEntityId}\n${relationType}\n${input.toEntityId}\n${text}`)
-      const updated: MemoryGraphRelation = {
-        ...existingById,
-        fromEntityId: input.fromEntityId,
-        fromDisplayName: fromEntity?.displayName,
-        relationType,
-        toEntityId: input.toEntityId,
-        toDisplayName: toEntity?.displayName,
-        text,
-        confidence,
-        sensitivity: input.sensitivity || existingById.sensitivity,
-        source: input.source || existingById.source,
-        evidence: input.evidence || existingById.evidence,
-        sessionId: input.sessionId || existingById.sessionId,
-        messageId: input.messageId || existingById.messageId,
-        status: normalizeGraphStatus(input.status || existingById.status),
-        updatedAt: now,
-        deletedAt: undefined,
-      }
-      const tx = database.transaction(() => {
-        database.prepare(`
-          UPDATE memory_relations SET
-            from_entity_id = ?, relation_type = ?, to_entity_id = ?, text = ?, confidence = ?,
-            sensitivity = ?, source = ?, evidence = ?, session_id = ?, message_id = ?, status = ?,
-            embedding_json = COALESCE(?, embedding_json),
-            embedding_provider = COALESCE(?, embedding_provider),
-            embedding_model = COALESCE(?, embedding_model),
-            updated_at = ?, deleted_at = NULL
-          WHERE id = ?
-        `).run(
-          updated.fromEntityId,
-          updated.relationType,
-          updated.toEntityId,
-          updated.text,
-          updated.confidence,
-          updated.sensitivity,
-          updated.source,
-          updated.evidence || null,
-          updated.sessionId || null,
-          updated.messageId || null,
-          updated.status,
-          embedding.embedding ? JSON.stringify(embedding.embedding) : null,
-          embedding.provider || null,
-          embedding.model || null,
-          updated.updatedAt,
-          updated.id,
-        )
-        syncGraphFts(database, 'relation', updated.id, `${updated.fromEntityId}\n${updated.relationType}\n${updated.toEntityId}\n${updated.text}`)
-        appendGraphEvidence(database, 'relation', updated.id, input)
-        appendMemoryEvent(database, updated.id, options.action || 'update', { input, previous: existingById })
-      })
-      tx()
-      return { relation: updated, action: 'update' }
-    }
-  }
-  const existing = database.prepare(`
-    SELECT r.*, from_e.display_name AS from_display_name, to_e.display_name AS to_display_name
-    FROM memory_relations r
-    LEFT JOIN memory_entities from_e ON from_e.id = r.from_entity_id
-    LEFT JOIN memory_entities to_e ON to_e.id = r.to_entity_id
-    WHERE r.from_entity_id = ? AND r.relation_type = ? AND r.to_entity_id = ?
-      AND r.deleted_at IS NULL AND r.status = 'active'
-    LIMIT 1
-  `).get(input.fromEntityId, relationType, input.toEntityId) as any
-  if (existing) {
-    const relation = rowToGraphRelation(existing)
-    appendMemoryEvent(database, relation.id, 'duplicate', { input })
-    appendGraphEvidence(database, 'relation', relation.id, input)
-    return { relation, action: 'duplicate' }
-  }
-
-  const fromEntity = getGraphEntityById(workspace, input.fromEntityId, true)
-  const toEntity = getGraphEntityById(workspace, input.toEntityId, true)
-  const text = normalizeBulletText(input.text || `${fromEntity?.displayName || input.fromEntityId} ${relationType.replace(/_/g, ' ')} ${toEntity?.displayName || input.toEntityId}.`)
-  const confidence = Math.max(0, Math.min(1, input.confidence ?? workspace.settings.canonicalMemory.highConfidenceThreshold))
-  const id = sha(`${input.fromEntityId}:${relationType}:${input.toEntityId}`)
-  const embedding = await graphEmbedding(options.settings, `${input.fromEntityId}\n${relationType}\n${input.toEntityId}\n${text}`)
-  const relation: MemoryGraphRelation = {
-    id,
-    fromEntityId: input.fromEntityId,
-    fromDisplayName: fromEntity?.displayName,
-    relationType,
-    toEntityId: input.toEntityId,
-    toDisplayName: toEntity?.displayName,
-    text,
-    confidence,
-    sensitivity: input.sensitivity || 'normal',
-    source: input.source,
-    evidence: input.evidence,
-    sessionId: input.sessionId,
-    messageId: input.messageId,
-    status: normalizeGraphStatus(input.status),
-    createdAt: now,
-    updatedAt: now,
-  }
-  const tx = database.transaction(() => {
-    database.prepare(`
-      INSERT INTO memory_relations (
-        id, from_entity_id, relation_type, to_entity_id, text, confidence, sensitivity, source,
-        evidence, session_id, message_id, status, embedding_json, embedding_provider, embedding_model,
-        created_at, updated_at, deleted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
-    `).run(
-      relation.id,
-      relation.fromEntityId,
-      relation.relationType,
-      relation.toEntityId,
-      relation.text,
-      relation.confidence,
-      relation.sensitivity,
-      relation.source,
-      relation.evidence || null,
-      relation.sessionId || null,
-      relation.messageId || null,
-      relation.status,
-      embedding.embedding ? JSON.stringify(embedding.embedding) : null,
-      embedding.provider || null,
-      embedding.model || null,
-      relation.createdAt,
-      relation.updatedAt,
-    )
-    syncGraphFts(database, 'relation', relation.id, `${relation.fromEntityId}\n${relation.relationType}\n${relation.toEntityId}\n${relation.text}`)
-    appendGraphEvidence(database, 'relation', relation.id, input)
-    appendMemoryEvent(database, relation.id, options.action || 'create', { input })
-  })
-  tx()
-  return { relation, action: 'create' }
-}
-
-function getGraphEntityById(workspace: MemoryWorkspace, id: string, includeDeleted = false): MemoryGraphEntity | null {
-  const row = getDb(workspace).prepare(`
-    SELECT * FROM memory_entities WHERE id = ? AND (${includeDeleted ? '1 = 1' : 'deleted_at IS NULL'}) LIMIT 1
-  `).get(id) as any
-  return row ? rowToGraphEntity(row) : null
-}
-
-function getGraphObservationById(workspace: MemoryWorkspace, id: string, includeDeleted = false): MemoryGraphObservation | null {
-  const row = getDb(workspace).prepare(`
-    SELECT o.*, e.display_name AS entity_display_name
-    FROM memory_observations o
-    LEFT JOIN memory_entities e ON e.id = o.entity_id
-    WHERE o.id = ? AND (${includeDeleted ? '1 = 1' : 'o.deleted_at IS NULL'})
-    LIMIT 1
-  `).get(id) as any
-  return row ? rowToGraphObservation(row) : null
-}
-
-function getGraphRelationById(workspace: MemoryWorkspace, id: string, includeDeleted = false): MemoryGraphRelation | null {
-  const row = getDb(workspace).prepare(`
-    SELECT r.*, from_e.display_name AS from_display_name, to_e.display_name AS to_display_name
-    FROM memory_relations r
-    LEFT JOIN memory_entities from_e ON from_e.id = r.from_entity_id
-    LEFT JOIN memory_entities to_e ON to_e.id = r.to_entity_id
-    WHERE r.id = ? AND (${includeDeleted ? '1 = 1' : 'r.deleted_at IS NULL'})
-    LIMIT 1
-  `).get(id) as any
-  return row ? rowToGraphRelation(row) : null
-}
-
-function getGraphMemoryByIdentifier(
-  workspace: MemoryWorkspace,
-  identifier: string,
-  includeDeleted = false,
-): { type: 'entity'; value: MemoryGraphEntity } | { type: 'observation'; value: MemoryGraphObservation } | { type: 'relation'; value: MemoryGraphRelation } | null {
-  const clean = identifier.trim()
-  if (!clean) return null
-  const observationId = clean.replace(/^observation:/i, '')
-  if (observationId !== clean || clean.startsWith('obs:')) {
-    const id = clean.startsWith('obs:') ? clean.replace(/^obs:/i, '') : observationId
-    const observation = getGraphObservationById(workspace, id, includeDeleted)
-    return observation ? { type: 'observation', value: observation } : null
-  }
-  const relationId = clean.replace(/^relation:/i, '')
-  if (relationId !== clean || clean.startsWith('rel:')) {
-    const id = clean.startsWith('rel:') ? clean.replace(/^rel:/i, '') : relationId
-    const relation = getGraphRelationById(workspace, id, includeDeleted)
-    return relation ? { type: 'relation', value: relation } : null
-  }
-  const entityId = clean.replace(/^entity:/i, '')
-  const entity = getGraphEntityById(workspace, entityId, includeDeleted)
-  return entity ? { type: 'entity', value: entity } : null
-}
-
-function graphEntityLabel(workspace: MemoryWorkspace, id: string): string {
-  return getGraphEntityById(workspace, id, true)?.displayName || id
-}
-
-function graphSearchContent(workspace: MemoryWorkspace, owner: ReturnType<typeof getGraphMemoryByIdentifier>): string {
-  if (!owner) return ''
-  if (owner.type === 'entity') {
-    const entity = owner.value
-    return `${entity.id}: ${entity.displayName} (${entity.entityType})${entity.aliases.length ? ` aliases: ${entity.aliases.join(', ')}` : ''}`
-  }
-  if (owner.type === 'observation') {
-    const observation = owner.value
-    return `${observation.entityDisplayName || graphEntityLabel(workspace, observation.entityId)} ${observation.slot}: ${observation.text}`
-  }
-  const relation = owner.value
-  return `${relation.fromDisplayName || graphEntityLabel(workspace, relation.fromEntityId)} --${relation.relationType}--> ${relation.toDisplayName || graphEntityLabel(workspace, relation.toEntityId)}: ${relation.text}`
-}
-
-function getGraphOverview(workspace: MemoryWorkspace): MemoryGraphOverview {
-  const database = getDb(workspace)
-  const userEntity = ensureUserSelfEntity(workspace)
-  const entities = database.prepare('SELECT COUNT(*) AS count FROM memory_entities WHERE deleted_at IS NULL').get() as { count: number }
-  const observations = database.prepare(`
-    SELECT COUNT(*) AS count FROM memory_observations WHERE deleted_at IS NULL AND status = 'active'
-  `).get() as { count: number }
-  const relations = database.prepare(`
-    SELECT COUNT(*) AS count FROM memory_relations WHERE deleted_at IS NULL AND status = 'active'
-  `).get() as { count: number }
-  const pendingDuplicates = database.prepare(`
-    SELECT COUNT(*) AS count FROM memory_possible_duplicates WHERE status = 'pending'
-  `).get() as { count: number }
-  return {
-    entities: entities.count,
-    observations: observations.count,
-    relations: relations.count,
-    pendingDuplicates: pendingDuplicates.count,
-    userEntity,
-  }
-}
-
-function listGraphEntities(options: {
-  workspace: MemoryWorkspace
-  query?: string
-  includeDeleted?: boolean
-  limit?: number
-}): MemoryGraphEntity[] {
-  const database = getDb(options.workspace)
-  const limit = Math.max(1, Math.min(500, options.limit || 200))
-  const includeDeleted = options.includeDeleted === true
-  const query = options.query?.trim()
-  if (query) {
-    const like = `%${query.replace(/[%_]/g, '')}%`
-    const rows = database.prepare(`
-      SELECT *
-      FROM memory_entities
-      WHERE (${includeDeleted ? '1 = 1' : 'deleted_at IS NULL'})
-        AND (id LIKE ? OR entity_type LIKE ? OR name LIKE ? OR display_name LIKE ? OR aliases_json LIKE ?)
-      ORDER BY entity_type ASC, updated_at DESC
-      LIMIT ?
-    `).all(like, like, like, like, like, limit) as any[]
-    return rows.map(rowToGraphEntity)
-  }
-  const rows = database.prepare(`
-    SELECT *
-    FROM memory_entities
-    WHERE ${includeDeleted ? '1 = 1' : 'deleted_at IS NULL'}
-    ORDER BY
-      CASE entity_type
-        WHEN 'user' THEN 0
-        WHEN 'project' THEN 1
-        WHEN 'component' THEN 2
-        WHEN 'tech' THEN 3
-        WHEN 'decision' THEN 4
-        ELSE 5
-      END,
-      updated_at DESC
-    LIMIT ?
-  `).all(limit) as any[]
-  return rows.map(rowToGraphEntity)
-}
-
-function listGraphObservations(options: {
-  workspace: MemoryWorkspace
-  query?: string
-  includeDeleted?: boolean
-  limit?: number
-  entityId?: string
-}): MemoryGraphObservation[] {
-  const database = getDb(options.workspace)
-  const limit = Math.max(1, Math.min(500, options.limit || 200))
-  const includeDeleted = options.includeDeleted === true
-  const query = options.query?.trim()
-  const clauses = [includeDeleted ? '1 = 1' : 'o.deleted_at IS NULL']
-  const params: unknown[] = []
-  if (options.entityId) {
-    clauses.push('o.entity_id = ?')
-    params.push(options.entityId)
-  }
-  if (query) {
-    const like = `%${query.replace(/[%_]/g, '')}%`
-    clauses.push('(o.id LIKE ? OR o.entity_id LIKE ? OR o.kind LIKE ? OR o.slot LIKE ? OR o.value LIKE ? OR o.text LIKE ? OR e.display_name LIKE ?)')
-    params.push(like, like, like, like, like, like, like)
-  }
-  const rows = database.prepare(`
-    SELECT o.*, e.display_name AS entity_display_name
-    FROM memory_observations o
-    LEFT JOIN memory_entities e ON e.id = o.entity_id
-    WHERE ${clauses.join(' AND ')}
-    ORDER BY
-      CASE o.entity_id WHEN '${USER_SELF_ENTITY_ID}' THEN 0 ELSE 1 END,
-      CASE o.kind
-        WHEN 'identity' THEN 0
-        WHEN 'preference' THEN 1
-        WHEN 'constraint' THEN 2
-        WHEN 'decision' THEN 3
-        WHEN 'project' THEN 4
-        ELSE 5
-      END,
-      o.updated_at DESC
-    LIMIT ?
-  `).all(...params, limit) as any[]
-  return rows.map(rowToGraphObservation)
-}
-
-function listGraphRelations(options: {
-  workspace: MemoryWorkspace
-  query?: string
-  includeDeleted?: boolean
-  limit?: number
-  entityId?: string
-}): MemoryGraphRelation[] {
-  const database = getDb(options.workspace)
-  const limit = Math.max(1, Math.min(500, options.limit || 200))
-  const includeDeleted = options.includeDeleted === true
-  const query = options.query?.trim()
-  const clauses = [includeDeleted ? '1 = 1' : 'r.deleted_at IS NULL']
-  const params: unknown[] = []
-  if (options.entityId) {
-    clauses.push('(r.from_entity_id = ? OR r.to_entity_id = ?)')
-    params.push(options.entityId, options.entityId)
-  }
-  if (query) {
-    const like = `%${query.replace(/[%_]/g, '')}%`
-    clauses.push('(r.id LIKE ? OR r.from_entity_id LIKE ? OR r.relation_type LIKE ? OR r.to_entity_id LIKE ? OR r.text LIKE ? OR from_e.display_name LIKE ? OR to_e.display_name LIKE ?)')
-    params.push(like, like, like, like, like, like, like)
-  }
-  const rows = database.prepare(`
-    SELECT r.*, from_e.display_name AS from_display_name, to_e.display_name AS to_display_name
-    FROM memory_relations r
-    LEFT JOIN memory_entities from_e ON from_e.id = r.from_entity_id
-    LEFT JOIN memory_entities to_e ON to_e.id = r.to_entity_id
-    WHERE ${clauses.join(' AND ')}
-    ORDER BY r.updated_at DESC
-    LIMIT ?
-  `).all(...params, limit) as any[]
-  return rows.map(rowToGraphRelation)
-}
-
-function listGraphDuplicates(options: {
-  workspace: MemoryWorkspace
-  query?: string
-  limit?: number
-}): MemoryGraphDuplicate[] {
-  const database = getDb(options.workspace)
-  const limit = Math.max(1, Math.min(500, options.limit || 200))
-  const query = options.query?.trim()
-  if (query) {
-    const like = `%${query.replace(/[%_]/g, '')}%`
-    const rows = database.prepare(`
-      SELECT * FROM memory_possible_duplicates
-      WHERE status = 'pending' AND (kind LIKE ? OR source_id LIKE ? OR target_id LIKE ? OR reason LIKE ?)
-      ORDER BY score DESC, updated_at DESC
-      LIMIT ?
-    `).all(like, like, like, like, limit) as any[]
-    return rows.map(rowToGraphDuplicate)
-  }
-  const rows = database.prepare(`
-    SELECT * FROM memory_possible_duplicates
-    WHERE status = 'pending'
-    ORDER BY score DESC, updated_at DESC
-    LIMIT ?
-  `).all(limit) as any[]
-  return rows.map(rowToGraphDuplicate)
-}
-
-function graphSlotFromCandidate(candidate: CaptureCandidate, kind: MemoryGraphObservationKind, value: string): string {
-  if (candidate.slot?.trim()) return normalizeRelationType(candidate.slot)
-  const memoryKey = candidate.memoryKey ? sanitizeMemoryKey(candidate.memoryKey) : ''
-  if (memoryKey === 'user.name' || memoryKey === 'user.identity.name') return 'name'
-  if (memoryKey.includes('language')) return 'language_preference'
-  if (memoryKey.includes('response') || memoryKey.includes('style') || memoryKey.includes('tone')) return 'response_style_preference'
-  if (memoryKey.includes('call') || memoryKey.includes('nickname')) return 'call_sign'
-  if (kind === 'identity' && looksLikeNameValue(value)) return 'name'
-  if (kind === 'preference' && /language|中文|chinese|english|英文/i.test(`${candidate.text} ${value}`)) return 'language_preference'
-  if (kind === 'preference' && /style|tone|response|回答|风格/i.test(`${candidate.text} ${value}`)) return 'response_style_preference'
-  if (kind === 'preference') return `preference_${slugifyMemoryKeyPart(value).replace(/\./g, '_')}`
-  if (kind === 'constraint') return `constraint_${slugifyMemoryKeyPart(value).replace(/\./g, '_')}`
-  if (kind === 'decision') return `decision_${slugifyMemoryKeyPart(value).replace(/\./g, '_')}`
-  if (kind === 'project') return `project_${slugifyMemoryKeyPart(value).replace(/\./g, '_')}`
-  return `${kind}_${slugifyMemoryKeyPart(value).replace(/\./g, '_')}`
-}
-
-function graphEntityInput(options: GraphEvidenceInput & {
-  entityType: MemoryGraphEntityType
-  name: string
-  displayName?: string
-  confidence?: number
-  sensitivity?: 'normal' | 'sensitive' | 'secret'
-}): GraphEntityInput {
-  const entityType = normalizeEntityType(options.entityType)
-  const name = graphDisplayName(options.name)
-  if (entityType === 'user' || (entityType === 'person' && /^(self|user|the user|me|用户)$/i.test(name))) {
-    return {
-      ...options,
-      id: USER_SELF_ENTITY_ID,
-      entityType: 'user',
-      name: 'self',
-      displayName: options.displayName || 'User',
-    }
-  }
-  return {
-    ...options,
-    entityType,
-    name,
-    displayName: graphDisplayName(options.displayName || options.name),
-  }
-}
-
-function graphInputsFromCandidate(
-  candidate: CaptureCandidate,
-  options: GraphEvidenceInput,
-): { entities: GraphEntityInput[]; observations: GraphObservationInput[]; relations: GraphRelationInput[] } | null {
-  if (!isDurableCandidate(candidate) || candidate.kind === 'ignore') return null
-  const kind = normalizeObservationKind(canonicalKindFromCaptureKind(candidate.kind))
-  const value = normalizeBulletText(candidate.value || extractCandidateValue(candidate.text))
-  const text = normalizeBulletText(candidate.text || value)
-  if (!value || !text) return null
-
-  const entities: GraphEntityInput[] = []
-  const observations: GraphObservationInput[] = []
-  const relations: GraphRelationInput[] = []
-  const confidence = candidate.confidence
-  const sensitivity = candidate.sensitivity || 'normal'
-
-  const relationType = candidate.relationType?.trim()
-  const toName = candidate.toEntityName?.trim()
-  if (relationType && toName) {
-    const fromEntity = graphEntityInput({
-      ...options,
-      entityType: candidate.fromEntityType || 'user',
-      name: candidate.fromEntityName || 'self',
-      confidence,
-      sensitivity,
-    })
-    const toEntity = graphEntityInput({
-      ...options,
-      entityType: candidate.toEntityType || candidate.entityType || (candidate.kind === 'project' || candidate.kind === 'decision' ? 'project' : 'concept'),
-      name: toName,
-      confidence,
-      sensitivity,
-    })
-    entities.push(fromEntity, toEntity)
-    relations.push({
-      ...options,
-      fromEntityId: fromEntity.id || entityIdFor(fromEntity.entityType, fromEntity.name),
-      relationType,
-      toEntityId: toEntity.id || entityIdFor(toEntity.entityType, toEntity.name),
-      text,
-      confidence,
-      sensitivity,
-      status: 'active',
-    })
-  }
-
-  let observationEntity: GraphEntityInput
-  const userScoped = candidate.kind === 'identity' ||
-    candidate.kind === 'preference' ||
-    candidate.kind === 'constraint' ||
-    Boolean(candidate.memoryKey && sanitizeMemoryKey(candidate.memoryKey).startsWith('user.'))
-  if (userScoped) {
-    observationEntity = graphEntityInput({
-      ...options,
-      entityType: 'user',
-      name: 'self',
-      confidence: 1,
-      sensitivity: 'normal',
-    })
-  } else if (candidate.entityName && candidate.entityType && candidate.entityType !== 'user') {
-    observationEntity = graphEntityInput({
-      ...options,
-      entityType: candidate.entityType,
-      name: candidate.entityName,
-      confidence,
-      sensitivity,
-    })
-  } else if ((candidate.kind === 'project' || candidate.kind === 'decision') && candidate.entityName) {
-    observationEntity = graphEntityInput({
-      ...options,
-      entityType: 'project',
-      name: candidate.entityName,
-      confidence,
-      sensitivity,
-    })
-  } else {
-    observationEntity = graphEntityInput({
-      ...options,
-      entityType: 'user',
-      name: 'self',
-      confidence: 1,
-      sensitivity: 'normal',
-    })
-  }
-
-  entities.push(observationEntity)
-  observations.push({
-    ...options,
-    entityId: observationEntity.id || entityIdFor(observationEntity.entityType, observationEntity.name),
-    kind,
-    slot: graphSlotFromCandidate(candidate, kind, value),
-    value,
-    text: candidate.memoryKey === 'user.name' || (kind === 'identity' && looksLikeNameValue(value))
-      ? `User's name is ${value}.`
-      : text,
-    confidence,
-    sensitivity,
-    status: 'active',
-  })
-
-  return { entities, observations, relations }
-}
-
-async function upsertGraphCandidates(options: {
-  settings?: AppSettings
-  workspace: MemoryWorkspace
-  candidates: CaptureCandidate[]
-  source: string
-  evidence?: string
-  sessionId?: string
-  messageId?: string
-  action?: CanonicalMemoryAuditEvent['action']
-}): Promise<GraphMergeResult> {
-  const entities = new Map<string, GraphEntityInput>()
-  const observations: GraphObservationInput[] = []
-  const relations: GraphRelationInput[] = []
-  const evidence: GraphEvidenceInput = {
-    source: options.source,
-    evidence: options.evidence,
-    sessionId: options.sessionId,
-    messageId: options.messageId,
-  }
-
-  ensureUserSelfEntity(options.workspace)
-  for (const candidate of options.candidates) {
-    const graph = graphInputsFromCandidate(candidate, evidence)
-    if (!graph) continue
-    for (const entity of graph.entities) {
-      const id = entity.id || entityIdFor(entity.entityType, entity.name)
-      entities.set(id, { ...entity, id })
-    }
-    observations.push(...graph.observations)
-    relations.push(...graph.relations)
-  }
-
-  let applied = 0
-  let updated = 0
-  let duplicates = 0
-  let conflicts = 0
-  const savedEntities: MemoryGraphEntity[] = []
-  const savedObservations: MemoryGraphObservation[] = []
-  const savedRelations: MemoryGraphRelation[] = []
-
-  for (const entity of entities.values()) {
-    const result = upsertGraphEntity(options.workspace, entity, { settings: options.settings, action: options.action })
-    savedEntities.push(result.entity)
-    if (result.action === 'create') applied++
-    else if (result.action === 'update') updated++
-    else duplicates++
-  }
-
-  const seenObservations = new Set<string>()
-  for (const observation of observations) {
-    const key = `${observation.entityId}:${normalizeRelationType(observation.slot)}:${normalizeForDedupe(observation.value)}`
-    if (seenObservations.has(key)) {
-      duplicates++
-      continue
-    }
-    seenObservations.add(key)
-    const result = await upsertGraphObservation(options.workspace, observation, {
-      settings: options.settings,
-      action: options.action,
-    })
-    savedObservations.push(result.observation)
-    if (result.action === 'create') applied++
-    else if (result.action === 'update') updated++
-    else if (result.action === 'conflict') conflicts++
-    else duplicates++
-  }
-
-  const seenRelations = new Set<string>()
-  for (const relation of relations) {
-    const key = `${relation.fromEntityId}:${normalizeRelationType(relation.relationType)}:${relation.toEntityId}`
-    if (seenRelations.has(key)) {
-      duplicates++
-      continue
-    }
-    seenRelations.add(key)
-    const result = await upsertGraphRelation(options.workspace, relation, {
-      settings: options.settings,
-      action: options.action,
-    })
-    savedRelations.push(result.relation)
-    if (result.action === 'create') applied++
-    else if (result.action === 'update') updated++
-    else duplicates++
-  }
-
-  return {
-    applied,
-    updated,
-    duplicates,
-    conflicts,
-    entities: savedEntities,
-    observations: savedObservations,
-    relations: savedRelations,
-  }
-}
-
-async function mergeGraphMemory(options: {
-  settings?: AppSettings
-  agentId?: string
-  candidates: Array<Pick<CaptureCandidate, 'kind' | 'text'> & Partial<CaptureCandidate>>
-  source?: string
-  evidence?: string
-  sessionId?: string
-  messageId?: string
-  action?: CanonicalMemoryAuditEvent['action']
-}): Promise<{ absolutePath: string; relativePath: string; applied: number; skipped: number; updated: number; conflicts: number }> {
-  const startedAt = Date.now()
-  const workspace = await ensureWorkspace(options.settings, options.agentId || resolveSessionAgentId(options.sessionId))
-  if (!workspace.settings.enabled) {
-    throw new Error('Soul-memory is disabled in settings')
-  }
-  if (!workspace.settings.canonicalMemory.enabled) {
-    throw new Error('Graph memory is disabled in settings')
-  }
-  const candidates = options.candidates.map(candidate => ({
-    kind: candidate.kind as CaptureCandidateKind,
-    source: candidate.source || 'conversation',
-    confidence: candidate.confidence ?? workspace.settings.canonicalMemory.highConfidenceThreshold,
-    text: candidate.text,
-    ...(candidate.memoryKey ? { memoryKey: candidate.memoryKey } : {}),
-    ...(candidate.value ? { value: candidate.value } : {}),
-    ...(candidate.entityType ? { entityType: candidate.entityType } : {}),
-    ...(candidate.entityName ? { entityName: candidate.entityName } : {}),
-    ...(candidate.slot ? { slot: candidate.slot } : {}),
-    ...(candidate.relationType ? { relationType: candidate.relationType } : {}),
-    ...(candidate.fromEntityType ? { fromEntityType: candidate.fromEntityType } : {}),
-    ...(candidate.fromEntityName ? { fromEntityName: candidate.fromEntityName } : {}),
-    ...(candidate.toEntityType ? { toEntityType: candidate.toEntityType } : {}),
-    ...(candidate.toEntityName ? { toEntityName: candidate.toEntityName } : {}),
-    sensitivity: candidate.sensitivity || 'normal',
-    target: 'memory' as const,
-    explicit: candidate.explicit,
-  }))
-  logMemoryDiagnostic({
-    subsystem: 'graph',
-    operation: 'merge-memory',
-    stage: 'start',
-    status: 'started',
-    sessionId: options.sessionId,
-    request: {
-      source: options.source || 'manual',
-      candidates: candidates.length,
-      action: options.action || 'upsert',
-    },
-  })
-  const result = await upsertGraphCandidates({
-    settings: options.settings,
-    workspace,
-    candidates,
-    source: options.source || 'manual',
-    evidence: options.evidence,
-    sessionId: options.sessionId,
-    messageId: options.messageId,
-    action: options.action,
-  })
-  logMemoryDiagnostic({
-    subsystem: 'graph',
-    operation: 'merge-memory',
-    stage: 'finish',
-    status: 'ok',
-    durationMs: Date.now() - startedAt,
-    sessionId: options.sessionId,
-    response: {
-      source: options.source || 'manual',
-      created: result.applied,
-      updated: result.updated,
-      duplicates: result.duplicates,
-      conflicts: result.conflicts,
-      entities: result.entities.length,
-      observations: result.observations.length,
-      relations: result.relations.length,
-    },
-  })
-  return {
-    absolutePath: workspace.dbPath,
-    relativePath: 'graph memory',
-    applied: result.applied + result.updated + result.conflicts,
-    skipped: result.duplicates,
-    updated: result.updated,
-    conflicts: result.conflicts,
-  }
-}
-
-function deriveCanonicalMemoryInput(
-  candidate: CaptureCandidate,
-  options: {
-    source: string
-    evidence?: string
-    sessionId?: string
-    messageId?: string
-  },
-): CanonicalMemoryInput | null {
-  if (!isDurableCandidate(candidate) || candidate.kind === 'ignore') return null
-  const kind = canonicalKindFromCaptureKind(candidate.kind)
-  const rawValue = normalizeBulletText(candidate.value || extractCandidateValue(candidate.text))
-  if (!rawValue) return null
-  let memoryKey = candidate.memoryKey ? sanitizeMemoryKey(candidate.memoryKey) : ''
-  const subject = kind === 'project' || kind === 'decision' ? 'project' : 'user'
-
-  if (!memoryKey) {
-    if (kind === 'identity') {
-      memoryKey = looksLikeNameValue(rawValue) ? 'user.name' : `user.identity.${slugifyMemoryKeyPart(rawValue)}`
-    } else if (kind === 'preference') {
-      memoryKey = `user.preference.${slugifyMemoryKeyPart(rawValue)}`
-    } else if (kind === 'constraint') {
-      memoryKey = `user.constraint.${slugifyMemoryKeyPart(rawValue)}`
-    } else if (kind === 'decision') {
-      memoryKey = `project.decision.${slugifyMemoryKeyPart(rawValue)}`
-    } else if (kind === 'project') {
-      memoryKey = `project.fact.${slugifyMemoryKeyPart(rawValue)}`
-    } else {
-      memoryKey = `user.fact.${slugifyMemoryKeyPart(rawValue)}`
-    }
-  }
-
-  const text = memoryKey === 'user.name'
-    ? `User's name is ${rawValue}.`
-    : normalizeBulletText(candidate.text)
-  return {
-    memoryKey,
-    kind,
-    subject,
-    value: rawValue,
-    text,
-    confidence: candidate.confidence,
-    sensitivity: candidate.sensitivity || 'normal',
-    source: options.source,
-    evidence: options.evidence,
-    sessionId: options.sessionId,
-    messageId: options.messageId,
-  }
-}
-
-function rowToCanonicalMemory(row: any): CanonicalMemoryRecord {
-  return {
-    id: row.id,
-    memoryKey: row.memory_key,
-    kind: row.kind,
-    subject: row.subject,
-    value: row.value,
-    text: row.text,
-    confidence: row.confidence,
-    sensitivity: row.sensitivity || 'normal',
-    source: row.source,
-    evidence: row.evidence || undefined,
-    sessionId: row.session_id || undefined,
-    messageId: row.message_id || undefined,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at || undefined,
-  }
-}
-
-function rowToCanonicalAuditEvent(row: any): CanonicalMemoryAuditEvent {
-  let payload: Record<string, unknown> = {}
-  try {
-    payload = JSON.parse(row.payload_json || '{}') as Record<string, unknown>
-  } catch {
-    payload = {}
-  }
-  return {
-    id: row.id,
-    memoryId: row.memory_id,
-    action: row.action,
-    createdAt: row.created_at,
-    payload,
-  }
-}
-
-function canonicalDisplayText(memory: CanonicalMemoryRecord): string {
-  return `${memory.memoryKey}: ${memory.text}`
-}
-
-function canonicalTokens(value: string): Set<string> {
-  return new Set(
-    value
-      .normalize('NFKC')
-      .toLowerCase()
-      .match(/[\p{L}\p{N}_-]+/gu) || [],
-  )
-}
-
-function tokenJaccard(left: string, right: string): number {
-  const a = canonicalTokens(left)
-  const b = canonicalTokens(right)
-  if (a.size === 0 || b.size === 0) return 0
-  let overlap = 0
-  for (const token of a) {
-    if (b.has(token)) overlap++
-  }
-  return overlap / (a.size + b.size - overlap)
-}
+// Canonical memory CRUD extracted to ../../memory/canonical.ts
 
 async function canonicalEmbedding(
   settings: AppSettings | undefined,
@@ -3172,421 +1145,6 @@ async function canonicalEmbedding(
     })
     return {}
   }
-}
-
-function syncCanonicalFts(database: Database.Database, memory: CanonicalMemoryRecord): void {
-  database.prepare('DELETE FROM canonical_memories_fts WHERE id = ?').run(memory.id)
-  if (!memory.deletedAt) {
-    database.prepare('INSERT INTO canonical_memories_fts (id, memory_key, text, value) VALUES (?, ?, ?, ?)').run(
-      memory.id,
-      memory.memoryKey,
-      memory.text,
-      memory.value,
-    )
-  }
-}
-
-function appendCanonicalAudit(
-  database: Database.Database,
-  memoryId: string,
-  action: CanonicalMemoryAuditEvent['action'],
-  payload: Record<string, unknown>,
-): void {
-  const createdAt = Date.now()
-  database.prepare(`
-    INSERT INTO memory_events (id, memory_id, action, created_at, payload_json)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(
-    sha(`${memoryId}:${action}:${createdAt}:${JSON.stringify(payload)}`),
-    memoryId,
-    action,
-    createdAt,
-    JSON.stringify(payload),
-  )
-}
-
-function findCanonicalDuplicate(
-  database: Database.Database,
-  input: CanonicalMemoryInput & { normalizedText: string; embedding?: number[] },
-  threshold: number,
-): CanonicalMemoryRecord | null {
-  const sameKey = database.prepare(`
-    SELECT * FROM canonical_memories WHERE memory_key = ? AND deleted_at IS NULL
-  `).get(input.memoryKey) as any
-  if (sameKey) return rowToCanonicalMemory(sameKey)
-
-  const rows = database.prepare(`
-    SELECT * FROM canonical_memories WHERE deleted_at IS NULL AND (kind = ? OR subject = ?)
-  `).all(input.kind, input.subject || 'user') as any[]
-  let best: { row: any; score: number } | null = null
-  for (const row of rows) {
-    const textScore = Math.max(
-      tokenJaccard(input.normalizedText, row.normalized_text || row.text),
-      normalizeForDedupe(input.normalizedText) === normalizeForDedupe(row.normalized_text || row.text) ? 1 : 0,
-    )
-    let vectorScore = 0
-    if (input.embedding && row.embedding_json) {
-      try {
-        vectorScore = (cosine(input.embedding, JSON.parse(row.embedding_json)) + 1) / 2
-      } catch {
-        vectorScore = 0
-      }
-    }
-    const score = Math.max(textScore, vectorScore)
-    if (score >= threshold && (!best || score > best.score)) {
-      best = { row, score }
-    }
-  }
-  return best ? rowToCanonicalMemory(best.row) : null
-}
-
-async function upsertCanonicalMemory(
-  workspace: MemoryWorkspace,
-  input: CanonicalMemoryInput,
-  options: { settings?: AppSettings; action?: CanonicalMemoryAuditEvent['action'] } = {},
-): Promise<CanonicalUpsertResult> {
-  if (!workspace.settings.canonicalMemory.enabled) {
-    throw new Error('Canonical memory is disabled in settings')
-  }
-  const database = getDb(workspace)
-  const now = Date.now()
-  const memoryKey = sanitizeMemoryKey(input.memoryKey || `user.fact.${slugifyMemoryKeyPart(input.value)}`)
-  const kind = input.kind
-  const subject = input.subject || (kind === 'project' || kind === 'decision' ? 'project' : 'user')
-  const value = normalizeBulletText(input.value)
-  const text = normalizeBulletText(input.text || value)
-  const normalizedText = normalizeForDedupe(`${memoryKey} ${text} ${value}`)
-  const confidence = Math.max(0, Math.min(1, input.confidence ?? workspace.settings.canonicalMemory.highConfidenceThreshold))
-  const sensitivity = input.sensitivity || 'normal'
-  const embedding = await canonicalEmbedding(options.settings, `${memoryKey}\n${text}\n${value}`)
-  const duplicate = findCanonicalDuplicate(
-    database,
-    {
-      ...input,
-      memoryKey,
-      kind,
-      subject,
-      value,
-      text,
-      normalizedText,
-      embedding: embedding.embedding,
-    },
-    workspace.settings.canonicalMemory.semanticDedupeThreshold,
-  )
-
-  const existing = duplicate
-  if (!existing) {
-    const id = sha(`${memoryKey}:${now}`)
-    const record: CanonicalMemoryRecord = {
-      id,
-      memoryKey,
-      kind,
-      subject,
-      value,
-      text,
-      confidence,
-      sensitivity,
-      source: input.source || 'capture',
-      evidence: input.evidence,
-      sessionId: input.sessionId,
-      messageId: input.messageId,
-      createdAt: now,
-      updatedAt: now,
-    }
-    const tx = database.transaction(() => {
-      database.prepare(`
-        INSERT INTO canonical_memories (
-          id, memory_key, kind, subject, value, text, normalized_text, confidence,
-          sensitivity, source, evidence, session_id, message_id,
-          embedding_json, embedding_provider, embedding_model, created_at, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
-      `).run(
-        record.id,
-        record.memoryKey,
-        record.kind,
-        record.subject,
-        record.value,
-        record.text,
-        normalizedText,
-        record.confidence,
-        record.sensitivity,
-        record.source,
-        record.evidence || null,
-        record.sessionId || null,
-        record.messageId || null,
-        embedding.embedding ? JSON.stringify(embedding.embedding) : null,
-        embedding.provider || null,
-        embedding.model || null,
-        record.createdAt,
-        record.updatedAt,
-      )
-      syncCanonicalFts(database, record)
-      appendCanonicalAudit(database, record.id, options.action || 'create', { input })
-    })
-    tx()
-    return { memory: record, action: 'create' }
-  }
-
-  const shouldUpdate = existing.memoryKey === memoryKey ||
-    confidence > existing.confidence ||
-    normalizeForDedupe(existing.value) !== normalizeForDedupe(value)
-  if (!shouldUpdate) {
-    appendCanonicalAudit(database, existing.id, 'duplicate', { input, duplicateOf: existing.memoryKey })
-    return { memory: existing, action: 'duplicate' }
-  }
-
-  const record: CanonicalMemoryRecord = {
-    ...existing,
-    memoryKey: existing.memoryKey,
-    kind,
-    subject,
-    value,
-    text,
-    confidence: Math.max(existing.confidence, confidence),
-    sensitivity,
-    source: input.source || existing.source,
-    evidence: input.evidence || existing.evidence,
-    sessionId: input.sessionId || existing.sessionId,
-    messageId: input.messageId || existing.messageId,
-    updatedAt: now,
-    deletedAt: undefined,
-  }
-  const tx = database.transaction(() => {
-    database.prepare(`
-      UPDATE canonical_memories SET
-        kind = ?, subject = ?, value = ?, text = ?, normalized_text = ?, confidence = ?,
-        sensitivity = ?, source = ?, evidence = ?, session_id = ?, message_id = ?,
-        embedding_json = COALESCE(?, embedding_json),
-        embedding_provider = COALESCE(?, embedding_provider),
-        embedding_model = COALESCE(?, embedding_model),
-        updated_at = ?, deleted_at = NULL
-      WHERE id = ?
-    `).run(
-      record.kind,
-      record.subject,
-      record.value,
-      record.text,
-      normalizedText,
-      record.confidence,
-      record.sensitivity,
-      record.source,
-      record.evidence || null,
-      record.sessionId || null,
-      record.messageId || null,
-      embedding.embedding ? JSON.stringify(embedding.embedding) : null,
-      embedding.provider || null,
-      embedding.model || null,
-      record.updatedAt,
-      record.id,
-    )
-    syncCanonicalFts(database, record)
-    appendCanonicalAudit(database, record.id, options.action || 'update', { input, previous: existing })
-  })
-  tx()
-  return { memory: record, action: 'update' }
-}
-
-async function upsertCanonicalCandidates(options: {
-  settings?: AppSettings
-  workspace: MemoryWorkspace
-  candidates: CaptureCandidate[]
-  source: string
-  evidence?: string
-  sessionId?: string
-  messageId?: string
-  action?: CanonicalMemoryAuditEvent['action']
-}): Promise<{ applied: number; updated: number; duplicates: number; memories: CanonicalMemoryRecord[] }> {
-  let applied = 0
-  let updated = 0
-  let duplicates = 0
-  const memories: CanonicalMemoryRecord[] = []
-  const seen = new Set<string>()
-  for (const candidate of options.candidates) {
-    const input = deriveCanonicalMemoryInput(candidate, {
-      source: options.source,
-      evidence: options.evidence,
-      sessionId: options.sessionId,
-      messageId: options.messageId,
-    })
-    if (!input) continue
-    const seenKey = `${input.memoryKey}:${normalizeForDedupe(input.value)}`
-    if (seen.has(seenKey)) {
-      duplicates++
-      continue
-    }
-    seen.add(seenKey)
-    const result = await upsertCanonicalMemory(options.workspace, input, {
-      settings: options.settings,
-      action: options.action,
-    })
-    memories.push(result.memory)
-    if (result.action === 'create') applied++
-    else if (result.action === 'update') updated++
-    else duplicates++
-  }
-  return { applied, updated, duplicates, memories }
-}
-
-function listCanonicalMemories(options: {
-  workspace: MemoryWorkspace
-  query?: string
-  includeDeleted?: boolean
-  limit?: number
-}): CanonicalMemoryRecord[] {
-  const database = getDb(options.workspace)
-  const limit = Math.max(1, Math.min(500, options.limit || 200))
-  const includeDeleted = options.includeDeleted === true
-  const query = options.query?.trim()
-  if (query) {
-    const like = `%${query.replace(/[%_]/g, '')}%`
-    const rows = database.prepare(`
-      SELECT *
-      FROM canonical_memories
-      WHERE (${includeDeleted ? '1 = 1' : 'deleted_at IS NULL'})
-        AND (memory_key LIKE ? OR kind LIKE ? OR subject LIKE ? OR value LIKE ? OR text LIKE ?)
-      ORDER BY updated_at DESC
-      LIMIT ?
-    `).all(like, like, like, like, like, limit) as any[]
-    return rows.map(rowToCanonicalMemory)
-  }
-
-  const rows = database.prepare(`
-    SELECT *
-    FROM canonical_memories
-    WHERE ${includeDeleted ? '1 = 1' : 'deleted_at IS NULL'}
-    ORDER BY
-      CASE kind
-        WHEN 'identity' THEN 0
-        WHEN 'preference' THEN 1
-        WHEN 'constraint' THEN 2
-        WHEN 'decision' THEN 3
-        WHEN 'project' THEN 4
-        ELSE 5
-      END,
-      memory_key ASC,
-      updated_at DESC
-    LIMIT ?
-  `).all(limit) as any[]
-  return rows.map(rowToCanonicalMemory)
-}
-
-function getCanonicalMemoryCount(workspace: MemoryWorkspace): number {
-  const database = getDb(workspace)
-  const row = database.prepare(`
-    SELECT COUNT(*) AS count FROM canonical_memories WHERE deleted_at IS NULL
-  `).get() as { count: number }
-  return row.count
-}
-
-function getCanonicalMemoryByIdOrKey(
-  workspace: MemoryWorkspace,
-  identifier: string,
-  includeDeleted = false,
-): CanonicalMemoryRecord | null {
-  const clean = identifier
-    .replace(/^profile:/i, '')
-    .replace(/^canonical:/i, '')
-    .trim()
-  if (!clean) return null
-  const database = getDb(workspace)
-  const row = database.prepare(`
-    SELECT *
-    FROM canonical_memories
-    WHERE (id = ? OR memory_key = ?) AND (${includeDeleted ? '1 = 1' : 'deleted_at IS NULL'})
-    LIMIT 1
-  `).get(clean, sanitizeMemoryKey(clean)) as any
-  return row ? rowToCanonicalMemory(row) : null
-}
-
-function buildCanonicalProfileSummary(workspace: MemoryWorkspace): string | null {
-  if (!workspace.settings.canonicalMemory.enabled) return null
-  const memories = listCanonicalMemories({
-    workspace,
-    limit: 80,
-  })
-  if (memories.length === 0) return null
-  const grouped = new Map<CanonicalMemoryKind, CanonicalMemoryRecord[]>()
-  for (const memory of memories) {
-    const group = grouped.get(memory.kind) || []
-    group.push(memory)
-    grouped.set(memory.kind, group)
-  }
-  const labels: Record<CanonicalMemoryKind, string> = {
-    identity: 'Identity',
-    preference: 'Preferences',
-    constraint: 'Constraints',
-    decision: 'Decisions',
-    project: 'Project Context',
-    fact: 'Facts',
-  }
-  const parts: string[] = []
-  for (const kind of ['identity', 'preference', 'constraint', 'decision', 'project', 'fact'] as CanonicalMemoryKind[]) {
-    const items = grouped.get(kind) || []
-    if (items.length === 0) continue
-    parts.push(`## ${labels[kind]}`)
-    for (const item of items.slice(0, 24)) {
-      const confidence = Number.isFinite(item.confidence) ? ` (${item.confidence.toFixed(2)})` : ''
-      parts.push(`- ${item.memoryKey}: ${item.text}${confidence}`)
-    }
-    parts.push('')
-  }
-  return truncate(parts.join('\n').trim(), workspace.settings.bootstrapMaxChars)
-}
-
-function buildGraphProfileSummary(workspace: MemoryWorkspace): string | null {
-  if (!workspace.settings.canonicalMemory.enabled) return null
-  ensureUserSelfEntity(workspace)
-  const userObservations = listGraphObservations({
-    workspace,
-    entityId: USER_SELF_ENTITY_ID,
-    limit: 80,
-  }).filter(observation => observation.status === 'active')
-  const userRelations = listGraphRelations({
-    workspace,
-    entityId: USER_SELF_ENTITY_ID,
-    limit: 80,
-  }).filter(relation => relation.status === 'active')
-  const relatedProjectIds = new Set<string>()
-  for (const relation of userRelations) {
-    if (relation.fromEntityId === USER_SELF_ENTITY_ID && relation.toEntityId.startsWith('project:')) {
-      relatedProjectIds.add(relation.toEntityId)
-    }
-    if (relation.toEntityId === USER_SELF_ENTITY_ID && relation.fromEntityId.startsWith('project:')) {
-      relatedProjectIds.add(relation.fromEntityId)
-    }
-  }
-
-  const projectObservations = Array.from(relatedProjectIds)
-    .flatMap(entityId => listGraphObservations({ workspace, entityId, limit: 24 }))
-    .filter(observation => observation.status === 'active')
-
-  const parts: string[] = []
-  if (userObservations.length > 0) {
-    parts.push('## User')
-    for (const observation of userObservations.slice(0, 40)) {
-      const confidence = Number.isFinite(observation.confidence) ? ` (${observation.confidence.toFixed(2)})` : ''
-      parts.push(`- ${observation.slot}: ${observation.text}${confidence}`)
-    }
-    parts.push('')
-  }
-  if (userRelations.length > 0) {
-    parts.push('## User Relations')
-    for (const relation of userRelations.slice(0, 24)) {
-      const from = relation.fromDisplayName || graphEntityLabel(workspace, relation.fromEntityId)
-      const to = relation.toDisplayName || graphEntityLabel(workspace, relation.toEntityId)
-      parts.push(`- ${from} --${relation.relationType}--> ${to}: ${relation.text}`)
-    }
-    parts.push('')
-  }
-  if (projectObservations.length > 0) {
-    parts.push('## Related Projects')
-    for (const observation of projectObservations.slice(0, 40)) {
-      parts.push(`- ${observation.entityDisplayName || observation.entityId} / ${observation.slot}: ${observation.text}`)
-    }
-    parts.push('')
-  }
-  if (parts.length === 0) return null
-  return truncate(parts.join('\n').trim(), workspace.settings.bootstrapMaxChars)
 }
 
 async function searchGraphMemory(options: {
@@ -4414,19 +1972,6 @@ async function dedupeCaptureLines(workspace: MemoryWorkspace, lines: string[]): 
   })
 }
 
-const DURABLE_CAPTURE_KINDS = new Set<CaptureCandidateKind>([
-  'identity',
-  'preference',
-  'decision',
-  'project',
-  'constraint',
-  'fact',
-])
-
-function isDurableCandidate(candidate: CaptureCandidate): boolean {
-  return DURABLE_CAPTURE_KINDS.has(candidate.kind)
-}
-
 function normalizeCaptureCandidate(candidate: CaptureCandidate, fallbackConfidence: number): CaptureCandidate | null {
   const text = normalizeBulletText(candidate.text)
   if (!text) return null
@@ -4609,10 +2154,6 @@ function publicPendingCaptures(agentId?: string): MemoryCapturePending[] {
   const resolvedAgentId = agentId || DEFAULT_AGENT_ID
   return getPendingCaptures(new PluginStore(SOUL_MEMORY_PLUGIN_ID))
     .filter(capture => (capture.agentId || DEFAULT_AGENT_ID) === resolvedAgentId)
-}
-
-function previewLine(value: string, maxChars = 220): string {
-  return truncate(value.replace(/\s+/g, ' ').trim(), maxChars)
 }
 
 function makePendingCapture(
@@ -4848,6 +2389,7 @@ async function runMemoryCapture(api: PluginAPI, context: AfterAssistantResponseC
 
     const graph = longTermCandidates.length > 0
       ? await mergeGraphMemory({
+        workspace,
         settings: context.settings,
         agentId,
         candidates: longTermCandidates,
@@ -4937,8 +2479,10 @@ async function savePendingCapture(id?: string): Promise<{ absolutePath: string; 
     ? captures.find(capture => capture.id === id)
     : captures[0]
   if (!selected) throw new Error('No pending memory capture found')
+  const workspace = await ensureWorkspace(undefined, selected.agentId)
   const target = selected.target === 'memory'
     ? await mergeGraphMemory({
+      workspace,
       agentId: selected.agentId,
       candidates: selected.content.split(/\r?\n/).map(line => ({
         kind: 'fact',
@@ -5659,15 +3203,7 @@ function formatMaybeTimestamp(epochMs: number | undefined, timezone?: string): s
   return formatZonedDateTime(new Date(epochMs), timezone)
 }
 
-function normalizeForDedupe(value: string): string {
-  return value
-    .replace(/^\s*[-*]\s+/, '')
-    .replace(/\[[^\]]*]\([^)]*\)/g, '')
-    .replace(/[`*_>#]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase()
-}
+
 
 function extractTaggedBlock(text: string, tag: string): string | undefined {
   const match = text.match(new RegExp(`<${tag}>\\s*([\\s\\S]*?)\\s*</${tag}>`, 'i'))
@@ -6029,6 +3565,7 @@ async function promoteDreamingGraphMemory(
     }
   })
   const result = await mergeGraphMemory({
+    workspace,
     settings,
     agentId: workspace.agentId,
     candidates,
@@ -7183,6 +4720,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
       const routed = routeFlushCandidates(workspace, parsed)
       const graph = routed.longTerm.length > 0
         ? await mergeGraphMemory({
+          workspace,
           settings,
           agentId,
           candidates: routed.longTerm,
@@ -7625,7 +5163,9 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
           ctx.notify(`Usage: /memory ${action} <text>`, 'warn')
           return
         }
+        const cmdWorkspace = await ensureWorkspace(getSettings(), resolveSessionAgentId(ctx.sessionId))
         const target = await mergeGraphMemory({
+          workspace: cmdWorkspace,
           settings: getSettings(),
           agentId: resolveSessionAgentId(ctx.sessionId),
           candidates: [{ kind: 'fact', text: content, confidence: 1, source: 'user', explicit: true }],
@@ -7710,7 +5250,6 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
   })
 
   api.onDispose(() => {
-    db?.close()
-    db = null
+    closeDb()
   })
 }

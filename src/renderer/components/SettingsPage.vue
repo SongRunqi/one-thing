@@ -182,6 +182,12 @@
                   @update:settings="handleSettingsUpdate"
                 />
 
+                <MemorySettingsTab
+                  v-else-if="activeTab === 'memory'"
+                  :settings="localSettings"
+                  @update:settings="handleSettingsUpdate"
+                />
+
                 <ShortcutsSettingsTab
                   v-else-if="activeTab === 'shortcuts'"
                   :settings="localSettings"
@@ -244,6 +250,7 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import {
   Boxes,
+  Brain,
   ChevronDown,
   ChevronRight,
   Code2,
@@ -274,6 +281,7 @@ import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
 import PluginsSettingsTab from './settings/PluginsSettingsTab.vue'
 import PromptsSettingsPanel from './settings/PromptsSettingsPanel.vue'
+import MemorySettingsTab from './settings/MemorySettingsTab.vue'
 
 // Dialogs
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
@@ -284,7 +292,7 @@ const settingsStore = useSettingsStore()
 // State
 const isLoading = ref(true)
 const activeTab = ref('general')
-const expandedNavItems = ref<Set<string>>(new Set(['general']))
+const expandedNavItems = ref<Set<string>>(new Set())
 const localSettings = ref<AppSettings | null>(null)
 const originalSettings = ref<string>('')
 const searchInputRef = ref<HTMLInputElement | null>(null)
@@ -321,7 +329,7 @@ const navItems = [
     label: 'Tools',
     hint: 'Built-in capabilities and search keys',
     icon: Wrench,
-    sections: ['Tool Settings', 'Available Tools', 'Web Search', 'Bash'],
+    sections: ['Tool Settings', 'Tool Call Model', 'Available Tools', 'Web Search', 'Bash'],
   },
   {
     id: 'network',
@@ -336,6 +344,13 @@ const navItems = [
     hint: 'Mic input, transcription, and speech playback',
     icon: Mic,
     sections: ['Voice Input', 'Advanced Recording', 'Speech Providers'],
+  },
+  {
+    id: 'memory',
+    label: 'Memory',
+    hint: 'Recall, capture, profile, and index settings',
+    icon: Brain,
+    sections: ['Basics', 'Recall', 'Capture', 'Profile', 'Search Index', 'Embeddings', 'Daily Notes Context', 'Compact Flush', 'Diagnostics', 'Scheduled Memory'],
   },
   {
     id: 'shortcuts',
@@ -456,7 +471,6 @@ function handleSkillsSettingsUpdate(skillsSettings: any) {
 
 async function selectNavItem(tabId: string) {
   activeTab.value = tabId
-  setNavExpanded(tabId, true)
   await nextTick()
   document.querySelector('.content-body')?.scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -1144,21 +1158,18 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-:deep(.model-name) {
+:deep(.model-primary),
+:deep(.model-secondary) {
   min-width: 0;
 }
 
-:deep(.model-caps) {
-  max-width: 76px;
+:deep(.model-capabilities) {
+  min-width: 0;
   overflow: hidden;
 }
 
 :deep(.model-out-wrap) {
-  max-width: 56px;
-}
-
-:deep(.model-out-input) {
-  width: 34px;
+  max-width: none;
 }
 
 :deep(.card-row),
@@ -1199,7 +1210,7 @@ onUnmounted(() => {
 :deep(input:focus-visible),
 :deep(select:focus-visible),
 :deep(textarea:focus-visible) {
-  outline: 2px solid var(--settings-accent);
+  outline: 2px solid color-mix(in srgb, var(--settings-ink) 24%, transparent);
   outline-offset: 2px;
 }
 
@@ -1547,9 +1558,9 @@ onUnmounted(() => {
 }
 
 .settings-search:focus-within {
-  border-color: color-mix(in srgb, var(--settings-accent) 48%, var(--settings-rule));
+  border-color: color-mix(in srgb, var(--settings-ink) 24%, var(--settings-rule));
   background: color-mix(in srgb, var(--settings-paper) 72%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-accent) 18%, transparent), 0 0 0 2px var(--settings-accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink) 8%, transparent);
 }
 
 .settings-search input:focus,
@@ -1591,7 +1602,7 @@ onUnmounted(() => {
 }
 
 .sidebar-item:focus-visible {
-  outline: 2px solid var(--settings-accent);
+  outline: 2px solid color-mix(in srgb, var(--settings-ink) 24%, transparent);
   outline-offset: 2px;
 }
 
@@ -1919,13 +1930,22 @@ onUnmounted(() => {
 }
 
 :deep(.setting-row-split) {
-  gap: 28px;
+  gap: 5px;
 }
 
 :deep(.setting-row-control) {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  width: 100%;
+}
+
+:deep(.setting-row-split > .setting-row-head > .setting-row-control),
+:deep(.setting-row-no-copy > .setting-row-control) {
   justify-content: flex-end;
+}
+
+:deep(.setting-row-stack > .setting-row-control) {
+  justify-content: flex-start;
 }
 
 :deep(.form-input),
@@ -1946,9 +1966,9 @@ onUnmounted(() => {
 :deep(.form-select:focus),
 :deep(.row-input:focus),
 :deep(.row-select:focus) {
-  border-color: color-mix(in srgb, var(--settings-accent) 48%, var(--settings-rule));
+  border-color: color-mix(in srgb, var(--settings-ink) 24%, var(--settings-rule));
   background-color: var(--settings-paper-3);
-  box-shadow: 0 0 0 2px var(--settings-accent-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--settings-ink) 8%, transparent);
 }
 
 :deep(.segmented-control) {
@@ -2048,7 +2068,7 @@ onUnmounted(() => {
 
 :deep(.provider-row:hover),
 :deep(.provider-row.active) {
-  background: transparent;
+  background: color-mix(in srgb, var(--settings-paper-3) 76%, transparent);
 }
 
 :deep(.provider-configure),
@@ -2065,6 +2085,50 @@ onUnmounted(() => {
 
 :deep(.content-inner-wide .provider-tab-wrapper) {
   width: 100%;
+}
+
+.settings-page :deep(.form-input:focus),
+.settings-page :deep(.form-input:focus-visible),
+.settings-page :deep(.form-textarea:focus),
+.settings-page :deep(.form-textarea:focus-visible),
+.settings-page :deep(.form-select:focus),
+.settings-page :deep(.form-select:focus-visible),
+.settings-page :deep(.row-input:focus),
+.settings-page :deep(.row-input:focus-visible),
+.settings-page :deep(.row-select:focus),
+.settings-page :deep(.row-select:focus-visible),
+.settings-page :deep(.prompt-input:focus),
+.settings-page :deep(.prompt-input:focus-visible),
+.settings-page :deep(.prompt-textarea:focus),
+.settings-page :deep(.prompt-textarea:focus-visible),
+.settings-page :deep(.text-input:focus),
+.settings-page :deep(.text-input:focus-visible),
+.settings-page :deep(.shortcut-input:focus),
+.settings-page :deep(.shortcut-input:focus-visible),
+.settings-page :deep(.add-model-input:focus),
+.settings-page :deep(.add-model-input:focus-visible),
+.settings-page :deep(.model-caps-id-input:focus),
+.settings-page :deep(.model-caps-id-input:focus-visible) {
+  outline: none;
+  border-color: color-mix(in srgb, var(--settings-ink) 24%, var(--settings-rule));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--settings-ink) 8%, transparent);
+}
+
+.settings-page :deep(.settings-search:focus-within),
+.settings-page :deep(.prompt-search:focus-within),
+.settings-page :deep(.model-search-field:focus-within),
+.settings-page :deep(.number-stepper:focus-within),
+.settings-page :deep(.model-out-wrap:focus-within) {
+  border-color: color-mix(in srgb, var(--settings-ink) 24%, var(--settings-rule));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--settings-ink) 8%, transparent);
+}
+
+.settings-page :deep(.segment-btn:focus-visible),
+.settings-page :deep(.tristate-btn:focus-visible),
+.settings-page :deep(.model-check:focus-visible),
+.settings-page :deep(.model-caps-edit:focus-visible) {
+  outline: 2px solid color-mix(in srgb, var(--settings-ink) 24%, transparent);
+  outline-offset: 2px;
 }
 
 @media (max-width: 860px) {

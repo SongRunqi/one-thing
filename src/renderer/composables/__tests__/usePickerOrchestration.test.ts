@@ -281,4 +281,43 @@ describe('usePickerOrchestration', () => {
     expect(harness.checkHistoryEdit).toHaveBeenCalledWith('plain text')
     harness.scope.stop()
   })
+
+  it('supports absolute and paged command palette navigation', async () => {
+    vi.mocked(window.electronAPI.getSkills).mockResolvedValue({
+      success: true,
+      skills: Array.from({ length: 6 }, (_, index) => ({
+        id: `user:skill-${index}`,
+        name: `Skill ${index}`,
+        description: `Skill description ${index}`,
+        source: 'user',
+        path: `/skills/skill-${index}/SKILL.md`,
+        directoryPath: `/skills/skill-${index}`,
+        enabled: true,
+        instructions: `Use skill ${index}.`,
+      })),
+    })
+
+    const harness = createHarness('/')
+    await harness.api.loadSkills()
+    harness.api.refreshTriggerState(harness.input.value, harness.cursor.value)
+    await settleWatchers()
+
+    const itemCount = harness.api.activeExtension.value.items.length
+    expect(harness.api.showCommandPicker.value).toBe(true)
+    expect(itemCount).toBeGreaterThan(5)
+
+    expect(harness.api.setActiveSelection(itemCount - 1)).toBe(true)
+    expect(harness.api.activeExtension.value.selectedIndex).toBe(itemCount - 1)
+
+    harness.api.pageActiveSelection(-1, 5)
+    expect(harness.api.activeExtension.value.selectedIndex).toBe(itemCount - 6)
+
+    harness.api.pageActiveSelection(1, itemCount)
+    expect(harness.api.activeExtension.value.selectedIndex).toBe(itemCount - 1)
+
+    harness.api.setActiveSelection(-100)
+    expect(harness.api.activeExtension.value.selectedIndex).toBe(0)
+
+    harness.scope.stop()
+  })
 })

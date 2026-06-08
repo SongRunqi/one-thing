@@ -1,21 +1,8 @@
 <template>
   <div class="search-window">
-    <!-- Tabs row (IDEA style: tabs on top) -->
-    <div class="search-tabs">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        :class="['tab', { active: activeTab === tab.id }]"
-        @click="activeTab = tab.id"
-      >
-        {{ tab.label }}
-      </button>
-    </div>
-
-    <!-- Search input -->
     <div class="search-input-row">
       <Search
-        :size="16"
+        :size="15"
         class="search-icon"
       />
       <input
@@ -27,6 +14,30 @@
         spellcheck="false"
         @keydown="onInputKeydown"
       >
+      <div
+        :class="['scope-tabs', { 'has-active-scope': activeTab !== 'all' }]"
+        role="toolbar"
+        aria-label="Search filters"
+      >
+        <button
+          v-for="(tab, index) in tabs"
+          :key="tab.id"
+          :class="[
+            'scope-tab',
+            {
+              active: activeTab === tab.id,
+              'default-scope': tab.id === 'all',
+            },
+          ]"
+          type="button"
+          :aria-pressed="activeTab === tab.id"
+          :title="`${tab.label} · ⌘${index + 1}`"
+          @click="activeTab = tab.id"
+        >
+          <span>{{ tab.label }}</span>
+          <kbd>{{ index + 1 }}</kbd>
+        </button>
+      </div>
     </div>
 
     <!-- Results -->
@@ -34,26 +45,16 @@
       ref="resultsRef"
       class="search-results"
     >
-      <template v-if="groupedResults.length > 0">
-        <template
-          v-for="group in groupedResults"
-          :key="group.type"
-        >
-          <div
-            v-if="activeTab === 'all'"
-            class="group-header"
-          >
-            {{ group.label }}
-          </div>
-          <SearchResultItem
-            v-for="(item, i) in group.items"
-            :key="item.id"
-            :result="item"
-            :selected="flatIndex(group, i) === selectedIndex"
-            @select="confirmResult(item)"
-            @hover="selectedIndex = flatIndex(group, i)"
-          />
-        </template>
+      <template v-if="visibleResults.length > 0">
+        <SearchResultItem
+          v-for="(item, index) in visibleResults"
+          :key="item.id"
+          :result="item"
+          :selected="index === selectedIndex"
+          :show-kind="activeTab === 'all'"
+          @select="confirmResult(item)"
+          @hover="selectedIndex = index"
+        />
       </template>
       <div
         v-else-if="isLoading"
@@ -97,6 +98,7 @@
         <label>
           <span>Name</span>
           <input
+            ref="promptTitleRef"
             v-model="promptForm.title"
             type="text"
             autofocus
@@ -137,266 +139,143 @@
       </form>
     </div>
 
-    <!-- Footer hints -->
-    <div class="search-footer">
-      <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> Navigate</span>
-      <span><kbd>&crarr;</kbd> Open</span>
-      <span><kbd>Tab</kbd> Switch tab</span>
-      <span><kbd>Esc</kbd> Close</span>
+    <div
+      v-if="dragGuides.visible"
+      :class="[
+        'drag-guides',
+        {
+          'is-center-x': dragGuides.centerX,
+          'is-default-top': dragGuides.defaultTop,
+          'is-default-height': dragGuides.defaultHeight,
+          'is-default-bounds': dragGuides.defaultBounds,
+        },
+      ]"
+      aria-hidden="true"
+    >
+      <span class="guide-line guide-center-x" />
+      <span class="guide-line guide-default-top" />
+      <span class="guide-line guide-default-height" />
     </div>
+    <div
+      class="resize-grip"
+      aria-hidden="true"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { Search } from 'lucide-vue-next'
-import { useSettingsStore } from '@/stores/settings'
 import { useThemeStore } from '@/stores/themes'
 import SearchResultItem from './SearchResultItem.vue'
-import type { SearchResult, SearchCategory } from '@shared/ipc/search'
+import { resolveSearchResultAction } from './result-actions'
+import { useSearchWindow } from './useSearchWindow'
+import type { SearchResult, SearchWindowGuideState } from '@shared/ipc/search'
 
-// ── Tabs ──────────────────────────────────────────
-const settingsStore = useSettingsStore()
-const tabs = computed<{ id: SearchCategory; label: string }[]>(() => {
-  const items: { id: SearchCategory; label: string }[] = [
-    { id: 'all', label: 'All' },
-    { id: 'chats', label: 'Chats' },
-  ]
-  if (settingsStore.settings.general.dailyNotes?.enabled !== false) {
-    items.push({ id: 'daily', label: 'Daily' })
-  }
-  items.push(
-    { id: 'prompts', label: 'Prompts' },
-    { id: 'files', label: 'Files' },
-    { id: 'messages', label: 'Messages' },
-    { id: 'actions', label: 'Actions' },
-  )
-  return items
-})
+const HIDDEN_GUIDES: SearchWindowGuideState = {
+  visible: false,
+  centerX: false,
+  defaultTop: false,
+  defaultHeight: false,
+  defaultBounds: false,
+}
 
-const activeTab = ref<SearchCategory>('all')
-const query = ref('')
-const results = ref<SearchResult[]>([])
-const selectedIndex = ref(0)
-const isLoading = ref(false)
-const searchError = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 const resultsRef = ref<HTMLElement | null>(null)
+const promptTitleRef = ref<HTMLInputElement | null>(null)
 const showPromptCreate = ref(false)
 const promptForm = ref({ title: '', description: '', body: '' })
 const promptFormError = ref('')
+const dragGuides = ref<SearchWindowGuideState>(HIDDEN_GUIDES)
 
-// ── Grouped results for "All" tab ─────────────────
-interface ResultGroup {
-  type: string
-  label: string
-  items: SearchResult[]
-}
+const {
+  settingsStore,
+  tabs,
+  activeTab,
+  query,
+  selectedIndex,
+  isLoading,
+  searchError,
+  visibleResults,
+  inputPlaceholder,
+  emptyText,
+  moveSelection,
+  cycleTab,
+  selectTabByShortcut,
+  confirmSelectedResult,
+  doSearch,
+  resetSearchWindow,
+} = useSearchWindow(resultsRef)
 
-const groupedResults = computed<ResultGroup[]>(() => {
-  if (results.value.length === 0) return []
-
-  if (activeTab.value !== 'all') {
-    return [{ type: activeTab.value, label: '', items: results.value }]
-  }
-
-  const groups: ResultGroup[] = []
-  const chats = results.value.filter(r => r.type === 'chat')
-  const daily = results.value.filter(r => r.type === 'daily')
-  const prompts = results.value.filter(r => r.type === 'prompt')
-  const files = results.value.filter(r => r.type === 'file')
-  const messages = results.value.filter(r => r.type === 'message')
-  const actions = results.value.filter(r => r.type === 'action')
-
-  if (chats.length) groups.push({ type: 'chat', label: 'Chats', items: chats })
-  if (prompts.length) groups.push({ type: 'prompt', label: 'Prompts', items: prompts })
-  if (daily.length) groups.push({ type: 'daily', label: 'Daily Notes', items: daily })
-  if (files.length) groups.push({ type: 'file', label: 'Files', items: files })
-  if (messages.length) groups.push({ type: 'message', label: 'Messages', items: messages })
-  if (actions.length) groups.push({ type: 'action', label: 'Actions', items: actions })
-
-  return groups
-})
-
-const totalResults = computed(() =>
-  groupedResults.value.reduce((sum, g) => sum + g.items.length, 0)
-)
-
-const inputPlaceholder = computed(() => {
-  if (activeTab.value === 'actions') return 'Run a command...'
-  if (activeTab.value === 'prompts') return 'Search or create prompts...'
-  if (activeTab.value === 'daily') return 'Find daily notes, or open today...'
-  if (activeTab.value === 'files') return 'Search files in current workspace and notes...'
-  if (activeTab.value === 'messages') return 'Search across chat messages...'
-  if (activeTab.value === 'chats') return 'Search chats...'
-  return 'Search chats, prompts, daily notes, files, messages, and commands...'
-})
-
-const emptyText = computed(() => {
-  if (query.value.trim()) return 'No results found'
-  if (activeTab.value === 'prompts') return 'Type to search or create prompts...'
-  if (activeTab.value === 'daily') return 'No daily notes directory found'
-  if (activeTab.value === 'files' || activeTab.value === 'messages') return 'Type to search...'
-  return 'Start typing, or use / for commands'
-})
-
-function flatIndex(group: ResultGroup, localIndex: number): number {
-  let offset = 0
-  for (const g of groupedResults.value) {
-    if (g === group) return offset + localIndex
-    offset += g.items.length
-  }
-  return offset + localIndex
-}
-
-function getResultByFlatIndex(idx: number): SearchResult | undefined {
-  let offset = 0
-  for (const g of groupedResults.value) {
-    if (idx < offset + g.items.length) return g.items[idx - offset]
-    offset += g.items.length
-  }
-}
-
-// ── Search execution (debounced) ──────────────────
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
-let searchSeq = 0
 let unsubscribeShown: (() => void) | null = null
+let unsubscribeGuides: (() => void) | null = null
 
-async function doSearch() {
-  const seq = ++searchSeq
-  isLoading.value = true
-  searchError.value = ''
-  try {
-    const res = await window.electronAPI.searchQuery({
-      query: query.value,
-      category: activeTab.value,
-      limit: 24,
-    })
-    if (seq !== searchSeq) return
-    if (res?.success) {
-      results.value = res.results
-      selectedIndex.value = 0
-      nextTick(() => {
-        if (resultsRef.value) resultsRef.value.scrollTop = 0
-      })
-    } else {
-      results.value = []
-      searchError.value = 'Search failed'
-    }
-  } catch (err) {
-    if (seq !== searchSeq) return
-    results.value = []
-    searchError.value = err instanceof Error ? err.message : 'Search failed'
-  } finally {
-    if (seq === searchSeq) isLoading.value = false
-  }
+function closeWindow() {
+  window.electronAPI.closeSearchWindow()
 }
 
-watch([query, activeTab], () => {
-  if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(doSearch, query.value ? 150 : 0)
-})
-
-// ── Keyboard navigation ──────────────────────────
-function onInputKeydown(e: KeyboardEvent) {
-  if ((e.metaKey || e.ctrlKey) && /^[1-7]$/.test(e.key)) {
-    e.preventDefault()
-    const tab = tabs.value[Number(e.key) - 1]
-    if (tab) activeTab.value = tab.id
+function onInputKeydown(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && selectTabByShortcut(event.key)) {
+    event.preventDefault()
     return
   }
 
-  switch (e.key) {
+  switch (event.key) {
     case 'ArrowDown':
-      e.preventDefault()
-      if (totalResults.value > 0) {
-        selectedIndex.value = (selectedIndex.value + 1) % totalResults.value
-      }
-      scrollSelectedIntoView()
+      event.preventDefault()
+      moveSelection(1)
       break
     case 'ArrowUp':
-      e.preventDefault()
-      if (totalResults.value > 0) {
-        selectedIndex.value = (selectedIndex.value - 1 + totalResults.value) % totalResults.value
-      }
-      scrollSelectedIntoView()
+      event.preventDefault()
+      moveSelection(-1)
       break
     case 'Enter':
-      e.preventDefault()
+      event.preventDefault()
       confirmSelected()
       break
     case 'Escape':
-      e.preventDefault()
-      if (showPromptCreate.value) {
-        closePromptCreate()
-        return
-      }
-      window.electronAPI.closeSearchWindow()
+      event.preventDefault()
+      if (showPromptCreate.value) closePromptCreate()
+      else closeWindow()
       break
     case 'Tab':
-      e.preventDefault()
-      cycleTab(e.shiftKey ? -1 : 1)
+      event.preventDefault()
+      cycleTab(event.shiftKey ? -1 : 1)
       break
     case '/':
-      if (!query.value && activeTab.value !== 'actions') {
-        activeTab.value = 'actions'
-      }
+      if (!query.value && activeTab.value !== 'actions') activeTab.value = 'actions'
       break
   }
 }
 
-function cycleTab(dir: number) {
-  const idx = tabs.value.findIndex(t => t.id === activeTab.value)
-  const next = (idx + dir + tabs.value.length) % tabs.value.length
-  activeTab.value = tabs.value[next].id
-}
-
-function scrollSelectedIntoView() {
-  nextTick(() => {
-    const container = resultsRef.value
-    if (!container) return
-    const items = container.querySelectorAll('.search-result-item')
-    const el = items[selectedIndex.value] as HTMLElement | undefined
-    el?.scrollIntoView({ block: 'nearest' })
-  })
-}
-
-// ── Confirm ──────────────────────────────────────
 function confirmSelected() {
-  const item = getResultByFlatIndex(selectedIndex.value)
+  const item = confirmSelectedResult()
   if (item) confirmResult(item)
 }
 
 function confirmResult(item: SearchResult) {
-  if (item.type === 'prompt' && item.actionId?.startsWith('create-prompt:')) {
-    openPromptCreate(decodeURIComponent(item.actionId.slice('create-prompt:'.length)))
-  } else if (item.type === 'prompt' && item.actionId) {
-    window.electronAPI.searchExecuteAction(item.actionId)
-  } else if (item.type === 'action' && item.actionId) {
-    window.electronAPI.searchExecuteAction(item.actionId)
-  } else if (item.type === 'daily' && item.actionId) {
-    window.electronAPI.searchExecuteAction(item.actionId)
-  } else if (item.type === 'file' && item.filePath) {
-    window.electronAPI.searchExecuteAction(`open-file:${item.filePath}`)
-  } else if (item.type === 'daily' && item.filePath) {
-    window.electronAPI.searchExecuteAction(`open-file:${item.filePath}`)
-  } else if (item.type === 'message' && item.sessionId && item.messageId) {
-    window.electronAPI.searchExecuteAction(`jump-message:${item.sessionId}:${item.messageId}`)
-  } else if (item.sessionId) {
-    window.electronAPI.searchExecuteAction(`switch-session:${item.sessionId}`)
+  const action = resolveSearchResultAction(item)
+  if (!action) return
+
+  if (action.type === 'create-prompt') {
+    openPromptCreate(action.title)
+    return
   }
+
+  window.electronAPI.searchExecuteAction(action.actionId)
 }
 
 function openPromptCreate(title: string) {
   promptForm.value = { title, description: '', body: '' }
   promptFormError.value = ''
   showPromptCreate.value = true
+  nextTick(() => promptTitleRef.value?.focus())
 }
 
 function closePromptCreate() {
   showPromptCreate.value = false
   promptFormError.value = ''
-  inputRef.value?.focus()
+  nextTick(() => inputRef.value?.focus())
 }
 
 async function createPromptFromDialog() {
@@ -420,61 +299,54 @@ async function createPromptFromDialog() {
     promptFormError.value = response.error || 'Failed to create prompt'
     return
   }
+
   showPromptCreate.value = false
   window.electronAPI.searchExecuteAction(`insert-prompt:${response.prompt.id}`)
 }
 
-// ── Double Shift to close from within search window ──
 let lastShiftUp = 0
 let shiftClean = false
 
-function onGlobalKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    e.preventDefault()
-    if (showPromptCreate.value) {
-      closePromptCreate()
-      return
-    }
-    window.electronAPI.closeSearchWindow()
+function onGlobalKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    if (showPromptCreate.value) closePromptCreate()
+    else closeWindow()
     return
   }
-  if (e.key === 'Shift' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    shiftClean = true
-  } else {
-    shiftClean = false
-  }
+
+  shiftClean = event.key === 'Shift' && !event.ctrlKey && !event.altKey && !event.metaKey
 }
 
-function onGlobalKeyUp(e: KeyboardEvent) {
-  if (e.key !== 'Shift' || !shiftClean) {
+function onGlobalKeyUp(event: KeyboardEvent) {
+  if (event.key !== 'Shift' || !shiftClean) {
     shiftClean = false
     return
   }
+
   const now = Date.now()
   if (now - lastShiftUp < 300) {
     lastShiftUp = 0
-    window.electronAPI.closeSearchWindow()
+    closeWindow()
   } else {
     lastShiftUp = now
   }
   shiftClean = false
 }
 
-// ── Lifecycle ────────────────────────────────────
 onMounted(async () => {
-  // Initialize theme for this window
   const themeStore = useThemeStore()
   await settingsStore.loadSettings()
   await themeStore.initialize()
 
   inputRef.value?.focus()
-  doSearch()
+  void doSearch()
   unsubscribeShown = window.electronAPI.onSearchWindowShown?.(() => {
-    query.value = ''
-    activeTab.value = 'all'
-    selectedIndex.value = 0
-    inputRef.value?.focus()
-    doSearch()
+    resetSearchWindow()
+    nextTick(() => inputRef.value?.focus())
+  }) ?? null
+  unsubscribeGuides = window.electronAPI.onSearchWindowGuides?.((state) => {
+    dragGuides.value = state
   }) ?? null
   window.addEventListener('keydown', onGlobalKeyDown, true)
   window.addEventListener('keyup', onGlobalKeyUp, true)
@@ -482,14 +354,15 @@ onMounted(async () => {
 
 onUnmounted(() => {
   unsubscribeShown?.()
+  unsubscribeGuides?.()
   window.removeEventListener('keydown', onGlobalKeyDown, true)
   window.removeEventListener('keyup', onGlobalKeyUp, true)
-  if (debounceTimer) clearTimeout(debounceTimer)
 })
 </script>
 
 <style scoped>
 .search-window {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -501,86 +374,256 @@ onUnmounted(() => {
   user-select: none;
 }
 
-/* ── Tabs ───────────────────────────── */
-.search-tabs {
-  display: flex;
-  gap: 0;
-  padding: 8px 12px 0;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-  -webkit-app-region: drag;
+.drag-guides {
+  position: absolute;
+  inset: 5px;
+  pointer-events: none;
+  z-index: 9;
+  border: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 34%, transparent);
+  border-radius: 9px;
+  opacity: 0.86;
 }
 
-.tab {
-  -webkit-app-region: no-drag;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  padding: 6px 14px 8px;
-  font-size: 13px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+.drag-guides.is-default-bounds {
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 62%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
 }
 
-.tab:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+.guide-line {
+  position: absolute;
+  opacity: 0;
+  transition: opacity 0.12s var(--ease-default);
 }
 
-.tab.active {
-  color: var(--ui-text-primary-fg, var(--text));
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+.guide-center-x {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  border-left: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 54%, transparent);
 }
 
-/* ── Input ──────────────────────────── */
+.guide-default-top,
+.guide-default-height {
+  left: 10px;
+  right: 10px;
+  border-top: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 48%, transparent);
+}
+
+.guide-default-top {
+  top: 7px;
+}
+
+.guide-default-height {
+  bottom: 7px;
+}
+
+.drag-guides.is-center-x .guide-center-x,
+.drag-guides.is-default-top .guide-default-top,
+.drag-guides.is-default-height .guide-default-height {
+  opacity: 1;
+}
+
+.resize-grip {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  z-index: 8;
+  opacity: 0.42;
+  background:
+    linear-gradient(135deg, transparent 0 50%, color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 28%, transparent) 50% 56%, transparent 56% 100%),
+    linear-gradient(135deg, transparent 0 66%, color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 22%, transparent) 66% 72%, transparent 72% 100%);
+}
+
 .search-input-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  gap: 5px;
+  min-height: 38px;
+  padding: 3px 9px 1px 12px;
+  -webkit-app-region: drag;
 }
 
 .search-icon {
   flex-shrink: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 52%, transparent);
 }
 
 .search-input {
   flex: 1;
+  min-width: 120px;
+  -webkit-app-region: no-drag;
   background: none;
   border: none;
   outline: none;
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 24px;
   color: var(--ui-text-primary-fg, var(--text));
   font-family: inherit;
 }
 
 .search-input::placeholder {
   color: var(--ui-text-muted-fg, var(--muted));
-  opacity: 0.6;
+  opacity: 0.54;
+}
+
+.scope-tabs {
+  -webkit-app-region: no-drag;
+  flex: 0 0 auto;
+  max-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  opacity: 0;
+  transition:
+    max-width 0.16s var(--ease-default),
+    opacity 0.12s var(--ease-default);
+}
+
+.scope-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.scope-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  box-sizing: border-box;
+  padding: 0;
+  max-width: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 48%, transparent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 9.75px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  transition:
+    max-width 0.16s var(--ease-default),
+    padding 0.16s var(--ease-default),
+    opacity 0.12s var(--ease-default),
+    background 0.14s var(--ease-default),
+    color 0.14s var(--ease-default);
+}
+
+.search-input-row:hover .scope-tabs,
+.search-input-row:focus-within .scope-tabs,
+.scope-tabs.has-active-scope {
+  max-width: 46%;
+  opacity: 1;
+}
+
+.scope-tabs:hover .scope-tab,
+.scope-tabs:focus-within .scope-tab,
+.scope-tabs.has-active-scope .scope-tab.active,
+.scope-tab:hover {
+  max-width: 76px;
+  padding: 0 4px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.scope-tab:hover {
+  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 22%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 76%, transparent);
+}
+
+.scope-tab.active {
+  max-width: 0;
+  padding: 0 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 82%, var(--ui-text-primary-fg, var(--text)) 18%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scope-tabs.has-active-scope .scope-tab.active:not(.default-scope) {
+  max-width: 58px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.scope-tabs:hover .scope-tab.active,
+.scope-tabs:focus-within .scope-tab.active {
+  max-width: 76px;
+  background: color-mix(in srgb, var(--ui-state-selected-bg, var(--selection, var(--ui-accent-primary-fg, var(--accent)))) 16%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 84%, transparent);
+}
+
+.scope-tabs:hover .scope-tab.active.default-scope,
+.scope-tabs:focus-within .scope-tab.active.default-scope {
+  max-width: 76px;
+  padding: 0 4px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.scope-tab kbd {
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 62%, transparent);
+  font: inherit;
+  font-size: 9px;
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+  transition: opacity 0.14s var(--ease-default), width 0.14s var(--ease-default);
+}
+
+.scope-tabs:hover .scope-tab kbd,
+.scope-tabs:focus-within .scope-tab kbd,
+.scope-tab:hover kbd {
+  opacity: 0.58;
+  width: auto;
 }
 
 /* ── Results ────────────────────────── */
 .search-results {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 0 0 4px;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
 
-.group-header {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ui-text-muted-fg, var(--muted));
-  padding: 8px 20px 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.search-results::-webkit-scrollbar {
+  width: 4px;
+}
+
+.search-results::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.search-results::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+}
+
+.search-results:hover,
+.search-results:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 16%, transparent) transparent;
+}
+
+.search-results:hover::-webkit-scrollbar-thumb,
+.search-results:focus-within::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 16%, transparent);
 }
 
 .search-state {
-  padding: 24px 20px;
-  text-align: center;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 13px;
+  padding: 16px 18px 0 32px;
+  text-align: left;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 58%, transparent);
+  font-size: 11.5px;
+  line-height: 1.3;
 }
 
 .search-state.error {
@@ -593,20 +636,23 @@ onUnmounted(() => {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(0, 0, 0, 0.22);
+  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 66%, transparent);
   z-index: 20;
 }
 
 .prompt-dialog {
-  width: min(520px, 100%);
+  width: min(500px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  gap: 9px;
+  padding: 12px;
+  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 68%, transparent);
   border-radius: 10px;
-  background: var(--ui-surface-panel-bg, var(--panel, var(--bg)));
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel, var(--bg))) 94%, var(--ui-surface-app-bg, var(--bg)) 6%);
+  box-shadow: var(
+    --ui-surface-popover-shadow,
+    var(--shadow-md)
+  );
 }
 
 .prompt-dialog-header,
@@ -619,7 +665,7 @@ onUnmounted(() => {
 
 .prompt-dialog h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 650;
 }
 
@@ -634,18 +680,16 @@ onUnmounted(() => {
 .prompt-dialog label {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  gap: 4px;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 78%, transparent);
+  font-size: 11.5px;
 }
 
 .prompt-dialog input,
 .prompt-dialog textarea {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 72%, transparent);
   border-radius: 7px;
   background: var(--ui-surface-app-bg, var(--bg));
   color: var(--ui-text-primary-fg, var(--text));
@@ -653,15 +697,13 @@ onUnmounted(() => {
   font-size: 13px;
   line-height: 1.45;
   outline: none;
-  padding: 8px 9px;
+  padding: 7px 8px;
   resize: vertical;
-  text-transform: none;
-  letter-spacing: 0;
 }
 
 .prompt-dialog button[type="submit"],
 .prompt-dialog .secondary {
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 72%, transparent);
   border-radius: 7px;
   background: var(--ui-accent-primary-fg, var(--accent));
   color: white;
@@ -681,24 +723,15 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-/* ── Footer ─────────────────────────── */
-.search-footer {
-  display: flex;
-  gap: 16px;
-  padding: 6px 14px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
-  font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
-}
+@media (max-width: 620px) {
+  .scope-tabs {
+    max-width: 44%;
+  }
 
-.search-footer kbd {
-  display: inline-block;
-  padding: 0 4px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 3px;
-  font-size: 10px;
-  font-family: inherit;
-  line-height: 1.6;
-  margin-right: 2px;
+  .scope-tab span {
+    max-width: 44px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 </style>

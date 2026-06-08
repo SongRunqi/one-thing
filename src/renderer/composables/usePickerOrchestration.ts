@@ -522,6 +522,19 @@ export function usePickerOrchestration(
     return true
   }
 
+  function setActiveSelection(index: number): boolean {
+    if (activeExtension.value.type === 'none' || activeExtension.value.items.length === 0) return false
+    patchActiveExtension({ selectedIndex: index })
+    return true
+  }
+
+  function pageActiveSelection(direction: 1 | -1, pageSize = 5): boolean {
+    const { items, selectedIndex } = activeExtension.value
+    if (activeExtension.value.type === 'none' || items.length === 0) return false
+    patchActiveExtension({ selectedIndex: selectedIndex + direction * Math.max(1, pageSize) })
+    return true
+  }
+
   function highlightActiveSelection(index: number): boolean {
     if (activeExtension.value.type === 'none') return false
     patchActiveExtension({ selectedIndex: index })
@@ -654,6 +667,8 @@ export function usePickerOrchestration(
     activeExtension,
     activeExtensionVisible,
     moveActiveSelection,
+    setActiveSelection,
+    pageActiveSelection,
     highlightActiveSelection,
     confirmActiveExtension,
     enabledSkills,

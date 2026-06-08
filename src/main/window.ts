@@ -5,6 +5,7 @@ import { getWindowStatePath, readJsonFile, writeJsonFile } from './stores/paths.
 import { getSettings } from './stores/settings.js'
 import { IPC_CHANNELS } from '../shared/ipc.js'
 import type { TodoPlanActivationMode, TodoPlanWindowActionRequest } from '../shared/ipc.js'
+import { DEFAULT_GENERAL_SETTINGS } from '../shared/defaults/settings.js'
 import { getThemeBackgroundColor, initializeThemes } from './themes/index.js'
 import { isMainAppWindowUrl } from './search/window-target.js'
 import { shouldHideMainWindowForVoice } from './voice/tray.js'
@@ -51,10 +52,14 @@ function getEffectiveThemeId(mode: 'dark' | 'light'): string {
 
   // Priority: mode-specific > legacy themeId > default
   if (mode === 'dark') {
-    return general?.darkThemeId || general?.themeId || 'flexoki'
+    return general?.darkThemeId || general?.themeId || (DEFAULT_GENERAL_SETTINGS.darkThemeId || DEFAULT_GENERAL_SETTINGS.themeId) as string
   } else {
-    return general?.lightThemeId || general?.themeId || 'flexoki'
+    return general?.lightThemeId || general?.themeId || (DEFAULT_GENERAL_SETTINGS.lightThemeId || DEFAULT_GENERAL_SETTINGS.themeId) as string
   }
+}
+
+function getEffectiveColorTheme(): string {
+  return getSettings().general?.colorTheme || DEFAULT_GENERAL_SETTINGS.colorTheme
 }
 
 /**
@@ -564,7 +569,10 @@ function createTodoPlanBrowserWindow(
     todoPlanWindow = null
   })
 
-  const themeParams = `theme=${effectiveTheme}`
+  const themeParams = new URLSearchParams({
+    theme: effectiveTheme,
+    colorTheme: getEffectiveColorTheme(),
+  }).toString()
   if (isDevelopment) {
     todoPlanWindow.loadURL(`${getRendererDevUrl()}/#/todo-plan?${themeParams}`)
   } else {
@@ -579,7 +587,7 @@ function createTodoPlanBrowserWindow(
 /**
  * Create or focus the settings window
  */
-export function openSettingsWindow(parentWindow?: BrowserWindow) {
+export function openSettingsWindow(_parentWindow?: BrowserWindow) {
   // If settings window already exists, focus it
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.focus()
@@ -593,10 +601,9 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
   const effectiveTheme = getEffectiveTheme()
 
   // Get the actual theme's background color (supports dual theme system)
-  const settings = getSettings()
   const themeId = getEffectiveThemeId(effectiveTheme)
   const backgroundColor = getThemeBackgroundColor(themeId, effectiveTheme)
-  const colorTheme = settings.general?.colorTheme || 'blue'
+  const colorTheme = getEffectiveColorTheme()
 
   settingsWindow = new BrowserWindow({
     width: 900,
@@ -608,7 +615,6 @@ export function openSettingsWindow(parentWindow?: BrowserWindow) {
     backgroundColor: isMac ? undefined : backgroundColor,
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
-    parent: parentWindow,
     modal: false,
     resizable: true,
     webPreferences: {

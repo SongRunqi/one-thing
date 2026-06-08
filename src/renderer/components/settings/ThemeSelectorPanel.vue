@@ -1,147 +1,120 @@
 <template>
-  <div class="theme-selector">
-    <!-- Tab Bar -->
-    <div class="tab-bar">
-      <button
-        class="tab-btn"
-        :class="{ active: activeTab === 'dark' }"
-        @click="activeTab = 'dark'"
-      >
-        Dark
-      </button>
-      <button
-        class="tab-btn"
-        :class="{ active: activeTab === 'light' }"
-        @click="activeTab = 'light'"
-      >
-        Light
-      </button>
-    </div>
-
-    <!-- Theme Grid -->
-    <div
-      v-if="filteredThemes.length > 0"
-      class="theme-grid"
-    >
+  <div
+    ref="rootRef"
+    class="theme-selector"
+    @keydown.esc="closeDropdown"
+  >
+    <div class="theme-select-grid">
       <div
-        v-for="theme in filteredThemes"
-        :key="theme.id"
-        class="theme-item"
-        :class="{ active: selectedThemeIdForTab === theme.id }"
-        @click="selectTheme(theme.id)"
+        v-for="item in modeItems"
+        :key="item.mode"
+        class="theme-select-field"
       >
-        <!-- Theme Preview -->
-        <div
-          class="theme-preview"
-          :style="{
-            '--preview-bg': theme.previewColors?.bg || '#1a1a1a',
-            '--preview-sidebar': theme.previewColors?.sidebar || '#0d0d0d',
-            '--preview-accent': theme.previewColors?.accent || '#4385be',
-            '--preview-text': theme.previewColors?.text || '#ffffff',
-          }"
-        >
-          <div class="preview-sidebar" />
-          <div class="preview-content">
-            <div class="preview-bubble user" />
-            <div class="preview-bubble assistant" />
-            <div
-              v-if="theme.previewColors?.palette?.length"
-              class="preview-palette"
-              aria-hidden="true"
-            >
+        <label class="theme-select-label">{{ item.label }}</label>
+        <div class="theme-dropdown">
+          <button
+            class="theme-trigger"
+            type="button"
+            :aria-expanded="openMode === item.mode"
+            :aria-controls="`theme-menu-${item.mode}`"
+            @click="toggleDropdown(item.mode)"
+          >
+            <span class="theme-palette">
               <span
-                v-for="color in theme.previewColors.palette"
-                :key="color"
-                class="preview-swatch"
+                v-for="(color, index) in getThemePalette(selectedThemeForMode(item.mode))"
+                :key="`${item.mode}-selected-${color}-${index}`"
+                class="theme-swatch"
                 :style="{ background: color }"
               />
-            </div>
-          </div>
-        </div>
-
-        <!-- Theme Info -->
-        <div class="theme-info">
-          <span class="theme-name">{{ theme.name }}</span>
-          <span
-            v-if="theme.author"
-            class="theme-author"
-          >by {{ theme.author }}</span>
-        </div>
-
-        <!-- Active Check -->
-        <div
-          v-if="selectedThemeIdForTab === theme.id"
-          class="check-icon"
-        >
-          <svg
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            width="14"
-            height="14"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-              clip-rule="evenodd"
+            </span>
+            <span class="theme-trigger-copy">
+              <span class="theme-trigger-name">
+                {{ selectedThemeForMode(item.mode)?.name || 'Select theme' }}
+              </span>
+              <span class="theme-trigger-meta">
+                {{ selectedThemeForMode(item.mode)?.source || 'No theme selected' }}
+              </span>
+            </span>
+            <ChevronDown
+              class="theme-trigger-icon"
+              :size="15"
             />
-          </svg>
+          </button>
+
+          <Transition name="theme-menu">
+            <div
+              v-if="openMode === item.mode"
+              :id="`theme-menu-${item.mode}`"
+              class="theme-menu"
+              role="listbox"
+            >
+              <button
+                v-for="theme in themesForMode(item.mode)"
+                :key="theme.id"
+                class="theme-option"
+                :class="{ selected: selectedThemeIdForMode(item.mode) === theme.id }"
+                type="button"
+                role="option"
+                :aria-selected="selectedThemeIdForMode(item.mode) === theme.id"
+                @click="selectTheme(theme.id, item.mode)"
+              >
+                <span class="theme-palette option-palette">
+                  <span
+                    v-for="(color, index) in getThemePalette(theme)"
+                    :key="`${item.mode}-${theme.id}-${color}-${index}`"
+                    class="theme-swatch"
+                    :style="{ background: color }"
+                  />
+                </span>
+                <span class="theme-option-copy">
+                  <span class="theme-option-name">{{ theme.name }}</span>
+                  <span class="theme-option-meta">
+                    {{ theme.source }} - {{ theme.colorScheme }}
+                  </span>
+                </span>
+                <Check
+                  v-if="selectedThemeIdForMode(item.mode) === theme.id"
+                  class="theme-option-check"
+                  :size="14"
+                />
+              </button>
+
+              <div
+                v-if="themesForMode(item.mode).length === 0"
+                class="theme-menu-empty"
+              >
+                No {{ item.mode }} themes found
+              </div>
+            </div>
+          </Transition>
         </div>
       </div>
     </div>
 
-    <!-- Empty State -->
-    <div
-      v-else-if="!themeStore.isLoading"
-      class="empty-state"
-    >
-      <p>No themes found. Click "Open Themes Folder" to add custom themes.</p>
-    </div>
-
-    <!-- Actions -->
     <div class="theme-actions">
       <button
         class="action-btn"
+        type="button"
         title="Open themes folder"
         @click="openThemesFolder"
       >
-        <svg
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          width="16"
-          height="16"
-        >
-          <path
-            fill-rule="evenodd"
-            d="M2 6a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1H8a3 3 0 00-3 3v1.5a1.5 1.5 0 01-3 0V6z"
-            clip-rule="evenodd"
-          />
-          <path d="M6 12a2 2 0 012-2h8a2 2 0 012 2v2a2 2 0 01-2 2H2h2a2 2 0 002-2v-2z" />
-        </svg>
-        <span>Open Themes Folder</span>
+        <FolderOpen :size="15" />
+        <span>Open folder</span>
       </button>
       <button
         class="action-btn"
+        type="button"
         :disabled="themeStore.isLoading"
         @click="refreshThemes"
       >
-        <svg
-          :class="['refresh-icon', { spinning: themeStore.isLoading }]"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          width="16"
-          height="16"
-        >
-          <path
-            fill-rule="evenodd"
-            d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-            clip-rule="evenodd"
-          />
-        </svg>
+        <RefreshCw
+          :class="{ spinning: themeStore.isLoading }"
+          :size="15"
+        />
         <span>{{ themeStore.isLoading ? 'Refreshing...' : 'Refresh' }}</span>
       </button>
     </div>
 
-    <!-- Error Message -->
     <div
       v-if="themeStore.error"
       class="error-message"
@@ -152,55 +125,98 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Check, ChevronDown, FolderOpen, RefreshCw } from 'lucide-vue-next'
 import { useThemeStore } from '@/stores/themes'
+import type { ThemeMeta } from '@shared/ipc'
+
+type ThemeMode = 'light' | 'dark'
 
 const themeStore = useThemeStore()
+const rootRef = ref<HTMLElement | null>(null)
+const openMode = ref<ThemeMode | null>(null)
 
-// Emit theme changes to parent so localSettings can be synced
 const emit = defineEmits<{
   (e: 'themeChange', darkThemeId: string, lightThemeId: string): void
 }>()
 
-// Tab state: 'dark' or 'light'
-const activeTab = ref<'dark' | 'light'>('dark')
+const modeItems: Array<{ mode: ThemeMode; label: string }> = [
+  { mode: 'light', label: 'Light theme' },
+  { mode: 'dark', label: 'Dark theme' },
+]
+const FALLBACK_THEME_PALETTE = [
+  'var(--ui-surface-app-bg)',
+  'var(--ui-surface-sidebar-bg)',
+  'var(--ui-accent-primary-fg)',
+  'var(--ui-text-primary-fg)',
+]
 
-// Filter themes based on active tab
-const filteredThemes = computed(() => {
-  return themeStore.availableThemes.filter(theme => {
-    if (activeTab.value === 'dark') {
-      // Dark tab: show themes that support dark mode
-      return theme.colorScheme === 'dark' || theme.colorScheme === 'both'
-    } else {
-      // Light tab: show themes that support light mode
-      return theme.colorScheme === 'light' || theme.colorScheme === 'both'
-    }
-  })
-})
+const lightThemes = computed(() =>
+  themeStore.availableThemes.filter(theme => theme.colorScheme === 'light' || theme.colorScheme === 'both')
+)
 
-// Get the selected theme ID for the current tab
-const selectedThemeIdForTab = computed(() => {
-  if (activeTab.value === 'dark') {
-    return themeStore.darkThemeId
-  } else {
-    return themeStore.lightThemeId
-  }
-})
+const darkThemes = computed(() =>
+  themeStore.availableThemes.filter(theme => theme.colorScheme === 'dark' || theme.colorScheme === 'both')
+)
 
 onMounted(async () => {
-  // Initialize theme store if not already done
   if (themeStore.availableThemes.length === 0) {
     await themeStore.initialize()
   }
+  document.addEventListener('mousedown', handleOutsideClick)
 })
 
-// Select a theme for the current tab's mode
-function selectTheme(themeId: string) {
-  themeStore.setThemeForMode(themeId, activeTab.value)
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', handleOutsideClick)
+})
 
-  // Emit to parent to sync localSettings
-  // This prevents other settings changes from overwriting the theme selection
+function themesForMode(mode: ThemeMode): ThemeMeta[] {
+  return mode === 'dark' ? darkThemes.value : lightThemes.value
+}
+
+function selectedThemeIdForMode(mode: ThemeMode): string {
+  return mode === 'dark' ? themeStore.darkThemeId : themeStore.lightThemeId
+}
+
+function selectedThemeForMode(mode: ThemeMode): ThemeMeta | undefined {
+  const selectedId = selectedThemeIdForMode(mode)
+  return themesForMode(mode).find(theme => theme.id === selectedId)
+    ?? themeStore.availableThemes.find(theme => theme.id === selectedId)
+    ?? themesForMode(mode)[0]
+}
+
+function getThemePalette(theme?: ThemeMeta): string[] {
+  const colors = theme?.previewColors
+  if (colors?.palette?.length) {
+    return colors.palette.slice(0, 5)
+  }
+
+  const palette = [colors?.bg, colors?.sidebar, colors?.accent, colors?.text]
+    .filter((color): color is string => Boolean(color))
+
+  return palette.length > 0
+    ? palette.slice(0, 5)
+    : FALLBACK_THEME_PALETTE
+}
+
+function toggleDropdown(mode: ThemeMode) {
+  openMode.value = openMode.value === mode ? null : mode
+}
+
+function closeDropdown() {
+  openMode.value = null
+}
+
+function handleOutsideClick(event: MouseEvent) {
+  const target = event.target as Node | null
+  if (!target || !rootRef.value || rootRef.value.contains(target)) return
+  closeDropdown()
+}
+
+async function selectTheme(themeId: string, mode: ThemeMode) {
+  await themeStore.setThemeForMode(themeId, mode)
   emit('themeChange', themeStore.darkThemeId, themeStore.lightThemeId)
+  closeDropdown()
 }
 
 async function openThemesFolder() {
@@ -216,234 +232,223 @@ async function refreshThemes() {
 .theme-selector {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-}
-
-/* Tab Bar */
-.tab-bar {
-  display: flex;
-  gap: 4px;
-  border: 1px solid var(--settings-rule, transparent);
-  background: var(--settings-paper-2, var(--ui-surface-input-bg, var(--bg-input, var(--bg-hover))));
-  padding: 3px;
-  border-radius: 999px;
-  width: fit-content;
-}
-
-.tab-btn {
-  padding: 6px 16px;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.tab-btn:hover:not(.active) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  background: var(--settings-paper, var(--ui-state-hover-bg, var(--bg-hover)));
-}
-
-.tab-btn.active {
-  background: var(--settings-ink, var(--ui-accent-primary-fg, var(--accent)));
-  color: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
-}
-
-/* Theme Grid */
-.theme-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 12px;
 }
 
-.theme-item {
-  position: relative;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 12px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  background: var(--settings-paper, var(--ui-surface-panel-bg, var(--bg-panel, var(--panel))));
+.theme-select-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.theme-item:hover {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+.theme-select-field {
+  min-width: 0;
 }
 
-.theme-item.active {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 6%, transparent);
-  box-shadow: 0 0 0 3px var(--settings-accent-soft, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 14%, transparent));
-}
-
-/* Theme Preview */
-.theme-preview {
-  height: 92px;
-  display: flex;
-  background: var(--preview-bg);
-  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-}
-
-.preview-sidebar {
-  width: 28%;
-  background: var(--preview-sidebar);
-}
-
-.preview-content {
-  flex: 1;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  justify-content: center;
-}
-
-.preview-bubble {
-  height: 10px;
-  border-radius: 5px;
-}
-
-.preview-bubble.user {
-  width: 55%;
-  margin-left: auto;
-  background: var(--preview-accent);
-}
-
-.preview-bubble.assistant {
-  width: 75%;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.preview-palette {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  min-height: 12px;
-  margin-top: 2px;
-}
-
-.preview-swatch {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 10px;
-  border-radius: 3px;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
-    0 1px 2px rgba(0, 0, 0, 0.18);
-}
-
-/* Theme Info */
-.theme-info {
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.theme-name {
+.theme-select-label {
+  display: block;
+  margin: 0 0 7px;
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 13px;
-  font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 650;
+  line-height: 1.3;
 }
 
-.theme-author {
-  font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+.theme-dropdown {
+  position: relative;
 }
 
-/* Check Icon */
-.check-icon {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--ui-accent-primary-fg, var(--accent));
-  color: var(--ui-action-primary-fg, var(--text-btn-primary, var(--settings-paper)));
-  display: flex;
+.theme-trigger {
+  width: 100%;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 8px;
+  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
 
-/* Actions */
+.theme-trigger:hover,
+.theme-trigger[aria-expanded='true'] {
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+.theme-trigger-copy,
+.theme-option-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.theme-trigger-name,
+.theme-option-name {
+  overflow: hidden;
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  font-size: 13px;
+  font-weight: 620;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-trigger-meta,
+.theme-option-meta {
+  overflow: hidden;
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.theme-trigger-icon {
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+}
+
+.theme-palette {
+  width: 44px;
+  height: 24px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.22));
+  border-radius: 6px;
+  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
+}
+
+.option-palette {
+  width: 42px;
+  height: 22px;
+}
+
+.theme-swatch {
+  min-width: 0;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.1);
+}
+
+.theme-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 8px;
+  background: var(--ui-surface-elevated-bg, var(--settings-paper, var(--bg-panel)));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+.theme-option {
+  width: 100%;
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.theme-option:hover {
+  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
+}
+
+.theme-option.selected {
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 10%, transparent);
+}
+
+.theme-option-check {
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+.theme-menu-empty {
+  padding: 14px 10px;
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  font-size: 12px;
+  text-align: center;
+}
+
 .theme-actions {
   display: flex;
-  gap: 10px;
-  padding-top: 12px;
-  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 2px;
 }
 
 .action-btn {
-  display: flex;
+  min-height: 32px;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+  gap: 7px;
+  padding: 6px 10px;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--settings-paper, transparent);
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  font-size: 13px;
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   cursor: pointer;
-  transition: all 0.15s ease;
+  font: inherit;
+  font-size: 13px;
 }
 
 .action-btn:hover:not(:disabled) {
-  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--bg-hover, var(--hover))));
   border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
 }
 
 .action-btn:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
+  opacity: 0.55;
 }
 
-.refresh-icon.spinning {
-  animation: spin 1s linear infinite;
+.spinning {
+  animation: spin 0.9s linear infinite;
+}
+
+.error-message {
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 30%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 9%, transparent);
+  color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
+  font-size: 12px;
+}
+
+.theme-menu-enter-active,
+.theme-menu-leave-active {
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.theme-menu-enter-from,
+.theme-menu-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+@media (max-width: 720px) {
+  .theme-select-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-
-/* Error Message */
-.error-message {
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 30%, transparent);
-  color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
-  font-size: 13px;
-}
-
-/* Empty State */
-.empty-state {
-  padding: 32px;
-  text-align: center;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  font-size: 13px;
-}
-
-/* Responsive */
-@media (max-width: 480px) {
-  .theme-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .theme-actions {
-    flex-direction: column;
-  }
 }
 </style>

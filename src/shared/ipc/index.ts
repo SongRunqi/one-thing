@@ -41,6 +41,7 @@ export type {
   ToolRenderKind,
   PermissionMode,
   BashToolSettings,
+  ToolCallModelSettings,
   ToolSettings,
   StreamMessageChunk,
   SendMessageStreamResponse,
@@ -491,11 +492,17 @@ export {
 } from './ui-message.js'
 
 // Search types
+export {
+  SEARCH_CATEGORIES,
+  isSearchCategory,
+} from './search.js'
+
 export type {
   SearchCategory,
   SearchRequest,
   SearchResult,
   SearchResponse,
+  SearchWindowGuideState,
 } from './search.js'
 
 // User prompt snippet types

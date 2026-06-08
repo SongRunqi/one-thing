@@ -3,6 +3,8 @@
  * Tool-related type definitions for IPC communication
  */
 
+import type { ThinkingEffort } from './providers.js'
+
 // Tool related types
 export interface GetToolsResponse {
   success: boolean
@@ -133,10 +135,22 @@ export interface WebSearchSettings {
 
 export type PermissionMode = 'normal' | 'auto-accept-edits' | 'dangerously-allow-all'
 
+export interface ToolCallModelSettings {
+  /** Provider used for lightweight AI utility calls, such as chat title generation. Empty = use chat default. */
+  providerId?: string
+  /** Model used for lightweight AI utility calls. Empty = provider default model. */
+  model?: string
+  /** Independent thinking toggle for lightweight AI utility calls. Defaults to disabled. */
+  thinking?: boolean
+  /** Thinking effort used only when lightweight utility thinking is enabled. */
+  thinkingEffort?: ThinkingEffort
+}
+
 export interface ToolSettings {
   // Global tool settings
   enableToolCalls: boolean   // Master switch for tool calls
   permissionMode?: PermissionMode // Session/runtime permission mode (global default for now)
+  toolCallModel?: ToolCallModelSettings
   // Per-tool settings (toolId -> settings)
   tools: Record<string, {
     enabled: boolean

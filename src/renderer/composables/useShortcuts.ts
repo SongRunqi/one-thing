@@ -8,7 +8,7 @@
 import { onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useSessionsStore } from '../stores/sessions'
-import type { KeyboardShortcut } from '@/types'
+import type { KeyboardShortcut, ShortcutSettings } from '@/types'
 
 /**
  * Check if a keyboard event matches a shortcut configuration
@@ -56,6 +56,12 @@ export function formatShortcut(shortcut: KeyboardShortcut | undefined): string {
   return parts.join(' + ')
 }
 
+export function resolveSearchEverywhereShortcut(
+  shortcuts: Pick<ShortcutSettings, 'searchEverywhere' | 'searchOverlay'> | undefined,
+): KeyboardShortcut | undefined {
+  return shortcuts?.searchEverywhere ?? shortcuts?.searchOverlay
+}
+
 export interface ShortcutHandlers {
   onNewChat?: () => void
   onCloseChat?: () => void
@@ -84,7 +90,7 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
     const shortcuts = settingsStore.settings?.general?.shortcuts
     if (!shortcuts) return
 
-    if (matchShortcut(event, shortcuts.searchEverywhere)) {
+    if (matchShortcut(event, resolveSearchEverywhereShortcut(shortcuts))) {
       event.preventDefault()
       if (handlers.onSearchEverywhere) {
         handlers.onSearchEverywhere()

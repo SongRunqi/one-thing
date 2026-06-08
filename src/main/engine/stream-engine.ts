@@ -25,8 +25,9 @@ import {
   getEffectiveProviderConfig,
   resolveProviderAuth,
   extractErrorDetails,
+  getProviderApiType,
 } from './stream/provider-helpers.js'
-import { isProviderSupported, requiresOAuth, convertToolDefinitionsForAI } from '../providers/index.js'
+import { isProviderSupported, requiresOAuth, convertToolDefinitionsForAI, generateChatTitle } from '../providers/index.js'
 import { buildHistoryMessages } from './stream/message-helpers.js'
 import { executeMessageStream, type ProviderConfigWithKey } from './stream/stream-executor.js'
 import { createStreamProcessor, type StreamContext } from './stream/stream-processor.js'
@@ -57,6 +58,8 @@ export class StreamEngine {
   private activeStreams = new Map<string, AbortController>()
   private activeCompactions = new Set<string>()
   private sessionChannels = new Map<string, string>()
+  private sessionTitleGenerations = new Map<string, number>()
+  private titleGenerationSeq = 0
   private eventBus: EventBus | null = null
   private sender: WebContents | null = null
   private unsubs: Array<() => void> = []
@@ -217,14 +220,13 @@ export class StreamEngine {
         message: userMessage,
       })
 
-      // 2. Auto-rename session on first message
+      // 2. Auto-rename session on first message using the configured utility model.
       if (isFirstUserMessage || isBranchFirstMessage) {
-        const newTitle = generateTitleFromMessage(resolvedPromptRefs.displayContent)
-        store.renameSession(sessionId, newTitle)
-        await this.eventBus?.emit(sessionId, {
-          type: 'session:renamed',
-          name: newTitle,
-        })
+        this.generateAndApplySessionTitle(
+          sessionId,
+          resolvedPromptRefs.displayContent,
+          session?.name || '',
+        ).catch(err => console.warn('[StreamEngine] chat title generation failed:', err))
       }
 
       // 3. Resolve provider
@@ -714,6 +716,7 @@ export class StreamEngine {
     // Clear message queues for this session
     this.steeringQueues.get(sessionId)?.clear()
     this.followUpQueues.get(sessionId)?.clear()
+    this.sessionTitleGenerations.delete(sessionId)
     Permission.clearSession(sessionId)
     return !!controller
   }
@@ -727,6 +730,7 @@ export class StreamEngine {
       }
       this.activeStreams.clear()
       this.sessionChannels.clear()
+      this.sessionTitleGenerations.clear()
     }
   }
 
@@ -736,11 +740,137 @@ export class StreamEngine {
     this.unsubs = []
     this.steeringQueues.clear()
     this.followUpQueues.clear()
+    this.sessionTitleGenerations.clear()
     this.sender = null
     console.log('[StreamEngine] Shut down')
   }
 
   // ── Internal Helpers ───────────────────────────
+
+  private async generateAndApplySessionTitle(
+    sessionId: string,
+    displayContent: string,
+    expectedSessionName: string,
+  ): Promise<void> {
+    const requestId = ++this.titleGenerationSeq
+    this.sessionTitleGenerations.set(sessionId, requestId)
+
+    try {
+      const generatedTitle = await this.generateSessionTitle(sessionId, displayContent)
+      const title = this.normalizeSessionTitle(generatedTitle) || generateTitleFromMessage(displayContent)
+      if (!title) return
+
+      if (this.sessionTitleGenerations.get(sessionId) !== requestId) return
+
+      const session = store.getSession(sessionId)
+      if (!session) return
+      if (!this.canApplyGeneratedSessionTitle(session.name, expectedSessionName)) {
+        return
+      }
+      if (session.name === title) return
+
+      store.renameSession(sessionId, title)
+      await this.eventBus?.emit(sessionId, {
+        type: 'session:renamed',
+        name: title,
+      })
+    } catch (error) {
+      const fallbackTitle = generateTitleFromMessage(displayContent)
+      const session = store.getSession(sessionId)
+      if (
+        session &&
+        fallbackTitle &&
+        this.sessionTitleGenerations.get(sessionId) === requestId &&
+        this.canApplyGeneratedSessionTitle(session.name, expectedSessionName)
+      ) {
+        store.renameSession(sessionId, fallbackTitle)
+        await this.eventBus?.emit(sessionId, {
+          type: 'session:renamed',
+          name: fallbackTitle,
+        })
+      }
+      console.warn('[StreamEngine] Falling back to local chat title:', error)
+    } finally {
+      if (this.sessionTitleGenerations.get(sessionId) === requestId) {
+        this.sessionTitleGenerations.delete(sessionId)
+      }
+    }
+  }
+
+  private async generateSessionTitle(sessionId: string, displayContent: string): Promise<string> {
+    const settings = store.getSettings()
+    const { providerId, providerConfig, model } = this.resolveToolCallModel(settings)
+    if (!providerId || !providerConfig || !model) {
+      return generateTitleFromMessage(displayContent)
+    }
+
+    if (!isProviderSupported(providerId)) {
+      return generateTitleFromMessage(displayContent)
+    }
+
+    const authContext = await resolveProviderAuth(providerId, providerConfig)
+    if (!authContext) {
+      return generateTitleFromMessage(displayContent)
+    }
+
+    const apiType = getProviderApiType(settings, providerId)
+    return generateChatTitle(
+      providerId,
+      {
+        ...providerConfig,
+        apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
+        authContext,
+        oauthToken: authContext.kind === 'oauth' ? authContext.token : providerConfig.oauthToken,
+        baseUrl: providerConfig.baseUrl,
+        model,
+        apiType,
+      },
+      displayContent,
+      {
+        thinking: settings.tools?.toolCallModel?.thinking === true,
+        thinkingEffort: settings.tools?.toolCallModel?.thinkingEffort,
+        debugSessionId: sessionId,
+      },
+    )
+  }
+
+  private resolveToolCallModel(settings: AppSettings): {
+    providerId: string
+    providerConfig: AppSettings['ai']['providers'][string] | undefined
+    model: string
+  } {
+    const configuredProviderId = settings.tools?.toolCallModel?.providerId?.trim()
+    const configuredModel = settings.tools?.toolCallModel?.model?.trim()
+    const fallbackProviderId = settings.ai.provider ||
+      Object.entries(settings.ai.providers).find(([, config]) => Boolean(config?.model || config?.selectedModels?.[0]))?.[0] ||
+      ''
+    const providerId = configuredProviderId && settings.ai.providers[configuredProviderId]
+      ? configuredProviderId
+      : fallbackProviderId
+    const providerConfig = providerId ? settings.ai.providers[providerId] : undefined
+    const model = providerId === configuredProviderId && configuredModel
+      ? configuredModel
+      : providerConfig?.model || providerConfig?.selectedModels?.[0] || ''
+
+    return { providerId, providerConfig, model }
+  }
+
+  private normalizeSessionTitle(title: string): string {
+    const cleaned = title
+      .replace(/\s+/g, ' ')
+      .replace(/^[`"'“”‘’#:\-\s]+/, '')
+      .replace(/[`"'“”‘’\s]+$/, '')
+      .replace(/^title\s*:\s*/i, '')
+      .trim()
+    return Array.from(cleaned).slice(0, 60).join('').trim()
+  }
+
+  private canApplyGeneratedSessionTitle(currentName: string | undefined, expectedName: string): boolean {
+    const current = (currentName || '').trim()
+    const expected = (expectedName || '').trim()
+    if (current === expected) return true
+    return (current === '' || current === 'New Chat') && (expected === '' || expected === 'New Chat')
+  }
 
   private async resolveProvider(sessionId: string): Promise<{
     configWithApiKey: ProviderConfigWithKey

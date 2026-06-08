@@ -233,6 +233,7 @@ describe("TodoPlanPanel", () => {
 		).toBe("Command Panel");
 		expect(wrapper.find('[title="Browse notes"]').exists()).toBe(true);
 		expect(wrapper.find('[title="New note"]').exists()).toBe(true);
+		expect(wrapper.find('[title="Unpin Todo"]').exists()).toBe(true);
 		expect(wrapper.find('[title="Find in note"]').exists()).toBe(false);
 		expect(wrapper.find(".window-traffic-spacer").exists()).toBe(true);
 		expect(wrapper.find(".window-title").exists()).toBe(true);
@@ -252,9 +253,10 @@ describe("TodoPlanPanel", () => {
 		expect(wrapper.find('[title="Browse notes"]').exists()).toBe(true);
 		expect(wrapper.find('[title="New note"]').exists()).toBe(true);
 		expect(wrapper.find('[title="Find in note"]').exists()).toBe(false);
-		expect(wrapper.find('[title="Keep card open"]').exists()).toBe(true);
-		expect(wrapper.find('[title="Dock card"]').exists()).toBe(true);
-		expect(wrapper.find('[title="Open in window"]').exists()).toBe(true);
+		expect(wrapper.find('[title="Pin Todo"]').exists()).toBe(true);
+		expect(wrapper.find('[title="Keep card open"]').exists()).toBe(false);
+		expect(wrapper.find('[title="Dock card"]').exists()).toBe(false);
+		expect(wrapper.find('[title="Open in window"]').exists()).toBe(false);
 		expect(wrapper.find('[title="Keep window on top"]').exists()).toBe(false);
 	});
 
@@ -270,7 +272,10 @@ describe("TodoPlanPanel", () => {
 		).toBe("320px");
 	});
 
-	it("does not auto dock or stay fixed just because there is right-side space", async () => {
+	it("does not restore the removed docked card mode from old storage", async () => {
+		localStorage.setItem("todoPlanCardDocked", "true");
+		localStorage.setItem("todoPlanDocked", "true");
+
 		const wrapper = mount(TodoPlanPanel, {
 			attachTo: document.body,
 			props: { sessionId: "session-1", workingDirectory: "/repo" },
@@ -278,7 +283,9 @@ describe("TodoPlanPanel", () => {
 		await settle();
 
 		const panel = wrapper.find(".todo-plan-panel");
-		expect(panel.classes()).not.toContain("gutter-docked");
+		expect(panel.classes()).not.toContain("surface-chat-floating-card");
+		expect(panel.classes()).not.toContain("surface-chat-docked-card");
+		expect(panel.classes()).not.toContain("docked");
 		expect(panel.classes()).not.toContain("collapsed");
 
 		await panel.trigger("mouseleave");
@@ -301,19 +308,19 @@ describe("TodoPlanPanel", () => {
 		).toBe("320px");
 	});
 
-	it("uses one generic card title without duplicating the markdown document heading", async () => {
+	it("uses the window-style titlebar without the old two-line card heading", async () => {
 		const wrapper = mount(TodoPlanPanel, {
 			attachTo: document.body,
 			props: { sessionId: "session-1", workingDirectory: "/repo" },
 		});
 		await settle();
 
-		expect(wrapper.find(".title-display").exists()).toBe(true);
-		expect(wrapper.find(".title-display button").exists()).toBe(false);
-		expect(wrapper.find(".title-display .note-icon").exists()).toBe(false);
-		expect(wrapper.find(".panel-title strong").text()).toBe("Notes");
+		expect(wrapper.find(".title-display").exists()).toBe(false);
+		expect(wrapper.find(".panel-title").exists()).toBe(false);
+		expect(wrapper.find(".window-title").exists()).toBe(true);
+		expect(wrapper.find(".window-title").text()).toBe("User Todo");
 
-		await wrapper.find(".title-display").trigger("click");
+		await wrapper.find(".window-title").trigger("click");
 		await settle();
 		expect(wrapper.find(".note-switcher").exists()).toBe(false);
 
@@ -322,14 +329,14 @@ describe("TodoPlanPanel", () => {
 		expect(wrapper.find(".note-switcher").exists()).toBe(true);
 	});
 
-	it("shows task status without quota-like count limits", async () => {
+	it("keeps task counts out of the compact titlebar", async () => {
 		const wrapper = mount(TodoPlanPanel, {
 			attachTo: document.body,
 			props: { sessionId: "session-1", workingDirectory: "/repo" },
 		});
 		await settle();
 
-		expect(wrapper.text()).toContain("1 open task");
+		expect(wrapper.find(".window-title").text()).toBe("User Todo");
 		expect(wrapper.text()).not.toContain("1/1 open task");
 	});
 
@@ -373,8 +380,16 @@ describe("TodoPlanPanel", () => {
 		await settle();
 
 		expect(wrapper.find(".note-switcher").exists()).toBe(true);
+		expect(wrapper.find(".note-switcher").classes()).toContain("todo-popover");
+		expect(wrapper.find(".note-switcher").classes()).toContain("todo-popover-notes");
 		expect(wrapper.find(".note-switcher .switcher-search svg").exists()).toBe(
 			true,
+		);
+		expect(wrapper.find(".note-switcher .switcher-search").classes()).toContain(
+			"todo-popover-search",
+		);
+		expect(wrapper.find(".note-switcher .switcher-list").classes()).toContain(
+			"todo-popover-list",
 		);
 		expect(
 			wrapper
@@ -449,9 +464,21 @@ describe("TodoPlanPanel", () => {
 		await settle();
 
 		expect(wrapper.find(".todo-notes-action-panel").exists()).toBe(true);
+		expect(wrapper.find(".todo-notes-action-panel").classes()).toContain(
+			"todo-popover",
+		);
+		expect(wrapper.find(".todo-notes-action-panel").classes()).toContain(
+			"todo-popover-actions",
+		);
 		expect(
 			wrapper.find(".todo-notes-action-panel .action-search svg").exists(),
 		).toBe(true);
+		expect(
+			wrapper.find(".todo-notes-action-panel .action-search").classes(),
+		).toContain("todo-popover-search");
+		expect(
+			wrapper.find(".todo-notes-action-panel .action-list").classes(),
+		).toContain("todo-popover-list");
 		expect(
 			wrapper
 				.find(".todo-notes-action-panel .action-search input")
@@ -551,7 +578,7 @@ describe("TodoPlanPanel", () => {
 		expect(wrapper.find(".format-buffer").exists()).toBe(false);
 	});
 
-	it("filters action panel commands by surface", async () => {
+	it("uses the same command panel actions across window and chat surfaces", async () => {
 		const standalone = mount(TodoPlanPanel, {
 			attachTo: document.body,
 			props: { standalone: true },
@@ -569,6 +596,7 @@ describe("TodoPlanPanel", () => {
 		await settle();
 
 		expect(standalone.text()).not.toContain("Keep Window on Top");
+		expect(standalone.text()).not.toContain("Keep Card Open");
 		expect(standalone.text()).not.toContain("Open in Window");
 		expect(standalone.text()).not.toContain("Dock Card");
 		standalone.unmount();
@@ -589,9 +617,10 @@ describe("TodoPlanPanel", () => {
 		);
 		await settle();
 
-		expect(chatCard.text()).toContain("Open in Window");
-		expect(chatCard.text()).toContain("Dock Card");
+		expect(chatCard.text()).not.toContain("Open in Window");
+		expect(chatCard.text()).not.toContain("Dock Card");
 		expect(chatCard.text()).not.toContain("Keep Window on Top");
+		expect(chatCard.text()).not.toContain("Keep Card Open");
 	});
 
 	it("always uses the markdown live preview editor without a separate preview mode", async () => {
@@ -664,7 +693,7 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		expect(chatCard.find(".panel-title strong").text()).toBe("Notes");
+		expect(chatCard.find(".window-title").text()).toBe("User Todo");
 		const chatEditor = chatCard.findComponent({
 			name: "MarkdownDocumentEditor",
 		});
@@ -702,7 +731,8 @@ describe("TodoPlanPanel", () => {
 
 		const editor = wrapper.findComponent({ name: "MarkdownDocumentEditor" });
 		expect(editor.props("modelValue")).toContain("Ship the refresh fix");
-		expect(wrapper.text()).toContain("1 open task");
+		expect(wrapper.find(".window-title").text()).toBe("AI Todo");
+		expect(wrapper.text()).not.toContain("1/2 open task");
 	});
 
 	it("does not overwrite local draft edits with an incoming todo broadcast", async () => {
