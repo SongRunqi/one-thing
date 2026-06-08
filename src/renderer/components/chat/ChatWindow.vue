@@ -207,8 +207,7 @@ watch(() => editorWorkspace.workspace.activePath, (filePath) => {
 const currentSession = computed(() => {
   const sid = effectiveSessionId.value
   if (!sid) return null
-  if (sessionsStore.currentSession?.id === sid) return sessionsStore.currentSession
-  return sessionsStore.sessions.find(s => s.id === sid) || null
+  return sessionsStore.getSessionItem(sid) || null
 })
 
 const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)

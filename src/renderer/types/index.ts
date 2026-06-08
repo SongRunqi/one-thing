@@ -553,7 +553,7 @@ export interface ElectronAPI {
   getProviders: () => Promise<GetProvidersResponse>
   getProviderUsage: (providerId: string) => Promise<ProviderUsageResponse>
   // New OpenRouter-based model API
-  getModelsWithCapabilities: (providerId: string) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
+  getModelsWithCapabilities: (providerId: string, options?: { forceRefresh?: boolean }) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
   getAllModels: () => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
   searchModels: (query: string, providerId?: string) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
   refreshModelRegistry: () => Promise<{ success: boolean; error?: string }>

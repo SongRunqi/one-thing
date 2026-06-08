@@ -6,6 +6,7 @@ import type {
 	ContextVariable,
 	PermissionMode,
 } from "@/types";
+import { DEFAULT_AGENT_ID } from "../../shared/ipc";
 import { useChatStore } from "./chat";
 import { useSettingsStore } from "./settings";
 
@@ -84,6 +85,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 			sessions.value.find((s) => s.id === sessionId) ||
 			newChatDrafts.value.find((draft) => draft.id === sessionId)
 		);
+	}
+
+	function getSessionItem(sessionId?: string | null): VisibleSessionListItem | undefined {
+		return sessionId ? findSessionItem(sessionId) : undefined;
 	}
 
 	function nextSessionNameAnimationToken(sessionId: string): number {
@@ -209,7 +214,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			name: name || "New Chat",
 			createdAt: now,
 			updatedAt: now,
-			agentId: "default",
+			agentId: DEFAULT_AGENT_ID,
 			messageCount: 0,
 		};
 		newChatDrafts.value = [draft, ...newChatDrafts.value];
@@ -240,8 +245,32 @@ export const useSessionsStore = defineStore("sessions", () => {
 			newChatDrafts.value = [draft, ...newChatDrafts.value];
 			currentSessionId.value = draft.id;
 			isActive.value = true;
+			return created;
 		}
+
+		await applyDraftSettingsToSession(created.id, draft);
 		return created;
+	}
+
+	async function applyDraftSettingsToSession(
+		sessionId: string,
+		draft: NewChatDraft,
+	): Promise<void> {
+		if (draft.agentId && draft.agentId !== DEFAULT_AGENT_ID) {
+			await updateSessionAgent(sessionId, draft.agentId);
+		}
+		if (draft.permissionMode) {
+			await updateSessionPermissionMode(sessionId, draft.permissionMode);
+		}
+		if (draft.lastProvider && draft.lastModel) {
+			await updateSessionModel(sessionId, draft.lastProvider, draft.lastModel);
+		}
+		if (draft.workingDirectory !== undefined) {
+			await updateSessionWorkingDirectory(
+				sessionId,
+				draft.workingDirectory || null,
+			);
+		}
 	}
 
 	/**
@@ -713,6 +742,18 @@ export const useSessionsStore = defineStore("sessions", () => {
 		sessionId: string,
 		workingDirectory: string | null,
 	): Promise<{ success: boolean; error?: string }> {
+		const draft = newChatDrafts.value.find((item) => item.id === sessionId);
+		if (draft) {
+			if (workingDirectory === null || workingDirectory === "") {
+				delete draft.workingDirectory;
+			} else {
+				draft.workingDirectory = workingDirectory;
+			}
+			draft.updatedAt = Date.now();
+			newChatDrafts.value = [...newChatDrafts.value];
+			return { success: true };
+		}
+
 		try {
 			const response = await window.electronAPI.updateSessionWorkingDirectory(
 				sessionId,
@@ -746,6 +787,14 @@ export const useSessionsStore = defineStore("sessions", () => {
 		sessionId: string,
 		agentId: string,
 	): Promise<{ success: boolean; error?: string }> {
+		const draft = newChatDrafts.value.find((item) => item.id === sessionId);
+		if (draft) {
+			draft.agentId = agentId || DEFAULT_AGENT_ID;
+			draft.updatedAt = Date.now();
+			newChatDrafts.value = [...newChatDrafts.value];
+			return { success: true };
+		}
+
 		try {
 			const response = await window.electronAPI.updateSessionAgent(
 				sessionId,
@@ -772,6 +821,14 @@ export const useSessionsStore = defineStore("sessions", () => {
 		sessionId: string,
 		permissionMode: PermissionMode,
 	): Promise<{ success: boolean; error?: string }> {
+		const draft = newChatDrafts.value.find((item) => item.id === sessionId);
+		if (draft) {
+			draft.permissionMode = permissionMode;
+			draft.updatedAt = Date.now();
+			newChatDrafts.value = [...newChatDrafts.value];
+			return { success: true };
+		}
+
 		try {
 			const response = await window.electronAPI.updateSessionPermissionMode(
 				sessionId,
@@ -790,6 +847,44 @@ export const useSessionsStore = defineStore("sessions", () => {
 			return {
 				success: false,
 				error: error?.message || "Failed to update session permission mode",
+			};
+		}
+	}
+
+	async function updateSessionModel(
+		sessionId: string,
+		provider: string,
+		model: string,
+	): Promise<{ success: boolean; error?: string }> {
+		const draft = newChatDrafts.value.find((item) => item.id === sessionId);
+		if (draft) {
+			draft.lastProvider = provider;
+			draft.lastModel = model;
+			draft.updatedAt = Date.now();
+			newChatDrafts.value = [...newChatDrafts.value];
+			return { success: true };
+		}
+
+		try {
+			const response = await window.electronAPI.updateSessionModel(
+				sessionId,
+				provider,
+				model,
+			);
+			if (response.success) {
+				const session = sessions.value.find((s) => s.id === sessionId);
+				if (session) {
+					session.lastProvider = provider;
+					session.lastModel = model;
+					sessions.value = [...sessions.value];
+				}
+			}
+			return response;
+		} catch (error: any) {
+			console.error("Failed to update session model:", error);
+			return {
+				success: false,
+				error: error?.message || "Failed to update session model",
 			};
 		}
 	}
@@ -924,6 +1019,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		sessionCount,
 		filteredSessions,
 		sidebarSessions,
+		getSessionItem,
 		filteredSessionCount,
 		archivedSessions,
 		loadSessions,
@@ -952,6 +1048,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		updateSessionPin,
 		updateSessionAgent,
 		updateSessionPermissionMode,
+		updateSessionModel,
 		updateSessionWorkingDirectory,
 	};
 });

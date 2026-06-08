@@ -115,7 +115,7 @@ export function useProviderSettings(
 
   const providerAuth = useProviderAuth(viewingProvider, isOAuthProvider, async (providerId) => {
     if (providerId !== viewingProvider.value) return
-    await fetchModels(true)
+    await fetchModels(false)
   })
 
   // Global default computed properties
@@ -460,7 +460,7 @@ export function useProviderSettings(
     providerAuth.resetOAuthState()
     await providerAuth.checkOAuthStatus()
     if (isOAuthProvider.value && providerAuth.oauthStatus.value.isLoggedIn) {
-      await fetchModels(true)
+      await fetchModels(false)
     } else {
       // Warm-load from cache (no force) so capability icons show without a manual Fetch click.
       loadCachedModels()
@@ -569,7 +569,7 @@ export function useProviderSettings(
     }
   }
 
-  async function fetchModels(forceRefresh = true) {
+  async function fetchModels(forceRefresh = false) {
     modelError.value = ''
 
     try {
@@ -590,7 +590,7 @@ export function useProviderSettings(
     providerAuth.initializeOAuthListeners()
     await providerAuth.checkOAuthStatus()
     if (isOAuthProvider.value && providerAuth.oauthStatus.value.isLoggedIn) {
-      await fetchModels(true)
+      await fetchModels(false)
     } else {
       // Warm-load models for the initial provider so capability icons render on open.
       loadCachedModels()

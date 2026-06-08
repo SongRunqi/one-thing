@@ -4,6 +4,7 @@
     class="agent-selector"
   >
     <button
+      ref="chipRef"
       class="agent-chip"
       type="button"
       :disabled="isDisabled"
@@ -15,109 +16,66 @@
       <ChevronDown :size="13" />
     </button>
 
-    <div
-      v-if="open"
-      class="agent-menu"
-      @click.stop
-    >
-      <div class="agent-list">
-        <button
-          v-for="agent in agentsStore.agents"
-          :key="agent.id"
-          :class="['agent-row', { active: agent.id === currentAgentId }]"
-          type="button"
-          @click="selectAgent(agent.id)"
-        >
-          <span class="agent-row-name">{{ agent.name }}</span>
-          <span
-            v-if="agent.isDefault"
-            class="agent-row-meta"
-          >Default</span>
-        </button>
-      </div>
-
-      <div class="agent-actions">
-        <button
-          class="agent-action"
-          type="button"
-          @click="beginCreate"
-        >
-          <Plus :size="14" />
-          <span>New</span>
-        </button>
-        <button
-          class="agent-action"
-          type="button"
-          :disabled="!currentAgent"
-          @click="beginEdit"
-        >
-          <Pencil :size="14" />
-          <span>Edit</span>
-        </button>
-      </div>
-
-      <form
-        v-if="editing"
-        class="agent-form"
-        @submit.prevent="saveAgent"
+    <Teleport to="body">
+      <div
+        v-if="open"
+        ref="menuRef"
+        class="agent-menu"
+        :style="menuStyle"
+        @click.stop
       >
-        <input
-          v-model="formName"
-          class="agent-input"
-          placeholder="Agent name"
-        >
-        <textarea
-          v-model="formPrompt"
-          class="agent-textarea"
-          placeholder="System prompt for this agent"
-          rows="6"
-        />
-        <p
-          v-if="formError"
-          class="agent-error"
-        >
-          {{ formError }}
-        </p>
-        <div class="agent-form-actions">
+        <div class="agent-list">
           <button
-            class="agent-icon-action"
-            type="submit"
-            title="Save agent"
-          >
-            <Check :size="14" />
-          </button>
-          <button
-            class="agent-icon-action"
+            v-for="agent in agentsStore.agents"
+            :key="agent.id"
+            :class="['agent-row', { active: agent.id === currentAgentId }]"
             type="button"
-            title="Cancel"
-            @click="cancelEdit"
+            :title="agent.name"
+            @click="selectAgent(agent.id)"
           >
-            <X :size="14" />
-          </button>
-          <button
-            v-if="editingAgentId && editingAgentId !== DEFAULT_AGENT_ID"
-            class="agent-icon-action danger"
-            type="button"
-            title="Delete agent"
-            @click="deleteEditingAgent"
-          >
-            <Trash2 :size="14" />
+            <span class="agent-row-main">
+              <span class="agent-row-name">{{ agent.name }}</span>
+              <span
+                v-if="agent.systemPrompt"
+                class="agent-row-prompt"
+              >
+                {{ agent.systemPrompt }}
+              </span>
+            </span>
+            <span class="agent-row-side">
+              <span
+                v-if="agent.isDefault"
+                class="agent-row-meta"
+              >Default</span>
+              <Check
+                v-if="agent.id === currentAgentId"
+                :size="14"
+                :stroke-width="2.2"
+              />
+            </span>
           </button>
         </div>
-      </form>
-    </div>
+
+        <p
+          v-if="selectionError"
+          class="agent-error"
+        >
+          {{ selectionError }}
+        </p>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Bot, Check, ChevronDown, Pencil, Plus, Trash2, X } from 'lucide-vue-next'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Bot, Check, ChevronDown } from 'lucide-vue-next'
 import { useAgentsStore, DEFAULT_AGENT_ID } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 
 const props = defineProps<{
-  sessionId: string
+  sessionId?: string
 }>()
 
 const agentsStore = useAgentsStore()
@@ -125,15 +83,18 @@ const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
 
 const rootRef = ref<HTMLElement | null>(null)
+const chipRef = ref<HTMLElement | null>(null)
+const menuRef = ref<HTMLElement | null>(null)
 const open = ref(false)
-const editing = ref(false)
-const editingAgentId = ref<string | null>(null)
-const formName = ref('')
-const formPrompt = ref('')
-const formError = ref('')
+const selectionError = ref('')
+const menuStyle = ref<Record<string, string>>({})
+
+const MENU_WIDTH = 340
+const MENU_MARGIN = 8
+const MENU_GAP = 8
 
 const session = computed(() =>
-  sessionsStore.sessions.find(item => item.id === props.sessionId) || null
+  sessionsStore.getSessionItem(props.sessionId) || null
 )
 const currentAgentId = computed(() => session.value?.agentId || DEFAULT_AGENT_ID)
 const currentAgent = computed(() => agentsStore.getAgent(currentAgentId.value))
@@ -141,18 +102,58 @@ const isDisabled = computed(() => !!props.sessionId && chatStore.isSessionGenera
 
 function close() {
   open.value = false
-  cancelEdit()
+  selectionError.value = ''
+}
+
+function updateMenuPosition() {
+  if (!open.value) return
+  const chip = chipRef.value
+  if (!chip) return
+
+  const rect = chip.getBoundingClientRect()
+  const width = Math.min(MENU_WIDTH, Math.max(240, window.innerWidth - MENU_MARGIN * 2))
+  let left = rect.left
+  if (left + width > window.innerWidth - MENU_MARGIN) {
+    left = window.innerWidth - width - MENU_MARGIN
+  }
+  left = Math.max(MENU_MARGIN, left)
+
+  const below = window.innerHeight - rect.bottom - MENU_GAP - MENU_MARGIN
+  const above = rect.top - MENU_GAP - MENU_MARGIN
+  const openAbove = below < 280 && above > below
+  const maxHeight = Math.max(180, Math.min(520, openAbove ? above : below))
+
+  menuStyle.value = {
+    left: `${Math.round(left)}px`,
+    width: `${Math.round(width)}px`,
+    maxHeight: `${Math.round(maxHeight)}px`,
+    ...(openAbove
+      ? { bottom: `${Math.round(window.innerHeight - rect.top + MENU_GAP)}px`, top: 'auto' }
+      : { top: `${Math.round(rect.bottom + MENU_GAP)}px`, bottom: 'auto' }),
+  }
 }
 
 function handleDocumentClick(event: MouseEvent) {
-  if (!rootRef.value?.contains(event.target as Node)) {
+  const target = event.target as Node
+  if (!rootRef.value?.contains(target) && !menuRef.value?.contains(target)) {
     close()
   }
 }
 
+async function openMenu() {
+  open.value = true
+  selectionError.value = ''
+  await nextTick()
+  updateMenuPosition()
+}
+
 function toggleOpen() {
   if (isDisabled.value) return
-  open.value = !open.value
+  if (open.value) {
+    close()
+    return
+  }
+  void openMenu()
 }
 
 async function selectAgent(agentId: string) {
@@ -162,71 +163,23 @@ async function selectAgent(agentId: string) {
   }
   const response = await sessionsStore.updateSessionAgent(props.sessionId, agentId)
   if (!response.success) {
-    formError.value = response.error || 'Failed to switch agent'
+    selectionError.value = response.error || 'Failed to switch agent'
     return
   }
   open.value = false
 }
 
-function beginCreate() {
-  editing.value = true
-  editingAgentId.value = null
-  formName.value = 'New Agent'
-  formPrompt.value = ''
-  formError.value = ''
-}
-
-function beginEdit() {
-  if (!currentAgent.value) return
-  editing.value = true
-  editingAgentId.value = currentAgent.value.id
-  formName.value = currentAgent.value.name
-  formPrompt.value = currentAgent.value.systemPrompt
-  formError.value = ''
-}
-
-function cancelEdit() {
-  editing.value = false
-  editingAgentId.value = null
-  formName.value = ''
-  formPrompt.value = ''
-  formError.value = ''
-}
-
-async function saveAgent() {
-  const name = formName.value.trim()
-  if (!name) {
-    formError.value = 'Name is required'
-    return
-  }
-  try {
-    const agent = editingAgentId.value
-      ? await agentsStore.updateAgent(editingAgentId.value, { name, systemPrompt: formPrompt.value })
-      : await agentsStore.createAgent(name, formPrompt.value)
-    await selectAgent(agent.id)
-    cancelEdit()
-  } catch (err: any) {
-    formError.value = err?.message || 'Failed to save agent'
-  }
-}
-
-async function deleteEditingAgent() {
-  if (!editingAgentId.value || editingAgentId.value === DEFAULT_AGENT_ID) return
-  try {
-    await agentsStore.deleteAgent(editingAgentId.value)
-    cancelEdit()
-  } catch (err: any) {
-    formError.value = err?.message || 'Failed to delete agent'
-  }
-}
-
 onMounted(() => {
   void agentsStore.loadAgents()
   document.addEventListener('click', handleDocumentClick)
+  window.addEventListener('resize', updateMenuPosition)
+  window.addEventListener('scroll', updateMenuPosition, true)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleDocumentClick)
+  window.removeEventListener('resize', updateMenuPosition)
+  window.removeEventListener('scroll', updateMenuPosition, true)
 })
 </script>
 
@@ -240,7 +193,7 @@ onBeforeUnmount(() => {
 
 .agent-chip {
   height: 28px;
-  max-width: 180px;
+  max-width: clamp(150px, 26vw, 260px);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -270,18 +223,16 @@ onBeforeUnmount(() => {
 }
 
 .agent-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  width: 300px;
-  max-height: min(520px, calc(100vh - 64px));
+  position: fixed;
+  box-sizing: border-box;
   overflow: auto;
   padding: 8px;
   border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
   background: var(--ui-surface-floating-bg, var(--bg-floating, var(--bg-panel)));
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
-  z-index: 50;
+  z-index: 1200;
+  -webkit-app-region: no-drag;
 }
 
 .agent-list {
@@ -290,8 +241,12 @@ onBeforeUnmount(() => {
 }
 
 .agent-row,
-.agent-action,
-.agent-icon-action {
+.agent-row-side {
+  display: flex;
+  align-items: center;
+}
+
+.agent-row {
   border: 1px solid transparent;
   background: transparent;
   color: var(--ui-text-primary-fg, var(--text));
@@ -299,28 +254,51 @@ onBeforeUnmount(() => {
 }
 
 .agent-row {
-  height: 34px;
+  width: 100%;
+  min-height: 38px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 8px;
+  padding: 8px;
   border-radius: 7px;
   text-align: left;
 }
 
 .agent-row:hover,
-.agent-row.active,
-.agent-action:hover,
-.agent-icon-action:hover {
+.agent-row.active {
   background: var(--ui-state-hover-bg, var(--bg-hover));
   border-color: var(--ui-border-subtle-border, var(--border-subtle));
 }
 
+.agent-row-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
 .agent-row-name {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.agent-row-prompt {
+  display: -webkit-box;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.agent-row-side {
+  flex: 0 0 auto;
+  gap: 7px;
+  padding-top: 1px;
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .agent-row-meta {
@@ -328,74 +306,9 @@ onBeforeUnmount(() => {
   font-size: 11px;
 }
 
-.agent-actions {
-  display: flex;
-  gap: 6px;
-  padding: 8px 0;
-}
-
-.agent-action {
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 9px;
-  border-radius: 7px;
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.agent-form {
-  display: grid;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
-}
-
-.agent-input,
-.agent-textarea {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 7px;
-  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
-  color: var(--ui-text-primary-fg, var(--text));
-  font: inherit;
-}
-
-.agent-input {
-  height: 32px;
-  padding: 0 9px;
-}
-
-.agent-textarea {
-  resize: vertical;
-  min-height: 112px;
-  padding: 8px 9px;
-  line-height: 1.45;
-}
-
 .agent-error {
-  margin: 0;
+  margin: 8px 2px 0;
   color: var(--ui-status-danger-fg, var(--error, #ef4444));
   font-size: 12px;
-}
-
-.agent-form-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.agent-icon-action {
-  width: 30px;
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-}
-
-.agent-icon-action.danger:hover {
-  color: var(--ui-status-danger-fg, #ef4444);
-  background: rgba(239, 68, 68, 0.12);
 }
 </style>

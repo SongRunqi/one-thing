@@ -20,6 +20,10 @@ const { electronApi } = vi.hoisted(() => {
       activateSession: vi.fn(),
       getSessionMessagesPage: vi.fn(),
       getSessionUserMarkers: vi.fn(),
+      updateSessionAgent: vi.fn().mockResolvedValue({ success: true }),
+      updateSessionPermissionMode: vi.fn().mockResolvedValue({ success: true }),
+      updateSessionModel: vi.fn().mockResolvedValue({ success: true }),
+      updateSessionWorkingDirectory: vi.fn().mockResolvedValue({ success: true }),
       onSystemThemeChanged: vi.fn(() => vi.fn()),
       getSettings: vi.fn().mockResolvedValue({ success: true, settings: {} }),
       getProviders: vi.fn().mockResolvedValue({ success: true, providers: [] }),
@@ -57,6 +61,26 @@ describe('sessions draft New Chat', () => {
     expect(store.filteredSessions[0].id).toBe('old-empty')
     expect(store.sessions.some(session => session.id === draft.id)).toBe(false)
     expect(electronApi.createSession).not.toHaveBeenCalled()
+  })
+
+  it('updates draft chat settings locally without calling session IPC', async () => {
+    const store = useSessionsStore()
+    const draft = store.openNewChatDraft('New Chat')
+
+    await expect(store.updateSessionAgent(draft.id, 'agent-research')).resolves.toEqual({ success: true })
+    await expect(store.updateSessionPermissionMode(draft.id, 'auto-accept-edits')).resolves.toEqual({ success: true })
+    await expect(store.updateSessionModel(draft.id, 'codex', 'gpt-5.5')).resolves.toEqual({ success: true })
+
+    expect(store.currentSession).toMatchObject({
+      id: draft.id,
+      agentId: 'agent-research',
+      permissionMode: 'auto-accept-edits',
+      lastProvider: 'codex',
+      lastModel: 'gpt-5.5',
+    })
+    expect(electronApi.updateSessionAgent).not.toHaveBeenCalled()
+    expect(electronApi.updateSessionPermissionMode).not.toHaveBeenCalled()
+    expect(electronApi.updateSessionModel).not.toHaveBeenCalled()
   })
 
   it('creates another draft when current draft already has composer text', () => {
@@ -137,6 +161,9 @@ describe('sessions draft New Chat', () => {
       messageCount: 0,
     })
     const draft = store.openNewChatDraft('New Chat')
+    await store.updateSessionAgent(draft.id, 'agent-research')
+    await store.updateSessionPermissionMode(draft.id, 'dangerously-allow-all')
+    await store.updateSessionModel(draft.id, 'codex', 'gpt-5.5')
 
     electronApi.createSession.mockResolvedValue({
       success: true,
@@ -178,5 +205,14 @@ describe('sessions draft New Chat', () => {
     expect(store.currentSessionId).toBe('real-new')
     expect(store.sessions[0].id).toBe('real-new')
     expect(store.sessions.some(session => session.id === draft.id)).toBe(false)
+    expect(electronApi.updateSessionAgent).toHaveBeenCalledWith('real-new', 'agent-research')
+    expect(electronApi.updateSessionPermissionMode).toHaveBeenCalledWith('real-new', 'dangerously-allow-all')
+    expect(electronApi.updateSessionModel).toHaveBeenCalledWith('real-new', 'codex', 'gpt-5.5')
+    expect(store.sessions[0]).toMatchObject({
+      agentId: 'agent-research',
+      permissionMode: 'dangerously-allow-all',
+      lastProvider: 'codex',
+      lastModel: 'gpt-5.5',
+    })
   })
 })

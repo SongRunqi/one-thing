@@ -1,7 +1,7 @@
-import { app, BrowserWindow, protocol, net } from 'electron'
+import { app, BrowserWindow, protocol, net, powerMonitor } from 'electron'
 import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
-import { createWindow, shouldSuppressMainWindowActivation, warmTodoPlanWindow } from './window.js'
+import { createWindow, recoverMainWindowAfterSystemResume, shouldSuppressMainWindowActivation, warmTodoPlanWindow } from './window.js'
 import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills } from './ipc/handlers.js'
 import { initializeStores, flushAllPendingSaves } from './store.js'
 import { initializeSettings } from './stores/settings.js'
@@ -137,6 +137,18 @@ app.on('ready', async () => {
   })
   getVoiceService().attachMainWindow(mainWindow)
   getVoiceService().applySettings()
+
+  powerMonitor.on('resume', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    recoverMainWindowAfterSystemResume(mainWindow, 'resume')
+      .catch(err => console.error('[Window] Resume recovery failed:', err))
+  })
+
+  powerMonitor.on('unlock-screen', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    recoverMainWindowAfterSystemResume(mainWindow, 'unlock-screen')
+      .catch(err => console.error('[Window] Unlock recovery failed:', err))
+  })
 
   setTimeout(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {

@@ -384,8 +384,13 @@ const promptsStore = usePromptsStore()
 
 const PERMISSION_MODES: PermissionMode[] = ['normal', 'auto-accept-edits', 'dangerously-allow-all']
 
+// Get the effective session ID
+const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
+
+const currentSession = computed(() => sessionsStore.getSessionItem(effectiveSessionId.value) || null)
+
 const permissionMode = computed<PermissionMode>(() => {
-  return sessionsStore.currentSession?.permissionMode || settingsStore.settings?.tools?.permissionMode || 'normal'
+  return currentSession.value?.permissionMode || settingsStore.settings?.tools?.permissionMode || 'normal'
 })
 
 const permissionModeLabel = computed(() => {
@@ -412,17 +417,13 @@ interface QueuedMessage {
 
 const queuedMessages = ref<QueuedMessage[]>([])
 
-// Get the effective session ID
-const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
-
 // Get the working directory for file search
 const workingDirectory = computed(() => {
   const sessionId = effectiveSessionId.value
   if (!sessionId) return ''
   const workdirVariable = sessionsStore.sessionVariables.get(sessionId)?.find(variable => variable.name === 'workdir')
   if (workdirVariable?.value) return workdirVariable.value
-  const session = sessionsStore.sessions.find(s => s.id === sessionId)
-  return session?.workingDirectory || ''
+  return currentSession.value?.workingDirectory || ''
 })
 
 // --- Composables ---

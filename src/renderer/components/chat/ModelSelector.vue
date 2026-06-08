@@ -127,7 +127,7 @@ onUnmounted(() => {
 const currentSession = computed(() => {
   const sid = props.sessionId
   if (!sid) return null
-  return sessionsStore.sessions.find(s => s.id === sid) || null
+  return sessionsStore.getSessionItem(sid) || null
 })
 
 // Use session's lastProvider if available, otherwise fall back to global settings
@@ -206,13 +206,7 @@ async function handleSelect(provider: string, model: string) {
 
   // Save to session for per-session persistence
   if (effectiveSessionId) {
-    await window.electronAPI.updateSessionModel(effectiveSessionId, provider, model)
-    // Update local session cache in store
-    const session = sessionsStore.sessions.find(s => s.id === effectiveSessionId)
-    if (session) {
-      session.lastProvider = provider
-      session.lastModel = model
-    }
+    await sessionsStore.updateSessionModel(effectiveSessionId, provider, model)
   }
 }
 </script>

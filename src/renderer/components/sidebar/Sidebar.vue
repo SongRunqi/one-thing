@@ -91,7 +91,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
-import { Brain, CalendarClock, Images, Settings } from 'lucide-vue-next'
+import { Bot, Brain, CalendarClock, Images, Settings } from 'lucide-vue-next'
 import SidebarHeader from './SidebarHeader.vue'
 import SessionList from './SessionList.vue'
 import SessionContextMenu from './SessionContextMenu.vue'
@@ -104,7 +104,7 @@ interface Props {
   floatingClosing?: boolean
   noTransition?: boolean
   mediaPanelOpen?: boolean
-  activeWorkspacePanel?: 'memory' | 'media' | 'tasks' | null
+  activeWorkspacePanel?: 'memory' | 'media' | 'agents' | 'tasks' | null
   width?: number
 }
 
@@ -119,7 +119,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   toggleCollapse: []
   'toggle-media-panel': []
-  'open-workspace-panel': [panel: 'memory' | 'media' | 'tasks']
+  'open-workspace-panel': [panel: 'memory' | 'media' | 'agents' | 'tasks']
   'create-new-chat': []
   'open-search': []
   'open-settings': []
@@ -133,6 +133,7 @@ const chatStore = useChatStore()
 const workspaceActions = [
   { id: 'memory' as const, label: 'Memory', icon: Brain },
   { id: 'media' as const, label: 'Media', icon: Images },
+  { id: 'agents' as const, label: 'Agents', icon: Bot },
   { id: 'tasks' as const, label: 'Tasks', icon: CalendarClock },
 ]
 

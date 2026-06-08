@@ -37,6 +37,9 @@ const mocks = vi.hoisted(() => {
         },
       ],
       switchSession: vi.fn(),
+      getSessionItem: vi.fn((sessionId: string) =>
+        mocks.sessionsStore.sessions.find((item: any) => item.id === sessionId),
+      ),
     },
     settingsStore: {
       settings: {

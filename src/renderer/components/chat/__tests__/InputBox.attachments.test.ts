@@ -186,6 +186,14 @@ describe("InputBox paste attachments", () => {
 			currentSessionId: "session-1",
 			sessionVariables: new Map(),
 			sessions: [{ id: "session-1", workingDirectory: "/repo" }],
+			getSessionItem: vi.fn((sessionId: string) =>
+				mocks.sessionsStore.sessions.find((item: any) => item.id === sessionId),
+			),
+			updateSessionPermissionMode: vi.fn(async (sessionId: string, permissionMode: string) => {
+				const session = mocks.sessionsStore.sessions.find((item: any) => item.id === sessionId);
+				if (session) session.permissionMode = permissionMode;
+				return { success: true };
+			}),
 		});
 		const composerDrafts = new Map<string, any>();
 		mocks.chatStore = reactive({
@@ -282,6 +290,38 @@ describe("InputBox paste attachments", () => {
 		await settle();
 
 		expect((wrapper.find("textarea").element as HTMLTextAreaElement).value).toBe("unfinished draft");
+	});
+
+	it("cycles permission mode for a draft session without a persisted chat", async () => {
+		const draft = reactive({
+			id: "draft:one",
+			permissionMode: "normal",
+			workingDirectory: "/repo",
+		});
+		mocks.sessionsStore.getSessionItem.mockImplementation((sessionId: string) =>
+			sessionId === draft.id
+				? draft
+				: mocks.sessionsStore.sessions.find((item: any) => item.id === sessionId),
+		);
+		mocks.sessionsStore.updateSessionPermissionMode.mockImplementation(
+			async (sessionId: string, permissionMode: string) => {
+				if (sessionId === draft.id) draft.permissionMode = permissionMode;
+				return { success: true };
+			},
+		);
+
+		const wrapper = mountInputBox({ sessionId: draft.id });
+
+		expect(wrapper.find(".permission-mode-btn").text()).toBe("Normal");
+
+		await wrapper.find(".permission-mode-btn").trigger("click");
+		await settle();
+
+		expect(mocks.sessionsStore.updateSessionPermissionMode).toHaveBeenCalledWith(
+			draft.id,
+			"auto-accept-edits",
+		);
+		expect(wrapper.find(".permission-mode-btn").text()).toBe("Auto Edits");
 	});
 
 	it("shows an attachment tray after pasting a file", async () => {

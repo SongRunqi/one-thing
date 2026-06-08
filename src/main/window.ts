@@ -1,4 +1,4 @@
-import { BrowserWindow, session, shell, Menu, app, nativeTheme, type Rectangle, type Session, type WebContents } from 'electron'
+import { BrowserWindow, session, shell, Menu, app, nativeTheme, type Rectangle, type RenderProcessGoneDetails, type Session, type WebContents } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { getWindowStatePath, readJsonFile, writeJsonFile } from './stores/paths.js'
@@ -145,6 +145,144 @@ const __dirname = path.dirname(__filename)
 
 function getRendererDevUrl(): string {
   return process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:5173'
+}
+
+const MAIN_WINDOW_HEALTH_CHECK_SCRIPT = `
+(() => {
+  if (document.readyState === 'loading') return 'loading'
+  if (document.querySelector('.app-shell, .error-boundary')) return 'ready'
+  const appRoot = document.getElementById('app')
+  if (!appRoot) return 'missing-root'
+  if ((appRoot.textContent || '').trim().length > 0) return 'content'
+  return 'blank'
+})()
+`
+
+const MAIN_WINDOW_RELOAD_DEBOUNCE_MS = 5000
+export const MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS = 800
+
+type MainWindowRendererHealth = 'ready' | 'content' | 'loading' | 'blank' | 'missing-root' | 'crashed' | 'destroyed' | 'probe-failed'
+
+let lastMainWindowRendererReloadAt = Number.NEGATIVE_INFINITY
+
+function loadMainWindowContent(mainWindow: BrowserWindow, reason = 'initial'): void {
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  const effectiveTheme = getEffectiveTheme()
+  const loadPromise = isDevelopment
+    ? mainWindow.loadURL(`${getRendererDevUrl()}#theme=${effectiveTheme}`)
+    : mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      hash: `theme=${effectiveTheme}`
+    })
+
+  Promise.resolve(loadPromise).catch((error) => {
+    console.error(`[Window] Failed to load main window content (${reason}):`, error)
+  })
+}
+
+function reloadMainWindowRenderer(mainWindow: BrowserWindow, reason: string): boolean {
+  if (mainWindow.isDestroyed()) return false
+
+  const now = Date.now()
+  if (now - lastMainWindowRendererReloadAt < MAIN_WINDOW_RELOAD_DEBOUNCE_MS) {
+    console.warn(`[Window] Skipping main window reload (${reason}); reload already attempted recently`)
+    return false
+  }
+  lastMainWindowRendererReloadAt = now
+
+  const url = mainWindow.webContents.getURL()
+  console.warn(`[Window] Reloading main window renderer (${reason})`, { url })
+
+  try {
+    if (url) {
+      mainWindow.webContents.reloadIgnoringCache()
+    } else {
+      loadMainWindowContent(mainWindow, reason)
+    }
+    return true
+  } catch (error) {
+    console.error(`[Window] Failed to reload main window renderer (${reason}):`, error)
+    return false
+  }
+}
+
+function requestMainWindowRepaint(mainWindow: BrowserWindow, reason: string): void {
+  if (mainWindow.isDestroyed()) return
+  try {
+    mainWindow.webContents.invalidate()
+  } catch (error) {
+    console.warn(`[Window] Failed to invalidate main window after ${reason}:`, error)
+  }
+}
+
+async function getMainWindowRendererHealth(mainWindow: BrowserWindow): Promise<MainWindowRendererHealth> {
+  if (mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return 'destroyed'
+  if (mainWindow.webContents.isCrashed()) return 'crashed'
+  if (mainWindow.webContents.isLoading()) return 'loading'
+
+  try {
+    const result = await mainWindow.webContents.executeJavaScript(MAIN_WINDOW_HEALTH_CHECK_SCRIPT, true)
+    if (
+      result === 'ready' ||
+      result === 'content' ||
+      result === 'loading' ||
+      result === 'blank' ||
+      result === 'missing-root'
+    ) {
+      return result
+    }
+    return 'probe-failed'
+  } catch (error) {
+    console.warn('[Window] Main window renderer health probe failed:', error)
+    return 'probe-failed'
+  }
+}
+
+function isHealthyMainWindowRenderer(health: MainWindowRendererHealth): boolean {
+  return health === 'ready' || health === 'content' || health === 'loading'
+}
+
+function attachMainWindowRecovery(mainWindow: BrowserWindow): void {
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    // -3 is ERR_ABORTED, commonly emitted for intentional navigations/reloads.
+    if (!isMainFrame || errorCode === -3) return
+    console.error('[Window] Main window failed to load:', { errorCode, errorDescription, validatedURL })
+    reloadMainWindowRenderer(mainWindow, `did-fail-load:${errorCode}`)
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_event, details: RenderProcessGoneDetails) => {
+    console.error('[Window] Main window renderer process gone:', details)
+    if (details.reason === 'clean-exit') return
+    reloadMainWindowRenderer(mainWindow, `render-process-gone:${details.reason}`)
+  })
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.warn('[Window] Main window renderer became unresponsive')
+  })
+
+  mainWindow.webContents.on('responsive', () => {
+    console.log('[Window] Main window renderer became responsive')
+  })
+}
+
+export async function recoverMainWindowAfterSystemResume(
+  mainWindow: BrowserWindow,
+  source: 'resume' | 'unlock-screen' = 'resume'
+): Promise<void> {
+  if (mainWindow.isDestroyed()) return
+
+  requestMainWindowRepaint(mainWindow, source)
+  if (!mainWindow.isVisible()) return
+
+  await new Promise(resolve => setTimeout(resolve, MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS))
+  if (mainWindow.isDestroyed()) return
+
+  const health = await getMainWindowRendererHealth(mainWindow)
+  if (isHealthyMainWindowRenderer(health)) {
+    return
+  }
+
+  console.warn(`[Window] Main window renderer unhealthy after ${source}:`, health)
+  reloadMainWindowRenderer(mainWindow, `${source}:${health}`)
 }
 
 /**
@@ -806,16 +944,9 @@ export function createWindow() {
     return { action: 'deny' }
   })
 
-  if (isDevelopment) {
-    // Load from Vite dev server with theme parameter
-    mainWindow.loadURL(`${getRendererDevUrl()}#theme=${effectiveTheme}`)
-    mainWindow.webContents.openDevTools()
-  } else {
-    // Load from built files with theme parameter
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
-      hash: `theme=${effectiveTheme}`
-    })
-  }
+  attachMainWindowRecovery(mainWindow)
+  loadMainWindowContent(mainWindow)
+  if (isDevelopment) mainWindow.webContents.openDevTools()
 
   // Setup application menu with keyboard shortcuts
   setupApplicationMenu(mainWindow)

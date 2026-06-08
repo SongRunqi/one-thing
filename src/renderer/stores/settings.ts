@@ -484,7 +484,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     try {
       // Read from settings.json modelRegistry (via IPC)
-      const response = await window.electronAPI.getModelsWithCapabilities(providerId)
+      const response = await window.electronAPI.getModelsWithCapabilities(providerId, { forceRefresh })
 
       if (response.success && response.models && response.models.length > 0) {
         const models = response.models

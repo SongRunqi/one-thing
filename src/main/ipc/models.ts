@@ -42,11 +42,25 @@ function getConfiguredCodexModelIds(): string[] {
   ].filter(Boolean)))
 }
 
+function getConfiguredCodexFallbackModels(): OpenRouterModel[] {
+  const modelIds = getConfiguredCodexModelIds()
+  return modelIds.length > 0 ? getCodexFallbackModels(modelIds) : []
+}
+
+async function getCachedCodexModelsWithFallbacks(includeDefaultFallback = false): Promise<OpenRouterModel[]> {
+  const regModels = await modelRegistry.getModelsForProvider('codex')
+  const groups = [regModels, getConfiguredCodexFallbackModels()]
+  if (includeDefaultFallback) {
+    groups.push(getCodexFallbackModels())
+  }
+  return mergeModelsById(...groups)
+}
+
 // === Model Registry Handlers (read from settings.json) ===
 
-async function handleGetModelsWithCapabilities(
+export async function handleGetModelsWithCapabilities(
   _event: Electron.IpcMainInvokeEvent,
-  request: { providerId: string }
+  request: { providerId: string; forceRefresh?: boolean }
 ): Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }> {
   try {
     // Special handling for GitHub Copilot - fetch live from Copilot API
@@ -92,17 +106,25 @@ async function handleGetModelsWithCapabilities(
     }
 
     if (request.providerId === 'codex' || request.providerId === AIProvider.Codex) {
+      if (!request.forceRefresh) {
+        return {
+          success: true,
+          models: await getCachedCodexModelsWithFallbacks(),
+        }
+      }
+
       try {
         const models = await fetchCodexModelsRaw()
         modelRegistry.saveProviderModels('codex', models)
-        return { success: true, models }
-      } catch (error: any) {
-        console.warn('[Models] Failed to fetch Codex models, using fallback:', error.message)
-        const regModels = await modelRegistry.getModelsForProvider('codex')
-        const selectedFallbacks = getCodexFallbackModels(getConfiguredCodexModelIds())
         return {
           success: true,
-          models: mergeModelsById(regModels, selectedFallbacks, getCodexFallbackModels()),
+          models: mergeModelsById(models, getConfiguredCodexFallbackModels()),
+        }
+      } catch (error: any) {
+        console.warn('[Models] Failed to fetch Codex models, using fallback:', error.message)
+        return {
+          success: true,
+          models: await getCachedCodexModelsWithFallbacks(true),
         }
       }
     }

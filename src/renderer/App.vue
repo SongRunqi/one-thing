@@ -176,7 +176,7 @@ function handleSidebarResize(width: number) {
   localStorage.setItem('sidebarWidth', String(width))
 }
 
-type WorkspacePanel = 'memory' | 'media' | 'tasks'
+type WorkspacePanel = 'memory' | 'media' | 'agents' | 'tasks'
 
 // Main workspace panel state. These panels are launched from the sidebar
 // actions area and occupy the main content region instead of expanding from

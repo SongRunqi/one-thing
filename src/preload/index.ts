@@ -538,9 +538,10 @@ const electronAPI = {
 	openThemesFolder: () => ipcRenderer.invoke(IPC_CHANNELS.THEME_OPEN_FOLDER),
 
 	// Model registry methods (reads from settings.json modelRegistry)
-	getModelsWithCapabilities: (providerId: string) =>
+	getModelsWithCapabilities: (providerId: string, options?: { forceRefresh?: boolean }) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GET_MODELS_WITH_CAPABILITIES, {
 			providerId,
+			forceRefresh: options?.forceRefresh,
 		}),
 
 	getAllModels: () => ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_MODELS),

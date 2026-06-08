@@ -218,6 +218,7 @@ describe('renderer UI semantic variables', () => {
     const inputBox = readRendererFile('components/chat/InputBox.vue')
     const chatWindow = readRendererFile('components/chat/ChatWindow.vue')
     const chatContainer = readRendererFile('components/ChatContainer.vue')
+    const settingsPage = readRendererFile('components/SettingsPage.vue')
     const sidebar = readRendererFile('components/sidebar/Sidebar.vue')
     const sessionItem = readRendererFile('components/sidebar/SessionItem.vue')
     const sessionContextMenu = readRendererFile('components/sidebar/SessionContextMenu.vue')
@@ -243,6 +244,13 @@ describe('renderer UI semantic variables', () => {
     expect(chatWindow).toContain('var(--ui-surface-chat-bg')
     expect(chatWindow).toContain('--ui-surface-chat-panel-shadow')
     expect(chatContainer).toContain('var(--ui-surface-chat-bg')
+    const settingsPaperDefs = settingsPage.match(/--settings-paper:\s*var\(--ui-surface-[^)]+/g) ?? []
+    const settingsSidebarDefs = settingsPage.match(/--settings-paper-2:\s*var\(--ui-sidebar-surface-bg/g) ?? []
+    const settingsPanelDefs = settingsPage.match(/--settings-paper-3:\s*var\(--ui-surface-panel-bg/g) ?? []
+    expect(settingsPaperDefs).toHaveLength(3)
+    expect(settingsPaperDefs.every(def => def.includes('--ui-surface-chat-bg'))).toBe(true)
+    expect(settingsSidebarDefs).toHaveLength(3)
+    expect(settingsPanelDefs).toHaveLength(3)
     expect(sidebar).toContain('--ui-sidebar-surface-bg')
     expect(sessionItem).toContain('var(--ui-sidebar-item-active-bg')
     expect(sessionContextMenu).toContain('var(--ui-surface-menu-bg')

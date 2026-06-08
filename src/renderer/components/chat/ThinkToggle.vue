@@ -165,7 +165,7 @@ const PANEL_VERTICAL_PADDING = 8
 const currentSession = computed(() => {
   const sid = props.sessionId
   if (!sid) return null
-  return sessionsStore.sessions.find((s) => s.id === sid) || null
+  return sessionsStore.getSessionItem(sid) || null
 })
 
 const currentProvider = computed(() => {
@@ -558,12 +558,7 @@ async function setLegacyPairThinking(enabled: boolean): Promise<void> {
 
   const sid = props.sessionId || sessionsStore.currentSessionId
   if (sid) {
-    await window.electronAPI.updateSessionModel(sid, provider, target)
-    const session = sessionsStore.sessions.find((s) => s.id === sid)
-    if (session) {
-      session.lastProvider = provider
-      session.lastModel = target
-    }
+    await sessionsStore.updateSessionModel(sid, provider, target)
   }
 }
 

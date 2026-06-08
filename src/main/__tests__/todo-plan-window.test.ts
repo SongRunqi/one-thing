@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => {
   class MockBrowserWindow {
@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
     alwaysOnTop = false
     url = ''
     listeners = new Map<string, Array<(...args: unknown[]) => void>>()
+    webContentsListeners = new Map<string, Array<(...args: unknown[]) => void>>()
     show = vi.fn(() => {
       this.visible = true
       this.frontmost = true
@@ -53,9 +54,20 @@ const mocks = vi.hoisted(() => {
     isMaximized = vi.fn(() => false)
     webContents = {
       getURL: vi.fn(() => this.url),
-      on: vi.fn(),
+      on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+        const listeners = this.webContentsListeners.get(event) || []
+        listeners.push(listener)
+        this.webContentsListeners.set(event, listeners)
+        return this.webContents
+      }),
       setWindowOpenHandler: vi.fn(),
       openDevTools: vi.fn(),
+      executeJavaScript: vi.fn(async () => 'ready'),
+      invalidate: vi.fn(),
+      reloadIgnoringCache: vi.fn(),
+      isCrashed: vi.fn(() => false),
+      isDestroyed: vi.fn(() => false),
+      isLoading: vi.fn(() => false),
     }
 
     constructor(public options: Record<string, unknown>) {
@@ -103,6 +115,10 @@ const mocks = vi.hoisted(() => {
 
     emit(event: string, ...args: unknown[]) {
       for (const listener of this.listeners.get(event) || []) listener(...args)
+    }
+
+    emitWebContents(event: string, ...args: unknown[]) {
+      for (const listener of this.webContentsListeners.get(event) || []) listener(...args)
     }
   }
 
@@ -189,6 +205,10 @@ async function loadWindowModule() {
 }
 
 describe('todo plan standalone window controls', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.MockBrowserWindow.instances.length = 0
@@ -387,6 +407,59 @@ describe('todo plan standalone window controls', () => {
     expect(main.show).not.toHaveBeenCalled()
     expect(main.hide).toHaveBeenCalled()
     expect(main.visible).toBe(false)
+  })
+
+  it('repaints but does not reload a healthy main window after system resume', async () => {
+    vi.useFakeTimers()
+    const { createWindow, recoverMainWindowAfterSystemResume, MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS } = await loadWindowModule()
+    const main = createWindow() as unknown as InstanceType<typeof mocks.MockBrowserWindow>
+    main.visible = true
+    main.webContents.reloadIgnoringCache.mockClear()
+    main.webContents.executeJavaScript.mockResolvedValue('ready')
+
+    const recovery = recoverMainWindowAfterSystemResume(main as any, 'resume')
+    await vi.advanceTimersByTimeAsync(MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS)
+    await recovery
+
+    expect(main.webContents.invalidate).toHaveBeenCalledTimes(1)
+    expect(main.webContents.executeJavaScript).toHaveBeenCalledTimes(1)
+    expect(main.webContents.reloadIgnoringCache).not.toHaveBeenCalled()
+  })
+
+  it('reloads a blank main window after system resume', async () => {
+    vi.useFakeTimers()
+    const { createWindow, recoverMainWindowAfterSystemResume, MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS } = await loadWindowModule()
+    const main = createWindow() as unknown as InstanceType<typeof mocks.MockBrowserWindow>
+    main.visible = true
+    main.webContents.reloadIgnoringCache.mockClear()
+    main.webContents.executeJavaScript.mockResolvedValue('blank')
+
+    const recovery = recoverMainWindowAfterSystemResume(main as any, 'resume')
+    await vi.advanceTimersByTimeAsync(MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS)
+    await recovery
+
+    expect(main.webContents.invalidate).toHaveBeenCalledTimes(1)
+    expect(main.webContents.reloadIgnoringCache).toHaveBeenCalledTimes(1)
+  })
+
+  it('reloads the main window when the renderer process crashes', async () => {
+    const { createWindow } = await loadWindowModule()
+    const main = createWindow() as unknown as InstanceType<typeof mocks.MockBrowserWindow>
+    main.webContents.reloadIgnoringCache.mockClear()
+
+    main.emitWebContents('render-process-gone', {}, { reason: 'crashed', exitCode: 1 })
+
+    expect(main.webContents.reloadIgnoringCache).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not reload the main window after a clean renderer exit', async () => {
+    const { createWindow } = await loadWindowModule()
+    const main = createWindow() as unknown as InstanceType<typeof mocks.MockBrowserWindow>
+    main.webContents.reloadIgnoringCache.mockClear()
+
+    main.emitWebContents('render-process-gone', {}, { reason: 'clean-exit', exitCode: 0 })
+
+    expect(main.webContents.reloadIgnoringCache).not.toHaveBeenCalled()
   })
 
   it('shows a newly-created todo window inactive by default on macOS', async () => {

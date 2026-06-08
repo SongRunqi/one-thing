@@ -83,6 +83,15 @@ function setup(provider: 'codex' | 'deepseek' = 'codex', serviceTierByModel?: Re
       lastProvider: provider,
       lastModel: model,
     }],
+    getSessionItem: vi.fn((sessionId: string) => mocks.sessionsStore.sessions.find((item: any) => item.id === sessionId)),
+    updateSessionModel: vi.fn(async (sessionId: string, nextProvider: string, nextModel: string) => {
+      const session = mocks.sessionsStore.sessions.find((item: any) => item.id === sessionId)
+      if (session) {
+        session.lastProvider = nextProvider
+        session.lastModel = nextModel
+      }
+      return { success: true }
+    }),
   })
 }
 
@@ -170,5 +179,31 @@ describe('ThinkToggle', () => {
     expect(panelText()).not.toContain('Low')
     expect(panelText()).not.toContain('Medium')
     expect(panelText()).not.toContain('X High')
+  })
+
+  it('stores legacy pair thinking selection on a draft chat', async () => {
+    setup('deepseek')
+    mocks.settingsStore.settings.ai.providers.deepseek.model = 'deepseek-chat'
+    mocks.sessionsStore.currentSessionId = 'draft:one'
+    mocks.sessionsStore.sessions = [{
+      id: 'draft:one',
+      kind: 'new-chat-draft',
+      lastProvider: 'deepseek',
+      lastModel: 'deepseek-chat',
+    }]
+
+    const wrapper = mount(ThinkToggle, {
+      attachTo: document.body,
+      props: { sessionId: 'draft:one' },
+    })
+
+    expect(wrapper.find('.think-value').text()).toBe('Off')
+
+    await openPanel(wrapper)
+    await clickPanelOption('On')
+
+    expect(mocks.settingsStore.updateModel).toHaveBeenCalledWith('deepseek-reasoner', 'deepseek')
+    expect(mocks.sessionsStore.updateSessionModel).toHaveBeenCalledWith('draft:one', 'deepseek', 'deepseek-reasoner')
+    expect(wrapper.find('.think-value').text()).toBe('On')
   })
 })
